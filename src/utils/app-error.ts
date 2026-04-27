@@ -1,0 +1,156 @@
+import {
+    APP_ERROR_CODE,
+    INVALID_INPUT_ERROR_CODE,
+} from "../constants/error-codes";
+
+export type AppErrorShape = {
+    code: string;
+    message: string;
+    details?: string | null;
+};
+
+const DEFAULT_APP_ERROR: AppErrorShape = {
+    code: APP_ERROR_CODE,
+    message: "Unknown error.",
+    details: null,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+function tryParseJsonString(value: string): unknown {
+    const normalized = value.trim();
+
+    if (!normalized) {
+        return null;
+    }
+
+    if (
+        (normalized.startsWith("{") && normalized.endsWith("}")) ||
+        (normalized.startsWith("[") && normalized.endsWith("]"))
+    ) {
+        try {
+            return JSON.parse(normalized);
+        } catch {
+            return null;
+        }
+    }
+
+    return null;
+}
+
+function normalizeOptionalDetails(value: unknown): string | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const normalized = value.trim();
+    return normalized ? normalized : null;
+}
+
+function normalizeDirectAppErrorShape(value: unknown): AppErrorShape | null {
+    if (!isRecord(value)) {
+        return null;
+    }
+
+    const hasCode = typeof value.code === "string" && value.code.trim() !== "";
+    const hasMessage = typeof value.message === "string";
+
+    if (!hasCode && !hasMessage) {
+        return null;
+    }
+
+    return {
+        code: hasCode ? String(value.code).trim() : APP_ERROR_CODE,
+        message:
+            hasMessage && String(value.message).trim() !== ""
+                ? String(value.message).trim()
+                : "Unknown error.",
+        details: normalizeOptionalDetails(value.details),
+    };
+}
+
+function extractNestedError(value: unknown): AppErrorShape | null {
+    if (value == null) {
+        return null;
+    }
+
+    if (typeof value === "string") {
+        const parsed = tryParseJsonString(value);
+
+        if (parsed) {
+            const nested = extractNestedError(parsed);
+
+            if (nested) {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    if (!isRecord(value)) {
+        return null;
+    }
+
+    if ("error" in value) {
+        const nestedFromError = extractNestedError(value.error);
+
+        if (nestedFromError) {
+            return nestedFromError;
+        }
+    }
+
+    if ("cause" in value) {
+        const nestedFromCause = extractNestedError(value.cause);
+
+        if (nestedFromCause) {
+            return nestedFromCause;
+        }
+    }
+
+    if (typeof value.message === "string") {
+        const nestedFromMessage = extractNestedError(value.message);
+
+        if (nestedFromMessage) {
+            return nestedFromMessage;
+        }
+    }
+
+    return normalizeDirectAppErrorShape(value);
+}
+
+export function createAppError(code: string, message: string, details?: string | null): AppErrorShape {
+    return {
+        code: code.trim() || INVALID_INPUT_ERROR_CODE,
+        message: message.trim() || "Unknown error.",
+        details: details?.trim() || null,
+    };
+}
+
+export function parseAppError(error: unknown): AppErrorShape {
+    const extracted = extractNestedError(error);
+
+    if (extracted) {
+        return extracted;
+    }
+
+    if (error instanceof Error) {
+        return {
+            code: APP_ERROR_CODE,
+            message: error.message?.trim() || "Unknown error.",
+            details: null,
+        };
+    }
+
+    if (typeof error === "string" && error.trim()) {
+        return {
+            code: APP_ERROR_CODE,
+            message: error.trim(),
+            details: null,
+        };
+    }
+
+    return DEFAULT_APP_ERROR;
+}

@@ -1,0 +1,255 @@
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { useHomeUiGuards } from "./use-home-ui-guards";
+
+describe("useHomeUiGuards", () => {
+    function createSettingsState(overrides?: Partial<any>) {
+        return {
+            settingsOpen: false,
+            settings: {
+                importMode: "copy" as const,
+                libraryPath: "/library",
+            },
+            isPreparingSettings: false,
+            isMigratingLibraryPath: false,
+            openSettings: vi.fn(),
+            closeSettings: vi.fn(),
+            setImportMode: vi.fn(),
+            chooseLibraryPath: vi.fn(),
+            openCurrentLibraryPath: vi.fn(),
+            ...overrides,
+        };
+    }
+
+    function createMediaLibrary(overrides?: Partial<any>) {
+        return {
+            mediaItems: [],
+
+            addMediaOpen: true,
+            setAddMediaOpen: vi.fn(),
+            closeAddMediaModal: vi.fn().mockResolvedValue(undefined),
+
+            confirmDeleteMediaOpen: false,
+            mediaToDelete: null,
+
+            isLoadingMedia: false,
+            isAddingMedia: false,
+            isDeletingMedia: false,
+            isUpdatingWatched: false,
+            isRefreshingComments: false,
+            isUpdatingTitle: false,
+            isCancellingYtDlp: false,
+
+            ytDlpLogs: [],
+            isYtDlpRunning: false,
+
+            addMediaForm: {
+                sourceMode: "local" as const,
+                mediaUrl: "",
+                title: "",
+                mediaPath: "",
+                mediaType: "video" as const,
+                thumbPath: "",
+                publishedAt: "",
+
+                downloadComments: true,
+                downloadLiveChat: true,
+                cookiesBrowser: "",
+                cookiesPath: "",
+
+                isDragging: false,
+                isThumbDragging: false,
+                isGeneratingThumb: false,
+
+                ytDlpFormats: [],
+                selectedYtDlpFormatId: "",
+                isLoadingYtDlpFormats: false,
+                selectedYtDlpMediaType: "video" as const,
+
+                setSourceMode: vi.fn(),
+                setMediaUrl: vi.fn(),
+                setTitle: vi.fn(),
+                setPublishedAt: vi.fn(),
+                setDownloadComments: vi.fn(),
+                setDownloadLiveChat: vi.fn(),
+                setCookiesBrowser: vi.fn(),
+                setCookiesPath: vi.fn(),
+                pickCookiesFileViaDialog: vi.fn(),
+                clearCookiesPath: vi.fn(),
+                setSelectedYtDlpFormatId: vi.fn(),
+                loadYtDlpFormats: vi.fn(),
+
+                pickMediaViaDialog: vi.fn(),
+                pickThumbViaDialog: vi.fn(),
+                applyDroppedMediaPath: vi.fn(),
+                applyDroppedThumbPath: vi.fn(),
+                onDropMedia: vi.fn(),
+                onDragOverMedia: vi.fn(),
+                onDragLeaveMedia: vi.fn(),
+                onDropThumb: vi.fn(),
+                onDragOverThumb: vi.fn(),
+                onDragLeaveThumb: vi.fn(),
+                resetForm: vi.fn().mockResolvedValue(undefined),
+            },
+
+            mediaPlayer: {
+                viewMode: "library" as const,
+                activeMedia: null,
+                activeIsAudio: false,
+                activeSrc: "",
+                activeThumbSrc: "",
+                activeYoutubeUrl: "",
+                canOpenInYoutube: false,
+                activeIsWatched: false,
+                openPlayer: vi.fn(),
+                setActiveMedia: vi.fn(),
+                closePlayer: vi.fn(),
+                openInYoutube: vi.fn().mockResolvedValue(undefined),
+            },
+
+            loadMedia: vi.fn(),
+            addMedia: vi.fn(),
+            cancelYtDlpDownload: vi.fn(),
+
+            markAsWatched: vi.fn(),
+            markAsUnwatched: vi.fn(),
+            refreshComments: vi.fn(),
+            editTitle: vi.fn(),
+            saveMediaProgress: vi.fn(),
+
+            openMediaFileLocation: vi.fn(),
+            openMediaSourceInYoutube: vi.fn(),
+
+            requestDeleteMedia: vi.fn(),
+            confirmDeleteMedia: vi.fn(),
+            closeDeleteMediaModal: vi.fn(),
+
+            clearMediaAndPlayer: vi.fn(),
+
+            ...overrides,
+        };
+    }
+
+    function createChannelsState(overrides?: Partial<any>) {
+        return {
+            isUpdatingChannelAvatar: false,
+            ...overrides,
+        };
+    }
+
+    it("locks add media modal while adding media", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary({
+                    isAddingMedia: true,
+                }),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.isAddMediaModalLocked).toBe(true);
+    });
+
+    it("locks add media modal while yt-dlp is running", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary({
+                    isYtDlpRunning: true,
+                }),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.isAddMediaModalLocked).toBe(true);
+    });
+
+    it("disables library path change during migration", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState({
+                    isMigratingLibraryPath: true,
+                }),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.disableLibraryPathChange).toBe(true);
+        expect(result.current.libraryPathChangeDisabledReason).not.toBe("");
+    });
+
+    it("disables library path change while generating thumbnail", () => {
+        const mediaLibrary = createMediaLibrary({
+            addMediaForm: {
+                ...createMediaLibrary().addMediaForm,
+                isGeneratingThumb: true,
+            },
+        });
+
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary,
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.disableLibraryPathChange).toBe(true);
+        expect(result.current.libraryPathChangeDisabledReason).not.toBe("");
+    });
+
+    it("disables library path change while updating channel avatar", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState({
+                    isUpdatingChannelAvatar: true,
+                }),
+            })
+        );
+
+        expect(result.current.disableLibraryPathChange).toBe(true);
+        expect(result.current.libraryPathChangeDisabledReason).toContain("avatar");
+    });
+
+    it("does not close add media modal when locked", async () => {
+        const mediaLibrary = createMediaLibrary({
+            isAddingMedia: true,
+        });
+
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary,
+                channelsState: createChannelsState(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.closeAddMediaModalSafely();
+        });
+
+        expect(mediaLibrary.closeAddMediaModal).not.toHaveBeenCalled();
+    });
+
+    it("closes add media modal when unlocked", async () => {
+        const mediaLibrary = createMediaLibrary();
+
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary,
+                channelsState: createChannelsState(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.closeAddMediaModalSafely();
+        });
+
+        expect(mediaLibrary.closeAddMediaModal).toHaveBeenCalledTimes(1);
+    });
+});
