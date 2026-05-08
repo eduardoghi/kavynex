@@ -48,12 +48,21 @@ export function DiagnosticsModal({
             }}
         >
             <Stack gap="md" h="100%">
-                <Group justify="space-between" align="center" wrap="wrap">
+                <Box
+                    style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 16,
+                        paddingRight: 16,
+                    }}
+                >
                     <Text c="dimmed" size="sm">
                         Environment, database and library health overview
                     </Text>
 
                     <AppButton
+                        type="button"
                         appVariant="primary"
                         leftSection={<RefreshCcw size={16} />}
                         onClick={onReload}
@@ -61,7 +70,7 @@ export function DiagnosticsModal({
                     >
                         Refresh
                     </AppButton>
-                </Group>
+                </Box>
 
                 <Box
                     style={{
