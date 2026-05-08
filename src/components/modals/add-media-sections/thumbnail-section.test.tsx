@@ -46,7 +46,12 @@ describe("ThumbnailSection", () => {
         );
 
         expect(screen.getByText("Thumbnail selected")).toBeInTheDocument();
-        expect(screen.getByText("selected")).toBeInTheDocument();
+        expect(screen.getByText("Click to change thumbnail")).toBeInTheDocument();
+        expect(screen.getByAltText("Thumbnail preview")).toHaveAttribute(
+            "src",
+            "file:///tmp/thumb.jpg"
+        );
+        expect(screen.queryByText("selected")).not.toBeInTheDocument();
     });
 
     it("shows loading state while generating thumbnail", () => {
@@ -102,6 +107,7 @@ describe("ThumbnailSection", () => {
         );
 
         fireEvent.click(screen.getByText("Click to choose an image for thumbnail (optional)"));
+
         expect(onPickThumb).toHaveBeenCalled();
     });
 
@@ -143,6 +149,7 @@ describe("ThumbnailSection", () => {
         );
 
         fireEvent.click(screen.getByText("Select a media file first"));
+
         expect(onPickThumb).not.toHaveBeenCalled();
     });
 });

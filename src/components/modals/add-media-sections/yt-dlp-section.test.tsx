@@ -1,4 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { YtDlpSection } from "./yt-dlp-section";
@@ -57,7 +58,7 @@ describe("YtDlpSection", () => {
 
         expect(screen.getByLabelText("Media URL")).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Load formats" })).toBeDisabled();
-        expect(screen.getByText("0 format(s)")).toBeInTheDocument();
+        expect(screen.getByText("0 FORMAT(S)")).toBeInTheDocument();
         expect(screen.getByText("COMMENTS ON")).toBeInTheDocument();
         expect(screen.getByText("LIVE CHAT ON")).toBeInTheDocument();
         expect(screen.getByText("NO COOKIES")).toBeInTheDocument();
@@ -135,17 +136,17 @@ describe("YtDlpSection", () => {
             onChangeSelectedYtDlpFormatId,
         });
 
-        const availableFormatsInput = screen.getByRole("textbox", {
-            name: "Available formats",
-        });
+        const availableFormatsInput = screen.getByPlaceholderText("Choose a format");
 
+        fireEvent.mouseDown(availableFormatsInput);
         fireEvent.click(availableFormatsInput);
 
         const options = await screen.findAllByRole("option", {
             name: /1080p mp4/i,
+            hidden: true,
         });
 
-        fireEvent.click(options[0]);
+        fireEvent.click(options[options.length - 1]);
 
         expect(onChangeSelectedYtDlpFormatId).toHaveBeenCalledWith("best");
     });
@@ -162,10 +163,13 @@ describe("YtDlpSection", () => {
             selectedYtDlpFormatId: "best",
         });
 
-        expect(screen.getByText("1 format(s)")).toBeInTheDocument();
+        expect(screen.getByText("1 FORMAT(S)")).toBeInTheDocument();
         expect(screen.getAllByText("VIDEO + AUDIO").length).toBeGreaterThan(0);
         expect(screen.getByText("Selected format")).toBeInTheDocument();
-        expect(screen.getByText(/Format id: best/i)).toBeInTheDocument();
+
+        expect(
+            screen.getByText((content) => content.includes("Format id: best"))
+        ).toBeInTheDocument();
     });
 
     it("shows manual cookies file controls", () => {
