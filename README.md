@@ -26,30 +26,34 @@ Make sure `yt-dlp` and `ffmpeg` are installed and available in your system PATH.
 
 ## Installation
 
-Prebuilt releases are not available yet.
+Prebuilt installers and packages are available on the latest GitHub release:
 
-Compiled installers/packages, such as `.exe` files for Windows, will be provided in a future release. For now, Kavynex needs to be run from source using the development setup below.
+[Download the latest release](https://github.com/eduardoghi/kavynex/releases/latest)
 
-## Development
+### Windows
 
-To run the project from source, you need Node.js, pnpm, Rust, yt-dlp, and FFmpeg.
+Download the Windows installer from the latest release:
 
-```bash
-pnpm install
-pnpm tauri dev
-````
+- `kavynex_*_x64-setup.exe`
 
-## Build
+The `.msi` package is also available if you prefer it:
 
-```bash
-pnpm tauri build
-```
+- `kavynex_*_x64_en-US.msi`
 
-## Tests
+### macOS
 
-```bash
-pnpm test
-```
+Download the package according to your Mac:
+
+- Apple Silicon / M1, M2, M3, M4: `kavynex_*_aarch64.dmg`
+- Intel Mac: `kavynex_*_x64.dmg`
+
+### Linux
+
+Choose the package according to your distribution:
+
+- AppImage: `kavynex_*_amd64.AppImage`
+- Debian/Ubuntu: `kavynex_*_amd64.deb`
+- Fedora/RHEL/openSUSE: `kavynex-*.x86_64.rpm`
 
 ## Screenshots
 
@@ -72,4 +76,25 @@ pnpm test
 ### Diagnostics
 
 <img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/1218a24a-73b8-46af-ad71-0ac862caab6d" />
+
+## Development
+
+To run the project from source, you need Node.js, pnpm, Rust, yt-dlp, and FFmpeg.
+
+```bash
+pnpm install
+pnpm tauri dev
+```
+
+## Build
+
+```bash
+pnpm tauri build
+```
+
+## Tests
+
+```bash
+pnpm test
+```
 
