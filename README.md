@@ -55,20 +55,21 @@ pnpm test
 
 ### Channel library
 
-<img width="2560" height="1392" alt="Kavynex channel library" src="https://github.com/user-attachments/assets/c7162b7a-ebaa-473e-aacf-3d9444d2c2d3" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/8e4562bc-51bd-4c76-ad17-028e63fa646f" />
 
 ### YouTube import
 
-<img width="2560" height="1392" alt="Kavynex YouTube import modal" src="https://github.com/user-attachments/assets/9b6eaf7f-3463-4971-bb8e-be87c22cef7d" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/1b8665a0-85d3-4e6a-9511-c649ce43eab6" />
 
 ### Video player
 
-<img width="2560" height="1392" alt="Kavynex video player" src="https://github.com/user-attachments/assets/e004690e-ed1d-426b-89fc-bc5394432834" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/c6f51262-c5a1-49e0-9452-32b9a40acffe" />
 
 ### Live chat backup
 
-<img width="2560" height="1392" alt="Kavynex live chat backup" src="https://github.com/user-attachments/assets/13930ddd-4a99-4ddb-a78b-458208f9ac80" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/51b2e41e-e857-4b32-9fa6-e7d49cf1b1b7" />
 
 ### Diagnostics
 
-<img width="2560" height="1392" alt="Kavynex diagnostics modal" src="https://github.com/user-attachments/assets/272615d4-fb55-459f-ab5c-7eb87cce08c1" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/1218a24a-73b8-46af-ad71-0ac862caab6d" />
+
