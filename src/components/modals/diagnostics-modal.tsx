@@ -1,6 +1,7 @@
-import { Box, Button, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mantine/core";
+import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mantine/core";
 import { RefreshCcw } from "lucide-react";
 import type { DiagnosticsSummary } from "../../types/diagnostics";
+import { AppButton } from "../ui/app-button";
 import { DiagnosticsIssuesSection } from "./diagnostics-sections/diagnostics-issues-section";
 import { DiagnosticsSummarySections } from "./diagnostics-sections/diagnostics-summary-sections";
 
@@ -52,14 +53,14 @@ export function DiagnosticsModal({
                         Environment, database and library health overview
                     </Text>
 
-                    <Button
-                        variant="light"
+                    <AppButton
+                        appVariant="primary"
                         leftSection={<RefreshCcw size={16} />}
                         onClick={onReload}
                         loading={loading}
                     >
                         Refresh
-                    </Button>
+                    </AppButton>
                 </Group>
 
                 <Box

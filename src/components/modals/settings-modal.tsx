@@ -1,6 +1,5 @@
 import {
     Alert,
-    Button,
     Group,
     Modal,
     Paper,
@@ -17,6 +16,7 @@ import { getLibrarySummary, type LibrarySummaryInfo } from "../../services/libra
 import type { ImportMode } from "../../types/settings";
 import { parseAppError } from "../../utils/app-error";
 import { logError } from "../../utils/app-logger";
+import { AppButton } from "../ui/app-button";
 
 function displayWindowsPath(path: string): string {
     const normalizedPath = path.trim();
@@ -198,8 +198,8 @@ export function SettingsModal({
                             Library summary
                         </Text>
 
-                        <Button
-                            variant="subtle"
+                        <AppButton
+                            appVariant="ghost"
                             size="xs"
                             leftSection={<RefreshCcw size={14} />}
                             onClick={() => {
@@ -209,7 +209,7 @@ export function SettingsModal({
                             loading={isLoadingLibrarySummary}
                         >
                             Refresh
-                        </Button>
+                        </AppButton>
                     </Group>
 
                     <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
@@ -272,33 +272,33 @@ export function SettingsModal({
                         </Alert>
                     )}
 
-                    <Group>
-                        <Button
-                            variant="light"
+                    <Group gap="sm">
+                        <AppButton
+                            appVariant="primary"
                             leftSection={<Search size={16} />}
                             onClick={onChooseLibraryPath}
                             disabled={disableLibraryPathChange}
                             loading={isMigratingLibraryPath}
                         >
                             Choose folder
-                        </Button>
+                        </AppButton>
 
-                        <Button
-                            variant="light"
+                        <AppButton
+                            appVariant="secondary"
                             leftSection={<FolderOpen size={16} />}
                             onClick={onOpenLibraryPath}
                             disabled={!libraryPath.trim()}
                         >
                             Open folder
-                        </Button>
+                        </AppButton>
 
-                        <Button
-                            variant="light"
+                        <AppButton
+                            appVariant="secondary"
                             leftSection={<Wrench size={16} />}
                             onClick={onOpenDiagnostics}
                         >
                             Diagnostics
-                        </Button>
+                        </AppButton>
                     </Group>
 
                     {disableLibraryPathChange && libraryPathChangeDisabledReason && (

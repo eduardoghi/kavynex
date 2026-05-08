@@ -2,7 +2,6 @@ import {
     ActionIcon,
     Badge,
     Box,
-    Button,
     Checkbox,
     Group,
     Select,
@@ -12,8 +11,10 @@ import {
     rem,
 } from "@mantine/core";
 import { FileText, Link as LinkIcon, ListVideo, X } from "lucide-react";
+import type { ReactNode } from "react";
 import type { YtDlpFormat } from "../../../types/media";
 import { formatBytes } from "../../../utils/media-utils";
+import { AppButton } from "../../ui/app-button";
 
 type YtDlpSectionProps = {
     mediaUrl: string;
@@ -35,6 +36,8 @@ type YtDlpSectionProps = {
     onChangeDownloadLiveChat: (value: boolean) => void;
     onLoadYtDlpFormats: () => void | Promise<void>;
 };
+
+type BadgeTone = "neutral" | "violet" | "blue" | "green" | "orange" | "red" | "yellow";
 
 function buildFormatBadgeLabel(format: YtDlpFormat | null): string {
     if (!format) {
@@ -70,9 +73,9 @@ function buildFormatBadgeLabel(format: YtDlpFormat | null): string {
     return "AUDIO ONLY";
 }
 
-function buildFormatBadgeColor(format: YtDlpFormat | null): string {
+function buildFormatBadgeTone(format: YtDlpFormat | null): BadgeTone {
     if (!format) {
-        return "gray";
+        return "neutral";
     }
 
     const displayName = format.display_name.trim().toUpperCase();
@@ -86,7 +89,7 @@ function buildFormatBadgeColor(format: YtDlpFormat | null): string {
     }
 
     if (displayName.startsWith("VIDEO ONLY")) {
-        return "cyan";
+        return "blue";
     }
 
     if (displayName.startsWith("AUDIO ONLY")) {
@@ -98,10 +101,96 @@ function buildFormatBadgeColor(format: YtDlpFormat | null): string {
     }
 
     if (format.has_video) {
-        return "cyan";
+        return "blue";
     }
 
     return "orange";
+}
+
+function getBadgeStyle(tone: BadgeTone): {
+    background: string;
+    borderColor: string;
+    color: string;
+} {
+    if (tone === "violet") {
+        return {
+            background: "rgba(124,92,255,0.13)",
+            borderColor: "rgba(139,92,246,0.34)",
+            color: "rgb(221,214,254)",
+        };
+    }
+
+    if (tone === "blue") {
+        return {
+            background: "rgba(59,130,246,0.13)",
+            borderColor: "rgba(59,130,246,0.34)",
+            color: "rgb(147,197,253)",
+        };
+    }
+
+    if (tone === "green") {
+        return {
+            background: "rgba(34,197,94,0.13)",
+            borderColor: "rgba(34,197,94,0.34)",
+            color: "rgb(134,239,172)",
+        };
+    }
+
+    if (tone === "orange") {
+        return {
+            background: "rgba(249,115,22,0.13)",
+            borderColor: "rgba(249,115,22,0.34)",
+            color: "rgb(253,186,116)",
+        };
+    }
+
+    if (tone === "red") {
+        return {
+            background: "rgba(239,68,68,0.13)",
+            borderColor: "rgba(239,68,68,0.34)",
+            color: "rgb(252,165,165)",
+        };
+    }
+
+    if (tone === "yellow") {
+        return {
+            background: "rgba(234,179,8,0.13)",
+            borderColor: "rgba(234,179,8,0.34)",
+            color: "rgb(253,224,71)",
+        };
+    }
+
+    return {
+        background: "rgba(255,255,255,0.055)",
+        borderColor: "rgba(255,255,255,0.14)",
+        color: "rgba(255,255,255,0.66)",
+    };
+}
+
+function StatusBadge({
+    children,
+    tone,
+}: {
+    children: ReactNode;
+    tone: BadgeTone;
+}): JSX.Element {
+    const badgeStyle = getBadgeStyle(tone);
+
+    return (
+        <Badge
+            variant="outline"
+            style={{
+                flexShrink: 0,
+                paddingInline: rem(8),
+                background: badgeStyle.background,
+                borderColor: badgeStyle.borderColor,
+                color: badgeStyle.color,
+                fontWeight: 800,
+            }}
+        >
+            {children}
+        </Badge>
+    );
 }
 
 export function YtDlpSection({
@@ -176,13 +265,14 @@ export function YtDlpSection({
                         style={{ flex: 1 }}
                     />
 
-                    <Button
-                        variant="default"
+                    <AppButton
+                        type="button"
+                        appVariant="secondary"
                         onClick={() => void onPickCookiesFile()}
                         disabled={isLocked}
                     >
                         Choose file
-                    </Button>
+                    </AppButton>
 
                     <ActionIcon
                         variant="subtle"
@@ -205,15 +295,16 @@ export function YtDlpSection({
                     </Text>
                 </Box>
 
-                <Button
-                    variant="default"
+                <AppButton
+                    type="button"
+                    appVariant="secondary"
                     leftSection={<ListVideo size={16} />}
                     onClick={() => void onLoadYtDlpFormats()}
                     loading={isLoadingYtDlpFormats}
                     disabled={!canLoadFormats}
                 >
                     Load formats
-                </Button>
+                </AppButton>
             </Group>
 
             <Select
@@ -250,39 +341,36 @@ export function YtDlpSection({
                 disabled={isLocked}
             />
 
-            <Group gap="xs">
-                <Badge variant="light" color={ytDlpFormats.length > 0 ? "violet" : "gray"}>
-                    {ytDlpFormats.length} format(s)
-                </Badge>
+            <Group gap="xs" wrap="wrap">
+                <StatusBadge tone={ytDlpFormats.length > 0 ? "violet" : "neutral"}>
+                    {ytDlpFormats.length} FORMAT(S)
+                </StatusBadge>
 
-                <Badge
-                    variant="light"
-                    color={buildFormatBadgeColor(selectedFormat)}
-                >
+                <StatusBadge tone={buildFormatBadgeTone(selectedFormat)}>
                     {buildFormatBadgeLabel(selectedFormat)}
-                </Badge>
+                </StatusBadge>
 
-                <Badge variant="light" color={selectedFormat ? "green" : "gray"}>
+                <StatusBadge tone={selectedFormat ? "green" : "neutral"}>
                     {selectedFormat
-                        ? formatBytes(selectedFormat.filesize_bytes)
-                        : "size unknown"}
-                </Badge>
+                        ? formatBytes(selectedFormat.filesize_bytes).toUpperCase()
+                        : "SIZE UNKNOWN"}
+                </StatusBadge>
 
-                <Badge variant="light" color={downloadComments ? "violet" : "gray"}>
+                <StatusBadge tone={downloadComments ? "violet" : "neutral"}>
                     {downloadComments ? "COMMENTS ON" : "COMMENTS OFF"}
-                </Badge>
+                </StatusBadge>
 
-                <Badge variant="light" color={downloadLiveChat ? "red" : "gray"}>
+                <StatusBadge tone={downloadLiveChat ? "red" : "neutral"}>
                     {downloadLiveChat ? "LIVE CHAT ON" : "LIVE CHAT OFF"}
-                </Badge>
+                </StatusBadge>
 
-                <Badge variant="light" color={cookiesBrowser ? "blue" : "gray"}>
+                <StatusBadge tone={cookiesBrowser ? "blue" : "neutral"}>
                     {cookiesBrowser
                         ? cookiesBrowser === "manual"
                             ? "COOKIES: MANUAL"
                             : `COOKIES: ${cookiesBrowser.toUpperCase()}`
                         : "NO COOKIES"}
-                </Badge>
+                </StatusBadge>
             </Group>
 
             {selectedFormat && (
@@ -297,9 +385,7 @@ export function YtDlpSection({
                     <Stack gap={4}>
                         <Text fw={800}>Selected format</Text>
 
-                        <Text size="sm">
-                            {selectedFormat.display_name}
-                        </Text>
+                        <Text size="sm">{selectedFormat.display_name}</Text>
 
                         <Text size="sm" c="dimmed">
                             Format id: {selectedFormat.format_id} · Extension:{" "}

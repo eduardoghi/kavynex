@@ -23,6 +23,28 @@ export function ThumbnailSection({
     onPickThumb,
 }: ThumbnailSectionProps): JSX.Element {
     const newThumbSrc = fileSrcFromPath(thumbPath || null);
+    const hasThumbnail = thumbPath.trim() !== "";
+    const isAudio = mediaType === "audio";
+
+    let badgeLabel = "optional";
+    let badgeBackground = "rgba(255,255,255,0.055)";
+    let badgeBorder = "rgba(255,255,255,0.14)";
+    let badgeColor = "rgba(255,255,255,0.62)";
+    let shouldShowBadge = !hasThumbnail;
+
+    if (!canSelectThumb) {
+        badgeLabel = "blocked";
+        badgeBackground = "rgba(255,255,255,0.045)";
+        badgeBorder = "rgba(255,255,255,0.10)";
+        badgeColor = "rgba(255,255,255,0.42)";
+        shouldShowBadge = true;
+    } else if (isGeneratingThumb) {
+        badgeLabel = "loading";
+        badgeBackground = "rgba(234,179,8,0.13)";
+        badgeBorder = "rgba(234,179,8,0.34)";
+        badgeColor = "rgb(253,224,71)";
+        shouldShowBadge = true;
+    }
 
     return (
         <Paper
@@ -45,14 +67,17 @@ export function ThumbnailSection({
             style={{
                 borderStyle: "dashed",
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.16)",
+                borderColor: hasThumbnail
+                    ? "rgba(139,92,246,0.24)"
+                    : "rgba(255,255,255,0.16)",
                 background: "rgba(255,255,255,0.02)",
                 cursor: !canSelectThumb ? "not-allowed" : isBusy ? "progress" : "pointer",
                 userSelect: "none",
-                opacity: !canSelectThumb ? 0.55 : mediaType === "audio" ? 0.92 : 1,
+                opacity: !canSelectThumb ? 0.55 : isAudio ? 0.92 : 1,
                 pointerEvents: !canSelectThumb ? "none" : "auto",
                 outline: "none",
-                transition: "all 160ms ease",
+                transition:
+                    "opacity 160ms ease, border-color 160ms ease, background 160ms ease",
             }}
         >
             <Group wrap="nowrap" gap="sm" align="center">
@@ -63,8 +88,12 @@ export function ThumbnailSection({
                         display: "grid",
                         placeItems: "center",
                         borderRadius: rem(14),
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        background: "rgba(255,255,255,0.03)",
+                        border: hasThumbnail
+                            ? "1px solid rgba(139,92,246,0.18)"
+                            : "1px solid rgba(255,255,255,0.12)",
+                        background: hasThumbnail
+                            ? "rgba(124,92,255,0.06)"
+                            : "rgba(255,255,255,0.03)",
                         flex: "0 0 auto",
                         overflow: "hidden",
                     }}
@@ -88,7 +117,7 @@ export function ThumbnailSection({
                     <Text fw={900} lineClamp={1}>
                         {!canSelectThumb
                             ? "Select a media file first"
-                            : thumbPath
+                            : hasThumbnail
                               ? "Thumbnail selected"
                               : "Click to choose an image for thumbnail (optional)"}
                     </Text>
@@ -96,7 +125,7 @@ export function ThumbnailSection({
                     <Text size="sm" c="dimmed" lineClamp={3}>
                         {!canSelectThumb
                             ? "Choose a video or audio file before selecting a thumbnail"
-                            : thumbPath
+                            : hasThumbnail
                               ? "Click to change thumbnail"
                               : isGeneratingThumb
                                 ? "Generating automatic thumbnail..."
@@ -108,26 +137,21 @@ export function ThumbnailSection({
                     </Text>
                 </Box>
 
-                <Badge
-                    variant="light"
-                    color={
-                        !canSelectThumb
-                            ? "gray"
-                            : isGeneratingThumb
-                              ? "yellow"
-                              : thumbPath
-                                ? "violet"
-                                : "gray"
-                    }
-                >
-                    {!canSelectThumb
-                        ? "blocked"
-                        : isGeneratingThumb
-                          ? "loading"
-                          : thumbPath
-                            ? "selected"
-                            : "optional"}
-                </Badge>
+                {shouldShowBadge && (
+                    <Badge
+                        variant="outline"
+                        style={{
+                            flexShrink: 0,
+                            paddingInline: rem(8),
+                            background: badgeBackground,
+                            borderColor: badgeBorder,
+                            color: badgeColor,
+                            fontWeight: 800,
+                        }}
+                    >
+                        {badgeLabel}
+                    </Badge>
+                )}
             </Group>
         </Paper>
     );

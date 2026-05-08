@@ -102,19 +102,19 @@ export function MediaCard({
                 height: rem(MEDIA_CARD_HEIGHT),
                 cursor: "pointer",
                 background: isActive
-                    ? "linear-gradient(180deg, rgba(96,165,250,0.10), rgba(59,130,246,0.04))"
+                    ? "linear-gradient(180deg, rgba(124,92,255,0.16), rgba(14,165,233,0.06))"
                     : isWatched
-                      ? "rgba(34,197,94,0.05)"
-                      : "rgba(255,255,255,0.02)",
+                    ? "linear-gradient(180deg, rgba(34,197,94,0.07), rgba(34,197,94,0.025))"
+                    : "rgba(255,255,255,0.028)",
                 borderColor: isActive
-                    ? "rgba(96,165,250,0.55)"
+                    ? "rgba(124,92,255,0.68)"
                     : isWatched
-                      ? "rgba(34,197,94,0.22)"
-                      : shellBorder,
+                    ? "rgba(34,197,94,0.28)"
+                    : shellBorder,
                 outline: "none",
                 boxShadow: isActive
-                    ? "0 0 0 1px rgba(96,165,250,0.22), 0 18px 40px rgba(37,99,235,0.16)"
-                    : "none",
+                    ? "0 0 0 1px rgba(124,92,255,0.24), 0 18px 42px rgba(80,50,180,0.22)"
+                    : "0 12px 32px rgba(0,0,0,0.12)",
                 transform: isActive ? "translateY(-2px)" : "none",
                 transition:
                     "transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease",
@@ -135,7 +135,7 @@ export function MediaCard({
                         "radial-gradient(220px 130px at 55% 35%, rgba(168,85,247,0.28), transparent 60%)," +
                         "radial-gradient(260px 160px at 35% 65%, rgba(59,130,246,0.22), transparent 65%)," +
                         "linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.52))",
-                    border: `1px solid ${isActive ? "rgba(96,165,250,0.45)" : shellBorder}`,
+                    border: `1px solid ${isActive ? "rgba(124,92,255,0.52)" : shellBorder}`,
                     flexShrink: 0,
                 }}
             >
@@ -172,7 +172,7 @@ export function MediaCard({
                     }}
                 >
                     {isActive && (
-                        <Badge variant="filled" color="blue">
+                        <Badge variant="filled" color="violet">
                             {UI_TEXT.library.selected}
                         </Badge>
                     )}
@@ -243,7 +243,7 @@ export function MediaCard({
                             fw={900}
                             lineClamp={2}
                             title={media.title}
-                            c={isActive ? "blue.1" : undefined}
+                            c={isActive ? "violet.1" : undefined}
                             style={{
                                 lineHeight: 1.25,
                             }}
@@ -348,13 +348,16 @@ export function MediaCard({
                         {publishedLabel || UI_TEXT.library.noPublicationDate}
                     </Text>
 
-                    <Group gap="xs" wrap="nowrap">
+                    <Group gap={6} wrap="nowrap">
                         {hasLiveChat && (
                             <Badge
-                                variant="light"
-                                color="red"
+                                variant="outline"
                                 style={{
                                     flexShrink: 0,
+                                    background: "rgba(239,68,68,0.14)",
+                                    borderColor: "rgba(239,68,68,0.34)",
+                                    color: "rgb(252,165,165)",
+                                    fontWeight: 800,
                                 }}
                             >
                                 CHAT
@@ -363,11 +366,15 @@ export function MediaCard({
 
                         {commentsCount > 0 && (
                             <Badge
-                                variant="light"
-                                color="gray"
+                                variant="outline"
                                 leftSection={<MessageCircle size={12} />}
                                 style={{
                                     flexShrink: 0,
+                                    background: "rgba(255,255,255,0.055)",
+                                    borderColor: "rgba(255,255,255,0.14)",
+                                    color: "rgba(255,255,255,0.74)",
+                                    fontWeight: 700,
+                                    paddingInline: rem(8),
                                 }}
                             >
                                 {commentsCount}
@@ -375,10 +382,19 @@ export function MediaCard({
                         )}
 
                         <Badge
-                            variant="light"
-                            color={isAudio ? "orange" : "blue"}
+                            variant="outline"
                             style={{
                                 flexShrink: 0,
+                                background: isAudio
+                                    ? "rgba(249,115,22,0.13)"
+                                    : "rgba(59,130,246,0.13)",
+                                borderColor: isAudio
+                                    ? "rgba(249,115,22,0.34)"
+                                    : "rgba(59,130,246,0.34)",
+                                color: isAudio
+                                    ? "rgb(253,186,116)"
+                                    : "rgb(147,197,253)",
+                                fontWeight: 800,
                             }}
                         >
                             {isAudio ? UI_TEXT.library.mediaTypeAudio : UI_TEXT.library.mediaTypeVideo}

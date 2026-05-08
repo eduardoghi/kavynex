@@ -3,7 +3,6 @@ import {
     ActionIcon,
     Avatar,
     Box,
-    Button,
     Group,
     Select,
     Stack,
@@ -17,6 +16,7 @@ import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
 import type { Channel, MediaRow } from "../../types/media";
+import { AppButton } from "../ui/app-button";
 
 type MediaTypeFilter = "all" | "video" | "audio";
 type WatchedFilter = "all" | "watched" | "unwatched";
@@ -231,24 +231,23 @@ export function SelectedChannelLibrarySection({
                 </Group>
 
                 <Group gap="xs">
-                    <Button
-                        variant="gradient"
-                        gradient={{ from: "violet", to: "cyan" }}
+                    <AppButton
+                        appVariant="primary"
                         leftSection={<Video size={18} />}
                         onClick={onAddMedia}
                         disabled={disableAddMedia}
                     >
                         {UI_TEXT.home.addMedia}
-                    </Button>
+                    </AppButton>
 
-                    <Button
-                        variant="subtle"
+                    <AppButton
+                        appVariant="ghost"
                         leftSection={<ArrowLeft size={18} />}
                         onClick={onBack}
                         disabled={isLoadingMedia}
                     >
                         {UI_TEXT.home.back}
-                    </Button>
+                    </AppButton>
                 </Group>
             </Group>
 
@@ -304,6 +303,7 @@ export function SelectedChannelLibrarySection({
                     <Tooltip label={sortDirection === "desc" ? "Descending" : "Ascending"}>
                         <ActionIcon
                             variant="light"
+                            color="violet"
                             size="lg"
                             mt={24}
                             onClick={() =>
@@ -312,6 +312,10 @@ export function SelectedChannelLibrarySection({
                             aria-label={
                                 sortDirection === "desc" ? "Sort descending" : "Sort ascending"
                             }
+                            style={{
+                                border: "1px solid rgba(139,92,246,0.26)",
+                                background: "rgba(124,92,255,0.13)",
+                            }}
                         >
                             {sortDirection === "desc" ? (
                                 <ArrowDownAZ size={18} />

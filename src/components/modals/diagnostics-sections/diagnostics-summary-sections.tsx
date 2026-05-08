@@ -17,6 +17,7 @@ import {
     MessagesSquare,
     Wrench,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import type {
     DiagnosticsOverviewStatus,
     DiagnosticsSummary,
@@ -57,6 +58,65 @@ function OverviewBadge({
     return <StatusBadge color="green" label="Healthy" />;
 }
 
+function SectionIcon({
+    children,
+}: {
+    children: ReactNode;
+}): JSX.Element {
+    return (
+        <ThemeIcon
+            size="lg"
+            radius="xl"
+            variant="light"
+            style={{
+                background:
+                    "linear-gradient(135deg, rgba(124,92,255,0.24), rgba(37,99,235,0.10))",
+                border: "1px solid rgba(139,92,246,0.30)",
+                color: "rgba(237,233,254,0.96)",
+                boxShadow: "0 10px 24px rgba(80,50,180,0.12)",
+            }}
+        >
+            {children}
+        </ThemeIcon>
+    );
+}
+
+function OverviewIcon({
+    status,
+}: {
+    status: DiagnosticsOverviewStatus;
+}): JSX.Element {
+    const isHealthy = status === "healthy";
+    const isWarning = status === "warning";
+
+    return (
+        <ThemeIcon
+            size="lg"
+            radius="xl"
+            variant="light"
+            style={{
+                background: isHealthy
+                    ? "rgba(34,197,94,0.16)"
+                    : isWarning
+                      ? "rgba(234,179,8,0.16)"
+                      : "rgba(239,68,68,0.16)",
+                border: isHealthy
+                    ? "1px solid rgba(34,197,94,0.30)"
+                    : isWarning
+                      ? "1px solid rgba(234,179,8,0.30)"
+                      : "1px solid rgba(239,68,68,0.30)",
+                color: isHealthy
+                    ? "rgb(134,239,172)"
+                    : isWarning
+                      ? "rgb(253,224,71)"
+                      : "rgb(252,165,165)",
+            }}
+        >
+            {isHealthy ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+        </ThemeIcon>
+    );
+}
+
 export function DiagnosticsSummarySections({
     summary,
 }: DiagnosticsSummarySectionsProps): JSX.Element {
@@ -69,23 +129,7 @@ export function DiagnosticsSummarySections({
                 <Stack gap="sm">
                     <Group justify="space-between" align="center">
                         <Group gap="sm" wrap="nowrap" align="flex-start">
-                            <ThemeIcon
-                                variant="light"
-                                size="lg"
-                                color={
-                                    overview.status === "error"
-                                        ? "red"
-                                        : overview.status === "warning"
-                                          ? "yellow"
-                                          : "green"
-                                }
-                            >
-                                {overview.status === "healthy" ? (
-                                    <CheckCircle2 size={16} />
-                                ) : (
-                                    <AlertTriangle size={16} />
-                                )}
-                            </ThemeIcon>
+                            <OverviewIcon status={overview.status} />
 
                             <Box>
                                 <Title order={4}>{overview.headline}</Title>
@@ -122,9 +166,9 @@ export function DiagnosticsSummarySections({
             <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
                 <Paper withBorder radius="lg" p="md">
                     <Group gap="xs" mb="sm">
-                        <ThemeIcon variant="light" size="lg">
+                        <SectionIcon>
                             <Wrench size={16} />
-                        </ThemeIcon>
+                        </SectionIcon>
 
                         <Title order={4}>Application</Title>
                     </Group>
@@ -147,9 +191,9 @@ export function DiagnosticsSummarySections({
 
                 <Paper withBorder radius="lg" p="md">
                     <Group gap="xs" mb="sm">
-                        <ThemeIcon variant="light" size="lg">
+                        <SectionIcon>
                             <Cpu size={16} />
-                        </ThemeIcon>
+                        </SectionIcon>
 
                         <Title order={4}>External tools</Title>
                     </Group>
@@ -213,9 +257,9 @@ export function DiagnosticsSummarySections({
 
                 <Paper withBorder radius="lg" p="md">
                     <Group gap="xs" mb="sm">
-                        <ThemeIcon variant="light" size="lg">
+                        <SectionIcon>
                             <HardDrive size={16} />
-                        </ThemeIcon>
+                        </SectionIcon>
 
                         <Title order={4}>Library</Title>
                     </Group>
@@ -386,9 +430,9 @@ export function DiagnosticsSummarySections({
             <Paper withBorder radius="lg" p="md">
                 <Stack gap="sm">
                     <Group gap="xs" mb={2}>
-                        <ThemeIcon variant="light" size="lg">
+                        <SectionIcon>
                             <MessagesSquare size={16} />
-                        </ThemeIcon>
+                        </SectionIcon>
 
                         <Title order={4}>Live chat integrity</Title>
                     </Group>

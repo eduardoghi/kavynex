@@ -1,5 +1,6 @@
-import { Button, Group } from "@mantine/core";
+import { Group } from "@mantine/core";
 import { Video } from "lucide-react";
+import { AppButton } from "../../ui/app-button";
 
 type AddMediaModalActionsProps = {
     isYtDlpRunning: boolean;
@@ -25,34 +26,37 @@ export function AddMediaModalActions({
     onClose,
 }: AddMediaModalActionsProps): JSX.Element {
     return (
-        <Group justify="flex-end">
+        <Group justify="flex-end" gap="sm">
             {isYtDlpRunning && isUrlMode && (
-                <Button
+                <AppButton
                     type="button"
-                    color="red"
-                    variant="light"
+                    appVariant="danger"
                     onClick={() => void onCancelYtDlpDownload?.()}
                     loading={isCancellingYtDlp}
                     disabled={isCancellingYtDlp}
                 >
                     Cancel download
-                </Button>
+                </AppButton>
             )}
 
-            <Button type="button" variant="subtle" onClick={onClose} disabled={isModalLocked}>
+            <AppButton
+                type="button"
+                appVariant="ghost"
+                onClick={onClose}
+                disabled={isModalLocked}
+            >
                 Cancel
-            </Button>
+            </AppButton>
 
-            <Button
+            <AppButton
                 type="submit"
-                variant="gradient"
-                gradient={{ from: "violet", to: "cyan" }}
+                appVariant="primary"
                 leftSection={<Video size={18} />}
                 disabled={!canSubmit || isBusy || isYtDlpRunning}
                 loading={loading}
             >
                 Add media
-            </Button>
+            </AppButton>
         </Group>
     );
 }

@@ -1,5 +1,6 @@
-import { ActionIcon, AppShell, Badge, Box, Button, Group, Text } from "@mantine/core";
+import { ActionIcon, AppShell, Badge, Box, Group, Text } from "@mantine/core";
 import { Plus, Settings } from "lucide-react";
+import { AppButton } from "../ui/app-button";
 
 type AppHeaderProps = {
     appIconSrc: string;
@@ -72,15 +73,14 @@ export function AppHeader({
                         <Settings size={18} />
                     </ActionIcon>
 
-                    <Button
+                    <AppButton
                         type="button"
-                        variant="gradient"
-                        gradient={{ from: "violet", to: "cyan" }}
+                        appVariant="primary"
                         leftSection={<Plus size={18} />}
                         onClick={onOpenCreateChannel}
                     >
                         New channel
-                    </Button>
+                    </AppButton>
                 </Group>
             </Group>
         </AppShell.Header>
