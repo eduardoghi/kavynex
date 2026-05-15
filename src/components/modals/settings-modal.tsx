@@ -3,6 +3,7 @@ import {
     Group,
     Modal,
     Paper,
+    Progress,
     Radio,
     SimpleGrid,
     Stack,
@@ -11,7 +12,16 @@ import {
     Title,
 } from "@mantine/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FolderOpen, HardDrive, RefreshCcw, Search, Settings2, Wrench } from "lucide-react";
+import {
+    Download,
+    FolderOpen,
+    HardDrive,
+    RefreshCcw,
+    Search,
+    Settings2,
+    Wrench,
+} from "lucide-react";
+import { useAppUpdate } from "../../hooks/use-app-update";
 import { getLibrarySummary, type LibrarySummaryInfo } from "../../services/library-service";
 import type { ImportMode } from "../../types/settings";
 import { parseAppError } from "../../utils/app-error";
@@ -70,6 +80,15 @@ export function SettingsModal({
     const [librarySummary, setLibrarySummary] = useState<LibrarySummaryInfo>(EMPTY_LIBRARY_SUMMARY);
     const [isLoadingLibrarySummary, setIsLoadingLibrarySummary] = useState(false);
     const [librarySummaryError, setLibrarySummaryError] = useState("");
+
+    const {
+        status: appUpdateStatus,
+        updateInfo,
+        progress: appUpdateProgress,
+        errorMessage: appUpdateErrorMessage,
+        checkForUpdate,
+        installUpdate,
+    } = useAppUpdate();
 
     const summaryRequestIdRef = useRef(0);
     const lastLoadedLibraryPathRef = useRef("");
@@ -306,6 +325,94 @@ export function SettingsModal({
                             <Text size="sm">{libraryPathChangeDisabledReason}</Text>
                         </Alert>
                     )}
+                </Stack>
+
+                <Stack gap="xs">
+                    <Group gap="sm">
+                        <RefreshCcw size={18} />
+                        <Title order={4}>Application update</Title>
+                    </Group>
+
+                    <Paper withBorder radius="md" p="sm">
+                        <Stack gap="sm">
+                            <Group justify="space-between" align="flex-start">
+                                <Stack gap={2}>
+                                    <Text fw={600}>Kavynex updates</Text>
+                                    <Text size="sm" c="dimmed">
+                                        Check GitHub Releases for a newer version of the app.
+                                    </Text>
+                                </Stack>
+
+                                <AppButton
+                                    appVariant="secondary"
+                                    size="xs"
+                                    leftSection={<RefreshCcw size={14} />}
+                                    onClick={() => {
+                                        void checkForUpdate();
+                                    }}
+                                    loading={appUpdateStatus === "checking"}
+                                    disabled={appUpdateStatus === "downloading"}
+                                >
+                                    Check update
+                                </AppButton>
+                            </Group>
+
+                            {appUpdateStatus === "not-available" && (
+                                <Alert color="green" variant="light">
+                                    <Text size="sm">Kavynex is already up to date.</Text>
+                                </Alert>
+                            )}
+
+                            {updateInfo && (
+                                <Alert color="blue" variant="light">
+                                    <Stack gap="xs">
+                                        <Text fw={600}>
+                                            Version {updateInfo.version} is available.
+                                        </Text>
+
+                                        <Text size="sm">
+                                            Current version: {updateInfo.currentVersion}
+                                        </Text>
+
+                                        {!!updateInfo.body && (
+                                            <Text size="sm" c="dimmed">
+                                                {updateInfo.body}
+                                            </Text>
+                                        )}
+
+                                        {appUpdateStatus === "downloading" && (
+                                            <Stack gap={4}>
+                                                <Progress value={appUpdateProgress?.percent ?? 0} />
+                                                <Text size="xs" c="dimmed">
+                                                    {appUpdateProgress?.percent ?? 0}% downloaded
+                                                </Text>
+                                            </Stack>
+                                        )}
+
+                                        <Group>
+                                            <AppButton
+                                                appVariant="primary"
+                                                leftSection={<Download size={16} />}
+                                                onClick={() => {
+                                                    void installUpdate();
+                                                }}
+                                                loading={appUpdateStatus === "downloading"}
+                                                disabled={appUpdateStatus === "downloading"}
+                                            >
+                                                Download and install
+                                            </AppButton>
+                                        </Group>
+                                    </Stack>
+                                </Alert>
+                            )}
+
+                            {!!appUpdateErrorMessage && (
+                                <Alert color="red" variant="light">
+                                    <Text size="sm">{appUpdateErrorMessage}</Text>
+                                </Alert>
+                            )}
+                        </Stack>
+                    </Paper>
                 </Stack>
             </Stack>
         </Modal>

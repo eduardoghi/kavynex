@@ -1,6 +1,6 @@
 [package]
 name = "kavynex"
-version = "1.0.0"
+version = "1.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -30,4 +30,8 @@ tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread", "process"
 tauri-plugin-os = "2.3.2"
 chrono = "0.4.44"
 tauri-plugin-fs = "2"
+tauri-plugin-process = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 
