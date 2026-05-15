@@ -193,6 +193,63 @@ export function MediaPlayerView({
         };
     }, [media?.id, mediaSrc]);
 
+    useEffect(() => {
+        const isTypingTarget = (target: EventTarget | null): boolean => {
+            if (!(target instanceof HTMLElement)) {
+                return false;
+            }
+
+            const tagName = target.tagName.toLowerCase();
+
+            return (
+                tagName === "input" ||
+                tagName === "textarea" ||
+                tagName === "select" ||
+                tagName === "button" ||
+                target.isContentEditable
+            );
+        };
+
+        const togglePlayback = async (): Promise<void> => {
+            const element = playerElementRef.current;
+
+            if (!element) {
+                return;
+            }
+
+            if (element.paused) {
+                await element.play();
+                return;
+            }
+
+            element.pause();
+        };
+
+        const handleKeyDown = (event: KeyboardEvent): void => {
+            if (event.code !== "Space") {
+                return;
+            }
+
+            if (event.repeat) {
+                return;
+            }
+
+            if (isTypingTarget(event.target)) {
+                return;
+            }
+
+            event.preventDefault();
+
+            void togglePlayback();
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [media?.id, mediaSrc]);
+
     const setVideoElement = useCallback((element: HTMLVideoElement | null): void => {
         playerElementRef.current = element;
     }, []);
