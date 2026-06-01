@@ -192,7 +192,7 @@ impl AppErrorCode {
             Self::UnsupportedMediaExtension => "UNSUPPORTED_MEDIA_EXTENSION",
 
             Self::SourceThumbnailNotFound => "SOURCE_THUMBNAIL_NOT_FOUND",
-            Self::InvalidSourceThumbnail => "SOURCE_THUMBNAIL_NOT_FOUND",
+            Self::InvalidSourceThumbnail => "INVALID_SOURCE_THUMBNAIL",
             Self::InvalidThumbnailFile => "INVALID_THUMBNAIL_FILE",
             Self::ThumbnailNotSupportedForAudio => "THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO",
             Self::CreateThumbnailsDirFailed => "CREATE_THUMBNAILS_DIR_FAILED",
