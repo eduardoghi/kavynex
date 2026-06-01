@@ -226,11 +226,11 @@ export function MediaPlayerView({
         };
 
         const handleKeyDown = (event: KeyboardEvent): void => {
-            if (event.code !== "Space") {
+            if (event.repeat) {
                 return;
             }
 
-            if (event.repeat) {
+            if (event.ctrlKey || event.metaKey || event.altKey) {
                 return;
             }
 
@@ -238,9 +238,42 @@ export function MediaPlayerView({
                 return;
             }
 
-            event.preventDefault();
+            const element = playerElementRef.current;
 
-            void togglePlayback();
+            if (!element) {
+                return;
+            }
+
+            switch (event.code) {
+                case "Space":
+                    event.preventDefault();
+                    void togglePlayback();
+                    break;
+                case "ArrowLeft":
+                    event.preventDefault();
+                    element.currentTime = Math.max(0, element.currentTime - 5);
+                    break;
+                case "ArrowRight":
+                    event.preventDefault();
+                    if (Number.isFinite(element.duration)) {
+                        element.currentTime = Math.min(element.duration, element.currentTime + 5);
+                    }
+                    break;
+                case "KeyM":
+                    event.preventDefault();
+                    element.muted = !element.muted;
+                    break;
+                case "KeyF":
+                    if (element instanceof HTMLVideoElement) {
+                        event.preventDefault();
+                        if (document.fullscreenElement) {
+                            void document.exitFullscreen();
+                        } else {
+                            void element.requestFullscreen();
+                        }
+                    }
+                    break;
+            }
         };
 
         document.addEventListener("keydown", handleKeyDown);
@@ -365,6 +398,7 @@ export function MediaPlayerView({
                 shellBorder={shellBorder}
                 canOpenInYoutube={canOpenInYoutube}
                 isWatched={isWatched}
+                isAudio={isAudio}
                 onOpenInYoutube={onOpenInYoutube}
                 onOpenFileLocation={onOpenFileLocation}
                 onRefreshComments={onRefreshComments}

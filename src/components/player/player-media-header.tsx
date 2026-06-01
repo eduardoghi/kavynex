@@ -1,10 +1,11 @@
-import { ActionIcon, Badge, Box, Button, Group, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Box, Button, Group, Kbd, Popover, Stack, Text } from "@mantine/core";
 import {
     ArrowLeft,
     CheckCircle2,
     ExternalLink,
     Eye,
     FolderOpen,
+    Keyboard,
     MessageSquareMore,
     Radio,
     RotateCcw,
@@ -18,6 +19,7 @@ type PlayerMediaHeaderProps = {
     shellBorder: string;
     canOpenInYoutube: boolean;
     isWatched: boolean;
+    isAudio?: boolean;
     isLive?: boolean;
     hasLiveChat?: boolean;
     isRefreshingComments?: boolean;
@@ -29,6 +31,20 @@ type PlayerMediaHeaderProps = {
     onBack: () => void;
 };
 
+type KeyboardShortcut = {
+    keys: string[];
+    label: string;
+    videoOnly?: boolean;
+};
+
+const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
+    { keys: ["Space"], label: "Play / Pause" },
+    { keys: ["←"], label: "Seek back 5s" },
+    { keys: ["→"], label: "Seek forward 5s" },
+    { keys: ["M"], label: "Mute / Unmute" },
+    { keys: ["F"], label: "Fullscreen", videoOnly: true },
+];
+
 export function PlayerMediaHeader({
     title,
     publishedLabel,
@@ -36,6 +52,7 @@ export function PlayerMediaHeader({
     shellBorder,
     canOpenInYoutube,
     isWatched,
+    isAudio = false,
     isLive = false,
     hasLiveChat = false,
     isRefreshingComments = false,
@@ -112,6 +129,48 @@ export function PlayerMediaHeader({
             </Group>
 
             <Group gap="xs" wrap="wrap" justify="flex-end">
+                <Popover position="bottom-end" withArrow shadow="md" width={260}>
+                    <Popover.Target>
+                        <ActionIcon
+                            variant="subtle"
+                            size="lg"
+                            aria-label="Keyboard shortcuts"
+                            style={{
+                                background: "rgba(255,255,255,0.04)",
+                                border: `1px solid ${shellBorder}`,
+                            }}
+                        >
+                            <Keyboard size={16} />
+                        </ActionIcon>
+                    </Popover.Target>
+
+                    <Popover.Dropdown>
+                        <Stack gap="xs">
+                            <Text fw={700} size="sm">
+                                Keyboard shortcuts
+                            </Text>
+
+                            {KEYBOARD_SHORTCUTS.filter(
+                                (shortcut) => !shortcut.videoOnly || !isAudio
+                            ).map((shortcut) => (
+                                <Group key={shortcut.label} justify="space-between" wrap="nowrap">
+                                    <Text size="sm" c="dimmed">
+                                        {shortcut.label}
+                                    </Text>
+
+                                    <Group gap={4} wrap="nowrap">
+                                        {shortcut.keys.map((key) => (
+                                            <Kbd key={key} size="sm">
+                                                {key}
+                                            </Kbd>
+                                        ))}
+                                    </Group>
+                                </Group>
+                            ))}
+                        </Stack>
+                    </Popover.Dropdown>
+                </Popover>
+
                 {onOpenFileLocation && (
                     <Button
                         variant="light"
