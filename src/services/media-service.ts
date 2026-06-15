@@ -318,12 +318,15 @@ export async function createMedia(
 
     let createdFilePath: string | null = null;
     let createdThumbnailPath: string | null = null;
+    let createdLiveChatFilePath: string | null = null;
+    let mediaRegistered = false;
 
     try {
         const prepared = await prepareMediaArtifacts(normalizedInput);
 
         createdFilePath = prepared.filePath;
         createdThumbnailPath = prepared.thumbnailPath;
+        createdLiveChatFilePath = prepared.liveChatFilePath ?? null;
 
         await emitProgress(options.onProgress, "Registering media in local library...");
 
@@ -347,6 +350,8 @@ export async function createMedia(
             Boolean(prepared.isLive),
             prepared.liveChatFilePath ?? null
         );
+
+        mediaRegistered = true;
 
         await emitProgress(options.onProgress, "Media registered successfully.");
 
@@ -380,11 +385,27 @@ export async function createMedia(
             id: createdId ?? null,
         };
     } catch (error) {
-        await cleanupCreatedArtifacts(
-            createdFilePath,
-            createdThumbnailPath,
-            normalizedInput.libraryPath
-        );
+        if (!mediaRegistered) {
+            await cleanupCreatedArtifacts(
+                createdFilePath,
+                createdThumbnailPath,
+                normalizedInput.libraryPath
+            );
+
+            if (createdLiveChatFilePath) {
+                try {
+                    await removeMediaLiveChatIfUnused(createdLiveChatFilePath);
+                } catch (cleanupError) {
+                    logError(
+                        "media-service",
+                        "Failed to cleanup live chat file after createMedia failure.",
+                        cleanupError,
+                        { liveChatFilePath: createdLiveChatFilePath }
+                    );
+                }
+            }
+        }
+
         throw error;
     }
 }
