@@ -54,7 +54,7 @@ export async function executeChangeLibraryPath({
 
     const destinationIsEmpty = await isDirectoryEmpty(ensuredSelectedPath);
 
-    if (!destinationIsEmpty) {
+    if (!destinationIsEmpty && normalizedCurrentLibraryPath) {
         throw createNonEmptyFolderError();
     }
 

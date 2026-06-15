@@ -98,6 +98,22 @@ describe("executeChangeLibraryPath", () => {
         });
     });
 
+    it("allows non-empty folder when there is no current library path", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce("/backup-library");
+        ensureDirectoryExistsMock.mockResolvedValueOnce("/backup-library");
+        isDirectoryEmptyMock.mockResolvedValueOnce(false);
+
+        const result = await executeChangeLibraryPath({
+            currentLibraryPath: "",
+        });
+
+        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
+        expect(result).toEqual({
+            changed: true,
+            finalLibraryPath: "/backup-library",
+        });
+    });
+
     it("throws a specific error when selected folder is not empty", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce("/new-library");
         ensureDirectoryExistsMock.mockResolvedValueOnce("/new-library");
