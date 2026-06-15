@@ -5,7 +5,7 @@ use tauri::AppHandle;
 
 use crate::services::binaries::resolve_ffmpeg_binary;
 use crate::services::temp_paths::thumbs_temp_dir;
-use crate::utils::format::media_subdir_from_extension;
+use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extension};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path};
 use crate::{AppError, AppErrorCode, AppResult};
@@ -60,6 +60,15 @@ fn validate_source_media_path(path: &str) -> AppResult<PathBuf> {
         return Err(AppError::from_code(
             AppErrorCode::InvalidSourceMedia,
             "source media path is not a file",
+        ));
+    }
+
+    let ext = extension_from_path(&source_path);
+
+    if !is_allowed_media_extension(&ext) {
+        return Err(AppError::from_code(
+            AppErrorCode::UnsupportedMediaExtension,
+            format!("unsupported media extension: {ext}"),
         ));
     }
 
@@ -300,6 +309,25 @@ mod tests {
 
         assert_eq!(media_subdir_from_extension(&ext_video), "video");
         assert_eq!(media_subdir_from_extension(&ext_audio), "audio");
+    }
+
+    #[test]
+    fn validate_source_media_path_rejects_disallowed_extension() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let file = dir.join("document.txt");
+        fs::write(&file, b"not a media file").unwrap();
+
+        let result = validate_source_media_path(file.to_string_lossy().as_ref());
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap().code,
+            AppErrorCode::UnsupportedMediaExtension.as_str()
+        );
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     fn unique_test_dir() -> PathBuf {
