@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 use tauri::AppHandle;
@@ -35,6 +35,10 @@ fn collect_missing_paths(
     library_path: &Path,
     stored_paths: Vec<String>,
 ) -> (usize, usize, Vec<String>) {
+    let canonical_library = library_path
+        .canonicalize()
+        .unwrap_or_else(|_| library_path.to_path_buf());
+
     let mut unique_paths = HashSet::new();
 
     for item in stored_paths {
@@ -47,14 +51,35 @@ fn collect_missing_paths(
         unique_paths.insert(trimmed.to_string());
     }
 
-    let checked_count = unique_paths.len();
+    let mut checked_count = 0usize;
     let mut missing_count = 0usize;
     let mut missing_examples: Vec<String> = Vec::new();
 
     for stored_path in unique_paths {
-        let resolved_path = resolve_stored_path(library_path, &stored_path);
+        let candidate = PathBuf::from(&stored_path);
 
-        if !resolved_path.exists() {
+        // Skip paths that attempt to escape the library via parent traversal
+        if candidate.components().any(|c| c == Component::ParentDir) {
+            continue;
+        }
+
+        let resolved_path = resolve_stored_path(&canonical_library, &stored_path);
+
+        // Skip paths that resolve outside the library (e.g. stale absolute paths in the DB).
+        if !resolved_path.starts_with(&canonical_library) {
+            continue;
+        }
+
+        checked_count += 1;
+
+        // canonicalize resolves symlinks - re-check containment on the real path.
+        // if the path doesn't exist, canonicalize fails and we treat it as missing.
+        let exists_within_library = resolved_path
+            .canonicalize()
+            .map(|canonical| canonical.starts_with(&canonical_library))
+            .unwrap_or(false);
+
+        if !exists_within_library {
             missing_count += 1;
 
             if missing_examples.len() < 5 {
@@ -114,7 +139,8 @@ pub async fn check_library_integrity(
     thumbnail_paths: Vec<String>,
 ) -> AppResult<LibraryIntegrityReport> {
     run_blocking(move || {
-        let library_root = PathBuf::from(&library_path);
+        let raw_root = PathBuf::from(&library_path);
+        let library_root = raw_root.canonicalize().unwrap_or(raw_root);
 
         logger::info(
             "library_integrity",
@@ -142,4 +168,135 @@ pub async fn check_library_integrity(
         })
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "kavynex-integrity-test-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    #[test]
+    fn collect_missing_paths_counts_existing_relative_path_as_not_missing() {
+        let library = unique_test_dir("existing");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
+
+        let (checked, missing, _) =
+            collect_missing_paths(&library, vec!["video/a.mp4".to_string()]);
+
+        assert_eq!(checked, 1);
+        assert_eq!(missing, 0);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn collect_missing_paths_counts_missing_relative_path() {
+        let library = unique_test_dir("missing");
+        fs::create_dir_all(&library).unwrap();
+
+        let (checked, missing, examples) =
+            collect_missing_paths(&library, vec!["video/missing.mp4".to_string()]);
+
+        assert_eq!(checked, 1);
+        assert_eq!(missing, 1);
+        assert_eq!(examples, vec!["video/missing.mp4"]);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn collect_missing_paths_skips_absolute_path_outside_library() {
+        let library = unique_test_dir("outside");
+        fs::create_dir_all(&library).unwrap();
+
+        let outside = std::env::temp_dir().to_string_lossy().to_string();
+
+        let (checked, missing, _) = collect_missing_paths(&library, vec![outside]);
+
+        assert_eq!(checked, 0);
+        assert_eq!(missing, 0);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn collect_missing_paths_skips_relative_path_with_parent_traversal() {
+        let library = unique_test_dir("traversal");
+        fs::create_dir_all(&library).unwrap();
+
+        let (checked, missing, _) = collect_missing_paths(
+            &library,
+            vec![
+                "../outside.txt".to_string(),
+                "video/../../secret".to_string(),
+            ],
+        );
+
+        assert_eq!(checked, 0);
+        assert_eq!(missing, 0);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn collect_missing_paths_treats_symlink_pointing_outside_library_as_missing() {
+        use std::os::unix::fs::symlink;
+
+        let library = unique_test_dir("symlink");
+        let outside = unique_test_dir("symlink-outside");
+
+        fs::create_dir_all(&library).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.mp4"), b"secret").unwrap();
+
+        // Create a symlink inside the library that points outside
+        symlink(&outside, library.join("link")).unwrap();
+
+        let (checked, missing, _) =
+            collect_missing_paths(&library, vec!["link/secret.mp4".to_string()]);
+
+        // The path appears to be inside the library via starts_with, but after
+        // canonicalization it resolves outside — must be treated as missing
+        assert_eq!(checked, 1);
+        assert_eq!(missing, 1);
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn collect_missing_paths_deduplicates_repeated_paths() {
+        let library = unique_test_dir("dedup");
+        fs::create_dir_all(&library).unwrap();
+
+        let (checked, missing, _) = collect_missing_paths(
+            &library,
+            vec![
+                "video/a.mp4".to_string(),
+                "video/a.mp4".to_string(),
+                "  video/a.mp4  ".to_string(),
+            ],
+        );
+
+        assert_eq!(checked, 1);
+        assert_eq!(missing, 1);
+
+        let _ = fs::remove_dir_all(&library);
+    }
 }
