@@ -155,17 +155,21 @@ export async function openLibraryDirectory(path: string): Promise<void> {
     });
 }
 
-export async function openFileLocation(path: string, libraryPath?: string | null): Promise<void> {
+export async function openFileLocation(path: string, libraryPath: string): Promise<void> {
     const normalizedPath = normalizeString(path);
-    const normalizedLibraryPath = normalizeString(libraryPath ?? "");
+    const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedPath) {
         throw new Error("Path is required.");
     }
 
+    if (!normalizedLibraryPath) {
+        throw new Error("Library path is required.");
+    }
+
     await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, {
         path: normalizedPath,
-        libraryPath: normalizedLibraryPath || null,
+        libraryPath: normalizedLibraryPath,
     });
 }
 

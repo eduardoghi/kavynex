@@ -16,7 +16,12 @@ pub fn get_library_summary_sync(library_path: &str) -> AppResult<LibrarySummaryI
     summarize_library(&library_dir)
 }
 
-pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppResult<()> {
+/// Resolves `path` relative to `library_path` (or as-is if absolute), verifies that
+/// the result exists and is contained within the library, and returns the canonical path.
+pub fn resolve_path_inside_library(
+    path: &str,
+    library_path: Option<&str>,
+) -> AppResult<PathBuf> {
     let normalized = path.trim();
 
     if normalized.is_empty() {
@@ -26,37 +31,61 @@ pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppRe
         ));
     }
 
+    let base_library = match library_path.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(p) => p,
+        None => {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidMediaPath,
+                "library_path is required",
+            ))
+        }
+    };
+
     let candidate = PathBuf::from(normalized);
 
     let resolved_path = if candidate.is_absolute() {
         candidate
-    } else if let Some(base_library_path) = library_path {
-        let normalized_library_path = base_library_path.trim();
-
-        if normalized_library_path.is_empty() {
-            candidate
-        } else {
-            PathBuf::from(normalized_library_path).join(candidate)
-        }
     } else {
-        candidate
+        PathBuf::from(base_library).join(candidate)
     };
 
-    if !resolved_path.exists() {
+    let canonical_library =
+        std::fs::canonicalize(base_library).map_err(|_| {
+            AppError::from_code(
+                AppErrorCode::InvalidMediaPath,
+                "library path does not exist or cannot be resolved",
+            )
+        })?;
+
+    let canonical_path =
+        std::fs::canonicalize(&resolved_path).map_err(|_| {
+            AppError::from_code(
+                AppErrorCode::InvalidMediaPath,
+                format!("path does not exist: {}", resolved_path.to_string_lossy()),
+            )
+        })?;
+
+    if !canonical_path.starts_with(&canonical_library) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidMediaPath,
-            format!("path does not exist: {}", resolved_path.to_string_lossy()),
+            "path is outside the library directory",
         ));
     }
+
+    Ok(canonical_path)
+}
+
+pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppResult<()> {
+    let canonical_path = resolve_path_inside_library(path, library_path)?;
 
     #[cfg(target_os = "windows")]
     {
         let mut command = std::process::Command::new("explorer");
 
-        if resolved_path.is_file() {
-            command.arg("/select,").arg(&resolved_path);
+        if canonical_path.is_file() {
+            command.arg("/select,").arg(&canonical_path);
         } else {
-            command.arg(&resolved_path);
+            command.arg(&canonical_path);
         }
 
         command.spawn().map_err(|error| {
@@ -73,10 +102,10 @@ pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppRe
     {
         let mut command = std::process::Command::new("open");
 
-        if resolved_path.is_file() {
-            command.arg("-R").arg(&resolved_path);
+        if canonical_path.is_file() {
+            command.arg("-R").arg(&canonical_path);
         } else {
-            command.arg(&resolved_path);
+            command.arg(&canonical_path);
         }
 
         command.spawn().map_err(|error| {
@@ -91,13 +120,13 @@ pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppRe
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let target = if resolved_path.is_file() {
-            resolved_path
+        let target = if canonical_path.is_file() {
+            canonical_path
                 .parent()
-                .unwrap_or(&resolved_path)
+                .unwrap_or(&canonical_path)
                 .to_path_buf()
         } else {
-            resolved_path
+            canonical_path
         };
 
         std::process::Command::new("xdg-open")
@@ -111,5 +140,87 @@ pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppRe
             })?;
 
         return Ok(());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn make_temp_library(suffix: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("kavynex-library-test-{suffix}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn rejects_when_library_path_is_none() {
+        let result = resolve_path_inside_library("video.mp4", None);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("library_path is required"));
+    }
+
+    #[test]
+    fn rejects_when_library_path_is_empty() {
+        let result = resolve_path_inside_library("video.mp4", Some(""));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("library_path is required"));
+    }
+
+    #[test]
+    fn rejects_absolute_path_outside_library() {
+        let library = make_temp_library("outside-check");
+
+        #[cfg(target_os = "windows")]
+        let outside = "C:\\Windows\\System32";
+        #[cfg(not(target_os = "windows"))]
+        let outside = "/etc";
+
+        let result = resolve_path_inside_library(outside, Some(library.to_str().unwrap()));
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("outside the library directory")
+                || msg.contains("does not exist"),
+            "unexpected error: {msg}"
+        );
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn rejects_relative_traversal_outside_library() {
+        let library = make_temp_library("traversal-check");
+
+        let result = resolve_path_inside_library(
+            "../../etc/passwd",
+            Some(library.to_str().unwrap()),
+        );
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("outside the library directory")
+                || msg.contains("does not exist"),
+            "unexpected error: {msg}"
+        );
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn accepts_relative_path_inside_library() {
+        let library = make_temp_library("in-library-check");
+        let file_path = library.join("video.mp4");
+        fs::write(&file_path, b"").unwrap();
+
+        let result = resolve_path_inside_library("video.mp4", Some(library.to_str().unwrap()));
+        assert!(result.is_ok(), "expected Ok but got: {:?}", result.err());
+        assert_eq!(result.unwrap(), file_path.canonicalize().unwrap());
+        let _ = fs::remove_dir_all(&library);
     }
 }
