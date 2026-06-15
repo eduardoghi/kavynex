@@ -31,6 +31,7 @@ use crate::services::yt_dlp_events::{
 use crate::services::yt_dlp_metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
 };
+use crate::services::yt_dlp_cookies::normalize_cookies_browser;
 use crate::services::yt_dlp_registry::{register_download_run, unregister_download_run};
 use crate::utils::format::codec_is_present;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
@@ -39,15 +40,6 @@ use crate::{AppError, AppErrorCode, AppResult};
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
 const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
-
-fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
-    let normalized = value?.trim().to_lowercase();
-
-    match normalized.as_str() {
-        "edge" | "firefox" | "brave" | "opera" => Some(normalized),
-        _ => None,
-    }
-}
 
 fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     let normalized = value?.trim();

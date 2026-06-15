@@ -15,6 +15,7 @@ use crate::services::library_paths::ensure_library_dir;
 use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
 use crate::services::thumbnail_persist::persist_thumbnail_from_source;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
+use crate::services::yt_dlp_cookies::normalize_cookies_browser;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
@@ -105,15 +106,6 @@ fn direct_image_extension(url: &str) -> Option<&'static str> {
     }
 
     None
-}
-
-fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
-    let normalized = value?.trim().to_lowercase();
-
-    match normalized.as_str() {
-        "edge" | "firefox" | "brave" | "opera" => Some(normalized),
-        _ => None,
-    }
 }
 
 fn normalize_cookies_path(value: Option<&str>) -> Option<String> {

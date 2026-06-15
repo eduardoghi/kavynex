@@ -13,6 +13,7 @@ pub mod thumbnail_download;
 pub mod thumbnail_persist;
 pub mod thumbnail_temp;
 pub mod yt_dlp;
+pub mod yt_dlp_cookies;
 pub mod yt_dlp_download;
 pub mod yt_dlp_events;
 pub mod yt_dlp_metadata;

@@ -228,6 +228,31 @@ describe("validateCreateMediaInput", () => {
         });
     });
 
+    it("accepts browsers added in yt-dlp extended list", () => {
+        const browsers = ["safari", "vivaldi", "chrome", "chromium", "whale"];
+
+        for (const browser of browsers) {
+            const result = validateCreateMediaInput({
+                channelId: 10,
+                title: "Video A",
+                sourceMode: "yt-dlp",
+                sourceValue: "https://youtube.com/watch?v=123",
+                thumbnailSourcePath: null,
+                mediaType: "video",
+                importMode: "copy",
+                libraryPath: "/library",
+                publishedAt: null,
+                ytDlpRunId: "run-1",
+                ytDlpFormatId: "137",
+                downloadComments: false,
+                downloadLiveChat: false,
+                cookiesBrowser: browser,
+            });
+
+            expect(result.cookiesBrowser).toBe(browser);
+        }
+    });
+
     it("ignores unsupported cookies browser", () => {
         const result = validateCreateMediaInput({
             channelId: 10,
@@ -243,7 +268,7 @@ describe("validateCreateMediaInput", () => {
             ytDlpFormatId: "137",
             downloadComments: false,
             downloadLiveChat: false,
-            cookiesBrowser: "safari",
+            cookiesBrowser: "internet-explorer",
         });
 
         expect(result.cookiesBrowser).toBeNull();

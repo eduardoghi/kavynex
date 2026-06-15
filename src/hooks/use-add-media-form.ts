@@ -7,6 +7,7 @@ import { logError } from "../utils/app-logger";
 import { useAddMediaFormState } from "./use-add-media-form-state";
 import { useTempThumbnail } from "./use-temp-thumbnail";
 import { useYtDlpFormatLoader } from "./use-yt-dlp-format-loader";
+import { COOKIES_BROWSER_VALUES } from "../constants/cookies-browsers";
 
 type UseAddMediaFormOptions = {
     onError?: (message: string) => void;
@@ -75,8 +76,8 @@ function normalizeSelectedPath(selection: string | string[] | null): string {
 
 function normalizeCookiesBrowser(value: string): string {
     const normalized = value.trim().toLowerCase();
-    const allowed = new Set(["", "manual", "edge", "firefox", "brave", "opera"]);
-    return allowed.has(normalized) ? normalized : "";
+    if (normalized === "" || normalized === "manual") return normalized;
+    return COOKIES_BROWSER_VALUES.has(normalized) ? normalized : "";
 }
 
 function isCookiesTextFile(path: string): boolean {

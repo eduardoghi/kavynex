@@ -13,6 +13,7 @@ use crate::models::yt_dlp::{
     YtDlpComment, YtDlpCommentMetadata, YtDlpFormatOption, YtDlpFormatsResult, YtDlpMetadata,
 };
 use crate::services::binaries::resolve_yt_dlp_binary;
+use crate::services::yt_dlp_cookies::normalize_cookies_browser;
 use crate::utils::format::{
     build_format_display_name, codec_is_present, normalize_yt_dlp_upload_date, sort_yt_dlp_formats,
 };
@@ -22,15 +23,6 @@ const YT_DLP_METADATA_TIMEOUT_SECS: u64 = 60;
 const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
 
 type NormalizedDownloadMetadata = (String, String, String, Option<String>, Option<String>);
-
-fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
-    let normalized = value?.trim().to_lowercase();
-
-    match normalized.as_str() {
-        "edge" | "firefox" | "brave" | "opera" => Some(normalized),
-        _ => None,
-    }
-}
 
 fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     let normalized = value?.trim();

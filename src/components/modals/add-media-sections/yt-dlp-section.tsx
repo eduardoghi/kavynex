@@ -13,6 +13,7 @@ import {
 import { FileText, Link as LinkIcon, ListVideo, X } from "lucide-react";
 import type { ReactNode } from "react";
 import type { YtDlpFormat } from "../../../types/media";
+import { COOKIES_BROWSER_SELECT_OPTIONS } from "../../../constants/cookies-browsers";
 import { formatBytes } from "../../../utils/media-utils";
 import { AppButton } from "../../ui/app-button";
 
@@ -241,13 +242,7 @@ export function YtDlpSection({
                 placeholder="Optional"
                 value={cookiesBrowser || null}
                 onChange={(value) => onChangeCookiesBrowser(value ?? "")}
-                data={[
-                    { value: "edge", label: "Edge" },
-                    { value: "firefox", label: "Firefox" },
-                    { value: "brave", label: "Brave" },
-                    { value: "opera", label: "Opera" },
-                    { value: "manual", label: "Manual cookies file" },
-                ]}
+                data={COOKIES_BROWSER_SELECT_OPTIONS}
                 clearable
                 disabled={isLocked}
                 description="Use this only when YouTube asks for authentication."
