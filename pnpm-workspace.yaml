@@ -1,5 +1,8 @@
-﻿packages:
+packages:
   - .
+
+allowBuilds:
+  better-sqlite3: true
 
 overrides:
   qs: 6.15.2
