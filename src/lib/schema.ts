@@ -12,6 +12,32 @@ let schemaReadyPromise: Promise<void> | null = null;
 
 const SCHEMA_VERSION = 5;
 
+const ALLOWED_TABLES = [
+    "channels",
+    "videos",
+    "video_comments",
+    "video_live_chat_messages",
+    "app_settings",
+] as const;
+
+type SchemaTableName = (typeof ALLOWED_TABLES)[number];
+
+const ALLOWED_TABLE_SET = new Set<string>(ALLOWED_TABLES);
+
+const COLUMN_NAME_RE = /^[a-z_][a-z0-9_]*$/;
+
+function assertAllowedTable(tableName: string): asserts tableName is SchemaTableName {
+    if (!ALLOWED_TABLE_SET.has(tableName)) {
+        throw new Error(`schema: unexpected table name: "${tableName}"`);
+    }
+}
+
+function assertColumnName(columnName: string): void {
+    if (!COLUMN_NAME_RE.test(columnName)) {
+        throw new Error(`schema: invalid column name: "${columnName}"`);
+    }
+}
+
 const REQUIRED_INDEXES = SCHEMA_INDEXES_DDL.map((ddl) => {
     const match = ddl.match(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+(\S+)/i);
     if (!match) throw new Error(`invalid schema index DDL: ${ddl}`);
@@ -40,9 +66,10 @@ async function tableExists(db: Database, tableName: string): Promise<boolean> {
 
 async function tableHasColumn(
     db: Database,
-    tableName: string,
+    tableName: SchemaTableName,
     columnName: string
 ): Promise<boolean> {
+    assertAllowedTable(tableName);
     const rows = await db.select<
         {
             cid: number;
@@ -57,17 +84,24 @@ async function tableHasColumn(
     return rows.some((row) => row.name === columnName);
 }
 
-async function indexExists(db: Database, tableName: string, indexName: string): Promise<boolean> {
+async function indexExists(
+    db: Database,
+    tableName: SchemaTableName,
+    indexName: string
+): Promise<boolean> {
+    assertAllowedTable(tableName);
     const rows = await db.select<IndexListRow[]>(`PRAGMA index_list(${tableName});`);
     return rows.some((row) => row.name === indexName);
 }
 
 async function ensureColumnIfMissing(
     db: Database,
-    tableName: string,
+    tableName: SchemaTableName,
     columnName: string,
     definition: string
 ): Promise<void> {
+    assertAllowedTable(tableName);
+    assertColumnName(columnName);
     const exists = await tableHasColumn(db, tableName, columnName);
 
     if (exists) {
