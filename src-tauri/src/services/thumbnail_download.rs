@@ -2,6 +2,11 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use http::Uri;
+use http_body_util::{BodyExt, Empty};
+use hyper::body::Bytes;
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
 use tauri::AppHandle;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -19,6 +24,183 @@ use crate::services::yt_dlp_cookies::normalize_cookies_browser;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
+const DIRECT_THUMBNAIL_MAX_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
+const DIRECT_THUMBNAIL_MAX_REDIRECTS: usize = 10;
+
+const ALLOWED_THUMBNAIL_CONTENT_TYPES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/bmp",
+    "image/avif",
+];
+
+/// Resolves a redirect `location` header value against the `current` URI.
+///
+/// Accepts absolute http/https URLs and path-based relatives (`/...` or `path`).
+/// Rejects any other scheme (`file://`, `ftp://`, etc.) with an explicit error.
+fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
+    let location_lc = location.to_ascii_lowercase();
+
+    // Absolute http/https - scheme comparison is case-insensitive per RFC 3986
+    if location_lc.starts_with("http://") || location_lc.starts_with("https://") {
+        return location.parse().map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailFailed,
+                format!("invalid absolute redirect location: {e}"),
+            )
+        });
+    }
+
+    // Protocol-relative: //host/path - inherit current scheme
+    if location.starts_with("//") {
+        let scheme = current.scheme_str().unwrap_or("https");
+        return format!("{scheme}:{location}").parse().map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailFailed,
+                format!("failed to resolve protocol-relative redirect: {e}"),
+            )
+        });
+    }
+
+    // Reject any other scheme (file://, ftp://, etc.)
+    if location.contains("://") {
+        return Err(AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            format!("redirect to non-http scheme rejected: {location}"),
+        ));
+    }
+
+    let scheme = current.scheme_str().unwrap_or("https");
+    let authority = current
+        .authority()
+        .map(|a| a.as_str())
+        .unwrap_or_default();
+
+    let path = if location.starts_with('/') {
+        location.to_string()
+    } else {
+        let base = current
+            .path()
+            .rfind('/')
+            .map(|i| &current.path()[..=i])
+            .unwrap_or("/");
+        format!("{base}{location}")
+    };
+
+    format!("{scheme}://{authority}{path}")
+        .parse()
+        .map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailFailed,
+                format!("failed to resolve redirect location: {e}"),
+            )
+        })
+}
+
+/// Downloads `url` over HTTPS (or HTTP), follows up to DIRECT_THUMBNAIL_MAX_REDIRECTS
+/// redirects, streams the body with a hard cap of DIRECT_THUMBNAIL_MAX_BYTES, and
+/// validates Content-Type when present. Returns (status, headers, body).
+async fn http_get_image(
+    url: &str,
+    timeout_secs: u64,
+) -> AppResult<(http::StatusCode, http::HeaderMap, Vec<u8>)> {
+    let connector = hyper_rustls::HttpsConnectorBuilder::new()
+        .with_provider_and_platform_verifier(rustls::crypto::ring::default_provider())
+        .map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailExecFailed,
+                format!("failed to initialize TLS: {e}"),
+            )
+        })?
+        .https_or_http()
+        .enable_http1()
+        .build();
+
+    let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
+
+    let mut uri: Uri = url.parse().map_err(|e| {
+        AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
+    })?;
+
+    for _ in 0..=DIRECT_THUMBNAIL_MAX_REDIRECTS {
+        let req = hyper::Request::get(uri.clone())
+            .body(Empty::new())
+            .map_err(|e| {
+                AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    format!("failed to build request: {e}"),
+                )
+            })?;
+
+        let res = timeout(
+            Duration::from_secs(timeout_secs),
+            client.request(req),
+        )
+        .await
+        .map_err(|_| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailTimeout,
+                "thumbnail download timed out",
+            )
+        })?
+        .map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailFailed,
+                format!("thumbnail request failed: {e}"),
+            )
+        })?;
+
+        let status = res.status();
+
+        if status.is_redirection() {
+            match res.headers().get(http::header::LOCATION).and_then(|v| v.to_str().ok()) {
+                Some(loc) => {
+                    uri = resolve_redirect(&uri, loc)?;
+                    continue;
+                }
+                None => {
+                    return Err(AppError::from_code(
+                        AppErrorCode::YtDlpThumbnailFailed,
+                        format!("redirect without valid Location header (status {status})"),
+                    ));
+                }
+            }
+        }
+
+        let headers = res.headers().clone();
+        let mut body = res.into_body();
+        let mut buffer: Vec<u8> = Vec::new();
+
+        while let Some(frame_result) = body.frame().await {
+            let frame = frame_result.map_err(|e| {
+                AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    format!("failed to read response body: {e}"),
+                )
+            })?;
+            if let Ok(data) = frame.into_data() {
+                if buffer.len() + data.len() > DIRECT_THUMBNAIL_MAX_BYTES {
+                    return Err(AppError::from_code(
+                        AppErrorCode::YtDlpThumbnailFailed,
+                        format!(
+                            "thumbnail response exceeded {} MiB limit",
+                            DIRECT_THUMBNAIL_MAX_BYTES / (1024 * 1024)
+                        ),
+                    ));
+                }
+                buffer.extend_from_slice(&data);
+            }
+        }
+
+        return Ok((status, headers, buffer));
+    }
+
+    Err(AppError::from_code(
+        AppErrorCode::YtDlpThumbnailFailed,
+        "too many redirects downloading thumbnail",
+    ))
+}
 
 fn unique_temp_suffix() -> String {
     let nanos = SystemTime::now()
@@ -172,45 +354,41 @@ pub async fn download_thumbnail_from_url_async(
         if let Some(ext) = direct_image_extension(&normalized_url) {
             let direct_file_path = thumb_temp_dir.join(format!("direct_thumbnail.{ext}"));
 
-            let output = timeout(
-                Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-                Command::new("curl")
-                    .args([
-                        "-L",
-                        "-o",
-                        direct_file_path.to_string_lossy().as_ref(),
-                        normalized_url.as_str(),
-                    ])
-                    .output(),
+            let (status, headers, buffer) = http_get_image(
+                normalized_url.as_str(),
+                THUMBNAIL_COMMAND_TIMEOUT_SECS,
             )
-            .await
-            .map_err(|_| {
+            .await?;
+
+            if !status.is_success() {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    format!("direct thumbnail download failed with status: {status}"),
+                ));
+            }
+
+            let content_type = headers
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.split(';').next())
+                .map(|v| v.trim().to_ascii_lowercase())
+                .unwrap_or_default();
+
+            if !content_type.is_empty()
+                && !ALLOWED_THUMBNAIL_CONTENT_TYPES.contains(&content_type.as_str())
+            {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    format!("unexpected content type for thumbnail: {content_type}"),
+                ));
+            }
+
+            fs::write(&direct_file_path, &buffer).map_err(|e| {
                 AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailTimeout,
-                    "direct thumbnail download timed out",
-                )
-            })?
-            .map_err(|e| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailExecFailed,
-                    format!("failed to execute direct thumbnail download: {e}"),
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    format!("failed to write downloaded thumbnail: {e}"),
                 )
             })?;
-
-            if !output.status.success() {
-                return Err(read_process_error(
-                    &output,
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    "direct thumbnail download failed",
-                ));
-            }
-
-            if !direct_file_path.is_file() {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailNotFound,
-                    "direct thumbnail download did not produce a file",
-                ));
-            }
 
             return persist_thumbnail_from_source(&direct_file_path, &library_dir);
         }
@@ -538,4 +716,93 @@ pub async fn download_channel_avatar_from_handle_async(
     let _ = fs::remove_dir_all(&thumb_temp_dir);
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn uri(s: &str) -> Uri {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn absolute_https_redirect_accepted() {
+        let result = resolve_redirect(
+            &uri("https://img.example.com/old.jpg"),
+            "https://cdn.example.com/new.jpg",
+        );
+        assert_eq!(result.unwrap(), uri("https://cdn.example.com/new.jpg"));
+    }
+
+    #[test]
+    fn absolute_http_redirect_accepted() {
+        let result = resolve_redirect(
+            &uri("http://img.example.com/old.jpg"),
+            "http://img.example.com/other.jpg",
+        );
+        assert_eq!(result.unwrap(), uri("http://img.example.com/other.jpg"));
+    }
+
+    #[test]
+    fn absolute_path_redirect_resolved_against_authority() {
+        let result = resolve_redirect(
+            &uri("https://img.example.com/path/old.jpg"),
+            "/new/image.jpg",
+        );
+        assert_eq!(result.unwrap(), uri("https://img.example.com/new/image.jpg"));
+    }
+
+    #[test]
+    fn relative_path_redirect_resolved_against_base() {
+        let result = resolve_redirect(
+            &uri("https://img.example.com/a/b/old.jpg"),
+            "new.jpg",
+        );
+        assert_eq!(result.unwrap(), uri("https://img.example.com/a/b/new.jpg"));
+    }
+
+    #[test]
+    fn file_scheme_redirect_rejected() {
+        let result = resolve_redirect(
+            &uri("https://img.example.com/thumb.jpg"),
+            "file:///etc/passwd",
+        );
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("non-http scheme rejected"));
+    }
+
+    #[test]
+    fn ftp_scheme_redirect_rejected() {
+        let result = resolve_redirect(
+            &uri("https://img.example.com/thumb.jpg"),
+            "ftp://img.example.com/thumb.jpg",
+        );
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("non-http scheme rejected"));
+    }
+
+    #[test]
+    fn protocol_relative_redirect_resolved() {
+        let result = resolve_redirect(
+            &uri("https://img.example.com/old.jpg"),
+            "//cdn.example.com/image.jpg",
+        );
+        assert_eq!(result.unwrap(), uri("https://cdn.example.com/image.jpg"));
+    }
+
+    #[test]
+    fn uppercase_scheme_redirect_accepted() {
+        let result = resolve_redirect(
+            &uri("https://img.example.com/old.jpg"),
+            "HTTPS://cdn.example.com/new.jpg",
+        );
+        assert_eq!(result.unwrap(), uri("HTTPS://cdn.example.com/new.jpg"));
+    }
 }
