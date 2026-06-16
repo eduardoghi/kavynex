@@ -456,6 +456,13 @@ fn normalize_comment_metadata(comment: YtDlpCommentMetadata) -> Option<YtDlpComm
     })
 }
 
+fn is_valid_youtube_video_id(value: &str) -> bool {
+    value.len() == 11
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 pub async fn fetch_youtube_comments_async(
     app: &AppHandle,
     video_id: &str,
@@ -466,8 +473,15 @@ pub async fn fetch_youtube_comments_async(
 
     if normalized_video_id.is_empty() {
         return Err(AppError::from_code(
-            AppErrorCode::InvalidUrl,
+            AppErrorCode::InvalidYoutubeVideoId,
             "youtube video id is empty",
+        ));
+    }
+
+    if !is_valid_youtube_video_id(normalized_video_id) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidYoutubeVideoId,
+            format!("invalid youtube video id: \"{}\"", normalized_video_id),
         ));
     }
 
@@ -660,4 +674,50 @@ pub fn normalize_download_metadata(
         youtube_video_id,
         published_at,
     ))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_youtube_video_id;
+
+    #[test]
+    fn accepts_standard_id() {
+        assert!(is_valid_youtube_video_id("dQw4w9WgXcQ"));
+    }
+
+    #[test]
+    fn accepts_id_with_dash_and_underscore() {
+        assert!(is_valid_youtube_video_id("a-b_cDeFgHi"));
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(!is_valid_youtube_video_id(""));
+    }
+
+    #[test]
+    fn rejects_10_chars() {
+        assert!(!is_valid_youtube_video_id("dQw4w9WgXc"));
+    }
+
+    #[test]
+    fn rejects_12_chars() {
+        assert!(!is_valid_youtube_video_id("dQw4w9WgXcQQ"));
+    }
+
+    #[test]
+    fn rejects_id_with_query_param() {
+        assert!(!is_valid_youtube_video_id("dQw4w9W&list"));
+    }
+
+    #[test]
+    fn rejects_id_with_fragment() {
+        assert!(!is_valid_youtube_video_id("dQw4w9WgX#Q"));
+    }
+
+    #[test]
+    fn rejects_unicode() {
+        assert!(!is_valid_youtube_video_id("dQw4w9WgXcé"));
+    }
 }
