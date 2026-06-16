@@ -146,71 +146,73 @@ export async function replaceMediaComments(
 ): Promise<void> {
     const db = await getDb();
 
-    await db.execute(`DELETE FROM video_comments WHERE video_id = ?`, [mediaId]);
+    await db.execute("BEGIN");
+    try {
+        await db.execute(`DELETE FROM video_comments WHERE video_id = ?`, [mediaId]);
 
-    for (const comment of comments) {
-        const normalizedText = comment.text.trim();
+        let insertedCount = 0;
 
-        if (!normalizedText) {
-            continue;
+        for (const comment of comments) {
+            const normalizedText = comment.text.trim();
+
+            if (!normalizedText) {
+                continue;
+            }
+
+            await db.execute(
+                `INSERT INTO video_comments (
+                    video_id,
+                    comment_id,
+                    parent_comment_id,
+                    author_name,
+                    author_handle,
+                    author_channel_id,
+                    author_thumbnail,
+                    text,
+                    like_count,
+                    reply_count,
+                    is_author_uploader,
+                    is_favorited,
+                    is_pinned,
+                    is_edited,
+                    time_text,
+                    published_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    mediaId,
+                    comment.comment_id?.trim() || null,
+                    comment.parent_comment_id?.trim() || null,
+                    comment.author_name.trim() || "Unknown author",
+                    comment.author_handle?.trim() || null,
+                    comment.author_channel_id?.trim() || null,
+                    comment.author_thumbnail?.trim() || null,
+                    normalizedText,
+                    Math.max(0, Math.floor(comment.like_count ?? 0)),
+                    Math.max(0, Math.floor(comment.reply_count ?? 0)),
+                    comment.is_author_uploader ? 1 : 0,
+                    comment.is_favorited ? 1 : 0,
+                    comment.is_pinned ? 1 : 0,
+                    comment.is_edited ? 1 : 0,
+                    comment.time_text?.trim() || null,
+                    comment.published_at?.trim() || null,
+                ]
+            );
+            insertedCount++;
         }
 
         await db.execute(
-            `INSERT INTO video_comments (
-                video_id,
-                comment_id,
-                parent_comment_id,
-                author_name,
-                author_handle,
-                author_channel_id,
-                author_thumbnail,
-                text,
-                like_count,
-                reply_count,
-                is_author_uploader,
-                is_favorited,
-                is_pinned,
-                is_edited,
-                time_text,
-                published_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                mediaId,
-                comment.comment_id?.trim() || null,
-                comment.parent_comment_id?.trim() || null,
-                comment.author_name.trim() || "Unknown author",
-                comment.author_handle?.trim() || null,
-                comment.author_channel_id?.trim() || null,
-                comment.author_thumbnail?.trim() || null,
-                normalizedText,
-                Math.max(0, Math.floor(comment.like_count ?? 0)),
-                Math.max(0, Math.floor(comment.reply_count ?? 0)),
-                comment.is_author_uploader ? 1 : 0,
-                comment.is_favorited ? 1 : 0,
-                comment.is_pinned ? 1 : 0,
-                comment.is_edited ? 1 : 0,
-                comment.time_text?.trim() || null,
-                comment.published_at?.trim() || null,
-            ]
+            `UPDATE videos
+             SET has_comments = ?,
+                 comments_count = ?
+             WHERE id = ?`,
+            [insertedCount > 0 ? 1 : 0, insertedCount, mediaId]
         );
+
+        await db.execute("COMMIT");
+    } catch (e) {
+        await db.execute("ROLLBACK");
+        throw e;
     }
-
-    const rows = await db.select<{ total: number }[]>(
-        `SELECT COUNT(*) AS total
-         FROM video_comments
-         WHERE video_id = ?`,
-        [mediaId]
-    );
-
-    const total = Number(rows[0]?.total ?? 0);
-
-    await db.execute(
-        `UPDATE videos
-         SET has_comments = ?,
-             comments_count = ?
-         WHERE id = ?`,
-        [total > 0 ? 1 : 0, total, mediaId]
-    );
 }
 
 export async function listMediaCommentsByMediaId(mediaId: number): Promise<MediaCommentRow[]> {

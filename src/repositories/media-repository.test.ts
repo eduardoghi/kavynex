@@ -256,6 +256,38 @@ describe("replaceMediaComments", () => {
         expect(media!.has_comments).toBe(0);
         expect(media!.comments_count).toBe(0);
     });
+
+    it("rolls back and preserves original comments when an INSERT fails mid-loop", async () => {
+        const id = (await seedMedia())!;
+        await replaceMediaComments(id, [SAMPLE_COMMENT]);
+
+        // Wrap execute to throw on INSERT while letting BEGIN/DELETE/ROLLBACK pass through
+        const originalExecute = testDb.execute.bind(testDb);
+        vi.mocked(dbModule.getDb).mockResolvedValue({
+            ...testDb,
+            execute: async (sql: string, values?: unknown[]) => {
+                if (sql.trim().toUpperCase().startsWith("INSERT")) {
+                    throw new Error("Simulated INSERT failure");
+                }
+                return originalExecute(sql, values);
+            },
+        } as any);
+
+        await expect(
+            replaceMediaComments(id, [{ ...SAMPLE_COMMENT, comment_id: "c_new", text: "New comment" }])
+        ).rejects.toThrow("Simulated INSERT failure");
+
+        // Restore real db and confirm original state survived the rollback
+        vi.mocked(dbModule.getDb).mockResolvedValue(testDb as any);
+
+        const rows = await listMediaCommentsByMediaId(id);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].text).toBe("Great video!");
+
+        const media = await findMediaByChannelAndFilePath(channelId, "video/a.mp4");
+        expect(media!.has_comments).toBe(1);
+        expect(media!.comments_count).toBe(1);
+    });
 });
 
 describe("getMediaRepositoryStats", () => {
