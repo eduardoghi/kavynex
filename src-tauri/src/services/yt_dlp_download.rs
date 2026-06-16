@@ -31,7 +31,9 @@ use crate::services::yt_dlp_events::{
 use crate::services::yt_dlp_metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
 };
-use crate::services::yt_dlp_cookies::normalize_cookies_browser;
+use crate::services::yt_dlp_cookies::{
+    append_auth_args, normalize_cookies_browser, normalize_cookies_path,
+};
 use crate::services::yt_dlp_registry::{register_download_run, unregister_download_run};
 use crate::utils::format::codec_is_present;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
@@ -40,39 +42,6 @@ use crate::{AppError, AppErrorCode, AppResult};
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
 const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
-
-fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
-    let normalized = value?.trim();
-
-    if normalized.is_empty() {
-        return None;
-    }
-
-    let path = Path::new(normalized);
-
-    if path.exists() && path.is_file() {
-        Some(normalized.to_string())
-    } else {
-        None
-    }
-}
-
-fn append_auth_args(
-    args: &mut Vec<String>,
-    cookies_browser: Option<&str>,
-    cookies_path: Option<&str>,
-) {
-    if let Some(path) = normalize_cookies_path(cookies_path) {
-        args.push("--cookies".to_string());
-        args.push(path);
-        return;
-    }
-
-    if let Some(browser) = normalize_cookies_browser(cookies_browser) {
-        args.push("--cookies-from-browser".to_string());
-        args.push(browser);
-    }
-}
 
 fn unique_temp_suffix() -> String {
     let nanos = SystemTime::now()

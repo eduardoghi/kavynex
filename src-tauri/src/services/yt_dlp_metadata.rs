@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -13,7 +12,7 @@ use crate::models::yt_dlp::{
     YtDlpComment, YtDlpCommentMetadata, YtDlpFormatOption, YtDlpFormatsResult, YtDlpMetadata,
 };
 use crate::services::binaries::resolve_yt_dlp_binary;
-use crate::services::yt_dlp_cookies::normalize_cookies_browser;
+use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::utils::format::{
     build_format_display_name, codec_is_present, normalize_yt_dlp_upload_date, sort_yt_dlp_formats,
 };
@@ -23,39 +22,6 @@ const YT_DLP_METADATA_TIMEOUT_SECS: u64 = 60;
 const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
 
 type NormalizedDownloadMetadata = (String, String, String, Option<String>, Option<String>);
-
-fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
-    let normalized = value?.trim();
-
-    if normalized.is_empty() {
-        return None;
-    }
-
-    let path = Path::new(normalized);
-
-    if path.exists() && path.is_file() {
-        Some(normalized.to_string())
-    } else {
-        None
-    }
-}
-
-fn append_auth_args(
-    args: &mut Vec<String>,
-    cookies_browser: Option<&str>,
-    cookies_path: Option<&str>,
-) {
-    if let Some(path) = normalize_cookies_path(cookies_path) {
-        args.push("--cookies".to_string());
-        args.push(path);
-        return;
-    }
-
-    if let Some(browser) = normalize_cookies_browser(cookies_browser) {
-        args.push("--cookies-from-browser".to_string());
-        args.push(browser);
-    }
-}
 
 pub fn sanitize_filename_component(value: &str) -> String {
     let sanitized: String = value
