@@ -481,6 +481,13 @@ pub async fn list_yt_dlp_formats_async(
         ));
     }
 
+    if !normalized_url.starts_with("http://") && !normalized_url.starts_with("https://") {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "url scheme must be http or https",
+        ));
+    }
+
     let yt_dlp = resolve_yt_dlp_binary(app)?;
 
     let mut args = vec![

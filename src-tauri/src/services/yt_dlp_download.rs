@@ -167,6 +167,13 @@ pub async fn download_media_from_url_async(
         ));
     }
 
+    if !normalized_url.starts_with("http://") && !normalized_url.starts_with("https://") {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "url scheme must be http or https",
+        ));
+    }
+
     if library_path.trim().is_empty() {
         return Err(AppError::from_code(
             AppErrorCode::InvalidLibraryPath,
