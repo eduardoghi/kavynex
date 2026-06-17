@@ -7,6 +7,7 @@ pub mod library_migration;
 pub mod library_paths;
 pub mod library_summary;
 pub mod logger;
+pub mod media_comments;
 pub mod temp_paths;
 pub mod thumbnail;
 pub mod thumbnail_download;

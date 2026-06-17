@@ -68,6 +68,7 @@ pub fn run() {
             commands::thumbnail::download_channel_avatar_from_handle,
             commands::thumbnail::delete_temporary_thumbnail,
             commands::thumbnail::delete_thumbnail_file,
+            commands::comments::replace_media_comments,
             commands::yt_dlp::fetch_youtube_comments,
             commands::yt_dlp::list_yt_dlp_formats,
             commands::yt_dlp::download_media_from_url,

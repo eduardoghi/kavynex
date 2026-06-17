@@ -23,6 +23,7 @@ export const TAURI_COMMANDS = {
     DOWNLOAD_MEDIA_FROM_URL: "download_media_from_url",
     CANCEL_MEDIA_DOWNLOAD: "cancel_media_download",
     FETCH_YOUTUBE_COMMENTS: "fetch_youtube_comments",
+    REPLACE_MEDIA_COMMENTS: "replace_media_comments",
 
     IS_DIRECTORY_EMPTY: "is_directory_empty",
 } as const;

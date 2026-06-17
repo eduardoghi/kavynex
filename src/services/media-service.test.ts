@@ -3,6 +3,7 @@ import {
     createMedia,
     deleteMediaWithFileCleanup,
     listChannelMedia,
+    refreshMediaComments,
     saveMediaProgress,
     setMediaUnwatched,
     setMediaWatched,
@@ -18,7 +19,6 @@ vi.mock("../repositories", () => ({
     listMediaCommentsByMediaId: vi.fn(),
     markMediaAsUnwatched: vi.fn(),
     markMediaAsWatched: vi.fn(),
-    replaceMediaComments: vi.fn(),
     updateMediaProgress: vi.fn(),
 }));
 
@@ -49,6 +49,10 @@ vi.mock("./media-metadata-service", () => ({
 
 vi.mock("./media-download-service", () => ({
     fetchYouTubeComments: vi.fn(),
+}));
+
+vi.mock("./media-comments-service", () => ({
+    replaceMediaCommentsInBackend: vi.fn(),
 }));
 
 vi.mock("./live-chat-service", () => ({
@@ -85,6 +89,8 @@ import { deleteMediaFile } from "./media-file-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
 import { deleteThumbnailFile } from "./thumbnail-service";
 import { deleteLiveChatFileFromAppData } from "./live-chat-service";
+import { fetchYouTubeComments } from "./media-download-service";
+import { replaceMediaCommentsInBackend } from "./media-comments-service";
 
 describe("media-service", () => {
     beforeEach(() => {
@@ -251,6 +257,64 @@ describe("media-service", () => {
             "live-chat/abc.json"
         );
         expect(result).toEqual({ id: 77 });
+    });
+
+    it("persists fetched comments through the backend when adding yt-dlp media", async () => {
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "yt-dlp" as const,
+            sourceValue: "https://youtube.com/watch?v=abc",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137",
+            downloadComments: true,
+            downloadLiveChat: false,
+            cookiesBrowser: "edge",
+        };
+
+        const fetchedComment = {
+            comment_id: "c1",
+            parent_comment_id: null,
+            author_name: "Alice",
+            author_handle: "@alice",
+            author_channel_id: null,
+            author_thumbnail: null,
+            text: "Great video!",
+            like_count: 5,
+            reply_count: 1,
+            is_author_uploader: false,
+            is_favorited: false,
+            is_pinned: true,
+            is_edited: false,
+            time_text: "1 day ago",
+            published_at: "2026-01-01",
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            youtubeVideoId: "abc",
+            publishedAt: "2026-03-31",
+            mediaType: "video",
+            isLive: false,
+            liveChatFilePath: null,
+        });
+        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(242);
+        vi.mocked(insertMedia).mockResolvedValueOnce(77);
+        vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([fetchedComment]);
+        vi.mocked(replaceMediaCommentsInBackend).mockResolvedValueOnce(1);
+
+        await createMedia(normalizedInput);
+
+        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge");
+        expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(77, [fetchedComment]);
     });
 
     it("cleans created artifacts when insertMedia rejects before registration", async () => {
@@ -493,6 +557,36 @@ describe("media-service", () => {
 
         expect(validateMediaId).toHaveBeenCalledWith(10);
         expect(markMediaAsWatched).toHaveBeenCalledWith(10);
+    });
+
+    it("refreshes comments through the backend", async () => {
+        const fetchedComment = {
+            comment_id: "c1",
+            parent_comment_id: null,
+            author_name: "Alice",
+            author_handle: "@alice",
+            author_channel_id: null,
+            author_thumbnail: null,
+            text: "Great video!",
+            like_count: 5,
+            reply_count: 1,
+            is_author_uploader: false,
+            is_favorited: false,
+            is_pinned: true,
+            is_edited: false,
+            time_text: "1 day ago",
+            published_at: "2026-01-01",
+        };
+
+        vi.mocked(validateMediaId).mockImplementationOnce(() => {});
+        vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([fetchedComment]);
+        vi.mocked(replaceMediaCommentsInBackend).mockResolvedValueOnce(1);
+
+        const result = await refreshMediaComments(10, "abc", "edge");
+
+        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge");
+        expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(10, [fetchedComment]);
+        expect(result).toEqual({ updated: true, totalComments: 1 });
     });
 
     it("marks media as unwatched", async () => {

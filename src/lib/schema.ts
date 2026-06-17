@@ -11,6 +11,7 @@ import {
 let schemaReadyPromise: Promise<void> | null = null;
 
 const SCHEMA_VERSION = 5;
+const SQLITE_BUSY_TIMEOUT_MS = 5000;
 
 const ALLOWED_TABLES = [
     "channels",
@@ -280,8 +281,14 @@ async function setUserVersion(db: Database, version: number): Promise<void> {
     await db.execute(`PRAGMA user_version = ${version};`);
 }
 
-async function applySchema(db: Database): Promise<void> {
+async function configureDatabaseConnection(db: Database): Promise<void> {
+    await db.execute(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS};`);
+    await db.execute(`PRAGMA journal_mode = WAL;`);
     await db.execute(`PRAGMA foreign_keys = ON;`);
+}
+
+async function applySchema(db: Database): Promise<void> {
+    await configureDatabaseConnection(db);
     await ensureBaseSchema(db);
 
     const alreadyCurrent = await schemaMatchesCurrentVersion(db);

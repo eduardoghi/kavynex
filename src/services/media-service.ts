@@ -9,7 +9,6 @@ import {
     listMediaCommentsByMediaId,
     markMediaAsUnwatched,
     markMediaAsWatched,
-    replaceMediaComments,
     updateMediaProgress,
     updateMediaTitle as updateMediaTitleInRepository,
 } from "../repositories";
@@ -32,6 +31,7 @@ import {
 } from "./media-input-service";
 import { createAppError } from "../utils/app-error";
 import { fetchYouTubeComments } from "./media-download-service";
+import { replaceMediaCommentsInBackend } from "./media-comments-service";
 import { logError } from "../utils/app-logger";
 
 type CreateMediaResult = {
@@ -243,7 +243,7 @@ async function tryPersistYouTubeComments(
             await emitProgress(onProgress, "Persisting comments...");
         }
 
-        await replaceMediaComments(mediaId, comments);
+        await replaceMediaCommentsInBackend(mediaId, comments);
         await emitProgress(onProgress, `Comments saved successfully: ${comments.length}`);
     } catch (error) {
         logError("media-service", "Failed to fetch and persist YouTube comments.", error, {
@@ -302,7 +302,7 @@ export async function refreshMediaComments(
         );
     }
 
-    await replaceMediaComments(mediaId, comments);
+    await replaceMediaCommentsInBackend(mediaId, comments);
 
     return {
         updated: true,

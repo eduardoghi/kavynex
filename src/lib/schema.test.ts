@@ -5,7 +5,7 @@ import { CHANNELS_TABLE_DDL } from "./schema-ddl";
 
 type QueryResult = { lastInsertId: number; rowsAffected: number };
 
-function createDb(sqlite: BetterSqlite3.Database) {
+function createDb(sqlite: BetterSqlite3.Database, executedStatements: string[] = []) {
     return {
         select<T>(query: string, bindValues: unknown[] = []): Promise<T> {
             const stmt = sqlite.prepare(query);
@@ -13,6 +13,7 @@ function createDb(sqlite: BetterSqlite3.Database) {
         },
 
         execute(query: string, bindValues: unknown[] = []): Promise<QueryResult> {
+            executedStatements.push(query.trim());
             const stmt = sqlite.prepare(query);
             const result = stmt.run(...(bindValues as any[]));
             return Promise.resolve({
@@ -53,9 +54,14 @@ describe("ensureSchema", () => {
             );
         `);
 
-        const db = createDb(sqlite);
+        const executedStatements: string[] = [];
+        const db = createDb(sqlite, executedStatements);
 
         await ensureSchema(db as any);
+
+        expect(executedStatements).toContain("PRAGMA busy_timeout = 5000;");
+        expect(executedStatements).toContain("PRAGMA journal_mode = WAL;");
+        expect(sqlite.pragma("busy_timeout")).toEqual([{ timeout: 5000 }]);
 
         const indexes = sqlite.prepare("PRAGMA index_list(videos)").all() as { name: string }[];
         expect(indexes.some((index) => index.name === "idx_videos_channel_file_path_unique")).toBe(true);
