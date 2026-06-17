@@ -358,4 +358,55 @@ describe("diagnostics-service", () => {
             "MISSING_THUMBNAIL_FILES_ON_DISK",
         ]);
     });
+
+    it("returns a partial summary when one diagnostic check fails", async () => {
+        getVersionMock.mockResolvedValueOnce("0.1.0");
+
+        getRuntimeDiagnosticsInfoMock.mockResolvedValueOnce({
+            platform: "Windows",
+            arch: "x64",
+        });
+
+        getExternalToolsStatusMock.mockResolvedValueOnce({
+            yt_dlp: {
+                path: "/tools/yt-dlp",
+                version: "2026.01.01",
+                healthy: true,
+            },
+            ffmpeg: {
+                path: "/tools/ffmpeg",
+                version: "7.0",
+                healthy: true,
+            },
+        });
+
+        getLibrarySummaryMock.mockRejectedValueOnce(new Error("library scan failed"));
+        getMediaRepositoryStatsMock.mockResolvedValueOnce(createMediaRepositoryStats());
+
+        getLibraryIntegrityMock.mockResolvedValueOnce({
+            checked_media_files: 0,
+            missing_media_files: 0,
+            missing_media_examples: [],
+            checked_thumbnail_files: 0,
+            missing_thumbnail_files: 0,
+            missing_thumbnail_examples: [],
+        });
+
+        mockHealthyLiveChatDiagnostics();
+
+        const result = await getDiagnosticsSummary({
+            libraryPath: "/library",
+            importMode: "copy",
+        });
+
+        expect(result.diagnostics.platform).toBe("Windows");
+        expect(result.diagnostics.librarySummary).toEqual({
+            total_bytes: 0,
+            formatted_size: "0 B",
+            video_files: 0,
+            audio_files: 0,
+            thumbnail_files: 0,
+        });
+        expect(result.issues.map((item) => item.code)).toContain("LIBRARY_EMPTY");
+    });
 });

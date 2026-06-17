@@ -3,6 +3,13 @@ import { getMediaRepositoryStats } from "../repositories/media-repository";
 import type {
     AppDiagnostics,
     DiagnosticsSummary,
+    ExternalToolsStatus,
+    LibraryIntegrityReport,
+    LibrarySummaryInfo,
+    LiveChatIntegrityReport,
+    LiveChatStorageInfo,
+    MediaRepositoryStats,
+    RuntimeDiagnosticsInfo,
 } from "../types/diagnostics";
 import type { ImportMode } from "../types/settings";
 import {
@@ -21,6 +28,86 @@ type GetDiagnosticsInput = {
     importMode: ImportMode;
 };
 
+function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
+    return result.status === "fulfilled" ? result.value : fallback;
+}
+
+function defaultRuntimeInfo(): RuntimeDiagnosticsInfo {
+    return {
+        platform: "unknown",
+        arch: "unknown",
+    };
+}
+
+function defaultExternalToolsStatus(): ExternalToolsStatus {
+    return {
+        yt_dlp: {
+            path: "",
+            version: "",
+            healthy: false,
+        },
+        ffmpeg: {
+            path: "",
+            version: "",
+            healthy: false,
+        },
+    };
+}
+
+function defaultLibrarySummary(): LibrarySummaryInfo {
+    return {
+        total_bytes: 0,
+        formatted_size: "0 B",
+        video_files: 0,
+        audio_files: 0,
+        thumbnail_files: 0,
+    };
+}
+
+function defaultLiveChatStorageSummary(): LiveChatStorageInfo {
+    return {
+        live_chat_files: 0,
+    };
+}
+
+function defaultMediaRepositoryStats(): MediaRepositoryStats {
+    return {
+        total_media: 0,
+        total_video_media: 0,
+        total_audio_media: 0,
+        total_with_thumbnail: 0,
+        total_without_thumbnail: 0,
+        total_watched: 0,
+        total_unwatched: 0,
+        total_live_media: 0,
+        total_with_live_chat: 0,
+        total_without_live_chat: 0,
+        total_media_with_live_chat_flag_but_no_path: 0,
+        total_media_with_live_chat_path_but_not_live: 0,
+    };
+}
+
+function defaultLibraryIntegrity(): LibraryIntegrityReport {
+    return {
+        checked_media_files: 0,
+        missing_media_files: 0,
+        missing_media_examples: [],
+        checked_thumbnail_files: 0,
+        missing_thumbnail_files: 0,
+        missing_thumbnail_examples: [],
+    };
+}
+
+function defaultLiveChatIntegrity(): LiveChatIntegrityReport {
+    return {
+        checked_live_chat_files: 0,
+        missing_live_chat_files: 0,
+        missing_live_chat_examples: [],
+        orphan_live_chat_files: 0,
+        orphan_live_chat_examples: [],
+    };
+}
+
 export async function getDiagnosticsSummary(
     input: GetDiagnosticsInput
 ): Promise<DiagnosticsSummary> {
@@ -35,8 +122,8 @@ export async function getDiagnosticsSummary(
         mediaRepositoryStats,
         libraryIntegrity,
         liveChatIntegrity,
-    ] = await Promise.all([
-        getVersion().catch(() => null),
+    ] = await Promise.allSettled([
+        getVersion(),
         getRuntimeDiagnosticsInfo(),
         getExternalToolsStatus(),
         getLibrarySummary(normalizedLibraryPath),
@@ -47,17 +134,17 @@ export async function getDiagnosticsSummary(
     ]);
 
     const diagnostics: AppDiagnostics = {
-        appVersion,
-        platform: runtimeInfo.platform,
-        arch: runtimeInfo.arch,
+        appVersion: settledValue(appVersion, null),
+        platform: settledValue(runtimeInfo, defaultRuntimeInfo()).platform,
+        arch: settledValue(runtimeInfo, defaultRuntimeInfo()).arch,
         libraryPath: normalizedLibraryPath,
         importMode: input.importMode,
-        externalTools,
-        librarySummary,
-        liveChatStorage,
-        mediaRepositoryStats,
-        libraryIntegrity,
-        liveChatIntegrity,
+        externalTools: settledValue(externalTools, defaultExternalToolsStatus()),
+        librarySummary: settledValue(librarySummary, defaultLibrarySummary()),
+        liveChatStorage: settledValue(liveChatStorage, defaultLiveChatStorageSummary()),
+        mediaRepositoryStats: settledValue(mediaRepositoryStats, defaultMediaRepositoryStats()),
+        libraryIntegrity: settledValue(libraryIntegrity, defaultLibraryIntegrity()),
+        liveChatIntegrity: settledValue(liveChatIntegrity, defaultLiveChatIntegrity()),
     };
 
     const issues = buildDiagnosticsIssues(diagnostics);

@@ -72,7 +72,7 @@ describe("insertMedia", () => {
     });
 
     it("defaults progress_seconds and comment flags to 0", async () => {
-        const id = await seedMedia();
+        await seedMedia();
         const media = await findMediaByChannelAndFilePath(channelId, "video/a.mp4");
         expect(media!.progress_seconds).toBe(0);
         expect(media!.has_comments).toBe(0);
