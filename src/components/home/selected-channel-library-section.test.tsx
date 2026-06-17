@@ -21,6 +21,7 @@ vi.mock("../library/media-grid", () => ({
     }) => (
         <div>
             <span>grid:{items.length}</span>
+            <span data-testid="grid-titles">{items.map((item) => item.title).join(",")}</span>
             <button onClick={() => onOpen(items[0])}>open media</button>
             <button onClick={() => onRequestDelete(items[0])}>delete media</button>
         </div>
@@ -112,5 +113,59 @@ describe("SelectedChannelLibrarySection", () => {
 
         expect(onAddMedia).toHaveBeenCalledTimes(1);
         expect(onBack).toHaveBeenCalledTimes(1);
+    });
+
+    it("filters media by publication date availability", () => {
+        renderWithMantine(
+            <SelectedChannelLibrarySection
+                selectedChannel={{
+                    id: 10,
+                    name: "Canal A",
+                    youtube_handle: "@canala",
+                    avatar_path: null,
+                    created_at: "2026-03-31T10:00:00.000Z",
+                }}
+                itemCountLabel="2 item(s)"
+                disableAddMedia={false}
+                isLoadingMedia={false}
+                mediaItems={[
+                    createMediaRow({
+                        id: 1,
+                        title: "With date",
+                        file_path: "video/with-date.mp4",
+                        published_at: "2026-03-31T10:00:00.000Z",
+                    }),
+                    createMediaRow({
+                        id: 2,
+                        title: "Without date",
+                        file_path: "video/without-date.mp4",
+                        published_at: null,
+                    }),
+                ]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                onAddMedia={vi.fn()}
+                onBack={vi.fn()}
+                onOpenMedia={vi.fn()}
+                onRequestDeleteMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("grid:2")).toBeInTheDocument();
+        expect(screen.getByTestId("grid-titles")).toHaveTextContent("With date");
+        expect(screen.getByTestId("grid-titles")).toHaveTextContent("Without date");
+
+        fireEvent.click(screen.getByRole("combobox", { name: /^publication date$/i }));
+        fireEvent.click(screen.getByRole("option", { name: /with publication date/i }));
+
+        expect(screen.getByText("grid:1")).toBeInTheDocument();
+        expect(screen.getByTestId("grid-titles")).toHaveTextContent("With date");
+
+        fireEvent.click(screen.getByRole("combobox", { name: /^publication date$/i }));
+        fireEvent.click(screen.getByRole("option", { name: /no publication date/i }));
+
+        expect(screen.getByText("grid:1")).toBeInTheDocument();
+        expect(screen.getByTestId("grid-titles")).toHaveTextContent("Without date");
     });
 });

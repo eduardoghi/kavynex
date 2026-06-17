@@ -35,6 +35,7 @@ export const UI_TEXT = {
         searchPlaceholder: "Type to search...",
         typeLabel: "Type",
         statusLabel: "Status",
+        publicationDateLabel: "Publication date",
         sortLabel: "Sort by",
         showing: "Showing",
         of: "of",
@@ -44,6 +45,8 @@ export const UI_TEXT = {
             audio: "Audio",
             watched: "Watched",
             unwatched: "Unwatched",
+            withPublicationDate: "With publication date",
+            withoutPublicationDate: "No publication date",
         },
         sortOptions: {
             recent: "Newest first",

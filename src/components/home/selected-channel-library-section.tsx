@@ -20,6 +20,7 @@ import { AppButton } from "../ui/app-button";
 
 type MediaTypeFilter = "all" | "video" | "audio";
 type WatchedFilter = "all" | "watched" | "unwatched";
+type PublicationDateFilter = "all" | "with" | "without";
 type SortCategory = "video_date" | "added_date" | "title" | "duration" | "comments";
 type SortDirection = "desc" | "asc";
 
@@ -134,6 +135,8 @@ export function SelectedChannelLibrarySection({
     const [searchValue, setSearchValue] = useState("");
     const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaTypeFilter>("all");
     const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>("all");
+    const [publicationDateFilter, setPublicationDateFilter] =
+        useState<PublicationDateFilter>("all");
     const [sortCategory, setSortCategory] = useState<SortCategory>("video_date");
     const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
@@ -152,6 +155,16 @@ export function SelectedChannelLibrarySection({
             }
 
             if (watchedFilter === "unwatched" && isWatched) {
+                return false;
+            }
+
+            const hasPublicationDate = Boolean(media.published_at?.trim());
+
+            if (publicationDateFilter === "with" && !hasPublicationDate) {
+                return false;
+            }
+
+            if (publicationDateFilter === "without" && hasPublicationDate) {
                 return false;
             }
 
@@ -197,7 +210,15 @@ export function SelectedChannelLibrarySection({
         });
 
         return nextItems;
-    }, [mediaItems, mediaTypeFilter, watchedFilter, searchValue, sortCategory, sortDirection]);
+    }, [
+        mediaItems,
+        mediaTypeFilter,
+        watchedFilter,
+        publicationDateFilter,
+        searchValue,
+        sortCategory,
+        sortDirection,
+    ]);
 
     const filteredCountLabel = `${UI_TEXT.library.showing} ${filteredItems.length} ${UI_TEXT.library.of} ${mediaItems.length} ${UI_TEXT.home.itemCountSuffix}`;
 
@@ -284,6 +305,26 @@ export function SelectedChannelLibrarySection({
                             { value: "unwatched", label: UI_TEXT.library.filters.unwatched },
                         ]}
                         w={180}
+                    />
+
+                    <Select
+                        label={UI_TEXT.library.publicationDateLabel}
+                        value={publicationDateFilter}
+                        onChange={(value) =>
+                            setPublicationDateFilter((value as PublicationDateFilter) || "all")
+                        }
+                        data={[
+                            { value: "all", label: UI_TEXT.library.filters.all },
+                            {
+                                value: "with",
+                                label: UI_TEXT.library.filters.withPublicationDate,
+                            },
+                            {
+                                value: "without",
+                                label: UI_TEXT.library.filters.withoutPublicationDate,
+                            },
+                        ]}
+                        w={220}
                     />
 
                     <Select
