@@ -131,7 +131,21 @@ async fn kill_process_tree(pid: u32) {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
+async fn kill_process_tree(pid: u32) {
+    let process_group = format!("-{pid}");
+
+    if let Ok(mut child) = Command::new("kill")
+        .args(["-9", process_group.as_str()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        let _ = child.wait().await;
+    }
+}
+
+#[cfg(not(any(target_os = "windows", unix)))]
 async fn kill_process_tree(pid: u32) {
     if let Ok(mut child) = Command::new("kill")
         .args(["-9", &pid.to_string()])
@@ -142,6 +156,14 @@ async fn kill_process_tree(pid: u32) {
         let _ = child.wait().await;
     }
 }
+
+#[cfg(unix)]
+fn configure_yt_dlp_command(command: &mut Command) {
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn configure_yt_dlp_command(_: &mut Command) {}
 
 pub async fn download_media_from_url_async(
     app: &AppHandle,
@@ -482,7 +504,10 @@ pub async fn download_media_from_url_async(
             "system",
         )?;
 
-        let mut child = Command::new(&yt_dlp)
+        let mut command = Command::new(&yt_dlp);
+        configure_yt_dlp_command(&mut command);
+
+        let mut child = command
             .args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
