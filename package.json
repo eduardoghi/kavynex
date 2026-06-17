@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:mutation": "stryker run"
+    "test:mutation": "stryker run",
+    "version:bump": "node scripts/bump-version.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
