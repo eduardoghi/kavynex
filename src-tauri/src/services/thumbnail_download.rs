@@ -337,6 +337,13 @@ pub async fn download_thumbnail_from_url_async(
         ));
     }
 
+    if !normalized_url.starts_with("http://") && !normalized_url.starts_with("https://") {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "url scheme must be http or https",
+        ));
+    }
+
     let library_dir = ensure_library_dir(library_path)?;
     let thumb_temp_root = yt_dlp_thumb_temp_dir(app)?;
 
