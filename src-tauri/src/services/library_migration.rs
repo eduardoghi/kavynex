@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use serde::Serialize;
 
 use crate::constants::MANAGED_LIBRARY_DIRS;
-use crate::services::filesystem::migrate_directory_contents;
+use crate::services::filesystem::copy_directory_contents;
 use crate::services::library_paths::ensure_library_dir;
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -47,6 +47,9 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
         )
     })?;
 
+    // Phase 1: copy all files to the new location without touching the originals.
+    // If any copy fails here, the old library is still fully intact and the app
+    // continues working normally against the old path.
     for dir_name in MANAGED_LIBRARY_DIRS {
         let source_dir = old_library_dir.join(dir_name);
         let destination_dir = new_library_dir.join(dir_name);
@@ -54,16 +57,17 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
         logger::info(
             "library",
             format!(
-                "migrating managed directory '{}' from '{}' to '{}'",
+                "copying managed directory '{}' from '{}' to '{}'",
                 dir_name,
                 source_dir.to_string_lossy(),
                 destination_dir.to_string_lossy()
             ),
         );
 
-        migrate_directory_contents(&source_dir, &destination_dir)?;
+        copy_directory_contents(&source_dir, &destination_dir)?;
     }
 
+    // Phase 2: all copies confirmed — remove old directories.
     for dir_name in MANAGED_LIBRARY_DIRS {
         let source_dir = old_library_dir.join(dir_name);
 
@@ -351,6 +355,41 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(parent_root);
+    }
+
+    #[test]
+    fn migrate_library_contents_preserves_source_when_copy_fails_mid_migration() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let old_root = unique_test_dir("preserve-old");
+        let new_root = unique_test_dir("preserve-new");
+
+        // video dir is processed first; audio dir second
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::create_dir_all(old_root.join("audio")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video-data").unwrap();
+        fs::write(old_root.join("audio").join("a.mp3"), b"audio-data").unwrap();
+
+        // Pre-create a conflicting audio file in the destination so the copy fails
+        // after the video directory has already been processed
+        fs::create_dir_all(new_root.join("audio")).unwrap();
+        fs::write(new_root.join("audio").join("a.mp3"), b"conflicting-content").unwrap();
+
+        let result = migrate_library_contents(&old_root, &new_root);
+        assert!(result.is_err());
+
+        // Both source files must still exist — no data was lost despite partial progress
+        assert!(
+            old_root.join("video").join("a.mp4").exists(),
+            "video file must remain in source after failed migration"
+        );
+        assert!(
+            old_root.join("audio").join("a.mp3").exists(),
+            "audio file must remain in source after failed migration"
+        );
+
+        let _ = fs::remove_dir_all(&old_root);
+        let _ = fs::remove_dir_all(&new_root);
     }
 
     #[test]

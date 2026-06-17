@@ -531,6 +531,56 @@ pub fn find_best_matching_file(
     Ok(matches.remove(0))
 }
 
+pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
+    if !source_dir.exists() {
+        return Ok(());
+    }
+
+    if !source_dir.is_dir() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidSourceDirectory,
+            "source directory path is not a directory",
+        ));
+    }
+
+    fs::create_dir_all(destination_dir).map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::CreateDirectoryFailed,
+            format!("failed to create directory: {e}"),
+        )
+    })?;
+
+    for entry in fs::read_dir(source_dir).map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::ReadDirFailed,
+            format!("failed to read directory: {e}"),
+        )
+    })? {
+        let entry = entry.map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::ReadDirEntryFailed,
+                format!("failed to read directory entry: {e}"),
+            )
+        })?;
+
+        let source_path = entry.path();
+        let destination_path = destination_dir.join(entry.file_name());
+
+        if source_path.is_dir() {
+            copy_directory_contents(&source_path, &destination_path)?;
+            continue;
+        }
+
+        if !source_path.is_file() {
+            continue;
+        }
+
+        copy_file_atomic(&source_path, &destination_path)?;
+    }
+
+    Ok(())
+}
+
 pub fn migrate_directory_contents(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
     if !source_dir.exists() {
         return Ok(());
@@ -847,6 +897,79 @@ mod tests {
 
         let result = migrate_directory_contents(&source_dir, &destination_dir);
 
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap().code,
+            AppErrorCode::InvalidSourceDirectory.as_str()
+        );
+
+        let _ = fs::remove_file(source_dir);
+        let _ = fs::remove_dir_all(destination_dir);
+    }
+
+    #[test]
+    fn copy_directory_contents_copies_files_without_deleting_source() {
+        let source_dir = unique_test_dir();
+        let destination_dir = unique_test_dir();
+
+        let nested = source_dir.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(source_dir.join("root.txt"), b"root").unwrap();
+        fs::write(nested.join("child.txt"), b"child").unwrap();
+
+        copy_directory_contents(&source_dir, &destination_dir).unwrap();
+
+        assert!(destination_dir.join("root.txt").exists());
+        assert!(destination_dir.join("nested").join("child.txt").exists());
+
+        // source must remain intact
+        assert!(source_dir.join("root.txt").exists());
+        assert!(nested.join("child.txt").exists());
+
+        let _ = fs::remove_dir_all(source_dir);
+        let _ = fs::remove_dir_all(destination_dir);
+    }
+
+    #[test]
+    fn copy_directory_contents_is_idempotent_for_same_content() {
+        let source_dir = unique_test_dir();
+        let destination_dir = unique_test_dir();
+
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::write(source_dir.join("a.txt"), b"same").unwrap();
+        fs::create_dir_all(&destination_dir).unwrap();
+        fs::write(destination_dir.join("a.txt"), b"same").unwrap();
+
+        // second copy of the same file is a no-op, not an error
+        copy_directory_contents(&source_dir, &destination_dir).unwrap();
+
+        assert!(source_dir.join("a.txt").exists());
+        assert!(destination_dir.join("a.txt").exists());
+
+        let _ = fs::remove_dir_all(source_dir);
+        let _ = fs::remove_dir_all(destination_dir);
+    }
+
+    #[test]
+    fn copy_directory_contents_returns_ok_when_source_does_not_exist() {
+        let source_dir = unique_test_dir();
+        let destination_dir = unique_test_dir();
+
+        let result = copy_directory_contents(&source_dir, &destination_dir);
+        assert!(result.is_ok());
+
+        let _ = fs::remove_dir_all(destination_dir);
+    }
+
+    #[test]
+    fn copy_directory_contents_rejects_non_directory_source() {
+        let source_dir = unique_test_dir();
+        let destination_dir = unique_test_dir();
+
+        fs::create_dir_all(&destination_dir).unwrap();
+        fs::write(&source_dir, b"not-a-directory").unwrap();
+
+        let result = copy_directory_contents(&source_dir, &destination_dir);
         assert!(result.is_err());
         assert_eq!(
             result.err().unwrap().code,
