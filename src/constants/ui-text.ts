@@ -49,6 +49,8 @@ export const UI_TEXT = {
             withoutPublicationDate: "No publication date",
         },
         sortOptions: {
+            publicationDate: "Publication date",
+            addedDate: "Added date",
             recent: "Newest first",
             oldest: "Oldest first",
             title: "Title",

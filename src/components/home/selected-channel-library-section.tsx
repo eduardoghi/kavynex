@@ -21,7 +21,7 @@ import { AppButton } from "../ui/app-button";
 type MediaTypeFilter = "all" | "video" | "audio";
 type WatchedFilter = "all" | "watched" | "unwatched";
 type PublicationDateFilter = "all" | "with" | "without";
-type SortCategory = "video_date" | "added_date" | "title" | "duration" | "comments";
+type SortCategory = "publication_date" | "added_date" | "title" | "duration" | "comments";
 type SortDirection = "desc" | "asc";
 
 type SelectedChannelLibrarySectionProps = {
@@ -44,13 +44,6 @@ type SelectedChannelLibrarySectionProps = {
     onOpenFileLocation?: (media: MediaRow) => void;
     onOpenSourceInYoutube?: (media: MediaRow) => void;
     onEditTitle?: (media: MediaRow) => void;
-};
-
-type MediaRowWithOptionalDates = MediaRow & {
-    uploaded_at?: string | null;
-    upload_date?: string | null;
-    published_at?: string | null;
-    source_uploaded_at?: string | null;
 };
 
 function normalizeText(value: string): string {
@@ -85,21 +78,8 @@ function getAddedDateValue(media: MediaRow): number {
     return parseDateValue(media.created_at);
 }
 
-function getVideoDateValue(media: MediaRow): number {
-    const mediaWithOptionalDates = media as MediaRowWithOptionalDates;
-
-    const videoDate = parseDateValue(
-        mediaWithOptionalDates.uploaded_at ??
-            mediaWithOptionalDates.upload_date ??
-            mediaWithOptionalDates.published_at ??
-            mediaWithOptionalDates.source_uploaded_at
-    );
-
-    if (videoDate > 0) {
-        return videoDate;
-    }
-
-    return getAddedDateValue(media);
+function getPublicationDateValue(media: MediaRow): number {
+    return parseDateValue(media.published_at);
 }
 
 function compareText(left: string, right: string): number {
@@ -107,6 +87,37 @@ function compareText(left: string, right: string): number {
         sensitivity: "base",
         numeric: true,
     });
+}
+
+function comparePublicationDate(
+    left: MediaRow,
+    right: MediaRow,
+    sortDirection: SortDirection
+): number {
+    const leftDate = getPublicationDateValue(left);
+    const rightDate = getPublicationDateValue(right);
+    const leftHasDate = leftDate > 0;
+    const rightHasDate = rightDate > 0;
+
+    if (leftHasDate && !rightHasDate) {
+        return -1;
+    }
+
+    if (!leftHasDate && rightHasDate) {
+        return 1;
+    }
+
+    if (!leftHasDate && !rightHasDate) {
+        return compareText(left.title, right.title);
+    }
+
+    const result = leftDate - rightDate;
+
+    if (result === 0) {
+        return compareText(left.title, right.title);
+    }
+
+    return sortDirection === "asc" ? result : result * -1;
 }
 
 export function SelectedChannelLibrarySection({
@@ -137,7 +148,7 @@ export function SelectedChannelLibrarySection({
     const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>("all");
     const [publicationDateFilter, setPublicationDateFilter] =
         useState<PublicationDateFilter>("all");
-    const [sortCategory, setSortCategory] = useState<SortCategory>("video_date");
+    const [sortCategory, setSortCategory] = useState<SortCategory>("publication_date");
     const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
     const filteredItems = useMemo(() => {
@@ -178,12 +189,8 @@ export function SelectedChannelLibrarySection({
         nextItems.sort((left, right) => {
             let result = 0;
 
-            if (sortCategory === "video_date") {
-                result = getVideoDateValue(left) - getVideoDateValue(right);
-
-                if (result === 0) {
-                    result = compareText(left.title, right.title);
-                }
+            if (sortCategory === "publication_date") {
+                return comparePublicationDate(left, right, sortDirection);
             } else if (sortCategory === "added_date") {
                 result = getAddedDateValue(left) - getAddedDateValue(right);
 
@@ -330,10 +337,18 @@ export function SelectedChannelLibrarySection({
                     <Select
                         label={UI_TEXT.library.sortLabel}
                         value={sortCategory}
-                        onChange={(value) => setSortCategory((value as SortCategory) || "video_date")}
+                        onChange={(value) =>
+                            setSortCategory((value as SortCategory) || "publication_date")
+                        }
                         data={[
-                            { value: "video_date", label: "Video date" },
-                            { value: "added_date", label: "Added date" },
+                            {
+                                value: "publication_date",
+                                label: UI_TEXT.library.sortOptions.publicationDate,
+                            },
+                            {
+                                value: "added_date",
+                                label: UI_TEXT.library.sortOptions.addedDate,
+                            },
                             { value: "title", label: UI_TEXT.library.sortOptions.title },
                             { value: "duration", label: UI_TEXT.library.sortOptions.duration },
                             { value: "comments", label: UI_TEXT.library.sortOptions.comments },

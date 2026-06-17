@@ -168,4 +168,61 @@ describe("SelectedChannelLibrarySection", () => {
         expect(screen.getByText("grid:1")).toBeInTheDocument();
         expect(screen.getByTestId("grid-titles")).toHaveTextContent("Without date");
     });
+
+    it("sorts by publication date without falling back to added date", () => {
+        renderWithMantine(
+            <SelectedChannelLibrarySection
+                selectedChannel={{
+                    id: 10,
+                    name: "Canal A",
+                    youtube_handle: "@canala",
+                    avatar_path: null,
+                    created_at: "2026-03-31T10:00:00.000Z",
+                }}
+                itemCountLabel="3 item(s)"
+                disableAddMedia={false}
+                isLoadingMedia={false}
+                mediaItems={[
+                    createMediaRow({
+                        id: 1,
+                        title: "No publication but recently added",
+                        file_path: "video/no-publication.mp4",
+                        published_at: null,
+                        created_at: "2026-06-01T10:00:00.000Z",
+                    }),
+                    createMediaRow({
+                        id: 2,
+                        title: "New publication",
+                        file_path: "video/new-publication.mp4",
+                        published_at: "2025-01-01T10:00:00.000Z",
+                        created_at: "2024-01-01T10:00:00.000Z",
+                    }),
+                    createMediaRow({
+                        id: 3,
+                        title: "Old publication",
+                        file_path: "video/old-publication.mp4",
+                        published_at: "2024-01-01T10:00:00.000Z",
+                        created_at: "2026-07-01T10:00:00.000Z",
+                    }),
+                ]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                onAddMedia={vi.fn()}
+                onBack={vi.fn()}
+                onOpenMedia={vi.fn()}
+                onRequestDeleteMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.getByTestId("grid-titles")).toHaveTextContent(
+            "New publication,Old publication,No publication but recently added"
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: /sort descending/i }));
+
+        expect(screen.getByTestId("grid-titles")).toHaveTextContent(
+            "Old publication,New publication,No publication but recently added"
+        );
+    });
 });
