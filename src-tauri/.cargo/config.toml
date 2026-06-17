@@ -1,0 +1,4 @@
+[env]
+# Workaround for Windows test binaries failing with STATUS_ENTRYPOINT_NOT_FOUND
+# when Tauri's test runtime is enabled.
+__TAURI_WORKSPACE__ = "true"

@@ -14,8 +14,16 @@ edition = "2021"
 name = "kavynex_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "kavynex"
+path = "src/main.rs"
+test = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
@@ -41,4 +49,3 @@ hyper = { version = "1", default-features = false }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
-

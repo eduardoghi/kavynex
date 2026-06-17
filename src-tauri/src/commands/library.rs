@@ -175,6 +175,9 @@ mod tests {
     use super::*;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tauri::ipc::{CallbackFn, InvokeBody};
+    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::webview::InvokeRequest;
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -187,6 +190,93 @@ mod tests {
             std::process::id(),
             nanos
         ))
+    }
+
+    fn test_webview() -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![
+                ensure_directory_exists,
+                check_library_integrity
+            ])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    fn invoke_command(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
+        get_ipc_response(
+            webview,
+            InvokeRequest {
+                cmd: cmd.into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn ensure_directory_exists_command_accepts_ipc_payload() {
+        let dir = unique_test_dir("command-ensure");
+        let webview = test_webview();
+
+        let response = invoke_command(
+            &webview,
+            "ensure_directory_exists",
+            serde_json::json!({ "path": dir.to_string_lossy() }),
+        )
+        .unwrap()
+        .deserialize::<String>()
+        .unwrap();
+
+        assert_eq!(response, dir.canonicalize().unwrap().to_string_lossy());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn check_library_integrity_command_accepts_camel_case_ipc_payload() {
+        let library = unique_test_dir("command-integrity");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
+
+        let webview = test_webview();
+
+        let response = invoke_command(
+            &webview,
+            "check_library_integrity",
+            serde_json::json!({
+                "libraryPath": library.to_string_lossy(),
+                "mediaPaths": ["video/a.mp4", "video/missing.mp4"],
+                "thumbnailPaths": ["thumbnails/missing.jpg"]
+            }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        assert_eq!(response["checked_media_files"], 2);
+        assert_eq!(response["missing_media_files"], 1);
+        assert_eq!(response["checked_thumbnail_files"], 1);
+        assert_eq!(response["missing_thumbnail_files"], 1);
+
+        let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
