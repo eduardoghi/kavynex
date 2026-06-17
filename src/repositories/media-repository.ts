@@ -108,7 +108,8 @@ export async function insertMedia(
             is_live,
             has_live_chat,
             live_chat_file_path
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(channel_id, file_path) DO NOTHING`,
         [
             channelId,
             title,

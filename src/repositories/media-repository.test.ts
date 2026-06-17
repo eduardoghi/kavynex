@@ -78,6 +78,22 @@ describe("insertMedia", () => {
         expect(media!.has_comments).toBe(0);
         expect(media!.comments_count).toBe(0);
     });
+
+    it("returns the existing id without creating a duplicate when the same file is inserted twice", async () => {
+        const id1 = await seedMedia("video/dup.mp4");
+        const id2 = await seedMedia("video/dup.mp4");
+
+        expect(id1).toBe(id2);
+
+        const rows = await listMediaByChannel(channelId);
+        expect(rows.filter((r) => r.file_path === "video/dup.mp4")).toHaveLength(1);
+    });
+
+    it("does not ignore validation errors for invalid media rows", async () => {
+        await expect(
+            insertMedia(channelId, "   ", "video/invalid.mp4", null, "video", null, null, null, false, null)
+        ).rejects.toThrow();
+    });
 });
 
 describe("findMediaByChannelAndFilePath", () => {
