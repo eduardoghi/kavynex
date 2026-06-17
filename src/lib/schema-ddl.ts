@@ -79,6 +79,8 @@ export const SCHEMA_INDEXES_DDL = [
     `CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)`,
     `CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)`,
     `CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_file_path_unique
+        ON videos(channel_id, file_path)`,
     `CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)`,
     `CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)`,
     `CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)`,
