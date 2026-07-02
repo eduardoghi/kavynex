@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { ActionIcon, Badge, Box, Card, Group, Menu, Stack, Text, rem } from "@mantine/core";
 import {
     CheckCircle2,
@@ -53,7 +54,7 @@ function formatDuration(seconds: number | null): string {
     return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
-export function MediaCard({
+function MediaCardComponent({
     media,
     libraryPath,
     shellBorder,
@@ -143,6 +144,8 @@ export function MediaCard({
                     <img
                         src={thumbSrc}
                         alt={media.title}
+                        loading="lazy"
+                        decoding="async"
                         style={{
                             width: "100%",
                             height: "100%",
@@ -405,3 +408,7 @@ export function MediaCard({
         </Card>
     );
 }
+
+// Memoized so that unrelated state changes higher up (player, modals, sidebar) do not
+// re-render every visible card. Relies on the handlers passed by Home being stable.
+export const MediaCard = memo(MediaCardComponent);

@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import {
     AppShell,
     Box,
@@ -28,15 +29,55 @@ export default function Home(): JSX.Element {
         controller.libraryPanelState.showSelectedChannelPanel &&
         !!controller.selectedChannel;
 
-    const handleEditMediaTitle = async (media: MediaRow): Promise<void> => {
-        const nextTitle = window.prompt("Edit media title", media.title);
+    // Stable handlers so the memoized MediaCard is not re-rendered by unrelated state
+    // changes. Each depends only on the underlying controller action it calls.
+    const {
+        editMediaTitle,
+        markAsWatched,
+        markAsUnwatched,
+        openMediaFileLocation,
+        openMediaSourceInYoutube,
+    } = controller;
 
-        if (nextTitle === null) {
-            return;
-        }
+    const handleEditMediaTitle = useCallback(
+        async (media: MediaRow): Promise<void> => {
+            const nextTitle = window.prompt("Edit media title", media.title);
 
-        await controller.editMediaTitle(media, nextTitle);
-    };
+            if (nextTitle === null) {
+                return;
+            }
+
+            await editMediaTitle(media, nextTitle);
+        },
+        [editMediaTitle]
+    );
+
+    const handleMarkWatched = useCallback(
+        (media: MediaRow) => void markAsWatched(media.id),
+        [markAsWatched]
+    );
+
+    const handleMarkUnwatched = useCallback(
+        (media: MediaRow) => void markAsUnwatched(media.id),
+        [markAsUnwatched]
+    );
+
+    const handleOpenFileLocation = useCallback(
+        (media: MediaRow) => void openMediaFileLocation(media),
+        [openMediaFileLocation]
+    );
+
+    const handleOpenSourceInYoutube = useCallback(
+        (media: MediaRow) => void openMediaSourceInYoutube(media),
+        [openMediaSourceInYoutube]
+    );
+
+    const handleEditTitle = useCallback(
+        (media: MediaRow) => {
+            void handleEditMediaTitle(media);
+        },
+        [handleEditMediaTitle]
+    );
 
     return (
         <Box
@@ -154,19 +195,11 @@ export default function Home(): JSX.Element {
                                         onBack={() => controller.setSelectedChannelId(null)}
                                         onOpenMedia={controller.mediaPlayer.openPlayer}
                                         onRequestDeleteMedia={controller.requestDeleteMedia}
-                                        onMarkWatched={(media) => void controller.markAsWatched(media.id)}
-                                        onMarkUnwatched={(media) =>
-                                            void controller.markAsUnwatched(media.id)
-                                        }
-                                        onOpenFileLocation={(media) =>
-                                            void controller.openMediaFileLocation(media)
-                                        }
-                                        onOpenSourceInYoutube={(media) =>
-                                            void controller.openMediaSourceInYoutube(media)
-                                        }
-                                        onEditTitle={(media) => {
-                                            void handleEditMediaTitle(media);
-                                        }}
+                                        onMarkWatched={handleMarkWatched}
+                                        onMarkUnwatched={handleMarkUnwatched}
+                                        onOpenFileLocation={handleOpenFileLocation}
+                                        onOpenSourceInYoutube={handleOpenSourceInYoutube}
+                                        onEditTitle={handleEditTitle}
                                     />
                                 </Box>
                             )}
