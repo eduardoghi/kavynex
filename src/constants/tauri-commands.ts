@@ -47,6 +47,20 @@ export const TAURI_COMMANDS = {
         "count_channels_using_avatar_path_outside_channel",
     COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_CHANNEL: "count_media_using_thumbnail_outside_channel",
     COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_CHANNEL: "count_media_using_file_path_outside_channel",
+
+    UPDATE_MEDIA_TITLE: "update_media_title",
+    LIST_MEDIA_BY_CHANNEL: "list_media_by_channel",
+    FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH: "find_media_by_channel_and_file_path",
+    INSERT_MEDIA: "insert_media",
+    LIST_MEDIA_COMMENTS_BY_MEDIA_ID: "list_media_comments_by_media_id",
+    DELETE_MEDIA_BY_ID: "delete_media_by_id",
+    MARK_MEDIA_AS_WATCHED: "mark_media_as_watched",
+    MARK_MEDIA_AS_UNWATCHED: "mark_media_as_unwatched",
+    UPDATE_MEDIA_PROGRESS: "update_media_progress",
+    COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_MEDIA: "count_media_using_thumbnail_outside_media",
+    COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_MEDIA: "count_media_using_file_path_outside_media",
+    GET_MEDIA_REPOSITORY_STATS: "get_media_repository_stats",
+    LIST_MEDIA_INTEGRITY_REFERENCES: "list_media_integrity_references",
 } as const;
 
 export const TAURI_EVENTS = {

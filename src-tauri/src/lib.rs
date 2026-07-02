@@ -113,7 +113,20 @@ pub fn run() {
             commands::channels::get_channel_avatar_path_by_channel_id,
             commands::channels::count_channels_using_avatar_path_outside_channel,
             commands::channels::count_media_using_thumbnail_outside_channel,
-            commands::channels::count_media_using_file_path_outside_channel
+            commands::channels::count_media_using_file_path_outside_channel,
+            commands::videos::update_media_title,
+            commands::videos::list_media_by_channel,
+            commands::videos::find_media_by_channel_and_file_path,
+            commands::videos::insert_media,
+            commands::videos::list_media_comments_by_media_id,
+            commands::videos::delete_media_by_id,
+            commands::videos::mark_media_as_watched,
+            commands::videos::mark_media_as_unwatched,
+            commands::videos::update_media_progress,
+            commands::videos::count_media_using_thumbnail_outside_media,
+            commands::videos::count_media_using_file_path_outside_media,
+            commands::videos::get_media_repository_stats,
+            commands::videos::list_media_integrity_references
         ])
         .run(tauri::generate_context!())
         .expect("failed to run tauri application");

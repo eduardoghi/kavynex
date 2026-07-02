@@ -5,4 +5,5 @@ pub mod media;
 pub mod security;
 pub mod settings;
 pub mod thumbnail;
+pub mod videos;
 pub mod yt_dlp;

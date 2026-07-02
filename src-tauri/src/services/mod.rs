@@ -15,6 +15,7 @@ pub mod thumbnail;
 pub mod thumbnail_download;
 pub mod thumbnail_persist;
 pub mod thumbnail_temp;
+pub mod video_repository;
 pub mod yt_dlp;
 pub mod yt_dlp_cookies;
 pub mod yt_dlp_download;

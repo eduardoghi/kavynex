@@ -1,80 +1,28 @@
 import type { MediaCommentRow, MediaRow, MediaType } from "../types/media";
-import { getDb } from "../lib/db";
 import type { MediaIntegrityReference, MediaRepositoryStats } from "../types/diagnostics";
+import { TAURI_COMMANDS } from "../constants/tauri-commands";
+import { invokeCommand, invokeVoid } from "../lib/tauri-client";
+import { ensureSchemaReady } from "../lib/schema-bridge";
 
 export async function updateMediaTitle(mediaId: number, title: string): Promise<void> {
-    const db = await getDb();
-
-    await db.execute(
-        `UPDATE videos
-         SET title = ?
-         WHERE id = ?`,
-        [title, mediaId]
-    );
+    await ensureSchemaReady();
+    await invokeVoid(TAURI_COMMANDS.UPDATE_MEDIA_TITLE, { mediaId, title });
 }
 
 export async function listMediaByChannel(channelId: number): Promise<MediaRow[]> {
-    const db = await getDb();
-
-    return db.select<MediaRow[]>(
-        `SELECT
-            id,
-            channel_id,
-            title,
-            file_path,
-            thumbnail_path,
-            media_type,
-            youtube_video_id,
-            watched_at,
-            published_at,
-            duration_seconds,
-            progress_seconds,
-            has_comments,
-            comments_count,
-            is_live,
-            has_live_chat,
-            live_chat_file_path,
-            created_at
-         FROM videos
-         WHERE channel_id = ?
-         ORDER BY created_at DESC, id DESC`,
-        [channelId]
-    );
+    await ensureSchemaReady();
+    return invokeCommand<MediaRow[]>(TAURI_COMMANDS.LIST_MEDIA_BY_CHANNEL, { channelId });
 }
 
 export async function findMediaByChannelAndFilePath(
     channelId: number,
     filePath: string
 ): Promise<MediaRow | null> {
-    const db = await getDb();
-
-    const rows = await db.select<MediaRow[]>(
-        `SELECT
-            id,
-            channel_id,
-            title,
-            file_path,
-            thumbnail_path,
-            media_type,
-            youtube_video_id,
-            watched_at,
-            published_at,
-            duration_seconds,
-            progress_seconds,
-            has_comments,
-            comments_count,
-            is_live,
-            has_live_chat,
-            live_chat_file_path,
-            created_at
-         FROM videos
-         WHERE channel_id = ?
-           AND file_path = ?
-         LIMIT 1`,
-        [channelId, filePath]
+    await ensureSchemaReady();
+    return invokeCommand<MediaRow | null>(
+        TAURI_COMMANDS.FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH,
+        { channelId, filePath }
     );
-
-    return rows[0] ?? null;
 }
 
 export async function insertMedia(
@@ -89,266 +37,81 @@ export async function insertMedia(
     isLive: boolean,
     liveChatFilePath: string | null
 ): Promise<number | null> {
-    const db = await getDb();
-    const hasLiveChat = Boolean(liveChatFilePath?.trim());
-
-    await db.execute(
-        `INSERT INTO videos (
-            channel_id,
-            title,
-            file_path,
-            thumbnail_path,
-            media_type,
-            youtube_video_id,
-            published_at,
-            duration_seconds,
-            progress_seconds,
-            has_comments,
-            comments_count,
-            is_live,
-            has_live_chat,
-            live_chat_file_path
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(channel_id, file_path) DO NOTHING`,
-        [
-            channelId,
-            title,
-            filePath,
-            thumbnailPath,
-            mediaType,
-            youtubeVideoId,
-            publishedAt,
-            durationSeconds,
-            0,
-            0,
-            0,
-            isLive ? 1 : 0,
-            hasLiveChat ? 1 : 0,
-            liveChatFilePath?.trim() || null,
-        ]
-    );
-
-    const rows = await db.select<{ id: number }[]>(
-        `SELECT id
-         FROM videos
-         WHERE channel_id = ?
-           AND file_path = ?
-         ORDER BY id DESC
-         LIMIT 1`,
-        [channelId, filePath]
-    );
-
-    return rows[0]?.id ?? null;
+    await ensureSchemaReady();
+    return invokeCommand<number | null>(TAURI_COMMANDS.INSERT_MEDIA, {
+        channelId,
+        title,
+        filePath,
+        thumbnailPath,
+        mediaType,
+        youtubeVideoId,
+        publishedAt,
+        durationSeconds,
+        isLive,
+        liveChatFilePath,
+    });
 }
 
 export async function listMediaCommentsByMediaId(mediaId: number): Promise<MediaCommentRow[]> {
-    const db = await getDb();
-
-    return db.select<MediaCommentRow[]>(
-        `SELECT
-            id,
-            video_id,
-            comment_id,
-            parent_comment_id,
-            author_name,
-            author_handle,
-            author_channel_id,
-            author_thumbnail,
-            text,
-            like_count,
-            reply_count,
-            is_author_uploader,
-            is_favorited,
-            is_pinned,
-            is_edited,
-            time_text,
-            published_at,
-            created_at
-         FROM video_comments
-         WHERE video_id = ?
-         ORDER BY id ASC`,
-        [mediaId]
-    );
+    await ensureSchemaReady();
+    return invokeCommand<MediaCommentRow[]>(TAURI_COMMANDS.LIST_MEDIA_COMMENTS_BY_MEDIA_ID, {
+        mediaId,
+    });
 }
 
 export async function deleteMediaById(mediaId: number): Promise<void> {
-    const db = await getDb();
-    await db.execute(`DELETE FROM videos WHERE id = ?`, [mediaId]);
+    await ensureSchemaReady();
+    await invokeVoid(TAURI_COMMANDS.DELETE_MEDIA_BY_ID, { mediaId });
 }
 
 export async function markMediaAsWatched(mediaId: number): Promise<void> {
-    const db = await getDb();
-
-    await db.execute(
-        `UPDATE videos
-         SET watched_at = CURRENT_TIMESTAMP,
-             progress_seconds = 0
-         WHERE id = ?`,
-        [mediaId]
-    );
+    await ensureSchemaReady();
+    await invokeVoid(TAURI_COMMANDS.MARK_MEDIA_AS_WATCHED, { mediaId });
 }
 
 export async function markMediaAsUnwatched(mediaId: number): Promise<void> {
-    const db = await getDb();
-
-    await db.execute(
-        `UPDATE videos
-         SET watched_at = NULL
-         WHERE id = ?`,
-        [mediaId]
-    );
+    await ensureSchemaReady();
+    await invokeVoid(TAURI_COMMANDS.MARK_MEDIA_AS_UNWATCHED, { mediaId });
 }
 
 export async function updateMediaProgress(
     mediaId: number,
     progressSeconds: number
 ): Promise<void> {
-    const db = await getDb();
-
-    await db.execute(
-        `UPDATE videos
-         SET progress_seconds = ?
-         WHERE id = ?
-           AND watched_at IS NULL`,
-        [progressSeconds, mediaId]
-    );
+    await ensureSchemaReady();
+    await invokeVoid(TAURI_COMMANDS.UPDATE_MEDIA_PROGRESS, { mediaId, progressSeconds });
 }
 
 export async function countMediaUsingThumbnailOutsideMedia(
     thumbnailPath: string,
     mediaId: number
 ): Promise<number> {
-    const db = await getDb();
-
-    const rows = await db.select<{ total: number }[]>(
-        `SELECT COUNT(*) AS total
-         FROM videos
-         WHERE thumbnail_path = ?
-           AND id <> ?`,
-        [thumbnailPath, mediaId]
-    );
-
-    return Number(rows[0]?.total ?? 0);
+    await ensureSchemaReady();
+    return invokeCommand<number>(TAURI_COMMANDS.COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_MEDIA, {
+        thumbnailPath,
+        mediaId,
+    });
 }
 
 export async function countMediaUsingFilePathOutsideMedia(
     filePath: string,
     mediaId: number
 ): Promise<number> {
-    const db = await getDb();
-
-    const rows = await db.select<{ total: number }[]>(
-        `SELECT COUNT(*) AS total
-         FROM videos
-         WHERE file_path = ?
-           AND id <> ?`,
-        [filePath, mediaId]
-    );
-
-    return Number(rows[0]?.total ?? 0);
+    await ensureSchemaReady();
+    return invokeCommand<number>(TAURI_COMMANDS.COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_MEDIA, {
+        filePath,
+        mediaId,
+    });
 }
 
 export async function getMediaRepositoryStats(): Promise<MediaRepositoryStats> {
-    const db = await getDb();
-
-    const rows = await db.select<MediaRepositoryStats[]>(
-        `SELECT
-            COUNT(*) AS total_media,
-            SUM(CASE WHEN media_type = 'video' THEN 1 ELSE 0 END) AS total_video_media,
-            SUM(CASE WHEN media_type = 'audio' THEN 1 ELSE 0 END) AS total_audio_media,
-            SUM(
-                CASE
-                    WHEN thumbnail_path IS NOT NULL AND TRIM(thumbnail_path) <> '' THEN 1
-                    ELSE 0
-                END
-            ) AS total_with_thumbnail,
-            SUM(
-                CASE
-                    WHEN thumbnail_path IS NULL OR TRIM(thumbnail_path) = '' THEN 1
-                    ELSE 0
-                END
-            ) AS total_without_thumbnail,
-            SUM(
-                CASE
-                    WHEN watched_at IS NOT NULL AND TRIM(watched_at) <> '' THEN 1
-                    ELSE 0
-                END
-            ) AS total_watched,
-            SUM(
-                CASE
-                    WHEN watched_at IS NULL OR TRIM(watched_at) = '' THEN 1
-                    ELSE 0
-                END
-            ) AS total_unwatched,
-            SUM(
-                CASE
-                    WHEN is_live = 1 THEN 1
-                    ELSE 0
-                END
-            ) AS total_live_media,
-            SUM(
-                CASE
-                    WHEN has_live_chat = 1 THEN 1
-                    ELSE 0
-                END
-            ) AS total_with_live_chat,
-            SUM(
-                CASE
-                    WHEN has_live_chat = 0 THEN 1
-                    ELSE 0
-                END
-            ) AS total_without_live_chat,
-            SUM(
-                CASE
-                    WHEN has_live_chat = 1
-                     AND (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) = '')
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS total_media_with_live_chat_flag_but_no_path,
-            SUM(
-                CASE
-                    WHEN is_live = 0
-                     AND live_chat_file_path IS NOT NULL
-                     AND TRIM(live_chat_file_path) <> ''
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS total_media_with_live_chat_path_but_not_live
-         FROM videos`
-    );
-
-    return {
-        total_media: Number(rows[0]?.total_media ?? 0),
-        total_video_media: Number(rows[0]?.total_video_media ?? 0),
-        total_audio_media: Number(rows[0]?.total_audio_media ?? 0),
-        total_with_thumbnail: Number(rows[0]?.total_with_thumbnail ?? 0),
-        total_without_thumbnail: Number(rows[0]?.total_without_thumbnail ?? 0),
-        total_watched: Number(rows[0]?.total_watched ?? 0),
-        total_unwatched: Number(rows[0]?.total_unwatched ?? 0),
-        total_live_media: Number(rows[0]?.total_live_media ?? 0),
-        total_with_live_chat: Number(rows[0]?.total_with_live_chat ?? 0),
-        total_without_live_chat: Number(rows[0]?.total_without_live_chat ?? 0),
-        total_media_with_live_chat_flag_but_no_path: Number(
-            rows[0]?.total_media_with_live_chat_flag_but_no_path ?? 0
-        ),
-        total_media_with_live_chat_path_but_not_live: Number(
-            rows[0]?.total_media_with_live_chat_path_but_not_live ?? 0
-        ),
-    };
+    await ensureSchemaReady();
+    return invokeCommand<MediaRepositoryStats>(TAURI_COMMANDS.GET_MEDIA_REPOSITORY_STATS);
 }
 
 export async function listMediaIntegrityReferences(): Promise<MediaIntegrityReference[]> {
-    const db = await getDb();
-
-    return db.select<MediaIntegrityReference[]>(
-        `SELECT
-            id,
-            title,
-            file_path,
-            thumbnail_path,
-            live_chat_file_path
-         FROM videos
-         ORDER BY id ASC`
+    await ensureSchemaReady();
+    return invokeCommand<MediaIntegrityReference[]>(
+        TAURI_COMMANDS.LIST_MEDIA_INTEGRITY_REFERENCES
     );
 }
