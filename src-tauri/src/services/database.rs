@@ -54,11 +54,17 @@ async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .foreign_keys(true);
 
-    SqlitePoolOptions::new()
+    let pool = SqlitePoolOptions::new()
         .max_connections(MAX_CONNECTIONS)
         .connect_with(options)
         .await
-        .map_err(|error| db_error("failed to open app database", error))
+        .map_err(|error| db_error("failed to open app database", error))?;
+
+    // The schema is owned by the backend: create/migrate it as part of pool
+    // initialization so it is ready before any query runs.
+    crate::services::db_schema::ensure_schema(&pool).await?;
+
+    Ok(pool)
 }
 
 /// Returns the shared database pool, initializing it on first use.

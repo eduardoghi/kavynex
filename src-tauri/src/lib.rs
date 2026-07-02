@@ -38,7 +38,6 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
@@ -99,6 +98,7 @@ pub fn run() {
             commands::yt_dlp::check_external_tools,
             commands::security::register_library_asset_scope,
             commands::security::allow_asset_file,
+            commands::database::ensure_database_ready,
             commands::settings::get_app_settings,
             commands::settings::set_app_settings,
             commands::channels::list_channels,

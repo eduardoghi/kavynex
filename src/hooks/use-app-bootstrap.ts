@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { getDb } from "../lib/db";
+import { ensureDatabaseReady } from "../services/database-service";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
 
@@ -15,7 +15,7 @@ export function useAppBootstrap({
 
         void (async () => {
             try {
-                await getDb();
+                await ensureDatabaseReady();
             } catch (error) {
                 logError("bootstrap", "Failed to initialize app.", error);
 

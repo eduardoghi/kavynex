@@ -2,23 +2,23 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppBootstrap } from "./use-app-bootstrap";
 
-vi.mock("../lib/db", () => ({
-    getDb: vi.fn(),
+vi.mock("../services/database-service", () => ({
+    ensureDatabaseReady: vi.fn(),
 }));
 
 vi.mock("../utils/error-message", () => ({
     resolveErrorMessage: vi.fn((_error: unknown, fallback: string) => fallback),
 }));
 
-import { getDb } from "../lib/db";
+import { ensureDatabaseReady } from "../services/database-service";
 
 describe("useAppBootstrap", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it("initializes db on mount", async () => {
-        vi.mocked(getDb).mockResolvedValueOnce({} as Awaited<ReturnType<typeof getDb>>);
+    it("initializes the database on mount", async () => {
+        vi.mocked(ensureDatabaseReady).mockResolvedValueOnce(undefined);
 
         const onError = vi.fn();
 
@@ -29,14 +29,14 @@ describe("useAppBootstrap", () => {
         );
 
         await waitFor(() => {
-            expect(getDb).toHaveBeenCalledTimes(1);
+            expect(ensureDatabaseReady).toHaveBeenCalledTimes(1);
         });
 
         expect(onError).not.toHaveBeenCalled();
     });
 
     it("reports initialization error", async () => {
-        vi.mocked(getDb).mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(ensureDatabaseReady).mockRejectedValueOnce(new Error("boom"));
         const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
         const onError = vi.fn();
@@ -56,12 +56,12 @@ describe("useAppBootstrap", () => {
     });
 
     it("does not call onError after unmount", async () => {
-        let rejectDb: ((reason?: unknown) => void) | undefined;
+        let rejectReady: ((reason?: unknown) => void) | undefined;
 
-        vi.mocked(getDb).mockImplementationOnce(
+        vi.mocked(ensureDatabaseReady).mockImplementationOnce(
             () =>
-                new Promise<Awaited<ReturnType<typeof getDb>>>((_, reject) => {
-                    rejectDb = reject;
+                new Promise<void>((_, reject) => {
+                    rejectReady = reject;
                 })
         );
 
@@ -75,7 +75,7 @@ describe("useAppBootstrap", () => {
 
         unmount();
 
-        rejectDb?.(new Error("late failure"));
+        rejectReady?.(new Error("late failure"));
 
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
 

@@ -30,6 +30,7 @@ export const TAURI_COMMANDS = {
     REGISTER_LIBRARY_ASSET_SCOPE: "register_library_asset_scope",
     ALLOW_ASSET_FILE: "allow_asset_file",
 
+    ENSURE_DATABASE_READY: "ensure_database_ready",
     GET_APP_SETTINGS: "get_app_settings",
     SET_APP_SETTINGS: "set_app_settings",
 

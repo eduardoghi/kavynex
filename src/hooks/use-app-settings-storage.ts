@@ -1,4 +1,3 @@
-import { getDb } from "../lib/db";
 import type { AppSettings, ImportMode } from "../types/settings";
 import {
     getStoredAppSettings,
@@ -25,21 +24,11 @@ function normalizeLibraryPath(value: string | null | undefined): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
-// Transitional bridge: the database schema is still created by the frontend sql plugin
-// during the migration to a Rust-owned database. Touching getDb() guarantees the tables
-// exist before the backend settings commands query them. Removed at the final cutover
-// once schema creation moves to Rust.
-async function ensureSchemaReady(): Promise<void> {
-    await getDb();
-}
-
 export function getDefaultAppSettings(): AppSettings {
     return cloneDefaultSettings();
 }
 
 export async function loadStoredSettings(): Promise<AppSettings> {
-    await ensureSchemaReady();
-
     const stored = await getStoredAppSettings();
 
     return {
@@ -49,8 +38,6 @@ export async function loadStoredSettings(): Promise<AppSettings> {
 }
 
 export async function persistSettings(settings: AppSettings): Promise<void> {
-    await ensureSchemaReady();
-
     await setStoredAppSettings(settings.importMode, settings.libraryPath.trim());
 }
 

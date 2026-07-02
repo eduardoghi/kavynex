@@ -22,10 +22,6 @@ vi.mock("../lib/tauri-client", () => ({
     invokeVoid: vi.fn(),
 }));
 
-vi.mock("../lib/schema-bridge", () => ({
-    ensureSchemaReady: vi.fn().mockResolvedValue(undefined),
-}));
-
 const invokeCommandMock = vi.mocked(invokeCommand);
 const invokeVoidMock = vi.mocked(invokeVoid);
 

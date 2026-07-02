@@ -1,5 +1,6 @@
 pub mod channels;
 pub mod comments;
+pub mod database;
 pub mod library;
 pub mod media;
 pub mod security;

@@ -2,6 +2,7 @@ pub mod binaries;
 pub mod channel_repository;
 pub mod cleanup;
 pub mod database;
+pub mod db_schema;
 pub mod filesystem;
 pub mod library;
 pub mod library_media;

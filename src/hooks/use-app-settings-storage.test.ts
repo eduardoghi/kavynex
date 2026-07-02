@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getDb } from "../lib/db";
 import {
     getStoredAppSettings,
     setStoredAppSettings,
@@ -12,10 +11,6 @@ import {
     updateStoredLibraryPath,
 } from "./use-app-settings-storage";
 
-vi.mock("../lib/db", () => ({
-    getDb: vi.fn(),
-}));
-
 vi.mock("../services/app-settings-command-service", () => ({
     getStoredAppSettings: vi.fn(),
     setStoredAppSettings: vi.fn(),
@@ -25,7 +20,6 @@ describe("use-app-settings-storage", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
 
-        vi.mocked(getDb).mockResolvedValue({} as never);
         vi.mocked(setStoredAppSettings).mockResolvedValue(undefined);
         vi.mocked(getStoredAppSettings).mockResolvedValue({
             importMode: null,
