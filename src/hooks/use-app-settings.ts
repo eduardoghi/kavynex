@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { AppSettings, ImportMode } from "../types/settings";
 import { useAppSettingsActions } from "./use-app-settings-actions";
 import { getDefaultAppSettings } from "./use-app-settings-storage";
+import { registerLibraryAssetScope } from "../services/asset-scope-service";
+import { logError } from "../utils/app-logger";
 
 type UseAppSettingsOptions = {
     onError: (message: string) => void;
@@ -56,6 +58,23 @@ export function useAppSettings({
     useEffect(() => {
         void settingsActions.prepareSettings();
     }, [settingsActions.prepareSettings]);
+
+    // Authorize the asset protocol to read from the current library directory. Runs on
+    // startup and whenever the library path changes. Failures are non-fatal: media may
+    // not render, but nothing else breaks.
+    useEffect(() => {
+        const libraryPath = settings.libraryPath.trim();
+
+        if (!libraryPath) {
+            return;
+        }
+
+        void registerLibraryAssetScope(libraryPath).catch((error) => {
+            logError("asset-scope", "Failed to register library asset scope.", error, {
+                libraryPath,
+            });
+        });
+    }, [settings.libraryPath]);
 
     return {
         settingsOpen,

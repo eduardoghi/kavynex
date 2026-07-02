@@ -23,9 +23,7 @@
             "devCsp": "default-src 'self' ipc: http://ipc.localhost http://localhost:1420; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; img-src 'self' asset: https: data: blob:; media-src 'self' asset: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
             "assetProtocol": {
                 "enable": true,
-                "scope": [
-                    "**/*"
-                ]
+                "scope": []
             }
         }
     },

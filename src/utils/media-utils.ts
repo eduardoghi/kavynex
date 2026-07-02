@@ -20,6 +20,29 @@ export function normalizePathSeparators(value: string): string {
     return value.replace(/\\/g, "/");
 }
 
+// Removes the Windows extended-length prefix (\\?\ or the slash-normalized //?/ form,
+// including the UNC variants) so the path handed to convertFileSrc matches the asset
+// protocol scope authorized on the backend. On non-Windows paths this is a no-op.
+export function stripWindowsExtendedPrefix(value: string): string {
+    const uncMatch = value.match(/^[\\/]{2}\?[\\/]UNC[\\/](.*)$/i);
+
+    if (uncMatch) {
+        return `\\\\${uncMatch[1]}`;
+    }
+
+    const match = value.match(/^[\\/]{2}\?[\\/](.*)$/);
+
+    if (match) {
+        return match[1];
+    }
+
+    return value;
+}
+
+function toAssetPath(value: string): string {
+    return normalizePathSeparators(stripWindowsExtendedPrefix(value));
+}
+
 export function fileNameFromPath(path: string): string {
     const normalized = normalizePathSeparators(path.trim());
 
@@ -75,7 +98,7 @@ export function fileSrcFromPath(path: string | null): string | null {
         return null;
     }
 
-    return convertFileSrc(normalizePathSeparators(normalized));
+    return convertFileSrc(toAssetPath(normalized));
 }
 
 export function initials(value: string): string {
@@ -116,7 +139,7 @@ export function fileSrcFromAbsolutePath(path: string | null): string {
         return "";
     }
 
-    return convertFileSrc(normalizePathSeparators(normalized));
+    return convertFileSrc(toAssetPath(normalized));
 }
 
 export function fileSrcFromStoredPath(

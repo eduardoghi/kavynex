@@ -8,6 +8,8 @@ pub enum AppErrorCode {
 
     BlockingTaskJoinFailed,
 
+    AssetScopeRegisterFailed,
+
     DataDirectoryResolveFailed,
     CacheDirectoryResolveFailed,
     CacheDirectoryCreateFailed,
@@ -130,6 +132,8 @@ impl AppErrorCode {
             Self::InvalidInput => "INVALID_INPUT",
 
             Self::BlockingTaskJoinFailed => "BLOCKING_TASK_JOIN_FAILED",
+
+            Self::AssetScopeRegisterFailed => "ASSET_SCOPE_REGISTER_FAILED",
 
             Self::DataDirectoryResolveFailed => "DATA_DIRECTORY_RESOLVE_FAILED",
             Self::CacheDirectoryResolveFailed => "CACHE_DIRECTORY_RESOLVE_FAILED",

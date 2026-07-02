@@ -4,6 +4,7 @@ import type { MediaSourceMode, MediaType, YtDlpFormat } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { allowAssetFile } from "../services/asset-scope-service";
 import { useAddMediaFormState } from "./use-add-media-form-state";
 import { useTempThumbnail } from "./use-temp-thumbnail";
 import { useYtDlpFormatLoader } from "./use-yt-dlp-format-loader";
@@ -186,6 +187,16 @@ export function useAddMediaForm({
             }
 
             formState.setIsThumbDraggingState(false);
+
+            // The picked thumbnail lives outside the library. Authorize the asset
+            // protocol to read this specific file so the preview can load. Failure is
+            // non-fatal: only the preview thumbnail would be missing.
+            try {
+                await allowAssetFile(normalizedPath);
+            } catch (error) {
+                logError("add-media-form", "Failed to authorize thumbnail preview.", error);
+            }
+
             await thumbnailState.setManualThumbPath(normalizedPath);
         },
         [formState, thumbnailState]

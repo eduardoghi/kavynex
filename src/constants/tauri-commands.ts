@@ -26,6 +26,9 @@ export const TAURI_COMMANDS = {
     REPLACE_MEDIA_COMMENTS: "replace_media_comments",
 
     IS_DIRECTORY_EMPTY: "is_directory_empty",
+
+    REGISTER_LIBRARY_ASSET_SCOPE: "register_library_asset_scope",
+    ALLOW_ASSET_FILE: "allow_asset_file",
 } as const;
 
 export const TAURI_EVENTS = {

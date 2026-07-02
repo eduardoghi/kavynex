@@ -7,7 +7,7 @@ pub mod utils;
 
 pub use error::{AppError, AppErrorCode, AppResult};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 fn spawn_startup_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
@@ -46,6 +46,29 @@ pub fn run() {
             let app_handle = app.handle().clone();
 
             services::logger::info("app", "application setup started");
+
+            // Authorize the app cache directory in the asset protocol scope so temporary
+            // thumbnail previews (generated into the cache dir) can be loaded via
+            // convertFileSrc. The library directory is authorized at runtime once the
+            // stored library path is known (see register_library_asset_scope).
+            match app.path().app_cache_dir() {
+                Ok(cache_dir) => {
+                    if let Err(error) = app.asset_protocol_scope().allow_directory(&cache_dir, true)
+                    {
+                        services::logger::warn(
+                            "asset_scope",
+                            format!("failed to authorize cache dir in asset scope: {error}"),
+                        );
+                    }
+                }
+                Err(error) => {
+                    services::logger::warn(
+                        "asset_scope",
+                        format!("failed to resolve cache dir for asset scope: {error}"),
+                    );
+                }
+            }
+
             spawn_startup_cleanup(app_handle);
             services::logger::info("app", "application setup finished");
 
@@ -73,7 +96,9 @@ pub fn run() {
             commands::yt_dlp::list_yt_dlp_formats,
             commands::yt_dlp::download_media_from_url,
             commands::yt_dlp::cancel_media_download,
-            commands::yt_dlp::check_external_tools
+            commands::yt_dlp::check_external_tools,
+            commands::security::register_library_asset_scope,
+            commands::security::allow_asset_file
         ])
         .run(tauri::generate_context!())
         .expect("failed to run tauri application");
