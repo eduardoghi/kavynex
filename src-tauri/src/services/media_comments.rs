@@ -1,13 +1,9 @@
-use std::fs;
-
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
-use tauri::{AppHandle, Manager};
+use sqlx::SqlitePool;
+use tauri::AppHandle;
 
 use crate::models::yt_dlp::YtDlpComment;
+use crate::services::database::shared_pool;
 use crate::{AppError, AppErrorCode, AppResult};
-
-const DATABASE_FILE_NAME: &str = "kavynex.db";
-const SQLITE_BUSY_TIMEOUT_MS: u64 = 30_000;
 
 fn normalize_optional_text(value: &Option<String>) -> Option<String> {
     value
@@ -19,47 +15,6 @@ fn normalize_optional_text(value: &Option<String>) -> Option<String> {
 
 fn sqlite_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
     AppError::from_code_with_details(AppErrorCode::AppError, message, error.to_string())
-}
-
-async fn open_database(app: &AppHandle) -> AppResult<SqlitePool> {
-    let app_config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|error| sqlite_error("failed to resolve app database directory", error))?;
-
-    fs::create_dir_all(&app_config_dir)
-        .map_err(|error| sqlite_error("failed to create app database directory", error))?;
-
-    let database_path = app_config_dir.join(DATABASE_FILE_NAME);
-    let database_url = format!(
-        "sqlite:{}",
-        database_path
-            .to_str()
-            .ok_or_else(|| AppError::internal("database path is not valid UTF-8"))?
-    );
-
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&database_url)
-        .await
-        .map_err(|error| sqlite_error("failed to open app database", error))?;
-
-    sqlx::query(&format!("PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"))
-        .execute(&pool)
-        .await
-        .map_err(|error| sqlite_error("failed to configure database busy timeout", error))?;
-
-    sqlx::query("PRAGMA journal_mode = WAL;")
-        .execute(&pool)
-        .await
-        .map_err(|error| sqlite_error("failed to configure database journal mode", error))?;
-
-    sqlx::query("PRAGMA foreign_keys = ON;")
-        .execute(&pool)
-        .await
-        .map_err(|error| sqlite_error("failed to enable database foreign keys", error))?;
-
-    Ok(pool)
 }
 
 pub async fn replace_media_comments(
@@ -74,10 +29,8 @@ pub async fn replace_media_comments(
         ));
     }
 
-    let pool = open_database(app).await?;
-    let result = replace_media_comments_in_pool(&pool, media_id, comments).await;
-    pool.close().await;
-    result
+    let pool = shared_pool(app).await?;
+    replace_media_comments_in_pool(pool, media_id, comments).await
 }
 
 async fn replace_media_comments_in_pool(
@@ -203,6 +156,7 @@ async fn replace_media_comments_in_pool(
 
 #[cfg(test)]
 mod tests {
+    use sqlx::sqlite::SqlitePoolOptions;
     use sqlx::SqlitePool;
 
     use super::*;

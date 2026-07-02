@@ -98,7 +98,9 @@ pub fn run() {
             commands::yt_dlp::cancel_media_download,
             commands::yt_dlp::check_external_tools,
             commands::security::register_library_asset_scope,
-            commands::security::allow_asset_file
+            commands::security::allow_asset_file,
+            commands::settings::get_app_settings,
+            commands::settings::set_app_settings
         ])
         .run(tauri::generate_context!())
         .expect("failed to run tauri application");

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../lib/db";
 import {
+    getStoredAppSettings,
+    setStoredAppSettings,
+} from "../services/app-settings-command-service";
+import {
     getDefaultAppSettings,
     loadStoredSettings,
     persistSettings,
@@ -12,26 +16,21 @@ vi.mock("../lib/db", () => ({
     getDb: vi.fn(),
 }));
 
-type DbSelectMock = ReturnType<typeof vi.fn>;
-type DbExecuteMock = ReturnType<typeof vi.fn>;
-
-type MockDb = {
-    select: DbSelectMock;
-    execute: DbExecuteMock;
-};
+vi.mock("../services/app-settings-command-service", () => ({
+    getStoredAppSettings: vi.fn(),
+    setStoredAppSettings: vi.fn(),
+}));
 
 describe("use-app-settings-storage", () => {
-    let mockDb: MockDb;
-
     beforeEach(() => {
         vi.restoreAllMocks();
 
-        mockDb = {
-            select: vi.fn(),
-            execute: vi.fn(),
-        };
-
-        vi.mocked(getDb).mockResolvedValue(mockDb as never);
+        vi.mocked(getDb).mockResolvedValue({} as never);
+        vi.mocked(setStoredAppSettings).mockResolvedValue(undefined);
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: null,
+            libraryPath: null,
+        });
     });
 
     it("returns default settings", () => {
@@ -41,35 +40,25 @@ describe("use-app-settings-storage", () => {
         });
     });
 
-    it("loads default settings when database has no app settings rows", async () => {
-        mockDb.select.mockResolvedValue([]);
+    it("loads default settings when backend has no stored values", async () => {
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: null,
+            libraryPath: null,
+        });
 
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "copy",
             libraryPath: "",
         });
 
-        expect(mockDb.select).toHaveBeenCalledWith(
-            `
-            SELECT key, value
-            FROM app_settings
-            WHERE key IN (?, ?)
-        `,
-            ["import_mode", "library_path"]
-        );
+        expect(getStoredAppSettings).toHaveBeenCalledTimes(1);
     });
 
-    it("loads stored settings from database", async () => {
-        mockDb.select.mockResolvedValue([
-            {
-                key: "import_mode",
-                value: "move",
-            },
-            {
-                key: "library_path",
-                value: "  /library  ",
-            },
-        ]);
+    it("loads stored settings from backend", async () => {
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: "move",
+            libraryPath: "  /library  ",
+        });
 
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "move",
@@ -77,17 +66,11 @@ describe("use-app-settings-storage", () => {
         });
     });
 
-    it("falls back to copy when import mode in database is invalid", async () => {
-        mockDb.select.mockResolvedValue([
-            {
-                key: "import_mode",
-                value: "invalid-mode",
-            },
-            {
-                key: "library_path",
-                value: "/library",
-            },
-        ]);
+    it("falls back to copy when import mode from backend is invalid", async () => {
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: "invalid-mode",
+            libraryPath: "/library",
+        });
 
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "copy",
@@ -95,48 +78,20 @@ describe("use-app-settings-storage", () => {
         });
     });
 
-    it("persists settings to database", async () => {
+    it("persists settings through the backend command", async () => {
         await persistSettings({
             importMode: "copy",
             libraryPath: "/library",
         });
 
-        expect(mockDb.execute).toHaveBeenNthCalledWith(
-            1,
-            `
-            INSERT INTO app_settings (key, value, created_at, updated_at)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = datetime('now')
-        `,
-            ["import_mode", "copy"]
-        );
-
-        expect(mockDb.execute).toHaveBeenNthCalledWith(
-            2,
-            `
-            INSERT INTO app_settings (key, value, created_at, updated_at)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = datetime('now')
-        `,
-            ["library_path", "/library"]
-        );
+        expect(setStoredAppSettings).toHaveBeenCalledWith("copy", "/library");
     });
 
     it("updates only import mode preserving current library path", async () => {
-        mockDb.select.mockResolvedValue([
-            {
-                key: "import_mode",
-                value: "copy",
-            },
-            {
-                key: "library_path",
-                value: "/library",
-            },
-        ]);
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: "copy",
+            libraryPath: "/library",
+        });
 
         const result = await updateStoredImportMode("move");
 
@@ -145,42 +100,14 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
         });
 
-        expect(mockDb.execute).toHaveBeenNthCalledWith(
-            1,
-            `
-            INSERT INTO app_settings (key, value, created_at, updated_at)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = datetime('now')
-        `,
-            ["import_mode", "move"]
-        );
-
-        expect(mockDb.execute).toHaveBeenNthCalledWith(
-            2,
-            `
-            INSERT INTO app_settings (key, value, created_at, updated_at)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = datetime('now')
-        `,
-            ["library_path", "/library"]
-        );
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library");
     });
 
     it("updates only library path preserving current import mode", async () => {
-        mockDb.select.mockResolvedValue([
-            {
-                key: "import_mode",
-                value: "move",
-            },
-            {
-                key: "library_path",
-                value: "/old-library",
-            },
-        ]);
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: "move",
+            libraryPath: "/old-library",
+        });
 
         const result = await updateStoredLibraryPath("  /new-library  ");
 
@@ -189,28 +116,6 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/new-library",
         });
 
-        expect(mockDb.execute).toHaveBeenNthCalledWith(
-            1,
-            `
-            INSERT INTO app_settings (key, value, created_at, updated_at)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = datetime('now')
-        `,
-            ["import_mode", "move"]
-        );
-
-        expect(mockDb.execute).toHaveBeenNthCalledWith(
-            2,
-            `
-            INSERT INTO app_settings (key, value, created_at, updated_at)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = datetime('now')
-        `,
-            ["library_path", "/new-library"]
-        );
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/new-library");
     });
 });

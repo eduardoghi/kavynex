@@ -1,19 +1,13 @@
 import { getDb } from "../lib/db";
 import type { AppSettings, ImportMode } from "../types/settings";
+import {
+    getStoredAppSettings,
+    setStoredAppSettings,
+} from "../services/app-settings-command-service";
 
 const DEFAULT_SETTINGS: AppSettings = {
     importMode: "copy",
     libraryPath: "",
-};
-
-const SETTINGS_KEYS = {
-    importMode: "import_mode",
-    libraryPath: "library_path",
-} as const;
-
-type AppSettingRow = {
-    key: string;
-    value: string;
 };
 
 function cloneDefaultSettings(): AppSettings {
@@ -31,49 +25,12 @@ function normalizeLibraryPath(value: string | null | undefined): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
-function mapRowsToSettings(rows: AppSettingRow[]): AppSettings {
-    const settings = cloneDefaultSettings();
-
-    for (const row of rows) {
-        if (row.key === SETTINGS_KEYS.importMode) {
-            settings.importMode = normalizeImportMode(row.value);
-            continue;
-        }
-
-        if (row.key === SETTINGS_KEYS.libraryPath) {
-            settings.libraryPath = normalizeLibraryPath(row.value);
-        }
-    }
-
-    return settings;
-}
-
-async function readSettingsRows(): Promise<AppSettingRow[]> {
-    const db = await getDb();
-
-    return db.select<AppSettingRow[]>(
-        `
-            SELECT key, value
-            FROM app_settings
-            WHERE key IN (?, ?)
-        `,
-        [SETTINGS_KEYS.importMode, SETTINGS_KEYS.libraryPath]
-    );
-}
-
-async function upsertSetting(key: string, value: string): Promise<void> {
-    const db = await getDb();
-
-    await db.execute(
-        `
-            INSERT INTO app_settings (key, value, created_at, updated_at)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = datetime('now')
-        `,
-        [key, value]
-    );
+// Transitional bridge: the database schema is still created by the frontend sql plugin
+// during the migration to a Rust-owned database. Touching getDb() guarantees the tables
+// exist before the backend settings commands query them. Removed at the final cutover
+// once schema creation moves to Rust.
+async function ensureSchemaReady(): Promise<void> {
+    await getDb();
 }
 
 export function getDefaultAppSettings(): AppSettings {
@@ -81,13 +38,20 @@ export function getDefaultAppSettings(): AppSettings {
 }
 
 export async function loadStoredSettings(): Promise<AppSettings> {
-    const rows = await readSettingsRows();
-    return mapRowsToSettings(rows);
+    await ensureSchemaReady();
+
+    const stored = await getStoredAppSettings();
+
+    return {
+        importMode: normalizeImportMode(stored.importMode),
+        libraryPath: normalizeLibraryPath(stored.libraryPath),
+    };
 }
 
 export async function persistSettings(settings: AppSettings): Promise<void> {
-    await upsertSetting(SETTINGS_KEYS.importMode, settings.importMode);
-    await upsertSetting(SETTINGS_KEYS.libraryPath, settings.libraryPath.trim());
+    await ensureSchemaReady();
+
+    await setStoredAppSettings(settings.importMode, settings.libraryPath.trim());
 }
 
 export async function updateStoredImportMode(mode: ImportMode): Promise<AppSettings> {

@@ -1,5 +1,6 @@
 pub mod binaries;
 pub mod cleanup;
+pub mod database;
 pub mod filesystem;
 pub mod library;
 pub mod library_media;
