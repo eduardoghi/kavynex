@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as dbModule from "../lib/db";
-import { createTestDb } from "../test/helpers/create-test-db";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { invokeCommand, invokeVoid } from "../lib/tauri-client";
+import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
     countChannelsUsingAvatarPathOutsideChannel,
     countMediaUsingFilePathOutsideChannel,
@@ -16,225 +16,146 @@ import {
     updateChannelAvatarPath,
     updateChannelNameAndHandle,
 } from "./channel-repository";
-import { insertMedia, listMediaIntegrityReferences } from "./media-repository";
 
-vi.mock("../lib/db");
+vi.mock("../lib/tauri-client", () => ({
+    invokeCommand: vi.fn(),
+    invokeVoid: vi.fn(),
+}));
 
-let closeDb: () => void;
+vi.mock("../lib/schema-bridge", () => ({
+    ensureSchemaReady: vi.fn().mockResolvedValue(undefined),
+}));
+
+const invokeCommandMock = vi.mocked(invokeCommand);
+const invokeVoidMock = vi.mocked(invokeVoid);
 
 beforeEach(() => {
-    const { db, close } = createTestDb();
-    closeDb = close;
-    vi.mocked(dbModule.getDb).mockResolvedValue(db as any);
+    vi.clearAllMocks();
+    invokeCommandMock.mockResolvedValue(undefined as never);
+    invokeVoidMock.mockResolvedValue(undefined);
 });
 
-afterEach(() => {
-    closeDb();
-});
+describe("channel-repository command wiring", () => {
+    it("listChannels invokes the list command and returns rows", async () => {
+        const rows = [{ id: 1, name: "A", youtube_handle: "@a", avatar_path: null, created_at: "t" }];
+        invokeCommandMock.mockResolvedValueOnce(rows as never);
 
-async function seedChannel(name: string, handle: string, avatar: string | null = null) {
-    return (await insertChannel(name, handle, avatar))!;
-}
-
-async function seedMedia(channelId: number, filePath: string, thumbPath: string | null = null) {
-    return insertMedia(channelId, "Test video", filePath, thumbPath, "video", null, null, null, false, null);
-}
-
-describe("insertChannel", () => {
-    it("returns a positive numeric id", async () => {
-        const id = await insertChannel("Alice", "@alice", null);
-        expect(typeof id).toBe("number");
-        expect(id).toBeGreaterThan(0);
+        await expect(listChannels()).resolves.toBe(rows);
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.LIST_CHANNELS);
     });
-});
 
-describe("getChannelById", () => {
-    it("returns all fields for the channel", async () => {
-        const id = await seedChannel("Alice", "@alice", "thumbnails/alice.jpg");
-        const channel = await getChannelById(id);
-        expect(channel).toMatchObject({
-            id,
-            name: "Alice",
-            youtube_handle: "@alice",
-            avatar_path: "thumbnails/alice.jpg",
+    it("findChannelByYoutubeHandle passes the handle", async () => {
+        await findChannelByYoutubeHandle("@alice");
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.FIND_CHANNEL_BY_YOUTUBE_HANDLE,
+            { youtubeHandle: "@alice" }
+        );
+    });
+
+    it("getChannelById passes the id", async () => {
+        await getChannelById(7);
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.GET_CHANNEL_BY_ID, {
+            channelId: 7,
         });
-        expect(typeof channel!.created_at).toBe("string");
     });
 
-    it("stores null avatar_path", async () => {
-        const id = await seedChannel("Alice", "@alice");
-        const channel = await getChannelById(id);
-        expect(channel!.avatar_path).toBeNull();
+    it("insertChannel passes name, handle and avatar and returns the id", async () => {
+        invokeCommandMock.mockResolvedValueOnce(42 as never);
+
+        await expect(insertChannel("Alice", "@alice", "thumbnails/a.jpg")).resolves.toBe(42);
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.INSERT_CHANNEL, {
+            name: "Alice",
+            youtubeHandle: "@alice",
+            avatarPath: "thumbnails/a.jpg",
+        });
     });
 
-    it("returns null for unknown id", async () => {
-        expect(await getChannelById(999)).toBeNull();
-    });
-});
-
-describe("listChannels", () => {
-    it("returns channels ordered by name asc", async () => {
-        await seedChannel("Zebra", "@zebra");
-        await seedChannel("Alpha", "@alpha");
-        await seedChannel("Mango", "@mango");
-        const channels = await listChannels();
-        expect(channels.map((c) => c.name)).toEqual(["Alpha", "Mango", "Zebra"]);
+    it("updateChannelNameAndHandle passes all fields", async () => {
+        await updateChannelNameAndHandle(3, "New", "@new");
+        expect(invokeVoidMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.UPDATE_CHANNEL_NAME_AND_HANDLE,
+            { channelId: 3, name: "New", youtubeHandle: "@new" }
+        );
     });
 
-    it("returns empty array when no channels exist", async () => {
-        expect(await listChannels()).toEqual([]);
-    });
-});
-
-describe("findChannelByYoutubeHandle", () => {
-    it("finds an existing channel by handle", async () => {
-        await seedChannel("Alice", "@alice");
-        const channel = await findChannelByYoutubeHandle("@alice");
-        expect(channel?.name).toBe("Alice");
+    it("updateChannelAvatarPath passes null to clear the avatar", async () => {
+        await updateChannelAvatarPath(3, null);
+        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.UPDATE_CHANNEL_AVATAR_PATH, {
+            channelId: 3,
+            avatarPath: null,
+        });
     });
 
-    it("returns null for a missing handle", async () => {
-        expect(await findChannelByYoutubeHandle("@nobody")).toBeNull();
-    });
-});
-
-describe("updateChannelNameAndHandle", () => {
-    it("updates both name and handle", async () => {
-        const id = await seedChannel("Old", "@old");
-        await updateChannelNameAndHandle(id, "New", "@new");
-        const channel = await getChannelById(id);
-        expect(channel).toMatchObject({ name: "New", youtube_handle: "@new" });
-    });
-});
-
-describe("updateChannelAvatarPath", () => {
-    it("sets a new avatar path", async () => {
-        const id = await seedChannel("Alice", "@alice");
-        await updateChannelAvatarPath(id, "thumbnails/avatar.jpg");
-        expect((await getChannelById(id))!.avatar_path).toBe("thumbnails/avatar.jpg");
+    it("deleteChannelById passes the id", async () => {
+        await deleteChannelById(9);
+        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.DELETE_CHANNEL_BY_ID, {
+            channelId: 9,
+        });
     });
 
-    it("clears the avatar path to null", async () => {
-        const id = await seedChannel("Alice", "@alice", "thumbnails/avatar.jpg");
-        await updateChannelAvatarPath(id, null);
-        expect((await getChannelById(id))!.avatar_path).toBeNull();
-    });
-});
+    it("listDistinctThumbnailPathsByChannelId returns the command result", async () => {
+        invokeCommandMock.mockResolvedValueOnce(["a.jpg"] as never);
 
-describe("deleteChannelById", () => {
-    it("removes the channel row", async () => {
-        const id = await seedChannel("Alice", "@alice");
-        await deleteChannelById(id);
-        expect(await getChannelById(id)).toBeNull();
+        await expect(listDistinctThumbnailPathsByChannelId(1)).resolves.toEqual(["a.jpg"]);
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.LIST_DISTINCT_THUMBNAIL_PATHS_BY_CHANNEL_ID,
+            { channelId: 1 }
+        );
     });
 
-    it("cascades deletion to media rows", async () => {
-        const id = await seedChannel("Alice", "@alice");
-        await seedMedia(id, "video/a.mp4");
-        await deleteChannelById(id);
-        expect(await listMediaIntegrityReferences()).toHaveLength(0);
-    });
-});
+    it("listDistinctFilePathsByChannelId returns the command result", async () => {
+        invokeCommandMock.mockResolvedValueOnce(["video/a.mp4"] as never);
 
-describe("getChannelAvatarPathByChannelId", () => {
-    it("returns the stored avatar path", async () => {
-        const id = await seedChannel("Alice", "@alice", "thumbnails/alice.jpg");
-        expect(await getChannelAvatarPathByChannelId(id)).toBe("thumbnails/alice.jpg");
+        await expect(listDistinctFilePathsByChannelId(1)).resolves.toEqual(["video/a.mp4"]);
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.LIST_DISTINCT_FILE_PATHS_BY_CHANNEL_ID,
+            { channelId: 1 }
+        );
     });
 
-    it("returns null when avatar_path is null", async () => {
-        const id = await seedChannel("Alice", "@alice");
-        expect(await getChannelAvatarPathByChannelId(id)).toBeNull();
+    it("getChannelAvatarPathByChannelId returns the command result", async () => {
+        invokeCommandMock.mockResolvedValueOnce("thumbnails/a.jpg" as never);
+
+        await expect(getChannelAvatarPathByChannelId(1)).resolves.toBe("thumbnails/a.jpg");
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.GET_CHANNEL_AVATAR_PATH_BY_CHANNEL_ID,
+            { channelId: 1 }
+        );
     });
 
-    it("returns null when channel does not exist", async () => {
-        expect(await getChannelAvatarPathByChannelId(999)).toBeNull();
-    });
-});
+    it("countChannelsUsingAvatarPathOutsideChannel passes path and id", async () => {
+        invokeCommandMock.mockResolvedValueOnce(1 as never);
 
-describe("countChannelsUsingAvatarPathOutsideChannel", () => {
-    it("counts other channels sharing the same avatar path", async () => {
-        const id1 = await seedChannel("A", "@a", "shared.jpg");
-        const id2 = await seedChannel("B", "@b", "shared.jpg");
-        expect(await countChannelsUsingAvatarPathOutsideChannel("shared.jpg", id1)).toBe(1);
-        expect(await countChannelsUsingAvatarPathOutsideChannel("shared.jpg", id2)).toBe(1);
-    });
-
-    it("returns 0 when only the given channel uses the path", async () => {
-        const id = await seedChannel("A", "@a", "unique.jpg");
-        expect(await countChannelsUsingAvatarPathOutsideChannel("unique.jpg", id)).toBe(0);
-    });
-});
-
-describe("countMediaUsingThumbnailOutsideChannel", () => {
-    it("counts media in other channels with the same thumbnail", async () => {
-        const id1 = await seedChannel("A", "@a");
-        const id2 = await seedChannel("B", "@b");
-        await seedMedia(id1, "video/a.mp4", "thumb/shared.jpg");
-        await seedMedia(id2, "video/b.mp4", "thumb/shared.jpg");
-        expect(await countMediaUsingThumbnailOutsideChannel("thumb/shared.jpg", id1)).toBe(1);
+        await expect(
+            countChannelsUsingAvatarPathOutsideChannel("shared.jpg", 5)
+        ).resolves.toBe(1);
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.COUNT_CHANNELS_USING_AVATAR_PATH_OUTSIDE_CHANNEL,
+            { avatarPath: "shared.jpg", channelId: 5 }
+        );
     });
 
-    it("returns 0 when no other channel uses the thumbnail", async () => {
-        const id = await seedChannel("A", "@a");
-        await seedMedia(id, "video/a.mp4", "thumb/unique.jpg");
-        expect(await countMediaUsingThumbnailOutsideChannel("thumb/unique.jpg", id)).toBe(0);
-    });
-});
+    it("countMediaUsingThumbnailOutsideChannel passes path and id", async () => {
+        invokeCommandMock.mockResolvedValueOnce(2 as never);
 
-describe("countMediaUsingFilePathOutsideChannel", () => {
-    it("counts media in other channels with the same file path", async () => {
-        const id1 = await seedChannel("A", "@a");
-        const id2 = await seedChannel("B", "@b");
-        await seedMedia(id1, "video/shared.mp4");
-        await seedMedia(id2, "video/shared.mp4");
-        expect(await countMediaUsingFilePathOutsideChannel("video/shared.mp4", id1)).toBe(1);
+        await expect(
+            countMediaUsingThumbnailOutsideChannel("thumb/shared.jpg", 5)
+        ).resolves.toBe(2);
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_CHANNEL,
+            { thumbnailPath: "thumb/shared.jpg", channelId: 5 }
+        );
     });
 
-    it("returns 0 when no other channel uses the file path", async () => {
-        const id = await seedChannel("A", "@a");
-        await seedMedia(id, "video/unique.mp4");
-        expect(await countMediaUsingFilePathOutsideChannel("video/unique.mp4", id)).toBe(0);
-    });
-});
+    it("countMediaUsingFilePathOutsideChannel passes path and id", async () => {
+        invokeCommandMock.mockResolvedValueOnce(3 as never);
 
-describe("listDistinctThumbnailPathsByChannelId", () => {
-    it("returns distinct non-null thumbnail paths for the channel", async () => {
-        const id = await seedChannel("A", "@a");
-        await seedMedia(id, "video/a.mp4", "thumb/t.jpg");
-        await seedMedia(id, "video/b.mp4", "thumb/t.jpg");
-        await seedMedia(id, "video/c.mp4", "thumb/u.jpg");
-        const paths = await listDistinctThumbnailPathsByChannelId(id);
-        expect(paths.sort()).toEqual(["thumb/t.jpg", "thumb/u.jpg"]);
-    });
-
-    it("excludes null thumbnail paths", async () => {
-        const id = await seedChannel("A", "@a");
-        await seedMedia(id, "video/a.mp4", null);
-        expect(await listDistinctThumbnailPathsByChannelId(id)).toEqual([]);
-    });
-
-    it("excludes media from other channels", async () => {
-        const id1 = await seedChannel("A", "@a");
-        const id2 = await seedChannel("B", "@b");
-        await seedMedia(id2, "video/b.mp4", "thumb/other.jpg");
-        expect(await listDistinctThumbnailPathsByChannelId(id1)).toEqual([]);
-    });
-});
-
-describe("listDistinctFilePathsByChannelId", () => {
-    it("returns distinct file paths for the channel", async () => {
-        const id1 = await seedChannel("A", "@a");
-        const id2 = await seedChannel("B", "@b");
-        await seedMedia(id1, "video/a.mp4");
-        await seedMedia(id1, "video/b.mp4");
-        await seedMedia(id2, "video/c.mp4");
-        const paths = await listDistinctFilePathsByChannelId(id1);
-        expect(paths.sort()).toEqual(["video/a.mp4", "video/b.mp4"]);
-    });
-
-    it("returns empty array when channel has no media", async () => {
-        const id = await seedChannel("A", "@a");
-        expect(await listDistinctFilePathsByChannelId(id)).toEqual([]);
+        await expect(
+            countMediaUsingFilePathOutsideChannel("video/shared.mp4", 5)
+        ).resolves.toBe(3);
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_CHANNEL,
+            { filePath: "video/shared.mp4", channelId: 5 }
+        );
     });
 });

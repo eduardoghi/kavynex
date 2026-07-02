@@ -1,3 +1,4 @@
+pub mod channels;
 pub mod comments;
 pub mod library;
 pub mod media;

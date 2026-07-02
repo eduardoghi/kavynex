@@ -100,7 +100,20 @@ pub fn run() {
             commands::security::register_library_asset_scope,
             commands::security::allow_asset_file,
             commands::settings::get_app_settings,
-            commands::settings::set_app_settings
+            commands::settings::set_app_settings,
+            commands::channels::list_channels,
+            commands::channels::find_channel_by_youtube_handle,
+            commands::channels::get_channel_by_id,
+            commands::channels::insert_channel,
+            commands::channels::update_channel_name_and_handle,
+            commands::channels::update_channel_avatar_path,
+            commands::channels::delete_channel_by_id,
+            commands::channels::list_distinct_thumbnail_paths_by_channel_id,
+            commands::channels::list_distinct_file_paths_by_channel_id,
+            commands::channels::get_channel_avatar_path_by_channel_id,
+            commands::channels::count_channels_using_avatar_path_outside_channel,
+            commands::channels::count_media_using_thumbnail_outside_channel,
+            commands::channels::count_media_using_file_path_outside_channel
         ])
         .run(tauri::generate_context!())
         .expect("failed to run tauri application");

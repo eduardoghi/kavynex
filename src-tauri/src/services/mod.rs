@@ -1,4 +1,5 @@
 pub mod binaries;
+pub mod channel_repository;
 pub mod cleanup;
 pub mod database;
 pub mod filesystem;

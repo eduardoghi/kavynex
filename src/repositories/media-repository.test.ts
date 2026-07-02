@@ -15,8 +15,6 @@ import {
     updateMediaProgress,
     updateMediaTitle,
 } from "./media-repository";
-import { insertChannel } from "./channel-repository";
-
 vi.mock("../lib/db");
 
 let closeDb: () => void;
@@ -28,12 +26,20 @@ beforeEach(async () => {
     testDb = db;
     closeDb = close;
     vi.mocked(dbModule.getDb).mockResolvedValue(db as any);
-    channelId = (await insertChannel("Test Channel", "@testchannel", null))!;
+    channelId = await seedChannel("Test Channel", "@testchannel");
 });
 
 afterEach(() => {
     closeDb();
 });
+
+async function seedChannel(name: string, handle: string): Promise<number> {
+    const result = await testDb.execute(
+        "INSERT INTO channels (name, youtube_handle, avatar_path) VALUES (?, ?, ?)",
+        [name, handle, null]
+    );
+    return result.lastInsertId;
+}
 
 async function seedMedia(
     filePath = "video/a.mp4",
@@ -113,7 +119,7 @@ describe("findMediaByChannelAndFilePath", () => {
 
 describe("listMediaByChannel", () => {
     it("returns only media belonging to the given channel", async () => {
-        const otherId = (await insertChannel("Other", "@other", null))!;
+        const otherId = await seedChannel("Other", "@other");
         await seedMedia("video/mine.mp4");
         await insertMedia(otherId, "Other", "video/theirs.mp4", null, "video", null, null, null, false, null);
         const rows = await listMediaByChannel(channelId);
@@ -205,7 +211,7 @@ describe("countMediaUsingThumbnailOutsideMedia", () => {
 
 describe("countMediaUsingFilePathOutsideMedia", () => {
     it("counts other media rows with the same file path", async () => {
-        const otherId = (await insertChannel("Other", "@other", null))!;
+        const otherId = await seedChannel("Other", "@other");
         const id1 = (await insertMedia(channelId, "V1", "video/shared.mp4", null, "video", null, null, null, false, null))!;
         await insertMedia(otherId, "V2", "video/shared.mp4", null, "video", null, null, null, false, null);
         expect(await countMediaUsingFilePathOutsideMedia("video/shared.mp4", id1)).toBe(1);

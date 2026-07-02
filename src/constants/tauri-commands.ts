@@ -32,6 +32,21 @@ export const TAURI_COMMANDS = {
 
     GET_APP_SETTINGS: "get_app_settings",
     SET_APP_SETTINGS: "set_app_settings",
+
+    LIST_CHANNELS: "list_channels",
+    FIND_CHANNEL_BY_YOUTUBE_HANDLE: "find_channel_by_youtube_handle",
+    GET_CHANNEL_BY_ID: "get_channel_by_id",
+    INSERT_CHANNEL: "insert_channel",
+    UPDATE_CHANNEL_NAME_AND_HANDLE: "update_channel_name_and_handle",
+    UPDATE_CHANNEL_AVATAR_PATH: "update_channel_avatar_path",
+    DELETE_CHANNEL_BY_ID: "delete_channel_by_id",
+    LIST_DISTINCT_THUMBNAIL_PATHS_BY_CHANNEL_ID: "list_distinct_thumbnail_paths_by_channel_id",
+    LIST_DISTINCT_FILE_PATHS_BY_CHANNEL_ID: "list_distinct_file_paths_by_channel_id",
+    GET_CHANNEL_AVATAR_PATH_BY_CHANNEL_ID: "get_channel_avatar_path_by_channel_id",
+    COUNT_CHANNELS_USING_AVATAR_PATH_OUTSIDE_CHANNEL:
+        "count_channels_using_avatar_path_outside_channel",
+    COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_CHANNEL: "count_media_using_thumbnail_outside_channel",
+    COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_CHANNEL: "count_media_using_file_path_outside_channel",
 } as const;
 
 export const TAURI_EVENTS = {

@@ -28,7 +28,7 @@ pub struct StoredAppSettings {
     pub library_path: Option<String>,
 }
 
-fn db_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
+pub(crate) fn db_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
     AppError::from_code_with_details(AppErrorCode::AppError, message, error.to_string())
 }
 
