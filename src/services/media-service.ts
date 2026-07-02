@@ -218,6 +218,42 @@ async function removeMediaLiveChatIfUnused(
     await deleteLiveChatFileFromAppData(normalizedLiveChatFilePath);
 }
 
+// Removes the on-disk artifacts of a media row that was already deleted. File cleanup is
+// best-effort (a failure must not undo the DB deletion), but failures are logged with the
+// affected path so an orphaned file left in the library is visible for diagnostics.
+async function cleanupMediaArtifactsWithLogging(
+    mediaId: number,
+    filePath: string,
+    thumbnailPath: string | null,
+    liveChatFilePath: string | null,
+    libraryPath: string
+): Promise<void> {
+    const results = await Promise.allSettled([
+        removeMediaFileIfUnused(mediaId, filePath, libraryPath),
+        removeMediaThumbnailIfUnused(mediaId, thumbnailPath, libraryPath),
+        removeMediaLiveChatIfUnused(liveChatFilePath),
+    ]);
+
+    const targets: { label: string; path: string | null }[] = [
+        { label: "media file", path: filePath },
+        { label: "thumbnail", path: thumbnailPath },
+        { label: "live chat file", path: liveChatFilePath },
+    ];
+
+    results.forEach((result, index) => {
+        if (result.status === "rejected") {
+            const target = targets[index];
+
+            logError(
+                "media-service",
+                `Media row was removed but its ${target.label} could not be deleted; a file may be orphaned in the library.`,
+                result.reason,
+                { mediaId, path: target.path }
+            );
+        }
+    });
+}
+
 async function tryPersistYouTubeComments(
     mediaId: number | null,
     youtubeVideoId: string | null,
@@ -426,19 +462,13 @@ export async function deleteMediaWithFileCleanup(
 
     await deleteMediaById(normalizedInput.mediaId);
 
-    await Promise.allSettled([
-        removeMediaFileIfUnused(
-            normalizedInput.mediaId,
-            normalizedInput.filePath,
-            normalizedInput.libraryPath
-        ),
-        removeMediaThumbnailIfUnused(
-            normalizedInput.mediaId,
-            normalizedInput.thumbnailPath,
-            normalizedInput.libraryPath
-        ),
-        removeMediaLiveChatIfUnused(liveChatFilePath),
-    ]);
+    await cleanupMediaArtifactsWithLogging(
+        normalizedInput.mediaId,
+        normalizedInput.filePath,
+        normalizedInput.thumbnailPath,
+        liveChatFilePath,
+        normalizedInput.libraryPath
+    );
 }
 
 export async function deleteChannelMediaFiles(
@@ -451,11 +481,13 @@ export async function deleteChannelMediaFiles(
 
     await Promise.allSettled(
         mediaItems.map((media) =>
-            Promise.allSettled([
-                removeMediaFileIfUnused(media.id, media.file_path, libraryPath),
-                removeMediaThumbnailIfUnused(media.id, media.thumbnail_path, libraryPath),
-                removeMediaLiveChatIfUnused(media.live_chat_file_path ?? null),
-            ])
+            cleanupMediaArtifactsWithLogging(
+                media.id,
+                media.file_path,
+                media.thumbnail_path,
+                media.live_chat_file_path ?? null,
+                libraryPath
+            )
         )
     );
 }

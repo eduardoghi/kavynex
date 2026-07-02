@@ -91,6 +91,7 @@ import { deleteThumbnailFile } from "./thumbnail-service";
 import { deleteLiveChatFileFromAppData } from "./live-chat-service";
 import { fetchYouTubeComments } from "./media-download-service";
 import { replaceMediaCommentsInBackend } from "./media-comments-service";
+import { logError } from "../utils/app-logger";
 
 describe("media-service", () => {
     beforeEach(() => {
@@ -547,6 +548,33 @@ describe("media-service", () => {
 
         expect(deleteMediaFile).not.toHaveBeenCalled();
         expect(deleteThumbnailFile).not.toHaveBeenCalled();
+    });
+
+    it("does not throw and logs an orphan warning when file cleanup fails after the row is deleted", async () => {
+        vi.mocked(normalizeDeleteMediaInput).mockReturnValueOnce({
+            mediaId: 10,
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            libraryPath: "/library",
+        });
+
+        vi.mocked(deleteMediaById).mockResolvedValueOnce(undefined);
+        vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValueOnce(0);
+        vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValueOnce(0);
+        vi.mocked(deleteMediaFile).mockRejectedValueOnce(new Error("disk error"));
+        vi.mocked(deleteThumbnailFile).mockResolvedValueOnce(undefined);
+
+        await expect(
+            deleteMediaWithFileCleanup(10, "video/a.mp4", "thumbnails/a.jpg", "/library")
+        ).resolves.toBeUndefined();
+
+        expect(deleteMediaById).toHaveBeenCalledWith(10);
+        expect(logError).toHaveBeenCalledWith(
+            "media-service",
+            expect.stringContaining("orphaned"),
+            expect.any(Error),
+            expect.objectContaining({ mediaId: 10, path: "video/a.mp4" })
+        );
     });
 
     it("marks media as watched", async () => {
