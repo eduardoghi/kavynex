@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     ActionIcon,
     Badge,
@@ -25,6 +25,11 @@ type CommentTreeNode = MediaCommentRow & {
 };
 
 type CommentSortMode = "likes" | "newest" | "oldest";
+
+// Cap how many top-level comment threads are mounted at once so media with thousands of
+// comments does not build an unbounded DOM. More threads are revealed on demand.
+const INITIAL_VISIBLE_THREADS = 30;
+const LOAD_MORE_STEP = 30;
 
 type CommentsPanelProps = {
     comments: MediaCommentRow[];
@@ -397,6 +402,20 @@ export function CommentsPanel({
         [filteredCommentTree]
     );
 
+    const [visibleThreadCount, setVisibleThreadCount] = useState(INITIAL_VISIBLE_THREADS);
+
+    // Reset the visible window whenever the result set changes (new media, sort, search).
+    useEffect(() => {
+        setVisibleThreadCount(INITIAL_VISIBLE_THREADS);
+    }, [comments, commentSortMode, normalizedCommentSearch]);
+
+    const visibleCommentTree = useMemo(
+        () => filteredCommentTree.slice(0, visibleThreadCount),
+        [filteredCommentTree, visibleThreadCount]
+    );
+
+    const remainingThreadCount = filteredCommentTree.length - visibleCommentTree.length;
+
     return (
         <Paper
             withBorder
@@ -514,7 +533,7 @@ export function CommentsPanel({
 
                 {!isLoadingComments && filteredCommentTree.length > 0 && (
                     <Stack gap="lg">
-                        {filteredCommentTree.map((comment) => (
+                        {visibleCommentTree.map((comment) => (
                             <CommentItem
                                 key={`${comment.id}-${comment.comment_id ?? "comment"}`}
                                 comment={comment}
@@ -522,6 +541,18 @@ export function CommentsPanel({
                                 forceExpandReplies={Boolean(normalizedCommentSearch)}
                             />
                         ))}
+
+                        {remainingThreadCount > 0 && (
+                            <Button
+                                variant="light"
+                                color="gray"
+                                onClick={() =>
+                                    setVisibleThreadCount((current) => current + LOAD_MORE_STEP)
+                                }
+                            >
+                                {UI_TEXT.comments.loadMore} ({remainingThreadCount})
+                            </Button>
+                        )}
                     </Stack>
                 )}
             </Stack>

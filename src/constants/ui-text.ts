@@ -86,6 +86,7 @@ export const UI_TEXT = {
         replies: "replies",
         resultsShowing: "Showing",
         resultsFor: "result(s) for",
+        loadMore: "Load more comments",
         sortOptions: {
             likes: "Most relevant",
             newest: "Newest first",
