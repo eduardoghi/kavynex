@@ -224,3 +224,24 @@ pub fn ffmpeg_location_argument(ffmpeg_binary: &str) -> String {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| ffmpeg_binary.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ffmpeg_location_argument_returns_bare_name_unchanged() {
+        assert_eq!(ffmpeg_location_argument("ffmpeg"), "ffmpeg");
+        assert_eq!(ffmpeg_location_argument("ffmpeg.exe"), "ffmpeg.exe");
+    }
+
+    #[test]
+    fn ffmpeg_location_argument_returns_parent_directory_for_full_path() {
+        let bin_dir = std::env::temp_dir().join("kavynex-ffmpeg-bin");
+        let ffmpeg = bin_dir.join("ffmpeg");
+
+        let result = ffmpeg_location_argument(ffmpeg.to_str().unwrap());
+
+        assert_eq!(result, bin_dir.to_string_lossy());
+    }
+}

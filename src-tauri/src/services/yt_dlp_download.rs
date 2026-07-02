@@ -165,31 +165,31 @@ fn configure_yt_dlp_command(command: &mut Command) {
 #[cfg(not(unix))]
 fn configure_yt_dlp_command(_: &mut Command) {}
 
-pub async fn download_media_from_url_async(
-    app: &AppHandle,
+#[derive(Debug)]
+struct ValidatedDownloadInputs {
+    url: String,
+    run_id: String,
+    format_id: String,
+}
+
+/// Validates and normalizes the download request coming from the frontend. Rejects empty
+/// values and any URL that is not http(s). Cookies are handled separately since they
+/// never produce an error (invalid values are simply ignored).
+fn validate_download_inputs(
     url: &str,
     library_path: &str,
     run_id: &str,
     format_id: &str,
-    download_live_chat: bool,
-    skip_auto_thumbnail_download: bool,
-    cookies_browser: Option<&str>,
-    cookies_path: Option<&str>,
-) -> AppResult<DownloadedMediaResult> {
-    let normalized_url = url.trim().to_string();
-    let normalized_run_id = run_id.trim().to_string();
-    let normalized_format_id = format_id.trim().to_string();
-    let normalized_cookies_browser = normalize_cookies_browser(cookies_browser);
-    let normalized_cookies_path = normalize_cookies_path(cookies_path);
+) -> AppResult<ValidatedDownloadInputs> {
+    let url = url.trim().to_string();
+    let run_id = run_id.trim().to_string();
+    let format_id = format_id.trim().to_string();
 
-    if normalized_url.is_empty() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidUrl,
-            "url is empty",
-        ));
+    if url.is_empty() {
+        return Err(AppError::from_code(AppErrorCode::InvalidUrl, "url is empty"));
     }
 
-    if !normalized_url.starts_with("http://") && !normalized_url.starts_with("https://") {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(AppError::from_code(
             AppErrorCode::InvalidUrl,
             "url scheme must be http or https",
@@ -203,19 +203,44 @@ pub async fn download_media_from_url_async(
         ));
     }
 
-    if normalized_run_id.is_empty() {
+    if run_id.is_empty() {
         return Err(AppError::from_code(
             AppErrorCode::InvalidRunId,
             "run_id is empty",
         ));
     }
 
-    if normalized_format_id.is_empty() {
+    if format_id.is_empty() {
         return Err(AppError::from_code(
             AppErrorCode::InvalidFormatId,
             "format_id is empty",
         ));
     }
+
+    Ok(ValidatedDownloadInputs {
+        url,
+        run_id,
+        format_id,
+    })
+}
+
+pub async fn download_media_from_url_async(
+    app: &AppHandle,
+    url: &str,
+    library_path: &str,
+    run_id: &str,
+    format_id: &str,
+    download_live_chat: bool,
+    skip_auto_thumbnail_download: bool,
+    cookies_browser: Option<&str>,
+    cookies_path: Option<&str>,
+) -> AppResult<DownloadedMediaResult> {
+    let validated = validate_download_inputs(url, library_path, run_id, format_id)?;
+    let normalized_url = validated.url;
+    let normalized_run_id = validated.run_id;
+    let normalized_format_id = validated.format_id;
+    let normalized_cookies_browser = normalize_cookies_browser(cookies_browser);
+    let normalized_cookies_path = normalize_cookies_path(cookies_path);
 
     let cancel_flag = register_download_run(&normalized_run_id).await?;
     let yt_dlp = resolve_yt_dlp_binary(app)?;
@@ -757,4 +782,123 @@ pub async fn download_media_from_url_async(
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_temp_dir(suffix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+
+        std::env::temp_dir().join(format!(
+            "kavynex-download-test-{}-{}-{}",
+            std::process::id(),
+            nanos,
+            suffix
+        ))
+    }
+
+    #[test]
+    fn validate_download_inputs_accepts_and_trims_valid_request() {
+        let validated = validate_download_inputs(
+            "  https://www.youtube.com/watch?v=x  ",
+            "/library",
+            "  run-1 ",
+            " 137+140 ",
+        )
+        .unwrap();
+
+        assert_eq!(validated.url, "https://www.youtube.com/watch?v=x");
+        assert_eq!(validated.run_id, "run-1");
+        assert_eq!(validated.format_id, "137+140");
+    }
+
+    #[test]
+    fn validate_download_inputs_rejects_empty_url() {
+        let error = validate_download_inputs("   ", "/library", "run", "137").unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+    }
+
+    #[test]
+    fn validate_download_inputs_rejects_non_http_scheme() {
+        for url in ["file:///etc/passwd", "ftp://host/x", "javascript:alert(1)"] {
+            let error = validate_download_inputs(url, "/library", "run", "137").unwrap_err();
+            assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str(), "url: {url}");
+        }
+    }
+
+    #[test]
+    fn validate_download_inputs_rejects_empty_library_run_and_format() {
+        assert_eq!(
+            validate_download_inputs("https://x", "  ", "run", "137")
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidLibraryPath.as_str()
+        );
+        assert_eq!(
+            validate_download_inputs("https://x", "/lib", "  ", "137")
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidRunId.as_str()
+        );
+        assert_eq!(
+            validate_download_inputs("https://x", "/lib", "run", "  ")
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidFormatId.as_str()
+        );
+    }
+
+    #[test]
+    fn infer_is_live_detects_live_states() {
+        assert!(infer_is_live(None, Some(true)));
+        assert!(infer_is_live(Some("is_live"), None));
+        assert!(infer_is_live(Some("was_live"), Some(false)));
+        assert!(infer_is_live(Some("POST_LIVE"), None));
+        assert!(infer_is_live(Some("  is_live  "), None));
+    }
+
+    #[test]
+    fn infer_is_live_false_for_non_live() {
+        assert!(!infer_is_live(None, None));
+        assert!(!infer_is_live(Some("not_live"), Some(false)));
+        assert!(!infer_is_live(Some(""), None));
+    }
+
+    #[test]
+    fn build_app_live_chat_relative_path_uses_forward_slashes() {
+        let path = build_app_live_chat_relative_path(Path::new("youtube_abc.live_chat.json"));
+        assert_eq!(path, "live_chat/youtube_abc.live_chat.json");
+    }
+
+    #[test]
+    fn find_live_chat_temp_file_matches_prefix_and_live_chat_token() {
+        let dir = unique_temp_dir("live-chat");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("youtube_ID_137.live_chat.json"), b"{}").unwrap();
+        fs::write(dir.join("youtube_ID_137.mp4"), b"x").unwrap();
+
+        let found = find_live_chat_temp_file(&dir, "youtube_ID_137").unwrap();
+        assert_eq!(
+            found.file_name().unwrap().to_string_lossy(),
+            "youtube_ID_137.live_chat.json"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_live_chat_temp_file_returns_none_without_live_chat_file() {
+        let dir = unique_temp_dir("no-live-chat");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("youtube_ID_137.mp4"), b"x").unwrap();
+
+        assert!(find_live_chat_temp_file(&dir, "youtube_ID_137").is_none());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
