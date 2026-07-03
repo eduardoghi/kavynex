@@ -302,7 +302,9 @@ export function useMediaActions({
             }
 
             try {
-                await openExternalUrl(`https://www.youtube.com/watch?v=${youtubeVideoId}`);
+                await openExternalUrl(
+                    `https://www.youtube.com/watch?v=${encodeURIComponent(youtubeVideoId)}`
+                );
             } catch (error) {
                 logError("media-actions", "Failed to open media source on YouTube.", error, {
                     mediaId: media.id,

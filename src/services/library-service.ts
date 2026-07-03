@@ -180,5 +180,19 @@ export async function openExternalUrl(url: string): Promise<void> {
         throw new Error("URL is required.");
     }
 
+    // Only allow http(s) links to reach the system opener. Blocks file:, javascript:
+    // and custom-scheme URLs from being opened, even if a caller passes an untrusted value.
+    let parsedUrl: URL;
+
+    try {
+        parsedUrl = new URL(normalizedUrl);
+    } catch {
+        throw new Error("Invalid URL.");
+    }
+
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        throw new Error("Only http and https URLs can be opened.");
+    }
+
     await openUrl(normalizedUrl);
 }
