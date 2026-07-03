@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 use crate::services::database::db_error;
 use crate::AppResult;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 const CHANNELS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,24 +57,6 @@ const VIDEO_COMMENTS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS video_comment
     FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
 )";
 
-const VIDEO_LIVE_CHAT_MESSAGES_TABLE_DDL: &str =
-    "CREATE TABLE IF NOT EXISTS video_live_chat_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    video_id INTEGER NOT NULL,
-    message_id TEXT,
-    message_offset_ms INTEGER NOT NULL DEFAULT 0,
-    author_name TEXT NOT NULL,
-    author_thumbnail TEXT,
-    author_badges TEXT,
-    message_text TEXT NOT NULL,
-    timestamp_text TEXT,
-    amount_text TEXT,
-    header_primary_text TEXT,
-    header_secondary_text TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
-)";
-
 const APP_SETTINGS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -86,9 +68,13 @@ const TABLE_DDLS: &[&str] = &[
     CHANNELS_TABLE_DDL,
     VIDEOS_TABLE_DDL,
     VIDEO_COMMENTS_TABLE_DDL,
-    VIDEO_LIVE_CHAT_MESSAGES_TABLE_DDL,
     APP_SETTINGS_TABLE_DDL,
 ];
+
+// Tables created by older app versions that are no longer used. Live chat is stored as
+// JSON files in the app data directory, never in the database, so this table was always
+// empty. Dropped on startup to remove it from existing databases.
+const LEGACY_TABLE_DROPS: &[&str] = &["DROP TABLE IF EXISTS video_live_chat_messages"];
 
 const INDEX_DDLS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)",
@@ -107,8 +93,6 @@ const INDEX_DDLS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)",
     "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)",
     "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)",
-    "CREATE INDEX IF NOT EXISTS idx_video_live_chat_messages_video_id ON video_live_chat_messages(video_id)",
-    "CREATE INDEX IF NOT EXISTS idx_video_live_chat_messages_video_time ON video_live_chat_messages(video_id, message_offset_ms)",
 ];
 
 /// Additive columns for the videos table. Fresh databases already get these from the
@@ -153,6 +137,13 @@ async fn ensure_videos_additive_columns(pool: &SqlitePool) -> AppResult<()> {
 /// safe to run on every startup. Runs as part of the shared pool initialization, so it
 /// completes before any query executes.
 pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
+    for ddl in LEGACY_TABLE_DROPS {
+        sqlx::query(ddl)
+            .execute(pool)
+            .await
+            .map_err(|error| db_error("failed to drop legacy table", error))?;
+    }
+
     for ddl in TABLE_DDLS {
         sqlx::query(ddl)
             .execute(pool)
@@ -195,13 +186,7 @@ mod tests {
         let pool = memory_pool().await;
         ensure_schema(&pool).await.unwrap();
 
-        for table in [
-            "channels",
-            "videos",
-            "video_comments",
-            "video_live_chat_messages",
-            "app_settings",
-        ] {
+        for table in ["channels", "videos", "video_comments", "app_settings"] {
             let (count,): (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
             )
@@ -211,6 +196,32 @@ mod tests {
             .unwrap();
             assert_eq!(count, 1, "expected table {table} to exist");
         }
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_drops_legacy_live_chat_messages_table() {
+        let pool = memory_pool().await;
+
+        sqlx::query(
+            "CREATE TABLE video_live_chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL,
+                message_text TEXT NOT NULL
+            );",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        ensure_schema(&pool).await.unwrap();
+
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'video_live_chat_messages'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(count, 0, "legacy live chat table should have been dropped");
     }
 
     #[tokio::test]
