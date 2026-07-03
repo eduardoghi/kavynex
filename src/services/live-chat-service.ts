@@ -9,13 +9,20 @@ import {
 } from "@tauri-apps/plugin-fs";
 import { createAppError } from "../utils/app-error";
 
+export type LiveChatBadgeType = "owner" | "moderator" | "member" | "verified" | "other";
+
+export type LiveChatAuthorBadge = {
+    type: LiveChatBadgeType;
+    label: string;
+};
+
 export type LiveChatMessageItem = {
     message_id: string | null;
     message_offset_ms: number;
     author_name: string;
     author_channel_id: string | null;
     author_thumbnail: string | null;
-    author_badges: string | null;
+    author_badges: LiveChatAuthorBadge[];
     message_text: string;
     timestamp_text: string | null;
     amount_text: string | null;
@@ -106,6 +113,65 @@ function parseAuthorChannelId(renderer: Record<string, unknown>): string | null 
     return null;
 }
 
+function defaultBadgeLabel(type: LiveChatBadgeType): string {
+    switch (type) {
+        case "owner":
+            return "Owner";
+        case "moderator":
+            return "Moderator";
+        case "member":
+            return "Member";
+        case "verified":
+            return "Verified";
+        default:
+            return "Badge";
+    }
+}
+
+function parseAuthorBadges(renderer: Record<string, unknown>): LiveChatAuthorBadge[] {
+    const rawBadges = renderer.authorBadges;
+
+    if (!Array.isArray(rawBadges)) {
+        return [];
+    }
+
+    const badges: LiveChatAuthorBadge[] = [];
+
+    for (const rawBadge of rawBadges) {
+        const badgeRenderer = (rawBadge as Record<string, unknown>)?.liveChatAuthorBadgeRenderer as
+            | Record<string, unknown>
+            | undefined;
+
+        if (!badgeRenderer) {
+            continue;
+        }
+
+        const icon = badgeRenderer.icon as Record<string, unknown> | undefined;
+        const iconType = typeof icon?.iconType === "string" ? icon.iconType.toUpperCase() : "";
+        const hasCustomThumbnail = Boolean(badgeRenderer.customThumbnail);
+        const tooltip = typeof badgeRenderer.tooltip === "string" ? badgeRenderer.tooltip.trim() : "";
+
+        let type: LiveChatBadgeType;
+
+        if (iconType === "OWNER") {
+            type = "owner";
+        } else if (iconType === "MODERATOR") {
+            type = "moderator";
+        } else if (iconType === "VERIFIED") {
+            type = "verified";
+        } else if (hasCustomThumbnail) {
+            // Member badges carry a custom image instead of a standard icon type.
+            type = "member";
+        } else {
+            type = "other";
+        }
+
+        badges.push({ type, label: tooltip || defaultBadgeLabel(type) });
+    }
+
+    return badges;
+}
+
 function parseTimestampText(renderer: Record<string, unknown>): string | null {
     const timestampText = renderer.timestampText as Record<string, unknown> | undefined;
 
@@ -177,7 +243,7 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
             author_name: parseAuthorName(textRenderer),
             author_channel_id: parseAuthorChannelId(textRenderer),
             author_thumbnail: parseAuthorThumbnail(textRenderer),
-            author_badges: null,
+            author_badges: parseAuthorBadges(textRenderer),
             message_text: messageText,
             timestamp_text: parseTimestampText(textRenderer),
             amount_text: null,

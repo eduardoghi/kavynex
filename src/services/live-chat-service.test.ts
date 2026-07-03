@@ -54,6 +54,49 @@ describe("readLiveChatMessagesFromFile", () => {
         });
     });
 
+    it("parses author badges (owner and member)", async () => {
+        vi.mocked(readTextFile).mockResolvedValue(
+            rawLine({
+                message: { runs: [{ text: "hi" }] },
+                authorName: { simpleText: "@owner" },
+                authorBadges: [
+                    {
+                        liveChatAuthorBadgeRenderer: {
+                            icon: { iconType: "OWNER" },
+                            tooltip: "Owner",
+                        },
+                    },
+                    {
+                        liveChatAuthorBadgeRenderer: {
+                            customThumbnail: { thumbnails: [{ url: "x" }] },
+                            tooltip: "Member (6 months)",
+                        },
+                    },
+                ],
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.author_badges).toEqual([
+            { type: "owner", label: "Owner" },
+            { type: "member", label: "Member (6 months)" },
+        ]);
+    });
+
+    it("returns an empty badge list when there are no badges", async () => {
+        vi.mocked(readTextFile).mockResolvedValue(
+            rawLine({
+                message: { runs: [{ text: "hi" }] },
+                authorName: { simpleText: "bob" },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.author_badges).toEqual([]);
+    });
+
     it("returns null author_channel_id when absent", async () => {
         vi.mocked(readTextFile).mockResolvedValue(
             rawLine({
