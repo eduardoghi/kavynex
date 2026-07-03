@@ -4,7 +4,7 @@ import { useElementSize, useWindowEvent } from "@mantine/hooks";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
-import { MediaCard } from "./media-card";
+import { MediaCard, MEDIA_CARD_HEIGHT } from "./media-card";
 
 type MediaGridProps = {
     items: MediaRow[];
@@ -27,7 +27,6 @@ type MediaGridProps = {
 
 const GRID_GAP = 16;
 const GRID_HEIGHT = "70vh";
-const CARD_ESTIMATED_HEIGHT = 292;
 
 function getColumnCount(width: number): number {
     if (width >= 1200) {
@@ -71,7 +70,7 @@ export function MediaGrid({
     const restoreFrameRef = useRef<number | null>(null);
     const restoreSecondFrameRef = useRef<number | null>(null);
     const { ref: measureRef, width } = useElementSize();
-    const [rowHeight, setRowHeight] = useState(CARD_ESTIMATED_HEIGHT);
+    const [rowHeight, setRowHeight] = useState(MEDIA_CARD_HEIGHT);
 
     const columnCount = useMemo(() => getColumnCount(width), [width]);
 

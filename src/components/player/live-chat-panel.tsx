@@ -12,6 +12,7 @@ import {
 } from "@mantine/core";
 import { MessageCircle } from "lucide-react";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
+import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { SafeAvatar } from "./safe-avatar";
 
 type LiveChatPanelProps = {
@@ -20,30 +21,6 @@ type LiveChatPanelProps = {
     isLoadingLiveChat: boolean;
     shellBorder: string;
 };
-
-function resolveAvatarSrc(value: string | null): string | undefined {
-    const normalized = value?.trim() ?? "";
-
-    if (!normalized) {
-        return undefined;
-    }
-
-    if (/^https?:\/\//i.test(normalized)) {
-        return normalized;
-    }
-
-    return undefined;
-}
-
-function liveChatInitials(authorName: string): string {
-    const cleaned = authorName.replace(/^@+/, "").trim();
-
-    if (!cleaned) {
-        return "?";
-    }
-
-    return cleaned.slice(0, 2).toUpperCase();
-}
 
 type LiveChatItemProps = {
     message: LiveChatMessageItem;
@@ -57,7 +34,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
         <Group align="flex-start" gap="sm" wrap="nowrap">
             <SafeAvatar
                 src={avatarSrc}
-                initials={liveChatInitials(message.author_name)}
+                initials={avatarInitials(message.author_name)}
                 shellBorder={shellBorder}
                 size={32}
             />

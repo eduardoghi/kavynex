@@ -18,6 +18,7 @@ import { ChevronDown, ChevronUp, MessageCircle, Search, ThumbsUp, X } from "luci
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
 import { formatPublishedDate } from "../../utils/media-utils";
+import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { SafeAvatar } from "./safe-avatar";
 
 type CommentTreeNode = MediaCommentRow & {
@@ -101,20 +102,6 @@ function formatCommentPublishedAt(value: string | null, timeText: string | null)
 
     const formatted = formatPublishedDate(normalized);
     return formatted || normalized;
-}
-
-function resolveAvatarSrc(value: string | null): string | undefined {
-    const normalized = value?.trim() ?? "";
-
-    if (!normalized) {
-        return undefined;
-    }
-
-    if (/^https?:\/\//i.test(normalized)) {
-        return normalized;
-    }
-
-    return undefined;
 }
 
 function compareComments(
@@ -227,16 +214,6 @@ function countCommentsInTree(nodes: CommentTreeNode[]): number {
     }, 0);
 }
 
-function commentInitials(authorName: string): string {
-    const cleaned = authorName.replace(/^@+/, "").trim();
-
-    if (!cleaned) {
-        return "?";
-    }
-
-    return cleaned.slice(0, 2).toUpperCase();
-}
-
 type CommentItemProps = {
     comment: CommentTreeNode;
     shellBorder: string;
@@ -266,7 +243,7 @@ function CommentItem({
             <Group align="flex-start" gap="sm" wrap="nowrap">
                 <SafeAvatar
                     src={avatarSrc}
-                    initials={commentInitials(comment.author_name)}
+                    initials={avatarInitials(comment.author_name)}
                     shellBorder={shellBorder}
                     size={level > 0 ? 30 : 36}
                 />

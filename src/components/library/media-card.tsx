@@ -32,7 +32,7 @@ type MediaCardProps = {
     onEditTitle?: (media: MediaRow) => void;
 };
 
-const MEDIA_CARD_HEIGHT = 292;
+export const MEDIA_CARD_HEIGHT = 292;
 const MEDIA_THUMBNAIL_HEIGHT = 158;
 const MEDIA_TITLE_HEIGHT = 44;
 const MEDIA_FOOTER_HEIGHT = 28;

@@ -201,16 +201,6 @@ function parseDateOnly(value: string): Date | null {
         return new Date(year, month - 1, day);
     }
 
-    const usMatch = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-
-    if (usMatch) {
-        const month = Number(usMatch[1]);
-        const day = Number(usMatch[2]);
-        const year = Number(usMatch[3]);
-
-        return new Date(year, month - 1, day);
-    }
-
     return null;
 }
 

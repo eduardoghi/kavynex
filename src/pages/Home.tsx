@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
     AppShell,
     Box,
@@ -10,6 +10,7 @@ import { EmptyStateCard } from "../components/common/empty-state-card";
 import { LoadingStateCard } from "../components/common/loading-state-card";
 import { SelectedChannelLibrarySection } from "../components/home/selected-channel-library-section";
 import { HomeModals } from "../components/home/home-modals";
+import { EditMediaTitleModal } from "../components/modals/edit-media-title-modal";
 import { AppHeader } from "../components/layout/app-header";
 import { ChannelSidebar } from "../components/layout/channel-sidebar";
 import { MediaPlayerView } from "../components/player/media-player-view";
@@ -39,15 +40,19 @@ export default function Home(): JSX.Element {
         openMediaSourceInYoutube,
     } = controller;
 
-    const handleEditMediaTitle = useCallback(
-        async (media: MediaRow): Promise<void> => {
-            const nextTitle = window.prompt("Edit media title", media.title);
+    const [editTitleMedia, setEditTitleMedia] = useState<MediaRow | null>(null);
+    const [isSavingTitle, setIsSavingTitle] = useState(false);
 
-            if (nextTitle === null) {
-                return;
+    const handleSaveMediaTitle = useCallback(
+        async (media: MediaRow, title: string): Promise<void> => {
+            setIsSavingTitle(true);
+
+            try {
+                await editMediaTitle(media, title);
+                setEditTitleMedia(null);
+            } finally {
+                setIsSavingTitle(false);
             }
-
-            await editMediaTitle(media, nextTitle);
         },
         [editMediaTitle]
     );
@@ -72,12 +77,9 @@ export default function Home(): JSX.Element {
         [openMediaSourceInYoutube]
     );
 
-    const handleEditTitle = useCallback(
-        (media: MediaRow) => {
-            void handleEditMediaTitle(media);
-        },
-        [handleEditMediaTitle]
-    );
+    const handleEditTitle = useCallback((media: MediaRow) => {
+        setEditTitleMedia(media);
+    }, []);
 
     return (
         <Box
@@ -207,6 +209,13 @@ export default function Home(): JSX.Element {
                     </Container>
 
                     <HomeModals controller={controller} />
+
+                    <EditMediaTitleModal
+                        media={editTitleMedia}
+                        loading={isSavingTitle}
+                        onClose={() => setEditTitleMedia(null)}
+                        onSave={(media, title) => void handleSaveMediaTitle(media, title)}
+                    />
                 </AppShell.Main>
             </AppShell>
         </Box>
