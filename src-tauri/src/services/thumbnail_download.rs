@@ -1,4 +1,5 @@
 use std::fs;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -8,6 +9,7 @@ use hyper::body::Bytes;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use tauri::AppHandle;
+use tokio::net::lookup_host;
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -95,6 +97,92 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
         })
 }
 
+fn is_disallowed_ipv4(addr: &Ipv4Addr) -> bool {
+    let octets = addr.octets();
+
+    addr.is_loopback()
+        || addr.is_private()
+        || addr.is_link_local()
+        || addr.is_broadcast()
+        || addr.is_documentation()
+        || addr.is_multicast()
+        || addr.is_unspecified()
+        || octets[0] == 0 // 0.0.0.0/8 "this host on this network"
+        || (octets[0] == 100 && (64..=127).contains(&octets[1])) // 100.64.0.0/10 CGNAT
+        || octets[0] >= 240 // 240.0.0.0/4 reserved
+}
+
+fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
+    if let Some(mapped) = addr.to_ipv4_mapped() {
+        return is_disallowed_ipv4(&mapped);
+    }
+
+    let first_segment = addr.segments()[0];
+
+    addr.is_loopback()
+        || addr.is_unspecified()
+        || addr.is_multicast()
+        || (first_segment & 0xfe00) == 0xfc00 // fc00::/7 unique local
+        || (first_segment & 0xffc0) == 0xfe80 // fe80::/10 link local
+}
+
+/// Rejects addresses that must never be fetched from a user-provided URL: loopback,
+/// private, link-local (incl. cloud metadata 169.254.169.254), multicast and reserved.
+fn is_disallowed_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(addr) => is_disallowed_ipv4(addr),
+        IpAddr::V6(addr) => is_disallowed_ipv6(addr),
+    }
+}
+
+/// Resolves the host of `uri` and rejects it if it maps to any private, loopback or
+/// reserved address (SSRF guard). Applied to the initial URL and every redirect target.
+///
+/// This checks the resolved addresses before the request; it does not pin the connection
+/// to a validated address, so a determined DNS-rebinding attacker could still race it.
+/// That residual risk is acceptable for a local desktop app fetching image thumbnails.
+async fn assert_url_host_is_public(uri: &Uri) -> AppResult<()> {
+    let host = uri.host().ok_or_else(|| {
+        AppError::from_code(AppErrorCode::InvalidUrl, "thumbnail url has no host")
+    })?;
+
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+
+    let port = uri.port_u16().unwrap_or_else(|| match uri.scheme_str() {
+        Some("http") => 80,
+        _ => 443,
+    });
+
+    let addresses = lookup_host((host, port)).await.map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            format!("failed to resolve thumbnail host: {e}"),
+        )
+    })?;
+
+    let mut resolved_any = false;
+
+    for address in addresses {
+        resolved_any = true;
+
+        if is_disallowed_ip(&address.ip()) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidUrl,
+                "thumbnail url resolves to a private, loopback or reserved address",
+            ));
+        }
+    }
+
+    if !resolved_any {
+        return Err(AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            "thumbnail host did not resolve to any address",
+        ));
+    }
+
+    Ok(())
+}
+
 /// Downloads `url` over HTTPS (or HTTP), follows up to DIRECT_THUMBNAIL_MAX_REDIRECTS
 /// redirects, streams the body with a hard cap of DIRECT_THUMBNAIL_MAX_BYTES, and
 /// validates Content-Type when present. Returns (status, headers, body).
@@ -121,6 +209,8 @@ async fn http_get_image(
         .map_err(|e| AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}")))?;
 
     for _ in 0..=DIRECT_THUMBNAIL_MAX_REDIRECTS {
+        assert_url_host_is_public(&uri).await?;
+
         let req = hyper::Request::get(uri.clone())
             .body(Empty::new())
             .map_err(|e| {
@@ -726,6 +816,71 @@ mod tests {
 
     fn uri(s: &str) -> Uri {
         s.parse().unwrap()
+    }
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn is_disallowed_ip_blocks_private_and_reserved_ranges() {
+        for blocked in [
+            "127.0.0.1",        // loopback
+            "10.1.2.3",         // private
+            "172.16.5.4",       // private
+            "192.168.0.10",     // private
+            "169.254.169.254",  // link-local / cloud metadata
+            "100.64.0.1",       // CGNAT
+            "0.0.0.0",          // unspecified
+            "240.0.0.1",        // reserved
+            "224.0.0.1",        // multicast
+            "::1",              // ipv6 loopback
+            "fe80::1",          // ipv6 link local
+            "fc00::1",          // ipv6 unique local
+            "::ffff:127.0.0.1", // ipv4-mapped loopback
+        ] {
+            assert!(
+                is_disallowed_ip(&ip(blocked)),
+                "{blocked} should be blocked"
+            );
+        }
+    }
+
+    #[test]
+    fn is_disallowed_ip_allows_public_addresses() {
+        for allowed in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "142.250.72.238",
+            "2606:4700:4700::1111",
+        ] {
+            assert!(
+                !is_disallowed_ip(&ip(allowed)),
+                "{allowed} should be allowed"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn assert_url_host_rejects_loopback_and_metadata_literals() {
+        assert!(assert_url_host_is_public(&uri("http://127.0.0.1/x.png"))
+            .await
+            .is_err());
+        assert!(
+            assert_url_host_is_public(&uri("http://169.254.169.254/latest/meta-data"))
+                .await
+                .is_err()
+        );
+        assert!(assert_url_host_is_public(&uri("http://[::1]:8080/x.png"))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn assert_url_host_allows_public_literal() {
+        assert!(assert_url_host_is_public(&uri("https://8.8.8.8/x.png"))
+            .await
+            .is_ok());
     }
 
     #[test]
