@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
+    Anchor,
     Badge,
     Box,
     Divider,
@@ -12,6 +13,7 @@ import {
 } from "@mantine/core";
 import { MessageCircle } from "lucide-react";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
+import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { SafeAvatar } from "./safe-avatar";
 
@@ -29,6 +31,7 @@ type LiveChatItemProps = {
 
 function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element {
     const avatarSrc = resolveAvatarSrc(message.author_thumbnail);
+    const authorChannelId = message.author_channel_id;
 
     return (
         <Group align="flex-start" gap="sm" wrap="nowrap">
@@ -41,9 +44,22 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
 
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
                 <Group gap={8} wrap="wrap">
-                    <Text fw={800} size="sm">
-                        {message.author_name}
-                    </Text>
+                    {authorChannelId ? (
+                        <Anchor
+                            fw={800}
+                            size="sm"
+                            c="blue.4"
+                            title="Open channel on YouTube"
+                            style={{ cursor: "pointer" }}
+                            onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
+                        >
+                            {message.author_name}
+                        </Anchor>
+                    ) : (
+                        <Text fw={800} size="sm">
+                            {message.author_name}
+                        </Text>
+                    )}
 
                     {message.author_badges && (
                         <Badge size="xs" radius="sm" variant="light" color="yellow">

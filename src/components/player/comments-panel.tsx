@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
     ActionIcon,
+    Anchor,
     Badge,
     Box,
     Button,
@@ -19,6 +20,7 @@ import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
 import { formatPublishedDate } from "../../utils/media-utils";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
+import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { SafeAvatar } from "./safe-avatar";
 
 type CommentTreeNode = MediaCommentRow & {
@@ -236,6 +238,7 @@ function CommentItem({
             ? `1 ${UI_TEXT.comments.reply}`
             : `${replyCount} ${UI_TEXT.comments.replies}`;
     const avatarSrc = resolveAvatarSrc(comment.author_thumbnail);
+    const authorChannelId = comment.author_channel_id;
     const repliesVisible = forceExpandReplies || expandedReplies;
 
     return (
@@ -250,9 +253,22 @@ function CommentItem({
 
                 <Stack gap={6} style={{ minWidth: 0, flex: 1 }}>
                     <Group gap={8} wrap="wrap">
-                        <Text fw={800} size="sm">
-                            {comment.author_handle?.trim() || comment.author_name}
-                        </Text>
+                        {authorChannelId ? (
+                            <Anchor
+                                fw={800}
+                                size="sm"
+                                c="blue.4"
+                                title="Open channel on YouTube"
+                                style={{ cursor: "pointer" }}
+                                onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
+                            >
+                                {comment.author_handle?.trim() || comment.author_name}
+                            </Anchor>
+                        ) : (
+                            <Text fw={800} size="sm">
+                                {comment.author_handle?.trim() || comment.author_name}
+                            </Text>
+                        )}
 
                         {Boolean(comment.is_author_uploader) && (
                             <Badge size="xs" radius="sm" variant="filled" color="dark">

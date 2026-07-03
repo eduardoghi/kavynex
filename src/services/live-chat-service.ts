@@ -13,6 +13,7 @@ export type LiveChatMessageItem = {
     message_id: string | null;
     message_offset_ms: number;
     author_name: string;
+    author_channel_id: string | null;
     author_thumbnail: string | null;
     author_badges: string | null;
     message_text: string;
@@ -95,6 +96,16 @@ function parseAuthorThumbnail(renderer: Record<string, unknown>): string | null 
     return null;
 }
 
+function parseAuthorChannelId(renderer: Record<string, unknown>): string | null {
+    const value = renderer.authorExternalChannelId;
+
+    if (typeof value === "string" && value.trim()) {
+        return value.trim();
+    }
+
+    return null;
+}
+
 function parseTimestampText(renderer: Record<string, unknown>): string | null {
     const timestampText = renderer.timestampText as Record<string, unknown> | undefined;
 
@@ -164,6 +175,7 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
             message_id: messageId,
             message_offset_ms: replayOffsetMs,
             author_name: parseAuthorName(textRenderer),
+            author_channel_id: parseAuthorChannelId(textRenderer),
             author_thumbnail: parseAuthorThumbnail(textRenderer),
             author_badges: null,
             message_text: messageText,
