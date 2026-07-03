@@ -62,15 +62,14 @@ pub async fn insert_channel(
     youtube_handle: &str,
     avatar_path: Option<&str>,
 ) -> AppResult<Option<i64>> {
-    let result = sqlx::query(
-        "INSERT INTO channels (name, youtube_handle, avatar_path) VALUES (?, ?, ?)",
-    )
-    .bind(name)
-    .bind(youtube_handle)
-    .bind(avatar_path)
-    .execute(pool)
-    .await
-    .map_err(|error| db_error("failed to insert channel", error))?;
+    let result =
+        sqlx::query("INSERT INTO channels (name, youtube_handle, avatar_path) VALUES (?, ?, ?)")
+            .bind(name)
+            .bind(youtube_handle)
+            .bind(avatar_path)
+            .execute(pool)
+            .await
+            .map_err(|error| db_error("failed to insert channel", error))?;
 
     let inserted_id = result.last_insert_rowid();
 
@@ -180,14 +179,13 @@ pub async fn count_channels_using_avatar_path_outside_channel(
     avatar_path: &str,
     channel_id: i64,
 ) -> AppResult<i64> {
-    let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) AS total FROM channels WHERE avatar_path = ? AND id <> ?",
-    )
-    .bind(avatar_path)
-    .bind(channel_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|error| db_error("failed to count channels using avatar path", error))?;
+    let (total,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) AS total FROM channels WHERE avatar_path = ? AND id <> ?")
+            .bind(avatar_path)
+            .bind(channel_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|error| db_error("failed to count channels using avatar path", error))?;
 
     Ok(total)
 }
@@ -327,7 +325,9 @@ mod tests {
     #[tokio::test]
     async fn find_channel_by_youtube_handle_works() {
         let pool = create_test_pool().await;
-        insert_channel(&pool, "Alice", "@alice", None).await.unwrap();
+        insert_channel(&pool, "Alice", "@alice", None)
+            .await
+            .unwrap();
 
         assert_eq!(
             find_channel_by_youtube_handle(&pool, "@alice")

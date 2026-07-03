@@ -87,10 +87,7 @@ pub async fn update_media_title(pool: &SqlitePool, media_id: i64, title: &str) -
     Ok(())
 }
 
-pub async fn list_media_by_channel(
-    pool: &SqlitePool,
-    channel_id: i64,
-) -> AppResult<Vec<MediaRow>> {
+pub async fn list_media_by_channel(pool: &SqlitePool, channel_id: i64) -> AppResult<Vec<MediaRow>> {
     sqlx::query_as::<_, MediaRow>(&format!(
         "SELECT {MEDIA_COLUMNS} FROM videos WHERE channel_id = ? ORDER BY created_at DESC, id DESC"
     ))
@@ -240,14 +237,13 @@ pub async fn count_media_using_thumbnail_outside_media(
     thumbnail_path: &str,
     media_id: i64,
 ) -> AppResult<i64> {
-    let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) AS total FROM videos WHERE thumbnail_path = ? AND id <> ?",
-    )
-    .bind(thumbnail_path)
-    .bind(media_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|error| db_error("failed to count media using thumbnail", error))?;
+    let (total,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) AS total FROM videos WHERE thumbnail_path = ? AND id <> ?")
+            .bind(thumbnail_path)
+            .bind(media_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|error| db_error("failed to count media using thumbnail", error))?;
 
     Ok(total)
 }
@@ -354,8 +350,17 @@ mod tests {
         let pool = create_test_pool().await;
 
         let id = insert_media(
-            &pool, 1, "Video A", "video/a.mp4", Some("thumb/a.jpg"), "video", Some("yt1"),
-            Some("2026-01-01"), Some(120), false, None,
+            &pool,
+            1,
+            "Video A",
+            "video/a.mp4",
+            Some("thumb/a.jpg"),
+            "video",
+            Some("yt1"),
+            Some("2026-01-01"),
+            Some(120),
+            false,
+            None,
         )
         .await
         .unwrap()
@@ -379,7 +384,16 @@ mod tests {
         let pool = create_test_pool().await;
 
         let id = insert_media(
-            &pool, 1, "Live", "video/live.mp4", None, "video", None, None, None, true,
+            &pool,
+            1,
+            "Live",
+            "video/live.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            true,
             Some("live_chat/live.json"),
         )
         .await
@@ -393,7 +407,10 @@ mod tests {
         assert_eq!(found.id, id);
         assert_eq!(found.is_live, 1);
         assert_eq!(found.has_live_chat, 1);
-        assert_eq!(found.live_chat_file_path.as_deref(), Some("live_chat/live.json"));
+        assert_eq!(
+            found.live_chat_file_path.as_deref(),
+            Some("live_chat/live.json")
+        );
     }
 
     #[tokio::test]
@@ -401,14 +418,34 @@ mod tests {
         let pool = create_test_pool().await;
 
         let first = insert_media(
-            &pool, 1, "A", "video/a.mp4", None, "video", None, None, None, false, None,
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
         )
         .await
         .unwrap()
         .unwrap();
 
         let second = insert_media(
-            &pool, 1, "A duplicate", "video/a.mp4", None, "video", None, None, None, false, None,
+            &pool,
+            1,
+            "A duplicate",
+            "video/a.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
         )
         .await
         .unwrap()
@@ -426,7 +463,17 @@ mod tests {
     async fn update_title_and_watched_state_and_progress() {
         let pool = create_test_pool().await;
         let id = insert_media(
-            &pool, 1, "A", "video/a.mp4", None, "video", None, None, None, false, None,
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
         )
         .await
         .unwrap()
@@ -472,14 +519,32 @@ mod tests {
     async fn delete_and_counts_and_stats() {
         let pool = create_test_pool().await;
         let a = insert_media(
-            &pool, 1, "A", "video/a.mp4", Some("thumb/s.jpg"), "video", None, None, None, false,
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            Some("thumb/s.jpg"),
+            "video",
+            None,
+            None,
+            None,
+            false,
             None,
         )
         .await
         .unwrap()
         .unwrap();
         insert_media(
-            &pool, 2, "B", "video/a.mp4", Some("thumb/s.jpg"), "audio", None, None, None, false,
+            &pool,
+            2,
+            "B",
+            "video/a.mp4",
+            Some("thumb/s.jpg"),
+            "audio",
+            None,
+            None,
+            None,
+            false,
             None,
         )
         .await

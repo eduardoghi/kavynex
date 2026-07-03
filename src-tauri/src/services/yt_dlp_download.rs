@@ -24,15 +24,15 @@ use crate::services::library_paths::ensure_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
 use crate::services::thumbnail_download::download_thumbnail_for_media_async;
+use crate::services::yt_dlp_cookies::{
+    append_auth_args, normalize_cookies_browser, normalize_cookies_path,
+};
 use crate::services::yt_dlp_events::{
     emit_download_cancelled, emit_download_error, emit_download_finished, emit_download_log,
     infer_log_level,
 };
 use crate::services::yt_dlp_metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
-};
-use crate::services::yt_dlp_cookies::{
-    append_auth_args, normalize_cookies_browser, normalize_cookies_path,
 };
 use crate::services::yt_dlp_registry::{register_download_run, unregister_download_run};
 use crate::utils::format::codec_is_present;
@@ -186,7 +186,10 @@ fn validate_download_inputs(
     let format_id = format_id.trim().to_string();
 
     if url.is_empty() {
-        return Err(AppError::from_code(AppErrorCode::InvalidUrl, "url is empty"));
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "url is empty",
+        ));
     }
 
     if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -224,6 +227,7 @@ fn validate_download_inputs(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async(
     app: &AppHandle,
     url: &str,

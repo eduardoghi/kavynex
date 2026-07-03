@@ -173,6 +173,7 @@ fn select_best_error_detail(
         .unwrap_or_else(|| failed_message.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_yt_dlp_and_capture_json(
     yt_dlp: &str,
     args: &[String],
@@ -383,10 +384,7 @@ fn normalize_comment_metadata(comment: YtDlpCommentMetadata) -> Option<YtDlpComm
         author_name
     };
 
-    let author_handle = author_name
-        .strip_prefix('@')
-        .map(|_| author_name.clone())
-        .or_else(|| None);
+    let author_handle = author_name.strip_prefix('@').map(|_| author_name.clone());
 
     Some(YtDlpComment {
         comment_id: comment
@@ -648,7 +646,6 @@ pub fn normalize_download_metadata(
         published_at,
     ))
 }
-
 
 #[cfg(test)]
 mod tests {

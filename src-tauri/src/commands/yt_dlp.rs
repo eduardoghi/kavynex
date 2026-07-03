@@ -24,6 +24,7 @@ pub async fn list_yt_dlp_formats(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url(
     app: AppHandle,
     url: String,

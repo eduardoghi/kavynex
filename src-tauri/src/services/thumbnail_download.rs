@@ -72,10 +72,7 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
     }
 
     let scheme = current.scheme_str().unwrap_or("https");
-    let authority = current
-        .authority()
-        .map(|a| a.as_str())
-        .unwrap_or_default();
+    let authority = current.authority().map(|a| a.as_str()).unwrap_or_default();
 
     let path = if location.starts_with('/') {
         location.to_string()
@@ -119,9 +116,9 @@ async fn http_get_image(
 
     let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
 
-    let mut uri: Uri = url.parse().map_err(|e| {
-        AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
-    })?;
+    let mut uri: Uri = url
+        .parse()
+        .map_err(|e| AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}")))?;
 
     for _ in 0..=DIRECT_THUMBNAIL_MAX_REDIRECTS {
         let req = hyper::Request::get(uri.clone())
@@ -133,28 +130,29 @@ async fn http_get_image(
                 )
             })?;
 
-        let res = timeout(
-            Duration::from_secs(timeout_secs),
-            client.request(req),
-        )
-        .await
-        .map_err(|_| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailTimeout,
-                "thumbnail download timed out",
-            )
-        })?
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailFailed,
-                format!("thumbnail request failed: {e}"),
-            )
-        })?;
+        let res = timeout(Duration::from_secs(timeout_secs), client.request(req))
+            .await
+            .map_err(|_| {
+                AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailTimeout,
+                    "thumbnail download timed out",
+                )
+            })?
+            .map_err(|e| {
+                AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    format!("thumbnail request failed: {e}"),
+                )
+            })?;
 
         let status = res.status();
 
         if status.is_redirection() {
-            match res.headers().get(http::header::LOCATION).and_then(|v| v.to_str().ok()) {
+            match res
+                .headers()
+                .get(http::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+            {
                 Some(loc) => {
                     uri = resolve_redirect(&uri, loc)?;
                     continue;
@@ -361,11 +359,8 @@ pub async fn download_thumbnail_from_url_async(
         if let Some(ext) = direct_image_extension(&normalized_url) {
             let direct_file_path = thumb_temp_dir.join(format!("direct_thumbnail.{ext}"));
 
-            let (status, headers, buffer) = http_get_image(
-                normalized_url.as_str(),
-                THUMBNAIL_COMMAND_TIMEOUT_SECS,
-            )
-            .await?;
+            let (status, headers, buffer) =
+                http_get_image(normalized_url.as_str(), THUMBNAIL_COMMAND_TIMEOUT_SECS).await?;
 
             if !status.is_success() {
                 return Err(AppError::from_code(
@@ -757,15 +752,15 @@ mod tests {
             &uri("https://img.example.com/path/old.jpg"),
             "/new/image.jpg",
         );
-        assert_eq!(result.unwrap(), uri("https://img.example.com/new/image.jpg"));
+        assert_eq!(
+            result.unwrap(),
+            uri("https://img.example.com/new/image.jpg")
+        );
     }
 
     #[test]
     fn relative_path_redirect_resolved_against_base() {
-        let result = resolve_redirect(
-            &uri("https://img.example.com/a/b/old.jpg"),
-            "new.jpg",
-        );
+        let result = resolve_redirect(&uri("https://img.example.com/a/b/old.jpg"), "new.jpg");
         assert_eq!(result.unwrap(), uri("https://img.example.com/a/b/new.jpg"));
     }
 

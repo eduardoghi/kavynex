@@ -18,10 +18,7 @@ pub fn get_library_summary_sync(library_path: &str) -> AppResult<LibrarySummaryI
 
 /// Resolves `path` relative to `library_path` (or as-is if absolute), verifies that
 /// the result exists and is contained within the library, and returns the canonical path.
-pub fn resolve_path_inside_library(
-    path: &str,
-    library_path: Option<&str>,
-) -> AppResult<PathBuf> {
+pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> AppResult<PathBuf> {
     let normalized = path.trim();
 
     if normalized.is_empty() {
@@ -49,21 +46,19 @@ pub fn resolve_path_inside_library(
         PathBuf::from(base_library).join(candidate)
     };
 
-    let canonical_library =
-        std::fs::canonicalize(base_library).map_err(|_| {
-            AppError::from_code(
-                AppErrorCode::InvalidMediaPath,
-                "library path does not exist or cannot be resolved",
-            )
-        })?;
+    let canonical_library = std::fs::canonicalize(base_library).map_err(|_| {
+        AppError::from_code(
+            AppErrorCode::InvalidMediaPath,
+            "library path does not exist or cannot be resolved",
+        )
+    })?;
 
-    let canonical_path =
-        std::fs::canonicalize(&resolved_path).map_err(|_| {
-            AppError::from_code(
-                AppErrorCode::InvalidMediaPath,
-                format!("path does not exist: {}", resolved_path.to_string_lossy()),
-            )
-        })?;
+    let canonical_path = std::fs::canonicalize(&resolved_path).map_err(|_| {
+        AppError::from_code(
+            AppErrorCode::InvalidMediaPath,
+            format!("path does not exist: {}", resolved_path.to_string_lossy()),
+        )
+    })?;
 
     if !canonical_path.starts_with(&canonical_library) {
         return Err(AppError::from_code(
@@ -75,6 +70,9 @@ pub fn resolve_path_inside_library(
     Ok(canonical_path)
 }
 
+// Each platform block ends with an explicit `return` because the sibling `#[cfg]` blocks
+// are stripped per-target, so the active block is a statement, not the function tail.
+#[allow(clippy::needless_return)]
 pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppResult<()> {
     let canonical_path = resolve_path_inside_library(path, library_path)?;
 
@@ -187,8 +185,7 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
-            msg.contains("outside the library directory")
-                || msg.contains("does not exist"),
+            msg.contains("outside the library directory") || msg.contains("does not exist"),
             "unexpected error: {msg}"
         );
         let _ = fs::remove_dir_all(&library);
@@ -198,15 +195,12 @@ mod tests {
     fn rejects_relative_traversal_outside_library() {
         let library = make_temp_library("traversal-check");
 
-        let result = resolve_path_inside_library(
-            "../../etc/passwd",
-            Some(library.to_str().unwrap()),
-        );
+        let result =
+            resolve_path_inside_library("../../etc/passwd", Some(library.to_str().unwrap()));
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
-            msg.contains("outside the library directory")
-                || msg.contains("does not exist"),
+            msg.contains("outside the library directory") || msg.contains("does not exist"),
             "unexpected error: {msg}"
         );
         let _ = fs::remove_dir_all(&library);

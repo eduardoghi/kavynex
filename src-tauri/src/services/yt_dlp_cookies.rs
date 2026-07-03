@@ -65,12 +65,17 @@ mod tests {
 
     #[test]
     fn normalize_cookies_browser_accepts_known_browsers_case_insensitively() {
-        assert_eq!(normalize_cookies_browser(Some("Firefox")).as_deref(), Some("firefox"));
-        assert_eq!(normalize_cookies_browser(Some("  CHROME ")).as_deref(), Some("chrome"));
+        assert_eq!(
+            normalize_cookies_browser(Some("Firefox")).as_deref(),
+            Some("firefox")
+        );
+        assert_eq!(
+            normalize_cookies_browser(Some("  CHROME ")).as_deref(),
+            Some("chrome")
+        );
 
         for browser in [
-            "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi",
-            "whale",
+            "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale",
         ] {
             assert_eq!(
                 normalize_cookies_browser(Some(browser)).as_deref(),
@@ -105,7 +110,10 @@ mod tests {
         assert_eq!(normalize_cookies_path(None), None);
         assert_eq!(normalize_cookies_path(Some("")), None);
         assert_eq!(normalize_cookies_path(Some("   ")), None);
-        assert_eq!(normalize_cookies_path(Some("/nonexistent/kavynex/cookies.txt")), None);
+        assert_eq!(
+            normalize_cookies_path(Some("/nonexistent/kavynex/cookies.txt")),
+            None
+        );
 
         let dir = unique_temp_path("dir");
         fs::create_dir_all(&dir).unwrap();
@@ -121,7 +129,10 @@ mod tests {
         let mut args: Vec<String> = Vec::new();
         append_auth_args(&mut args, Some("firefox"), Some(file.to_str().unwrap()));
 
-        assert_eq!(args, vec!["--cookies".to_string(), file.to_string_lossy().to_string()]);
+        assert_eq!(
+            args,
+            vec!["--cookies".to_string(), file.to_string_lossy().to_string()]
+        );
 
         let _ = fs::remove_file(&file);
     }
@@ -130,13 +141,20 @@ mod tests {
     fn append_auth_args_uses_browser_when_no_cookies_file() {
         let mut args: Vec<String> = Vec::new();
         append_auth_args(&mut args, Some("firefox"), None);
-        assert_eq!(args, vec!["--cookies-from-browser".to_string(), "firefox".to_string()]);
+        assert_eq!(
+            args,
+            vec!["--cookies-from-browser".to_string(), "firefox".to_string()]
+        );
     }
 
     #[test]
     fn append_auth_args_ignores_invalid_browser_and_missing_file() {
         let mut args: Vec<String> = Vec::new();
-        append_auth_args(&mut args, Some("netscape"), Some("/nonexistent/cookies.txt"));
+        append_auth_args(
+            &mut args,
+            Some("netscape"),
+            Some("/nonexistent/cookies.txt"),
+        );
         assert!(args.is_empty());
 
         let mut empty: Vec<String> = Vec::new();

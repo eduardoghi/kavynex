@@ -201,8 +201,12 @@ mod tests {
     async fn set_app_settings_upserts_existing_keys() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "copy", "/old").await.unwrap();
-        set_app_settings_in_pool(&pool, "move", "/new").await.unwrap();
+        set_app_settings_in_pool(&pool, "copy", "/old")
+            .await
+            .unwrap();
+        set_app_settings_in_pool(&pool, "move", "/new")
+            .await
+            .unwrap();
 
         let settings = get_app_settings_from_pool(&pool).await.unwrap();
 

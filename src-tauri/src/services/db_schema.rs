@@ -125,10 +125,11 @@ const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
 
 async fn table_has_column(pool: &SqlitePool, table: &str, column: &str) -> AppResult<bool> {
     // table is an internal constant, not user input, so interpolation is safe here.
-    let rows: Vec<(String,)> = sqlx::query_as(&format!("SELECT name FROM pragma_table_info('{table}')"))
-        .fetch_all(pool)
-        .await
-        .map_err(|error| db_error("failed to read table columns", error))?;
+    let rows: Vec<(String,)> =
+        sqlx::query_as(&format!("SELECT name FROM pragma_table_info('{table}')"))
+            .fetch_all(pool)
+            .await
+            .map_err(|error| db_error("failed to read table columns", error))?;
 
     Ok(rows.iter().any(|(name,)| name == column))
 }
