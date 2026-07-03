@@ -78,78 +78,135 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
         </>
     );
 
+    const isSuperChat = Boolean(message.amount_text);
+
+    // Inside a super chat card the author name inherits the card's text color.
+    const superChatAuthor = authorChannelId ? (
+        <Anchor
+            fw={700}
+            size="sm"
+            title="Open channel on YouTube"
+            style={{ cursor: "pointer", color: "inherit", minWidth: 0 }}
+            onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
+        >
+            {message.author_name}
+        </Anchor>
+    ) : (
+        <Text component="span" fw={700} size="sm" style={{ color: "inherit", minWidth: 0 }}>
+            {message.author_name}
+        </Text>
+    );
+
     return (
         <Group align="flex-start" gap="sm" wrap="nowrap">
-            <SafeAvatar
-                src={avatarSrc}
-                initials={avatarInitials(message.author_name)}
-                shellBorder={shellBorder}
-                size={32}
-            />
+            {!isSuperChat && (
+                <SafeAvatar
+                    src={avatarSrc}
+                    initials={avatarInitials(message.author_name)}
+                    shellBorder={shellBorder}
+                    size={32}
+                />
+            )}
 
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
-                <Group gap={8} wrap="wrap" align="center">
-                    <Group gap={5} wrap="nowrap" align="center">
-                        {authorChannelId ? (
-                            <Anchor
-                                fw={600}
+                {isSuperChat ? (
+                    <Box
+                        style={{
+                            background: message.superchat_body_color ?? "#1565c0",
+                            color: message.superchat_text_color ?? "#ffffff",
+                            borderRadius: rem(8),
+                            padding: rem(8),
+                        }}
+                    >
+                        <Group justify="space-between" gap="xs" wrap="nowrap" align="center">
+                            <Group gap="xs" wrap="nowrap" align="center" style={{ minWidth: 0 }}>
+                                <SafeAvatar
+                                    src={avatarSrc}
+                                    initials={avatarInitials(message.author_name)}
+                                    shellBorder={shellBorder}
+                                    size={38}
+                                />
+                                {superChatAuthor}
+                                <Text fw={800} size="sm" style={{ color: "inherit", flexShrink: 0 }}>
+                                    {message.amount_text}
+                                </Text>
+                            </Group>
+
+                            {message.timestamp_text && (
+                                <Text
+                                    size="xs"
+                                    style={{ color: "inherit", opacity: 0.7, flexShrink: 0 }}
+                                >
+                                    {message.timestamp_text}
+                                </Text>
+                            )}
+                        </Group>
+
+                        {message.message_text && (
+                            <Text
                                 size="sm"
-                                title="Open channel on YouTube"
-                                style={{ cursor: "pointer", ...nameStyle }}
-                                onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
+                                mt={6}
+                                style={{
+                                    color: "inherit",
+                                    whiteSpace: "pre-wrap",
+                                    wordBreak: "break-word",
+                                    lineHeight: 1.45,
+                                }}
                             >
-                                {nameContent}
-                            </Anchor>
-                        ) : (
-                            <Text component="span" fw={600} size="sm" style={nameStyle}>
-                                {nameContent}
+                                {message.message_text}
                             </Text>
                         )}
+                    </Box>
+                ) : (
+                    <>
+                        <Group gap={8} wrap="wrap" align="center">
+                            <Group gap={5} wrap="nowrap" align="center">
+                                {authorChannelId ? (
+                                    <Anchor
+                                        fw={600}
+                                        size="sm"
+                                        title="Open channel on YouTube"
+                                        style={{ cursor: "pointer", ...nameStyle }}
+                                        onClick={() =>
+                                            void openAuthorYoutubeChannel(authorChannelId)
+                                        }
+                                    >
+                                        {nameContent}
+                                    </Anchor>
+                                ) : (
+                                    <Text component="span" fw={600} size="sm" style={nameStyle}>
+                                        {nameContent}
+                                    </Text>
+                                )}
 
-                        {isVerified && !isOwner && (
-                            <Check
-                                size={13}
-                                aria-label="Verified"
-                                style={{ opacity: 0.7, flexShrink: 0 }}
-                            />
-                        )}
-                    </Group>
+                                {isVerified && !isOwner && (
+                                    <Check
+                                        size={13}
+                                        aria-label="Verified"
+                                        style={{ opacity: 0.7, flexShrink: 0 }}
+                                    />
+                                )}
+                            </Group>
 
-                    {message.timestamp_text && (
-                        <Text size="xs" c="dimmed">
-                            {message.timestamp_text}
+                            {message.timestamp_text && (
+                                <Text size="xs" c="dimmed">
+                                    {message.timestamp_text}
+                                </Text>
+                            )}
+                        </Group>
+
+                        <Text
+                            size="sm"
+                            style={{
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                                lineHeight: 1.45,
+                            }}
+                        >
+                            {message.message_text}
                         </Text>
-                    )}
-
-                    {message.amount_text && (
-                        <Badge size="xs" radius="sm" variant="filled" color="green">
-                            {message.amount_text}
-                        </Badge>
-                    )}
-                </Group>
-
-                {message.header_primary_text && (
-                    <Text fw={700} size="sm">
-                        {message.header_primary_text}
-                    </Text>
+                    </>
                 )}
-
-                {message.header_secondary_text && (
-                    <Text size="xs" c="dimmed">
-                        {message.header_secondary_text}
-                    </Text>
-                )}
-
-                <Text
-                    size="sm"
-                    style={{
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
-                        lineHeight: 1.45,
-                    }}
-                >
-                    {message.message_text}
-                </Text>
             </Stack>
         </Group>
     );

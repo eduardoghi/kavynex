@@ -26,6 +26,8 @@ export type LiveChatMessageItem = {
     message_text: string;
     timestamp_text: string | null;
     amount_text: string | null;
+    superchat_body_color: string | null;
+    superchat_text_color: string | null;
     header_primary_text: string | null;
     header_secondary_text: string | null;
 };
@@ -182,6 +184,26 @@ function parseTimestampText(renderer: Record<string, unknown>): string | null {
     return null;
 }
 
+function parsePurchaseAmount(renderer: Record<string, unknown> | undefined): string | null {
+    const amount = (renderer?.purchaseAmountText as Record<string, unknown> | undefined)?.simpleText;
+
+    if (typeof amount === "string" && amount.trim()) {
+        return amount.trim();
+    }
+
+    return null;
+}
+
+// YouTube stores super chat colors as ARGB integers; keep the RGB part as a CSS hex.
+function argbColorToHex(value: unknown): string | null {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return null;
+    }
+
+    const rgb = value & 0xffffff;
+    return `#${rgb.toString(16).padStart(6, "0")}`;
+}
+
 function parseReplayOffsetMs(lineObject: Record<string, unknown>): number {
     const replayAction = lineObject.replayChatItemAction as Record<string, unknown> | undefined;
     const rawOffset = replayAction?.videoOffsetTimeMsec;
@@ -221,32 +243,37 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
         }
 
         const textRenderer = item.liveChatTextMessageRenderer as Record<string, unknown> | undefined;
+        const paidRenderer = item.liveChatPaidMessageRenderer as Record<string, unknown> | undefined;
+        const renderer = textRenderer ?? paidRenderer;
 
-        if (!textRenderer) {
+        if (!renderer) {
             continue;
         }
 
-        const messageText = parseRendererMessage(textRenderer);
+        const isPaid = Boolean(paidRenderer);
+        const messageText = parseRendererMessage(renderer);
 
-        if (!messageText) {
+        // Regular messages must have text; super chats (paid messages) are kept even
+        // without a message, since the amount is the content.
+        if (!messageText && !isPaid) {
             continue;
         }
 
         const messageId =
-            typeof textRenderer.id === "string" && textRenderer.id.trim()
-                ? textRenderer.id.trim()
-                : null;
+            typeof renderer.id === "string" && renderer.id.trim() ? renderer.id.trim() : null;
 
         messages.push({
             message_id: messageId,
             message_offset_ms: replayOffsetMs,
-            author_name: parseAuthorName(textRenderer),
-            author_channel_id: parseAuthorChannelId(textRenderer),
-            author_thumbnail: parseAuthorThumbnail(textRenderer),
-            author_badges: parseAuthorBadges(textRenderer),
+            author_name: parseAuthorName(renderer),
+            author_channel_id: parseAuthorChannelId(renderer),
+            author_thumbnail: parseAuthorThumbnail(renderer),
+            author_badges: parseAuthorBadges(renderer),
             message_text: messageText,
-            timestamp_text: parseTimestampText(textRenderer),
-            amount_text: null,
+            timestamp_text: parseTimestampText(renderer),
+            amount_text: isPaid ? parsePurchaseAmount(paidRenderer) : null,
+            superchat_body_color: isPaid ? argbColorToHex(paidRenderer?.bodyBackgroundColor) : null,
+            superchat_text_color: isPaid ? argbColorToHex(paidRenderer?.bodyTextColor) : null,
             header_primary_text: null,
             header_secondary_text: null,
         });

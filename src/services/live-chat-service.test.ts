@@ -97,6 +97,60 @@ describe("readLiveChatMessagesFromFile", () => {
         expect(messages[0]?.author_badges).toEqual([]);
     });
 
+    function rawPaidLine(renderer: Record<string, unknown>, offset = "0"): string {
+        return JSON.stringify({
+            replayChatItemAction: {
+                videoOffsetTimeMsec: offset,
+                actions: [
+                    { addChatItemAction: { item: { liveChatPaidMessageRenderer: renderer } } },
+                ],
+            },
+        });
+    }
+
+    it("parses a super chat with amount and colors", async () => {
+        vi.mocked(readTextFile).mockResolvedValue(
+            rawPaidLine(
+                {
+                    id: "sc1",
+                    authorName: { simpleText: "@fan" },
+                    message: { runs: [{ text: "great stream" }] },
+                    purchaseAmountText: { simpleText: "$4.99" },
+                    bodyBackgroundColor: 4280150454,
+                    bodyTextColor: 4278190080,
+                },
+                "500"
+            )
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]).toMatchObject({
+            message_id: "sc1",
+            author_name: "@fan",
+            message_text: "great stream",
+            amount_text: "$4.99",
+            message_offset_ms: 500,
+        });
+        expect(messages[0]?.superchat_body_color).toMatch(/^#[0-9a-f]{6}$/);
+        expect(messages[0]?.superchat_text_color).toBe("#000000");
+    });
+
+    it("keeps a super chat that has no message text", async () => {
+        vi.mocked(readTextFile).mockResolvedValue(
+            rawPaidLine({
+                authorName: { simpleText: "@fan" },
+                purchaseAmountText: { simpleText: "$2.00" },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages).toHaveLength(1);
+        expect(messages[0]?.amount_text).toBe("$2.00");
+        expect(messages[0]?.message_text).toBe("");
+    });
+
     it("returns null author_channel_id when absent", async () => {
         vi.mocked(readTextFile).mockResolvedValue(
             rawLine({
