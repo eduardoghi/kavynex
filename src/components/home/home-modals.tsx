@@ -5,213 +5,171 @@ import { CreateChannelModal } from "../modals/create-channel-modal";
 import { DiagnosticsModal } from "../modals/diagnostics-modal";
 import { ErrorModal } from "../modals/error-modal";
 import { SettingsModal } from "../modals/settings-modal";
-import type { HomeController } from "../../types/controllers";
-
-type HomeModalsController = Pick<
-    HomeController,
-    | "createChannelOpen"
-    | "setCreateChannelOpen"
-    | "newChannelName"
-    | "setNewChannelName"
-    | "newYoutubeHandle"
-    | "setNewYoutubeHandle"
-    | "newChannelAvatarMode"
-    | "setNewChannelAvatarMode"
-    | "newChannelAvatarPath"
-    | "pickChannelAvatarViaDialog"
-    | "clearNewChannelAvatarPath"
-    | "isCreatingChannel"
-    | "createChannel"
-    | "editChannelOpen"
-    | "setEditChannelOpen"
-    | "editingChannel"
-    | "editChannelName"
-    | "setEditChannelName"
-    | "editYoutubeHandle"
-    | "setEditYoutubeHandle"
-    | "isEditingChannel"
-    | "saveEditedChannel"
-    | "addMediaOpen"
-    | "closeAddMediaModal"
-    | "addMediaForm"
-    | "isAddingMedia"
-    | "isCancellingYtDlp"
-    | "ytDlpLogs"
-    | "isYtDlpRunning"
-    | "addMedia"
-    | "cancelYtDlpDownload"
-    | "confirmDeleteMediaOpen"
-    | "closeDeleteMediaModal"
-    | "confirmDeleteMedia"
-    | "isDeletingMedia"
-    | "mediaToDelete"
-    | "confirmDeleteChannelOpen"
-    | "closeDeleteChannelModal"
-    | "confirmDeleteChannel"
-    | "isDeletingChannel"
-    | "channelToDelete"
-    | "settingsOpen"
-    | "closeSettings"
-    | "importMode"
-    | "libraryPath"
-    | "setImportMode"
-    | "chooseLibraryPath"
-    | "openCurrentLibraryPath"
-    | "openDiagnostics"
-    | "disableLibraryPathChange"
-    | "libraryPathChangeDisabledReason"
-    | "isMigratingLibraryPath"
-    | "diagnosticsOpen"
-    | "closeDiagnostics"
-    | "reloadDiagnostics"
-    | "isLoadingDiagnostics"
-    | "diagnosticsSummary"
-    | "errorOpen"
-    | "closeErrorModal"
-    | "errorMessage"
->;
+import type {
+    AppSettingsController,
+    ChannelsController,
+    DiagnosticsController,
+    ErrorModalController,
+    HomeMediaActionsController,
+    HomeUiGuardsController,
+    MediaLibraryController,
+} from "../../types/controllers";
 
 type HomeModalsProps = {
-    controller: HomeModalsController;
+    channels: ChannelsController;
+    media: MediaLibraryController;
+    mediaActions: HomeMediaActionsController;
+    settings: AppSettingsController;
+    diagnostics: DiagnosticsController;
+    error: ErrorModalController;
+    uiGuards: HomeUiGuardsController;
 };
 
 export function HomeModals({
-    controller,
+    channels,
+    media,
+    mediaActions,
+    settings,
+    diagnostics,
+    error,
+    uiGuards,
 }: HomeModalsProps): JSX.Element {
+    const addMediaForm = media.addMediaForm;
+
     return (
         <>
             <CreateChannelModal
-                opened={controller.createChannelOpen}
-                onClose={() => controller.setCreateChannelOpen(false)}
-                channelName={controller.newChannelName}
-                youtubeHandle={controller.newYoutubeHandle}
-                avatarMode={controller.newChannelAvatarMode}
-                avatarPath={controller.newChannelAvatarPath}
-                loading={controller.isCreatingChannel}
-                onChangeChannelName={controller.setNewChannelName}
-                onChangeYoutubeHandle={controller.setNewYoutubeHandle}
-                onChangeAvatarMode={controller.setNewChannelAvatarMode}
-                onPickAvatar={() => void controller.pickChannelAvatarViaDialog()}
-                onClearAvatar={controller.clearNewChannelAvatarPath}
-                onCreate={() => void controller.createChannel()}
+                opened={channels.createChannelOpen}
+                onClose={() => channels.setCreateChannelOpen(false)}
+                channelName={channels.newChannelName}
+                youtubeHandle={channels.newYoutubeHandle}
+                avatarMode={channels.newChannelAvatarMode}
+                avatarPath={channels.newChannelAvatarPath}
+                loading={channels.isCreatingChannel}
+                onChangeChannelName={channels.setNewChannelName}
+                onChangeYoutubeHandle={channels.setNewYoutubeHandle}
+                onChangeAvatarMode={channels.setNewChannelAvatarMode}
+                onPickAvatar={() => void channels.pickChannelAvatarViaDialog()}
+                onClearAvatar={channels.clearNewChannelAvatarPath}
+                onCreate={() => void channels.createChannel()}
             />
 
             <CreateChannelModal
-                opened={controller.editChannelOpen}
-                onClose={() => controller.setEditChannelOpen(false)}
-                channelName={controller.editChannelName}
-                youtubeHandle={controller.editYoutubeHandle}
+                opened={channels.editChannelOpen}
+                onClose={() => channels.setEditChannelOpen(false)}
+                channelName={channels.editChannelName}
+                youtubeHandle={channels.editYoutubeHandle}
                 avatarMode="none"
                 avatarPath=""
-                loading={controller.isEditingChannel}
-                title={`Edit channel${controller.editingChannel ? ` · ${controller.editingChannel.name}` : ""}`}
+                loading={channels.isEditingChannel}
+                title={`Edit channel${channels.editingChannel ? ` · ${channels.editingChannel.name}` : ""}`}
                 submitLabel="Save"
                 allowAvatarEditing={false}
-                onChangeChannelName={controller.setEditChannelName}
-                onChangeYoutubeHandle={controller.setEditYoutubeHandle}
+                onChangeChannelName={channels.setEditChannelName}
+                onChangeYoutubeHandle={channels.setEditYoutubeHandle}
                 onChangeAvatarMode={() => {}}
                 onPickAvatar={() => {}}
                 onClearAvatar={() => {}}
-                onCreate={() => void controller.saveEditedChannel()}
+                onCreate={() => void channels.saveEditedChannel()}
             />
 
             <AddMediaModal
-                opened={controller.addMediaOpen}
-                onClose={() => void controller.closeAddMediaModal()}
-                sourceMode={controller.addMediaForm.sourceMode}
-                mediaUrl={controller.addMediaForm.mediaUrl}
-                title={controller.addMediaForm.title}
-                mediaPath={controller.addMediaForm.mediaPath}
-                mediaType={controller.addMediaForm.mediaType}
-                thumbPath={controller.addMediaForm.thumbPath}
-                publishedAt={controller.addMediaForm.publishedAt}
-                downloadComments={controller.addMediaForm.downloadComments}
-                downloadLiveChat={controller.addMediaForm.downloadLiveChat}
-                cookiesBrowser={controller.addMediaForm.cookiesBrowser}
-                cookiesPath={controller.addMediaForm.cookiesPath}
-                isGeneratingThumb={controller.addMediaForm.isGeneratingThumb}
-                loading={controller.isAddingMedia}
-                isCancellingYtDlp={controller.isCancellingYtDlp}
-                ytDlpLogs={controller.ytDlpLogs}
-                isYtDlpRunning={controller.isYtDlpRunning}
-                ytDlpFormats={controller.addMediaForm.ytDlpFormats}
-                selectedYtDlpFormatId={controller.addMediaForm.selectedYtDlpFormatId}
-                isLoadingYtDlpFormats={controller.addMediaForm.isLoadingYtDlpFormats}
-                onChangeSourceMode={controller.addMediaForm.setSourceMode}
-                onChangeMediaUrl={controller.addMediaForm.setMediaUrl}
-                onChangeTitle={controller.addMediaForm.setTitle}
-                onChangePublishedAt={controller.addMediaForm.setPublishedAt}
-                onChangeDownloadComments={controller.addMediaForm.setDownloadComments}
-                onChangeDownloadLiveChat={controller.addMediaForm.setDownloadLiveChat}
-                onChangeCookiesBrowser={controller.addMediaForm.setCookiesBrowser}
-                onChangeCookiesPath={controller.addMediaForm.setCookiesPath}
-                onPickCookiesFile={() => void controller.addMediaForm.pickCookiesFileViaDialog()}
-                onClearCookiesPath={controller.addMediaForm.clearCookiesPath}
-                onChangeSelectedYtDlpFormatId={controller.addMediaForm.setSelectedYtDlpFormatId}
-                onLoadYtDlpFormats={() => void controller.addMediaForm.loadYtDlpFormats()}
-                onPickMedia={() => void controller.addMediaForm.pickMediaViaDialog()}
-                onPickThumb={() => void controller.addMediaForm.pickThumbViaDialog()}
-                onAdd={() => void controller.addMedia()}
-                onCancelYtDlpDownload={() => void controller.cancelYtDlpDownload()}
+                opened={media.addMediaOpen}
+                onClose={() => void uiGuards.closeAddMediaModalSafely()}
+                sourceMode={addMediaForm.sourceMode}
+                mediaUrl={addMediaForm.mediaUrl}
+                title={addMediaForm.title}
+                mediaPath={addMediaForm.mediaPath}
+                mediaType={addMediaForm.mediaType}
+                thumbPath={addMediaForm.thumbPath}
+                publishedAt={addMediaForm.publishedAt}
+                downloadComments={addMediaForm.downloadComments}
+                downloadLiveChat={addMediaForm.downloadLiveChat}
+                cookiesBrowser={addMediaForm.cookiesBrowser}
+                cookiesPath={addMediaForm.cookiesPath}
+                isGeneratingThumb={addMediaForm.isGeneratingThumb}
+                loading={media.isAddingMedia}
+                isCancellingYtDlp={media.isCancellingYtDlp}
+                ytDlpLogs={media.ytDlpLogs}
+                isYtDlpRunning={media.isYtDlpRunning}
+                ytDlpFormats={addMediaForm.ytDlpFormats}
+                selectedYtDlpFormatId={addMediaForm.selectedYtDlpFormatId}
+                isLoadingYtDlpFormats={addMediaForm.isLoadingYtDlpFormats}
+                onChangeSourceMode={addMediaForm.setSourceMode}
+                onChangeMediaUrl={addMediaForm.setMediaUrl}
+                onChangeTitle={addMediaForm.setTitle}
+                onChangePublishedAt={addMediaForm.setPublishedAt}
+                onChangeDownloadComments={addMediaForm.setDownloadComments}
+                onChangeDownloadLiveChat={addMediaForm.setDownloadLiveChat}
+                onChangeCookiesBrowser={addMediaForm.setCookiesBrowser}
+                onChangeCookiesPath={addMediaForm.setCookiesPath}
+                onPickCookiesFile={() => void addMediaForm.pickCookiesFileViaDialog()}
+                onClearCookiesPath={addMediaForm.clearCookiesPath}
+                onChangeSelectedYtDlpFormatId={addMediaForm.setSelectedYtDlpFormatId}
+                onLoadYtDlpFormats={() => void addMediaForm.loadYtDlpFormats()}
+                onPickMedia={() => void addMediaForm.pickMediaViaDialog()}
+                onPickThumb={() => void addMediaForm.pickThumbViaDialog()}
+                onAdd={() => void mediaActions.addMedia()}
+                onCancelYtDlpDownload={() => void media.cancelYtDlpDownload()}
             />
 
             <ConfirmDeleteModal
-                opened={controller.confirmDeleteMediaOpen}
-                onClose={controller.closeDeleteMediaModal}
-                onConfirm={() => void controller.confirmDeleteMedia()}
-                loading={controller.isDeletingMedia}
+                opened={media.confirmDeleteMediaOpen}
+                onClose={media.closeDeleteMediaModal}
+                onConfirm={() => void mediaActions.confirmDeleteMedia()}
+                loading={media.isDeletingMedia}
                 title={<Text fw={900}>Delete</Text>}
                 message={
                     <>
-                        Delete <b>{controller.mediaToDelete?.title ?? "this item"}</b>?
+                        Delete <b>{media.mediaToDelete?.title ?? "this item"}</b>?
                     </>
                 }
                 description="This will remove it from the library."
             />
 
             <ConfirmDeleteModal
-                opened={controller.confirmDeleteChannelOpen}
-                onClose={controller.closeDeleteChannelModal}
-                onConfirm={() => void controller.confirmDeleteChannel()}
-                loading={controller.isDeletingChannel}
+                opened={channels.confirmDeleteChannelOpen}
+                onClose={channels.closeDeleteChannelModal}
+                onConfirm={() => void mediaActions.confirmDeleteChannel()}
+                loading={channels.isDeletingChannel}
                 title={<Text fw={900}>Delete channel</Text>}
                 message={
                     <>
-                        Delete channel <b>{controller.channelToDelete?.name ?? "this channel"}</b>?
+                        Delete channel <b>{channels.channelToDelete?.name ?? "this channel"}</b>?
                     </>
                 }
                 description="Channel records will be removed."
             />
 
             <SettingsModal
-                opened={controller.settingsOpen}
-                onClose={controller.closeSettings}
-                importMode={controller.importMode}
-                libraryPath={controller.libraryPath}
-                onChangeImportMode={controller.setImportMode}
-                onChooseLibraryPath={() => void controller.chooseLibraryPath()}
-                onOpenLibraryPath={() => void controller.openCurrentLibraryPath()}
+                opened={settings.settingsOpen}
+                onClose={settings.closeSettings}
+                importMode={settings.settings.importMode}
+                libraryPath={settings.settings.libraryPath}
+                onChangeImportMode={settings.setImportMode}
+                onChooseLibraryPath={() => void settings.chooseLibraryPath()}
+                onOpenLibraryPath={() => void settings.openCurrentLibraryPath()}
                 onOpenDiagnostics={() => {
-                    controller.closeSettings();
-                    void controller.openDiagnostics();
+                    settings.closeSettings();
+                    void diagnostics.openDiagnostics();
                 }}
-                disableLibraryPathChange={controller.disableLibraryPathChange}
-                libraryPathChangeDisabledReason={controller.libraryPathChangeDisabledReason}
-                isMigratingLibraryPath={controller.isMigratingLibraryPath}
+                disableLibraryPathChange={uiGuards.disableLibraryPathChange}
+                libraryPathChangeDisabledReason={uiGuards.libraryPathChangeDisabledReason}
+                isMigratingLibraryPath={settings.isMigratingLibraryPath}
             />
 
             <DiagnosticsModal
-                opened={controller.diagnosticsOpen}
-                onClose={controller.closeDiagnostics}
-                onReload={() => void controller.reloadDiagnostics()}
-                loading={controller.isLoadingDiagnostics}
-                summary={controller.diagnosticsSummary}
+                opened={diagnostics.diagnosticsOpen}
+                onClose={diagnostics.closeDiagnostics}
+                onReload={() => void diagnostics.reloadDiagnostics()}
+                loading={diagnostics.isLoadingDiagnostics}
+                summary={diagnostics.diagnosticsSummary}
             />
 
             <ErrorModal
-                opened={controller.errorOpen}
-                onClose={controller.closeErrorModal}
-                message={controller.errorMessage}
+                opened={error.errorOpen}
+                onClose={error.closeErrorModal}
+                message={error.errorMessage}
             />
         </>
     );

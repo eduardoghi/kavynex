@@ -387,44 +387,35 @@ describe("useHomeController", () => {
     it("returns combined controller shape", () => {
         const { result } = renderHook(() => useHomeController());
 
-        expect(result.current.selectedChannelId).toBe(10);
-        expect(result.current.selectedChannel?.name).toBe("Canal A");
-        expect(result.current.libraryPath).toBe("/library");
-        expect(result.current.importMode).toBe("copy");
-        expect(result.current.mediaPlayer).toBe(mockMediaLibrary.mediaPlayer);
-        expect(result.current.addMediaForm).toBe(mockMediaLibrary.addMediaForm);
+        expect(result.current.channels).toBe(mockChannelsState);
+        expect(result.current.media).toBe(mockMediaLibrary);
         expect(result.current.playerActions).toBe(mockPlayerActions);
         expect(result.current.playerPanelState).toBe(mockPlayerPanelState);
         expect(result.current.viewState).toBe(mockViewState);
         expect(result.current.libraryPanelState).toBe(mockLibraryPanelState);
-        expect(result.current.requestEditChannel).toBe(mockChannelsState.requestEditChannel);
-        expect(result.current.saveEditedChannel).toBe(mockChannelsState.saveEditedChannel);
-        expect(result.current.isEditingChannel).toBe(false);
+        expect(result.current.libraryPath).toBe("/library");
+        expect(result.current.channels.selectedChannel?.name).toBe("Canal A");
+        expect(result.current.settings.settings.importMode).toBe("copy");
     });
 
     it("delegates media actions from composed hooks", () => {
         const { result } = renderHook(() => useHomeController());
 
-        expect(result.current.addMedia).toBe(mockHomeMediaActions.addMedia);
-        expect(result.current.confirmDeleteMedia).toBe(mockHomeMediaActions.confirmDeleteMedia);
-        expect(result.current.confirmDeleteChannel).toBe(mockHomeMediaActions.confirmDeleteChannel);
-        expect(result.current.markAsWatched).toBe(mockHomeMediaActions.markAsWatched);
-        expect(result.current.markAsUnwatched).toBe(mockHomeMediaActions.markAsUnwatched);
-        expect(result.current.editMediaTitle).toBe(mockHomeMediaActions.editMediaTitle);
+        expect(result.current.mediaActions).toBe(mockHomeMediaActions);
     });
 
     it("uses guarded close add media modal and custom choose library path action", () => {
         const { result } = renderHook(() => useHomeController());
 
-        expect(result.current.closeAddMediaModal).toBe(mockUiGuards.closeAddMediaModalSafely);
-        expect(result.current.chooseLibraryPath).toBe(mockHomeActions.chooseLibraryPath);
+        expect(result.current.uiGuards).toBe(mockUiGuards);
+        expect(result.current.settings.chooseLibraryPath).toBe(mockHomeActions.chooseLibraryPath);
     });
 
     it("exposes error state from error modal hook", () => {
         const { result } = renderHook(() => useHomeController());
 
-        expect(result.current.errorOpen).toBe(true);
-        expect(result.current.errorMessage).toBe("boom");
-        expect(result.current.closeErrorModal).toBe(mockErrorState.closeErrorModal);
+        expect(result.current.error).toBe(mockErrorState);
+        expect(result.current.error.errorOpen).toBe(true);
+        expect(result.current.error.errorMessage).toBe("boom");
     });
 });

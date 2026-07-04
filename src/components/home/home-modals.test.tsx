@@ -2,15 +2,86 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { HomeModals } from "./home-modals";
 import { renderWithMantine } from "../../test/test-utils";
-import type { HomeController } from "../../types/controllers";
+import type {
+    AddMediaFormController,
+    AppSettingsController,
+    ChannelsController,
+    DiagnosticsController,
+    ErrorModalController,
+    HomeMediaActionsController,
+    HomeUiGuardsController,
+    MediaLibraryController,
+    MediaPlayerController,
+} from "../../types/controllers";
 
-function createController(): HomeController {
+function createAddMediaForm(): AddMediaFormController {
+    return {
+        sourceMode: "local",
+        mediaUrl: "",
+        title: "",
+        mediaPath: "",
+        mediaType: "video",
+        thumbPath: "",
+        publishedAt: "",
+        downloadComments: true,
+        downloadLiveChat: true,
+        cookiesBrowser: "",
+        cookiesPath: "",
+        isDragging: false,
+        isThumbDragging: false,
+        isGeneratingThumb: false,
+        ytDlpFormats: [],
+        selectedYtDlpFormatId: "",
+        isLoadingYtDlpFormats: false,
+        selectedYtDlpMediaType: "video",
+        setSourceMode: vi.fn().mockResolvedValue(undefined),
+        setMediaUrl: vi.fn(),
+        setTitle: vi.fn(),
+        setPublishedAt: vi.fn(),
+        setDownloadComments: vi.fn(),
+        setDownloadLiveChat: vi.fn(),
+        setCookiesBrowser: vi.fn(),
+        setCookiesPath: vi.fn(),
+        pickCookiesFileViaDialog: vi.fn().mockResolvedValue(undefined),
+        clearCookiesPath: vi.fn(),
+        setSelectedYtDlpFormatId: vi.fn(),
+        loadYtDlpFormats: vi.fn().mockResolvedValue(undefined),
+        pickMediaViaDialog: vi.fn().mockResolvedValue(undefined),
+        pickThumbViaDialog: vi.fn().mockResolvedValue(undefined),
+        applyDroppedMediaPath: vi.fn().mockResolvedValue(undefined),
+        applyDroppedThumbPath: vi.fn().mockResolvedValue(undefined),
+        onDropMedia: vi.fn(),
+        onDragOverMedia: vi.fn(),
+        onDragLeaveMedia: vi.fn(),
+        onDropThumb: vi.fn(),
+        onDragOverThumb: vi.fn(),
+        onDragLeaveThumb: vi.fn(),
+        resetForm: vi.fn().mockResolvedValue(undefined),
+    };
+}
+
+function createMediaPlayer(): MediaPlayerController {
+    return {
+        viewMode: "library",
+        activeMedia: null,
+        activeIsAudio: false,
+        activeSrc: "",
+        activeThumbSrc: "",
+        activeYoutubeUrl: "",
+        canOpenInYoutube: false,
+        activeIsWatched: false,
+        openPlayer: vi.fn(),
+        setActiveMedia: vi.fn(),
+        closePlayer: vi.fn(),
+        openInYoutube: vi.fn().mockResolvedValue(undefined),
+    };
+}
+
+function createChannels(): ChannelsController {
     return {
         channels: [],
         selectedChannelId: null,
         selectedChannel: null,
-        mediaItems: [],
-
         createChannelOpen: true,
         setCreateChannelOpen: vi.fn(),
         newChannelName: "Canal A",
@@ -23,7 +94,6 @@ function createController(): HomeController {
         setNewChannelAvatarPath: vi.fn(),
         pickChannelAvatarViaDialog: vi.fn().mockResolvedValue(undefined),
         clearNewChannelAvatarPath: vi.fn(),
-
         editChannelOpen: false,
         setEditChannelOpen: vi.fn(),
         editingChannel: null,
@@ -31,144 +101,79 @@ function createController(): HomeController {
         setEditChannelName: vi.fn(),
         editYoutubeHandle: "",
         setEditYoutubeHandle: vi.fn(),
+        requestEditChannel: vi.fn(),
         saveEditedChannel: vi.fn().mockResolvedValue(undefined),
         isEditingChannel: false,
-
-        addMediaOpen: true,
-        setAddMediaOpen: vi.fn(),
-        closeAddMediaModal: vi.fn().mockResolvedValue(undefined),
-
-        confirmDeleteMediaOpen: true,
-        mediaToDelete: null,
-
         confirmDeleteChannelOpen: true,
         channelToDelete: null,
-
-        diagnosticsOpen: true,
-        diagnosticsSummary: null,
-        isLoadingDiagnostics: false,
-        openDiagnostics: vi.fn().mockResolvedValue(undefined),
-        closeDiagnostics: vi.fn(),
-        reloadDiagnostics: vi.fn().mockResolvedValue(undefined),
-
         isLoadingChannels: false,
         isCreatingChannel: false,
         isDeletingChannel: false,
         isUpdatingChannelAvatar: false,
         updatingChannelAvatarId: null,
+        setSelectedChannelId: vi.fn(),
+        createChannel: vi.fn().mockResolvedValue(undefined),
+        requestDeleteChannel: vi.fn(),
+        updateChannelAvatarFromFile: vi.fn().mockResolvedValue(undefined),
+        updateChannelAvatarFromYouTube: vi.fn().mockResolvedValue(undefined),
+        removeChannelAvatar: vi.fn().mockResolvedValue(undefined),
+        confirmDeleteChannel: vi.fn().mockResolvedValue(undefined),
+        closeDeleteChannelModal: vi.fn(),
+    };
+}
+
+function createMedia(): MediaLibraryController {
+    return {
+        mediaItems: [],
+        addMediaOpen: true,
+        setAddMediaOpen: vi.fn(),
+        closeAddMediaModal: vi.fn().mockResolvedValue(undefined),
+        confirmDeleteMediaOpen: true,
+        mediaToDelete: null,
         isLoadingMedia: false,
         isAddingMedia: false,
         isDeletingMedia: false,
         isUpdatingWatched: false,
+        isRefreshingComments: false,
         isUpdatingTitle: false,
         isCancellingYtDlp: false,
-
         ytDlpLogs: [],
         isYtDlpRunning: false,
+        addMediaForm: createAddMediaForm(),
+        mediaPlayer: createMediaPlayer(),
+        loadMedia: vi.fn().mockResolvedValue(undefined),
+        addMedia: vi.fn().mockResolvedValue(undefined),
+        cancelYtDlpDownload: vi.fn().mockResolvedValue(undefined),
+        markAsWatched: vi.fn().mockResolvedValue(undefined),
+        markAsUnwatched: vi.fn().mockResolvedValue(undefined),
+        refreshComments: vi.fn().mockResolvedValue(undefined),
+        editTitle: vi.fn().mockResolvedValue(undefined),
+        openMediaFileLocation: vi.fn().mockResolvedValue(undefined),
+        openMediaSourceInYoutube: vi.fn().mockResolvedValue(undefined),
+        saveMediaProgress: vi.fn().mockResolvedValue(undefined),
+        requestDeleteMedia: vi.fn(),
+        confirmDeleteMedia: vi.fn().mockResolvedValue(undefined),
+        closeDeleteMediaModal: vi.fn(),
+        clearMediaAndPlayer: vi.fn(),
+    };
+}
 
-        errorOpen: true,
-        errorMessage: "boom",
+function createMediaActions(): HomeMediaActionsController {
+    return {
+        addMedia: vi.fn().mockResolvedValue(undefined),
+        confirmDeleteMedia: vi.fn().mockResolvedValue(undefined),
+        confirmDeleteChannel: vi.fn().mockResolvedValue(undefined),
+        markAsWatched: vi.fn().mockResolvedValue(undefined),
+        markAsUnwatched: vi.fn().mockResolvedValue(undefined),
+        editMediaTitle: vi.fn().mockResolvedValue(undefined),
+        saveMediaProgress: vi.fn().mockResolvedValue(undefined),
+    };
+}
 
-        addMediaForm: {
-            sourceMode: "local",
-            mediaUrl: "",
-            title: "",
-            mediaPath: "",
-            mediaType: "video",
-            thumbPath: "",
-            publishedAt: "",
-            downloadComments: true,
-            downloadLiveChat: true,
-            cookiesBrowser: "",
-            cookiesPath: "",
-            isDragging: false,
-            isThumbDragging: false,
-            isGeneratingThumb: false,
-
-            ytDlpFormats: [],
-            selectedYtDlpFormatId: "",
-            isLoadingYtDlpFormats: false,
-            selectedYtDlpMediaType: "video",
-
-            setSourceMode: vi.fn().mockResolvedValue(undefined),
-            setMediaUrl: vi.fn(),
-            setTitle: vi.fn(),
-            setPublishedAt: vi.fn(),
-            setDownloadComments: vi.fn(),
-            setDownloadLiveChat: vi.fn(),
-            setCookiesBrowser: vi.fn(),
-            setCookiesPath: vi.fn(),
-            pickCookiesFileViaDialog: vi.fn().mockResolvedValue(undefined),
-            clearCookiesPath: vi.fn(),
-            setSelectedYtDlpFormatId: vi.fn(),
-            loadYtDlpFormats: vi.fn().mockResolvedValue(undefined),
-
-            pickMediaViaDialog: vi.fn().mockResolvedValue(undefined),
-            pickThumbViaDialog: vi.fn().mockResolvedValue(undefined),
-            applyDroppedMediaPath: vi.fn().mockResolvedValue(undefined),
-            applyDroppedThumbPath: vi.fn().mockResolvedValue(undefined),
-            onDropMedia: vi.fn(),
-            onDragOverMedia: vi.fn(),
-            onDragLeaveMedia: vi.fn(),
-            onDropThumb: vi.fn(),
-            onDragOverThumb: vi.fn(),
-            onDragLeaveThumb: vi.fn(),
-            resetForm: vi.fn().mockResolvedValue(undefined),
-        },
-
-        mediaPlayer: {
-            viewMode: "library",
-            activeMedia: null,
-            activeIsAudio: false,
-            activeSrc: "",
-            activeThumbSrc: "",
-            activeYoutubeUrl: "",
-            canOpenInYoutube: false,
-            activeIsWatched: false,
-            openPlayer: vi.fn(),
-            setActiveMedia: vi.fn(),
-            closePlayer: vi.fn(),
-            openInYoutube: vi.fn().mockResolvedValue(undefined),
-        },
-
-        playerActions: {
-            openInYoutube: vi.fn().mockResolvedValue(undefined),
-            openFileLocation: vi.fn().mockResolvedValue(undefined),
-            refreshComments: vi.fn().mockResolvedValue(undefined),
-            isRefreshingComments: false,
-            markActiveAsWatched: vi.fn().mockResolvedValue(undefined),
-            markActiveAsUnwatched: vi.fn().mockResolvedValue(undefined),
-            closePlayer: vi.fn().mockResolvedValue(undefined),
-        },
-
-        playerPanelState: {
-            media: null,
-            mediaSrc: "",
-            thumbnailSrc: "",
-            isAudio: false,
-            canOpenInYoutube: false,
-            isWatched: false,
-        },
-
-        viewState: {
-            shellSurface: "rgba(255,255,255,0.03)",
-            shellBorder: "rgba(255,255,255,0.1)",
-            pageBackground: "#070A12",
-            showLoading: false,
-            showEmpty: false,
-            showLibrary: true,
-            showPlayer: false,
-        },
-
-        libraryPanelState: {
-            showSelectedChannelPanel: false,
-            itemCountLabel: "0 item(s)",
-            disableAddMedia: false,
-        },
-
+function createSettings(): AppSettingsController {
+    return {
         settingsOpen: true,
-        importMode: "copy",
-        libraryPath: "/library",
+        settings: { importMode: "copy", libraryPath: "/library" },
         isPreparingSettings: false,
         isMigratingLibraryPath: false,
         openSettings: vi.fn(),
@@ -176,40 +181,54 @@ function createController(): HomeController {
         setImportMode: vi.fn(),
         chooseLibraryPath: vi.fn().mockResolvedValue(undefined),
         openCurrentLibraryPath: vi.fn().mockResolvedValue(undefined),
+    };
+}
+
+function createDiagnostics(): DiagnosticsController {
+    return {
+        diagnosticsOpen: true,
+        setDiagnosticsOpen: vi.fn(),
+        diagnosticsSummary: null,
+        isLoadingDiagnostics: false,
+        openDiagnostics: vi.fn().mockResolvedValue(undefined),
+        closeDiagnostics: vi.fn(),
+        reloadDiagnostics: vi.fn().mockResolvedValue(undefined),
+    };
+}
+
+function createError(): ErrorModalController {
+    return {
+        errorOpen: true,
+        errorMessage: "boom",
+        showError: vi.fn(),
+        closeErrorModal: vi.fn(),
+    };
+}
+
+function createUiGuards(): HomeUiGuardsController {
+    return {
+        isAddMediaModalLocked: false,
         disableLibraryPathChange: false,
         libraryPathChangeDisabledReason: "",
+        closeAddMediaModalSafely: vi.fn().mockResolvedValue(undefined),
+    };
+}
 
-        setSelectedChannelId: vi.fn(),
-
-        createChannel: vi.fn().mockResolvedValue(undefined),
-        updateChannelAvatarFromFile: vi.fn().mockResolvedValue(undefined),
-        updateChannelAvatarFromYouTube: vi.fn().mockResolvedValue(undefined),
-        removeChannelAvatar: vi.fn().mockResolvedValue(undefined),
-
-        addMedia: vi.fn().mockResolvedValue(undefined),
-        cancelYtDlpDownload: vi.fn().mockResolvedValue(undefined),
-        markAsWatched: vi.fn().mockResolvedValue(undefined),
-        markAsUnwatched: vi.fn().mockResolvedValue(undefined),
-        editMediaTitle: vi.fn().mockResolvedValue(undefined),
-        openMediaFileLocation: vi.fn().mockResolvedValue(undefined),
-        openMediaSourceInYoutube: vi.fn().mockResolvedValue(undefined),
-
-        requestDeleteMedia: vi.fn(),
-        confirmDeleteMedia: vi.fn().mockResolvedValue(undefined),
-        closeDeleteMediaModal: vi.fn(),
-
-        requestEditChannel: vi.fn(),
-        requestDeleteChannel: vi.fn(),
-        confirmDeleteChannel: vi.fn().mockResolvedValue(undefined),
-        closeDeleteChannelModal: vi.fn(),
-
-        closeErrorModal: vi.fn(),
+function createProps() {
+    return {
+        channels: createChannels(),
+        media: createMedia(),
+        mediaActions: createMediaActions(),
+        settings: createSettings(),
+        diagnostics: createDiagnostics(),
+        error: createError(),
+        uiGuards: createUiGuards(),
     };
 }
 
 describe("HomeModals", () => {
     it("renders mounted modal titles/messages", () => {
-        renderWithMantine(<HomeModals controller={createController()} />);
+        renderWithMantine(<HomeModals {...createProps()} />);
 
         expect(screen.getByText("New channel")).toBeInTheDocument();
         expect(screen.getByText("Import media")).toBeInTheDocument();
@@ -219,13 +238,13 @@ describe("HomeModals", () => {
     });
 
     it("closes settings before opening diagnostics", () => {
-        const controller = createController();
+        const props = createProps();
 
-        renderWithMantine(<HomeModals controller={controller} />);
+        renderWithMantine(<HomeModals {...props} />);
 
         fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
 
-        expect(controller.closeSettings).toHaveBeenCalledTimes(1);
-        expect(controller.openDiagnostics).toHaveBeenCalledTimes(1);
+        expect(props.settings.closeSettings).toHaveBeenCalledTimes(1);
+        expect(props.diagnostics.openDiagnostics).toHaveBeenCalledTimes(1);
     });
 });

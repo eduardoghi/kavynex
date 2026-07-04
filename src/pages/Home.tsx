@@ -20,35 +20,31 @@ import type { MediaRow } from "../types/media";
 
 export default function Home(): JSX.Element {
     const controller = useHomeController();
+    const { channels, media, settings, viewState, playerActions } = controller;
 
-    const showLoading = controller.viewState.showLoading;
-    const showEmpty = controller.viewState.showEmpty;
-    const showPlayer = controller.viewState.showPlayer;
-    const showLibrary = controller.viewState.showLibrary;
+    const showLoading = viewState.showLoading;
+    const showEmpty = viewState.showEmpty;
+    const showPlayer = viewState.showPlayer;
+    const showLibrary = viewState.showLibrary;
 
     const showLibrarySection =
         controller.libraryPanelState.showSelectedChannelPanel &&
-        !!controller.selectedChannel;
+        !!channels.selectedChannel;
 
     // Stable handlers so the memoized MediaCard is not re-rendered by unrelated state
     // changes. Each depends only on the underlying controller action it calls.
-    const {
-        editMediaTitle,
-        markAsWatched,
-        markAsUnwatched,
-        openMediaFileLocation,
-        openMediaSourceInYoutube,
-    } = controller;
+    const { editMediaTitle, markAsWatched, markAsUnwatched } = controller.mediaActions;
+    const { openMediaFileLocation, openMediaSourceInYoutube } = media;
 
     const [editTitleMedia, setEditTitleMedia] = useState<MediaRow | null>(null);
     const [isSavingTitle, setIsSavingTitle] = useState(false);
 
     const handleSaveMediaTitle = useCallback(
-        async (media: MediaRow, title: string): Promise<void> => {
+        async (item: MediaRow, title: string): Promise<void> => {
             setIsSavingTitle(true);
 
             try {
-                await editMediaTitle(media, title);
+                await editMediaTitle(item, title);
                 setEditTitleMedia(null);
             } finally {
                 setIsSavingTitle(false);
@@ -58,34 +54,34 @@ export default function Home(): JSX.Element {
     );
 
     const handleMarkWatched = useCallback(
-        (media: MediaRow) => void markAsWatched(media.id),
+        (item: MediaRow) => void markAsWatched(item.id),
         [markAsWatched]
     );
 
     const handleMarkUnwatched = useCallback(
-        (media: MediaRow) => void markAsUnwatched(media.id),
+        (item: MediaRow) => void markAsUnwatched(item.id),
         [markAsUnwatched]
     );
 
     const handleOpenFileLocation = useCallback(
-        (media: MediaRow) => void openMediaFileLocation(media),
+        (item: MediaRow) => void openMediaFileLocation(item),
         [openMediaFileLocation]
     );
 
     const handleOpenSourceInYoutube = useCallback(
-        (media: MediaRow) => void openMediaSourceInYoutube(media),
+        (item: MediaRow) => void openMediaSourceInYoutube(item),
         [openMediaSourceInYoutube]
     );
 
-    const handleEditTitle = useCallback((media: MediaRow) => {
-        setEditTitleMedia(media);
+    const handleEditTitle = useCallback((item: MediaRow) => {
+        setEditTitleMedia(item);
     }, []);
 
     return (
         <Box
             style={{
                 minHeight: "100vh",
-                background: controller.viewState.pageBackground,
+                background: viewState.pageBackground,
             }}
         >
             <AppShell
@@ -94,35 +90,35 @@ export default function Home(): JSX.Element {
                 padding="md"
                 styles={{
                     main: {
-                        background: controller.viewState.pageBackground,
+                        background: viewState.pageBackground,
                     },
                 }}
             >
                 <AppHeader
                     appIconSrc={AppIcon}
-                    shellSurface={controller.viewState.shellSurface}
-                    shellBorder={controller.viewState.shellBorder}
-                    onOpenCreateChannel={() => controller.setCreateChannelOpen(true)}
-                    onOpenSettings={controller.openSettings}
+                    shellSurface={viewState.shellSurface}
+                    shellBorder={viewState.shellBorder}
+                    onOpenCreateChannel={() => channels.setCreateChannelOpen(true)}
+                    onOpenSettings={settings.openSettings}
                 />
 
                 <ChannelSidebar
-                    channels={controller.channels}
-                    selectedChannelId={controller.selectedChannelId}
-                    viewMode={controller.mediaPlayer.viewMode}
-                    shellBorder={controller.viewState.shellBorder}
-                    shellSurface={controller.viewState.shellSurface}
-                    loading={controller.isLoadingChannels}
-                    deletingChannelId={controller.channelToDelete?.id ?? null}
-                    updatingChannelAvatarId={controller.updatingChannelAvatarId}
+                    channels={channels.channels}
+                    selectedChannelId={channels.selectedChannelId}
+                    viewMode={media.mediaPlayer.viewMode}
+                    shellBorder={viewState.shellBorder}
+                    shellSurface={viewState.shellSurface}
+                    loading={channels.isLoadingChannels}
+                    deletingChannelId={channels.channelToDelete?.id ?? null}
+                    updatingChannelAvatarId={channels.updatingChannelAvatarId}
                     libraryPath={controller.libraryPath}
-                    onSelectChannel={controller.setSelectedChannelId}
-                    onRequestEditChannel={controller.requestEditChannel}
-                    onRequestDeleteChannel={controller.requestDeleteChannel}
-                    onUpdateChannelAvatarFromFile={controller.updateChannelAvatarFromFile}
-                    onUpdateChannelAvatarFromYouTube={controller.updateChannelAvatarFromYouTube}
-                    onRemoveChannelAvatar={controller.removeChannelAvatar}
-                    onClosePlayer={controller.playerActions.closePlayer}
+                    onSelectChannel={channels.setSelectedChannelId}
+                    onRequestEditChannel={channels.requestEditChannel}
+                    onRequestDeleteChannel={channels.requestDeleteChannel}
+                    onUpdateChannelAvatarFromFile={channels.updateChannelAvatarFromFile}
+                    onUpdateChannelAvatarFromYouTube={channels.updateChannelAvatarFromYouTube}
+                    onRemoveChannelAvatar={channels.removeChannelAvatar}
+                    onClosePlayer={playerActions.closePlayer}
                 />
 
                 <AppShell.Main>
@@ -131,8 +127,8 @@ export default function Home(): JSX.Element {
                             {showLoading && (
                                 <LoadingStateCard
                                     message={UI_TEXT.home.loadingApp}
-                                    shellBorder={controller.viewState.shellBorder}
-                                    shellSurface={controller.viewState.shellSurface}
+                                    shellBorder={viewState.shellBorder}
+                                    shellSurface={viewState.shellSurface}
                                 />
                             )}
 
@@ -140,8 +136,8 @@ export default function Home(): JSX.Element {
                                 <EmptyStateCard
                                     title={UI_TEXT.home.emptyTitle}
                                     description={UI_TEXT.home.emptyDescription}
-                                    shellBorder={controller.viewState.shellBorder}
-                                    shellSurface={controller.viewState.shellSurface}
+                                    shellBorder={viewState.shellBorder}
+                                    shellSurface={viewState.shellSurface}
                                     features={[
                                         UI_TEXT.home.emptyCards.channels,
                                         UI_TEXT.home.emptyCards.media,
@@ -156,21 +152,21 @@ export default function Home(): JSX.Element {
                                     mediaSrc={controller.playerPanelState.mediaSrc}
                                     thumbnailSrc={controller.playerPanelState.thumbnailSrc}
                                     isAudio={controller.playerPanelState.isAudio}
-                                    shellBorder={controller.viewState.shellBorder}
+                                    shellBorder={viewState.shellBorder}
                                     canOpenInYoutube={controller.playerPanelState.canOpenInYoutube}
                                     isWatched={controller.playerPanelState.isWatched}
                                     libraryPath={controller.libraryPath}
-                                    isRefreshingComments={controller.playerActions.isRefreshingComments}
-                                    onOpenInYoutube={controller.playerActions.openInYoutube}
-                                    onOpenFileLocation={controller.playerActions.openFileLocation}
-                                    onRefreshComments={controller.playerActions.refreshComments}
-                                    onMarkWatched={controller.playerActions.markActiveAsWatched}
-                                    onMarkUnwatched={controller.playerActions.markActiveAsUnwatched}
-                                    onBack={controller.playerActions.closePlayer}
+                                    isRefreshingComments={playerActions.isRefreshingComments}
+                                    onOpenInYoutube={playerActions.openInYoutube}
+                                    onOpenFileLocation={playerActions.openFileLocation}
+                                    onRefreshComments={playerActions.refreshComments}
+                                    onMarkWatched={playerActions.markActiveAsWatched}
+                                    onMarkUnwatched={playerActions.markActiveAsUnwatched}
+                                    onBack={playerActions.closePlayer}
                                 />
                             )}
 
-                            {showLibrarySection && controller.selectedChannel && (
+                            {showLibrarySection && channels.selectedChannel && (
                                 <Box
                                     style={{
                                         position: showLibrary ? "relative" : "absolute",
@@ -183,20 +179,20 @@ export default function Home(): JSX.Element {
                                     }}
                                 >
                                     <SelectedChannelLibrarySection
-                                        selectedChannel={controller.selectedChannel}
+                                        selectedChannel={channels.selectedChannel}
                                         itemCountLabel={controller.libraryPanelState.itemCountLabel}
                                         disableAddMedia={controller.libraryPanelState.disableAddMedia}
-                                        isLoadingMedia={controller.isLoadingMedia}
+                                        isLoadingMedia={media.isLoadingMedia}
                                         isVisible={showLibrary}
-                                        mediaItems={controller.mediaItems}
-                                        activeMediaId={controller.mediaPlayer.activeMedia?.id ?? null}
+                                        mediaItems={media.mediaItems}
+                                        activeMediaId={media.mediaPlayer.activeMedia?.id ?? null}
                                         libraryPath={controller.libraryPath}
-                                        shellBorder={controller.viewState.shellBorder}
-                                        shellSurface={controller.viewState.shellSurface}
-                                        onAddMedia={() => controller.setAddMediaOpen(true)}
-                                        onBack={() => controller.setSelectedChannelId(null)}
-                                        onOpenMedia={controller.mediaPlayer.openPlayer}
-                                        onRequestDeleteMedia={controller.requestDeleteMedia}
+                                        shellBorder={viewState.shellBorder}
+                                        shellSurface={viewState.shellSurface}
+                                        onAddMedia={() => media.setAddMediaOpen(true)}
+                                        onBack={() => channels.setSelectedChannelId(null)}
+                                        onOpenMedia={media.mediaPlayer.openPlayer}
+                                        onRequestDeleteMedia={media.requestDeleteMedia}
                                         onMarkWatched={handleMarkWatched}
                                         onMarkUnwatched={handleMarkUnwatched}
                                         onOpenFileLocation={handleOpenFileLocation}
@@ -208,13 +204,21 @@ export default function Home(): JSX.Element {
                         </Stack>
                     </Container>
 
-                    <HomeModals controller={controller} />
+                    <HomeModals
+                        channels={controller.channels}
+                        media={controller.media}
+                        mediaActions={controller.mediaActions}
+                        settings={controller.settings}
+                        diagnostics={controller.diagnostics}
+                        error={controller.error}
+                        uiGuards={controller.uiGuards}
+                    />
 
                     <EditMediaTitleModal
                         media={editTitleMedia}
                         loading={isSavingTitle}
                         onClose={() => setEditTitleMedia(null)}
-                        onSave={(media, title) => void handleSaveMediaTitle(media, title)}
+                        onSave={(item, title) => void handleSaveMediaTitle(item, title)}
                     />
                 </AppShell.Main>
             </AppShell>

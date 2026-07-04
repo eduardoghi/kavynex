@@ -96,112 +96,22 @@ export function useHomeController(): HomeController {
     });
 
     return {
-        channels: channelsState.channels,
-        selectedChannelId: channelsState.selectedChannelId,
-        selectedChannel: channelsState.selectedChannel,
-        mediaItems: mediaLibrary.mediaItems,
-
-        createChannelOpen: channelsState.createChannelOpen,
-        setCreateChannelOpen: channelsState.setCreateChannelOpen,
-        newChannelName: channelsState.newChannelName,
-        setNewChannelName: channelsState.setNewChannelName,
-        newYoutubeHandle: channelsState.newYoutubeHandle,
-        setNewYoutubeHandle: channelsState.setNewYoutubeHandle,
-        newChannelAvatarMode: channelsState.newChannelAvatarMode,
-        setNewChannelAvatarMode: channelsState.setNewChannelAvatarMode,
-        newChannelAvatarPath: channelsState.newChannelAvatarPath,
-        setNewChannelAvatarPath: channelsState.setNewChannelAvatarPath,
-        pickChannelAvatarViaDialog: channelsState.pickChannelAvatarViaDialog,
-        clearNewChannelAvatarPath: channelsState.clearNewChannelAvatarPath,
-
-        editChannelOpen: channelsState.editChannelOpen,
-        setEditChannelOpen: channelsState.setEditChannelOpen,
-        editingChannel: channelsState.editingChannel,
-        editChannelName: channelsState.editChannelName,
-        setEditChannelName: channelsState.setEditChannelName,
-        editYoutubeHandle: channelsState.editYoutubeHandle,
-        setEditYoutubeHandle: channelsState.setEditYoutubeHandle,
-        saveEditedChannel: channelsState.saveEditedChannel,
-        isEditingChannel: channelsState.isEditingChannel,
-
-        addMediaOpen: mediaLibrary.addMediaOpen,
-        setAddMediaOpen: mediaLibrary.setAddMediaOpen,
-        closeAddMediaModal: uiGuards.closeAddMediaModalSafely,
-
-        confirmDeleteMediaOpen: mediaLibrary.confirmDeleteMediaOpen,
-        mediaToDelete: mediaLibrary.mediaToDelete,
-
-        confirmDeleteChannelOpen: channelsState.confirmDeleteChannelOpen,
-        channelToDelete: channelsState.channelToDelete,
-
-        diagnosticsOpen: diagnosticsState.diagnosticsOpen,
-        diagnosticsSummary: diagnosticsState.diagnosticsSummary,
-        isLoadingDiagnostics: diagnosticsState.isLoadingDiagnostics,
-        openDiagnostics: diagnosticsState.openDiagnostics,
-        closeDiagnostics: diagnosticsState.closeDiagnostics,
-        reloadDiagnostics: diagnosticsState.reloadDiagnostics,
-
-        isLoadingChannels: channelsState.isLoadingChannels,
-        isCreatingChannel: channelsState.isCreatingChannel,
-        isDeletingChannel: channelsState.isDeletingChannel,
-        isUpdatingChannelAvatar: channelsState.isUpdatingChannelAvatar,
-        updatingChannelAvatarId: channelsState.updatingChannelAvatarId,
-        isLoadingMedia: mediaLibrary.isLoadingMedia,
-        isAddingMedia: mediaLibrary.isAddingMedia,
-        isDeletingMedia: mediaLibrary.isDeletingMedia,
-        isUpdatingWatched: mediaLibrary.isUpdatingWatched,
-        isUpdatingTitle: mediaLibrary.isUpdatingTitle,
-        isCancellingYtDlp: mediaLibrary.isCancellingYtDlp,
-
-        ytDlpLogs: mediaLibrary.ytDlpLogs,
-        isYtDlpRunning: mediaLibrary.isYtDlpRunning,
-
-        errorOpen: errorState.errorOpen,
-        errorMessage: errorState.errorMessage,
-
-        addMediaForm: mediaLibrary.addMediaForm,
-        mediaPlayer: mediaLibrary.mediaPlayer,
+        channels: channelsState,
+        media: mediaLibrary,
+        // chooseLibraryPath is orchestrated at the Home level (UI-guard checks), so it
+        // replaces the raw settings-hook version while the rest of the slice passes through.
+        settings: {
+            ...settingsState,
+            chooseLibraryPath: homeActions.chooseLibraryPath,
+        },
+        diagnostics: diagnosticsState,
+        error: errorState,
+        uiGuards,
+        mediaActions: homeMediaActions,
         playerActions,
         playerPanelState,
         viewState,
         libraryPanelState,
-
-        settingsOpen: settingsState.settingsOpen,
-        importMode,
         libraryPath,
-        isPreparingSettings: settingsState.isPreparingSettings,
-        isMigratingLibraryPath: settingsState.isMigratingLibraryPath,
-        openSettings: settingsState.openSettings,
-        closeSettings: settingsState.closeSettings,
-        setImportMode: settingsState.setImportMode,
-        chooseLibraryPath: homeActions.chooseLibraryPath,
-        openCurrentLibraryPath: settingsState.openCurrentLibraryPath,
-        disableLibraryPathChange: uiGuards.disableLibraryPathChange,
-        libraryPathChangeDisabledReason: uiGuards.libraryPathChangeDisabledReason,
-
-        setSelectedChannelId: channelsState.setSelectedChannelId,
-
-        createChannel: channelsState.createChannel,
-        addMedia: homeMediaActions.addMedia,
-        cancelYtDlpDownload: mediaLibrary.cancelYtDlpDownload,
-        markAsWatched: homeMediaActions.markAsWatched,
-        markAsUnwatched: homeMediaActions.markAsUnwatched,
-        editMediaTitle: homeMediaActions.editMediaTitle,
-        openMediaFileLocation: mediaLibrary.openMediaFileLocation,
-        openMediaSourceInYoutube: mediaLibrary.openMediaSourceInYoutube,
-
-        requestDeleteMedia: mediaLibrary.requestDeleteMedia,
-        confirmDeleteMedia: homeMediaActions.confirmDeleteMedia,
-        closeDeleteMediaModal: mediaLibrary.closeDeleteMediaModal,
-
-        requestEditChannel: channelsState.requestEditChannel,
-        requestDeleteChannel: channelsState.requestDeleteChannel,
-        updateChannelAvatarFromFile: channelsState.updateChannelAvatarFromFile,
-        updateChannelAvatarFromYouTube: channelsState.updateChannelAvatarFromYouTube,
-        removeChannelAvatar: channelsState.removeChannelAvatar,
-        confirmDeleteChannel: homeMediaActions.confirmDeleteChannel,
-        closeDeleteChannelModal: channelsState.closeDeleteChannelModal,
-
-        closeErrorModal: errorState.closeErrorModal,
     };
 }
