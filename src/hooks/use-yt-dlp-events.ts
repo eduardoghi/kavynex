@@ -9,37 +9,16 @@ import {
 } from "../constants/events";
 import { listenTauri } from "../lib/tauri-client";
 import { logError } from "../utils/app-logger";
+import type {
+    YtDlpFailedEvent,
+    YtDlpFinishedEvent,
+    YtDlpLogEvent,
+    YtDlpTerminalEvent,
+} from "../types/media";
 
-type YtDlpLogEvent = {
-    run_id: string;
-    line: string;
-    stream: "stdout" | "stderr" | "system";
-    level?: "info" | "warn" | "error";
-};
-
-type YtDlpFinishedEvent = {
-    run_id: string;
-    file_path: string;
-    suggested_title: string;
-};
-
-type YtDlpErrorEvent = {
-    run_id: string;
-    message: string;
-};
-
-type YtDlpCancelledEvent = {
-    run_id: string;
-    message: string;
-};
-
-type YtDlpTerminalEvent = {
-    run_id: string;
-    status: "finished" | "failed" | "cancelled";
-    message?: string | null;
-    file_path?: string | null;
-    suggested_title?: string | null;
-};
+// The error and cancelled events carry the same payload shape.
+type YtDlpErrorEvent = YtDlpFailedEvent;
+type YtDlpCancelledEvent = YtDlpFailedEvent;
 
 type UseYtDlpEventsReturn = {
     ytDlpLogs: string[];

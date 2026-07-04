@@ -23,44 +23,70 @@ pub struct DownloadedMediaResult {
     pub live_chat_file_path: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub enum DownloadLogLevel {
     Info,
     Warn,
     Error,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+// Exposed to the frontend as `YtDlpLogEvent`. `stream` is a plain String, but the emitter
+// only ever sets these three values, so it is refined to a union for the frontend.
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(
+    export,
+    rename = "YtDlpLogEvent",
+    export_to = "../../src/types/generated/"
+)]
 pub struct DownloadLogEvent {
     pub run_id: String,
     pub line: String,
+    #[ts(type = "\"stdout\" | \"stderr\" | \"system\"")]
     pub stream: String,
     pub level: DownloadLogLevel,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(
+    export,
+    rename = "YtDlpFinishedEvent",
+    export_to = "../../src/types/generated/"
+)]
 pub struct DownloadFinishedEvent {
     pub run_id: String,
     pub file_path: String,
     pub suggested_title: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+// Emitted for both the error and cancelled events (identical shape).
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(
+    export,
+    rename = "YtDlpFailedEvent",
+    export_to = "../../src/types/generated/"
+)]
 pub struct DownloadFailedEvent {
     pub run_id: String,
     pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub enum DownloadTerminalStatus {
     Finished,
     Failed,
     Cancelled,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(
+    export,
+    rename = "YtDlpTerminalEvent",
+    export_to = "../../src/types/generated/"
+)]
 pub struct DownloadTerminalEvent {
     pub run_id: String,
     pub status: DownloadTerminalStatus,

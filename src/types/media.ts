@@ -19,23 +19,12 @@ export type { YtDlpFormat } from "./generated/YtDlpFormat";
 export type { YtDlpFormatsResult } from "./generated/YtDlpFormatsResult";
 export type { DownloadedMediaResult } from "./generated/DownloadedMediaResult";
 
-export type YtDlpLogEvent = {
-    run_id: string;
-    line: string;
-    stream: string;
-    level?: "info" | "warn" | "error";
-};
-
-export type YtDlpFinishedEvent = {
-    run_id: string;
-    file_path: string;
-    suggested_title: string;
-};
-
-export type YtDlpFailedEvent = {
-    run_id: string;
-    message: string;
-};
+// Generated yt-dlp event payload types (from models/yt_dlp.rs). These were previously
+// duplicated here and in use-yt-dlp-events.ts; both now share the generated types.
+export type { YtDlpLogEvent } from "./generated/YtDlpLogEvent";
+export type { YtDlpFinishedEvent } from "./generated/YtDlpFinishedEvent";
+export type { YtDlpFailedEvent } from "./generated/YtDlpFailedEvent";
+export type { YtDlpTerminalEvent } from "./generated/YtDlpTerminalEvent";
 
 // Generated from the Rust `ChannelRow` struct by ts-rs (exported as `Channel`).
 export type { Channel } from "./generated/Channel";
