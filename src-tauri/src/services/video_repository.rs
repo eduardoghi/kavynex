@@ -1,25 +1,40 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
+use ts_rs::TS;
 
 use crate::services::database::db_error;
 use crate::AppResult;
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+// `id`/counts/flags are i64 in Rust but ts-rs would emit `bigint`; the Tauri IPC layer
+// serializes them as JSON numbers, so the runtime value is a JS `number`. `media_type` is
+// refined to the union the app relies on. These per-field overrides keep the generated
+// type identical to what `invoke` actually returns.
+#[derive(Debug, Serialize, sqlx::FromRow, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct MediaRow {
+    #[ts(type = "number")]
     pub id: i64,
+    #[ts(type = "number")]
     pub channel_id: i64,
     pub title: String,
     pub file_path: String,
     pub thumbnail_path: Option<String>,
+    #[ts(type = "\"video\" | \"audio\"")]
     pub media_type: String,
     pub youtube_video_id: Option<String>,
     pub watched_at: Option<String>,
     pub published_at: Option<String>,
+    #[ts(type = "number | null")]
     pub duration_seconds: Option<i64>,
+    #[ts(type = "number")]
     pub progress_seconds: i64,
+    #[ts(type = "number")]
     pub has_comments: i64,
+    #[ts(type = "number")]
     pub comments_count: i64,
+    #[ts(type = "number")]
     pub is_live: i64,
+    #[ts(type = "number")]
     pub has_live_chat: i64,
     pub live_chat_file_path: Option<String>,
     pub created_at: String,

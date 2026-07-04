@@ -1,0 +1,2 @@
+# ts-rs writes these with LF; pin LF so the CI drift check is stable across platforms.
+src/types/generated/*.ts text eol=lf

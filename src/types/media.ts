@@ -4,25 +4,9 @@ export type MediaSourceMode = "local" | "yt-dlp";
 export type ViewMode = "library" | "player";
 export type ChannelAvatarMode = "none" | "manual" | "youtube";
 
-export type MediaRow = {
-    id: number;
-    channel_id: number;
-    title: string;
-    file_path: string;
-    thumbnail_path: string | null;
-    media_type: MediaType;
-    youtube_video_id: string | null;
-    watched_at: string | null;
-    published_at: string | null;
-    duration_seconds: number | null;
-    progress_seconds: number;
-    has_comments: number;
-    comments_count: number;
-    is_live: number;
-    has_live_chat: number;
-    live_chat_file_path: string | null;
-    created_at: string;
-};
+// Generated from the Rust `MediaRow` struct by ts-rs (see src-tauri/.../video_repository.rs).
+// Do not hand-edit the shape here; change the Rust struct and regenerate.
+export type { MediaRow } from "./generated/MediaRow";
 
 export type MediaCommentRow = {
     id: number;
