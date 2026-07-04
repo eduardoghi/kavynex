@@ -1,4 +1,6 @@
-pub use crate::services::yt_dlp_download::download_media_from_url_async;
+pub use crate::services::yt_dlp_download::{
+    cancel_all_active_downloads_blocking, download_media_from_url_async,
+};
 pub use crate::services::yt_dlp_metadata::{
     fetch_youtube_comments_async, fetch_yt_dlp_metadata, list_yt_dlp_formats_async,
     sanitize_filename_component,

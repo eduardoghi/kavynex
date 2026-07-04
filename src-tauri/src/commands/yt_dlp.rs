@@ -68,7 +68,7 @@ pub async fn fetch_youtube_comments(
 
 #[tauri::command]
 pub async fn cancel_media_download(run_id: String) -> AppResult<()> {
-    yt_dlp::cancel_media_download_async(&run_id).await
+    yt_dlp::cancel_media_download_async(&run_id)
 }
 
 #[tauri::command]

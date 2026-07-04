@@ -34,7 +34,9 @@ use crate::services::yt_dlp_events::{
 use crate::services::yt_dlp_metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
 };
-use crate::services::yt_dlp_registry::{register_download_run, unregister_download_run};
+use crate::services::yt_dlp_registry::{
+    register_download_run, set_download_pid, unregister_download_run,
+};
 use crate::utils::format::codec_is_present;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
 use crate::{AppError, AppErrorCode, AppResult};
@@ -157,6 +159,47 @@ async fn kill_process_tree(pid: u32) {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn kill_process_tree_blocking(pid: u32) {
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(unix)]
+fn kill_process_tree_blocking(pid: u32) {
+    let process_group = format!("-{pid}");
+
+    let _ = std::process::Command::new("kill")
+        .args(["-9", process_group.as_str()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(any(target_os = "windows", unix)))]
+fn kill_process_tree_blocking(pid: u32) {
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Cancels every active download and synchronously kills the process tree of each one
+/// whose child has been spawned. Intended to run on app exit: it does not touch the async
+/// runtime, so in-flight yt-dlp/ffmpeg children are terminated instead of being orphaned
+/// when the window closes.
+pub fn cancel_all_active_downloads_blocking() {
+    let pids = crate::services::yt_dlp_registry::signal_cancel_all_and_collect_pids();
+
+    for pid in pids {
+        kill_process_tree_blocking(pid);
+    }
+}
+
 #[cfg(unix)]
 fn configure_yt_dlp_command(command: &mut Command) {
     command.process_group(0);
@@ -246,7 +289,7 @@ pub async fn download_media_from_url_async(
     let normalized_cookies_browser = normalize_cookies_browser(cookies_browser);
     let normalized_cookies_path = normalize_cookies_path(cookies_path);
 
-    let cancel_flag = register_download_run(&normalized_run_id).await?;
+    let cancel_flag = register_download_run(&normalized_run_id)?;
     let yt_dlp = resolve_yt_dlp_binary(app)?;
     let ffmpeg = resolve_ffmpeg_binary(app)?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
@@ -556,6 +599,12 @@ pub async fn download_media_from_url_async(
 
         let child_pid = child.id();
 
+        // Record the pid so the whole yt-dlp/ffmpeg process tree can be killed if the app
+        // exits before this download finishes.
+        if let Some(pid) = child_pid {
+            set_download_pid(&normalized_run_id, pid);
+        }
+
         let stdout = child.stdout.take().ok_or_else(|| {
             AppError::from_code(
                 AppErrorCode::YtDlpStdoutCaptureFailed,
@@ -784,7 +833,7 @@ pub async fn download_media_from_url_async(
     .await;
 
     let _ = fs::remove_dir_all(&temp_dir);
-    unregister_download_run(&normalized_run_id).await;
+    unregister_download_run(&normalized_run_id);
 
     if let Err(error) = &result {
         logger::error(

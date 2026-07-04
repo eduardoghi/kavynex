@@ -161,6 +161,13 @@ pub fn run() {
             commands::videos::get_media_repository_stats,
             commands::videos::list_media_integrity_references
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run tauri application");
+        .build(tauri::generate_context!())
+        .expect("failed to build tauri application")
+        .run(|_app_handle, event| {
+            // Terminate any in-flight yt-dlp/ffmpeg downloads when the app is exiting so
+            // they are not left running as orphaned processes after the window closes.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                services::yt_dlp::cancel_all_active_downloads_blocking();
+            }
+        });
 }
