@@ -263,6 +263,51 @@ describe("readLiveChatMessagesFromFile", () => {
         });
     });
 
+    it("parses a custom emoji as an image part", async () => {
+        vi.mocked(readTextFile).mockResolvedValue(
+            rawLine({
+                message: {
+                    runs: [
+                        { text: "gg " },
+                        {
+                            emoji: {
+                                isCustomEmoji: true,
+                                shortcuts: [":face-blue-smiling:"],
+                                image: { thumbnails: [{ url: "//yt3.ggpht.com/e=s48" }] },
+                            },
+                        },
+                    ],
+                },
+                authorName: { simpleText: "@x" },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.message_parts).toEqual([
+            { type: "text", text: "gg " },
+            {
+                type: "emoji",
+                url: "https://yt3.ggpht.com/e=s48",
+                label: ":face-blue-smiling:",
+            },
+        ]);
+    });
+
+    it("keeps a standard emoji as its unicode character", async () => {
+        vi.mocked(readTextFile).mockResolvedValue(
+            rawLine({
+                message: { runs: [{ emoji: { emojiId: "📍", shortcuts: [":round_pushpin:"] } }] },
+                authorName: { simpleText: "@x" },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.message_parts).toEqual([{ type: "text", text: "📍" }]);
+        expect(messages[0]?.message_text).toBe("📍");
+    });
+
     it("returns null author_channel_id when absent", async () => {
         vi.mocked(readTextFile).mockResolvedValue(
             rawLine({

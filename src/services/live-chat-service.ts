@@ -18,6 +18,10 @@ export type LiveChatAuthorBadge = {
 
 export type LiveChatMessageKind = "message" | "superchat" | "sticker" | "membership";
 
+export type LiveChatMessagePart =
+    | { type: "text"; text: string }
+    | { type: "emoji"; url: string; label: string };
+
 export type LiveChatMessageItem = {
     kind: LiveChatMessageKind;
     message_id: string | null;
@@ -27,6 +31,7 @@ export type LiveChatMessageItem = {
     author_thumbnail: string | null;
     author_badges: LiveChatAuthorBadge[];
     message_text: string;
+    message_parts: LiveChatMessagePart[];
     timestamp_text: string | null;
     amount_text: string | null;
     superchat_body_color: string | null;
@@ -85,6 +90,82 @@ function extractRunsText(runs: unknown): string {
 function parseRendererMessage(renderer: Record<string, unknown>): string {
     const message = renderer.message as Record<string, unknown> | undefined;
     return extractRunsText(message?.runs).trim();
+}
+
+function emojiImageUrl(emoji: Record<string, unknown>): string | null {
+    const image = emoji.image as Record<string, unknown> | undefined;
+    const thumbnails = Array.isArray(image?.thumbnails) ? image.thumbnails : [];
+    const candidate = thumbnails[thumbnails.length - 1] as Record<string, unknown> | undefined;
+    const url = typeof candidate?.url === "string" ? candidate.url.trim() : "";
+
+    if (!url) {
+        return null;
+    }
+
+    return url.startsWith("//") ? `https:${url}` : url;
+}
+
+// Preserves message structure so custom channel emojis can render as inline images.
+// Standard unicode emojis become their character; custom emojis become an image part
+// (with the shortcut kept as label / fallback).
+function parseMessageParts(renderer: Record<string, unknown>): LiveChatMessagePart[] {
+    const runs = (renderer.message as Record<string, unknown> | undefined)?.runs;
+
+    if (!Array.isArray(runs)) {
+        return [];
+    }
+
+    const parts: LiveChatMessagePart[] = [];
+
+    for (const run of runs) {
+        const item = (run ?? {}) as Record<string, unknown>;
+
+        if (typeof item.text === "string") {
+            if (item.text) {
+                parts.push({ type: "text", text: item.text });
+            }
+            continue;
+        }
+
+        const emoji = item.emoji as Record<string, unknown> | undefined;
+
+        if (!emoji) {
+            continue;
+        }
+
+        const shortcuts = Array.isArray(emoji.shortcuts) ? emoji.shortcuts : [];
+        const label =
+            (typeof shortcuts[0] === "string" && shortcuts[0].trim() ? shortcuts[0] : "") ||
+            (typeof emoji.emojiId === "string" ? emoji.emojiId : "");
+
+        if (emoji.isCustomEmoji === true) {
+            const url = emojiImageUrl(emoji);
+
+            if (url) {
+                parts.push({ type: "emoji", url, label });
+            } else if (label) {
+                parts.push({ type: "text", text: label });
+            }
+
+            continue;
+        }
+
+        // Standard emoji: emojiId is the unicode character.
+        const text = typeof emoji.emojiId === "string" && emoji.emojiId ? emoji.emojiId : label;
+
+        if (text) {
+            parts.push({ type: "text", text });
+        }
+    }
+
+    return parts;
+}
+
+function partsToText(parts: LiveChatMessagePart[]): string {
+    return parts
+        .map((part) => (part.type === "text" ? part.text : part.label))
+        .join("")
+        .trim();
 }
 
 function parseAuthorName(renderer: Record<string, unknown>): string {
@@ -238,6 +319,7 @@ function makeMessage(
         author_thumbnail: partial.author_thumbnail ?? null,
         author_badges: partial.author_badges ?? [],
         message_text: partial.message_text ?? "",
+        message_parts: partial.message_parts ?? [],
         timestamp_text: partial.timestamp_text ?? null,
         amount_text: partial.amount_text ?? null,
         superchat_body_color: partial.superchat_body_color ?? null,
@@ -270,9 +352,10 @@ function buildChatMessage(
     isPaid: boolean,
     offset: number
 ): LiveChatMessageItem | null {
-    const text = parseRendererMessage(renderer);
+    const parts = parseMessageParts(renderer);
+    const text = partsToText(parts);
 
-    // Regular messages must have text; super chats keep the amount as content.
+    // Regular messages must have content; super chats keep the amount as content.
     if (!text && !isPaid) {
         return null;
     }
@@ -286,6 +369,7 @@ function buildChatMessage(
         author_thumbnail: parseAuthorThumbnail(renderer),
         author_badges: parseAuthorBadges(renderer),
         message_text: text,
+        message_parts: parts,
         timestamp_text: parseTimestampText(renderer),
         amount_text: isPaid ? parsePurchaseAmount(renderer) : null,
         superchat_body_color: isPaid ? argbColorToHex(renderer.bodyBackgroundColor) : null,

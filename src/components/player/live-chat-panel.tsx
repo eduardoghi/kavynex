@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Anchor,
     Badge,
@@ -21,6 +21,45 @@ import { SafeAvatar } from "./safe-avatar";
 const OWNER_HIGHLIGHT_COLOR = "#ffd600";
 const MODERATOR_NAME_COLOR = "#5e84f1";
 const MEMBER_NAME_COLOR = "#2ba640";
+
+// Inline custom-emoji image, falling back to the emoji shortcut text if it fails to load
+// (the image URLs can expire).
+function EmojiImage({ url, label }: { url: string; label: string }): JSX.Element {
+    const [failed, setFailed] = useState(false);
+
+    if (failed) {
+        return <>{label}</>;
+    }
+
+    return (
+        <img
+            src={url}
+            alt={label}
+            title={label}
+            loading="lazy"
+            onError={() => setFailed(true)}
+            style={{ height: "1.25em", verticalAlign: "-0.25em", margin: "0 1px" }}
+        />
+    );
+}
+
+function renderMessageContent(message: LiveChatMessageItem): JSX.Element | string {
+    if (message.message_parts.length === 0) {
+        return message.message_text;
+    }
+
+    return (
+        <>
+            {message.message_parts.map((part, index) =>
+                part.type === "emoji" ? (
+                    <EmojiImage key={index} url={part.url} label={part.label} />
+                ) : (
+                    <span key={index}>{part.text}</span>
+                )
+            )}
+        </>
+    );
+}
 
 type LiveChatPanelProps = {
     liveChatMessages: LiveChatMessageItem[];
@@ -185,7 +224,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
                                     lineHeight: 1.45,
                                 }}
                             >
-                                {message.message_text}
+                                {renderMessageContent(message)}
                             </Text>
                         )}
 
@@ -249,7 +288,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
                                 lineHeight: 1.45,
                             }}
                         >
-                            {message.message_text}
+                            {renderMessageContent(message)}
                         </Text>
                     </>
                 )}
