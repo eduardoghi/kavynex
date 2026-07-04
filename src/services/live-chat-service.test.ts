@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exists, readFile } from "@tauri-apps/plugin-fs";
-import { readLiveChatMessagesFromFile } from "./live-chat-service";
+import {
+    getVisibleLiveChatMessages,
+    readLiveChatMessagesFromFile,
+    type LiveChatMessageItem,
+} from "./live-chat-service";
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
     BaseDirectory: { AppData: 1 },
@@ -383,5 +387,59 @@ describe("readLiveChatMessagesFromFile", () => {
         const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
 
         expect(messages[0]?.author_channel_id).toBeNull();
+    });
+});
+
+describe("getVisibleLiveChatMessages", () => {
+    function messageAtOffset(offsetMs: number): LiveChatMessageItem {
+        return {
+            kind: "message",
+            message_id: `m-${offsetMs}`,
+            message_offset_ms: offsetMs,
+            author_name: "Author",
+            author_channel_id: null,
+            author_thumbnail: null,
+            author_badges: [],
+            message_text: `msg ${offsetMs}`,
+            message_parts: [],
+            timestamp_text: null,
+            amount_text: null,
+            superchat_body_color: null,
+            superchat_text_color: null,
+            sticker_image_url: null,
+            pinned_header: null,
+        };
+    }
+
+    const messages = [0, 1000, 2000, 3000, 4000].map(messageAtOffset);
+
+    it("returns only messages at or before the playback time (offset is inclusive)", () => {
+        const visible = getVisibleLiveChatMessages(messages, 2);
+
+        expect(visible.map((message) => message.message_offset_ms)).toEqual([0, 1000, 2000]);
+    });
+
+    it("returns nothing before the first message", () => {
+        expect(getVisibleLiveChatMessages(messages, 0)).toHaveLength(1);
+        expect(getVisibleLiveChatMessages([], 10)).toEqual([]);
+    });
+
+    it("returns every message once playback passes the last offset", () => {
+        expect(getVisibleLiveChatMessages(messages, 99)).toHaveLength(messages.length);
+    });
+
+    it("keeps only the most recent 200 messages", () => {
+        const many = Array.from({ length: 250 }, (_, index) => messageAtOffset(index));
+
+        const visible = getVisibleLiveChatMessages(many, 1000);
+
+        expect(visible).toHaveLength(200);
+        // The window is the tail, so it ends at the newest message and starts 200 back.
+        expect(visible[0]?.message_offset_ms).toBe(50);
+        expect(visible[visible.length - 1]?.message_offset_ms).toBe(249);
+    });
+
+    it("clamps negative playback time to zero", () => {
+        expect(getVisibleLiveChatMessages(messages, -5)).toHaveLength(1);
     });
 });

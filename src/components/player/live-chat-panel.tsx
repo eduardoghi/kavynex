@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
     Anchor,
     Badge,
@@ -73,7 +73,12 @@ type LiveChatItemProps = {
     shellBorder: string;
 };
 
-function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element {
+// Memoized so a sliding visible window only renders the newly added rows: existing rows
+// keep the same `message` reference and are skipped by the shallow prop comparison.
+const LiveChatItem = memo(function LiveChatItem({
+    message,
+    shellBorder,
+}: LiveChatItemProps): JSX.Element {
     const avatarSrc = resolveAvatarSrc(message.author_thumbnail);
     const authorChannelId = message.author_channel_id;
     const isOwner = message.author_badges.some((badge) => badge.type === "owner");
@@ -328,7 +333,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
             </Stack>
         </Group>
     );
-}
+});
 
 export function LiveChatPanel({
     liveChatMessages,
@@ -380,14 +385,24 @@ export function LiveChatPanel({
 
     // Pinned banners are shown sticky at the top (YouTube-style) instead of inline. The
     // active pin is the most recent one up to the current playback time; it stays until a
-    // newer pin replaces it.
-    const inlineMessages = visibleLiveChatMessages.filter((message) => message.kind !== "pinned");
-    let activePin: LiveChatMessageItem | null = null;
-    for (const message of visibleLiveChatMessages) {
-        if (message.kind === "pinned") {
-            activePin = message;
+    // newer pin replaces it. Both are memoized so they are only recomputed when the visible
+    // window actually changes, not on every parent render.
+    const inlineMessages = useMemo(
+        () => visibleLiveChatMessages.filter((message) => message.kind !== "pinned"),
+        [visibleLiveChatMessages]
+    );
+
+    const activePin = useMemo(() => {
+        let pin: LiveChatMessageItem | null = null;
+
+        for (const message of visibleLiveChatMessages) {
+            if (message.kind === "pinned") {
+                pin = message;
+            }
         }
-    }
+
+        return pin;
+    }, [visibleLiveChatMessages]);
 
     return (
         <Paper
@@ -484,7 +499,10 @@ export function LiveChatPanel({
                             inlineMessages.length > 0 &&
                             inlineMessages.map((message, index) => (
                                 <LiveChatItem
-                                    key={`${message.message_id ?? "chat"}-${message.message_offset_ms}-${index}`}
+                                    key={
+                                        message.message_id ??
+                                        `${message.message_offset_ms}-${index}`
+                                    }
                                     message={message}
                                     shellBorder={shellBorder}
                                 />

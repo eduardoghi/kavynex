@@ -4,14 +4,13 @@ import { ArrowLeft, PlayCircle } from "lucide-react";
 import type { MediaCommentRow, MediaRow } from "../../types/media";
 import { listMediaComments } from "../../services/media-service";
 import {
-    getVisibleLiveChatMessages,
     readLiveChatMessagesFromFile,
     type LiveChatMessageItem,
 } from "../../services/live-chat-service";
 import { logError } from "../../utils/app-logger";
 import { formatCreatedAt, formatPublishedDate, shortPath } from "../../utils/media-utils";
 import { CommentsPanel } from "./comments-panel";
-import { LiveChatPanel } from "./live-chat-panel";
+import { LiveChatReplay } from "./live-chat-replay";
 import { PlayerAudioSurface } from "./player-audio-surface";
 import { PlayerMediaHeader } from "./player-media-header";
 import { PlayerVideoSurface } from "./player-video-surface";
@@ -57,9 +56,8 @@ export function MediaPlayerView({
     const [isLoadingComments, setIsLoadingComments] = useState(false);
 
     const [liveChatMessages, setLiveChatMessages] = useState<LiveChatMessageItem[]>([]);
-    const [visibleLiveChatMessages, setVisibleLiveChatMessages] = useState<LiveChatMessageItem[]>([]);
     const [isLoadingLiveChat, setIsLoadingLiveChat] = useState(false);
-    const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+    const [playerElement, setPlayerElement] = useState<HTMLMediaElement | null>(null);
 
     const canPlay = Boolean(media && mediaSrc);
     const publishedLabel = formatPublishedDate(media?.published_at);
@@ -114,7 +112,6 @@ export function MediaPlayerView({
         async function loadLiveChat(): Promise<void> {
             if (!media?.id || !media.live_chat_file_path?.trim() || !media.has_live_chat) {
                 setLiveChatMessages([]);
-                setVisibleLiveChatMessages([]);
                 setIsLoadingLiveChat(false);
                 return;
             }
@@ -130,7 +127,6 @@ export function MediaPlayerView({
             } catch (error) {
                 if (!cancelled) {
                     setLiveChatMessages([]);
-                    setVisibleLiveChatMessages([]);
                 }
 
                 logError("media-player", "Failed to load live chat replay from file.", error, {
@@ -151,47 +147,6 @@ export function MediaPlayerView({
             cancelled = true;
         };
     }, [libraryPath, media?.has_live_chat, media?.id, media?.live_chat_file_path]);
-
-    useEffect(() => {
-        if (!hasLiveChat || liveChatMessages.length === 0) {
-            setVisibleLiveChatMessages([]);
-            return;
-        }
-
-        setVisibleLiveChatMessages(
-            getVisibleLiveChatMessages(liveChatMessages, currentPlaybackTime)
-        );
-    }, [currentPlaybackTime, hasLiveChat, liveChatMessages]);
-
-    useEffect(() => {
-        const element = playerElementRef.current;
-
-        if (!element) {
-            return;
-        }
-
-        const syncCurrentTime = (): void => {
-            setCurrentPlaybackTime(element.currentTime || 0);
-        };
-
-        syncCurrentTime();
-
-        element.addEventListener("timeupdate", syncCurrentTime);
-        element.addEventListener("seeking", syncCurrentTime);
-        element.addEventListener("seeked", syncCurrentTime);
-        element.addEventListener("loadedmetadata", syncCurrentTime);
-        element.addEventListener("play", syncCurrentTime);
-        element.addEventListener("pause", syncCurrentTime);
-
-        return () => {
-            element.removeEventListener("timeupdate", syncCurrentTime);
-            element.removeEventListener("seeking", syncCurrentTime);
-            element.removeEventListener("seeked", syncCurrentTime);
-            element.removeEventListener("loadedmetadata", syncCurrentTime);
-            element.removeEventListener("play", syncCurrentTime);
-            element.removeEventListener("pause", syncCurrentTime);
-        };
-    }, [media?.id, mediaSrc]);
 
     useEffect(() => {
         const isTypingTarget = (target: EventTarget | null): boolean => {
@@ -285,10 +240,12 @@ export function MediaPlayerView({
 
     const setVideoElement = useCallback((element: HTMLVideoElement | null): void => {
         playerElementRef.current = element;
+        setPlayerElement(element);
     }, []);
 
     const setAudioElement = useCallback((element: HTMLAudioElement | null): void => {
         playerElementRef.current = element;
+        setPlayerElement(element);
     }, []);
 
     const handleBack = useCallback(async (): Promise<void> => {
@@ -435,9 +392,9 @@ export function MediaPlayerView({
                         </Box>
 
                         <Box style={{ minWidth: 0 }}>
-                            <LiveChatPanel
+                            <LiveChatReplay
                                 liveChatMessages={liveChatMessages}
-                                visibleLiveChatMessages={visibleLiveChatMessages}
+                                playerElement={playerElement}
                                 isLoadingLiveChat={isLoadingLiveChat}
                                 shellBorder={shellBorder}
                             />

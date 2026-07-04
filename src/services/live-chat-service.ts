@@ -706,7 +706,37 @@ export async function readLiveChatMessagesFromFile(
         }
     }
 
+    // Keep messages ordered by playback offset so the visible-window lookup can binary
+    // search instead of scanning. Array.prototype.sort is stable, so messages that share
+    // an offset keep their original (chronological) order.
+    messages.sort((a, b) => a.message_offset_ms - b.message_offset_ms);
+
     return messages;
+}
+
+// Number of leading messages (offset <= playback time) kept mounted at once, matching the
+// most recent slice a YouTube-style replay shows.
+const MAX_VISIBLE_LIVE_CHAT_MESSAGES = 200;
+
+// Returns how many leading messages have an offset at or before `playbackMs`. Assumes
+// `messages` is sorted ascending by `message_offset_ms` (readLiveChatMessagesFromFile
+// guarantees this), so the boundary is found in O(log n) instead of scanning the whole
+// array on every playback tick.
+function countMessagesUpToOffset(messages: LiveChatMessageItem[], playbackMs: number): number {
+    let low = 0;
+    let high = messages.length;
+
+    while (low < high) {
+        const mid = (low + high) >>> 1;
+
+        if (messages[mid].message_offset_ms <= playbackMs) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+
+    return low;
 }
 
 export function getVisibleLiveChatMessages(
@@ -714,8 +744,8 @@ export function getVisibleLiveChatMessages(
     playbackSeconds: number
 ): LiveChatMessageItem[] {
     const playbackMs = Math.max(0, Math.floor(playbackSeconds * 1000));
+    const upperBound = countMessagesUpToOffset(messages, playbackMs);
+    const start = Math.max(0, upperBound - MAX_VISIBLE_LIVE_CHAT_MESSAGES);
 
-    return messages
-        .filter((message) => message.message_offset_ms <= playbackMs)
-        .slice(-200);
+    return messages.slice(start, upperBound);
 }
