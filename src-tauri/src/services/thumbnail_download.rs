@@ -532,6 +532,7 @@ pub async fn download_thumbnail_from_url_async(
             &format!("home:{}", thumb_temp_dir.to_string_lossy()),
             "-o",
             &format!("{}.%(ext)s", file_prefix),
+            "--",
             normalized_url.as_str(),
         ]);
         hide_console_async(&mut command);
@@ -672,6 +673,7 @@ pub async fn download_thumbnail_for_media_async(
         ];
 
         append_auth_args(&mut args, cookies_browser, cookies_path);
+        args.push("--".to_string());
         args.push(normalized_url.to_string());
 
         let mut command = Command::new(&yt_dlp);
@@ -770,6 +772,7 @@ pub async fn download_channel_avatar_from_handle_async(
             &format!("home:{}", thumb_temp_dir.to_string_lossy()),
             "-o",
             &format!("{}.%(ext)s", file_prefix),
+            "--",
             normalized_url.as_str(),
         ]);
         hide_console_async(&mut command);

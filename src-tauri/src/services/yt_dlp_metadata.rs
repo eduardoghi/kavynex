@@ -303,6 +303,7 @@ pub async fn fetch_yt_dlp_metadata(
     ];
 
     append_auth_args(&mut args, cookies_browser, cookies_path);
+    args.push("--".to_string());
     args.push(url.to_string());
 
     let (json_payload, _stdout_logs, _stderr_logs) = run_yt_dlp_and_capture_json(
@@ -346,6 +347,7 @@ async fn fetch_yt_dlp_metadata_with_comments(
     ];
 
     append_auth_args(&mut args, cookies_browser, cookies_path);
+    args.push("--".to_string());
     args.push(url.to_string());
 
     let (json_payload, _stdout_logs, _stderr_logs) = run_yt_dlp_and_capture_json(
@@ -502,6 +504,7 @@ pub async fn list_yt_dlp_formats_async(
     ];
 
     append_auth_args(&mut args, cookies_browser, cookies_path);
+    args.push("--".to_string());
     args.push(normalized_url.clone());
 
     let (json_payload, mut stdout_logs, stderr_logs) = run_yt_dlp_and_capture_json(

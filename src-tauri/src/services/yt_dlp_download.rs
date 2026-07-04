@@ -55,6 +55,31 @@ fn unique_temp_suffix() -> String {
     format!("{}-{}", std::process::id(), nanos)
 }
 
+/// Joins yt-dlp args for display, replacing the value after `--cookies` with a placeholder.
+/// The cookies file path can reveal the local username/profile layout, and this log line is
+/// shown in the app and may be pasted into a public bug report. `--cookies-from-browser`
+/// (a browser name, not a path) is left intact.
+fn redacted_args_for_log(args: &[String]) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+
+    for arg in args {
+        if redact_next {
+            parts.push("<redacted>".to_string());
+            redact_next = false;
+            continue;
+        }
+
+        if arg == "--cookies" {
+            redact_next = true;
+        }
+
+        parts.push(arg.clone());
+    }
+
+    parts.join(" ")
+}
+
 fn infer_is_live(metadata_live_status: Option<&str>, was_live: Option<bool>) -> bool {
     if was_live.unwrap_or(false) {
         return true;
@@ -578,13 +603,16 @@ pub async fn download_media_from_url_async(
             format!("temp:{}", temp_dir.to_string_lossy()),
             "-o".to_string(),
             format!("{}.%(ext)s", file_prefix),
+            // Separator so a URL can never be interpreted as a flag (defense in depth on
+            // top of the http(s) scheme check).
+            "--".to_string(),
             normalized_url.clone(),
         ]);
 
         emit_download_log(
             app,
             &normalized_run_id,
-            format!("yt-dlp args: {}", args.join(" ")),
+            format!("yt-dlp args: {}", redacted_args_for_log(&args)),
             "system",
         )?;
 
@@ -922,6 +950,26 @@ mod tests {
                 .code,
             AppErrorCode::InvalidFormatId.as_str()
         );
+    }
+
+    #[test]
+    fn redacted_args_for_log_redacts_cookies_file_but_not_browser() {
+        let args = vec![
+            "--cookies".to_string(),
+            "/home/user/.config/cookies.txt".to_string(),
+            "--cookies-from-browser".to_string(),
+            "firefox".to_string(),
+            "--".to_string(),
+            "https://youtube.com/watch?v=x".to_string(),
+        ];
+
+        let logged = redacted_args_for_log(&args);
+
+        assert!(!logged.contains("/home/user/.config/cookies.txt"));
+        assert!(logged.contains("--cookies <redacted>"));
+        // The browser name is not sensitive and stays intact.
+        assert!(logged.contains("--cookies-from-browser firefox"));
+        assert!(logged.contains("-- https://youtube.com/watch?v=x"));
     }
 
     #[test]
