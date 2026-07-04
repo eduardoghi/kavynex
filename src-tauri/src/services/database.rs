@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Serialize;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
+};
 use tauri::{AppHandle, Manager};
 use tokio::sync::OnceCell;
 
@@ -57,6 +59,10 @@ async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
         .filename(&path)
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
+        // WAL + NORMAL is durable across app crashes and only risks the last few
+        // transactions on an OS crash/power loss - the standard, faster tradeoff for a
+        // desktop app versus the default FULL fsync on every commit.
+        .synchronous(SqliteSynchronous::Normal)
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .foreign_keys(true);
 
