@@ -47,6 +47,12 @@ pub fn database_path(app: &AppHandle) -> AppResult<PathBuf> {
 async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
     let path = database_path(app)?;
 
+    // Snapshot the current database before migrations run, so a bad migration or corruption
+    // can be rolled back. Best effort: a backup failure must not stop the app from opening.
+    if let Err(error) = crate::services::db_backup::backup_database(&path).await {
+        crate::services::logger::warn("db_backup", format!("database backup failed: {error}"));
+    }
+
     let options = SqliteConnectOptions::new()
         .filename(&path)
         .create_if_missing(true)
