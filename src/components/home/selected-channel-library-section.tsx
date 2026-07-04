@@ -52,7 +52,7 @@ function normalizeText(value: string): string {
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/\s+/g, " ")
         .trim()
-        .toLocaleLowerCase("pt-BR");
+        .toLocaleLowerCase("en-US");
 }
 
 function parseDateValue(value: string | null | undefined): number {

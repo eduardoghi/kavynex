@@ -49,7 +49,7 @@ export function useAppUpdate() {
             setUpdate(null);
             setUpdateInfo(null);
             setStatus("error");
-            setErrorMessage("Não foi possível verificar atualizações.");
+            setErrorMessage("Could not check for updates.");
         }
     }, []);
 
@@ -68,7 +68,7 @@ export function useAppUpdate() {
             logError("app-update", "Failed to install app update.", error);
 
             setStatus("error");
-            setErrorMessage("Não foi possível instalar a atualização.");
+            setErrorMessage("Could not install the update.");
         }
     }, [update]);
 

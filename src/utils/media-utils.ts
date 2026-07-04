@@ -214,7 +214,7 @@ function formatDateValue(value: string | null | undefined): string {
     const localDate = parseDateOnly(normalized);
 
     if (localDate) {
-        return new Intl.DateTimeFormat("pt-BR", {
+        return new Intl.DateTimeFormat("en-US", {
             dateStyle: "medium",
         }).format(localDate);
     }
@@ -225,7 +225,7 @@ function formatDateValue(value: string | null | undefined): string {
         return normalized;
     }
 
-    return new Intl.DateTimeFormat("pt-BR", {
+    return new Intl.DateTimeFormat("en-US", {
         dateStyle: "medium",
     }).format(date);
 }
@@ -247,7 +247,7 @@ export function formatCreatedAt(value: string | null | undefined): string {
         return normalized;
     }
 
-    return new Intl.DateTimeFormat("pt-BR", {
+    return new Intl.DateTimeFormat("en-US", {
         dateStyle: "medium",
         timeStyle: "short",
     }).format(date);
