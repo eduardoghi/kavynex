@@ -227,6 +227,9 @@ mod tests {
         // Neither path exists, so canonicalize fails on both sides and the comparison
         // falls back to a trimmed string match.
         assert!(paths_refer_to_same_location(&missing_str, &missing_str));
-        assert!(!paths_refer_to_same_location(&missing_str, "/some/other/missing"));
+        assert!(!paths_refer_to_same_location(
+            &missing_str,
+            "/some/other/missing"
+        ));
     }
 }
