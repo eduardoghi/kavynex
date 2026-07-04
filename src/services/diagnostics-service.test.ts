@@ -141,6 +141,10 @@ describe("diagnostics-service", () => {
             checked_thumbnail_files: 1,
             missing_thumbnail_files: 0,
             missing_thumbnail_examples: [],
+            orphan_media_files: 0,
+            orphan_media_examples: [],
+            orphan_thumbnail_files: 0,
+            orphan_thumbnail_examples: [],
         });
 
         mockHealthyLiveChatDiagnostics();
@@ -205,6 +209,10 @@ describe("diagnostics-service", () => {
             checked_thumbnail_files: 0,
             missing_thumbnail_files: 0,
             missing_thumbnail_examples: [],
+            orphan_media_files: 0,
+            orphan_media_examples: [],
+            orphan_thumbnail_files: 0,
+            orphan_thumbnail_examples: [],
         });
 
         mockHealthyLiveChatDiagnostics();
@@ -273,6 +281,10 @@ describe("diagnostics-service", () => {
             checked_thumbnail_files: 1,
             missing_thumbnail_files: 0,
             missing_thumbnail_examples: [],
+            orphan_media_files: 0,
+            orphan_media_examples: [],
+            orphan_thumbnail_files: 0,
+            orphan_thumbnail_examples: [],
         });
 
         mockHealthyLiveChatDiagnostics();
@@ -341,6 +353,10 @@ describe("diagnostics-service", () => {
             checked_thumbnail_files: 2,
             missing_thumbnail_files: 1,
             missing_thumbnail_examples: ["thumbs/a.jpg"],
+            orphan_media_files: 0,
+            orphan_media_examples: [],
+            orphan_thumbnail_files: 0,
+            orphan_thumbnail_examples: [],
         });
 
         mockHealthyLiveChatDiagnostics();
@@ -390,6 +406,10 @@ describe("diagnostics-service", () => {
             checked_thumbnail_files: 0,
             missing_thumbnail_files: 0,
             missing_thumbnail_examples: [],
+            orphan_media_files: 0,
+            orphan_media_examples: [],
+            orphan_thumbnail_files: 0,
+            orphan_thumbnail_examples: [],
         });
 
         mockHealthyLiveChatDiagnostics();

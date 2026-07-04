@@ -55,6 +55,10 @@ function createSummary(): DiagnosticsSummary {
                 checked_thumbnail_files: 4,
                 missing_thumbnail_files: 1,
                 missing_thumbnail_examples: ["thumbnails/missing.jpg"],
+                orphan_media_files: 0,
+                orphan_media_examples: [],
+                orphan_thumbnail_files: 0,
+                orphan_thumbnail_examples: [],
             },
             liveChatIntegrity: {
                 checked_live_chat_files: 1,

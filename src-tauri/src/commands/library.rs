@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
@@ -19,6 +20,10 @@ pub struct LibraryIntegrityReport {
     pub checked_thumbnail_files: usize,
     pub missing_thumbnail_files: usize,
     pub missing_thumbnail_examples: Vec<String>,
+    pub orphan_media_files: usize,
+    pub orphan_media_examples: Vec<String>,
+    pub orphan_thumbnail_files: usize,
+    pub orphan_thumbnail_examples: Vec<String>,
 }
 
 fn resolve_stored_path(library_path: &Path, stored_path: &str) -> PathBuf {
@@ -91,6 +96,70 @@ fn collect_missing_paths(
     (checked_count, missing_count, missing_examples)
 }
 
+/// Builds the set of paths the database expects to exist, normalized to forward slashes so it
+/// can be compared against files discovered on disk.
+fn build_expected_set(stored_paths: &[String]) -> HashSet<String> {
+    stored_paths
+        .iter()
+        .map(|path| path.trim().replace('\\', "/"))
+        .filter(|path| !path.is_empty())
+        .collect()
+}
+
+/// Lists every file under `dir` as a path relative to `root`, using forward slashes.
+fn list_files_relative(dir: &Path, root: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+
+    while let Some(current) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&current) else {
+            continue;
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.is_file() {
+                if let Ok(relative) = path.strip_prefix(root) {
+                    files.push(relative.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+    }
+
+    files
+}
+
+/// Finds files inside `subdirs` of the library that no database record references. Since the
+/// library folder is fully owned by the app (media is copied/moved in), any such file is a
+/// leftover taking up disk space.
+fn collect_orphan_paths(
+    library_root: &Path,
+    subdirs: &[&str],
+    expected: &HashSet<String>,
+) -> (usize, Vec<String>) {
+    let mut orphan_count = 0usize;
+    let mut orphan_examples: Vec<String> = Vec::new();
+
+    for subdir in subdirs {
+        for relative in list_files_relative(&library_root.join(subdir), library_root) {
+            if expected.contains(&relative) {
+                continue;
+            }
+
+            orphan_count += 1;
+
+            if orphan_examples.len() < 5 {
+                orphan_examples.push(relative);
+            }
+        }
+    }
+
+    (orphan_count, orphan_examples)
+}
+
 #[tauri::command]
 pub async fn resolve_default_library_directory(app: AppHandle) -> AppResult<String> {
     run_blocking(move || library_paths::resolve_default_library_directory_sync(&app)).await
@@ -152,11 +221,20 @@ pub async fn check_library_integrity(
             ),
         );
 
+        let media_expected = build_expected_set(&media_paths);
+        let thumbnail_expected = build_expected_set(&thumbnail_paths);
+
         let (checked_media_files, missing_media_files, missing_media_examples) =
             collect_missing_paths(&library_root, media_paths);
 
         let (checked_thumbnail_files, missing_thumbnail_files, missing_thumbnail_examples) =
             collect_missing_paths(&library_root, thumbnail_paths);
+
+        let (orphan_media_files, orphan_media_examples) =
+            collect_orphan_paths(&library_root, &["video", "audio"], &media_expected);
+
+        let (orphan_thumbnail_files, orphan_thumbnail_examples) =
+            collect_orphan_paths(&library_root, &["thumbnails"], &thumbnail_expected);
 
         Ok(LibraryIntegrityReport {
             checked_media_files,
@@ -165,6 +243,10 @@ pub async fn check_library_integrity(
             checked_thumbnail_files,
             missing_thumbnail_files,
             missing_thumbnail_examples,
+            orphan_media_files,
+            orphan_media_examples,
+            orphan_thumbnail_files,
+            orphan_thumbnail_examples,
         })
     })
     .await
@@ -255,6 +337,8 @@ mod tests {
         let library = unique_test_dir("command-integrity");
         fs::create_dir_all(library.join("video")).unwrap();
         fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
+        // Not referenced by the database -> should be reported as an orphan.
+        fs::write(library.join("video").join("orphan.mp4"), b"data").unwrap();
 
         let webview = test_webview();
 
@@ -275,6 +359,8 @@ mod tests {
         assert_eq!(response["missing_media_files"], 1);
         assert_eq!(response["checked_thumbnail_files"], 1);
         assert_eq!(response["missing_thumbnail_files"], 1);
+        assert_eq!(response["orphan_media_files"], 1);
+        assert_eq!(response["orphan_media_examples"][0], "video/orphan.mp4");
 
         let _ = fs::remove_dir_all(&library);
     }

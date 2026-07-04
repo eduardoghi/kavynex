@@ -51,6 +51,10 @@ export type LibraryIntegrityReport = {
     checked_thumbnail_files: number;
     missing_thumbnail_files: number;
     missing_thumbnail_examples: string[];
+    orphan_media_files: number;
+    orphan_media_examples: string[];
+    orphan_thumbnail_files: number;
+    orphan_thumbnail_examples: string[];
 };
 
 export type LiveChatIntegrityReport = {

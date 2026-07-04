@@ -11,6 +11,10 @@ function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
         checked_thumbnail_files: 0,
         missing_thumbnail_files: 0,
         missing_thumbnail_examples: [],
+        orphan_media_files: 0,
+        orphan_media_examples: [],
+        orphan_thumbnail_files: 0,
+        orphan_thumbnail_examples: [],
     };
 }
 
@@ -44,10 +48,8 @@ export async function getLibraryIntegrity(
     const mediaReferences = await listMediaIntegrityReferences();
     const payload = buildIntegrityPayload(mediaReferences);
 
-    if (payload.mediaPaths.length === 0 && payload.thumbnailPaths.length === 0) {
-        return createEmptyLibraryIntegrityReport();
-    }
-
+    // Always call through, even with no references: the library folder may still hold orphan
+    // files the database no longer knows about.
     return invokeTauri<LibraryIntegrityReport>(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY, {
         libraryPath: normalizedLibraryPath,
         mediaPaths: payload.mediaPaths,

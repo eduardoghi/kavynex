@@ -393,6 +393,17 @@ export function DiagnosticsSummarySections({
                         />
                     </Group>
 
+                    <Group grow align="stretch">
+                        <DiagnosticsMetricCard
+                            label="Orphan media files"
+                            value={diagnostics.libraryIntegrity.orphan_media_files}
+                        />
+                        <DiagnosticsMetricCard
+                            label="Orphan thumbnails"
+                            value={diagnostics.libraryIntegrity.orphan_thumbnail_files}
+                        />
+                    </Group>
+
                     {diagnostics.libraryIntegrity.missing_media_examples.length > 0 && (
                         <Paper withBorder radius="md" p="sm">
                             <Text fw={700} size="sm" mb={6}>
@@ -417,6 +428,38 @@ export function DiagnosticsSummarySections({
 
                             <Stack gap={4}>
                                 {diagnostics.libraryIntegrity.missing_thumbnail_examples.map((item) => (
+                                    <Text key={item} size="sm" c="dimmed">
+                                        {item}
+                                    </Text>
+                                ))}
+                            </Stack>
+                        </Paper>
+                    )}
+
+                    {diagnostics.libraryIntegrity.orphan_media_examples.length > 0 && (
+                        <Paper withBorder radius="md" p="sm">
+                            <Text fw={700} size="sm" mb={6}>
+                                Orphan media examples
+                            </Text>
+
+                            <Stack gap={4}>
+                                {diagnostics.libraryIntegrity.orphan_media_examples.map((item) => (
+                                    <Text key={item} size="sm" c="dimmed">
+                                        {item}
+                                    </Text>
+                                ))}
+                            </Stack>
+                        </Paper>
+                    )}
+
+                    {diagnostics.libraryIntegrity.orphan_thumbnail_examples.length > 0 && (
+                        <Paper withBorder radius="md" p="sm">
+                            <Text fw={700} size="sm" mb={6}>
+                                Orphan thumbnail examples
+                            </Text>
+
+                            <Stack gap={4}>
+                                {diagnostics.libraryIntegrity.orphan_thumbnail_examples.map((item) => (
                                     <Text key={item} size="sm" c="dimmed">
                                         {item}
                                     </Text>

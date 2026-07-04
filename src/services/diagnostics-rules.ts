@@ -156,6 +156,24 @@ export function buildDiagnosticsIssues(input: AppDiagnostics): DiagnosticsIssue[
         });
     }
 
+    if (input.libraryIntegrity.orphan_media_files > 0) {
+        issues.push({
+            code: "ORPHAN_MEDIA_FILES",
+            severity: "info",
+            title: "Orphan media files were found",
+            description: `${input.libraryIntegrity.orphan_media_files} media file(s) exist in the library folder without a linked database record.`,
+        });
+    }
+
+    if (input.libraryIntegrity.orphan_thumbnail_files > 0) {
+        issues.push({
+            code: "ORPHAN_THUMBNAIL_FILES",
+            severity: "info",
+            title: "Orphan thumbnail files were found",
+            description: `${input.libraryIntegrity.orphan_thumbnail_files} thumbnail file(s) exist in the library folder without a linked database record.`,
+        });
+    }
+
     if (input.liveChatIntegrity.missing_live_chat_files > 0) {
         issues.push({
             code: "MISSING_LIVE_CHAT_FILES",

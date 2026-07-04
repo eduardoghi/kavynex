@@ -95,6 +95,10 @@ function defaultLibraryIntegrity(): LibraryIntegrityReport {
         checked_thumbnail_files: 0,
         missing_thumbnail_files: 0,
         missing_thumbnail_examples: [],
+        orphan_media_files: 0,
+        orphan_media_examples: [],
+        orphan_thumbnail_files: 0,
+        orphan_thumbnail_examples: [],
     };
 }
 
