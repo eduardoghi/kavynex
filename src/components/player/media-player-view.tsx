@@ -14,6 +14,7 @@ import { LiveChatReplay } from "./live-chat-replay";
 import { PlayerAudioSurface } from "./player-audio-surface";
 import { PlayerMediaHeader } from "./player-media-header";
 import { PlayerVideoSurface } from "./player-video-surface";
+import styles from "./media-player-view.module.css";
 
 type MediaPlayerViewProps = {
     media: MediaRow | null;
@@ -368,59 +369,22 @@ export function MediaPlayerView({
             />
 
             {hasLiveChat ? (
-                <>
-                    <style>
-                        {`
-                            .kavynex-player-live-layout {
-                                display: grid;
-                                gap: 16px;
-                                align-items: start;
-                                grid-template-columns: minmax(0, 1fr);
-                            }
-
-                            @media (min-width: 1200px) {
-                                .kavynex-player-live-layout {
-                                    grid-template-columns: minmax(0, 1.75fr) minmax(360px, 0.82fr);
-                                }
-                            }
-                        `}
-                    </style>
-
-                    <Box className="kavynex-player-live-layout">
-                        <Box style={{ minWidth: 0 }}>
-                            {mediaSurface}
-                        </Box>
-
-                        <Box style={{ minWidth: 0 }}>
-                            <LiveChatReplay
-                                liveChatMessages={liveChatMessages}
-                                playerElement={playerElement}
-                                isLoadingLiveChat={isLoadingLiveChat}
-                                shellBorder={shellBorder}
-                            />
-                        </Box>
+                <Box className={styles.liveLayout}>
+                    <Box style={{ minWidth: 0 }}>
+                        {mediaSurface}
                     </Box>
-                </>
+
+                    <Box style={{ minWidth: 0 }}>
+                        <LiveChatReplay
+                            liveChatMessages={liveChatMessages}
+                            playerElement={playerElement}
+                            isLoadingLiveChat={isLoadingLiveChat}
+                            shellBorder={shellBorder}
+                        />
+                    </Box>
+                </Box>
             ) : (
                 mediaSurface
-            )}
-
-            {hasLiveChat && (
-                <Box
-                    className="kavynex-player-live-layout"
-                    style={{
-                        display: "grid",
-                        gap: rem(16),
-                        alignItems: "start",
-                        gridTemplateColumns: "minmax(0, 1fr)",
-                    }}
-                >
-                    <Box
-                        style={{
-                            display: "none",
-                        }}
-                    />
-                </Box>
             )}
 
             <CommentsPanel

@@ -1,0 +1,12 @@
+.liveLayout {
+    display: grid;
+    gap: 16px;
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1200px) {
+    .liveLayout {
+        grid-template-columns: minmax(0, 1.75fr) minmax(360px, 0.82fr);
+    }
+}
