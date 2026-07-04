@@ -3,7 +3,7 @@ import {
     ensureDirectoryExists,
     resolveExistingDirectory,
 } from "../services/library-service";
-import { parseAppError } from "../utils/app-error";
+import { logError } from "../utils/app-logger";
 
 const DEFAULT_SETTINGS: AppSettings = {
     importMode: "copy",
@@ -22,16 +22,16 @@ type InitializeAppSettingsOptions = {
 export async function initializeAppSettings({
     storedSettings,
 }: InitializeAppSettingsOptions): Promise<InitializeAppSettingsResult> {
-    let libraryPath = storedSettings.libraryPath.trim();
+    const storedLibraryPath = storedSettings.libraryPath.trim();
+    let libraryPath = storedLibraryPath;
 
     if (libraryPath) {
         try {
             libraryPath = await resolveExistingDirectory(libraryPath);
         } catch (error) {
-            console.error(
-                "Failed to resolve stored library directory:",
-                parseAppError(error)
-            );
+            logError("settings", "Failed to resolve stored library directory.", error, {
+                libraryPath,
+            });
             libraryPath = "";
         }
     }
@@ -40,10 +40,9 @@ export async function initializeAppSettings({
         try {
             libraryPath = await ensureDirectoryExists(libraryPath);
         } catch (error) {
-            console.error(
-                "Failed to ensure library directory exists:",
-                parseAppError(error)
-            );
+            logError("settings", "Failed to ensure library directory exists.", error, {
+                libraryPath,
+            });
             libraryPath = "";
         }
     }
@@ -53,7 +52,10 @@ export async function initializeAppSettings({
             importMode: storedSettings.importMode === "move" ? "move" : "copy",
             libraryPath,
         },
-        shouldWarnAboutLibraryPath: !libraryPath,
+        // Only warn when a previously configured library path was lost (e.g. a removable
+        // drive is unplugged or the folder was deleted). A fresh install with no stored
+        // path is the normal empty state, not a warning.
+        shouldWarnAboutLibraryPath: storedLibraryPath !== "" && libraryPath === "",
     };
 }
 

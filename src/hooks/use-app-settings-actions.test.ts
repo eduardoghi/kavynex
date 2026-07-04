@@ -89,7 +89,7 @@ describe("useAppSettingsActions", () => {
         expect(onError).not.toHaveBeenCalled();
     });
 
-    it("does not report an error when initialization leaves library path empty", async () => {
+    it("warns the user when the stored library path was reset", async () => {
         const onError = vi.fn();
         const setSettings = vi.fn();
 
@@ -128,7 +128,10 @@ describe("useAppSettingsActions", () => {
             libraryPath: "",
         });
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
-        expect(onError).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError).toHaveBeenCalledWith(
+            expect.stringContaining("library folder could not be found")
+        );
     });
 
     it("changes library path when result is changed", async () => {

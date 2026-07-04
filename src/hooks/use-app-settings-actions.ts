@@ -49,6 +49,14 @@ export function useAppSettingsActions({
                 // must already hold the value before that effect can fire.
                 await persistSettings(result.settings);
                 setSettings(result.settings);
+
+                if (result.shouldWarnAboutLibraryPath) {
+                    onError(
+                        "The previously selected library folder could not be found, so it was cleared. " +
+                            "If it is on a removable drive, reconnect it and restart the app; otherwise " +
+                            "select the library folder again in Settings."
+                    );
+                }
             } catch (error) {
                 logError("settings", "Failed to prepare app settings.", error);
                 onError(resolveErrorMessage(error, "Failed to prepare app settings."));
