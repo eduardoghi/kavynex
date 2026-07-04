@@ -37,6 +37,7 @@ use crate::services::yt_dlp_metadata::{
 use crate::services::yt_dlp_registry::{
     register_download_run, set_download_pid, unregister_download_run,
 };
+use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::format::codec_is_present;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
 use crate::utils::process::hide_console_async;
@@ -266,10 +267,10 @@ fn validate_download_inputs(
         ));
     }
 
-    if !url.starts_with("http://") && !url.starts_with("https://") {
+    if !is_allowed_youtube_url(&url) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidUrl,
-            "url scheme must be http or https",
+            "url must be an http(s) YouTube URL",
         ));
     }
 
@@ -923,8 +924,14 @@ mod tests {
     }
 
     #[test]
-    fn validate_download_inputs_rejects_non_http_scheme() {
-        for url in ["file:///etc/passwd", "ftp://host/x", "javascript:alert(1)"] {
+    fn validate_download_inputs_rejects_non_youtube_url() {
+        for url in [
+            "file:///etc/passwd",
+            "ftp://host/x",
+            "javascript:alert(1)",
+            "https://attacker.example/watch?v=x",
+            "https://youtube.com.evil.com/watch?v=x",
+        ] {
             let error = validate_download_inputs(url, "/library", "run", "137").unwrap_err();
             assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str(), "url: {url}");
         }
@@ -933,19 +940,19 @@ mod tests {
     #[test]
     fn validate_download_inputs_rejects_empty_library_run_and_format() {
         assert_eq!(
-            validate_download_inputs("https://x", "  ", "run", "137")
+            validate_download_inputs("https://youtube.com/watch?v=x", "  ", "run", "137")
                 .unwrap_err()
                 .code,
             AppErrorCode::InvalidLibraryPath.as_str()
         );
         assert_eq!(
-            validate_download_inputs("https://x", "/lib", "  ", "137")
+            validate_download_inputs("https://youtube.com/watch?v=x", "/lib", "  ", "137")
                 .unwrap_err()
                 .code,
             AppErrorCode::InvalidRunId.as_str()
         );
         assert_eq!(
-            validate_download_inputs("https://x", "/lib", "run", "  ")
+            validate_download_inputs("https://youtube.com/watch?v=x", "/lib", "run", "  ")
                 .unwrap_err()
                 .code,
             AppErrorCode::InvalidFormatId.as_str()

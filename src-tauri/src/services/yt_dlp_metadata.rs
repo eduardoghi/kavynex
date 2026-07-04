@@ -13,6 +13,7 @@ use crate::models::yt_dlp::{
 };
 use crate::services::binaries::resolve_yt_dlp_binary_async;
 use crate::services::yt_dlp_cookies::append_auth_args;
+use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::format::{
     build_format_display_name, codec_is_present, normalize_yt_dlp_upload_date, sort_yt_dlp_formats,
 };
@@ -486,10 +487,10 @@ pub async fn list_yt_dlp_formats_async(
         ));
     }
 
-    if !normalized_url.starts_with("http://") && !normalized_url.starts_with("https://") {
+    if !is_allowed_youtube_url(&normalized_url) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidUrl,
-            "url scheme must be http or https",
+            "url must be an http(s) YouTube URL",
         ));
     }
 

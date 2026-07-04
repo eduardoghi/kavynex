@@ -25,3 +25,4 @@ pub mod yt_dlp_download;
 pub mod yt_dlp_events;
 pub mod yt_dlp_metadata;
 pub mod yt_dlp_registry;
+pub mod yt_dlp_url;
