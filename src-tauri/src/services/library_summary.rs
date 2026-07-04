@@ -5,12 +5,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+// u64 counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs
+// emits by default).
+#[derive(Serialize, Deserialize, Clone, Debug, ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct LibrarySummaryInfo {
+    #[ts(type = "number")]
     pub total_bytes: u64,
     pub formatted_size: String,
+    #[ts(type = "number")]
     pub video_files: u64,
+    #[ts(type = "number")]
     pub audio_files: u64,
+    #[ts(type = "number")]
     pub thumbnail_files: u64,
 }
 

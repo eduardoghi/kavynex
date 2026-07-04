@@ -5,13 +5,11 @@ import type { ExternalToolsStatus } from "./generated/ExternalToolsStatus";
 
 export type { ExternalToolStatus, ExternalToolsStatus };
 
-export type LibrarySummaryInfo = {
-    total_bytes: number;
-    formatted_size: string;
-    video_files: number;
-    audio_files: number;
-    thumbnail_files: number;
-};
+// Generated from the Rust structs by ts-rs. Imported so other types here can reference them.
+import type { LibrarySummaryInfo } from "./generated/LibrarySummaryInfo";
+import type { LibraryIntegrityReport } from "./generated/LibraryIntegrityReport";
+
+export type { LibrarySummaryInfo, LibraryIntegrityReport };
 
 export type LiveChatStorageInfo = {
     live_chat_files: number;
@@ -23,19 +21,6 @@ import type { MediaRepositoryStats } from "./generated/MediaRepositoryStats";
 import type { MediaIntegrityReference } from "./generated/MediaIntegrityReference";
 
 export type { MediaRepositoryStats, MediaIntegrityReference };
-
-export type LibraryIntegrityReport = {
-    checked_media_files: number;
-    missing_media_files: number;
-    missing_media_examples: string[];
-    checked_thumbnail_files: number;
-    missing_thumbnail_files: number;
-    missing_thumbnail_examples: string[];
-    orphan_media_files: number;
-    orphan_media_examples: string[];
-    orphan_thumbnail_files: number;
-    orphan_thumbnail_examples: string[];
-};
 
 export type LiveChatIntegrityReport = {
     checked_live_chat_files: number;

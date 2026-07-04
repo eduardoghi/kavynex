@@ -23,8 +23,15 @@ const LIBRARY_PATH_KEY: &str = "library_path";
 /// connection is configured consistently.
 static POOL: OnceCell<SqlitePool> = OnceCell::const_new();
 
-#[derive(Debug, Default, Serialize)]
+// Exposed to the frontend as `StoredAppSettingsPayload`; serde camelCase is honored by
+// ts-rs so the generated keys are importMode/libraryPath.
+#[derive(Debug, Default, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(
+    export,
+    rename = "StoredAppSettingsPayload",
+    export_to = "../../src/types/generated/"
+)]
 pub struct StoredAppSettings {
     pub import_mode: Option<String>,
     pub library_path: Option<String>,

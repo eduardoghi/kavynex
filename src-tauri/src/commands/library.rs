@@ -12,16 +12,25 @@ use crate::services::{library, logger};
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
-#[derive(Serialize, Clone, Debug)]
+// usize counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs
+// emits by default).
+#[derive(Serialize, Clone, Debug, ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct LibraryIntegrityReport {
+    #[ts(type = "number")]
     pub checked_media_files: usize,
+    #[ts(type = "number")]
     pub missing_media_files: usize,
     pub missing_media_examples: Vec<String>,
+    #[ts(type = "number")]
     pub checked_thumbnail_files: usize,
+    #[ts(type = "number")]
     pub missing_thumbnail_files: usize,
     pub missing_thumbnail_examples: Vec<String>,
+    #[ts(type = "number")]
     pub orphan_media_files: usize,
     pub orphan_media_examples: Vec<String>,
+    #[ts(type = "number")]
     pub orphan_thumbnail_files: usize,
     pub orphan_thumbnail_examples: Vec<String>,
 }
