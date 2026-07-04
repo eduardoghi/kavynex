@@ -43,8 +43,12 @@ export function useAppSettingsActions({
                     storedSettings,
                 });
 
-                setSettings(result.settings);
+                // Persist before exposing the settings to the UI. The library path state
+                // drives the asset-scope registration effect, and the backend validates
+                // the requested path against the persisted library path, so the database
+                // must already hold the value before that effect can fire.
                 await persistSettings(result.settings);
+                setSettings(result.settings);
             } catch (error) {
                 logError("settings", "Failed to prepare app settings.", error);
                 onError(resolveErrorMessage(error, "Failed to prepare app settings."));

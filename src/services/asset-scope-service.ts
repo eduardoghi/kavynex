@@ -8,6 +8,9 @@ import { invokeVoid } from "../lib/tauri-client";
  * load media/thumbnails from directories explicitly authorized at runtime. This must be
  * called on startup once the stored library path is known, and again whenever the
  * library path changes, because the scope is in-memory and resets on restart.
+ *
+ * The backend rejects any path that does not match the library path persisted in the
+ * settings, so this cannot be used to authorize an arbitrary directory.
  */
 export async function registerLibraryAssetScope(libraryPath: string): Promise<void> {
     const normalized = libraryPath.trim();
