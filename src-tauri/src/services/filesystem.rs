@@ -172,6 +172,18 @@ pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
         ));
     }
 
+    // If the source already IS the destination (e.g. re-importing a file that is already
+    // inside the library, in Move mode), this must be a no-op. Without this guard the
+    // "identical content" branch below would remove the source and thus delete the only
+    // copy of the file.
+    if let (Ok(canonical_source), Ok(canonical_destination)) =
+        (source.canonicalize(), destination.canonicalize())
+    {
+        if canonical_source == canonical_destination {
+            return Ok(());
+        }
+    }
+
     let parent = destination.parent().ok_or_else(|| {
         AppError::from_code(
             AppErrorCode::InvalidDestinationPath,
@@ -978,5 +990,43 @@ mod tests {
 
         let _ = fs::remove_file(source_dir);
         let _ = fs::remove_dir_all(destination_dir);
+    }
+
+    #[test]
+    fn move_or_copy_file_is_noop_when_source_equals_destination() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let file = dir.join("media_hash.mp4");
+        fs::write(&file, b"the only copy").unwrap();
+
+        // Moving a file onto itself must never delete it.
+        move_or_copy_file(&file, &file).unwrap();
+
+        assert!(file.exists());
+        assert_eq!(fs::read(&file).unwrap(), b"the only copy");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn move_or_copy_file_removes_source_when_destination_has_same_content() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source.mp4");
+        let destination = dir.join("media_hash.mp4");
+        fs::write(&source, b"same bytes").unwrap();
+        fs::write(&destination, b"same bytes").unwrap();
+
+        // Distinct paths with identical content: the source is a redundant duplicate and is
+        // removed, leaving the destination intact.
+        move_or_copy_file(&source, &destination).unwrap();
+
+        assert!(!source.exists());
+        assert!(destination.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"same bytes");
+
+        let _ = fs::remove_dir_all(dir);
     }
 }
