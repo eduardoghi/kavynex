@@ -1,6 +1,7 @@
 import type { MediaCommentRow, MediaRow, YtDlpComment } from "../types/media";
 import {
     countMediaUsingFilePathOutsideMedia,
+    countMediaUsingLiveChatOutsideMedia,
     countMediaUsingThumbnailOutsideMedia,
     deleteMediaById,
     findMediaByChannelAndFilePath,
@@ -178,6 +179,12 @@ async function ensureMediaDoesNotAlreadyExist(
     }
 }
 
+// Sentinel media id used when cleaning up artifacts that were prepared but never
+// registered as a media row (createMedia failed before insertMedia). No real media row
+// has this id, so the "outside media" reference counts return the number of *other* rows
+// that rely on the artifact.
+const UNREGISTERED_MEDIA_ID = -1;
+
 async function removeMediaFileIfUnused(
     mediaId: number,
     filePath: string,
@@ -207,6 +214,7 @@ async function removeMediaThumbnailIfUnused(
 }
 
 async function removeMediaLiveChatIfUnused(
+    mediaId: number,
     liveChatFilePath: string | null
 ): Promise<void> {
     const normalizedLiveChatFilePath = liveChatFilePath?.trim() ?? "";
@@ -215,7 +223,17 @@ async function removeMediaLiveChatIfUnused(
         return;
     }
 
-    await deleteLiveChatFileFromAppData(normalizedLiveChatFilePath);
+    // Live chat replays are stored per YouTube video id, so the same file can back more
+    // than one media row (e.g. the same video added to several channels). Only delete it
+    // when no other media row still references it.
+    const usageOutsideMedia = await countMediaUsingLiveChatOutsideMedia(
+        normalizedLiveChatFilePath,
+        mediaId
+    );
+
+    if (usageOutsideMedia === 0) {
+        await deleteLiveChatFileFromAppData(normalizedLiveChatFilePath);
+    }
 }
 
 // Removes the on-disk artifacts of a media row that was already deleted. File cleanup is
@@ -231,7 +249,7 @@ async function cleanupMediaArtifactsWithLogging(
     const results = await Promise.allSettled([
         removeMediaFileIfUnused(mediaId, filePath, libraryPath),
         removeMediaThumbnailIfUnused(mediaId, thumbnailPath, libraryPath),
-        removeMediaLiveChatIfUnused(liveChatFilePath),
+        removeMediaLiveChatIfUnused(mediaId, liveChatFilePath),
     ]);
 
     const targets: { label: string; path: string | null }[] = [
@@ -430,7 +448,10 @@ export async function createMedia(
 
             if (createdLiveChatFilePath) {
                 try {
-                    await removeMediaLiveChatIfUnused(createdLiveChatFilePath);
+                    await removeMediaLiveChatIfUnused(
+                        UNREGISTERED_MEDIA_ID,
+                        createdLiveChatFilePath
+                    );
                 } catch (cleanupError) {
                     logError(
                         "media-service",

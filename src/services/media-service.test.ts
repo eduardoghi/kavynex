@@ -11,6 +11,7 @@ import {
 
 vi.mock("../repositories", () => ({
     countMediaUsingFilePathOutsideMedia: vi.fn(),
+    countMediaUsingLiveChatOutsideMedia: vi.fn(),
     countMediaUsingThumbnailOutsideMedia: vi.fn(),
     deleteMediaById: vi.fn(),
     findMediaByChannelAndFilePath: vi.fn(),
@@ -65,6 +66,7 @@ vi.mock("../utils/app-logger", () => ({
 
 import {
     countMediaUsingFilePathOutsideMedia,
+    countMediaUsingLiveChatOutsideMedia,
     countMediaUsingThumbnailOutsideMedia,
     deleteMediaById,
     findMediaByChannelAndFilePath,
@@ -96,6 +98,8 @@ import { logError } from "../utils/app-logger";
 describe("media-service", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // By default no other media row references a live chat file, so cleanup deletes it.
+        vi.mocked(countMediaUsingLiveChatOutsideMedia).mockResolvedValue(0);
     });
 
     it("lists channel media after validating channel id", async () => {
@@ -404,6 +408,49 @@ describe("media-service", () => {
             "/library"
         );
         expect(deleteLiveChatFileFromAppData).toHaveBeenCalledWith("live-chat/abc.json");
+    });
+
+    it("does not delete a live chat file still referenced by another media row", async () => {
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "yt-dlp" as const,
+            sourceValue: "https://youtube.com/watch?v=abc",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137",
+            downloadComments: false,
+            downloadLiveChat: true,
+            cookiesBrowser: null,
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+
+        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            youtubeVideoId: "abc",
+            publishedAt: null,
+            mediaType: "video",
+            isLive: true,
+            liveChatFilePath: "live-chat/abc.json",
+        });
+
+        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
+        vi.mocked(insertMedia).mockRejectedValueOnce(new Error("db constraint"));
+        vi.mocked(cleanupCreatedArtifacts).mockResolvedValueOnce(undefined);
+        // Another media row already uses this live chat file: it must be preserved.
+        vi.mocked(countMediaUsingLiveChatOutsideMedia).mockResolvedValueOnce(1);
+
+        await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
+
+        expect(countMediaUsingLiveChatOutsideMedia).toHaveBeenCalledWith("live-chat/abc.json", -1);
+        expect(deleteLiveChatFileFromAppData).not.toHaveBeenCalled();
     });
 
     it("does not clean artifacts when error occurs after successful insertMedia", async () => {

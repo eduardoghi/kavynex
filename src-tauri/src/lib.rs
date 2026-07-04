@@ -157,6 +157,7 @@ pub fn run() {
             commands::videos::update_media_progress,
             commands::videos::count_media_using_thumbnail_outside_media,
             commands::videos::count_media_using_file_path_outside_media,
+            commands::videos::count_media_using_live_chat_outside_media,
             commands::videos::get_media_repository_stats,
             commands::videos::list_media_integrity_references
         ])

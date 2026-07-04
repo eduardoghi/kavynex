@@ -92,6 +92,16 @@ export async function countMediaUsingFilePathOutsideMedia(
     });
 }
 
+export async function countMediaUsingLiveChatOutsideMedia(
+    liveChatFilePath: string,
+    mediaId: number
+): Promise<number> {
+    return invokeCommand<number>(TAURI_COMMANDS.COUNT_MEDIA_USING_LIVE_CHAT_OUTSIDE_MEDIA, {
+        liveChatFilePath,
+        mediaId,
+    });
+}
+
 export async function getMediaRepositoryStats(): Promise<MediaRepositoryStats> {
     return invokeCommand<MediaRepositoryStats>(TAURI_COMMANDS.GET_MEDIA_REPOSITORY_STATS);
 }

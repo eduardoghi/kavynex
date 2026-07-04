@@ -264,6 +264,23 @@ pub async fn count_media_using_file_path_outside_media(
     Ok(total)
 }
 
+pub async fn count_media_using_live_chat_outside_media(
+    pool: &SqlitePool,
+    live_chat_file_path: &str,
+    media_id: i64,
+) -> AppResult<i64> {
+    let (total,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) AS total FROM videos WHERE live_chat_file_path = ? AND id <> ?",
+    )
+    .bind(live_chat_file_path)
+    .bind(media_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| db_error("failed to count media using live chat file", error))?;
+
+    Ok(total)
+}
+
 pub async fn get_media_repository_stats(pool: &SqlitePool) -> AppResult<MediaRepositoryStats> {
     sqlx::query_as::<_, MediaRepositoryStats>(
         "SELECT
@@ -513,6 +530,59 @@ mod tests {
             .unwrap()
             .watched_at
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn count_media_using_live_chat_outside_media_counts_other_rows() {
+        let pool = create_test_pool().await;
+        let a = insert_media(
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            Some("live_chat/shared.json"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        insert_media(
+            &pool,
+            2,
+            "B",
+            "video/b.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            Some("live_chat/shared.json"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        // Two rows share the live chat file; excluding `a` leaves exactly one other user.
+        assert_eq!(
+            count_media_using_live_chat_outside_media(&pool, "live_chat/shared.json", a)
+                .await
+                .unwrap(),
+            1
+        );
+
+        // A live chat path referenced by no row returns zero (safe to delete).
+        assert_eq!(
+            count_media_using_live_chat_outside_media(&pool, "live_chat/orphan.json", -1)
+                .await
+                .unwrap(),
+            0
+        );
     }
 
     #[tokio::test]
