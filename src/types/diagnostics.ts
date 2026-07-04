@@ -21,28 +21,12 @@ export type LiveChatStorageInfo = {
     live_chat_files: number;
 };
 
-export type MediaRepositoryStats = {
-    total_media: number;
-    total_video_media: number;
-    total_audio_media: number;
-    total_with_thumbnail: number;
-    total_without_thumbnail: number;
-    total_watched: number;
-    total_unwatched: number;
-    total_live_media: number;
-    total_with_live_chat: number;
-    total_without_live_chat: number;
-    total_media_with_live_chat_flag_but_no_path: number;
-    total_media_with_live_chat_path_but_not_live: number;
-};
+// Generated from the Rust structs by ts-rs. Change the Rust struct and regenerate.
+// Imported (not just re-exported) so other types in this file can reference them.
+import type { MediaRepositoryStats } from "./generated/MediaRepositoryStats";
+import type { MediaIntegrityReference } from "./generated/MediaIntegrityReference";
 
-export type MediaIntegrityReference = {
-    id: number;
-    title: string;
-    file_path: string;
-    thumbnail_path: string | null;
-    live_chat_file_path: string | null;
-};
+export type { MediaRepositoryStats, MediaIntegrityReference };
 
 export type LibraryIntegrityReport = {
     checked_media_files: number;

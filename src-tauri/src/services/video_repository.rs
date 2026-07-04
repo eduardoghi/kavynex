@@ -40,9 +40,15 @@ pub struct MediaRow {
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+// i64 columns are annotated as `number`: the Tauri IPC layer serializes them as JSON
+// numbers, so the runtime value is a JS `number` rather than the `bigint` ts-rs emits by
+// default.
+#[derive(Debug, Serialize, sqlx::FromRow, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct MediaCommentRow {
+    #[ts(type = "number")]
     pub id: i64,
+    #[ts(type = "number")]
     pub video_id: i64,
     pub comment_id: Option<String>,
     pub parent_comment_id: Option<String>,
@@ -51,35 +57,56 @@ pub struct MediaCommentRow {
     pub author_channel_id: Option<String>,
     pub author_thumbnail: Option<String>,
     pub text: String,
+    #[ts(type = "number")]
     pub like_count: i64,
+    #[ts(type = "number")]
     pub reply_count: i64,
+    #[ts(type = "number")]
     pub is_author_uploader: i64,
+    #[ts(type = "number")]
     pub is_favorited: i64,
+    #[ts(type = "number")]
     pub is_pinned: i64,
+    #[ts(type = "number")]
     pub is_edited: i64,
     pub time_text: Option<String>,
     pub published_at: Option<String>,
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, sqlx::FromRow, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct MediaRepositoryStats {
+    #[ts(type = "number")]
     pub total_media: i64,
+    #[ts(type = "number")]
     pub total_video_media: i64,
+    #[ts(type = "number")]
     pub total_audio_media: i64,
+    #[ts(type = "number")]
     pub total_with_thumbnail: i64,
+    #[ts(type = "number")]
     pub total_without_thumbnail: i64,
+    #[ts(type = "number")]
     pub total_watched: i64,
+    #[ts(type = "number")]
     pub total_unwatched: i64,
+    #[ts(type = "number")]
     pub total_live_media: i64,
+    #[ts(type = "number")]
     pub total_with_live_chat: i64,
+    #[ts(type = "number")]
     pub total_without_live_chat: i64,
+    #[ts(type = "number")]
     pub total_media_with_live_chat_flag_but_no_path: i64,
+    #[ts(type = "number")]
     pub total_media_with_live_chat_path_but_not_live: i64,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, sqlx::FromRow, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct MediaIntegrityReference {
+    #[ts(type = "number")]
     pub id: i64,
     pub title: String,
     pub file_path: String,

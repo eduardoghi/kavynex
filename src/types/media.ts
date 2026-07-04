@@ -8,26 +8,9 @@ export type ChannelAvatarMode = "none" | "manual" | "youtube";
 // Do not hand-edit the shape here; change the Rust struct and regenerate.
 export type { MediaRow } from "./generated/MediaRow";
 
-export type MediaCommentRow = {
-    id: number;
-    video_id: number;
-    comment_id: string | null;
-    parent_comment_id: string | null;
-    author_name: string;
-    author_handle: string | null;
-    author_channel_id: string | null;
-    author_thumbnail: string | null;
-    text: string;
-    like_count: number;
-    reply_count: number;
-    is_author_uploader: number;
-    is_favorited: number;
-    is_pinned: number;
-    is_edited: number;
-    time_text: string | null;
-    published_at: string | null;
-    created_at: string;
-};
+// Generated from the Rust `MediaCommentRow` struct by ts-rs. Change the Rust struct and
+// regenerate; do not hand-edit the shape here.
+export type { MediaCommentRow } from "./generated/MediaCommentRow";
 
 export type YtDlpComment = {
     comment_id: string | null;
@@ -98,10 +81,5 @@ export type YtDlpFailedEvent = {
     message: string;
 };
 
-export type Channel = {
-    id: number;
-    name: string;
-    youtube_handle: string;
-    avatar_path: string | null;
-    created_at: string;
-};
+// Generated from the Rust `ChannelRow` struct by ts-rs (exported as `Channel`).
+export type { Channel } from "./generated/Channel";
