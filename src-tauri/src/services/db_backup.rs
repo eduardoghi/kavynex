@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 
 use crate::services::logger;
@@ -123,6 +124,128 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     Ok(true)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseBackupStatus {
+    pub available: bool,
+    /// Modification time of the backup that would be restored, in epoch milliseconds.
+    pub backed_up_at_ms: Option<u64>,
+}
+
+fn corrupt_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".corrupt")
+}
+
+fn modified_ms(path: &Path) -> Option<u64> {
+    let modified = std::fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()?;
+    modified
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|age| age.as_millis() as u64)
+}
+
+/// The existing backup files, most recent first. Rotation always writes the freshest
+/// snapshot to `.bak`, so it precedes the rotated `.bak.1` generation.
+fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
+    [backup_path(db_path), rotated_backup_path(db_path)]
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
+}
+
+/// Reports whether a backup file exists (without verifying its integrity) and when the
+/// most recent one was written, so the frontend can offer to restore it.
+pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {
+    match backup_candidates(db_path).first() {
+        Some(path) => DatabaseBackupStatus {
+            available: true,
+            backed_up_at_ms: modified_ms(path),
+        },
+        None => DatabaseBackupStatus {
+            available: false,
+            backed_up_at_ms: None,
+        },
+    }
+}
+
+async fn backup_is_healthy(path: &Path) -> bool {
+    match open(path).await {
+        Ok(pool) => {
+            let healthy = is_healthy(&pool).await;
+            pool.close().await;
+            healthy
+        }
+        Err(_) => false,
+    }
+}
+
+/// Restores the database from the most recent backup that passes `quick_check`, preferring
+/// the newest generation and falling back to the rotated one. The current (assumed corrupt)
+/// database and its WAL/`-shm` sidecars are moved aside to `.corrupt` rather than deleted,
+/// so they can still be inspected, and the sidecars are dropped so the restored snapshot is
+/// never combined with a stale write-ahead log.
+///
+/// The restored file is staged and renamed into place so a failure never leaves the live
+/// database missing. The caller must ensure the pool is not already open before calling.
+pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
+    let mut chosen: Option<PathBuf> = None;
+
+    for candidate in backup_candidates(db_path) {
+        if backup_is_healthy(&candidate).await {
+            chosen = Some(candidate);
+            break;
+        }
+    }
+
+    let backup = chosen.ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::NoDatabaseBackupAvailable,
+            "no healthy database backup is available to restore",
+        )
+    })?;
+
+    // Stage the restored file first so the live database is never left missing on failure.
+    let staged = sibling(db_path, ".restore.tmp");
+    let _ = std::fs::remove_file(&staged);
+    std::fs::copy(&backup, &staged)
+        .map_err(|error| backup_error("failed to stage restored database", error))?;
+
+    // Move the corrupt database aside and drop its sidecar WAL files.
+    if db_path.exists() {
+        let corrupt = corrupt_path(db_path);
+        let _ = std::fs::remove_file(&corrupt);
+
+        if let Err(error) = std::fs::rename(db_path, &corrupt) {
+            let _ = std::fs::remove_file(&staged);
+            return Err(backup_error(
+                "failed to move aside the corrupt database",
+                error,
+            ));
+        }
+    }
+
+    let _ = std::fs::remove_file(sibling(db_path, "-wal"));
+    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
+
+    std::fs::rename(&staged, db_path)
+        .map_err(|error| backup_error("failed to restore database from backup", error))?;
+
+    logger::info(
+        "db_backup",
+        format!(
+            "database restored from backup: {}",
+            backup
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(".bak")
+        ),
+    );
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,5 +330,101 @@ mod tests {
         assert!(!backup_database(&db).await.unwrap());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    async fn read_single_value(path: &Path) -> String {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(false);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let (value,): (String,) = sqlx::query_as("SELECT v FROM t LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+        value
+    }
+
+    #[tokio::test]
+    async fn backup_status_reports_availability() {
+        let dir = temp_dir("status");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        assert!(!database_backup_status(&db).available);
+
+        assert!(backup_database(&db).await.unwrap());
+
+        let status = database_backup_status(&db);
+        assert!(status.available);
+        assert!(status.backed_up_at_ms.is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn restore_replaces_corrupt_database_and_preserves_it() {
+        let dir = temp_dir("restore");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+        assert!(backup_database(&db).await.unwrap());
+
+        // Corrupt the live database by overwriting it with garbage.
+        std::fs::write(&db, b"not a database").unwrap();
+
+        restore_database_from_backup(&db).await.unwrap();
+
+        // The restored database is usable again and holds the backed-up data.
+        assert_eq!(read_single_value(&db).await, "hello");
+
+        // The corrupt copy is preserved for inspection, not deleted.
+        assert!(corrupt_path(&db).exists());
+        assert_eq!(std::fs::read(corrupt_path(&db)).unwrap(), b"not a database");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn restore_fails_when_no_backup_exists() {
+        let dir = temp_dir("restore-none");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        let error = restore_database_from_backup(&db).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::NoDatabaseBackupAvailable.as_str());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn restore_falls_back_to_rotated_backup_when_primary_is_corrupt() {
+        let dir = temp_dir("restore-rotated");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        // First backup becomes the rotated generation after a second run.
+        assert!(backup_database(&db).await.unwrap());
+        // Force a second, non-throttled backup so the first rotates to .bak.1.
+        let old = SystemTime::now() - std::time::Duration::from_secs(BACKUP_MIN_INTERVAL_SECS * 2);
+        filetime_set(&backup_path(&db), old);
+        assert!(backup_database(&db).await.unwrap());
+
+        // Corrupt the current .bak so restore must fall back to the rotated .bak.1.
+        std::fs::write(backup_path(&db), b"corrupt bak").unwrap();
+        std::fs::write(&db, b"corrupt db").unwrap();
+
+        restore_database_from_backup(&db).await.unwrap();
+        assert_eq!(read_single_value(&db).await, "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn filetime_set(path: &Path, time: SystemTime) {
+        let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.set_modified(time).unwrap();
     }
 }

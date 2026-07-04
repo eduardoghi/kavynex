@@ -338,6 +338,13 @@ describe("useHomeController", () => {
         vi.mocked(useHomePlayerPanel).mockReturnValue(mockPlayerPanelState);
         vi.mocked(useHomeViewState).mockReturnValue(mockViewState);
         vi.mocked(useHomeLibraryPanel).mockReturnValue(mockLibraryPanelState);
+        vi.mocked(useAppBootstrap).mockReturnValue({
+            open: false,
+            backedUpAtMs: null,
+            isRestoring: false,
+            restoreFromBackup: vi.fn().mockResolvedValue(undefined),
+            dismiss: vi.fn(),
+        });
     });
 
     it("wires bootstrap with error callback", () => {
@@ -394,6 +401,7 @@ describe("useHomeController", () => {
         expect(result.current.viewState).toBe(mockViewState);
         expect(result.current.libraryPanelState).toBe(mockLibraryPanelState);
         expect(result.current.libraryPath).toBe("/library");
+        expect(result.current.databaseRecovery.open).toBe(false);
         expect(result.current.channels.selectedChannel?.name).toBe("Canal A");
         expect(result.current.settings.settings.importMode).toBe("copy");
     });

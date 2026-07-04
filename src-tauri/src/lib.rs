@@ -131,6 +131,8 @@ pub fn run() {
             commands::security::register_library_asset_scope,
             commands::security::allow_asset_file,
             commands::database::ensure_database_ready,
+            commands::database::get_database_backup_status,
+            commands::database::restore_database_from_backup,
             commands::settings::get_app_settings,
             commands::settings::set_app_settings,
             commands::channels::list_channels,

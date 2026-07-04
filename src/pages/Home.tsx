@@ -211,6 +211,7 @@ export default function Home(): JSX.Element {
                         settings={controller.settings}
                         diagnostics={controller.diagnostics}
                         error={controller.error}
+                        databaseRecovery={controller.databaseRecovery}
                         uiGuards={controller.uiGuards}
                     />
 

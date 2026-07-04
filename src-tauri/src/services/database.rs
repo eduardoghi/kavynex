@@ -78,6 +78,12 @@ pub async fn shared_pool(app: &AppHandle) -> AppResult<&'static SqlitePool> {
     POOL.get_or_try_init(|| build_pool(app)).await
 }
 
+/// Whether the shared pool has already been opened. Used to guard the restore-from-backup
+/// flow, which must only run while the database is closed (i.e. after a failed open).
+pub fn is_pool_initialized() -> bool {
+    POOL.get().is_some()
+}
+
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
     let rows: Vec<(String, String)> =
         sqlx::query_as("SELECT key, value FROM app_settings WHERE key IN (?, ?)")

@@ -16,7 +16,7 @@ import { useHomePlayerPanel } from "./use-home-player-panel";
 export function useHomeController(): HomeController {
     const errorState = useErrorModal();
 
-    useAppBootstrap({
+    const databaseRecovery = useAppBootstrap({
         onError: errorState.showError,
     });
 
@@ -106,6 +106,7 @@ export function useHomeController(): HomeController {
         },
         diagnostics: diagnosticsState,
         error: errorState,
+        databaseRecovery,
         uiGuards,
         mediaActions: homeMediaActions,
         playerActions,

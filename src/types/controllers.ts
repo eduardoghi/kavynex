@@ -176,6 +176,14 @@ export type ErrorModalController = {
     closeErrorModal: () => void;
 };
 
+export type DatabaseRecoveryController = {
+    open: boolean;
+    backedUpAtMs: number | null;
+    isRestoring: boolean;
+    restoreFromBackup: () => Promise<void>;
+    dismiss: () => void;
+};
+
 export type HomeUiGuardsController = {
     isAddMediaModalLocked: boolean;
     disableLibraryPathChange: boolean;
@@ -238,6 +246,7 @@ export type HomeController = {
     settings: AppSettingsController;
     diagnostics: DiagnosticsController;
     error: ErrorModalController;
+    databaseRecovery: DatabaseRecoveryController;
     uiGuards: HomeUiGuardsController;
     // Home-level orchestrated media actions (wrap the raw ones in `media` with extra steps
     // like reloading diagnostics), kept separate from the raw media library slice.

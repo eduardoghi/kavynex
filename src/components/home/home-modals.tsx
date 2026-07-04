@@ -1,4 +1,5 @@
 import { Text } from "@mantine/core";
+import { RotateCcw } from "lucide-react";
 import { AddMediaModal } from "../modals/add-media-modal";
 import { ConfirmDeleteModal } from "../modals/confirm-delete-modal";
 import { CreateChannelModal } from "../modals/create-channel-modal";
@@ -8,6 +9,7 @@ import { SettingsModal } from "../modals/settings-modal";
 import type {
     AppSettingsController,
     ChannelsController,
+    DatabaseRecoveryController,
     DiagnosticsController,
     ErrorModalController,
     HomeMediaActionsController,
@@ -22,8 +24,17 @@ type HomeModalsProps = {
     settings: AppSettingsController;
     diagnostics: DiagnosticsController;
     error: ErrorModalController;
+    databaseRecovery: DatabaseRecoveryController;
     uiGuards: HomeUiGuardsController;
 };
+
+function formatBackupTimestamp(backedUpAtMs: number | null): string {
+    if (backedUpAtMs === null) {
+        return "the last automatic backup";
+    }
+
+    return `the backup from ${new Date(backedUpAtMs).toLocaleString("en-US")}`;
+}
 
 export function HomeModals({
     channels,
@@ -32,6 +43,7 @@ export function HomeModals({
     settings,
     diagnostics,
     error,
+    databaseRecovery,
     uiGuards,
 }: HomeModalsProps): JSX.Element {
     const addMediaForm = media.addMediaForm;
@@ -164,6 +176,21 @@ export function HomeModals({
                 onReload={() => void diagnostics.reloadDiagnostics()}
                 loading={diagnostics.isLoadingDiagnostics}
                 summary={diagnostics.diagnosticsSummary}
+            />
+
+            <ConfirmDeleteModal
+                opened={databaseRecovery.open}
+                onClose={databaseRecovery.dismiss}
+                onConfirm={() => void databaseRecovery.restoreFromBackup()}
+                loading={databaseRecovery.isRestoring}
+                title={<Text fw={900}>Restore database</Text>}
+                message="The database could not be opened and may be corrupted."
+                description={`Restore from ${formatBackupTimestamp(
+                    databaseRecovery.backedUpAtMs
+                )}? The current database is kept aside as a .corrupt file, and the app will reload.`}
+                confirmLabel="Restore"
+                confirmColor="blue"
+                confirmIcon={<RotateCcw size={18} />}
             />
 
             <ErrorModal

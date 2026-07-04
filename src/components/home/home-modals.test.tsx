@@ -6,6 +6,7 @@ import type {
     AddMediaFormController,
     AppSettingsController,
     ChannelsController,
+    DatabaseRecoveryController,
     DiagnosticsController,
     ErrorModalController,
     HomeMediaActionsController,
@@ -214,6 +215,16 @@ function createUiGuards(): HomeUiGuardsController {
     };
 }
 
+function createDatabaseRecovery(): DatabaseRecoveryController {
+    return {
+        open: false,
+        backedUpAtMs: null,
+        isRestoring: false,
+        restoreFromBackup: vi.fn().mockResolvedValue(undefined),
+        dismiss: vi.fn(),
+    };
+}
+
 function createProps() {
     return {
         channels: createChannels(),
@@ -222,6 +233,7 @@ function createProps() {
         settings: createSettings(),
         diagnostics: createDiagnostics(),
         error: createError(),
+        databaseRecovery: createDatabaseRecovery(),
         uiGuards: createUiGuards(),
     };
 }

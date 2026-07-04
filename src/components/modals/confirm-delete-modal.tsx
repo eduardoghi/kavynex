@@ -13,6 +13,8 @@ type ConfirmDeleteModalProps = {
 
     confirmLabel?: string;
     cancelLabel?: string;
+    confirmColor?: string;
+    confirmIcon?: ReactNode;
     loading?: boolean;
 };
 
@@ -25,6 +27,8 @@ export function ConfirmDeleteModal({
     description,
     confirmLabel = "Delete",
     cancelLabel = "Cancel",
+    confirmColor = "red",
+    confirmIcon = <Trash2 size={18} />,
     loading = false,
 }: ConfirmDeleteModalProps): JSX.Element {
     return (
@@ -66,8 +70,8 @@ export function ConfirmDeleteModal({
 
                         <Button
                             type="submit"
-                            color="red"
-                            leftSection={<Trash2 size={18} />}
+                            color={confirmColor}
+                            leftSection={confirmIcon}
                             loading={loading}
                         >
                             {confirmLabel}

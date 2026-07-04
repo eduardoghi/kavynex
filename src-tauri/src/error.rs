@@ -10,6 +10,9 @@ pub enum AppErrorCode {
 
     AssetScopeRegisterFailed,
 
+    NoDatabaseBackupAvailable,
+    DatabaseAlreadyOpen,
+
     DataDirectoryResolveFailed,
     CacheDirectoryResolveFailed,
     CacheDirectoryCreateFailed,
@@ -135,6 +138,9 @@ impl AppErrorCode {
             Self::BlockingTaskJoinFailed => "BLOCKING_TASK_JOIN_FAILED",
 
             Self::AssetScopeRegisterFailed => "ASSET_SCOPE_REGISTER_FAILED",
+
+            Self::NoDatabaseBackupAvailable => "NO_DATABASE_BACKUP_AVAILABLE",
+            Self::DatabaseAlreadyOpen => "DATABASE_ALREADY_OPEN",
 
             Self::DataDirectoryResolveFailed => "DATA_DIRECTORY_RESOLVE_FAILED",
             Self::CacheDirectoryResolveFailed => "CACHE_DIRECTORY_RESOLVE_FAILED",

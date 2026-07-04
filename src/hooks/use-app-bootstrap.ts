@@ -1,5 +1,10 @@
-import { useEffect } from "react";
-import { ensureDatabaseReady } from "../services/database-service";
+import { useCallback, useEffect, useState } from "react";
+import {
+    ensureDatabaseReady,
+    getDatabaseBackupStatus,
+    restoreDatabaseFromBackup,
+} from "../services/database-service";
+import type { DatabaseRecoveryController } from "../types/controllers";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
 
@@ -7,9 +12,17 @@ type UseAppBootstrapOptions = {
     onError: (message: string) => void;
 };
 
+function reloadApp(): void {
+    window.location.reload();
+}
+
 export function useAppBootstrap({
     onError,
-}: UseAppBootstrapOptions): void {
+}: UseAppBootstrapOptions): DatabaseRecoveryController {
+    const [open, setOpen] = useState(false);
+    const [backedUpAtMs, setBackedUpAtMs] = useState<number | null>(null);
+    const [isRestoring, setIsRestoring] = useState(false);
+
     useEffect(() => {
         let cancelled = false;
 
@@ -18,6 +31,28 @@ export function useAppBootstrap({
                 await ensureDatabaseReady();
             } catch (error) {
                 logError("bootstrap", "Failed to initialize app.", error);
+
+                if (cancelled) {
+                    return;
+                }
+
+                // The database could not be opened. Offer to restore from the last backup
+                // if one exists; otherwise surface the raw initialization error.
+                try {
+                    const status = await getDatabaseBackupStatus();
+
+                    if (!cancelled && status.available) {
+                        setBackedUpAtMs(status.backedUpAtMs);
+                        setOpen(true);
+                        return;
+                    }
+                } catch (statusError) {
+                    logError(
+                        "bootstrap",
+                        "Failed to read database backup status.",
+                        statusError
+                    );
+                }
 
                 if (!cancelled) {
                     onError(resolveErrorMessage(error, "Failed to initialize app."));
@@ -29,4 +64,34 @@ export function useAppBootstrap({
             cancelled = true;
         };
     }, [onError]);
+
+    const restoreFromBackup = useCallback(async (): Promise<void> => {
+        setIsRestoring(true);
+
+        try {
+            await restoreDatabaseFromBackup();
+            // Reload so the whole app re-initializes against the restored database instead
+            // of running on top of the half-loaded state left by the failed startup.
+            reloadApp();
+        } catch (error) {
+            logError("bootstrap", "Failed to restore database from backup.", error);
+            onError(
+                resolveErrorMessage(error, "Failed to restore the database from backup.")
+            );
+            setIsRestoring(false);
+            setOpen(false);
+        }
+    }, [onError]);
+
+    const dismiss = useCallback((): void => {
+        setOpen(false);
+    }, []);
+
+    return {
+        open,
+        backedUpAtMs,
+        isRestoring,
+        restoreFromBackup,
+        dismiss,
+    };
 }
