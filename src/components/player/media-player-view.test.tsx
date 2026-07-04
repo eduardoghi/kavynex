@@ -208,5 +208,23 @@ describe("MediaPlayerView", () => {
             expect(video.muted).toBe(false);
             document.body.removeChild(input);
         });
+
+        it("ignores shortcuts while a modal is open over the player", () => {
+            renderVideoPlayer();
+            const video = screen.getByLabelText("video") as HTMLVideoElement;
+
+            const modal = document.createElement("div");
+            modal.setAttribute("aria-modal", "true");
+            document.body.appendChild(modal);
+
+            fireEvent.keyDown(document, { code: "KeyM" });
+            expect(video.muted).toBe(false);
+
+            document.body.removeChild(modal);
+
+            // Shortcuts work again once the modal is gone.
+            fireEvent.keyDown(document, { code: "KeyM" });
+            expect(video.muted).toBe(true);
+        });
     });
 });

@@ -190,6 +190,12 @@ export function MediaPlayerView({
                 return;
             }
 
+            // A modal is open on top of the player (Mantine marks it aria-modal). Don't let
+            // these shortcuts drive the video hidden behind it.
+            if (document.querySelector('[aria-modal="true"]')) {
+                return;
+            }
+
             if (isTypingTarget(event.target)) {
                 return;
             }
