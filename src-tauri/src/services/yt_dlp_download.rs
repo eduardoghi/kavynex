@@ -39,6 +39,7 @@ use crate::services::yt_dlp_registry::{
 };
 use crate::utils::format::codec_is_present;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
+use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
@@ -123,12 +124,14 @@ fn build_app_live_chat_relative_path(file_name: &Path) -> String {
 
 #[cfg(target_os = "windows")]
 async fn kill_process_tree(pid: u32) {
-    if let Ok(mut child) = Command::new("taskkill")
+    let mut command = Command::new("taskkill");
+    command
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
+        .stderr(Stdio::null());
+    hide_console_async(&mut command);
+
+    if let Ok(mut child) = command.spawn() {
         let _ = child.wait().await;
     }
 }
@@ -161,11 +164,14 @@ async fn kill_process_tree(pid: u32) {
 
 #[cfg(target_os = "windows")]
 fn kill_process_tree_blocking(pid: u32) {
-    let _ = std::process::Command::new("taskkill")
+    let mut command = std::process::Command::new("taskkill");
+    command
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+        .stderr(Stdio::null());
+    crate::utils::process::hide_console(&mut command);
+
+    let _ = command.status();
 }
 
 #[cfg(unix)]
@@ -584,6 +590,7 @@ pub async fn download_media_from_url_async(
 
         let mut command = Command::new(&yt_dlp);
         configure_yt_dlp_command(&mut command);
+        hide_console_async(&mut command);
 
         let mut child = command
             .args(&args)

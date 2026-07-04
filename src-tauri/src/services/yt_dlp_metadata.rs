@@ -16,6 +16,7 @@ use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::utils::format::{
     build_format_display_name, codec_is_present, normalize_yt_dlp_upload_date, sort_yt_dlp_formats,
 };
+use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_METADATA_TIMEOUT_SECS: u64 = 60;
@@ -185,10 +186,14 @@ async fn run_yt_dlp_and_capture_json(
     exec_message: &str,
     failed_message: &str,
 ) -> AppResult<(String, Vec<String>, Vec<String>)> {
-    let mut child = Command::new(yt_dlp)
+    let mut command = Command::new(yt_dlp);
+    command
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_console_async(&mut command);
+
+    let mut child = command
         .spawn()
         .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?;
 

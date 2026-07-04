@@ -8,6 +8,7 @@ use crate::services::temp_paths::thumbs_temp_dir;
 use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extension};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path};
+use crate::utils::process::hide_console;
 use crate::{AppError, AppErrorCode, AppResult};
 
 fn read_process_error(
@@ -105,26 +106,27 @@ fn generate_video_temporary_thumbnail(
     source_path: &Path,
     out_png: &Path,
 ) -> AppResult<()> {
-    let output = std::process::Command::new(ffmpeg)
-        .args([
-            "-y",
-            "-ss",
-            "0.1",
-            "-i",
-            source_path.to_string_lossy().as_ref(),
-            "-frames:v",
-            "1",
-            "-vf",
-            "scale='min(640,iw)':-1",
-            out_png.to_string_lossy().as_ref(),
-        ])
-        .output()
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::FfmpegExecFailed,
-                format!("failed to execute ffmpeg: {e}"),
-            )
-        })?;
+    let mut command = std::process::Command::new(ffmpeg);
+    command.args([
+        "-y",
+        "-ss",
+        "0.1",
+        "-i",
+        source_path.to_string_lossy().as_ref(),
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale='min(640,iw)':-1",
+        out_png.to_string_lossy().as_ref(),
+    ]);
+    hide_console(&mut command);
+
+    let output = command.output().map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::FfmpegExecFailed,
+            format!("failed to execute ffmpeg: {e}"),
+        )
+    })?;
 
     if !output.status.success() {
         return Err(read_process_error(
@@ -146,26 +148,27 @@ fn generate_audio_embedded_temporary_thumbnail(
     source_path: &Path,
     out_png: &Path,
 ) -> AppResult<()> {
-    let output = std::process::Command::new(ffmpeg)
-        .args([
-            "-y",
-            "-i",
-            source_path.to_string_lossy().as_ref(),
-            "-map",
-            "0:v:0",
-            "-frames:v",
-            "1",
-            "-vf",
-            "scale='min(640,iw)':-1",
-            out_png.to_string_lossy().as_ref(),
-        ])
-        .output()
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::FfmpegExecFailed,
-                format!("failed to execute ffmpeg: {e}"),
-            )
-        })?;
+    let mut command = std::process::Command::new(ffmpeg);
+    command.args([
+        "-y",
+        "-i",
+        source_path.to_string_lossy().as_ref(),
+        "-map",
+        "0:v:0",
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale='min(640,iw)':-1",
+        out_png.to_string_lossy().as_ref(),
+    ]);
+    hide_console(&mut command);
+
+    let output = command.output().map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::FfmpegExecFailed,
+            format!("failed to execute ffmpeg: {e}"),
+        )
+    })?;
 
     if !output.status.success() {
         return Err(read_process_error(

@@ -4,6 +4,7 @@ use std::process::Command;
 use tauri::{AppHandle, Manager};
 
 use crate::models::yt_dlp::{ExternalToolHealth, ExternalToolsStatus};
+use crate::utils::process::hide_console;
 use crate::{AppError, AppErrorCode, AppResult};
 
 #[cfg(unix)]
@@ -28,7 +29,10 @@ fn is_executable_file(path: &Path) -> bool {
 #[cfg(windows)]
 fn resolve_from_path(candidates: &[&str]) -> Option<String> {
     for candidate in candidates {
-        let output = Command::new("where.exe").arg(candidate).output().ok()?;
+        let mut command = Command::new("where.exe");
+        command.arg(candidate);
+        hide_console(&mut command);
+        let output = command.output().ok()?;
 
         if !output.status.success() {
             continue;
@@ -137,7 +141,11 @@ fn run_command_and_capture_first_line(
     error_code: AppErrorCode,
     default_message: &str,
 ) -> AppResult<String> {
-    let output = Command::new(binary_path).args(args).output().map_err(|e| {
+    let mut command = Command::new(binary_path);
+    command.args(args);
+    hide_console(&mut command);
+
+    let output = command.output().map_err(|e| {
         AppError::from_code(
             error_code,
             format!("{default_message}: failed to execute command: {e}"),

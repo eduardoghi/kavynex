@@ -23,6 +23,7 @@ use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
 use crate::services::thumbnail_persist::persist_thumbnail_from_source;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
 use crate::services::yt_dlp_cookies::normalize_cookies_browser;
+use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
@@ -514,28 +515,30 @@ pub async fn download_thumbnail_from_url_async(
 
         clean_matching_files_in_dir(&thumb_temp_dir, &file_name_prefix)?;
 
+        let mut command = Command::new(&yt_dlp);
+        command.args([
+            "--ignore-config",
+            "--no-playlist",
+            "--skip-download",
+            "--write-thumbnail",
+            "--convert-thumbnails",
+            "png",
+            "--restrict-filenames",
+            "--windows-filenames",
+            "--no-warnings",
+            "--ffmpeg-location",
+            ffmpeg_location.as_str(),
+            "--paths",
+            &format!("home:{}", thumb_temp_dir.to_string_lossy()),
+            "-o",
+            &format!("{}.%(ext)s", file_prefix),
+            normalized_url.as_str(),
+        ]);
+        hide_console_async(&mut command);
+
         let output = timeout(
             Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            Command::new(&yt_dlp)
-                .args([
-                    "--ignore-config",
-                    "--no-playlist",
-                    "--skip-download",
-                    "--write-thumbnail",
-                    "--convert-thumbnails",
-                    "png",
-                    "--restrict-filenames",
-                    "--windows-filenames",
-                    "--no-warnings",
-                    "--ffmpeg-location",
-                    ffmpeg_location.as_str(),
-                    "--paths",
-                    &format!("home:{}", thumb_temp_dir.to_string_lossy()),
-                    "-o",
-                    &format!("{}.%(ext)s", file_prefix),
-                    normalized_url.as_str(),
-                ])
-                .output(),
+            command.output(),
         )
         .await
         .map_err(|_| {
@@ -671,9 +674,13 @@ pub async fn download_thumbnail_for_media_async(
         append_auth_args(&mut args, cookies_browser, cookies_path);
         args.push(normalized_url.to_string());
 
+        let mut command = Command::new(&yt_dlp);
+        command.args(&args);
+        hide_console_async(&mut command);
+
         let output = timeout(
             Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            Command::new(&yt_dlp).args(&args).output(),
+            command.output(),
         )
         .await
         .map_err(|_| {
@@ -745,29 +752,31 @@ pub async fn download_channel_avatar_from_handle_async(
 
         clean_matching_files_in_dir(&thumb_temp_dir, file_name_prefix)?;
 
+        let mut command = Command::new(&yt_dlp);
+        command.args([
+            "--ignore-config",
+            "--skip-download",
+            "--write-thumbnail",
+            "--convert-thumbnails",
+            "png",
+            "--playlist-items",
+            "0",
+            "--restrict-filenames",
+            "--windows-filenames",
+            "--no-warnings",
+            "--ffmpeg-location",
+            ffmpeg_location.as_str(),
+            "--paths",
+            &format!("home:{}", thumb_temp_dir.to_string_lossy()),
+            "-o",
+            &format!("{}.%(ext)s", file_prefix),
+            normalized_url.as_str(),
+        ]);
+        hide_console_async(&mut command);
+
         let output = timeout(
             Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            Command::new(&yt_dlp)
-                .args([
-                    "--ignore-config",
-                    "--skip-download",
-                    "--write-thumbnail",
-                    "--convert-thumbnails",
-                    "png",
-                    "--playlist-items",
-                    "0",
-                    "--restrict-filenames",
-                    "--windows-filenames",
-                    "--no-warnings",
-                    "--ffmpeg-location",
-                    ffmpeg_location.as_str(),
-                    "--paths",
-                    &format!("home:{}", thumb_temp_dir.to_string_lossy()),
-                    "-o",
-                    &format!("{}.%(ext)s", file_prefix),
-                    normalized_url.as_str(),
-                ])
-                .output(),
+            command.output(),
         )
         .await
         .map_err(|_| {
