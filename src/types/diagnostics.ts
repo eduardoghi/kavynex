@@ -1,13 +1,9 @@
-export type ExternalToolStatus = {
-    path: string;
-    version: string;
-    healthy: boolean;
-};
+// Generated from the Rust structs by ts-rs (ExternalToolStatus comes from
+// `ExternalToolHealth`). Imported (not just re-exported) so other types here can use them.
+import type { ExternalToolStatus } from "./generated/ExternalToolStatus";
+import type { ExternalToolsStatus } from "./generated/ExternalToolsStatus";
 
-export type ExternalToolsStatus = {
-    yt_dlp: ExternalToolStatus;
-    ffmpeg: ExternalToolStatus;
-};
+export type { ExternalToolStatus, ExternalToolsStatus };
 
 export type LibrarySummaryInfo = {
     total_bytes: number;

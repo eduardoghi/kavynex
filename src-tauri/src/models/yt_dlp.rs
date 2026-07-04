@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 #[derive(Deserialize, Clone, Copy, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -7,12 +8,14 @@ pub enum ImportMode {
     Move,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct DownloadedMediaResult {
     pub file_path: String,
     pub suggested_title: String,
     pub youtube_video_id: Option<String>,
     pub published_at: Option<String>,
+    #[ts(type = "\"video\" | \"audio\"")]
     pub media_type: String,
     pub thumbnail_url: Option<String>,
     pub thumbnail_path: Option<String>,
@@ -118,15 +121,26 @@ pub struct YtDlpCommentMetadata {
     pub is_edited: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+// Exposed to the frontend as `YtDlpFormat`. u64 fields are annotated `number` (Tauri
+// serializes them as JSON numbers, not the bigint ts-rs emits by default); f64 fields map
+// to `number` natively.
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(
+    export,
+    rename = "YtDlpFormat",
+    export_to = "../../src/types/generated/"
+)]
 pub struct YtDlpFormatOption {
     pub format_id: String,
     pub display_name: String,
     pub ext: String,
+    #[ts(type = "\"video\" | \"audio\"")]
     pub media_type: String,
     pub has_video: bool,
     pub has_audio: bool,
+    #[ts(type = "number | null")]
     pub filesize_bytes: Option<u64>,
+    #[ts(type = "number | null")]
     pub height: Option<u64>,
     pub abr: Option<f64>,
     pub tbr: Option<f64>,
@@ -134,14 +148,16 @@ pub struct YtDlpFormatOption {
     pub protocol: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct YtDlpFormatsResult {
     pub suggested_title: String,
     pub formats: Vec<YtDlpFormatOption>,
     pub terminal_logs: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct YtDlpComment {
     pub comment_id: Option<String>,
     pub parent_comment_id: Option<String>,
@@ -150,7 +166,9 @@ pub struct YtDlpComment {
     pub author_channel_id: Option<String>,
     pub author_thumbnail: Option<String>,
     pub text: String,
+    #[ts(type = "number")]
     pub like_count: u64,
+    #[ts(type = "number")]
     pub reply_count: u64,
     pub is_author_uploader: bool,
     pub is_favorited: bool,
@@ -160,14 +178,21 @@ pub struct YtDlpComment {
     pub published_at: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+// Exposed to the frontend as `ExternalToolStatus`.
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(
+    export,
+    rename = "ExternalToolStatus",
+    export_to = "../../src/types/generated/"
+)]
 pub struct ExternalToolHealth {
     pub path: String,
     pub version: String,
     pub healthy: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct ExternalToolsStatus {
     pub yt_dlp: ExternalToolHealth,
     pub ffmpeg: ExternalToolHealth,
