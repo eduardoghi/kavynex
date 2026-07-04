@@ -192,7 +192,8 @@ export async function prepareYtDlpArtifacts({
             ? downloaded.thumbnail_url.trim() || null
             : null;
 
-    let thumbnailPath: string | null = null;
+    // Every branch below assigns thumbnailPath before it is read, so no initializer.
+    let thumbnailPath: string | null;
 
     if (thumbnailSourcePath) {
         thumbnailPath = await resolveThumbnailFromYtDlpImport(

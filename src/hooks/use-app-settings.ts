@@ -57,6 +57,7 @@ export function useAppSettings({
 
     useEffect(() => {
         void settingsActions.prepareSettings();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render controller object
     }, [settingsActions.prepareSettings]);
 
     // Authorize the asset protocol to read from the current library directory. Runs on

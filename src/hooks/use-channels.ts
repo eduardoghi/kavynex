@@ -289,6 +289,7 @@ export function useChannels({
 
         hasLoadedInitialRef.current = true;
         void channelActions.loadChannels();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render controller object
     }, [channelActions.loadChannels]);
 
     useEffect(() => {
@@ -308,6 +309,7 @@ export function useChannels({
         setEditChannelOpenState(false);
 
         void channelActions.loadChannels();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render controller object
     }, [channelActions.loadChannels, libraryPath, resetCreateChannelForm, resetEditChannelForm]);
 
     useEffect(() => {

@@ -64,6 +64,7 @@ export function useHomeUiGuards({
 }: UseHomeUiGuardsOptions): HomeUiGuardsController {
     const isAddMediaModalLocked = useMemo(() => {
         return isMediaOperationLocked(buildMediaPreparationState(mediaLibrary));
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives read inside, not the whole per-render mediaLibrary object
     }, [
         mediaLibrary.isAddingMedia,
         mediaLibrary.isYtDlpRunning,
@@ -78,6 +79,7 @@ export function useHomeUiGuards({
             mediaLibrary,
             channelsState.isUpdatingChannelAvatar
         );
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives read inside, not the whole per-render settingsState/mediaLibrary objects
     }, [
         settingsState.settings.libraryPath,
         settingsState.isMigratingLibraryPath,
@@ -100,6 +102,7 @@ export function useHomeUiGuards({
         }
 
         await mediaLibrary.closeAddMediaModal();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives plus the stable memoized callback, not the whole per-render mediaLibrary object
     }, [
         mediaLibrary.isAddingMedia,
         mediaLibrary.isYtDlpRunning,

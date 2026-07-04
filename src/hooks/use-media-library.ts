@@ -85,6 +85,7 @@ export function useMediaLibrary({
     const clearMediaAndPlayer = useCallback((): void => {
         mediaList.clearMedia();
         mediaPlayer.closePlayer();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render mediaList object
     }, [mediaList.clearMedia, mediaPlayer]);
 
     useEffect(() => {
@@ -94,6 +95,7 @@ export function useMediaLibrary({
         }
 
         void mediaList.loadMedia(selectedChannelId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the stable memoized callbacks, not the whole per-render mediaList object
     }, [selectedChannelId, mediaList.clearMedia, mediaList.loadMedia]);
 
     return {
