@@ -3,7 +3,7 @@ use tauri::AppHandle;
 use crate::models::yt_dlp::{
     DownloadedMediaResult, ExternalToolsStatus, YtDlpComment, YtDlpFormatsResult,
 };
-use crate::services::binaries::resolve_external_tools_status;
+use crate::services::binaries::resolve_external_tools_status_async;
 use crate::services::yt_dlp;
 use crate::AppResult;
 
@@ -73,5 +73,5 @@ pub async fn cancel_media_download(run_id: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn check_external_tools(app: AppHandle) -> AppResult<ExternalToolsStatus> {
-    resolve_external_tools_status(&app)
+    resolve_external_tools_status_async(&app).await
 }

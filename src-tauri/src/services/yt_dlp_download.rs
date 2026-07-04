@@ -15,7 +15,7 @@ use tokio::{
 
 use crate::models::yt_dlp::{DownloadLogEvent, DownloadedMediaResult};
 use crate::services::binaries::{
-    ffmpeg_location_argument, resolve_ffmpeg_binary, resolve_yt_dlp_binary,
+    ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
 use crate::services::filesystem::{
     clean_matching_files_in_dir, find_best_matching_file, replace_file_safely,
@@ -321,8 +321,8 @@ pub async fn download_media_from_url_async(
     let normalized_cookies_path = normalize_cookies_path(cookies_path);
 
     let cancel_flag = register_download_run(&normalized_run_id)?;
-    let yt_dlp = resolve_yt_dlp_binary(app)?;
-    let ffmpeg = resolve_ffmpeg_binary(app)?;
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+    let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
     let library_dir = ensure_library_dir(library_path)?;

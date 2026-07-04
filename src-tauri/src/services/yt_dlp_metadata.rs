@@ -11,7 +11,7 @@ use tokio::{
 use crate::models::yt_dlp::{
     YtDlpComment, YtDlpCommentMetadata, YtDlpFormatOption, YtDlpFormatsResult, YtDlpMetadata,
 };
-use crate::services::binaries::resolve_yt_dlp_binary;
+use crate::services::binaries::resolve_yt_dlp_binary_async;
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::utils::format::{
     build_format_display_name, codec_is_present, normalize_yt_dlp_upload_date, sort_yt_dlp_formats,
@@ -456,7 +456,7 @@ pub async fn fetch_youtube_comments_async(
         ));
     }
 
-    let yt_dlp = resolve_yt_dlp_binary(app)?;
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let url = format!("https://www.youtube.com/watch?v={}", normalized_video_id);
 
     let metadata =
@@ -493,7 +493,7 @@ pub async fn list_yt_dlp_formats_async(
         ));
     }
 
-    let yt_dlp = resolve_yt_dlp_binary(app)?;
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
 
     let mut args = vec![
         "-v".to_string(),

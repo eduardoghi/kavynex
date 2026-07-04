@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::models::yt_dlp::{ExternalToolHealth, ExternalToolsStatus};
 use crate::utils::process::hide_console;
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 #[cfg(unix)]
@@ -217,6 +218,26 @@ pub fn resolve_external_tools_status(app: &AppHandle) -> AppResult<ExternalTools
             healthy: true,
         },
     })
+}
+
+// Async wrappers so callers on the Tokio runtime do not block a worker thread while these
+// shell out (where.exe/which, and the `--version` health checks). Blocking work is moved to
+// the dedicated blocking pool via `run_blocking`.
+pub async fn resolve_yt_dlp_binary_async(app: &AppHandle) -> AppResult<String> {
+    let app = app.clone();
+    run_blocking(move || resolve_yt_dlp_binary(&app)).await
+}
+
+pub async fn resolve_ffmpeg_binary_async(app: &AppHandle) -> AppResult<String> {
+    let app = app.clone();
+    run_blocking(move || resolve_ffmpeg_binary(&app)).await
+}
+
+pub async fn resolve_external_tools_status_async(
+    app: &AppHandle,
+) -> AppResult<ExternalToolsStatus> {
+    let app = app.clone();
+    run_blocking(move || resolve_external_tools_status(&app)).await
 }
 
 pub fn ffmpeg_location_argument(ffmpeg_binary: &str) -> String {

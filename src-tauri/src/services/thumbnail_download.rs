@@ -15,7 +15,7 @@ use tokio::time::timeout;
 
 use crate::models::yt_dlp::YtDlpMetadata;
 use crate::services::binaries::{
-    ffmpeg_location_argument, resolve_ffmpeg_binary, resolve_yt_dlp_binary,
+    ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
 use crate::services::filesystem::{clean_matching_files_in_dir, find_best_matching_file};
 use crate::services::library_paths::ensure_library_dir;
@@ -486,8 +486,8 @@ pub async fn download_thumbnail_from_url_async(
             return persist_thumbnail_from_source(&direct_file_path, &library_dir);
         }
 
-        let yt_dlp = resolve_yt_dlp_binary(app)?;
-        let ffmpeg = resolve_ffmpeg_binary(app)?;
+        let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+        let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
         let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
         let metadata = fetch_yt_dlp_metadata(&yt_dlp, &normalized_url, None, None).await?;
@@ -623,8 +623,8 @@ pub async fn download_thumbnail_for_media_async(
     })?;
 
     let result = async {
-        let yt_dlp = resolve_yt_dlp_binary(app)?;
-        let ffmpeg = resolve_ffmpeg_binary(app)?;
+        let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+        let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
         let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
         let id = metadata
@@ -733,8 +733,8 @@ pub async fn download_channel_avatar_from_handle_async(
     let normalized_url = normalize_channel_handle_to_url(youtube_handle)?;
     let library_dir = ensure_library_dir(library_path)?;
 
-    let yt_dlp = resolve_yt_dlp_binary(app)?;
-    let ffmpeg = resolve_ffmpeg_binary(app)?;
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+    let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
     let thumb_temp_root = yt_dlp_thumb_temp_dir(app)?;
