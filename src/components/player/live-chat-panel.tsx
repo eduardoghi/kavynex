@@ -79,6 +79,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
     );
 
     const isSuperChat = Boolean(message.amount_text);
+    const isMembership = message.kind === "membership";
 
     // Inside a super chat card the author name inherits the card's text color.
     const superChatAuthor = authorChannelId ? (
@@ -99,7 +100,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
 
     return (
         <Group align="flex-start" gap="sm" wrap="nowrap">
-            {!isSuperChat && (
+            {!isSuperChat && !isMembership && (
                 <SafeAvatar
                     src={avatarSrc}
                     initials={avatarInitials(message.author_name)}
@@ -109,7 +110,38 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
             )}
 
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
-                {isSuperChat ? (
+                {isMembership ? (
+                    <Box
+                        style={{
+                            background: "rgba(15,157,88,0.14)",
+                            border: "1px solid rgba(15,157,88,0.4)",
+                            borderRadius: rem(8),
+                            padding: rem(8),
+                        }}
+                    >
+                        <Group gap="xs" wrap="nowrap" align="flex-start">
+                            <SafeAvatar
+                                src={avatarSrc}
+                                initials={avatarInitials(message.author_name)}
+                                shellBorder={shellBorder}
+                                size={28}
+                            />
+
+                            <Text size="sm" style={{ minWidth: 0, wordBreak: "break-word" }}>
+                                <Text component="span" fw={800} c="teal.4">
+                                    {message.author_name}
+                                </Text>{" "}
+                                {message.message_text}
+                                {message.timestamp_text ? (
+                                    <Text component="span" size="xs" c="dimmed">
+                                        {"  "}
+                                        {message.timestamp_text}
+                                    </Text>
+                                ) : null}
+                            </Text>
+                        </Group>
+                    </Box>
+                ) : isSuperChat ? (
                     <Box
                         style={{
                             background: message.superchat_body_color ?? "#1565c0",
@@ -155,6 +187,20 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
                             >
                                 {message.message_text}
                             </Text>
+                        )}
+
+                        {message.sticker_image_url && (
+                            <img
+                                src={message.sticker_image_url}
+                                alt="Super Sticker"
+                                loading="lazy"
+                                style={{
+                                    width: rem(72),
+                                    height: rem(72),
+                                    marginTop: rem(6),
+                                    display: "block",
+                                }}
+                            />
                         )}
                     </Box>
                 ) : (

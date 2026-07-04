@@ -16,7 +16,10 @@ export type LiveChatAuthorBadge = {
     label: string;
 };
 
+export type LiveChatMessageKind = "message" | "superchat" | "sticker" | "membership";
+
 export type LiveChatMessageItem = {
+    kind: LiveChatMessageKind;
     message_id: string | null;
     message_offset_ms: number;
     author_name: string;
@@ -28,6 +31,7 @@ export type LiveChatMessageItem = {
     amount_text: string | null;
     superchat_body_color: string | null;
     superchat_text_color: string | null;
+    sticker_image_url: string | null;
     header_primary_text: string | null;
     header_secondary_text: string | null;
 };
@@ -74,7 +78,7 @@ function extractRunsText(runs: unknown): string {
 
             return emojiId;
         })
-        .filter((value) => typeof value === "string" && value.trim() !== "")
+        .filter((value) => value !== "")
         .join("");
 }
 
@@ -219,6 +223,150 @@ function parseReplayOffsetMs(lineObject: Record<string, unknown>): number {
     return 0;
 }
 
+function makeMessage(
+    partial: Partial<LiveChatMessageItem> & {
+        kind: LiveChatMessageKind;
+        message_offset_ms: number;
+    }
+): LiveChatMessageItem {
+    return {
+        kind: partial.kind,
+        message_id: partial.message_id ?? null,
+        message_offset_ms: partial.message_offset_ms,
+        author_name: partial.author_name ?? "Unknown author",
+        author_channel_id: partial.author_channel_id ?? null,
+        author_thumbnail: partial.author_thumbnail ?? null,
+        author_badges: partial.author_badges ?? [],
+        message_text: partial.message_text ?? "",
+        timestamp_text: partial.timestamp_text ?? null,
+        amount_text: partial.amount_text ?? null,
+        superchat_body_color: partial.superchat_body_color ?? null,
+        superchat_text_color: partial.superchat_text_color ?? null,
+        sticker_image_url: partial.sticker_image_url ?? null,
+        header_primary_text: null,
+        header_secondary_text: null,
+    };
+}
+
+function parseStickerImageUrl(renderer: Record<string, unknown>): string | null {
+    const sticker = renderer.sticker as Record<string, unknown> | undefined;
+    const thumbnails = Array.isArray(sticker?.thumbnails) ? sticker.thumbnails : [];
+    const candidate = thumbnails[thumbnails.length - 1] as Record<string, unknown> | undefined;
+    const url = typeof candidate?.url === "string" ? candidate.url.trim() : "";
+
+    if (!url) {
+        return null;
+    }
+
+    return url.startsWith("//") ? `https:${url}` : url;
+}
+
+function parseRendererId(renderer: Record<string, unknown>): string | null {
+    return typeof renderer.id === "string" && renderer.id.trim() ? renderer.id.trim() : null;
+}
+
+function buildChatMessage(
+    renderer: Record<string, unknown>,
+    isPaid: boolean,
+    offset: number
+): LiveChatMessageItem | null {
+    const text = parseRendererMessage(renderer);
+
+    // Regular messages must have text; super chats keep the amount as content.
+    if (!text && !isPaid) {
+        return null;
+    }
+
+    return makeMessage({
+        kind: isPaid ? "superchat" : "message",
+        message_id: parseRendererId(renderer),
+        message_offset_ms: offset,
+        author_name: parseAuthorName(renderer),
+        author_channel_id: parseAuthorChannelId(renderer),
+        author_thumbnail: parseAuthorThumbnail(renderer),
+        author_badges: parseAuthorBadges(renderer),
+        message_text: text,
+        timestamp_text: parseTimestampText(renderer),
+        amount_text: isPaid ? parsePurchaseAmount(renderer) : null,
+        superchat_body_color: isPaid ? argbColorToHex(renderer.bodyBackgroundColor) : null,
+        superchat_text_color: isPaid ? argbColorToHex(renderer.bodyTextColor) : null,
+    });
+}
+
+function buildSticker(renderer: Record<string, unknown>, offset: number): LiveChatMessageItem {
+    return makeMessage({
+        kind: "sticker",
+        message_id: parseRendererId(renderer),
+        message_offset_ms: offset,
+        author_name: parseAuthorName(renderer),
+        author_channel_id: parseAuthorChannelId(renderer),
+        author_thumbnail: parseAuthorThumbnail(renderer),
+        message_text: "",
+        timestamp_text: parseTimestampText(renderer),
+        amount_text: parsePurchaseAmount(renderer),
+        superchat_body_color: argbColorToHex(renderer.backgroundColor),
+        superchat_text_color: argbColorToHex(renderer.moneyChipTextColor),
+        sticker_image_url: parseStickerImageUrl(renderer),
+    });
+}
+
+function extractRunsFrom(value: unknown): string {
+    return extractRunsText((value as Record<string, unknown> | undefined)?.runs).trim();
+}
+
+function buildMembership(renderer: Record<string, unknown>, offset: number): LiveChatMessageItem {
+    // New members carry the announcement in headerSubtext; milestone messages add the
+    // member's own message.
+    const headerText = extractRunsFrom(renderer.headerSubtext);
+    const memberMessage = parseRendererMessage(renderer);
+    const text = [headerText, memberMessage].filter(Boolean).join(" — ");
+
+    return makeMessage({
+        kind: "membership",
+        message_id: parseRendererId(renderer),
+        message_offset_ms: offset,
+        author_name: parseAuthorName(renderer),
+        author_channel_id: parseAuthorChannelId(renderer),
+        author_thumbnail: parseAuthorThumbnail(renderer),
+        message_text: text || "New member",
+        timestamp_text: parseTimestampText(renderer),
+    });
+}
+
+function buildGiftRedemption(
+    renderer: Record<string, unknown>,
+    offset: number
+): LiveChatMessageItem {
+    return makeMessage({
+        kind: "membership",
+        message_id: parseRendererId(renderer),
+        message_offset_ms: offset,
+        author_name: parseAuthorName(renderer),
+        author_channel_id: parseAuthorChannelId(renderer),
+        author_thumbnail: parseAuthorThumbnail(renderer),
+        message_text: parseRendererMessage(renderer) || "received a gift membership",
+        timestamp_text: parseTimestampText(renderer),
+    });
+}
+
+function buildGiftPurchase(
+    renderer: Record<string, unknown>,
+    offset: number
+): LiveChatMessageItem {
+    const header = (renderer.header as Record<string, unknown> | undefined)
+        ?.liveChatSponsorshipsHeaderRenderer as Record<string, unknown> | undefined;
+
+    return makeMessage({
+        kind: "membership",
+        message_id: parseRendererId(renderer),
+        message_offset_ms: offset,
+        author_name: header ? parseAuthorName(header) : "Unknown author",
+        author_channel_id: parseAuthorChannelId(renderer),
+        author_thumbnail: header ? parseAuthorThumbnail(header) : null,
+        message_text: header ? extractRunsFrom(header.primaryText) : "Sent gift memberships",
+    });
+}
+
 function parseLiveChatLine(line: string): LiveChatMessageItem[] {
     const trimmed = line.trim();
 
@@ -244,39 +392,38 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
 
         const textRenderer = item.liveChatTextMessageRenderer as Record<string, unknown> | undefined;
         const paidRenderer = item.liveChatPaidMessageRenderer as Record<string, unknown> | undefined;
-        const renderer = textRenderer ?? paidRenderer;
+        const stickerRenderer = item.liveChatPaidStickerRenderer as
+            | Record<string, unknown>
+            | undefined;
+        const membershipRenderer = item.liveChatMembershipItemRenderer as
+            | Record<string, unknown>
+            | undefined;
+        const giftRedemptionRenderer = item.liveChatSponsorshipsGiftRedemptionAnnouncementRenderer as
+            | Record<string, unknown>
+            | undefined;
+        const giftPurchaseRenderer = item.liveChatSponsorshipsGiftPurchaseAnnouncementRenderer as
+            | Record<string, unknown>
+            | undefined;
 
-        if (!renderer) {
-            continue;
+        let parsedMessage: LiveChatMessageItem | null = null;
+
+        if (textRenderer) {
+            parsedMessage = buildChatMessage(textRenderer, false, replayOffsetMs);
+        } else if (paidRenderer) {
+            parsedMessage = buildChatMessage(paidRenderer, true, replayOffsetMs);
+        } else if (stickerRenderer) {
+            parsedMessage = buildSticker(stickerRenderer, replayOffsetMs);
+        } else if (membershipRenderer) {
+            parsedMessage = buildMembership(membershipRenderer, replayOffsetMs);
+        } else if (giftRedemptionRenderer) {
+            parsedMessage = buildGiftRedemption(giftRedemptionRenderer, replayOffsetMs);
+        } else if (giftPurchaseRenderer) {
+            parsedMessage = buildGiftPurchase(giftPurchaseRenderer, replayOffsetMs);
         }
 
-        const isPaid = Boolean(paidRenderer);
-        const messageText = parseRendererMessage(renderer);
-
-        // Regular messages must have text; super chats (paid messages) are kept even
-        // without a message, since the amount is the content.
-        if (!messageText && !isPaid) {
-            continue;
+        if (parsedMessage) {
+            messages.push(parsedMessage);
         }
-
-        const messageId =
-            typeof renderer.id === "string" && renderer.id.trim() ? renderer.id.trim() : null;
-
-        messages.push({
-            message_id: messageId,
-            message_offset_ms: replayOffsetMs,
-            author_name: parseAuthorName(renderer),
-            author_channel_id: parseAuthorChannelId(renderer),
-            author_thumbnail: parseAuthorThumbnail(renderer),
-            author_badges: parseAuthorBadges(renderer),
-            message_text: messageText,
-            timestamp_text: parseTimestampText(renderer),
-            amount_text: isPaid ? parsePurchaseAmount(paidRenderer) : null,
-            superchat_body_color: isPaid ? argbColorToHex(paidRenderer?.bodyBackgroundColor) : null,
-            superchat_text_color: isPaid ? argbColorToHex(paidRenderer?.bodyTextColor) : null,
-            header_primary_text: null,
-            header_secondary_text: null,
-        });
     }
 
     return messages;
