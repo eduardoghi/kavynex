@@ -69,6 +69,12 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            // Persist logs to a file (in addition to stderr) so issues on a user's machine
+            // can be diagnosed from bug reports.
+            if let Ok(log_dir) = app.path().app_log_dir() {
+                services::logger::init(log_dir);
+            }
+
             services::logger::info("app", "application setup started");
 
             // Authorize the app cache directory in the asset protocol scope so temporary

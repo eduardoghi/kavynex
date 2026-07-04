@@ -278,7 +278,13 @@ pub async fn download_media_from_url_async(
             download_live_chat,
             skip_auto_thumbnail_download,
             normalized_cookies_browser.clone().unwrap_or_default(),
-            normalized_cookies_path.clone().unwrap_or_default()
+            // Avoid writing the cookies file path to the log (it can end up in a public bug
+            // report); record only whether one was provided.
+            if normalized_cookies_path.is_some() {
+                "<set>"
+            } else {
+                "<none>"
+            }
         ),
     );
 
