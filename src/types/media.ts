@@ -45,22 +45,6 @@ export type MediaCommentRow = {
     created_at: string;
 };
 
-export type LiveChatMessageRow = {
-    id: number;
-    video_id: number;
-    message_id: string | null;
-    message_offset_ms: number;
-    author_name: string;
-    author_thumbnail: string | null;
-    author_badges: string | null;
-    message_text: string;
-    timestamp_text: string | null;
-    amount_text: string | null;
-    header_primary_text: string | null;
-    header_secondary_text: string | null;
-    created_at: string;
-};
-
 export type YtDlpComment = {
     comment_id: string | null;
     parent_comment_id: string | null;

@@ -3,7 +3,7 @@ import {
     exists,
     mkdir,
     readDir,
-    readTextFile,
+    readFile,
     remove,
     writeTextFile,
 } from "@tauri-apps/plugin-fs";
@@ -43,8 +43,6 @@ export type LiveChatMessageItem = {
     superchat_text_color: string | null;
     sticker_image_url: string | null;
     pinned_header: string | null;
-    header_primary_text: string | null;
-    header_secondary_text: string | null;
 };
 
 type FsEntry = {
@@ -332,8 +330,6 @@ function makeMessage(
         superchat_text_color: partial.superchat_text_color ?? null,
         sticker_image_url: partial.sticker_image_url ?? null,
         pinned_header: partial.pinned_header ?? null,
-        header_primary_text: null,
-        header_secondary_text: null,
     };
 }
 
@@ -599,9 +595,32 @@ export async function readLiveChatTextFromAppData(relativePath: string): Promise
         );
     }
 
-    return readTextFile(normalizedPath, {
+    const bytes = await readFile(normalizedPath, {
         baseDir: BaseDirectory.AppData,
     });
+
+    return decodeLiveChatBytes(bytes);
+}
+
+// Live chat files are stored gzip-compressed to save disk. Older files may still be plain
+// JSON, so detect the gzip magic bytes and only decompress when present.
+async function decodeLiveChatBytes(bytes: Uint8Array): Promise<string> {
+    const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+
+    if (!isGzip) {
+        return new TextDecoder("utf-8").decode(bytes);
+    }
+
+    const source = new ReadableStream<BufferSource>({
+        start(controller) {
+            controller.enqueue(new Uint8Array(bytes));
+            controller.close();
+        },
+    });
+
+    const decompressed = source.pipeThrough(new DecompressionStream("gzip"));
+
+    return new Response(decompressed).text();
 }
 
 export async function deleteLiveChatFileFromAppData(relativePath: string): Promise<void> {

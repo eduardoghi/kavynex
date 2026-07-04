@@ -31,6 +31,31 @@ fn spawn_startup_cleanup(app_handle: AppHandle) {
     });
 }
 
+fn spawn_live_chat_compression(app_handle: AppHandle) {
+    tauri::async_runtime::spawn_blocking(move || {
+        match services::live_chat_storage::compress_existing_live_chat_files_for_app(&app_handle) {
+            Ok(summary) => {
+                services::logger::info(
+                    "live_chat_compress",
+                    format!(
+                        "live chat compression finished: scanned={}, compressed={}, already={}, failed={}",
+                        summary.scanned,
+                        summary.compressed,
+                        summary.already_compressed,
+                        summary.failed
+                    ),
+                );
+            }
+            Err(error) => {
+                services::logger::error(
+                    "live_chat_compress",
+                    format!("live chat compression failed: {}", error),
+                );
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -68,7 +93,8 @@ pub fn run() {
                 }
             }
 
-            spawn_startup_cleanup(app_handle);
+            spawn_startup_cleanup(app_handle.clone());
+            spawn_live_chat_compression(app_handle);
             services::logger::info("app", "application setup finished");
 
             Ok(())

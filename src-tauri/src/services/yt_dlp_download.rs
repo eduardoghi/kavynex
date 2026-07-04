@@ -727,7 +727,12 @@ pub async fn download_media_from_url_async(
 
                 let final_live_chat_destination = live_chat_dir.join(live_chat_file_name);
 
-                replace_file_safely(&temp_live_chat_file, &final_live_chat_destination)?;
+                // Store live chat replays gzip-compressed to save disk; the frontend reader
+                // transparently decompresses them.
+                crate::services::live_chat_storage::compress_file_to(
+                    &temp_live_chat_file,
+                    &final_live_chat_destination,
+                )?;
 
                 Some(build_app_live_chat_relative_path(Path::new(
                     live_chat_file_name,

@@ -37,6 +37,7 @@ pub enum AppErrorCode {
     FileRenameFailed,
     FileMoveFailed,
     SourceFileRemoveFailed,
+    LiveChatCompressFailed,
 
     InvalidDestinationPath,
     CreateDestinationParentFailed,
@@ -162,6 +163,7 @@ impl AppErrorCode {
             Self::FileRenameFailed => "FILE_RENAME_FAILED",
             Self::FileMoveFailed => "FILE_MOVE_FAILED",
             Self::SourceFileRemoveFailed => "SOURCE_FILE_REMOVE_FAILED",
+            Self::LiveChatCompressFailed => "LIVE_CHAT_COMPRESS_FAILED",
 
             Self::InvalidDestinationPath => "INVALID_DESTINATION_PATH",
             Self::CreateDestinationParentFailed => "CREATE_DESTINATION_PARENT_FAILED",

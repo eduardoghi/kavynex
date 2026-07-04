@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { exists, readTextFile } from "@tauri-apps/plugin-fs";
+import { exists, readFile } from "@tauri-apps/plugin-fs";
 import { readLiveChatMessagesFromFile } from "./live-chat-service";
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
@@ -7,10 +7,15 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
     exists: vi.fn(),
     mkdir: vi.fn(),
     readDir: vi.fn(),
-    readTextFile: vi.fn(),
+    readFile: vi.fn(),
     remove: vi.fn(),
     writeTextFile: vi.fn(),
 }));
+
+// Live chat files are read as bytes (they may be gzip-compressed); tests feed plain UTF-8.
+function mockFile(content: string): void {
+    vi.mocked(readFile).mockResolvedValue(new TextEncoder().encode(content));
+}
 
 function rawLine(renderer: Record<string, unknown>, offset = "0"): string {
     return JSON.stringify({
@@ -28,7 +33,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("parses author_channel_id from authorExternalChannelId", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawLine(
                 {
                     id: "msg1",
@@ -55,7 +60,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("parses author badges (owner and member)", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawLine({
                 message: { runs: [{ text: "hi" }] },
                 authorName: { simpleText: "@owner" },
@@ -85,7 +90,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("returns an empty badge list when there are no badges", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawLine({
                 message: { runs: [{ text: "hi" }] },
                 authorName: { simpleText: "bob" },
@@ -109,7 +114,7 @@ describe("readLiveChatMessagesFromFile", () => {
     }
 
     it("parses a super chat with amount and colors", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawPaidLine(
                 {
                     id: "sc1",
@@ -137,7 +142,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("keeps a super chat that has no message text", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawPaidLine({
                 authorName: { simpleText: "@fan" },
                 purchaseAmountText: { simpleText: "$2.00" },
@@ -161,7 +166,7 @@ describe("readLiveChatMessagesFromFile", () => {
     }
 
     it("parses a new member (membership) event", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawItemLine(
                 {
                     liveChatMembershipItemRenderer: {
@@ -188,7 +193,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("parses a gift membership redemption", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawItemLine({
                 liveChatSponsorshipsGiftRedemptionAnnouncementRenderer: {
                     authorName: { simpleText: "@lucky" },
@@ -209,7 +214,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("keeps spaces between gift purchase runs", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawItemLine({
                 liveChatSponsorshipsGiftPurchaseAnnouncementRenderer: {
                     authorExternalChannelId: "UCabc",
@@ -241,7 +246,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("parses a super sticker with image and amount", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawItemLine({
                 liveChatPaidStickerRenderer: {
                     id: "st1",
@@ -264,7 +269,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("parses a custom emoji as an image part", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawLine({
                 message: {
                     runs: [
@@ -295,7 +300,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("keeps a standard emoji as its unicode character", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawLine({
                 message: { runs: [{ emoji: { emojiId: "📍", shortcuts: [":round_pushpin:"] } }] },
                 authorName: { simpleText: "@x" },
@@ -309,7 +314,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 
     it("parses a pinned banner message", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             JSON.stringify({
                 replayChatItemAction: {
                     videoOffsetTimeMsec: "0",
@@ -354,8 +359,21 @@ describe("readLiveChatMessagesFromFile", () => {
         });
     });
 
+    it("decompresses gzip-compressed live chat files", async () => {
+        const line = rawLine({
+            message: { runs: [{ text: "compressed" }] },
+            authorName: { simpleText: "@z" },
+        });
+        const { gzipSync } = await import("node:zlib");
+        vi.mocked(readFile).mockResolvedValue(new Uint8Array(gzipSync(Buffer.from(line, "utf-8"))));
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.message_text).toBe("compressed");
+    });
+
     it("returns null author_channel_id when absent", async () => {
-        vi.mocked(readTextFile).mockResolvedValue(
+        mockFile(
             rawLine({
                 message: { runs: [{ text: "hi" }] },
                 authorName: { simpleText: "bob" },

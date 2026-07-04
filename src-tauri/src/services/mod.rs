@@ -9,6 +9,7 @@ pub mod library_media;
 pub mod library_migration;
 pub mod library_paths;
 pub mod library_summary;
+pub mod live_chat_storage;
 pub mod logger;
 pub mod media_comments;
 pub mod temp_paths;
