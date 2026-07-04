@@ -308,6 +308,52 @@ describe("readLiveChatMessagesFromFile", () => {
         expect(messages[0]?.message_text).toBe("📍");
     });
 
+    it("parses a pinned banner message", async () => {
+        vi.mocked(readTextFile).mockResolvedValue(
+            JSON.stringify({
+                replayChatItemAction: {
+                    videoOffsetTimeMsec: "0",
+                    actions: [
+                        {
+                            addBannerToLiveChatCommand: {
+                                bannerRenderer: {
+                                    liveChatBannerRenderer: {
+                                        header: {
+                                            liveChatBannerHeaderRenderer: {
+                                                text: {
+                                                    runs: [
+                                                        { text: "Pinned by " },
+                                                        { text: "@creator" },
+                                                    ],
+                                                },
+                                            },
+                                        },
+                                        contents: {
+                                            liveChatTextMessageRenderer: {
+                                                id: "p1",
+                                                authorName: { simpleText: "@creator" },
+                                                message: { runs: [{ text: "read the rules" }] },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    ],
+                },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]).toMatchObject({
+            kind: "pinned",
+            author_name: "@creator",
+            message_text: "read the rules",
+            pinned_header: "Pinned by @creator",
+        });
+    });
+
     it("returns null author_channel_id when absent", async () => {
         vi.mocked(readTextFile).mockResolvedValue(
             rawLine({

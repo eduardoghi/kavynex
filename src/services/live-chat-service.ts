@@ -16,7 +16,12 @@ export type LiveChatAuthorBadge = {
     label: string;
 };
 
-export type LiveChatMessageKind = "message" | "superchat" | "sticker" | "membership";
+export type LiveChatMessageKind =
+    | "message"
+    | "superchat"
+    | "sticker"
+    | "membership"
+    | "pinned";
 
 export type LiveChatMessagePart =
     | { type: "text"; text: string }
@@ -37,6 +42,7 @@ export type LiveChatMessageItem = {
     superchat_body_color: string | null;
     superchat_text_color: string | null;
     sticker_image_url: string | null;
+    pinned_header: string | null;
     header_primary_text: string | null;
     header_secondary_text: string | null;
 };
@@ -325,6 +331,7 @@ function makeMessage(
         superchat_body_color: partial.superchat_body_color ?? null,
         superchat_text_color: partial.superchat_text_color ?? null,
         sticker_image_url: partial.sticker_image_url ?? null,
+        pinned_header: partial.pinned_header ?? null,
         header_primary_text: null,
         header_secondary_text: null,
     };
@@ -451,6 +458,35 @@ function buildGiftPurchase(
     });
 }
 
+function buildPinnedBanner(
+    banner: Record<string, unknown>,
+    offset: number
+): LiveChatMessageItem | null {
+    const contents = banner.contents as Record<string, unknown> | undefined;
+    const textRenderer = contents?.liveChatTextMessageRenderer as
+        | Record<string, unknown>
+        | undefined;
+
+    if (!textRenderer) {
+        return null;
+    }
+
+    const base = buildChatMessage(textRenderer, false, offset);
+
+    if (!base) {
+        return null;
+    }
+
+    const header = (banner.header as Record<string, unknown> | undefined)
+        ?.liveChatBannerHeaderRenderer as Record<string, unknown> | undefined;
+
+    return {
+        ...base,
+        kind: "pinned",
+        pinned_header: (header ? extractRunsFrom(header.text) : "") || "Pinned message",
+    };
+}
+
 function parseLiveChatLine(line: string): LiveChatMessageItem[] {
     const trimmed = line.trim();
 
@@ -467,6 +503,22 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
 
     for (const action of actions) {
         const actionObject = (action ?? {}) as Record<string, unknown>;
+
+        const banner = (
+            (actionObject.addBannerToLiveChatCommand as Record<string, unknown> | undefined)
+                ?.bannerRenderer as Record<string, unknown> | undefined
+        )?.liveChatBannerRenderer as Record<string, unknown> | undefined;
+
+        if (banner) {
+            const parsedBanner = buildPinnedBanner(banner, replayOffsetMs);
+
+            if (parsedBanner) {
+                messages.push(parsedBanner);
+            }
+
+            continue;
+        }
+
         const addChatItemAction = actionObject.addChatItemAction as Record<string, unknown> | undefined;
         const item = addChatItemAction?.item as Record<string, unknown> | undefined;
 

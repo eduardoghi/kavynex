@@ -11,7 +11,7 @@ import {
     Text,
     rem,
 } from "@mantine/core";
-import { Check, MessageCircle, Wrench } from "lucide-react";
+import { Check, MessageCircle, Pin, Wrench } from "lucide-react";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
@@ -119,6 +119,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
 
     const isSuperChat = Boolean(message.amount_text);
     const isMembership = message.kind === "membership";
+    const isPinned = message.kind === "pinned";
 
     // Inside a super chat card the author name inherits the card's text color.
     const superChatAuthor = authorChannelId ? (
@@ -139,7 +140,7 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
 
     return (
         <Group align="flex-start" gap="sm" wrap="nowrap">
-            {!isSuperChat && !isMembership && (
+            {!isSuperChat && !isMembership && !isPinned && (
                 <SafeAvatar
                     src={avatarSrc}
                     initials={avatarInitials(message.author_name)}
@@ -149,7 +150,39 @@ function LiveChatItem({ message, shellBorder }: LiveChatItemProps): JSX.Element 
             )}
 
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
-                {isMembership ? (
+                {isPinned ? (
+                    <Box
+                        style={{
+                            background: "rgba(255,255,255,0.04)",
+                            border: `1px solid ${shellBorder}`,
+                            borderRadius: rem(8),
+                            padding: rem(8),
+                        }}
+                    >
+                        <Group gap={6} wrap="nowrap" align="center" mb={4}>
+                            <Pin size={13} style={{ opacity: 0.7, flexShrink: 0 }} />
+                            <Text size="xs" c="dimmed">
+                                {message.pinned_header}
+                            </Text>
+                        </Group>
+
+                        <Group gap="xs" wrap="nowrap" align="flex-start">
+                            <SafeAvatar
+                                src={avatarSrc}
+                                initials={avatarInitials(message.author_name)}
+                                shellBorder={shellBorder}
+                                size={28}
+                            />
+
+                            <Text size="sm" style={{ minWidth: 0, wordBreak: "break-word" }}>
+                                <Text component="span" fw={700}>
+                                    {message.author_name}
+                                </Text>{" "}
+                                {renderMessageContent(message)}
+                            </Text>
+                        </Group>
+                    </Box>
+                ) : isMembership ? (
                     <Box
                         style={{
                             background: "rgba(15,157,88,0.14)",
@@ -345,6 +378,17 @@ export function LiveChatPanel({
         element.scrollTop = element.scrollHeight;
     }, [visibleLiveChatMessages]);
 
+    // Pinned banners are shown sticky at the top (YouTube-style) instead of inline. The
+    // active pin is the most recent one up to the current playback time; it stays until a
+    // newer pin replaces it.
+    const inlineMessages = visibleLiveChatMessages.filter((message) => message.kind !== "pinned");
+    let activePin: LiveChatMessageItem | null = null;
+    for (const message of visibleLiveChatMessages) {
+        if (message.kind === "pinned") {
+            activePin = message;
+        }
+    }
+
     return (
         <Paper
             withBorder
@@ -397,6 +441,12 @@ export function LiveChatPanel({
 
                 <Divider color={shellBorder} />
 
+                {activePin && (
+                    <Box style={{ flex: "0 0 auto" }}>
+                        <LiveChatItem message={activePin} shellBorder={shellBorder} />
+                    </Box>
+                )}
+
                 <Box
                     ref={scrollViewportRef}
                     style={{
@@ -431,8 +481,8 @@ export function LiveChatPanel({
                             )}
 
                         {!isLoadingLiveChat &&
-                            visibleLiveChatMessages.length > 0 &&
-                            visibleLiveChatMessages.map((message, index) => (
+                            inlineMessages.length > 0 &&
+                            inlineMessages.map((message, index) => (
                                 <LiveChatItem
                                     key={`${message.message_id ?? "chat"}-${message.message_offset_ms}-${index}`}
                                     message={message}
