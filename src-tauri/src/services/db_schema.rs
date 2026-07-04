@@ -1,9 +1,17 @@
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::services::database::db_error;
 use crate::AppResult;
 
-const SCHEMA_VERSION: i64 = 6;
+/// Current schema version. Bump this and add a matching migration block in
+/// `ensure_schema` whenever the schema changes.
+const SCHEMA_VERSION: i64 = 7;
+
+/// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
+/// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
+/// versioned migrations existed sits at `user_version <= 6`, so the baseline runs
+/// exactly once to bring it here, and real migrations take over from 8 onward.
+const BASELINE_SCHEMA_VERSION: i64 = 7;
 
 const CHANNELS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,24 +115,27 @@ const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     ),
 ];
 
-async fn table_has_column(pool: &SqlitePool, table: &str, column: &str) -> AppResult<bool> {
+async fn table_has_column<'e, E>(executor: E, table: &str, column: &str) -> AppResult<bool>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     // table is an internal constant, not user input, so interpolation is safe here.
     let rows: Vec<(String,)> =
         sqlx::query_as(&format!("SELECT name FROM pragma_table_info('{table}')"))
-            .fetch_all(pool)
+            .fetch_all(executor)
             .await
             .map_err(|error| db_error("failed to read table columns", error))?;
 
     Ok(rows.iter().any(|(name,)| name == column))
 }
 
-async fn ensure_videos_additive_columns(pool: &SqlitePool) -> AppResult<()> {
+async fn ensure_videos_additive_columns(conn: &mut SqliteConnection) -> AppResult<()> {
     for (column, definition) in VIDEOS_ADDITIVE_COLUMNS {
-        if !table_has_column(pool, "videos", column).await? {
+        if !table_has_column(&mut *conn, "videos", column).await? {
             sqlx::query(&format!(
                 "ALTER TABLE videos ADD COLUMN {column} {definition}"
             ))
-            .execute(pool)
+            .execute(&mut *conn)
             .await
             .map_err(|error| db_error("failed to add videos column", error))?;
         }
@@ -133,37 +144,108 @@ async fn ensure_videos_additive_columns(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// Creates the database schema if needed and applies additive migrations. Idempotent:
-/// safe to run on every startup. Runs as part of the shared pool initialization, so it
-/// completes before any query executes.
+async fn read_user_version(pool: &SqlitePool) -> AppResult<i64> {
+    let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+        .fetch_one(pool)
+        .await
+        .map_err(|error| db_error("failed to read schema version", error))?;
+
+    Ok(version)
+}
+
+async fn set_user_version(conn: &mut SqliteConnection, version: i64) -> AppResult<()> {
+    // PRAGMA does not accept bound parameters; `version` is an internal integer
+    // constant, never user input, so interpolation is safe. Setting user_version
+    // participates in the surrounding transaction, so it commits or rolls back
+    // atomically with the migration DDL.
+    sqlx::query(&format!("PRAGMA user_version = {version}"))
+        .execute(&mut *conn)
+        .await
+        .map_err(|error| db_error("failed to set schema version", error))?;
+
+    Ok(())
+}
+
+/// Brings the database up to `SCHEMA_VERSION`, applying only the migrations the
+/// on-disk `user_version` is missing. Idempotent and safe to run on every startup:
+/// a database already at `SCHEMA_VERSION` is left untouched. Runs as part of the
+/// shared pool initialization, so it completes before any query executes.
+///
+/// `user_version` is authoritative. Each migration runs in its own transaction that
+/// also stamps the new `user_version`, so a crash leaves the database fully at the
+/// previous version or fully at the next one, never half-migrated. A database whose
+/// `user_version` is higher than this build supports is refused rather than
+/// downgraded, so an older build can never silently corrupt a newer schema.
 pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
+    let current_version = read_user_version(pool).await?;
+
+    if current_version > SCHEMA_VERSION {
+        return Err(db_error(
+            "database was created by a newer version of the app",
+            format!(
+                "on-disk schema version {current_version} is newer than the supported version {SCHEMA_VERSION}; update Kavynex to open this library"
+            ),
+        ));
+    }
+
+    // Baseline (versions 0..=6 -> 7): the idempotent reconcile that predates versioned
+    // migrations. Every legacy and fresh database goes through this exactly once.
+    if current_version < BASELINE_SCHEMA_VERSION {
+        apply_baseline_schema(pool).await?;
+    }
+
+    // Future non-additive migrations follow the same shape, each guarded by version
+    // and each transactional, e.g.:
+    //
+    //     if current_version < 8 {
+    //         apply_migration_8(pool).await?;
+    //     }
+    //
+    // A migration that changes a CHECK/UNIQUE/type rebuilds the table (create new,
+    // copy, drop, rename) inside its transaction, which is how constraint changes
+    // reach existing databases instead of being silently skipped.
+
+    Ok(())
+}
+
+/// Creates every table, additive column and index if missing, then stamps
+/// `BASELINE_SCHEMA_VERSION`. Because it uses `IF NOT EXISTS`/guarded `ALTER`s it is a
+/// no-op on an already-current database, but the whole thing runs in one transaction so
+/// a partial failure rolls back cleanly instead of leaving a half-built schema.
+async fn apply_baseline_schema(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
     for ddl in LEGACY_TABLE_DROPS {
         sqlx::query(ddl)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to drop legacy table", error))?;
     }
 
     for ddl in TABLE_DDLS {
         sqlx::query(ddl)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to create table", error))?;
     }
 
-    ensure_videos_additive_columns(pool).await?;
+    ensure_videos_additive_columns(&mut tx).await?;
 
     for ddl in INDEX_DDLS {
         sqlx::query(ddl)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to create index", error))?;
     }
 
-    sqlx::query(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
-        .execute(pool)
+    set_user_version(&mut tx, BASELINE_SCHEMA_VERSION).await?;
+
+    tx.commit()
         .await
-        .map_err(|error| db_error("failed to set schema version", error))?;
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
 
     Ok(())
 }
@@ -276,5 +358,60 @@ mod tests {
         assert!(table_has_column(&pool, "videos", "live_chat_file_path")
             .await
             .unwrap());
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_upgrades_database_stamped_by_older_version() {
+        let pool = memory_pool().await;
+
+        // Simulate a database left by an older build: a stale user_version marker and
+        // no tables yet. The baseline must run because user_version < BASELINE.
+        sqlx::query("PRAGMA user_version = 6")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        ensure_schema(&pool).await.unwrap();
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+
+        // The baseline reconcile ran, so the schema is fully present.
+        for table in ["channels", "videos", "video_comments", "app_settings"] {
+            let (count,): (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+            )
+            .bind(table)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(count, 1, "expected table {table} to exist");
+        }
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_refuses_database_from_newer_version() {
+        let pool = memory_pool().await;
+
+        sqlx::query(&format!("PRAGMA user_version = {}", SCHEMA_VERSION + 1))
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let error = ensure_schema(&pool).await.unwrap_err();
+        assert!(
+            error.to_string().contains("newer version"),
+            "unexpected error: {error}"
+        );
+
+        // The newer marker must be left untouched, never downgraded.
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION + 1);
     }
 }
