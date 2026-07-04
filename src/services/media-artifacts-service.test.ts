@@ -5,6 +5,11 @@ import {
     prepareYtDlpArtifacts,
 } from "./media-artifacts-service";
 
+vi.mock("../repositories", () => ({
+    countMediaUsingFilePathOutsideMedia: vi.fn(),
+    countMediaUsingThumbnailOutsideMedia: vi.fn(),
+}));
+
 vi.mock("./media-download-service", () => ({
     downloadMediaFromUrl: vi.fn(),
 }));
@@ -22,6 +27,10 @@ vi.mock("./thumbnail-service", () => ({
     persistThumbnailFile: vi.fn(),
 }));
 
+import {
+    countMediaUsingFilePathOutsideMedia,
+    countMediaUsingThumbnailOutsideMedia,
+} from "../repositories";
 import { downloadMediaFromUrl } from "./media-download-service";
 import { deleteMediaFile, importMediaFile } from "./media-file-service";
 import {
@@ -35,6 +44,9 @@ import {
 describe("media-artifacts-service", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // By default no other media row references the artifacts, so cleanup deletes them.
+        vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValue(0);
+        vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValue(0);
     });
 
     describe("prepareYtDlpArtifacts", () => {
@@ -216,14 +228,58 @@ describe("media-artifacts-service", () => {
     });
 
     describe("cleanupCreatedArtifacts", () => {
-        it("cleans both thumbnail and media file", async () => {
+        it("cleans both thumbnail and media file when no other media references them", async () => {
             vi.mocked(deleteThumbnailFile).mockResolvedValue(undefined);
             vi.mocked(deleteMediaFile).mockResolvedValue(undefined);
 
             await cleanupCreatedArtifacts("video/a.mp4", "thumbnails/a.jpg", "/library");
 
+            expect(countMediaUsingThumbnailOutsideMedia).toHaveBeenCalledWith("thumbnails/a.jpg", -1);
+            expect(countMediaUsingFilePathOutsideMedia).toHaveBeenCalledWith("video/a.mp4", -1);
             expect(deleteThumbnailFile).toHaveBeenCalledWith("thumbnails/a.jpg", "/library");
             expect(deleteMediaFile).toHaveBeenCalledWith("video/a.mp4", "/library");
+        });
+
+        it("does not delete a file still referenced by another media row", async () => {
+            vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValue(1);
+
+            await cleanupCreatedArtifacts("video/a.mp4", null, "/library");
+
+            expect(deleteMediaFile).not.toHaveBeenCalled();
+        });
+
+        it("does not delete a thumbnail still referenced by another media row", async () => {
+            vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValue(2);
+
+            await cleanupCreatedArtifacts(null, "thumbnails/a.jpg", "/library");
+
+            expect(deleteThumbnailFile).not.toHaveBeenCalled();
+        });
+
+        it("deletes an orphaned file while keeping a shared thumbnail", async () => {
+            vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValue(0);
+            vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValue(1);
+            vi.mocked(deleteMediaFile).mockResolvedValue(undefined);
+
+            await cleanupCreatedArtifacts("video/a.mp4", "thumbnails/shared.jpg", "/library");
+
+            expect(deleteThumbnailFile).not.toHaveBeenCalled();
+            expect(deleteMediaFile).toHaveBeenCalledWith("video/a.mp4", "/library");
+        });
+
+        it("does not delete when the reference count lookup fails", async () => {
+            vi.mocked(countMediaUsingFilePathOutsideMedia).mockRejectedValueOnce(
+                new Error("count failed")
+            );
+
+            const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+            await cleanupCreatedArtifacts("video/a.mp4", null, "/library");
+
+            expect(deleteMediaFile).not.toHaveBeenCalled();
+            expect(consoleErrorSpy).toHaveBeenCalled();
+
+            consoleErrorSpy.mockRestore();
         });
 
         it("does nothing when library path is empty", async () => {

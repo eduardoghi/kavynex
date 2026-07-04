@@ -1,5 +1,9 @@
 import type { ImportMode } from "../types/settings";
 import type { MediaType } from "../types/media";
+import {
+    countMediaUsingFilePathOutsideMedia,
+    countMediaUsingThumbnailOutsideMedia,
+} from "../repositories";
 import { downloadMediaFromUrl } from "./media-download-service";
 import { deleteMediaFile, importMediaFile } from "./media-file-service";
 import {
@@ -296,6 +300,23 @@ export async function prepareLocalArtifacts({
     }
 }
 
+// Sentinel media id used when cleaning up artifacts that were prepared but never
+// registered as a media row (createMedia failed before insertMedia). No real media row
+// has this id, so the "outside media" reference counts return the number of *other* rows
+// that rely on the artifact.
+const UNREGISTERED_MEDIA_ID = -1;
+
+/**
+ * Deletes the on-disk artifacts (file and thumbnail) prepared during a media creation
+ * that failed before the DB row was inserted.
+ *
+ * Media files and thumbnails are content-addressed (`media_<hash>` / `thumb_<hash>`), so
+ * a freshly prepared artifact can share its path with an already-registered media row -
+ * re-adding an existing video, which is exactly what raises the duplicate-detected error
+ * that triggers this cleanup. Deleting unconditionally would destroy the file the existing
+ * row depends on, so each artifact is only removed when no registered media row still
+ * references its path.
+ */
 export async function cleanupCreatedArtifacts(
     filePath: string | null,
     thumbnailPath: string | null,
@@ -309,7 +330,14 @@ export async function cleanupCreatedArtifacts(
 
     if (thumbnailPath) {
         try {
-            await deleteThumbnailFile(thumbnailPath, normalizedLibraryPath);
+            const usedByOtherMedia = await countMediaUsingThumbnailOutsideMedia(
+                thumbnailPath,
+                UNREGISTERED_MEDIA_ID
+            );
+
+            if (usedByOtherMedia === 0) {
+                await deleteThumbnailFile(thumbnailPath, normalizedLibraryPath);
+            }
         } catch (error) {
             logError(
                 "media-artifacts",
@@ -325,7 +353,14 @@ export async function cleanupCreatedArtifacts(
 
     if (filePath) {
         try {
-            await deleteMediaFile(filePath, normalizedLibraryPath);
+            const usedByOtherMedia = await countMediaUsingFilePathOutsideMedia(
+                filePath,
+                UNREGISTERED_MEDIA_ID
+            );
+
+            if (usedByOtherMedia === 0) {
+                await deleteMediaFile(filePath, normalizedLibraryPath);
+            }
         } catch (error) {
             logError(
                 "media-artifacts",
