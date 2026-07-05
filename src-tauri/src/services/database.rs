@@ -11,7 +11,7 @@ use tokio::sync::OnceCell;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const DATABASE_FILE_NAME: &str = "kavynex.db";
-const SQLITE_BUSY_TIMEOUT_MS: u64 = 30_000;
+pub(crate) const SQLITE_BUSY_TIMEOUT_MS: u64 = 30_000;
 const MAX_CONNECTIONS: u32 = 4;
 
 const IMPORT_MODE_KEY: &str = "import_mode";

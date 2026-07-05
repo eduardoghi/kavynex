@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 
+use crate::services::database::SQLITE_BUSY_TIMEOUT_MS;
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -39,7 +40,10 @@ fn backup_error(message: impl Into<String>, error: impl std::fmt::Display) -> Ap
 async fn open(db_path: &Path) -> AppResult<SqlitePool> {
     let options = SqliteConnectOptions::new()
         .filename(db_path)
-        .create_if_missing(false);
+        .create_if_missing(false)
+        // Backup/export/import can run while the main pool holds the write lock; without
+        // a busy timeout any contention surfaces as an immediate SQLITE_BUSY failure.
+        .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS));
 
     SqlitePoolOptions::new()
         .max_connections(1)
