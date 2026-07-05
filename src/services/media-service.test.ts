@@ -10,10 +10,8 @@ import {
 } from "./media-service";
 
 vi.mock("../repositories", () => ({
-    countMediaUsingFilePathOutsideMedia: vi.fn(),
     countMediaUsingLiveChatOutsideMedia: vi.fn(),
-    countMediaUsingThumbnailOutsideMedia: vi.fn(),
-    deleteMediaById: vi.fn(),
+    deleteMediaWithArtifacts: vi.fn(),
     findMediaByChannelAndFilePath: vi.fn(),
     insertMedia: vi.fn(),
     listMediaByChannel: vi.fn(),
@@ -30,18 +28,9 @@ vi.mock("./media-artifacts-service", () => ({
 }));
 
 vi.mock("./media-input-service", () => ({
-    normalizeDeleteMediaInput: vi.fn(),
     validateChannelId: vi.fn(),
     validateCreateMediaInput: vi.fn(),
     validateMediaId: vi.fn(),
-}));
-
-vi.mock("./media-file-service", () => ({
-    deleteMediaFile: vi.fn(),
-}));
-
-vi.mock("./thumbnail-service", () => ({
-    deleteThumbnailFile: vi.fn(),
 }));
 
 vi.mock("./media-metadata-service", () => ({
@@ -65,10 +54,8 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import {
-    countMediaUsingFilePathOutsideMedia,
     countMediaUsingLiveChatOutsideMedia,
-    countMediaUsingThumbnailOutsideMedia,
-    deleteMediaById,
+    deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
     listMediaByChannel,
@@ -82,14 +69,11 @@ import {
     prepareYtDlpArtifacts,
 } from "./media-artifacts-service";
 import {
-    normalizeDeleteMediaInput,
     validateChannelId,
     validateCreateMediaInput,
     validateMediaId,
 } from "./media-input-service";
-import { deleteMediaFile } from "./media-file-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
-import { deleteThumbnailFile } from "./thumbnail-service";
 import { deleteLiveChatFile } from "./live-chat-service";
 import { fetchYouTubeComments } from "./media-download-service";
 import { replaceMediaCommentsInBackend } from "./media-comments-service";
@@ -558,70 +542,47 @@ describe("media-service", () => {
         expect(insertMedia).not.toHaveBeenCalled();
     });
 
-    it("deletes media and removes unused file and thumbnail", async () => {
-        vi.mocked(normalizeDeleteMediaInput).mockReturnValueOnce({
-            mediaId: 10,
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            libraryPath: "/library",
+    it("deletes media through the atomic backend command without logging when nothing failed", async () => {
+        vi.mocked(validateMediaId).mockImplementationOnce(() => {});
+        vi.mocked(deleteMediaWithArtifacts).mockResolvedValueOnce({
+            deleted_paths: ["video/a.mp4", "thumbnails/a.jpg"],
+            skipped_shared_paths: [],
+            failed_paths: [],
         });
 
-        vi.mocked(deleteMediaById).mockResolvedValueOnce(undefined);
-        vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValueOnce(0);
-        vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValueOnce(0);
-        vi.mocked(deleteMediaFile).mockResolvedValueOnce(undefined);
-        vi.mocked(deleteThumbnailFile).mockResolvedValueOnce(undefined);
+        await expect(deleteMediaWithFileCleanup(10)).resolves.toBeUndefined();
 
-        await deleteMediaWithFileCleanup(10, "video/a.mp4", "thumbnails/a.jpg", "/library");
-
-        expect(deleteMediaById).toHaveBeenCalledWith(10);
-        expect(deleteMediaFile).toHaveBeenCalledWith("video/a.mp4", "/library");
-        expect(deleteThumbnailFile).toHaveBeenCalledWith("thumbnails/a.jpg", "/library");
+        expect(validateMediaId).toHaveBeenCalledWith(10);
+        expect(deleteMediaWithArtifacts).toHaveBeenCalledWith(10);
+        expect(logError).not.toHaveBeenCalled();
     });
 
-    it("does not remove file/thumbnail when still used elsewhere", async () => {
-        vi.mocked(normalizeDeleteMediaInput).mockReturnValueOnce({
-            mediaId: 10,
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            libraryPath: "/library",
+    it("logs an orphan warning when the backend reports files it could not delete", async () => {
+        vi.mocked(validateMediaId).mockImplementationOnce(() => {});
+        vi.mocked(deleteMediaWithArtifacts).mockResolvedValueOnce({
+            deleted_paths: [],
+            skipped_shared_paths: [],
+            failed_paths: ["video/a.mp4"],
         });
 
-        vi.mocked(deleteMediaById).mockResolvedValueOnce(undefined);
-        vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValueOnce(2);
-        vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValueOnce(3);
+        await expect(deleteMediaWithFileCleanup(10)).resolves.toBeUndefined();
 
-        await deleteMediaWithFileCleanup(10, "video/a.mp4", "thumbnails/a.jpg", "/library");
-
-        expect(deleteMediaFile).not.toHaveBeenCalled();
-        expect(deleteThumbnailFile).not.toHaveBeenCalled();
-    });
-
-    it("does not throw and logs an orphan warning when file cleanup fails after the row is deleted", async () => {
-        vi.mocked(normalizeDeleteMediaInput).mockReturnValueOnce({
-            mediaId: 10,
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            libraryPath: "/library",
-        });
-
-        vi.mocked(deleteMediaById).mockResolvedValueOnce(undefined);
-        vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValueOnce(0);
-        vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValueOnce(0);
-        vi.mocked(deleteMediaFile).mockRejectedValueOnce(new Error("disk error"));
-        vi.mocked(deleteThumbnailFile).mockResolvedValueOnce(undefined);
-
-        await expect(
-            deleteMediaWithFileCleanup(10, "video/a.mp4", "thumbnails/a.jpg", "/library")
-        ).resolves.toBeUndefined();
-
-        expect(deleteMediaById).toHaveBeenCalledWith(10);
         expect(logError).toHaveBeenCalledWith(
             "media-service",
             expect.stringContaining("orphaned"),
-            expect.any(Error),
-            expect.objectContaining({ mediaId: 10, path: "video/a.mp4" })
+            null,
+            { mediaId: 10, failedPaths: ["video/a.mp4"] }
         );
+    });
+
+    it("rejects an invalid media id without calling the repository", async () => {
+        vi.mocked(validateMediaId).mockImplementationOnce(() => {
+            throw new Error("Media id is invalid.");
+        });
+
+        await expect(deleteMediaWithFileCleanup(0)).rejects.toThrow("Media id is invalid.");
+
+        expect(deleteMediaWithArtifacts).not.toHaveBeenCalled();
     });
 
     it("marks media as watched", async () => {

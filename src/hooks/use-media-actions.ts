@@ -119,7 +119,6 @@ export function useMediaActions({
             try {
                 await executeDeleteMedia({
                     media: mediaToDelete,
-                    libraryPath,
                     reloadMedia: removeDeletedMediaFromMemory,
                     closePlayerIfActive,
                 });

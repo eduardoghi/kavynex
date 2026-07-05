@@ -1,9 +1,7 @@
 import type { MediaCommentRow, MediaRow, YtDlpComment } from "../types/media";
 import {
-    countMediaUsingFilePathOutsideMedia,
     countMediaUsingLiveChatOutsideMedia,
-    countMediaUsingThumbnailOutsideMedia,
-    deleteMediaById,
+    deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
     listMediaByChannel,
@@ -13,9 +11,7 @@ import {
     updateMediaProgress,
     updateMediaTitle as updateMediaTitleInRepository,
 } from "../repositories";
-import { deleteMediaFile } from "./media-file-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
-import { deleteThumbnailFile } from "./thumbnail-service";
 import { deleteLiveChatFile } from "./live-chat-service";
 import {
     cleanupCreatedArtifacts,
@@ -25,7 +21,6 @@ import {
 } from "./media-artifacts-service";
 import {
     type CreateMediaInput,
-    normalizeDeleteMediaInput,
     validateChannelId,
     validateCreateMediaInput,
     validateMediaId,
@@ -185,34 +180,6 @@ async function ensureMediaDoesNotAlreadyExist(
 // that rely on the artifact.
 const UNREGISTERED_MEDIA_ID = -1;
 
-async function removeMediaFileIfUnused(
-    mediaId: number,
-    filePath: string,
-    libraryPath: string
-): Promise<void> {
-    const usageOutsideMedia = await countMediaUsingFilePathOutsideMedia(filePath, mediaId);
-
-    if (usageOutsideMedia === 0) {
-        await deleteMediaFile(filePath, libraryPath);
-    }
-}
-
-async function removeMediaThumbnailIfUnused(
-    mediaId: number,
-    thumbnailPath: string | null,
-    libraryPath: string
-): Promise<void> {
-    if (!thumbnailPath) {
-        return;
-    }
-
-    const usageOutsideMedia = await countMediaUsingThumbnailOutsideMedia(thumbnailPath, mediaId);
-
-    if (usageOutsideMedia === 0) {
-        await deleteThumbnailFile(thumbnailPath, libraryPath);
-    }
-}
-
 async function removeMediaLiveChatIfUnused(
     mediaId: number,
     liveChatFilePath: string | null
@@ -234,42 +201,6 @@ async function removeMediaLiveChatIfUnused(
     if (usageOutsideMedia === 0) {
         await deleteLiveChatFile(normalizedLiveChatFilePath);
     }
-}
-
-// Removes the on-disk artifacts of a media row that was already deleted. File cleanup is
-// best-effort (a failure must not undo the DB deletion), but failures are logged with the
-// affected path so an orphaned file left in the library is visible for diagnostics.
-async function cleanupMediaArtifactsWithLogging(
-    mediaId: number,
-    filePath: string,
-    thumbnailPath: string | null,
-    liveChatFilePath: string | null,
-    libraryPath: string
-): Promise<void> {
-    const results = await Promise.allSettled([
-        removeMediaFileIfUnused(mediaId, filePath, libraryPath),
-        removeMediaThumbnailIfUnused(mediaId, thumbnailPath, libraryPath),
-        removeMediaLiveChatIfUnused(mediaId, liveChatFilePath),
-    ]);
-
-    const targets: { label: string; path: string | null }[] = [
-        { label: "media file", path: filePath },
-        { label: "thumbnail", path: thumbnailPath },
-        { label: "live chat file", path: liveChatFilePath },
-    ];
-
-    results.forEach((result, index) => {
-        if (result.status === "rejected") {
-            const target = targets[index];
-
-            logError(
-                "media-service",
-                `Media row was removed but its ${target.label} could not be deleted; a file may be orphaned in the library.`,
-                result.reason,
-                { mediaId, path: target.path }
-            );
-        }
-    });
 }
 
 async function tryPersistYouTubeComments(
@@ -467,50 +398,21 @@ export async function createMedia(
     }
 }
 
-export async function deleteMediaWithFileCleanup(
-    mediaId: number,
-    filePath: string,
-    thumbnailPath: string | null,
-    libraryPath: string,
-    liveChatFilePath: string | null = null
-): Promise<void> {
-    const normalizedInput = normalizeDeleteMediaInput(
-        mediaId,
-        filePath,
-        thumbnailPath,
-        libraryPath
-    );
+// The backend deletes the row and its now-unreferenced files atomically; files it could
+// not remove are reported back so an orphaned file left in the library stays visible.
+export async function deleteMediaWithFileCleanup(mediaId: number): Promise<void> {
+    validateMediaId(mediaId);
 
-    await deleteMediaById(normalizedInput.mediaId);
+    const report = await deleteMediaWithArtifacts(mediaId);
 
-    await cleanupMediaArtifactsWithLogging(
-        normalizedInput.mediaId,
-        normalizedInput.filePath,
-        normalizedInput.thumbnailPath,
-        liveChatFilePath,
-        normalizedInput.libraryPath
-    );
-}
-
-export async function deleteChannelMediaFiles(
-    channelId: number,
-    libraryPath: string
-): Promise<void> {
-    validateChannelId(channelId);
-
-    const mediaItems = await listMediaByChannel(channelId);
-
-    await Promise.allSettled(
-        mediaItems.map((media) =>
-            cleanupMediaArtifactsWithLogging(
-                media.id,
-                media.file_path,
-                media.thumbnail_path,
-                media.live_chat_file_path ?? null,
-                libraryPath
-            )
-        )
-    );
+    if (report.failed_paths.length > 0) {
+        logError(
+            "media-service",
+            "Media row was removed but some of its files could not be deleted; they may be orphaned in the library.",
+            null,
+            { mediaId, failedPaths: report.failed_paths }
+        );
+    }
 }
 
 export async function setMediaWatched(mediaId: number): Promise<void> {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-    normalizeDeleteMediaInput,
     validateChannelId,
     validateCreateMediaInput,
     validateMediaId,
@@ -272,53 +271,6 @@ describe("validateCreateMediaInput", () => {
         });
 
         expect(result.cookiesBrowser).toBeNull();
-    });
-});
-
-describe("normalizeDeleteMediaInput", () => {
-    it("normalizes valid delete input", () => {
-        const result = normalizeDeleteMediaInput(
-            5,
-            "  media/video-a.mp4  ",
-            "  thumbs/video-a.jpg  ",
-            "  /library  "
-        );
-
-        expect(result).toEqual({
-            mediaId: 5,
-            filePath: "media/video-a.mp4",
-            thumbnailPath: "thumbs/video-a.jpg",
-            libraryPath: "/library",
-        });
-    });
-
-    it("normalizes nullable thumbnail path", () => {
-        const result = normalizeDeleteMediaInput(
-            5,
-            "media/video-a.mp4",
-            "   ",
-            "/library"
-        );
-
-        expect(result.thumbnailPath).toBeNull();
-    });
-
-    it("requires valid media id", () => {
-        expect(() =>
-            normalizeDeleteMediaInput(0, "media/video-a.mp4", null, "/library")
-        ).toThrow("Media id is invalid.");
-    });
-
-    it("requires file path", () => {
-        expect(() =>
-            normalizeDeleteMediaInput(5, "   ", null, "/library")
-        ).toThrow("Media file path is empty.");
-    });
-
-    it("requires library path", () => {
-        expect(() =>
-            normalizeDeleteMediaInput(5, "media/video-a.mp4", null, "   ")
-        ).toThrow("Library path is empty.");
     });
 });
 

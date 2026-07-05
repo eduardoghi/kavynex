@@ -6,10 +6,6 @@ vi.mock("../use-cases/delete-selected-channel", () => ({
     executeDeleteSelectedChannel: vi.fn(),
 }));
 
-vi.mock("../services/media-service", () => ({
-    deleteChannelMediaFiles: vi.fn(),
-}));
-
 vi.mock("../utils/app-logger", () => ({
     logError: vi.fn(),
 }));

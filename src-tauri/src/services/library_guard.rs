@@ -9,10 +9,34 @@
 //! rejects any request that does not point at it, mirroring the check done by
 //! `register_library_asset_scope`.
 
+use std::path::PathBuf;
+
 use tauri::AppHandle;
 
 use crate::services::database::{get_app_settings_from_pool, shared_pool};
 use crate::{AppError, AppErrorCode, AppResult};
+
+/// Resolves the configured library directory from the persisted settings. Media,
+/// thumbnails and live chat files all live under it, so commands never take the base
+/// directory from the caller - a compromised frontend cannot redirect reads/writes to an
+/// arbitrary location.
+pub async fn configured_library_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    let pool = shared_pool(app).await?;
+    let settings = get_app_settings_from_pool(pool).await?;
+
+    let library_path = settings
+        .library_path
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            AppError::from_code(
+                AppErrorCode::InvalidLibraryPath,
+                "no library folder is configured",
+            )
+        })?;
+
+    Ok(PathBuf::from(library_path))
+}
 
 /// Returns true when both strings point at the same location on disk. Each side is
 /// canonicalized so casing, trailing separators and the Windows `\\?\` extended-length

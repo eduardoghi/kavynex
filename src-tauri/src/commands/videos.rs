@@ -1,11 +1,22 @@
 use tauri::AppHandle;
 
 use crate::services::database::shared_pool;
+use crate::services::library_cleanup::{self, ArtifactCleanupReport};
 use crate::services::video_repository as repo;
 use crate::services::video_repository::{
     MediaCommentRow, MediaIntegrityReference, MediaRepositoryStats, MediaRow,
 };
 use crate::AppResult;
+
+/// Deletes a media row and its now-unreferenced files (media file, thumbnail, live chat)
+/// in a single atomic operation.
+#[tauri::command]
+pub async fn delete_media_with_artifacts(
+    app: AppHandle,
+    media_id: i64,
+) -> AppResult<ArtifactCleanupReport> {
+    library_cleanup::delete_media_with_artifacts(&app, media_id).await
+}
 
 #[tauri::command]
 pub async fn update_media_title(app: AppHandle, media_id: i64, title: String) -> AppResult<()> {
@@ -68,12 +79,6 @@ pub async fn list_media_comments_by_media_id(
 ) -> AppResult<Vec<MediaCommentRow>> {
     let pool = shared_pool(&app).await?;
     repo::list_media_comments_by_media_id(pool, media_id).await
-}
-
-#[tauri::command]
-pub async fn delete_media_by_id(app: AppHandle, media_id: i64) -> AppResult<()> {
-    let pool = shared_pool(&app).await?;
-    repo::delete_media_by_id(pool, media_id).await
 }
 
 #[tauri::command]

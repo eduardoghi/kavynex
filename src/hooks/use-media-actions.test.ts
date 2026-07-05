@@ -184,7 +184,6 @@ describe("useMediaActions", () => {
 
         expect(executeDeleteMedia).toHaveBeenCalledWith({
             media: mediaPlayer.activeMedia,
-            libraryPath: "/library",
             reloadMedia: expect.any(Function),
             closePlayerIfActive: expect.any(Function),
         });

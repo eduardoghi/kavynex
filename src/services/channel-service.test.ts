@@ -8,17 +8,12 @@ import {
 
 vi.mock("../repositories/channel-repository", () => ({
     countChannelsUsingAvatarPathOutsideChannel: vi.fn(),
-    deleteChannelById: vi.fn(),
+    deleteChannelWithArtifacts: vi.fn(),
     findChannelByYoutubeHandle: vi.fn(),
     getChannelById: vi.fn(),
     insertChannel: vi.fn(),
     listChannels: vi.fn(),
     updateChannelAvatarPath: vi.fn(),
-}));
-
-vi.mock("./channel-artifacts-service", () => ({
-    cleanupUnusedChannelArtifacts: vi.fn(),
-    listChannelArtifactsSnapshot: vi.fn(),
 }));
 
 vi.mock("./channel-input-service", () => ({
@@ -31,9 +26,13 @@ vi.mock("./thumbnail-service", () => ({
     deleteThumbnailFile: vi.fn(),
 }));
 
+vi.mock("../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
+
 import {
     countChannelsUsingAvatarPathOutsideChannel,
-    deleteChannelById,
+    deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
     getChannelById,
     insertChannel,
@@ -41,15 +40,12 @@ import {
     updateChannelAvatarPath,
 } from "../repositories/channel-repository";
 import {
-    cleanupUnusedChannelArtifacts,
-    listChannelArtifactsSnapshot,
-} from "./channel-artifacts-service";
-import {
     requireLibraryPath,
     validateChannelId,
     validateCreateChannelInput,
 } from "./channel-input-service";
 import { deleteThumbnailFile } from "./thumbnail-service";
+import { logError } from "../utils/app-logger";
 
 describe("channel-service", () => {
     beforeEach(() => {
@@ -260,89 +256,53 @@ describe("channel-service", () => {
         expect(deleteThumbnailFile).not.toHaveBeenCalled();
     });
 
-    it("returns without deleting when channel does not exist", async () => {
+    it("deletes channel through the atomic backend command without logging when nothing failed", async () => {
         vi.mocked(validateChannelId).mockReturnValueOnce({
             channelId: 10,
         });
 
-        vi.mocked(getChannelById).mockResolvedValueOnce(null);
+        vi.mocked(deleteChannelWithArtifacts).mockResolvedValueOnce({
+            deleted_paths: ["thumbnails/avatar_a.png", "video/a.mp4"],
+            skipped_shared_paths: [],
+            failed_paths: [],
+        });
 
-        await deleteChannelWithThumbnailCleanup(10, "/library");
+        await expect(deleteChannelWithThumbnailCleanup(10)).resolves.toBeUndefined();
 
-        expect(deleteChannelById).not.toHaveBeenCalled();
-        expect(listChannelArtifactsSnapshot).not.toHaveBeenCalled();
-        expect(cleanupUnusedChannelArtifacts).not.toHaveBeenCalled();
-        expect(requireLibraryPath).not.toHaveBeenCalled();
+        expect(deleteChannelWithArtifacts).toHaveBeenCalledWith(10);
+        expect(logError).not.toHaveBeenCalled();
     });
 
-    it("deletes channel and cleans unused artifacts when physical artifacts exist", async () => {
+    it("logs an orphan warning when the backend reports files it could not delete", async () => {
         vi.mocked(validateChannelId).mockReturnValueOnce({
             channelId: 10,
         });
 
-        vi.mocked(getChannelById).mockResolvedValueOnce({
-            id: 10,
-            name: "Canal A",
-            youtube_handle: "@canala",
-            avatar_path: "thumbnails/avatar_a.png",
-            created_at: "2026-03-31T10:00:00.000Z",
+        vi.mocked(deleteChannelWithArtifacts).mockResolvedValueOnce({
+            deleted_paths: [],
+            skipped_shared_paths: [],
+            failed_paths: ["thumbnails/avatar_a.png"],
         });
 
-        vi.mocked(listChannelArtifactsSnapshot).mockResolvedValueOnce({
-            avatarPath: "thumbnails/avatar_a.png",
-            thumbnailPaths: ["thumbnails/a.jpg"],
-            filePaths: ["video/a.mp4"],
-        });
+        await expect(deleteChannelWithThumbnailCleanup(10)).resolves.toBeUndefined();
 
-        vi.mocked(requireLibraryPath).mockReturnValueOnce("/library");
-        vi.mocked(deleteChannelById).mockResolvedValueOnce(undefined);
-        vi.mocked(cleanupUnusedChannelArtifacts).mockResolvedValueOnce(undefined);
-
-        await deleteChannelWithThumbnailCleanup(10, "/library");
-
-        expect(listChannelArtifactsSnapshot).toHaveBeenCalledWith(10);
-        expect(requireLibraryPath).toHaveBeenCalledWith(
-            "/library",
-            "Library folder must be configured to delete a channel with saved media or thumbnails."
+        expect(logError).toHaveBeenCalledWith(
+            "channel-service",
+            expect.stringContaining("orphaned"),
+            null,
+            { channelId: 10, failedPaths: ["thumbnails/avatar_a.png"] }
         );
-        expect(deleteChannelById).toHaveBeenCalledWith(10);
-        expect(cleanupUnusedChannelArtifacts).toHaveBeenCalledWith(10, "/library", {
-            avatarPath: "thumbnails/avatar_a.png",
-            thumbnailPaths: ["thumbnails/a.jpg"],
-            filePaths: ["video/a.mp4"],
-        });
     });
 
-    it("deletes channel without requiring library path when there are no physical artifacts", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
+    it("rejects an invalid channel id without calling the repository", async () => {
+        vi.mocked(validateChannelId).mockImplementationOnce(() => {
+            throw new Error("Channel id is invalid.");
         });
 
-        vi.mocked(getChannelById).mockResolvedValueOnce({
-            id: 10,
-            name: "Canal A",
-            youtube_handle: "@canala",
-            avatar_path: null,
-            created_at: "2026-03-31T10:00:00.000Z",
-        });
+        await expect(deleteChannelWithThumbnailCleanup(0)).rejects.toThrow(
+            "Channel id is invalid."
+        );
 
-        vi.mocked(listChannelArtifactsSnapshot).mockResolvedValueOnce({
-            avatarPath: null,
-            thumbnailPaths: [],
-            filePaths: [],
-        });
-
-        vi.mocked(deleteChannelById).mockResolvedValueOnce(undefined);
-        vi.mocked(cleanupUnusedChannelArtifacts).mockResolvedValueOnce(undefined);
-
-        await deleteChannelWithThumbnailCleanup(10, "   ");
-
-        expect(requireLibraryPath).not.toHaveBeenCalled();
-        expect(deleteChannelById).toHaveBeenCalledWith(10);
-        expect(cleanupUnusedChannelArtifacts).toHaveBeenCalledWith(10, "", {
-            avatarPath: null,
-            thumbnailPaths: [],
-            filePaths: [],
-        });
+        expect(deleteChannelWithArtifacts).not.toHaveBeenCalled();
     });
 });

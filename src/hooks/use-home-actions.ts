@@ -6,7 +6,6 @@ import type {
     HomeUiGuardsController,
     MediaLibraryController,
 } from "../types/controllers";
-import { deleteChannelMediaFiles } from "../services/media-service";
 import { executeDeleteSelectedChannel } from "../use-cases/delete-selected-channel";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
@@ -49,16 +48,6 @@ export function useHomeActions({
                 selectedChannelId: channelsState.selectedChannelId,
                 channelToDeleteId,
                 closeSelectedChannelUiBeforeDelete,
-                deleteChannelMediaFilesBeforeDelete: async () => {
-                    if (channelToDeleteId === null) {
-                        return;
-                    }
-
-                    await deleteChannelMediaFiles(
-                        channelToDeleteId,
-                        settingsState.settings.libraryPath
-                    );
-                },
                 confirmDeleteChannel: channelsState.confirmDeleteChannel,
             });
         } catch (error) {
@@ -74,7 +63,6 @@ export function useHomeActions({
         channelsState.confirmDeleteChannel,
         closeSelectedChannelUiBeforeDelete,
         errorState,
-        settingsState.settings.libraryPath,
     ]);
 
     const chooseLibraryPath = useCallback(async (): Promise<void> => {

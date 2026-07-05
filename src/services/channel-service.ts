@@ -1,7 +1,7 @@
 import type { Channel } from "../types/media";
 import {
     countChannelsUsingAvatarPathOutsideChannel,
-    deleteChannelById,
+    deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
     getChannelById,
     insertChannel,
@@ -10,10 +10,6 @@ import {
     updateChannelNameAndHandle,
 } from "../repositories/channel-repository";
 import {
-    cleanupUnusedChannelArtifacts,
-    listChannelArtifactsSnapshot,
-} from "./channel-artifacts-service";
-import {
     requireLibraryPath,
     validateChannelId,
     validateCreateChannelInput,
@@ -21,6 +17,7 @@ import {
 import { createAppError } from "../utils/app-error";
 import { CHANNEL_ALREADY_EXISTS_ERROR_CODE } from "../constants/error-codes";
 import { deleteThumbnailFile } from "./thumbnail-service";
+import { logError } from "../utils/app-logger";
 
 export async function listAllChannels(): Promise<Channel[]> {
     return listChannels();
@@ -131,36 +128,20 @@ export async function updateChannelAvatarWithCleanup(
     }
 }
 
-export async function deleteChannelWithThumbnailCleanup(
-    channelId: number,
-    libraryPath: string
-): Promise<void> {
+// The backend deletes the channel row (media and comments cascade) and its
+// now-unreferenced files atomically; files it could not remove are reported back so an
+// orphaned file left in the library stays visible.
+export async function deleteChannelWithThumbnailCleanup(channelId: number): Promise<void> {
     const normalizedInput = validateChannelId(channelId);
-    const existingChannel = await getChannelById(normalizedInput.channelId);
 
-    if (!existingChannel) {
-        return;
+    const report = await deleteChannelWithArtifacts(normalizedInput.channelId);
+
+    if (report.failed_paths.length > 0) {
+        logError(
+            "channel-service",
+            "Channel was removed but some of its files could not be deleted; they may be orphaned in the library.",
+            null,
+            { channelId: normalizedInput.channelId, failedPaths: report.failed_paths }
+        );
     }
-
-    const snapshot = await listChannelArtifactsSnapshot(normalizedInput.channelId);
-
-    const hasPhysicalArtifacts =
-        !!snapshot.avatarPath ||
-        snapshot.thumbnailPaths.length > 0 ||
-        snapshot.filePaths.length > 0;
-
-    const normalizedLibraryPath = hasPhysicalArtifacts
-        ? requireLibraryPath(
-              libraryPath,
-              "Library folder must be configured to delete a channel with saved media or thumbnails."
-          )
-        : libraryPath.trim();
-
-    await deleteChannelById(normalizedInput.channelId);
-
-    await cleanupUnusedChannelArtifacts(
-        normalizedInput.channelId,
-        normalizedLibraryPath,
-        snapshot
-    );
 }

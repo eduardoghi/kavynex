@@ -3,16 +3,11 @@ import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
     countChannelsUsingAvatarPathOutsideChannel,
-    countMediaUsingFilePathOutsideChannel,
-    countMediaUsingThumbnailOutsideChannel,
-    deleteChannelById,
+    deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
-    getChannelAvatarPathByChannelId,
     getChannelById,
     insertChannel,
     listChannels,
-    listDistinctFilePathsByChannelId,
-    listDistinctThumbnailPathsByChannelId,
     updateChannelAvatarPath,
     updateChannelNameAndHandle,
 } from "./channel-repository";
@@ -82,40 +77,18 @@ describe("channel-repository command wiring", () => {
         });
     });
 
-    it("deleteChannelById passes the id", async () => {
-        await deleteChannelById(9);
-        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.DELETE_CHANNEL_BY_ID, {
-            channelId: 9,
-        });
-    });
+    it("deleteChannelWithArtifacts passes the id and returns the cleanup report", async () => {
+        const report = {
+            deleted_paths: ["thumbnails/a.jpg"],
+            skipped_shared_paths: [],
+            failed_paths: [],
+        };
+        invokeCommandMock.mockResolvedValueOnce(report as never);
 
-    it("listDistinctThumbnailPathsByChannelId returns the command result", async () => {
-        invokeCommandMock.mockResolvedValueOnce(["a.jpg"] as never);
-
-        await expect(listDistinctThumbnailPathsByChannelId(1)).resolves.toEqual(["a.jpg"]);
+        await expect(deleteChannelWithArtifacts(9)).resolves.toBe(report);
         expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.LIST_DISTINCT_THUMBNAIL_PATHS_BY_CHANNEL_ID,
-            { channelId: 1 }
-        );
-    });
-
-    it("listDistinctFilePathsByChannelId returns the command result", async () => {
-        invokeCommandMock.mockResolvedValueOnce(["video/a.mp4"] as never);
-
-        await expect(listDistinctFilePathsByChannelId(1)).resolves.toEqual(["video/a.mp4"]);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.LIST_DISTINCT_FILE_PATHS_BY_CHANNEL_ID,
-            { channelId: 1 }
-        );
-    });
-
-    it("getChannelAvatarPathByChannelId returns the command result", async () => {
-        invokeCommandMock.mockResolvedValueOnce("thumbnails/a.jpg" as never);
-
-        await expect(getChannelAvatarPathByChannelId(1)).resolves.toBe("thumbnails/a.jpg");
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.GET_CHANNEL_AVATAR_PATH_BY_CHANNEL_ID,
-            { channelId: 1 }
+            TAURI_COMMANDS.DELETE_CHANNEL_WITH_ARTIFACTS,
+            { channelId: 9 }
         );
     });
 
@@ -131,27 +104,4 @@ describe("channel-repository command wiring", () => {
         );
     });
 
-    it("countMediaUsingThumbnailOutsideChannel passes path and id", async () => {
-        invokeCommandMock.mockResolvedValueOnce(2 as never);
-
-        await expect(
-            countMediaUsingThumbnailOutsideChannel("thumb/shared.jpg", 5)
-        ).resolves.toBe(2);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_CHANNEL,
-            { thumbnailPath: "thumb/shared.jpg", channelId: 5 }
-        );
-    });
-
-    it("countMediaUsingFilePathOutsideChannel passes path and id", async () => {
-        invokeCommandMock.mockResolvedValueOnce(3 as never);
-
-        await expect(
-            countMediaUsingFilePathOutsideChannel("video/shared.mp4", 5)
-        ).resolves.toBe(3);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_CHANNEL,
-            { filePath: "video/shared.mp4", channelId: 5 }
-        );
-    });
 });

@@ -116,68 +116,6 @@ pub async fn update_channel_avatar_path(
     Ok(())
 }
 
-pub async fn delete_channel_by_id(pool: &SqlitePool, channel_id: i64) -> AppResult<()> {
-    sqlx::query("DELETE FROM channels WHERE id = ?")
-        .bind(channel_id)
-        .execute(pool)
-        .await
-        .map_err(|error| db_error("failed to delete channel", error))?;
-
-    Ok(())
-}
-
-pub async fn list_distinct_thumbnail_paths_by_channel_id(
-    pool: &SqlitePool,
-    channel_id: i64,
-) -> AppResult<Vec<String>> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT thumbnail_path
-         FROM videos
-         WHERE channel_id = ?
-           AND thumbnail_path IS NOT NULL
-           AND TRIM(thumbnail_path) <> ''",
-    )
-    .bind(channel_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| db_error("failed to list distinct thumbnail paths", error))?;
-
-    Ok(rows.into_iter().map(|(value,)| value).collect())
-}
-
-pub async fn list_distinct_file_paths_by_channel_id(
-    pool: &SqlitePool,
-    channel_id: i64,
-) -> AppResult<Vec<String>> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT file_path
-         FROM videos
-         WHERE channel_id = ?
-           AND file_path IS NOT NULL
-           AND TRIM(file_path) <> ''",
-    )
-    .bind(channel_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| db_error("failed to list distinct file paths", error))?;
-
-    Ok(rows.into_iter().map(|(value,)| value).collect())
-}
-
-pub async fn get_channel_avatar_path_by_channel_id(
-    pool: &SqlitePool,
-    channel_id: i64,
-) -> AppResult<Option<String>> {
-    let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT avatar_path FROM channels WHERE id = ? LIMIT 1")
-            .bind(channel_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|error| db_error("failed to get channel avatar path", error))?;
-
-    Ok(row.and_then(|(avatar_path,)| avatar_path))
-}
-
 pub async fn count_channels_using_avatar_path_outside_channel(
     pool: &SqlitePool,
     avatar_path: &str,
@@ -190,40 +128,6 @@ pub async fn count_channels_using_avatar_path_outside_channel(
             .fetch_one(pool)
             .await
             .map_err(|error| db_error("failed to count channels using avatar path", error))?;
-
-    Ok(total)
-}
-
-pub async fn count_media_using_thumbnail_outside_channel(
-    pool: &SqlitePool,
-    thumbnail_path: &str,
-    channel_id: i64,
-) -> AppResult<i64> {
-    let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) AS total FROM videos WHERE thumbnail_path = ? AND channel_id <> ?",
-    )
-    .bind(thumbnail_path)
-    .bind(channel_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|error| db_error("failed to count media using thumbnail", error))?;
-
-    Ok(total)
-}
-
-pub async fn count_media_using_file_path_outside_channel(
-    pool: &SqlitePool,
-    file_path: &str,
-    channel_id: i64,
-) -> AppResult<i64> {
-    let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) AS total FROM videos WHERE file_path = ? AND channel_id <> ?",
-    )
-    .bind(file_path)
-    .bind(channel_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|error| db_error("failed to count media using file path", error))?;
 
     Ok(total)
 }
@@ -274,18 +178,6 @@ mod tests {
         .expect("create videos table");
 
         pool
-    }
-
-    async fn seed_media(pool: &SqlitePool, channel_id: i64, file_path: &str, thumb: Option<&str>) {
-        sqlx::query(
-            "INSERT INTO videos (channel_id, title, file_path, thumbnail_path) VALUES (?, 'v', ?, ?)",
-        )
-        .bind(channel_id)
-        .bind(file_path)
-        .bind(thumb)
-        .execute(pool)
-        .await
-        .expect("seed media");
     }
 
     #[tokio::test]
@@ -377,51 +269,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_channel_cascades_to_media() {
-        let pool = create_test_pool().await;
-        let id = insert_channel(&pool, "Alice", "@alice", None)
-            .await
-            .unwrap()
-            .unwrap();
-        seed_media(&pool, id, "video/a.mp4", None).await;
-
-        delete_channel_by_id(&pool, id).await.unwrap();
-
-        assert!(get_channel_by_id(&pool, id).await.unwrap().is_none());
-        let (media_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(media_count, 0);
-    }
-
-    #[tokio::test]
-    async fn distinct_paths_and_counts() {
+    async fn count_channels_using_avatar_path_outside_channel_excludes_own_channel() {
         let pool = create_test_pool().await;
         let a = insert_channel(&pool, "A", "@a", Some("shared.jpg"))
             .await
             .unwrap()
             .unwrap();
-        let b = insert_channel(&pool, "B", "@b", Some("shared.jpg"))
+        insert_channel(&pool, "B", "@b", Some("shared.jpg"))
             .await
             .unwrap()
             .unwrap();
-
-        seed_media(&pool, a, "video/a.mp4", Some("thumb/t.jpg")).await;
-        seed_media(&pool, a, "video/b.mp4", Some("thumb/t.jpg")).await;
-        seed_media(&pool, b, "video/a.mp4", Some("thumb/t.jpg")).await;
-
-        let mut thumbs = list_distinct_thumbnail_paths_by_channel_id(&pool, a)
-            .await
-            .unwrap();
-        thumbs.sort();
-        assert_eq!(thumbs, vec!["thumb/t.jpg"]);
-
-        let mut files = list_distinct_file_paths_by_channel_id(&pool, a)
-            .await
-            .unwrap();
-        files.sort();
-        assert_eq!(files, vec!["video/a.mp4", "video/b.mp4"]);
 
         assert_eq!(
             count_channels_using_avatar_path_outside_channel(&pool, "shared.jpg", a)
@@ -430,23 +287,10 @@ mod tests {
             1
         );
         assert_eq!(
-            count_media_using_thumbnail_outside_channel(&pool, "thumb/t.jpg", a)
+            count_channels_using_avatar_path_outside_channel(&pool, "unused.jpg", a)
                 .await
                 .unwrap(),
-            1
-        );
-        assert_eq!(
-            count_media_using_file_path_outside_channel(&pool, "video/a.mp4", a)
-                .await
-                .unwrap(),
-            1
-        );
-        assert_eq!(
-            get_channel_avatar_path_by_channel_id(&pool, a)
-                .await
-                .unwrap()
-                .as_deref(),
-            Some("shared.jpg")
+            0
         );
     }
 }

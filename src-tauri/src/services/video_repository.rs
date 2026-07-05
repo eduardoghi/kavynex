@@ -227,16 +227,6 @@ pub async fn list_media_comments_by_media_id(
     .map_err(|error| db_error("failed to list media comments", error))
 }
 
-pub async fn delete_media_by_id(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
-    sqlx::query("DELETE FROM videos WHERE id = ?")
-        .bind(media_id)
-        .execute(pool)
-        .await
-        .map_err(|error| db_error("failed to delete media", error))?;
-
-    Ok(())
-}
-
 pub async fn mark_media_as_watched(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
     sqlx::query(
         "UPDATE videos SET watched_at = CURRENT_TIMESTAMP, progress_seconds = 0 WHERE id = ?",
@@ -684,10 +674,6 @@ mod tests {
 
         let refs = list_media_integrity_references(&pool).await.unwrap();
         assert_eq!(refs.len(), 2);
-
-        delete_media_by_id(&pool, a).await.unwrap();
-        let stats_after = get_media_repository_stats(&pool).await.unwrap();
-        assert_eq!(stats_after.total_media, 1);
     }
 
     #[tokio::test]

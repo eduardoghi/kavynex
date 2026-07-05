@@ -1,5 +1,6 @@
 import type { MediaCommentRow, MediaRow, MediaType } from "../types/media";
 import type { MediaIntegrityReference, MediaRepositoryStats } from "../types/diagnostics";
+import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 
@@ -53,8 +54,10 @@ export async function listMediaCommentsByMediaId(mediaId: number): Promise<Media
     });
 }
 
-export async function deleteMediaById(mediaId: number): Promise<void> {
-    await invokeVoid(TAURI_COMMANDS.DELETE_MEDIA_BY_ID, { mediaId });
+export async function deleteMediaWithArtifacts(mediaId: number): Promise<ArtifactCleanupReport> {
+    return invokeCommand<ArtifactCleanupReport>(TAURI_COMMANDS.DELETE_MEDIA_WITH_ARTIFACTS, {
+        mediaId,
+    });
 }
 
 export async function markMediaAsWatched(mediaId: number): Promise<void> {

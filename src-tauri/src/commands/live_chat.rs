@@ -1,8 +1,6 @@
-use std::path::PathBuf;
-
 use tauri::{AppHandle, Manager};
 
-use crate::services::database::{get_app_settings_from_pool, shared_pool};
+use crate::services::library_guard::configured_library_dir;
 use crate::services::live_chat_storage::{
     compress_existing_live_chat_files, list_live_chat_relative_paths, migrate_live_chat_files,
     read_live_chat_text,
@@ -10,27 +8,6 @@ use crate::services::live_chat_storage::{
 use crate::utils::path::absolute_path_from_relative;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
-
-/// Resolves the configured library directory from settings. Live chat files live under it
-/// (in `live_chat/`), alongside media and thumbnails, so the base is never taken from the
-/// caller - a compromised frontend cannot redirect reads/writes to an arbitrary location.
-async fn configured_library_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    let pool = shared_pool(app).await?;
-    let settings = get_app_settings_from_pool(pool).await?;
-
-    let library_path = settings
-        .library_path
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            AppError::from_code(
-                AppErrorCode::InvalidLibraryPath,
-                "no library folder is configured",
-            )
-        })?;
-
-    Ok(PathBuf::from(library_path))
-}
 
 /// Reads a live chat replay file from the library and returns its JSON text (gunzipped).
 #[tauri::command]

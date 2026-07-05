@@ -544,7 +544,7 @@ describe("useChannelActions", () => {
             await result.current.confirmDeleteChannelAction();
         });
 
-        expect(deleteChannelWithThumbnailCleanup).toHaveBeenCalledWith(10, "/library");
+        expect(deleteChannelWithThumbnailCleanup).toHaveBeenCalledWith(10);
         expect(setSelectedChannelId).toHaveBeenCalledWith(null);
         expect(setChannels).toHaveBeenCalledWith([]);
         expect(setConfirmDeleteChannelOpen).toHaveBeenCalledWith(false);

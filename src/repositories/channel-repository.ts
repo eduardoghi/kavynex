@@ -1,4 +1,5 @@
 import type { Channel } from "../types/media";
+import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 
@@ -54,36 +55,12 @@ export async function updateChannelAvatarPath(
     });
 }
 
-export async function deleteChannelById(channelId: number): Promise<void> {
-    await invokeVoid(TAURI_COMMANDS.DELETE_CHANNEL_BY_ID, {
+export async function deleteChannelWithArtifacts(
+    channelId: number
+): Promise<ArtifactCleanupReport> {
+    return invokeCommand<ArtifactCleanupReport>(TAURI_COMMANDS.DELETE_CHANNEL_WITH_ARTIFACTS, {
         channelId,
     });
-}
-
-export async function listDistinctThumbnailPathsByChannelId(
-    channelId: number
-): Promise<string[]> {
-    return invokeCommand<string[]>(
-        TAURI_COMMANDS.LIST_DISTINCT_THUMBNAIL_PATHS_BY_CHANNEL_ID,
-        { channelId }
-    );
-}
-
-export async function listDistinctFilePathsByChannelId(
-    channelId: number
-): Promise<string[]> {
-    return invokeCommand<string[]>(TAURI_COMMANDS.LIST_DISTINCT_FILE_PATHS_BY_CHANNEL_ID, {
-        channelId,
-    });
-}
-
-export async function getChannelAvatarPathByChannelId(
-    channelId: number
-): Promise<string | null> {
-    return invokeCommand<string | null>(
-        TAURI_COMMANDS.GET_CHANNEL_AVATAR_PATH_BY_CHANNEL_ID,
-        { channelId }
-    );
 }
 
 export async function countChannelsUsingAvatarPathOutsideChannel(
@@ -96,22 +73,3 @@ export async function countChannelsUsingAvatarPathOutsideChannel(
     );
 }
 
-export async function countMediaUsingThumbnailOutsideChannel(
-    thumbnailPath: string,
-    channelId: number
-): Promise<number> {
-    return invokeCommand<number>(
-        TAURI_COMMANDS.COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_CHANNEL,
-        { thumbnailPath, channelId }
-    );
-}
-
-export async function countMediaUsingFilePathOutsideChannel(
-    filePath: string,
-    channelId: number
-): Promise<number> {
-    return invokeCommand<number>(
-        TAURI_COMMANDS.COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_CHANNEL,
-        { filePath, channelId }
-    );
-}

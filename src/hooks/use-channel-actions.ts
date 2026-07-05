@@ -296,7 +296,7 @@ export function useChannelActions({
 
         await runDeleteChannel(async () => {
             try {
-                await deleteChannelWithThumbnailCleanup(channelToDelete.id, libraryPath);
+                await deleteChannelWithThumbnailCleanup(channelToDelete.id);
 
                 if (selectedChannelId === channelToDelete.id) {
                     setSelectedChannelId(null);

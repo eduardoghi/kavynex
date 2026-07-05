@@ -47,18 +47,11 @@ describe("executeDeleteMedia", () => {
                 thumbnail_path: "thumbs/video-a.jpg",
                 live_chat_file_path: "live_chat/video-a.json",
             }),
-            libraryPath: "/library",
             reloadMedia,
             closePlayerIfActive,
         });
 
-        expect(deleteMediaWithFileCleanupMock).toHaveBeenCalledWith(
-            5,
-            "media/video-a.mp4",
-            "thumbs/video-a.jpg",
-            "/library",
-            "live_chat/video-a.json"
-        );
+        expect(deleteMediaWithFileCleanupMock).toHaveBeenCalledWith(5);
         expect(closePlayerIfActive).toHaveBeenCalledWith(5);
         expect(reloadMedia).toHaveBeenCalled();
     });
@@ -72,7 +65,6 @@ describe("executeDeleteMedia", () => {
         await expect(
             executeDeleteMedia({
                 media: createMediaRow(),
-                libraryPath: "/library",
                 reloadMedia,
                 closePlayerIfActive,
             })

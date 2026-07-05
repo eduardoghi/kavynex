@@ -86,41 +86,6 @@ export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaIn
     };
 }
 
-export function normalizeDeleteMediaInput(
-    mediaId: number,
-    filePath: string,
-    thumbnailPath: string | null,
-    libraryPath: string
-): {
-    mediaId: number;
-    filePath: string;
-    thumbnailPath: string | null;
-    libraryPath: string;
-} {
-    const normalizedFilePath = normalizeRequiredValue(filePath);
-    const normalizedLibraryPath = normalizeRequiredValue(libraryPath);
-    const normalizedThumbnailPath = normalizeOptionalValue(thumbnailPath);
-
-    if (!mediaId) {
-        throw createAppError("INVALID_MEDIA_PATH", "Media id is invalid.");
-    }
-
-    if (!normalizedFilePath) {
-        throw createAppError("INVALID_MEDIA_PATH", "Media file path is empty.");
-    }
-
-    if (!normalizedLibraryPath) {
-        throw createAppError("INVALID_LIBRARY_PATH", "Library path is empty.");
-    }
-
-    return {
-        mediaId,
-        filePath: normalizedFilePath,
-        thumbnailPath: normalizedThumbnailPath,
-        libraryPath: normalizedLibraryPath,
-    };
-}
-
 export function validateMediaId(mediaId: number): void {
     assertValidEntityId(mediaId, "INVALID_MEDIA_PATH", "Media id is invalid.");
 }

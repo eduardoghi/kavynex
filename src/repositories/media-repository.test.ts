@@ -4,7 +4,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
     countMediaUsingFilePathOutsideMedia,
     countMediaUsingThumbnailOutsideMedia,
-    deleteMediaById,
+    deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     getMediaRepositoryStats,
     insertMedia,
@@ -98,9 +98,16 @@ describe("media-repository command wiring", () => {
         );
     });
 
-    it("deleteMediaById passes the media id", async () => {
-        await deleteMediaById(9);
-        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.DELETE_MEDIA_BY_ID, {
+    it("deleteMediaWithArtifacts passes the media id and returns the cleanup report", async () => {
+        const report = {
+            deleted_paths: ["video/a.mp4"],
+            skipped_shared_paths: [],
+            failed_paths: [],
+        };
+        invokeCommandMock.mockResolvedValueOnce(report as never);
+
+        await expect(deleteMediaWithArtifacts(9)).resolves.toBe(report);
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.DELETE_MEDIA_WITH_ARTIFACTS, {
             mediaId: 9,
         });
     });
