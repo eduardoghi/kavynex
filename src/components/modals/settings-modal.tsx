@@ -11,7 +11,6 @@ import {
     TextInput,
     Title,
 } from "@mantine/core";
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Database,
     Download,
@@ -23,14 +22,8 @@ import {
     Upload,
     Wrench,
 } from "lucide-react";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { useAppUpdate } from "../../hooks/use-app-update";
-import { exportDatabase, importDatabase } from "../../services/database-service";
-import { getLibrarySummary, type LibrarySummaryInfo } from "../../services/library-service";
+import { useSettingsController } from "../../hooks/use-settings-controller";
 import type { ImportMode } from "../../types/settings";
-import { parseAppError } from "../../utils/app-error";
-import { logError } from "../../utils/app-logger";
 import { AppButton } from "../ui/app-button";
 
 function displayWindowsPath(path: string): string {
@@ -46,14 +39,6 @@ function displayWindowsPath(path: string): string {
 
     return normalizedPath;
 }
-
-const EMPTY_LIBRARY_SUMMARY: LibrarySummaryInfo = {
-    total_bytes: 0,
-    formatted_size: "0 B",
-    video_files: 0,
-    audio_files: 0,
-    thumbnail_files: 0,
-};
 
 type SettingsModalProps = {
     opened: boolean;
@@ -82,175 +67,25 @@ export function SettingsModal({
     libraryPathChangeDisabledReason,
     isMigratingLibraryPath,
 }: SettingsModalProps): JSX.Element {
-    const [librarySummary, setLibrarySummary] = useState<LibrarySummaryInfo>(EMPTY_LIBRARY_SUMMARY);
-    const [isLoadingLibrarySummary, setIsLoadingLibrarySummary] = useState(false);
-    const [librarySummaryError, setLibrarySummaryError] = useState("");
-
-    const [databaseBusy, setDatabaseBusy] = useState<"idle" | "exporting" | "importing">("idle");
-    const [databaseMessage, setDatabaseMessage] = useState<{
-        tone: "success" | "error";
-        text: string;
-    } | null>(null);
-    const [pendingImportPath, setPendingImportPath] = useState<string | null>(null);
-
     const {
-        status: appUpdateStatus,
+        librarySummary,
+        isLoadingLibrarySummary,
+        librarySummaryError,
+        refreshLibrarySummary,
+        databaseBusy,
+        databaseMessage,
+        pendingImportPath,
+        exportDatabaseAction,
+        pickImportFileAction,
+        confirmImportAction,
+        cancelImport,
+        appUpdateStatus,
         updateInfo,
-        progress: appUpdateProgress,
-        errorMessage: appUpdateErrorMessage,
+        appUpdateProgress,
+        appUpdateErrorMessage,
         checkForUpdate,
         installUpdate,
-    } = useAppUpdate();
-
-    const summaryRequestIdRef = useRef(0);
-    const lastLoadedLibraryPathRef = useRef("");
-
-    const loadLibrarySummary = useCallback(
-        async (targetLibraryPath: string): Promise<void> => {
-            const normalizedLibraryPath = targetLibraryPath.trim();
-            const requestId = ++summaryRequestIdRef.current;
-
-            if (!normalizedLibraryPath) {
-                lastLoadedLibraryPathRef.current = "";
-                setLibrarySummary(EMPTY_LIBRARY_SUMMARY);
-                setLibrarySummaryError("");
-                setIsLoadingLibrarySummary(false);
-                return;
-            }
-
-            if (lastLoadedLibraryPathRef.current !== normalizedLibraryPath) {
-                setLibrarySummary(EMPTY_LIBRARY_SUMMARY);
-            }
-
-            setIsLoadingLibrarySummary(true);
-            setLibrarySummaryError("");
-
-            try {
-                const summary = await getLibrarySummary(normalizedLibraryPath);
-
-                if (requestId !== summaryRequestIdRef.current) {
-                    return;
-                }
-
-                lastLoadedLibraryPathRef.current = normalizedLibraryPath;
-                setLibrarySummary(summary);
-            } catch (error) {
-                if (requestId !== summaryRequestIdRef.current) {
-                    return;
-                }
-
-                lastLoadedLibraryPathRef.current = "";
-                logError("settings-modal", "Failed to load library summary.", error, {
-                    libraryPath: normalizedLibraryPath,
-                    parsed: parseAppError(error),
-                });
-                setLibrarySummary(EMPTY_LIBRARY_SUMMARY);
-                setLibrarySummaryError("Could not load library summary.");
-            } finally {
-                if (requestId === summaryRequestIdRef.current) {
-                    setIsLoadingLibrarySummary(false);
-                }
-            }
-        },
-        []
-    );
-
-    const handleExportDatabase = useCallback(async (): Promise<void> => {
-        setDatabaseMessage(null);
-
-        let destination: string | null;
-
-        try {
-            destination = await save({
-                title: "Export database",
-                defaultPath: "kavynex-backup.db",
-                filters: [{ name: "Database", extensions: ["db"] }],
-            });
-        } catch (error) {
-            logError("settings-modal", "Failed to open the export dialog.", error);
-            setDatabaseMessage({ tone: "error", text: "Could not open the export dialog." });
-            return;
-        }
-
-        if (!destination) {
-            return;
-        }
-
-        setDatabaseBusy("exporting");
-
-        try {
-            await exportDatabase(destination);
-            setDatabaseMessage({ tone: "success", text: "Database exported successfully." });
-        } catch (error) {
-            logError("settings-modal", "Failed to export the database.", error, {
-                parsed: parseAppError(error),
-            });
-            setDatabaseMessage({ tone: "error", text: "Could not export the database." });
-        } finally {
-            setDatabaseBusy("idle");
-        }
-    }, []);
-
-    const handlePickImportFile = useCallback(async (): Promise<void> => {
-        setDatabaseMessage(null);
-
-        let selection: string | string[] | null;
-
-        try {
-            selection = await open({
-                title: "Import database",
-                multiple: false,
-                directory: false,
-                filters: [{ name: "Database", extensions: ["db"] }],
-            });
-        } catch (error) {
-            logError("settings-modal", "Failed to open the import dialog.", error);
-            setDatabaseMessage({ tone: "error", text: "Could not open the import dialog." });
-            return;
-        }
-
-        if (typeof selection === "string") {
-            setPendingImportPath(selection);
-        }
-    }, []);
-
-    const handleConfirmImport = useCallback(async (): Promise<void> => {
-        if (!pendingImportPath) {
-            return;
-        }
-
-        setDatabaseBusy("importing");
-        setDatabaseMessage(null);
-
-        try {
-            await importDatabase(pendingImportPath);
-            // The swap is applied on the next startup, so relaunch to complete the import.
-            await relaunch();
-        } catch (error) {
-            logError("settings-modal", "Failed to import the database.", error, {
-                parsed: parseAppError(error),
-            });
-            setDatabaseMessage({
-                tone: "error",
-                text: "Could not import the selected database.",
-            });
-            setDatabaseBusy("idle");
-            setPendingImportPath(null);
-        }
-    }, [pendingImportPath]);
-
-    useEffect(() => {
-        if (!opened) {
-            summaryRequestIdRef.current += 1;
-            lastLoadedLibraryPathRef.current = "";
-            setLibrarySummary(EMPTY_LIBRARY_SUMMARY);
-            setLibrarySummaryError("");
-            setIsLoadingLibrarySummary(false);
-            return;
-        }
-
-        void loadLibrarySummary(libraryPath);
-    }, [opened, libraryPath, loadLibrarySummary]);
+    } = useSettingsController({ opened, libraryPath });
 
     return (
         <Modal
@@ -318,7 +153,7 @@ export function SettingsModal({
                             size="xs"
                             leftSection={<RefreshCcw size={14} />}
                             onClick={() => {
-                                void loadLibrarySummary(libraryPath);
+                                void refreshLibrarySummary();
                             }}
                             disabled={!libraryPath.trim()}
                             loading={isLoadingLibrarySummary}
@@ -443,7 +278,7 @@ export function SettingsModal({
                                     appVariant="secondary"
                                     leftSection={<Download size={16} />}
                                     onClick={() => {
-                                        void handleExportDatabase();
+                                        void exportDatabaseAction();
                                     }}
                                     loading={databaseBusy === "exporting"}
                                     disabled={databaseBusy !== "idle"}
@@ -455,7 +290,7 @@ export function SettingsModal({
                                     appVariant="secondary"
                                     leftSection={<Upload size={16} />}
                                     onClick={() => {
-                                        void handlePickImportFile();
+                                        void pickImportFileAction();
                                     }}
                                     disabled={databaseBusy !== "idle"}
                                 >
@@ -480,7 +315,7 @@ export function SettingsModal({
                                                 appVariant="primary"
                                                 leftSection={<Upload size={16} />}
                                                 onClick={() => {
-                                                    void handleConfirmImport();
+                                                    void confirmImportAction();
                                                 }}
                                                 loading={databaseBusy === "importing"}
                                             >
@@ -488,7 +323,7 @@ export function SettingsModal({
                                             </AppButton>
                                             <AppButton
                                                 appVariant="ghost"
-                                                onClick={() => setPendingImportPath(null)}
+                                                onClick={cancelImport}
                                                 disabled={databaseBusy === "importing"}
                                             >
                                                 Cancel
