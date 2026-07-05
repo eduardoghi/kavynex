@@ -118,13 +118,24 @@ export async function updateChannelAvatarWithCleanup(
 
     const normalizedLibraryPath = libraryPath.trim();
 
-    const usageOutsideChannel = await countChannelsUsingAvatarPathOutsideChannel(
-        previousAvatarPath,
-        normalizedInput.channelId
-    );
+    // The avatar change is already persisted at this point; failing to remove the old
+    // file must not surface as a failed update, only leave a logged orphan.
+    try {
+        const usageOutsideChannel = await countChannelsUsingAvatarPathOutsideChannel(
+            previousAvatarPath,
+            normalizedInput.channelId
+        );
 
-    if (usageOutsideChannel === 0) {
-        await deleteThumbnailFile(previousAvatarPath, normalizedLibraryPath);
+        if (usageOutsideChannel === 0) {
+            await deleteThumbnailFile(previousAvatarPath, normalizedLibraryPath);
+        }
+    } catch (error) {
+        logError(
+            "channel-service",
+            "Channel avatar was updated but the previous avatar file could not be deleted; it may be orphaned in the library.",
+            error,
+            { channelId: normalizedInput.channelId, previousAvatarPath }
+        );
     }
 }
 

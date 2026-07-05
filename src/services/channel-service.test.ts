@@ -256,6 +256,39 @@ describe("channel-service", () => {
         expect(deleteThumbnailFile).not.toHaveBeenCalled();
     });
 
+    it("does not fail the avatar update when deleting the previous file fails", async () => {
+        vi.mocked(validateChannelId).mockReturnValueOnce({
+            channelId: 10,
+        });
+
+        vi.mocked(getChannelById).mockResolvedValueOnce({
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: "thumbnails/old.png",
+            created_at: "2024-01-01",
+        });
+
+        vi.mocked(updateChannelAvatarPath).mockResolvedValueOnce(undefined);
+        vi.mocked(countChannelsUsingAvatarPathOutsideChannel).mockResolvedValueOnce(0);
+        vi.mocked(deleteThumbnailFile).mockRejectedValueOnce(new Error("locked file"));
+
+        await expect(
+            updateChannelAvatarWithCleanup(10, "thumbnails/new.png", "/library")
+        ).resolves.toBeUndefined();
+
+        expect(updateChannelAvatarPath).toHaveBeenCalledWith(10, "thumbnails/new.png");
+        expect(logError).toHaveBeenCalledWith(
+            "channel-service",
+            expect.stringContaining("previous avatar file could not be deleted"),
+            expect.any(Error),
+            expect.objectContaining({
+                channelId: 10,
+                previousAvatarPath: "thumbnails/old.png",
+            })
+        );
+    });
+
     it("deletes channel through the atomic backend command without logging when nothing failed", async () => {
         vi.mocked(validateChannelId).mockReturnValueOnce({
             channelId: 10,
