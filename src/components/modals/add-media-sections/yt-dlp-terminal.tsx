@@ -65,6 +65,9 @@ export function YtDlpTerminal({
             >
                 <ScrollArea h={320} offsetScrollbars viewportRef={terminalViewportRef}>
                     <Box
+                        role="log"
+                        aria-live="polite"
+                        aria-label="yt-dlp output"
                         style={{
                             padding: rem(14),
                             fontFamily:

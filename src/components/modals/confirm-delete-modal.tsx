@@ -64,7 +64,13 @@ export function ConfirmDeleteModal({
                     )}
 
                     <Group justify="flex-end">
-                        <Button type="button" variant="subtle" onClick={onClose} disabled={loading}>
+                        <Button
+                            type="button"
+                            variant="subtle"
+                            onClick={onClose}
+                            disabled={loading}
+                            data-autofocus
+                        >
                             {cancelLabel}
                         </Button>
 

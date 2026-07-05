@@ -72,4 +72,20 @@ describe("YtDlpTerminal", () => {
 
         expect(screen.getByText("ERROR: download failed")).toBeInTheDocument();
     });
+
+    it("exposes the log region for screen readers", () => {
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={["Downloading..."]}
+                isYtDlpRunning={false}
+            />
+        );
+
+        const logRegion = screen.getByRole("log", { name: "yt-dlp output" });
+
+        expect(logRegion).toHaveAttribute("aria-live", "polite");
+        expect(logRegion).toContainElement(screen.getByText("Downloading..."));
+    });
 });

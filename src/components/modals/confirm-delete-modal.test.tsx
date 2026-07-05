@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConfirmDeleteModal } from "./confirm-delete-modal";
 import { renderWithMantine } from "../../test/test-utils";
@@ -95,5 +95,21 @@ describe("ConfirmDeleteModal", () => {
         );
 
         expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    });
+
+    it("sends initial focus to the cancel button to avoid accidental deletion on Enter", async () => {
+        renderWithMantine(
+            <ConfirmDeleteModal
+                opened
+                onClose={vi.fn()}
+                onConfirm={vi.fn()}
+                message="Are you sure?"
+            />
+        );
+
+        const cancelButton = screen.getByRole("button", { name: "Cancel" });
+
+        expect(cancelButton).toHaveAttribute("data-autofocus");
+        await waitFor(() => expect(cancelButton).toHaveFocus());
     });
 });
