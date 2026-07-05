@@ -206,7 +206,32 @@ describe("useSettingsController", () => {
         expect(result.current.librarySummary.formatted_size).toBe("5 KB");
     });
 
-    it("exports the database successfully", async () => {
+    it("clears the summary without querying the backend for a blank library path", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary({ formatted_size: "1 KB" }));
+
+        const { result, rerender } = renderHook(
+            ({ opened, libraryPath }: HookProps) => useSettingsController({ opened, libraryPath }),
+            { initialProps: { opened: true, libraryPath: "/library" } }
+        );
+
+        await waitFor(() => {
+            expect(result.current.librarySummary.formatted_size).toBe("1 KB");
+        });
+
+        getLibrarySummaryMock.mockClear();
+
+        rerender({ opened: true, libraryPath: "   " });
+
+        await waitFor(() => {
+            expect(result.current.librarySummary.formatted_size).toBe("0 B");
+        });
+
+        expect(getLibrarySummaryMock).not.toHaveBeenCalled();
+        expect(result.current.isLoadingLibrarySummary).toBe(false);
+        expect(result.current.librarySummaryError).toBe("");
+    });
+
+    it("exports the database successfully with the expected dialog options", async () => {
         getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
         saveMock.mockResolvedValueOnce("/backups/kavynex-backup.db");
         exportDatabaseMock.mockResolvedValueOnce(undefined);
@@ -219,11 +244,36 @@ describe("useSettingsController", () => {
             await result.current.exportDatabaseAction();
         });
 
+        expect(saveMock).toHaveBeenCalledWith({
+            title: "Export database",
+            defaultPath: "kavynex-backup.db",
+            filters: [{ name: "Database", extensions: ["db"] }],
+        });
         expect(exportDatabaseMock).toHaveBeenCalledWith("/backups/kavynex-backup.db");
         expect(result.current.databaseBusy).toBe("idle");
         expect(result.current.databaseMessage).toEqual({
             tone: "success",
             text: "Database exported successfully.",
+        });
+    });
+
+    it("reports an error when the export dialog itself fails to open", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        saveMock.mockRejectedValueOnce(new Error("dialog crashed"));
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await act(async () => {
+            await result.current.exportDatabaseAction();
+        });
+
+        expect(exportDatabaseMock).not.toHaveBeenCalled();
+        expect(result.current.databaseBusy).toBe("idle");
+        expect(result.current.databaseMessage).toEqual({
+            tone: "error",
+            text: "Could not open the export dialog.",
         });
     });
 
@@ -278,6 +328,12 @@ describe("useSettingsController", () => {
             await result.current.pickImportFileAction();
         });
 
+        expect(openMock).toHaveBeenCalledWith({
+            title: "Import database",
+            multiple: false,
+            directory: false,
+            filters: [{ name: "Database", extensions: ["db"] }],
+        });
         expect(result.current.pendingImportPath).toBe("/backups/import.db");
 
         await act(async () => {
@@ -286,6 +342,39 @@ describe("useSettingsController", () => {
 
         expect(importDatabaseMock).toHaveBeenCalledWith("/backups/import.db");
         expect(relaunchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports an error when the import dialog itself fails to open", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        openMock.mockRejectedValueOnce(new Error("dialog crashed"));
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await act(async () => {
+            await result.current.pickImportFileAction();
+        });
+
+        expect(result.current.pendingImportPath).toBeNull();
+        expect(result.current.databaseMessage).toEqual({
+            tone: "error",
+            text: "Could not open the import dialog.",
+        });
+    });
+
+    it("does nothing when confirming an import with no pending path", async () => {
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: false, libraryPath: "" })
+        );
+
+        await act(async () => {
+            await result.current.confirmImportAction();
+        });
+
+        expect(importDatabaseMock).not.toHaveBeenCalled();
+        expect(relaunchMock).not.toHaveBeenCalled();
+        expect(result.current.databaseBusy).toBe("idle");
     });
 
     it("does not set a pending import path when the import dialog is cancelled", async () => {

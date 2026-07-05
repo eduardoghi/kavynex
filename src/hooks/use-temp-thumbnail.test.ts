@@ -157,4 +157,134 @@ describe("useTempThumbnail", () => {
 
         consoleErrorSpy.mockRestore();
     });
+
+    it("does not generate a thumbnail for a blank media path", async () => {
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("   ");
+        });
+
+        expect(generateTemporaryThumbnail).not.toHaveBeenCalled();
+        expect(result.current.isGeneratingThumb).toBe(false);
+    });
+
+    it("trims the media path before generating", async () => {
+        vi.mocked(generateTemporaryThumbnail).mockResolvedValue("/tmp/generated.jpg");
+
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("  /tmp/video.mp4  ");
+        });
+
+        expect(generateTemporaryThumbnail).toHaveBeenCalledWith("/tmp/video.mp4");
+    });
+
+    it("deletes the previous generated temp thumbnail when setting a manual path", async () => {
+        vi.mocked(generateTemporaryThumbnail).mockResolvedValueOnce("/tmp/generated.jpg");
+
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("/tmp/video.mp4");
+        });
+
+        expect(result.current.thumbPath).toBe("/tmp/generated.jpg");
+
+        await act(async () => {
+            await result.current.setManualThumbPath("  /tmp/manual.jpg  ");
+        });
+
+        expect(deleteTemporaryThumbnail).toHaveBeenCalledWith("/tmp/generated.jpg");
+        expect(result.current.thumbPath).toBe("/tmp/manual.jpg");
+    });
+
+    it("does not delete anything when setting a manual path with no generated temp", async () => {
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.setManualThumbPath("/tmp/manual.jpg");
+        });
+
+        expect(deleteTemporaryThumbnail).not.toHaveBeenCalled();
+        expect(result.current.thumbPath).toBe("/tmp/manual.jpg");
+    });
+
+    it("does not re-delete the temp thumbnail when regenerating the same path", async () => {
+        vi.mocked(generateTemporaryThumbnail).mockResolvedValue("/tmp/same.jpg");
+
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("/tmp/video.mp4");
+            await result.current.generateThumbForMedia("/tmp/video.mp4");
+        });
+
+        expect(deleteTemporaryThumbnail).not.toHaveBeenCalled();
+        expect(result.current.thumbPath).toBe("/tmp/same.jpg");
+    });
+
+    it("deletes the current temp thumbnail on unmount", async () => {
+        vi.mocked(generateTemporaryThumbnail).mockResolvedValueOnce("/tmp/generated.jpg");
+
+        const { result, unmount } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("/tmp/video.mp4");
+        });
+
+        unmount();
+
+        expect(deleteTemporaryThumbnail).toHaveBeenCalledWith("/tmp/generated.jpg");
+    });
+
+    it("does not attempt cleanup on unmount when there is no temp thumbnail", () => {
+        const { unmount } = renderHook(() => useTempThumbnail());
+
+        unmount();
+
+        expect(deleteTemporaryThumbnail).not.toHaveBeenCalled();
+    });
+
+    it("deletes the temp thumbnail when resetting state", async () => {
+        vi.mocked(generateTemporaryThumbnail).mockResolvedValueOnce("/tmp/generated.jpg");
+
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("/tmp/video.mp4");
+        });
+
+        await act(async () => {
+            await result.current.resetThumbState();
+        });
+
+        expect(deleteTemporaryThumbnail).toHaveBeenCalledWith("/tmp/generated.jpg");
+        expect(result.current.thumbPath).toBe("");
+    });
+
+    it("swallows and logs a failure to delete a temp thumbnail during cleanup", async () => {
+        vi.mocked(generateTemporaryThumbnail)
+            .mockResolvedValueOnce("/tmp/one.jpg")
+            .mockResolvedValueOnce("/tmp/two.jpg");
+        vi.mocked(deleteTemporaryThumbnail).mockRejectedValueOnce(new Error("busy"));
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("/tmp/video1.mp4");
+            await result.current.generateThumbForMedia("/tmp/video2.mp4");
+        });
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            "Failed to cleanup temporary thumbnail:",
+            expect.any(Error)
+        );
+        // The failed cleanup must not block adopting the new thumbnail.
+        expect(result.current.thumbPath).toBe("/tmp/two.jpg");
+
+        consoleErrorSpy.mockRestore();
+    });
 });

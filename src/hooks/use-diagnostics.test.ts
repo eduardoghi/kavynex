@@ -398,6 +398,78 @@ describe("useDiagnostics", () => {
         expect(getDiagnosticsSummaryMock).not.toHaveBeenCalled();
     });
 
+    it("does not reload when reopening props stay identical while open", async () => {
+        const onError = vi.fn();
+
+        getDiagnosticsSummaryMock.mockResolvedValue(createSummary("stable"));
+
+        const initialProps: HookProps = {
+            libraryPath: "/library",
+            importMode: "copy",
+        };
+
+        const { result, rerender } = renderHook(
+            ({ libraryPath, importMode }: HookProps) =>
+                useDiagnostics({ libraryPath, importMode, onError }),
+            { initialProps }
+        );
+
+        await act(async () => {
+            await result.current.openDiagnostics();
+        });
+
+        expect(getDiagnosticsSummaryMock).toHaveBeenCalledTimes(1);
+
+        rerender({ libraryPath: "/library", importMode: "copy" });
+
+        // Same libraryPath and importMode: the auto-reload effect must bail out.
+        expect(getDiagnosticsSummaryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("discards a stale error without calling onError", async () => {
+        const onError = vi.fn();
+
+        let rejectFirst: ((reason: unknown) => void) | null = null;
+
+        getDiagnosticsSummaryMock
+            .mockImplementationOnce(
+                () =>
+                    new Promise<DiagnosticsSummary>((_resolve, reject) => {
+                        rejectFirst = reject;
+                    })
+            )
+            .mockResolvedValueOnce(createSummary("fresh"));
+
+        const { result } = renderHook(() =>
+            useDiagnostics({ libraryPath: "/library", importMode: "copy", onError })
+        );
+
+        await act(async () => {
+            void result.current.openDiagnostics();
+        });
+
+        // A manual reload supersedes the in-flight first request.
+        await act(async () => {
+            await result.current.reloadDiagnostics();
+        });
+
+        await waitFor(() => {
+            expect(result.current.diagnosticsSummary?.diagnostics.libraryPath).toBe(
+                "/library/fresh"
+            );
+        });
+
+        await act(async () => {
+            rejectFirst?.(new Error("stale failure"));
+        });
+
+        // The stale rejection must neither surface an error nor wipe the fresh summary.
+        expect(onError).not.toHaveBeenCalled();
+        expect(result.current.diagnosticsSummary?.diagnostics.libraryPath).toBe(
+            "/library/fresh"
+        );
+    });
+
     it("ignores stale request results and keeps only the latest summary", async () => {
         const onError = vi.fn();
 
