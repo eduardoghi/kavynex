@@ -29,6 +29,10 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  # Full history so the release notes can list the commits since the
+                  # previous tag.
+                  fetch-depth: 0
 
             - name: Setup pnpm
               uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
@@ -52,6 +56,35 @@ jobs:
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+            - name: Verify version consistency
+              run: node scripts/verify-release-version.js
+
+            - name: Verify the release tag does not exist yet
+              shell: bash
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null 2>&1; then
+                      echo "Tag v$VERSION already exists; bump the version before releasing." >&2
+                      exit 1
+                  fi
+
+            - name: Build release notes
+              id: release_notes
+              shell: bash
+              run: |
+                  PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+                  {
+                      echo "body<<NOTES_EOF"
+                      echo "See the assets below to download and install this version."
+                      if [ -n "$PREV_TAG" ]; then
+                          echo ""
+                          echo "## Changes since $PREV_TAG"
+                          echo ""
+                          git log --pretty="- %s" "$PREV_TAG..HEAD"
+                      fi
+                      echo "NOTES_EOF"
+                  } >> "$GITHUB_OUTPUT"
 
             - name: Install frontend dependencies
               run: pnpm install --frozen-lockfile
@@ -82,7 +115,31 @@ jobs:
               with:
                   tagName: v__VERSION__
                   releaseName: Kavynex v__VERSION__
-                  releaseBody: See the assets below to download and install this version.
+                  releaseBody: ${{ steps.release_notes.outputs.body }}
                   releaseDraft: true
                   prerelease: false
                   args: ${{ matrix.args }}
+
+    checksums:
+        name: Publish checksums
+        needs: publish-tauri
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+            # The updater artifacts are signed, but the installers downloaded manually
+            # from the release page have no integrity reference without this file.
+            - name: Generate and upload SHA256SUMS
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  mkdir assets
+                  gh release download "v$VERSION" --dir assets
+                  (cd assets && sha256sum * > ../SHA256SUMS.txt)
+                  cat SHA256SUMS.txt
+                  gh release upload "v$VERSION" SHA256SUMS.txt --clobber
