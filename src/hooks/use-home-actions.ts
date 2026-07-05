@@ -41,6 +41,14 @@ export function useHomeActions({
     }, [channelsState, mediaLibrary]);
 
     const confirmDeleteChannel = useCallback(async (): Promise<void> => {
+        if (uiGuards.disableChannelDeletion) {
+            errorState.showError(
+                uiGuards.channelDeletionDisabledReason ||
+                    "You cannot delete a channel right now."
+            );
+            return;
+        }
+
         try {
             const channelToDeleteId = channelsState.channelToDelete?.id ?? null;
 
@@ -63,6 +71,7 @@ export function useHomeActions({
         channelsState.confirmDeleteChannel,
         closeSelectedChannelUiBeforeDelete,
         errorState,
+        uiGuards,
     ]);
 
     const chooseLibraryPath = useCallback(async (): Promise<void> => {

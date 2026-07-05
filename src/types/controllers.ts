@@ -188,6 +188,8 @@ export type HomeUiGuardsController = {
     isAddMediaModalLocked: boolean;
     disableLibraryPathChange: boolean;
     libraryPathChangeDisabledReason: string;
+    disableChannelDeletion: boolean;
+    channelDeletionDisabledReason: string;
     closeAddMediaModalSafely: () => Promise<void>;
 };
 

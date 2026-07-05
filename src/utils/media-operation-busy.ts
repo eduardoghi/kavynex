@@ -6,7 +6,9 @@ export type MediaPreparationState = {
     isLoadingYtDlpFormats: boolean;
 };
 
-export function isMediaOperationLocked(state: MediaPreparationState): boolean {
+// Read-only busy predicate for UI guards. This is not a mutual-exclusion primitive: the
+// actual reentrancy protection lives in each operation's useAsyncFlag.
+export function isMediaOperationBusy(state: MediaPreparationState): boolean {
     return (
         state.isAddingMedia ||
         state.isYtDlpRunning ||
@@ -16,7 +18,7 @@ export function isMediaOperationLocked(state: MediaPreparationState): boolean {
     );
 }
 
-export function resolveMediaOperationLockReason(state: MediaPreparationState): string {
+export function resolveMediaOperationBusyReason(state: MediaPreparationState): string {
     if (state.isAddingMedia || state.isYtDlpRunning || state.isCancellingYtDlp) {
         return "You cannot change the library folder while media is being imported or downloaded.";
     }

@@ -269,6 +269,8 @@ const mockUiGuards = {
     isAddMediaModalLocked: false,
     disableLibraryPathChange: false,
     libraryPathChangeDisabledReason: "",
+    disableChannelDeletion: false,
+    channelDeletionDisabledReason: "",
     closeAddMediaModalSafely: vi.fn(),
 };
 

@@ -6,9 +6,9 @@ import type {
     MediaLibraryController,
 } from "../types/controllers";
 import {
-    isMediaOperationLocked,
-    resolveMediaOperationLockReason,
-} from "../utils/media-operation-lock";
+    isMediaOperationBusy,
+    resolveMediaOperationBusyReason,
+} from "../utils/media-operation-busy";
 
 type UseHomeUiGuardsOptions = {
     settingsState: AppSettingsController;
@@ -44,7 +44,7 @@ function resolveLibraryPathChangeDisabledReason(
     }
 
     const mediaPreparationState = buildMediaPreparationState(mediaLibrary);
-    const mediaOperationReason = resolveMediaOperationLockReason(mediaPreparationState);
+    const mediaOperationReason = resolveMediaOperationBusyReason(mediaPreparationState);
 
     if (mediaOperationReason) {
         return mediaOperationReason;
@@ -63,7 +63,7 @@ export function useHomeUiGuards({
     channelsState,
 }: UseHomeUiGuardsOptions): HomeUiGuardsController {
     const isAddMediaModalLocked = useMemo(() => {
-        return isMediaOperationLocked(buildMediaPreparationState(mediaLibrary));
+        return isMediaOperationBusy(buildMediaPreparationState(mediaLibrary));
         // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives read inside, not the whole per-render mediaLibrary object
     }, [
         mediaLibrary.isAddingMedia,
@@ -72,6 +72,27 @@ export function useHomeUiGuards({
         mediaLibrary.addMediaForm.isGeneratingThumb,
         mediaLibrary.addMediaForm.isLoadingYtDlpFormats,
     ]);
+
+    // Deleting a channel while a download for it is in flight would make the pending
+    // insert fail against a missing channel and waste the whole download.
+    const channelDeletionDisabledReason = useMemo(() => {
+        if (isMediaOperationBusy(buildMediaPreparationState(mediaLibrary))) {
+            return "Wait for the media import or download to finish before deleting a channel.";
+        }
+
+        return "";
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives read inside, not the whole per-render mediaLibrary object
+    }, [
+        mediaLibrary.isAddingMedia,
+        mediaLibrary.isYtDlpRunning,
+        mediaLibrary.isCancellingYtDlp,
+        mediaLibrary.addMediaForm.isGeneratingThumb,
+        mediaLibrary.addMediaForm.isLoadingYtDlpFormats,
+    ]);
+
+    const disableChannelDeletion = useMemo(() => {
+        return !!channelDeletionDisabledReason;
+    }, [channelDeletionDisabledReason]);
 
     const libraryPathChangeDisabledReason = useMemo(() => {
         return resolveLibraryPathChangeDisabledReason(
@@ -97,7 +118,7 @@ export function useHomeUiGuards({
     }, [libraryPathChangeDisabledReason]);
 
     const closeAddMediaModalSafely = useCallback(async (): Promise<void> => {
-        if (isMediaOperationLocked(buildMediaPreparationState(mediaLibrary))) {
+        if (isMediaOperationBusy(buildMediaPreparationState(mediaLibrary))) {
             return;
         }
 
@@ -116,6 +137,8 @@ export function useHomeUiGuards({
         isAddMediaModalLocked,
         disableLibraryPathChange,
         libraryPathChangeDisabledReason,
+        disableChannelDeletion,
+        channelDeletionDisabledReason,
         closeAddMediaModalSafely,
     };
 }

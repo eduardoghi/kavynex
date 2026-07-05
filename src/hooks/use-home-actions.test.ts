@@ -216,6 +216,8 @@ describe("useHomeActions", () => {
             isAddMediaModalLocked: false,
             disableLibraryPathChange: false,
             libraryPathChangeDisabledReason: "",
+            disableChannelDeletion: false,
+            channelDeletionDisabledReason: "",
             closeAddMediaModalSafely: vi.fn(),
             ...overrides,
         };
@@ -295,6 +297,35 @@ describe("useHomeActions", () => {
                 channelToDeleteId: 25,
                 confirmDeleteChannel: channelsState.confirmDeleteChannel,
             })
+        );
+    });
+
+    it("blocks channel deletion while a media operation is running", async () => {
+        vi.mocked(executeDeleteSelectedChannel).mockResolvedValue(undefined);
+
+        const errorState = createErrorState();
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState,
+                settingsState: createSettingsState(),
+                channelsState: createChannelsState(),
+                mediaLibrary: createMediaLibrary(),
+                uiGuards: createUiGuards({
+                    disableChannelDeletion: true,
+                    channelDeletionDisabledReason:
+                        "Wait for the media import or download to finish before deleting a channel.",
+                }),
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(executeDeleteSelectedChannel).not.toHaveBeenCalled();
+        expect(errorState.showError).toHaveBeenCalledWith(
+            "Wait for the media import or download to finish before deleting a channel."
         );
     });
 });

@@ -211,6 +211,8 @@ function createUiGuards(): HomeUiGuardsController {
         isAddMediaModalLocked: false,
         disableLibraryPathChange: false,
         libraryPathChangeDisabledReason: "",
+        disableChannelDeletion: false,
+        channelDeletionDisabledReason: "",
         closeAddMediaModalSafely: vi.fn().mockResolvedValue(undefined),
     };
 }
