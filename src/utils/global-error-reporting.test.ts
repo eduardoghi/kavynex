@@ -44,6 +44,60 @@ describe("reportFatalError", () => {
         });
     });
 
+    it("persists the trimmed stack for Error instances", () => {
+        const error = new Error("boom");
+        error.stack = "  stack-trace  ";
+
+        reportFatalError("window", "Crashed.", error);
+
+        expect(invokeVoid).toHaveBeenCalledWith(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
+            scope: "window",
+            message: "Crashed. stack-trace",
+        });
+    });
+
+    it("falls back to name and message when the stack is blank", () => {
+        const error = new Error("boom");
+        error.stack = "   ";
+
+        reportFatalError("window", "Crashed.", error);
+
+        expect(invokeVoid).toHaveBeenCalledWith(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
+            scope: "window",
+            message: "Crashed. Error: boom",
+        });
+    });
+
+    it("serializes plain objects as JSON in the persisted message", () => {
+        reportFatalError("window", "Crashed.", { code: 500 });
+
+        expect(invokeVoid).toHaveBeenCalledWith(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
+            scope: "window",
+            message: 'Crashed. {"code":500}',
+        });
+    });
+
+    it("stringifies primitives without JSON quoting", () => {
+        reportFatalError("window", "Crashed.", "raw");
+
+        expect(invokeVoid).toHaveBeenCalledWith(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
+            scope: "window",
+            message: "Crashed. raw",
+        });
+    });
+
+    it("falls back to String() when JSON serialization fails", () => {
+        const circular: Record<string, unknown> = {};
+        circular.self = circular;
+
+        reportFatalError("window", "Crashed.", circular);
+
+        expect(invokeVoid).toHaveBeenCalledWith(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
+            scope: "window",
+            message: "Crashed. [object Object]",
+        });
+    });
+
     it("does not throw when persisting fails", () => {
         vi.mocked(invokeVoid).mockRejectedValue(new Error("ipc down"));
 
@@ -77,6 +131,17 @@ describe("installGlobalErrorHandlers", () => {
             "window",
             "Uncaught error reached the window.",
             expect.objectContaining({ message: "uncaught" })
+        );
+
+        const rejectionHandler = rejectionRegistrations[0][1] as unknown as (event: {
+            reason: unknown;
+        }) => void;
+        rejectionHandler({ reason: "denied" });
+
+        expect(logError).toHaveBeenCalledWith(
+            "window",
+            "Unhandled promise rejection reached the window.",
+            "denied"
         );
 
         addEventListenerSpy.mockRestore();

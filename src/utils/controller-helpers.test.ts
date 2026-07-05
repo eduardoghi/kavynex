@@ -45,8 +45,22 @@ describe("controller-helpers", () => {
         expect(findSelectedChannel([createChannel()], 1)?.name).toBe("Canal A");
     });
 
+    it("finds the channel matching the selected id among many", () => {
+        const channels = [
+            createChannel({ id: 1, name: "Canal A" }),
+            createChannel({ id: 2, name: "Canal B" }),
+        ];
+
+        expect(findSelectedChannel(channels, 2)?.name).toBe("Canal B");
+    });
+
     it("returns null when channel is not selected", () => {
         expect(findSelectedChannel([], null)).toBeNull();
+        expect(findSelectedChannel([createChannel()], null)).toBeNull();
+    });
+
+    it("returns null when no channel matches the selected id", () => {
+        expect(findSelectedChannel([createChannel({ id: 1 })], 99)).toBeNull();
     });
 
     it("builds item count label", () => {

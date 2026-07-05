@@ -1,13 +1,137 @@
 import { describe, expect, it } from "vitest";
 import { resolveErrorMessage, toUserFriendlyError } from "./user-friendly-error";
 import {
-    INVALID_LIBRARY_MIGRATION_ERROR_CODE,
+    APP_ERROR_CODE,
+    INVALID_INPUT_ERROR_CODE,
+    INVALID_URL_ERROR_CODE,
+    INVALID_RUN_ID_ERROR_CODE,
+    INVALID_FORMAT_ID_ERROR_CODE,
+    INVALID_DIRECTORY_PATH_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
+    INVALID_LIBRARY_MIGRATION_ERROR_CODE,
+    INVALID_MEDIA_PATH_ERROR_CODE,
+    INVALID_THUMBNAIL_PATH_ERROR_CODE,
+    INVALID_TEMP_THUMBNAIL_PATH_ERROR_CODE,
+    INVALID_SOURCE_MEDIA_ERROR_CODE,
+    SOURCE_MEDIA_NOT_FOUND_ERROR_CODE,
+    INVALID_SOURCE_THUMBNAIL_ERROR_CODE,
+    SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE,
+    INVALID_THUMBNAIL_FILE_ERROR_CODE,
+    THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO_ERROR_CODE,
+    CHANNEL_ALREADY_EXISTS_ERROR_CODE,
+    INVALID_YOUTUBE_HANDLE_ERROR_CODE,
+    INVALID_CHANNEL_NAME_ERROR_CODE,
     INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE,
+    MEDIA_IMPORT_FAILED_ERROR_CODE,
+    VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE,
     YT_DLP_NOT_FOUND_ERROR_CODE,
+    YT_DLP_METADATA_TIMEOUT_ERROR_CODE,
+    YT_DLP_METADATA_FAILED_ERROR_CODE,
+    YT_DLP_DOWNLOAD_TIMEOUT_ERROR_CODE,
+    YT_DLP_DOWNLOAD_FAILED_ERROR_CODE,
+    YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
+    YT_DLP_THUMBNAIL_TIMEOUT_ERROR_CODE,
+    YT_DLP_THUMBNAIL_FAILED_ERROR_CODE,
+    FFMPEG_NOT_FOUND_ERROR_CODE,
+    FFMPEG_FAILED_ERROR_CODE,
+    FFMPEG_EXEC_FAILED_ERROR_CODE,
+    DESTINATION_ALREADY_EXISTS_ERROR_CODE,
+    PATH_OUTSIDE_BASE_DIR_ERROR_CODE,
 } from "../constants/error-codes";
 
+// The friendly copy IS the observable behavior of this module, so every catalogued
+// code is asserted against its exact message. The raw backend message is always
+// different from the friendly one so a broken mapping cannot hide behind the
+// message fallback.
+const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
+    [INVALID_INPUT_ERROR_CODE, "Invalid input."],
+
+    [INVALID_URL_ERROR_CODE, "Enter a valid media URL."],
+    [INVALID_RUN_ID_ERROR_CODE, "The download session is invalid."],
+    [INVALID_FORMAT_ID_ERROR_CODE, "Choose a valid format before continuing."],
+
+    [INVALID_DIRECTORY_PATH_ERROR_CODE, "Choose a valid folder."],
+    [INVALID_LIBRARY_PATH_ERROR_CODE, "Configure a valid library folder before continuing."],
+    [INVALID_LIBRARY_MIGRATION_ERROR_CODE, "The selected library migration path is not valid."],
+    [INVALID_MEDIA_PATH_ERROR_CODE, "The selected media item is invalid."],
+    [INVALID_THUMBNAIL_PATH_ERROR_CODE, "The selected thumbnail is invalid."],
+    [INVALID_TEMP_THUMBNAIL_PATH_ERROR_CODE, "The temporary thumbnail is invalid."],
+
+    [INVALID_SOURCE_MEDIA_ERROR_CODE, "Select a valid media file."],
+    [SOURCE_MEDIA_NOT_FOUND_ERROR_CODE, "The selected media file was not found."],
+    [INVALID_SOURCE_THUMBNAIL_ERROR_CODE, "Select a valid thumbnail image."],
+    [SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE, "The selected thumbnail image was not found."],
+    [INVALID_THUMBNAIL_FILE_ERROR_CODE, "Choose a valid thumbnail image file."],
+    [
+        THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO_ERROR_CODE,
+        "Automatic thumbnail generation is not available for audio files.",
+    ],
+
+    [INVALID_CHANNEL_NAME_ERROR_CODE, "Enter a valid channel name."],
+    [INVALID_YOUTUBE_HANDLE_ERROR_CODE, "Enter a valid YouTube handle."],
+    [CHANNEL_ALREADY_EXISTS_ERROR_CODE, "A channel with this YouTube handle already exists."],
+
+    [INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE, "Invalid media creation arguments."],
+    [MEDIA_IMPORT_FAILED_ERROR_CODE, "The media import failed."],
+    [
+        VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE,
+        "This media is already registered for the selected channel.",
+    ],
+
+    [
+        YT_DLP_NOT_FOUND_ERROR_CODE,
+        "yt-dlp was not found. Install yt-dlp or place the binary in the app tools folder.",
+    ],
+    [YT_DLP_METADATA_TIMEOUT_ERROR_CODE, "Timed out while loading media information from yt-dlp."],
+    [YT_DLP_METADATA_FAILED_ERROR_CODE, "yt-dlp could not load media information for this URL."],
+    [YT_DLP_DOWNLOAD_TIMEOUT_ERROR_CODE, "The media download took too long and was interrupted."],
+    [YT_DLP_DOWNLOAD_FAILED_ERROR_CODE, "The media download failed."],
+    [YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE, "The media download was cancelled."],
+    [YT_DLP_THUMBNAIL_TIMEOUT_ERROR_CODE, "Timed out while downloading the thumbnail."],
+    [YT_DLP_THUMBNAIL_FAILED_ERROR_CODE, "The thumbnail download failed."],
+
+    [
+        FFMPEG_NOT_FOUND_ERROR_CODE,
+        "ffmpeg was not found. Install ffmpeg or place the binary in the app tools folder.",
+    ],
+    [FFMPEG_EXEC_FAILED_ERROR_CODE, "ffmpeg could not be started."],
+    [FFMPEG_FAILED_ERROR_CODE, "ffmpeg could not process the media file."],
+
+    [DESTINATION_ALREADY_EXISTS_ERROR_CODE, "A file with the same destination already exists."],
+    [
+        PATH_OUTSIDE_BASE_DIR_ERROR_CODE,
+        "The selected file path is outside the allowed library folder.",
+    ],
+
+    ["READ_DIR_FAILED", "Could not read the selected folder."],
+    ["CREATE_DIR_FAILED", "Could not create the selected folder."],
+    ["OPEN_DIR_FAILED", "Could not open the selected folder."],
+    ["OPEN_PATH_FAILED", "Could not open the selected path."],
+    ["WRITE_FILE_FAILED", "Could not write the file."],
+    ["DELETE_FILE_FAILED", "Could not delete the file."],
+];
+
 describe("toUserFriendlyError", () => {
+    it("maps every catalogued error code to its exact friendly message", () => {
+        for (const [code, friendlyMessage] of FRIENDLY_MESSAGE_CASES) {
+            expect(
+                toUserFriendlyError({
+                    code,
+                    message: "raw backend failure",
+                })
+            ).toBe(friendlyMessage);
+        }
+    });
+
+    it("maps APP_ERROR to the generic unknown error message", () => {
+        expect(
+            toUserFriendlyError({
+                code: APP_ERROR_CODE,
+                message: "raw backend failure",
+            })
+        ).toBe("Unknown error.");
+    });
+
     it("maps YT_DLP_NOT_FOUND correctly", () => {
         expect(
             toUserFriendlyError({
@@ -72,6 +196,70 @@ describe("toUserFriendlyError", () => {
             })
         ).toBe("Unknown error.");
     });
+
+    it("appends details to a mapped friendly message", () => {
+        expect(
+            toUserFriendlyError({
+                code: "READ_DIR_FAILED",
+                message: "failed to read directory",
+                details: "Permission denied on /media/library",
+            })
+        ).toBe(
+            "Could not read the selected folder.\n\nDetails: Permission denied on /media/library"
+        );
+    });
+
+    it("appends details to the raw message when code is unknown", () => {
+        expect(
+            toUserFriendlyError({
+                code: "SOMETHING_ELSE",
+                message: "Custom backend failure",
+                details: "socket closed unexpectedly",
+            })
+        ).toBe("Custom backend failure\n\nDetails: socket closed unexpectedly");
+    });
+
+    it("does not append details when the resolved message is the unknown default", () => {
+        expect(
+            toUserFriendlyError({
+                code: APP_ERROR_CODE,
+                message: "raw backend failure",
+                details: "socket closed unexpectedly",
+            })
+        ).toBe("Unknown error.");
+    });
+
+    it("does not append details that equal the resolved message ignoring case", () => {
+        expect(
+            toUserFriendlyError({
+                code: "READ_DIR_FAILED",
+                message: "failed to read directory",
+                details: "COULD NOT READ THE SELECTED FOLDER.",
+            })
+        ).toBe("Could not read the selected folder.");
+    });
+
+    it("does not append details that start with the resolved message", () => {
+        expect(
+            toUserFriendlyError({
+                code: "READ_DIR_FAILED",
+                message: "failed to read directory",
+                details: "Could not read the selected folder. The path no longer exists.",
+            })
+        ).toBe("Could not read the selected folder.");
+    });
+
+    it("appends details that merely contain the resolved message later on", () => {
+        expect(
+            toUserFriendlyError({
+                code: "READ_DIR_FAILED",
+                message: "failed to read directory",
+                details: "OS said: could not read the selected folder.",
+            })
+        ).toBe(
+            "Could not read the selected folder.\n\nDetails: OS said: could not read the selected folder."
+        );
+    });
 });
 
 describe("resolveErrorMessage", () => {
@@ -87,8 +275,42 @@ describe("resolveErrorMessage", () => {
         ).toBe("Could not read the selected folder.");
     });
 
+    it("returns the resolved message with details instead of the fallback", () => {
+        expect(
+            resolveErrorMessage(
+                {
+                    code: "READ_DIR_FAILED",
+                    message: "failed to read directory",
+                    details: "Disk is offline",
+                },
+                "Fallback message"
+            )
+        ).toBe("Could not read the selected folder.\n\nDetails: Disk is offline");
+    });
+
     it("returns fallback when only unknown default message exists", () => {
         expect(resolveErrorMessage(123, "Fallback message")).toBe("Fallback message");
+    });
+
+    it("returns fallback when the error resolves to the default even with details", () => {
+        expect(
+            resolveErrorMessage(
+                {
+                    code: APP_ERROR_CODE,
+                    message: "raw backend failure",
+                    details: "socket closed unexpectedly",
+                },
+                "Fallback message"
+            )
+        ).toBe("Fallback message");
+    });
+
+    it("trims the fallback message", () => {
+        expect(resolveErrorMessage(123, "  Fallback message  ")).toBe("Fallback message");
+    });
+
+    it("returns the generic unknown error when the fallback is blank", () => {
+        expect(resolveErrorMessage(123, "   ")).toBe("Unknown error.");
     });
 
     it("returns parsed raw message when code is unknown but message exists", () => {
