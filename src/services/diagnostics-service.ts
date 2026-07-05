@@ -18,6 +18,7 @@ import {
 } from "./diagnostics-rules";
 import { getLibraryIntegrity } from "./diagnostics-library-integrity";
 import { getLibrarySummary } from "./diagnostics-library-summary";
+import { createEmptyLibrarySummary } from "./library-service";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
 import { getRuntimeDiagnosticsInfo } from "./diagnostics-runtime";
 import { getLiveChatStorageSummary } from "./diagnostics-live-chat-storage";
@@ -55,13 +56,7 @@ function defaultExternalToolsStatus(): ExternalToolsStatus {
 }
 
 function defaultLibrarySummary(): LibrarySummaryInfo {
-    return {
-        total_bytes: 0,
-        formatted_size: "0 B",
-        video_files: 0,
-        audio_files: 0,
-        thumbnail_files: 0,
-    };
+    return createEmptyLibrarySummary();
 }
 
 function defaultLiveChatStorageSummary(): LiveChatStorageInfo {

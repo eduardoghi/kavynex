@@ -5,6 +5,7 @@ import {
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_YOUTUBE_HANDLE_ERROR_CODE,
 } from "../constants/error-codes";
+import { isValidEntityId } from "../utils/id-validation";
 import { isValidNormalizedYoutubeHandle, normalizeYoutubeHandle } from "../utils/youtube";
 
 export type CreateChannelInput = {
@@ -59,7 +60,7 @@ export function validateChannelId(
 ): {
     channelId: number;
 } {
-    if (!Number.isInteger(channelId) || channelId <= 0) {
+    if (!isValidEntityId(channelId)) {
         throw createAppError(
             INVALID_CHANNEL_ID_ERROR_CODE,
             "Channel id is invalid."

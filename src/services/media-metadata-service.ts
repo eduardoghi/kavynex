@@ -1,58 +1,5 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import type { MediaType } from "../types/media";
-
-function sanitizeWindowsDevicePath(path: string): string {
-    if (path.startsWith("\\\\?\\")) {
-        return path.slice(4);
-    }
-
-    return path;
-}
-
-function normalizePathSeparators(path: string): string {
-    return path.replace(/\//g, "\\");
-}
-
-function isAbsoluteWindowsPath(path: string): boolean {
-    return /^[a-zA-Z]:\\/.test(path) || path.startsWith("\\\\");
-}
-
-function isAbsoluteUnixPath(path: string): boolean {
-    return path.startsWith("/");
-}
-
-function isAbsolutePath(path: string): boolean {
-    return isAbsoluteWindowsPath(path) || isAbsoluteUnixPath(path);
-}
-
-function joinLibraryAndStoredPath(libraryPath: string, storedPath: string): string {
-    const normalizedLibraryPath = sanitizeWindowsDevicePath(libraryPath.trim()).replace(/[\\/]+$/, "");
-    const normalizedStoredPath = sanitizeWindowsDevicePath(storedPath.trim()).replace(/^[\\/]+/, "");
-
-    if (!normalizedLibraryPath) {
-        return normalizedStoredPath;
-    }
-
-    if (!normalizedStoredPath) {
-        return normalizedLibraryPath;
-    }
-
-    if (normalizedLibraryPath.includes("\\")) {
-        return `${normalizedLibraryPath}\\${normalizePathSeparators(normalizedStoredPath)}`;
-    }
-
-    return `${normalizedLibraryPath}/${normalizedStoredPath.replace(/\\/g, "/")}`;
-}
-
-function resolveAbsoluteMediaPath(libraryPath: string, filePath: string): string {
-    const normalizedFilePath = sanitizeWindowsDevicePath(filePath.trim());
-
-    if (isAbsolutePath(normalizedFilePath)) {
-        return normalizedFilePath;
-    }
-
-    return joinLibraryAndStoredPath(libraryPath, normalizedFilePath);
-}
+import { fileSrcFromStoredPath } from "../utils/media-utils";
 
 function createMediaElement(mediaType: MediaType): HTMLMediaElement {
     if (mediaType === "audio") {
@@ -74,8 +21,7 @@ export async function readMediaDurationInSeconds(
         return null;
     }
 
-    const absolutePath = resolveAbsoluteMediaPath(normalizedLibraryPath, normalizedFilePath);
-    const fileSrc = convertFileSrc(absolutePath);
+    const fileSrc = fileSrcFromStoredPath(normalizedFilePath, normalizedLibraryPath);
 
     return new Promise<number | null>((resolve) => {
         const media = createMediaElement(mediaType);

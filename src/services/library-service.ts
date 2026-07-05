@@ -18,13 +18,15 @@ type MigrateLibraryDirectoryResult = {
     changed: boolean;
 };
 
-const EMPTY_LIBRARY_SUMMARY: LibrarySummaryInfo = {
-    total_bytes: 0,
-    formatted_size: "0 B",
-    video_files: 0,
-    audio_files: 0,
-    thumbnail_files: 0,
-};
+export function createEmptyLibrarySummary(): LibrarySummaryInfo {
+    return {
+        total_bytes: 0,
+        formatted_size: "0 B",
+        video_files: 0,
+        audio_files: 0,
+        thumbnail_files: 0,
+    };
+}
 
 export async function chooseLibraryDirectory(): Promise<string | null> {
     const selection = await open({
@@ -118,7 +120,7 @@ export async function getLibrarySummary(path: string): Promise<LibrarySummaryInf
     const normalizedPath = normalizeString(path);
 
     if (!normalizedPath) {
-        return EMPTY_LIBRARY_SUMMARY;
+        return createEmptyLibrarySummary();
     }
 
     try {

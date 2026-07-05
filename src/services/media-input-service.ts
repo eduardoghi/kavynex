@@ -1,6 +1,7 @@
 import type { ImportMode } from "../types/settings";
 import type { MediaSourceMode, MediaType } from "../types/media";
 import { createAppError } from "../utils/app-error";
+import { assertValidEntityId } from "../utils/id-validation";
 import { COOKIES_BROWSER_VALUES } from "../constants/cookies-browsers";
 
 export type CreateMediaInput = {
@@ -121,13 +122,9 @@ export function normalizeDeleteMediaInput(
 }
 
 export function validateMediaId(mediaId: number): void {
-    if (!mediaId) {
-        throw createAppError("INVALID_MEDIA_PATH", "Media id is invalid.");
-    }
+    assertValidEntityId(mediaId, "INVALID_MEDIA_PATH", "Media id is invalid.");
 }
 
 export function validateChannelId(channelId: number): void {
-    if (!channelId) {
-        throw createAppError("INVALID_CHANNEL_ID", "Channel id is invalid.");
-    }
+    assertValidEntityId(channelId, "INVALID_CHANNEL_ID", "Channel id is invalid.");
 }
