@@ -131,6 +131,7 @@ pub fn run() {
             commands::database::restore_database_from_backup,
             commands::database::export_database,
             commands::database::import_database,
+            commands::logging::log_frontend_error,
             commands::settings::get_app_settings,
             commands::settings::set_app_settings,
             commands::channels::list_channels,

@@ -1,5 +1,6 @@
 export const TAURI_COMMANDS = {
     CHECK_EXTERNAL_TOOLS: "check_external_tools",
+    LOG_FRONTEND_ERROR: "log_frontend_error",
 
     RESOLVE_DEFAULT_LIBRARY_DIRECTORY: "resolve_default_library_directory",
     ENSURE_DIRECTORY_EXISTS: "ensure_directory_exists",

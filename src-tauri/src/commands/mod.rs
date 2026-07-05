@@ -3,6 +3,7 @@ pub mod comments;
 pub mod database;
 pub mod library;
 pub mod live_chat;
+pub mod logging;
 pub mod media;
 pub mod security;
 pub mod settings;
