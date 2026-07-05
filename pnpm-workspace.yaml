@@ -1,8 +1,10 @@
 packages:
   - .
 
-allowBuilds:
-  better-sqlite3: true
+# Supply-chain hardening (https://pnpm.io/settings).
+# Block transitive dependencies resolved from non-registry sources (git/tarball URLs);
+# a legitimate dependency should always come from the registry.
+blockExoticSubdeps: true
 
 overrides:
   qs: 6.15.2
