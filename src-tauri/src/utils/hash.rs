@@ -47,5 +47,38 @@ pub fn file_hash(path: &Path) -> AppResult<String> {
         hasher.update(&buffer[..read]);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    // sha2 0.11 returns a hybrid-array `Array` (no LowerHex), so hex-encode the bytes.
+    let digest = hasher.finalize();
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn file_hash_matches_known_sha256() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "kavynex-hash-test-{}-{}.bin",
+            std::process::id(),
+            nanos
+        ));
+
+        File::create(&path).unwrap().write_all(b"abc").unwrap();
+
+        // Content-addressed media/thumbnail filenames depend on this exact, stable,
+        // lowercase-hex output; it must not change across sha2 upgrades.
+        assert_eq!(
+            file_hash(&path).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
 }

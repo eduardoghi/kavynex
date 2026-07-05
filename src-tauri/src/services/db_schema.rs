@@ -120,11 +120,12 @@ where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     // table is an internal constant, not user input, so interpolation is safe here.
-    let rows: Vec<(String,)> =
-        sqlx::query_as(&format!("SELECT name FROM pragma_table_info('{table}')"))
-            .fetch_all(executor)
-            .await
-            .map_err(|error| db_error("failed to read table columns", error))?;
+    let rows: Vec<(String,)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT name FROM pragma_table_info('{table}')"
+    )))
+    .fetch_all(executor)
+    .await
+    .map_err(|error| db_error("failed to read table columns", error))?;
 
     Ok(rows.iter().any(|(name,)| name == column))
 }
@@ -132,9 +133,9 @@ where
 async fn ensure_videos_additive_columns(conn: &mut SqliteConnection) -> AppResult<()> {
     for (column, definition) in VIDEOS_ADDITIVE_COLUMNS {
         if !table_has_column(&mut *conn, "videos", column).await? {
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "ALTER TABLE videos ADD COLUMN {column} {definition}"
-            ))
+            )))
             .execute(&mut *conn)
             .await
             .map_err(|error| db_error("failed to add videos column", error))?;
@@ -158,10 +159,12 @@ async fn set_user_version(conn: &mut SqliteConnection, version: i64) -> AppResul
     // constant, never user input, so interpolation is safe. Setting user_version
     // participates in the surrounding transaction, so it commits or rolls back
     // atomically with the migration DDL.
-    sqlx::query(&format!("PRAGMA user_version = {version}"))
-        .execute(&mut *conn)
-        .await
-        .map_err(|error| db_error("failed to set schema version", error))?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "PRAGMA user_version = {version}"
+    )))
+    .execute(&mut *conn)
+    .await
+    .map_err(|error| db_error("failed to set schema version", error))?;
 
     Ok(())
 }
@@ -219,14 +222,14 @@ async fn apply_baseline_schema(pool: &SqlitePool) -> AppResult<()> {
         .map_err(|error| db_error("failed to begin schema migration", error))?;
 
     for ddl in LEGACY_TABLE_DROPS {
-        sqlx::query(ddl)
+        sqlx::query(*ddl)
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to drop legacy table", error))?;
     }
 
     for ddl in TABLE_DDLS {
-        sqlx::query(ddl)
+        sqlx::query(*ddl)
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to create table", error))?;
@@ -235,7 +238,7 @@ async fn apply_baseline_schema(pool: &SqlitePool) -> AppResult<()> {
     ensure_videos_additive_columns(&mut tx).await?;
 
     for ddl in INDEX_DDLS {
-        sqlx::query(ddl)
+        sqlx::query(*ddl)
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to create index", error))?;
@@ -396,10 +399,13 @@ mod tests {
     async fn ensure_schema_refuses_database_from_newer_version() {
         let pool = memory_pool().await;
 
-        sqlx::query(&format!("PRAGMA user_version = {}", SCHEMA_VERSION + 1))
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            SCHEMA_VERSION + 1
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
 
         let error = ensure_schema(&pool).await.unwrap_err();
         assert!(

@@ -130,9 +130,9 @@ pub async fn update_media_title(pool: &SqlitePool, media_id: i64, title: &str) -
 }
 
 pub async fn list_media_by_channel(pool: &SqlitePool, channel_id: i64) -> AppResult<Vec<MediaRow>> {
-    sqlx::query_as::<_, MediaRow>(&format!(
+    sqlx::query_as::<_, MediaRow>(sqlx::AssertSqlSafe(format!(
         "SELECT {MEDIA_COLUMNS} FROM videos WHERE channel_id = ? ORDER BY created_at DESC, id DESC"
-    ))
+    )))
     .bind(channel_id)
     .fetch_all(pool)
     .await
@@ -144,9 +144,9 @@ pub async fn find_media_by_channel_and_file_path(
     channel_id: i64,
     file_path: &str,
 ) -> AppResult<Option<MediaRow>> {
-    sqlx::query_as::<_, MediaRow>(&format!(
+    sqlx::query_as::<_, MediaRow>(sqlx::AssertSqlSafe(format!(
         "SELECT {MEDIA_COLUMNS} FROM videos WHERE channel_id = ? AND file_path = ? LIMIT 1"
-    ))
+    )))
     .bind(channel_id)
     .bind(file_path)
     .fetch_optional(pool)

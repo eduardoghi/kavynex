@@ -107,7 +107,9 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         "VACUUM INTO '{}'",
         escape_sql_literal(&temp.to_string_lossy())
     );
-    let vacuum_result = sqlx::query(&vacuum_sql).execute(&pool).await;
+    let vacuum_result = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
+        .execute(&pool)
+        .await;
     pool.close().await;
     vacuum_result.map_err(|error| backup_error("failed to snapshot database", error))?;
 
