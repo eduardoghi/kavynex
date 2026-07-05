@@ -349,4 +349,391 @@ describe("useMediaActions", () => {
             "https://www.youtube.com/watch?v=abc123"
         );
     });
+
+    it("updates only the targeted item when refreshing comments", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(refreshMediaComments).mockResolvedValue({
+            updated: true,
+            totalComments: 5,
+        });
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        const targetMedia = createMediaRow({ id: 1 });
+        const otherItem = createMediaRow({ id: 2, title: "Other" });
+
+        await act(async () => {
+            await result.current.refreshComments(targetMedia);
+        });
+
+        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+            items: MediaRow[]
+        ) => MediaRow[];
+
+        const updated = updater([otherItem, targetMedia]);
+
+        expect(updated[0]).toBe(otherItem);
+        expect(updated[1]).toMatchObject({
+            id: 1,
+            has_comments: 1,
+            comments_count: 5,
+        });
+    });
+
+    it("sets has_comments to zero when total comments is zero", async () => {
+        const mediaPlayer = createMediaPlayer(
+            createMediaRow({
+                youtube_video_id: "abc123",
+                has_comments: 1,
+                comments_count: 5,
+            })
+        );
+
+        vi.mocked(refreshMediaComments).mockResolvedValue({
+            updated: true,
+            totalComments: 0,
+        });
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            await result.current.refreshComments(mediaPlayer.activeMedia!);
+        });
+
+        expect(mediaPlayer.setActiveMedia).toHaveBeenCalledWith({
+            ...mediaPlayer.activeMedia,
+            has_comments: 0,
+            comments_count: 0,
+        });
+
+        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+            items: MediaRow[]
+        ) => MediaRow[];
+
+        const updated = updater([mediaPlayer.activeMedia!]);
+
+        expect(updated[0]).toMatchObject({ has_comments: 0, comments_count: 0 });
+    });
+
+    it("reports refresh comments error", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(refreshMediaComments).mockRejectedValue(new Error("boom"));
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            await result.current.refreshComments(mediaPlayer.activeMedia!);
+        });
+
+        expect(onError).toHaveBeenCalledWith(
+            "Failed to refresh comments. Existing saved comments were preserved."
+        );
+    });
+
+    it("updates only the targeted item when editing title", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(updateMediaTitle).mockResolvedValue(undefined);
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        const targetMedia = createMediaRow({ id: 1 });
+        const otherItem = createMediaRow({ id: 2, title: "Other" });
+
+        await act(async () => {
+            await result.current.editTitle(targetMedia, "New title");
+        });
+
+        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+            items: MediaRow[]
+        ) => MediaRow[];
+
+        const updated = updater([otherItem, targetMedia]);
+
+        expect(updated[0]).toBe(otherItem);
+        expect(updated[1]).toMatchObject({ id: 1, title: "New title" });
+    });
+
+    it("reports error when media has no youtube source", async () => {
+        const mediaPlayer = createMediaPlayer(
+            createMediaRow({ youtube_video_id: null })
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            await result.current.openMediaSourceInYoutube(mediaPlayer.activeMedia!);
+        });
+
+        expect(onError).toHaveBeenCalledWith(
+            "This media does not have a YouTube source."
+        );
+        expect(openExternalUrl).not.toHaveBeenCalled();
+    });
+
+    it("trims youtube video id before opening", async () => {
+        const mediaPlayer = createMediaPlayer(
+            createMediaRow({ youtube_video_id: "  abc123  " })
+        );
+
+        vi.mocked(openExternalUrl).mockResolvedValue(undefined);
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            await result.current.openMediaSourceInYoutube(mediaPlayer.activeMedia!);
+        });
+
+        expect(openExternalUrl).toHaveBeenCalledWith(
+            "https://www.youtube.com/watch?v=abc123"
+        );
+    });
+
+    it("closes player when the deleted media is active", async () => {
+        const mediaPlayer = createMediaPlayer(createMediaRow({ id: 1 }));
+
+        vi.mocked(executeDeleteMedia).mockImplementation(
+            async ({ media, reloadMedia, closePlayerIfActive }) => {
+                closePlayerIfActive(media.id);
+                await reloadMedia();
+            }
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteMedia(mediaPlayer.activeMedia!);
+        });
+
+        await act(async () => {
+            await result.current.confirmDeleteMedia();
+        });
+
+        expect(mediaPlayer.closePlayer).toHaveBeenCalled();
+    });
+
+    it("does not close player when the deleted media is not active", async () => {
+        const mediaPlayer = createMediaPlayer(createMediaRow({ id: 2 }));
+        const mediaToDelete = createMediaRow({ id: 1 });
+
+        vi.mocked(executeDeleteMedia).mockImplementation(
+            async ({ media, reloadMedia, closePlayerIfActive }) => {
+                closePlayerIfActive(media.id);
+                await reloadMedia();
+            }
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteMedia(mediaToDelete);
+        });
+
+        await act(async () => {
+            await result.current.confirmDeleteMedia();
+        });
+
+        expect(mediaPlayer.closePlayer).not.toHaveBeenCalled();
+    });
+
+    it("removes only the deleted item from memory", async () => {
+        const mediaPlayer = createMediaPlayer();
+        const mediaToDelete = createMediaRow({ id: 1 });
+        const otherItem = createMediaRow({ id: 2, title: "Other" });
+
+        vi.mocked(executeDeleteMedia).mockImplementation(
+            async ({ media, reloadMedia, closePlayerIfActive }) => {
+                closePlayerIfActive(media.id);
+                await reloadMedia();
+            }
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteMedia(mediaToDelete);
+        });
+
+        await act(async () => {
+            await result.current.confirmDeleteMedia();
+        });
+
+        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+            items: MediaRow[]
+        ) => MediaRow[];
+
+        const updated = updater([mediaToDelete, otherItem]);
+
+        expect(updated).toEqual([otherItem]);
+    });
+
+    it("closes delete modal explicitly", () => {
+        const mediaPlayer = createMediaPlayer();
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteMedia(mediaPlayer.activeMedia!);
+        });
+
+        act(() => {
+            result.current.closeDeleteMediaModal();
+        });
+
+        expect(result.current.confirmDeleteMediaOpen).toBe(false);
+        expect(result.current.mediaToDelete).toBe(null);
+    });
+
+    it("keeps delete modal open while a deletion is in progress", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        let releaseDelete: (() => void) | null = null;
+        vi.mocked(executeDeleteMedia).mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    releaseDelete = () => resolve(undefined);
+                })
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteMedia(mediaPlayer.activeMedia!);
+        });
+
+        act(() => {
+            void result.current.confirmDeleteMedia();
+        });
+
+        act(() => {
+            result.current.closeDeleteMediaModal();
+        });
+
+        expect(result.current.confirmDeleteMediaOpen).toBe(true);
+        expect(result.current.mediaToDelete?.id).toBe(1);
+
+        await act(async () => {
+            releaseDelete?.();
+        });
+    });
+
+    it("ignores new delete requests while a deletion is in progress", async () => {
+        const mediaPlayer = createMediaPlayer();
+        const firstMedia = createMediaRow({ id: 1 });
+        const secondMedia = createMediaRow({ id: 2 });
+
+        let releaseDelete: (() => void) | null = null;
+        vi.mocked(executeDeleteMedia).mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    releaseDelete = () => resolve(undefined);
+                })
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteMedia(firstMedia);
+        });
+
+        act(() => {
+            void result.current.confirmDeleteMedia();
+        });
+
+        act(() => {
+            result.current.requestDeleteMedia(secondMedia);
+        });
+
+        expect(result.current.mediaToDelete?.id).toBe(1);
+
+        await act(async () => {
+            releaseDelete?.();
+        });
+    });
 });

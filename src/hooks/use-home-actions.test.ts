@@ -15,6 +15,7 @@ vi.mock("../utils/error-message", () => ({
 }));
 
 import { executeDeleteSelectedChannel } from "../use-cases/delete-selected-channel";
+import { logError } from "../utils/app-logger";
 
 describe("useHomeActions", () => {
     function createErrorState(overrides?: Partial<any>): any {
@@ -270,6 +271,210 @@ describe("useHomeActions", () => {
         expect(errorState.showError).toHaveBeenCalledWith("Blocked right now");
     });
 
+    it("shows the default reason when library path change is disabled without a specific reason", async () => {
+        const errorState = createErrorState();
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState,
+                settingsState: createSettingsState(),
+                channelsState: createChannelsState(),
+                mediaLibrary: createMediaLibrary(),
+                uiGuards: createUiGuards({
+                    disableLibraryPathChange: true,
+                    libraryPathChangeDisabledReason: "",
+                }),
+            })
+        );
+
+        await act(async () => {
+            await result.current.chooseLibraryPath();
+        });
+
+        expect(errorState.showError).toHaveBeenCalledWith(
+            "You cannot change the library folder right now."
+        );
+    });
+
+    it("logs and shows a message when choosing the library path fails", async () => {
+        const error = new Error("choose failed");
+        const settingsState = createSettingsState({
+            chooseLibraryPath: vi.fn().mockRejectedValue(error),
+        });
+        const errorState = createErrorState();
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState,
+                settingsState,
+                channelsState: createChannelsState(),
+                mediaLibrary: createMediaLibrary(),
+                uiGuards: createUiGuards(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.chooseLibraryPath();
+        });
+
+        expect(logError).toHaveBeenCalledWith(
+            "home-actions",
+            "Failed to choose library path.",
+            error
+        );
+        expect(errorState.showError).toHaveBeenCalledWith(
+            "Failed to choose library folder."
+        );
+    });
+
+    it("recomputes chooseLibraryPath when guard state changes", async () => {
+        const settingsState1 = createSettingsState();
+
+        const { result, rerender } = renderHook(
+            (props: Parameters<typeof useHomeActions>[0]) => useHomeActions(props),
+            {
+                initialProps: {
+                    errorState: createErrorState(),
+                    settingsState: settingsState1,
+                    channelsState: createChannelsState(),
+                    mediaLibrary: createMediaLibrary(),
+                    uiGuards: createUiGuards(),
+                },
+            }
+        );
+
+        await act(async () => {
+            await result.current.chooseLibraryPath();
+        });
+
+        expect(settingsState1.chooseLibraryPath).toHaveBeenCalledTimes(1);
+
+        const errorState2 = createErrorState();
+        const uiGuards2 = createUiGuards({
+            disableLibraryPathChange: true,
+            libraryPathChangeDisabledReason: "Blocked now",
+        });
+
+        rerender({
+            errorState: errorState2,
+            settingsState: createSettingsState(),
+            channelsState: createChannelsState(),
+            mediaLibrary: createMediaLibrary(),
+            uiGuards: uiGuards2,
+        });
+
+        await act(async () => {
+            await result.current.chooseLibraryPath();
+        });
+
+        expect(settingsState1.chooseLibraryPath).toHaveBeenCalledTimes(1);
+        expect(errorState2.showError).toHaveBeenCalledWith("Blocked now");
+    });
+
+    it("resets the add-media UI before deleting a channel when the form is open", async () => {
+        vi.mocked(executeDeleteSelectedChannel).mockImplementationOnce(
+            async (options: { closeSelectedChannelUiBeforeDelete: () => Promise<void> }) => {
+                await options.closeSelectedChannelUiBeforeDelete();
+            }
+        );
+
+        const channelsState = createChannelsState();
+        const mediaLibrary = createMediaLibrary({ addMediaOpen: true });
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState: createErrorState(),
+                settingsState: createSettingsState(),
+                channelsState,
+                mediaLibrary,
+                uiGuards: createUiGuards(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(channelsState.setSelectedChannelId).toHaveBeenCalledWith(null);
+        expect(mediaLibrary.clearMediaAndPlayer).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.addMediaForm.resetForm).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.setAddMediaOpen).toHaveBeenCalledWith(false);
+    });
+
+    it("skips resetting the add-media form before deleting a channel when it is not open", async () => {
+        vi.mocked(executeDeleteSelectedChannel).mockImplementationOnce(
+            async (options: { closeSelectedChannelUiBeforeDelete: () => Promise<void> }) => {
+                await options.closeSelectedChannelUiBeforeDelete();
+            }
+        );
+
+        const channelsState = createChannelsState();
+        const mediaLibrary = createMediaLibrary({ addMediaOpen: false });
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState: createErrorState(),
+                settingsState: createSettingsState(),
+                channelsState,
+                mediaLibrary,
+                uiGuards: createUiGuards(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(channelsState.setSelectedChannelId).toHaveBeenCalledWith(null);
+        expect(mediaLibrary.clearMediaAndPlayer).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.addMediaForm.resetForm).not.toHaveBeenCalled();
+        expect(mediaLibrary.setAddMediaOpen).not.toHaveBeenCalled();
+    });
+
+    it("captures fresh channel and media state after a rerender before deleting", async () => {
+        vi.mocked(executeDeleteSelectedChannel).mockImplementation(
+            async (options: { closeSelectedChannelUiBeforeDelete: () => Promise<void> }) => {
+                await options.closeSelectedChannelUiBeforeDelete();
+            }
+        );
+
+        const channelsState1 = createChannelsState();
+        const mediaLibrary1 = createMediaLibrary({ addMediaOpen: false });
+
+        const { result, rerender } = renderHook(
+            (props: Parameters<typeof useHomeActions>[0]) => useHomeActions(props),
+            {
+                initialProps: {
+                    errorState: createErrorState(),
+                    settingsState: createSettingsState(),
+                    channelsState: channelsState1,
+                    mediaLibrary: mediaLibrary1,
+                    uiGuards: createUiGuards(),
+                },
+            }
+        );
+
+        const channelsState2 = createChannelsState();
+        const mediaLibrary2 = createMediaLibrary({ addMediaOpen: false });
+
+        rerender({
+            errorState: createErrorState(),
+            settingsState: createSettingsState(),
+            channelsState: channelsState2,
+            mediaLibrary: mediaLibrary2,
+            uiGuards: createUiGuards(),
+        });
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(channelsState2.setSelectedChannelId).toHaveBeenCalledWith(null);
+        expect(channelsState1.setSelectedChannelId).not.toHaveBeenCalled();
+        expect(mediaLibrary2.clearMediaAndPlayer).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary1.clearMediaAndPlayer).not.toHaveBeenCalled();
+    });
+
     it("delegates confirmDeleteChannel through use case", async () => {
         vi.mocked(executeDeleteSelectedChannel).mockResolvedValue(undefined);
 
@@ -327,5 +532,141 @@ describe("useHomeActions", () => {
         expect(errorState.showError).toHaveBeenCalledWith(
             "Wait for the media import or download to finish before deleting a channel."
         );
+    });
+
+    it("shows the default reason when channel deletion is disabled without a specific reason", async () => {
+        const errorState = createErrorState();
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState,
+                settingsState: createSettingsState(),
+                channelsState: createChannelsState(),
+                mediaLibrary: createMediaLibrary(),
+                uiGuards: createUiGuards({
+                    disableChannelDeletion: true,
+                    channelDeletionDisabledReason: "",
+                }),
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(errorState.showError).toHaveBeenCalledWith(
+            "You cannot delete a channel right now."
+        );
+    });
+
+    it("logs and shows a message when confirming channel deletion fails", async () => {
+        const error = new Error("delete failed");
+        vi.mocked(executeDeleteSelectedChannel).mockRejectedValueOnce(error);
+
+        const errorState = createErrorState();
+        const channelsState = createChannelsState();
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState,
+                settingsState: createSettingsState(),
+                channelsState,
+                mediaLibrary: createMediaLibrary(),
+                uiGuards: createUiGuards(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(logError).toHaveBeenCalledWith(
+            "home-actions",
+            "Failed to confirm channel deletion.",
+            error,
+            {
+                selectedChannelId: 10,
+                channelToDeleteId: 25,
+            }
+        );
+        expect(errorState.showError).toHaveBeenCalledWith("Failed to delete channel.");
+    });
+
+    it("logs a null channelToDeleteId when there is no channel pending deletion", async () => {
+        const error = new Error("delete failed");
+        vi.mocked(executeDeleteSelectedChannel).mockRejectedValueOnce(error);
+
+        const errorState = createErrorState();
+        const channelsState = createChannelsState({ channelToDelete: null });
+
+        const { result } = renderHook(() =>
+            useHomeActions({
+                errorState,
+                settingsState: createSettingsState(),
+                channelsState,
+                mediaLibrary: createMediaLibrary(),
+                uiGuards: createUiGuards(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(logError).toHaveBeenCalledWith(
+            "home-actions",
+            "Failed to confirm channel deletion.",
+            error,
+            {
+                selectedChannelId: 10,
+                channelToDeleteId: null,
+            }
+        );
+    });
+
+    it("recomputes confirmDeleteChannel when guard state changes", async () => {
+        vi.mocked(executeDeleteSelectedChannel).mockResolvedValue(undefined);
+
+        const uiGuards1 = createUiGuards({ disableChannelDeletion: false });
+
+        const { result, rerender } = renderHook(
+            (props: Parameters<typeof useHomeActions>[0]) => useHomeActions(props),
+            {
+                initialProps: {
+                    errorState: createErrorState(),
+                    settingsState: createSettingsState(),
+                    channelsState: createChannelsState(),
+                    mediaLibrary: createMediaLibrary(),
+                    uiGuards: uiGuards1,
+                },
+            }
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(executeDeleteSelectedChannel).toHaveBeenCalledTimes(1);
+
+        const errorState2 = createErrorState();
+        const uiGuards2 = createUiGuards({
+            disableChannelDeletion: true,
+            channelDeletionDisabledReason: "Blocked now",
+        });
+
+        rerender({
+            errorState: errorState2,
+            settingsState: createSettingsState(),
+            channelsState: createChannelsState(),
+            mediaLibrary: createMediaLibrary(),
+            uiGuards: uiGuards2,
+        });
+
+        await act(async () => {
+            await result.current.confirmDeleteChannel();
+        });
+
+        expect(executeDeleteSelectedChannel).toHaveBeenCalledTimes(1);
+        expect(errorState2.showError).toHaveBeenCalledWith("Blocked now");
     });
 });

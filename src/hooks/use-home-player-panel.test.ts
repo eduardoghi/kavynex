@@ -72,4 +72,77 @@ describe("useHomePlayerPanel", () => {
         expect(result.current.canOpenInYoutube).toBe(true);
         expect(result.current.isWatched).toBe(true);
     });
+
+    it("recomputes the panel state when the media player state changes across a re-render", () => {
+        const { result, rerender } = renderHook(
+            (props: {
+                mediaPlayer: {
+                    activeMedia: MediaRow | null;
+                    activeIsAudio: boolean;
+                    activeSrc: string;
+                    activeThumbSrc: string;
+                    canOpenInYoutube: boolean;
+                    activeIsWatched: boolean;
+                };
+            }) => useHomePlayerPanel({ mediaPlayer: props.mediaPlayer }),
+            {
+                initialProps: {
+                    mediaPlayer: {
+                        activeMedia: null as MediaRow | null,
+                        activeIsAudio: false,
+                        activeSrc: "",
+                        activeThumbSrc: "",
+                        canOpenInYoutube: false,
+                        activeIsWatched: false,
+                    },
+                },
+            }
+        );
+
+        expect(result.current.mediaSrc).toBe("");
+        expect(result.current.isWatched).toBe(false);
+
+        const nextActiveMedia = createMediaRow({ id: 2, title: "Video B" });
+
+        rerender({
+            mediaPlayer: {
+                activeMedia: nextActiveMedia,
+                activeIsAudio: true,
+                activeSrc: "/library/video/b.mp4",
+                activeThumbSrc: "/library/thumbnails/b.jpg",
+                canOpenInYoutube: true,
+                activeIsWatched: true,
+            },
+        });
+
+        expect(result.current.media).toEqual(nextActiveMedia);
+        expect(result.current.mediaSrc).toBe("/library/video/b.mp4");
+        expect(result.current.thumbnailSrc).toBe("/library/thumbnails/b.jpg");
+        expect(result.current.isAudio).toBe(true);
+        expect(result.current.canOpenInYoutube).toBe(true);
+        expect(result.current.isWatched).toBe(true);
+    });
+
+    it("does not recompute the panel state when the re-render carries the same values", () => {
+        const mediaPlayer = {
+            activeMedia: null,
+            activeIsAudio: false,
+            activeSrc: "",
+            activeThumbSrc: "",
+            canOpenInYoutube: false,
+            activeIsWatched: false,
+        };
+
+        const { result, rerender } = renderHook(
+            (props: { mediaPlayer: typeof mediaPlayer }) =>
+                useHomePlayerPanel({ mediaPlayer: props.mediaPlayer }),
+            { initialProps: { mediaPlayer } }
+        );
+
+        const firstState = result.current;
+
+        rerender({ mediaPlayer });
+
+        expect(result.current).toBe(firstState);
+    });
 });

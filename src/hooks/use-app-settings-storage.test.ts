@@ -81,6 +81,15 @@ describe("use-app-settings-storage", () => {
         expect(setStoredAppSettings).toHaveBeenCalledWith("copy", "/library");
     });
 
+    it("trims the library path before persisting settings", async () => {
+        await persistSettings({
+            importMode: "copy",
+            libraryPath: "  /library  ",
+        });
+
+        expect(setStoredAppSettings).toHaveBeenCalledWith("copy", "/library");
+    });
+
     it("updates only import mode preserving current library path", async () => {
         vi.mocked(getStoredAppSettings).mockResolvedValue({
             importMode: "copy",

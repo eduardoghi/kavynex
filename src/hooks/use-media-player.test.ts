@@ -261,6 +261,63 @@ describe("useMediaPlayer", () => {
             await result.current.openInYoutube();
         });
 
-        expect(logError).toHaveBeenCalled();
+        expect(logError).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.any(String),
+            expect.any(Error),
+            { mediaId: media.id, url: "https://www.youtube.com/watch?v=yt-999" }
+        );
+    });
+
+    it("trims the youtube video id before building the watch url", () => {
+        const media = createMediaRow({
+            id: 70,
+            title: "Video F",
+            file_path: "video/f.mp4",
+            thumbnail_path: null,
+            media_type: "video",
+            youtube_video_id: "  abc123  ",
+            duration_seconds: 60,
+        });
+
+        const { result } = renderHook(() =>
+            useMediaPlayer({
+                libraryPath: "/library",
+            })
+        );
+
+        act(() => {
+            result.current.openPlayer(media);
+        });
+
+        expect(result.current.activeYoutubeUrl).toBe(
+            "https://www.youtube.com/watch?v=abc123"
+        );
+        expect(result.current.canOpenInYoutube).toBe(true);
+    });
+
+    it("treats a whitespace-only watched_at as not watched", () => {
+        const media = createMediaRow({
+            id: 80,
+            title: "Video G",
+            file_path: "video/g.mp4",
+            thumbnail_path: null,
+            media_type: "video",
+            youtube_video_id: null,
+            watched_at: "   ",
+            duration_seconds: 60,
+        });
+
+        const { result } = renderHook(() =>
+            useMediaPlayer({
+                libraryPath: "/library",
+            })
+        );
+
+        act(() => {
+            result.current.openPlayer(media);
+        });
+
+        expect(result.current.activeIsWatched).toBe(false);
     });
 });

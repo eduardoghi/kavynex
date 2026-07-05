@@ -252,4 +252,255 @@ describe("useChannelMediaList", () => {
         expect(result.current.mediaItems[0]?.channel_id).toBe(20);
         expect(result.current.isLoadingMedia).toBe(false);
     });
+
+    it("starts without loading media", () => {
+        const { result } = renderHook(() =>
+            useChannelMediaList({
+                selectedChannelId: 10,
+                onError,
+            })
+        );
+
+        expect(result.current.isLoadingMedia).toBe(false);
+        expect(result.current.mediaItems).toEqual([]);
+    });
+
+    it("keeps the latest load result when an old load resolves after clearMedia and a reload", async () => {
+        let resolveFirst: ((value: MediaRow[]) => void) | null = null;
+        let resolveSecond: ((value: MediaRow[]) => void) | null = null;
+
+        vi.mocked(listChannelMedia)
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveFirst = resolve;
+                    })
+            )
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveSecond = resolve;
+                    })
+            );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({
+                selectedChannelId: 10,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            void result.current.loadMedia(10);
+        });
+
+        act(() => {
+            result.current.clearMedia();
+        });
+
+        await act(async () => {
+            void result.current.loadMedia(10);
+        });
+
+        await act(async () => {
+            resolveSecond?.([
+                createMediaRow({
+                    id: 2,
+                    channel_id: 10,
+                    title: "Fresh",
+                    file_path: "media/item-2.mp4",
+                }),
+            ]);
+        });
+
+        await waitFor(() => {
+            expect(result.current.mediaItems).toHaveLength(1);
+            expect(result.current.mediaItems[0]?.title).toBe("Fresh");
+        });
+
+        await act(async () => {
+            resolveFirst?.([
+                createMediaRow({
+                    id: 1,
+                    channel_id: 10,
+                    title: "Stale-old",
+                    file_path: "media/item-1.mp4",
+                }),
+            ]);
+        });
+
+        expect(result.current.mediaItems).toHaveLength(1);
+        expect(result.current.mediaItems[0]?.title).toBe("Fresh");
+    });
+
+    it("uses the explicit channelId argument even when it differs from selectedChannelId", async () => {
+        vi.mocked(listChannelMedia).mockResolvedValueOnce([]);
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({
+                selectedChannelId: 10,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            await result.current.loadMedia(999);
+        });
+
+        expect(listChannelMedia).toHaveBeenCalledWith(999);
+    });
+
+    it("clears media immediately when switching to a different channel", async () => {
+        vi.mocked(listChannelMedia).mockResolvedValueOnce([
+            createMediaRow({
+                id: 1,
+                channel_id: 10,
+                title: "Item 1",
+                file_path: "media/item-1.mp4",
+            }),
+        ]);
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({
+                selectedChannelId: 10,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            await result.current.loadMedia(10);
+        });
+
+        expect(result.current.mediaItems).toHaveLength(1);
+
+        let resolveNext: ((value: MediaRow[]) => void) | null = null;
+
+        vi.mocked(listChannelMedia).mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveNext = resolve;
+                })
+        );
+
+        act(() => {
+            void result.current.loadMedia(20);
+        });
+
+        expect(result.current.mediaItems).toEqual([]);
+
+        await act(async () => {
+            resolveNext?.([]);
+        });
+    });
+
+    it("keeps existing media visible while reloading the same channel", async () => {
+        vi.mocked(listChannelMedia).mockResolvedValueOnce([
+            createMediaRow({
+                id: 1,
+                channel_id: 10,
+                title: "Item 1",
+                file_path: "media/item-1.mp4",
+            }),
+        ]);
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({
+                selectedChannelId: 10,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            await result.current.loadMedia(10);
+        });
+
+        expect(result.current.mediaItems).toHaveLength(1);
+
+        let resolveNext: ((value: MediaRow[]) => void) | null = null;
+
+        vi.mocked(listChannelMedia).mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveNext = resolve;
+                })
+        );
+
+        act(() => {
+            void result.current.loadMedia(10);
+        });
+
+        expect(result.current.mediaItems).toHaveLength(1);
+        expect(result.current.mediaItems[0]?.title).toBe("Item 1");
+
+        await act(async () => {
+            resolveNext?.([]);
+        });
+    });
+
+    it("ignores a stale error after a newer load has already succeeded", async () => {
+        let rejectFirst: ((error: Error) => void) | null = null;
+
+        vi.mocked(listChannelMedia)
+            .mockImplementationOnce(
+                () =>
+                    new Promise((_resolve, reject) => {
+                        rejectFirst = reject;
+                    })
+            )
+            .mockResolvedValueOnce([
+                createMediaRow({
+                    id: 2,
+                    channel_id: 20,
+                    title: "Channel 20 item",
+                    file_path: "media/item-20.mp4",
+                }),
+            ]);
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({
+                selectedChannelId: 10,
+                onError,
+            })
+        );
+
+        await act(async () => {
+            void result.current.loadMedia(10);
+        });
+
+        await act(async () => {
+            await result.current.loadMedia(20);
+        });
+
+        expect(result.current.mediaItems).toHaveLength(1);
+        expect(result.current.mediaItems[0]?.channel_id).toBe(20);
+
+        await act(async () => {
+            rejectFirst?.(new Error("boom"));
+        });
+
+        expect(onError).not.toHaveBeenCalled();
+        expect(result.current.mediaItems).toHaveLength(1);
+        expect(result.current.mediaItems[0]?.channel_id).toBe(20);
+    });
+
+    it("uses the updated selectedChannelId dependency after a rerender", async () => {
+        vi.mocked(listChannelMedia).mockResolvedValue([]);
+
+        const { result, rerender } = renderHook(
+            (props: { selectedChannelId: number | null }) =>
+                useChannelMediaList({
+                    selectedChannelId: props.selectedChannelId,
+                    onError,
+                }),
+            { initialProps: { selectedChannelId: 10 } }
+        );
+
+        rerender({ selectedChannelId: 20 });
+
+        await act(async () => {
+            await result.current.loadMedia();
+        });
+
+        expect(listChannelMedia).toHaveBeenCalledWith(20);
+    });
 });

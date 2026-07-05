@@ -275,4 +275,414 @@ describe("useHomeMediaActions", () => {
         expect(mediaLibrary.markAsUnwatched).toHaveBeenCalledWith(20);
         expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
     });
+
+    it("edits the media title and reloads diagnostics when diagnostics is open", async () => {
+        const diagnosticsState = createDiagnosticsState({
+            diagnosticsOpen: true,
+        });
+        const mediaLibrary = createMediaLibrary();
+        const media = { id: 5 } as any;
+
+        const { result } = renderHook(() =>
+            useHomeMediaActions({
+                diagnosticsState,
+                mediaLibrary,
+                channelsState: {
+                    selectedChannelId: 10,
+                },
+                confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
+            })
+        );
+
+        await act(async () => {
+            await result.current.editMediaTitle(media, "New title");
+        });
+
+        expect(mediaLibrary.editTitle).toHaveBeenCalledWith(media, "New title");
+        expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
+    });
+
+    it("edits the media title without reloading diagnostics when diagnostics is closed", async () => {
+        const diagnosticsState = createDiagnosticsState({
+            diagnosticsOpen: false,
+        });
+        const mediaLibrary = createMediaLibrary();
+        const media = { id: 6 } as any;
+
+        const { result } = renderHook(() =>
+            useHomeMediaActions({
+                diagnosticsState,
+                mediaLibrary,
+                channelsState: {
+                    selectedChannelId: 10,
+                },
+                confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
+            })
+        );
+
+        await act(async () => {
+            await result.current.editMediaTitle(media, "New title");
+        });
+
+        expect(mediaLibrary.editTitle).toHaveBeenCalledWith(media, "New title");
+        expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
+    });
+
+    it("saves media progress and reloads diagnostics when diagnostics is open", async () => {
+        const diagnosticsState = createDiagnosticsState({
+            diagnosticsOpen: true,
+        });
+        const mediaLibrary = createMediaLibrary();
+
+        const { result } = renderHook(() =>
+            useHomeMediaActions({
+                diagnosticsState,
+                mediaLibrary,
+                channelsState: {
+                    selectedChannelId: 10,
+                },
+                confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
+            })
+        );
+
+        await act(async () => {
+            await result.current.saveMediaProgress(23, 12.5);
+        });
+
+        expect(mediaLibrary.saveMediaProgress).toHaveBeenCalledWith(23, 12.5);
+        expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
+    });
+
+    it("saves media progress without reloading diagnostics when diagnostics is closed", async () => {
+        const diagnosticsState = createDiagnosticsState({
+            diagnosticsOpen: false,
+        });
+        const mediaLibrary = createMediaLibrary();
+
+        const { result } = renderHook(() =>
+            useHomeMediaActions({
+                diagnosticsState,
+                mediaLibrary,
+                channelsState: {
+                    selectedChannelId: 10,
+                },
+                confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
+            })
+        );
+
+        await act(async () => {
+            await result.current.saveMediaProgress(23, 12.5);
+        });
+
+        expect(mediaLibrary.saveMediaProgress).toHaveBeenCalledWith(23, 12.5);
+        expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
+    });
+
+    describe("dependency freshness across rerenders", () => {
+        it("calls mediaLibrary.addMedia from the latest render", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: false,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newAddMedia = vi.fn().mockResolvedValue(undefined);
+            const nextMediaLibrary = { ...mediaLibrary, addMedia: newAddMedia };
+
+            rerender({
+                diagnosticsState,
+                mediaLibrary: nextMediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow,
+            });
+
+            await act(async () => {
+                await result.current.addMedia();
+            });
+
+            expect(newAddMedia).toHaveBeenCalledTimes(1);
+            expect(mediaLibrary.addMedia).not.toHaveBeenCalled();
+        });
+
+        it("calls mediaLibrary.confirmDeleteMedia from the latest render", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: false,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newConfirmDeleteMedia = vi.fn().mockResolvedValue(undefined);
+            const nextMediaLibrary = {
+                ...mediaLibrary,
+                confirmDeleteMedia: newConfirmDeleteMedia,
+            };
+
+            rerender({
+                diagnosticsState,
+                mediaLibrary: nextMediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow,
+            });
+
+            await act(async () => {
+                await result.current.confirmDeleteMedia();
+            });
+
+            expect(newConfirmDeleteMedia).toHaveBeenCalledTimes(1);
+            expect(mediaLibrary.confirmDeleteMedia).not.toHaveBeenCalled();
+        });
+
+        it("calls confirmDeleteChannelFlow from the latest render", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: false,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newConfirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            rerender({
+                diagnosticsState,
+                mediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow: newConfirmDeleteChannelFlow,
+            });
+
+            await act(async () => {
+                await result.current.confirmDeleteChannel();
+            });
+
+            expect(newConfirmDeleteChannelFlow).toHaveBeenCalledTimes(1);
+            expect(confirmDeleteChannelFlow).not.toHaveBeenCalled();
+        });
+
+        it("calls mediaLibrary.markAsWatched from the latest render", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: false,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newMarkAsWatched = vi.fn().mockResolvedValue(undefined);
+            const nextMediaLibrary = { ...mediaLibrary, markAsWatched: newMarkAsWatched };
+
+            rerender({
+                diagnosticsState,
+                mediaLibrary: nextMediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow,
+            });
+
+            await act(async () => {
+                await result.current.markAsWatched(15);
+            });
+
+            expect(newMarkAsWatched).toHaveBeenCalledWith(15);
+            expect(mediaLibrary.markAsWatched).not.toHaveBeenCalled();
+        });
+
+        it("calls mediaLibrary.markAsUnwatched from the latest render", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: false,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newMarkAsUnwatched = vi.fn().mockResolvedValue(undefined);
+            const nextMediaLibrary = { ...mediaLibrary, markAsUnwatched: newMarkAsUnwatched };
+
+            rerender({
+                diagnosticsState,
+                mediaLibrary: nextMediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow,
+            });
+
+            await act(async () => {
+                await result.current.markAsUnwatched(20);
+            });
+
+            expect(newMarkAsUnwatched).toHaveBeenCalledWith(20);
+            expect(mediaLibrary.markAsUnwatched).not.toHaveBeenCalled();
+        });
+
+        it("calls mediaLibrary.editTitle from the latest render", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: false,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newEditTitle = vi.fn().mockResolvedValue(undefined);
+            const nextMediaLibrary = { ...mediaLibrary, editTitle: newEditTitle };
+
+            rerender({
+                diagnosticsState,
+                mediaLibrary: nextMediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow,
+            });
+
+            const media = { id: 9 } as any;
+
+            await act(async () => {
+                await result.current.editMediaTitle(media, "Fresh title");
+            });
+
+            expect(newEditTitle).toHaveBeenCalledWith(media, "Fresh title");
+            expect(mediaLibrary.editTitle).not.toHaveBeenCalled();
+        });
+
+        it("calls mediaLibrary.saveMediaProgress from the latest render", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: false,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newSaveMediaProgress = vi.fn().mockResolvedValue(undefined);
+            const nextMediaLibrary = {
+                ...mediaLibrary,
+                saveMediaProgress: newSaveMediaProgress,
+            };
+
+            rerender({
+                diagnosticsState,
+                mediaLibrary: nextMediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow,
+            });
+
+            await act(async () => {
+                await result.current.saveMediaProgress(23, 12.5);
+            });
+
+            expect(newSaveMediaProgress).toHaveBeenCalledWith(23, 12.5);
+            expect(mediaLibrary.saveMediaProgress).not.toHaveBeenCalled();
+        });
+
+        it("reloads diagnostics using the latest diagnosticsState after a rerender", async () => {
+            const diagnosticsState = createDiagnosticsState({
+                diagnosticsOpen: true,
+            });
+            const mediaLibrary = createMediaLibrary();
+            const confirmDeleteChannelFlow = vi.fn().mockResolvedValue(undefined);
+
+            const { result, rerender } = renderHook(
+                (props: any) => useHomeMediaActions(props),
+                {
+                    initialProps: {
+                        diagnosticsState,
+                        mediaLibrary,
+                        channelsState: { selectedChannelId: 10 },
+                        confirmDeleteChannelFlow,
+                    },
+                }
+            );
+
+            const newReloadDiagnostics = vi.fn().mockResolvedValue(undefined);
+            const nextDiagnosticsState = {
+                ...diagnosticsState,
+                reloadDiagnostics: newReloadDiagnostics,
+            };
+
+            rerender({
+                diagnosticsState: nextDiagnosticsState,
+                mediaLibrary,
+                channelsState: { selectedChannelId: 10 },
+                confirmDeleteChannelFlow,
+            });
+
+            await act(async () => {
+                await result.current.addMedia();
+            });
+
+            expect(newReloadDiagnostics).toHaveBeenCalledTimes(1);
+            expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
+        });
+    });
 });

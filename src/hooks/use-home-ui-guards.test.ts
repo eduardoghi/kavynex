@@ -252,4 +252,211 @@ describe("useHomeUiGuards", () => {
 
         expect(mediaLibrary.closeAddMediaModal).toHaveBeenCalledTimes(1);
     });
+
+    it("shows the migration message when migrating and a library path already exists", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState({
+                    isMigratingLibraryPath: true,
+                    settings: {
+                        importMode: "copy",
+                        libraryPath: "/library",
+                    },
+                }),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.libraryPathChangeDisabledReason).toBe(
+            "Library migration is in progress."
+        );
+    });
+
+    it("shows the folder setup message when migrating without an existing library path", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState({
+                    isMigratingLibraryPath: true,
+                    settings: {
+                        importMode: "copy",
+                        libraryPath: "",
+                    },
+                }),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.libraryPathChangeDisabledReason).toBe(
+            "Library folder setup is in progress."
+        );
+    });
+
+    it("treats a whitespace-only library path as not existing while migrating", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState({
+                    isMigratingLibraryPath: true,
+                    settings: {
+                        importMode: "copy",
+                        libraryPath: "   ",
+                    },
+                }),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.libraryPathChangeDisabledReason).toBe(
+            "Library folder setup is in progress."
+        );
+    });
+
+    it("keeps the library path and channel deletion guards unblocked when nothing is busy", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.libraryPathChangeDisabledReason).toBe("");
+        expect(result.current.disableLibraryPathChange).toBe(false);
+        expect(result.current.channelDeletionDisabledReason).toBe("");
+        expect(result.current.disableChannelDeletion).toBe(false);
+    });
+
+    it("disables library path change when the player is open and nothing else is blocking", () => {
+        const mediaLibrary = createMediaLibrary({
+            mediaPlayer: {
+                ...createMediaLibrary().mediaPlayer,
+                viewMode: "player" as const,
+            },
+        });
+
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary,
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.libraryPathChangeDisabledReason).toBe(
+            "Close the player before changing the library folder."
+        );
+        expect(result.current.disableLibraryPathChange).toBe(true);
+    });
+
+    it("disables channel deletion while a media operation is busy", () => {
+        const { result } = renderHook(() =>
+            useHomeUiGuards({
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary({ isAddingMedia: true }),
+                channelsState: createChannelsState(),
+            })
+        );
+
+        expect(result.current.channelDeletionDisabledReason).toBe(
+            "Wait for the media import or download to finish before deleting a channel."
+        );
+        expect(result.current.disableChannelDeletion).toBe(true);
+    });
+
+    it("recomputes isAddMediaModalLocked when the media busy state changes across rerenders", () => {
+        const { result, rerender } = renderHook((props: any) => useHomeUiGuards(props), {
+            initialProps: {
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            },
+        });
+
+        expect(result.current.isAddMediaModalLocked).toBe(false);
+
+        rerender({
+            settingsState: createSettingsState(),
+            mediaLibrary: createMediaLibrary({ isAddingMedia: true }),
+            channelsState: createChannelsState(),
+        });
+
+        expect(result.current.isAddMediaModalLocked).toBe(true);
+    });
+
+    it("recomputes channel deletion guard state when the media busy state changes across rerenders", () => {
+        const { result, rerender } = renderHook((props: any) => useHomeUiGuards(props), {
+            initialProps: {
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            },
+        });
+
+        expect(result.current.channelDeletionDisabledReason).toBe("");
+        expect(result.current.disableChannelDeletion).toBe(false);
+
+        rerender({
+            settingsState: createSettingsState(),
+            mediaLibrary: createMediaLibrary({ isYtDlpRunning: true }),
+            channelsState: createChannelsState(),
+        });
+
+        expect(result.current.channelDeletionDisabledReason).toBe(
+            "Wait for the media import or download to finish before deleting a channel."
+        );
+        expect(result.current.disableChannelDeletion).toBe(true);
+    });
+
+    it("recomputes library path guard state when migration starts across rerenders", () => {
+        const { result, rerender } = renderHook((props: any) => useHomeUiGuards(props), {
+            initialProps: {
+                settingsState: createSettingsState(),
+                mediaLibrary: createMediaLibrary(),
+                channelsState: createChannelsState(),
+            },
+        });
+
+        expect(result.current.libraryPathChangeDisabledReason).toBe("");
+        expect(result.current.disableLibraryPathChange).toBe(false);
+
+        rerender({
+            settingsState: createSettingsState({ isMigratingLibraryPath: true }),
+            mediaLibrary: createMediaLibrary(),
+            channelsState: createChannelsState(),
+        });
+
+        expect(result.current.libraryPathChangeDisabledReason).toBe(
+            "Library migration is in progress."
+        );
+        expect(result.current.disableLibraryPathChange).toBe(true);
+    });
+
+    it("recomputes closeAddMediaModalSafely to reflect the latest media busy state across rerenders", async () => {
+        const initialMediaLibrary = createMediaLibrary();
+
+        const { result, rerender } = renderHook((props: any) => useHomeUiGuards(props), {
+            initialProps: {
+                settingsState: createSettingsState(),
+                mediaLibrary: initialMediaLibrary,
+                channelsState: createChannelsState(),
+            },
+        });
+
+        const busyMediaLibrary = createMediaLibrary({ isAddingMedia: true });
+
+        rerender({
+            settingsState: createSettingsState(),
+            mediaLibrary: busyMediaLibrary,
+            channelsState: createChannelsState(),
+        });
+
+        await act(async () => {
+            await result.current.closeAddMediaModalSafely();
+        });
+
+        expect(busyMediaLibrary.closeAddMediaModal).not.toHaveBeenCalled();
+        expect(initialMediaLibrary.closeAddMediaModal).not.toHaveBeenCalled();
+    });
 });

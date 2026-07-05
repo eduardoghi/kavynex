@@ -15,6 +15,7 @@ vi.mock("../services/channel-service", () => ({
     deleteChannelWithThumbnailCleanup: vi.fn(),
     listAllChannels: vi.fn(),
     updateChannelAvatarWithCleanup: vi.fn(),
+    updateChannelNameHandle: vi.fn(),
 }));
 
 vi.mock("../services/thumbnail-service", () => ({
@@ -28,6 +29,7 @@ import {
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
+    updateChannelNameHandle,
 } from "../services/channel-service";
 import {
     downloadChannelAvatarFromHandle,
@@ -320,6 +322,213 @@ describe("useChannelActions", () => {
         expect(created).toBe(false);
         expect(onError).toHaveBeenCalledWith("Failed to create channel.");
         expect(setSelectedChannelId).not.toHaveBeenCalled();
+    });
+
+    it("returns false when manual avatar mode has no library path", async () => {
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let created = true;
+
+        await act(async () => {
+            created = await result.current.createChannelAction(
+                "Canal A",
+                "@canala",
+                "manual",
+                "C:/avatar.png"
+            );
+        });
+
+        expect(created).toBe(false);
+        expect(onError).toHaveBeenCalledWith(
+            "Choose a library folder before importing a manual avatar."
+        );
+        expect(persistThumbnailFile).not.toHaveBeenCalled();
+        expect(createChannel).not.toHaveBeenCalled();
+    });
+
+    it("returns false when youtube avatar mode has no library path", async () => {
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let created = true;
+
+        await act(async () => {
+            created = await result.current.createChannelAction(
+                "Canal A",
+                "@canala",
+                "youtube",
+                ""
+            );
+        });
+
+        expect(created).toBe(false);
+        expect(onError).toHaveBeenCalledWith(
+            "Choose a library folder before importing a YouTube avatar."
+        );
+        expect(downloadChannelAvatarFromHandle).not.toHaveBeenCalled();
+        expect(createChannel).not.toHaveBeenCalled();
+    });
+
+    it("discards a reentrant createChannelAction call while one is already running", async () => {
+        vi.mocked(createChannel).mockImplementationOnce(() => new Promise(() => {}));
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        act(() => {
+            void result.current.createChannelAction("Canal A", "@canala", "none", "");
+        });
+
+        let secondCallResult = true;
+
+        await act(async () => {
+            secondCallResult = await result.current.createChannelAction(
+                "Canal B",
+                "@canalb",
+                "none",
+                ""
+            );
+        });
+
+        expect(secondCallResult).toBe(false);
+        expect(onError).not.toHaveBeenCalled();
+        expect(createChannel).toHaveBeenCalledTimes(1);
+    });
+
+    it("updates channel identity successfully with trimmed values", async () => {
+        vi.mocked(updateChannelNameHandle).mockResolvedValueOnce(undefined);
+        vi.mocked(listAllChannels).mockResolvedValueOnce([
+            {
+                id: 10,
+                name: "Canal Editado",
+                youtube_handle: "@canaleditado",
+                avatar_path: null,
+                created_at: "2026-03-31T10:00:00.000Z",
+            },
+        ]);
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let updated = false;
+
+        await act(async () => {
+            updated = await result.current.updateChannelIdentityAction(
+                10,
+                "  Canal Editado  ",
+                "  @canaleditado  "
+            );
+        });
+
+        expect(updated).toBe(true);
+        expect(updateChannelNameHandle).toHaveBeenCalledWith(
+            10,
+            "Canal Editado",
+            "@canaleditado"
+        );
+        expect(listAllChannels).toHaveBeenCalled();
+        expect(setChannels).toHaveBeenCalled();
+    });
+
+    it("returns false and reports error when update channel identity fails", async () => {
+        vi.mocked(updateChannelNameHandle).mockRejectedValueOnce(new Error("boom"));
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let updated = true;
+
+        await act(async () => {
+            updated = await result.current.updateChannelIdentityAction(
+                10,
+                "Canal Editado",
+                "@canaleditado"
+            );
+        });
+
+        expect(updated).toBe(false);
+        expect(onError).toHaveBeenCalledWith("Failed to update channel.");
     });
 
     it("updates channel avatar with manual file", async () => {
