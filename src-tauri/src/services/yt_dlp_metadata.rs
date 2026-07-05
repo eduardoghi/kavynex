@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tauri::AppHandle;
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader},
     process::Command,
     time::timeout,
 };
@@ -22,6 +22,42 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_METADATA_TIMEOUT_SECS: u64 = 60;
 const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
+// Cap on how much yt-dlp stdout is buffered. `--dump-single-json` (with `--write-comments`)
+// emits the whole payload as one line, so an extreme video could otherwise allocate GBs.
+// Generous: even very large comment sets fit well under this.
+const MAX_YT_DLP_JSON_BYTES: u64 = 128 * 1024 * 1024; // 128 MiB
+
+/// Reads yt-dlp stdout, keeping the JSON payload line and the useful log lines, but never
+/// buffering more than `max_bytes`. Returns `(json_payload, log_lines, overflowed)`, where
+/// `overflowed` means the output exceeded the cap (and the payload may be truncated).
+async fn read_capped_json_stdout<R>(reader: R, max_bytes: u64) -> (String, Vec<String>, bool)
+where
+    R: AsyncRead + Unpin,
+{
+    // `+ 1` so reading exactly `max_bytes + 1` reveals the real output exceeded the cap.
+    let mut lines = BufReader::new(reader.take(max_bytes + 1)).lines();
+    let mut json_payload = String::new();
+    let mut log_lines: Vec<String> = Vec::new();
+    let mut total_bytes: u64 = 0;
+
+    while let Ok(Some(line_value)) = lines.next_line().await {
+        total_bytes += line_value.len() as u64 + 1;
+
+        let line = line_value.trim_end().to_string();
+
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        if is_json_payload_line(&line) {
+            json_payload = line;
+        } else if should_keep_terminal_line(&line) {
+            log_lines.push(line);
+        }
+    }
+
+    (json_payload, log_lines, total_bytes > max_bytes)
+}
 
 type NormalizedDownloadMetadata = (String, String, String, Option<String>, Option<String>);
 
@@ -212,27 +248,7 @@ async fn run_yt_dlp_and_capture_json(
         )
     })?;
 
-    let stdout_task = tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).lines();
-        let mut json_payload = String::new();
-        let mut log_lines: Vec<String> = Vec::new();
-
-        while let Ok(Some(line_value)) = lines.next_line().await {
-            let line = line_value.trim_end().to_string();
-
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            if is_json_payload_line(&line) {
-                json_payload = line;
-            } else if should_keep_terminal_line(&line) {
-                log_lines.push(line);
-            }
-        }
-
-        (json_payload, log_lines)
-    });
+    let stdout_task = tokio::spawn(read_capped_json_stdout(stdout, MAX_YT_DLP_JSON_BYTES));
 
     let stderr_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
@@ -254,7 +270,7 @@ async fn run_yt_dlp_and_capture_json(
         .map_err(|_| AppError::from_code(timeout_code, timeout_message))?
         .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?;
 
-    let (json_payload, stdout_logs) = stdout_task.await.map_err(|e| {
+    let (json_payload, stdout_logs, stdout_overflowed) = stdout_task.await.map_err(|e| {
         AppError::from_code(
             AppErrorCode::YtDlpStdoutCaptureFailed,
             format!("failed to read yt-dlp stdout: {e}"),
@@ -275,6 +291,14 @@ async fn run_yt_dlp_and_capture_json(
             failed_code,
             failed_message,
             format!("{failed_message}: {detail}"),
+        ));
+    }
+
+    if stdout_overflowed {
+        return Err(AppError::from_code_with_details(
+            AppErrorCode::YtDlpMetadataParseFailed,
+            "yt-dlp returned more data than can be processed for this URL.",
+            format!("yt-dlp output exceeded the {MAX_YT_DLP_JSON_BYTES}-byte limit"),
         ));
     }
 
@@ -658,7 +682,25 @@ pub fn normalize_download_metadata(
 
 #[cfg(test)]
 mod tests {
-    use super::is_valid_youtube_video_id;
+    use super::{is_valid_youtube_video_id, read_capped_json_stdout};
+
+    #[tokio::test]
+    async fn read_capped_json_stdout_flags_overflow() {
+        // A single JSON line larger than the cap is flagged as overflowed.
+        let big = format!("{{\"x\":\"{}\"}}", "a".repeat(200));
+        let (_json, _logs, overflowed) = read_capped_json_stdout(big.as_bytes(), 32).await;
+        assert!(overflowed);
+    }
+
+    #[tokio::test]
+    async fn read_capped_json_stdout_reads_normal_output() {
+        let input = "{\"id\":\"abc\"}\nsome log line\n";
+        let (json, logs, overflowed) = read_capped_json_stdout(input.as_bytes(), 4096).await;
+
+        assert!(!overflowed);
+        assert_eq!(json, "{\"id\":\"abc\"}");
+        assert_eq!(logs, vec!["some log line".to_string()]);
+    }
 
     #[test]
     fn accepts_standard_id() {
