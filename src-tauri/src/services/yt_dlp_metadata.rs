@@ -227,7 +227,10 @@ async fn run_yt_dlp_and_capture_json(
     command
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        // Any early return below (timeout, pipe capture failure) must not leave yt-dlp
+        // running unsupervised in the background.
+        .kill_on_drop(true);
     hide_console_async(&mut command);
 
     let mut child = command
@@ -265,10 +268,14 @@ async fn run_yt_dlp_and_capture_json(
         log_lines
     });
 
-    let status = timeout(Duration::from_secs(timeout_secs), child.wait())
-        .await
-        .map_err(|_| AppError::from_code(timeout_code, timeout_message))?
-        .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?;
+    let status = match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
+        Ok(wait_result) => wait_result
+            .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?,
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err(AppError::from_code(timeout_code, timeout_message));
+        }
+    };
 
     let (json_payload, stdout_logs, stdout_overflowed) = stdout_task.await.map_err(|e| {
         AppError::from_code(
@@ -682,7 +689,38 @@ pub fn normalize_download_metadata(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_valid_youtube_video_id, read_capped_json_stdout};
+    use super::{is_valid_youtube_video_id, read_capped_json_stdout, run_yt_dlp_and_capture_json};
+    use crate::AppErrorCode;
+
+    #[tokio::test]
+    async fn run_and_capture_kills_the_child_and_reports_timeout_when_it_expires() {
+        // A slow command that would outlive the 1s timeout by far; the call must come
+        // back with the timeout error instead of waiting for it (the child is killed).
+        let (binary, args): (&str, Vec<String>) = if cfg!(windows) {
+            (
+                "ping",
+                vec!["-n".to_string(), "30".to_string(), "127.0.0.1".to_string()],
+            )
+        } else {
+            ("sleep", vec!["30".to_string()])
+        };
+
+        let error = run_yt_dlp_and_capture_json(
+            binary,
+            &args,
+            1,
+            AppErrorCode::YtDlpMetadataTimeout,
+            AppErrorCode::YtDlpMetadataExecFailed,
+            AppErrorCode::YtDlpMetadataFailed,
+            "timed out",
+            "exec failed",
+            "failed",
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::YtDlpMetadataTimeout.as_str());
+    }
 
     #[tokio::test]
     async fn read_capped_json_stdout_flags_overflow() {
