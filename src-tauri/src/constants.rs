@@ -1,9 +1,14 @@
 pub const LIBRARY_DIR_VIDEO: &str = "video";
 pub const LIBRARY_DIR_AUDIO: &str = "audio";
 pub const LIBRARY_DIR_THUMBNAILS: &str = "thumbnails";
+pub const LIBRARY_DIR_LIVE_CHAT: &str = "live_chat";
 
-pub const MANAGED_LIBRARY_DIRS: [&str; 3] =
-    [LIBRARY_DIR_VIDEO, LIBRARY_DIR_AUDIO, LIBRARY_DIR_THUMBNAILS];
+pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
+    LIBRARY_DIR_VIDEO,
+    LIBRARY_DIR_AUDIO,
+    LIBRARY_DIR_THUMBNAILS,
+    LIBRARY_DIR_LIVE_CHAT,
+];
 
 pub const TEMP_DIR_THUMBS: &str = "thumbs-temp";
 pub const TEMP_DIR_YT_DLP: &str = "yt-dlp-temp";

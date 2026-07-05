@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use tauri::{AppHandle, Manager};
 
 use crate::services::filesystem::replace_file_safely;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -47,6 +46,109 @@ pub fn gzip_decompress(data: &[u8]) -> AppResult<Vec<u8>> {
         .read_to_end(&mut out)
         .map_err(|e| compress_error("failed to gunzip live chat data", e))?;
     Ok(out)
+}
+
+/// Reads a stored live chat file and returns its JSON text, transparently gunzipping the
+/// gzip-compressed files (older files may still be plain JSON and are returned as-is).
+pub fn read_live_chat_text(path: &Path) -> AppResult<String> {
+    let bytes = fs::read(path).map_err(|e| compress_error("failed to read live chat file", e))?;
+
+    let raw = if is_gzip(&bytes) {
+        gzip_decompress(&bytes)?
+    } else {
+        bytes
+    };
+
+    String::from_utf8(raw).map_err(|e| compress_error("live chat file is not valid utf-8", e))
+}
+
+/// One-time migration that moves live chat files from the old app-data location into the
+/// library, so all of a video's bulk artifacts (media, thumbnail, live chat) live together
+/// and travel with the library folder. Idempotent: a no-op once the source folder is empty
+/// or gone. Handles the app-data-on-SSD to library-on-HDD case by falling back to copy+delete
+/// when a cross-volume rename fails. Returns how many files were moved.
+pub fn migrate_live_chat_files(app_data_dir: &Path, library_dir: &Path) -> AppResult<usize> {
+    let source_dir = app_data_dir.join("live_chat");
+
+    if !source_dir.exists() {
+        return Ok(0);
+    }
+
+    let dest_dir = library_dir.join("live_chat");
+    let mut moved = 0;
+
+    let entries =
+        fs::read_dir(&source_dir).map_err(|e| compress_error("failed to read live chat dir", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| compress_error("failed to read live chat entry", e))?;
+        let path = entry.path();
+
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(name) = path.file_name() else {
+            continue;
+        };
+
+        fs::create_dir_all(&dest_dir)
+            .map_err(|e| compress_error("failed to create library live chat dir", e))?;
+        let dest = dest_dir.join(name);
+
+        // A file already at the destination was migrated on a previous run; drop the stale
+        // source copy rather than clobbering it.
+        if dest.exists() {
+            let _ = fs::remove_file(&path);
+            continue;
+        }
+
+        // Prefer a rename (fast, same volume); fall back to copy+delete across volumes, which
+        // is the expected case when app data is on the SSD and the library is on the HDD.
+        if fs::rename(&path, &dest).is_err() {
+            fs::copy(&path, &dest)
+                .map_err(|e| compress_error("failed to copy live chat file", e))?;
+            let _ = fs::remove_file(&path);
+        }
+
+        moved += 1;
+    }
+
+    // Best effort: drop the now-empty source directory.
+    let _ = fs::remove_dir(&source_dir);
+
+    Ok(moved)
+}
+
+/// Lists stored live chat files as library-relative, forward-slash paths (e.g.
+/// `live_chat/<file>`), matching how they are recorded in the database. Live chat files are
+/// stored flat under `live_chat/`, so this does not recurse.
+pub fn list_live_chat_relative_paths(library_dir: &Path) -> AppResult<Vec<String>> {
+    let dir = library_dir.join("live_chat");
+
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut paths = Vec::new();
+
+    let entries =
+        fs::read_dir(&dir).map_err(|e| compress_error("failed to read live chat dir", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| compress_error("failed to read live chat entry", e))?;
+        let path = entry.path();
+
+        if !path.is_file() {
+            continue;
+        }
+
+        if let Some(name) = path.file_name().and_then(|value| value.to_str()) {
+            paths.push(format!("live_chat/{name}"));
+        }
+    }
+
+    Ok(paths)
 }
 
 /// Cheap check that reads only the first two bytes, so already-compressed files are skipped
@@ -173,20 +275,6 @@ pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompre
     Ok(summary)
 }
 
-/// Resolves the app's live chat directory and compresses any uncompressed files in it.
-pub fn compress_existing_live_chat_files_for_app(
-    app: &AppHandle,
-) -> AppResult<LiveChatCompressionSummary> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::DataDirectoryResolveFailed,
-            format!("failed to resolve app data directory: {e}"),
-        )
-    })?;
-
-    compress_existing_live_chat_files(&app_data_dir.join("live_chat"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +302,42 @@ mod tests {
         assert!(is_gzip(&[0x1f, 0x8b, 0x08]));
         assert!(!is_gzip(b"{\"a\":1}"));
         assert!(!is_gzip(&[0x1f]));
+    }
+
+    #[test]
+    fn read_live_chat_text_reads_gzip_and_plain() {
+        let dir = temp_dir("read");
+        fs::create_dir_all(&dir).unwrap();
+
+        let plain = dir.join("plain.json");
+        fs::write(&plain, b"{\"a\":1}").unwrap();
+        assert_eq!(read_live_chat_text(&plain).unwrap(), "{\"a\":1}");
+
+        let gz = dir.join("compressed.json");
+        fs::write(&gz, gzip_compress(b"{\"b\":2}").unwrap()).unwrap();
+        assert_eq!(read_live_chat_text(&gz).unwrap(), "{\"b\":2}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migrate_live_chat_files_moves_and_is_idempotent() {
+        let app_data = temp_dir("mig-appdata");
+        let library = temp_dir("mig-library");
+
+        let source = app_data.join("live_chat");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("a.live_chat.json"), b"hello").unwrap();
+
+        assert_eq!(migrate_live_chat_files(&app_data, &library).unwrap(), 1);
+        assert!(library.join("live_chat").join("a.live_chat.json").exists());
+        assert!(!source.join("a.live_chat.json").exists());
+
+        // The source folder is gone after the move, so a second run is a no-op.
+        assert_eq!(migrate_live_chat_files(&app_data, &library).unwrap(), 0);
+
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&library);
     }
 
     #[test]

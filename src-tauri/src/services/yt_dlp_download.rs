@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
@@ -158,34 +158,20 @@ fn find_live_chat_temp_file(temp_dir: &Path, file_prefix: &str) -> Option<PathBu
     None
 }
 
-fn ensure_app_live_chat_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::DataDirectoryResolveFailed,
-            format!("failed to resolve app data directory: {e}"),
-        )
-    })?;
-
-    fs::create_dir_all(&app_data_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateDirectoryFailed,
-            format!("failed to create app data directory: {e}"),
-        )
-    })?;
-
-    let live_chat_dir = app_data_dir.join("live_chat");
+fn ensure_live_chat_dir(library_dir: &Path) -> AppResult<PathBuf> {
+    let live_chat_dir = library_dir.join("live_chat");
 
     fs::create_dir_all(&live_chat_dir).map_err(|e| {
         AppError::from_code(
             AppErrorCode::CreateDirectoryFailed,
-            format!("failed to create app live chat directory: {e}"),
+            format!("failed to create live chat directory: {e}"),
         )
     })?;
 
     Ok(live_chat_dir)
 }
 
-fn build_app_live_chat_relative_path(file_name: &Path) -> String {
+fn build_live_chat_relative_path(file_name: &Path) -> String {
     Path::new("live_chat")
         .join(file_name)
         .to_string_lossy()
@@ -569,8 +555,8 @@ pub async fn download_media_from_url_async(
             )
         })?;
 
-        let app_live_chat_dir = if download_live_chat {
-            Some(ensure_app_live_chat_dir(app)?)
+        let run_live_chat_dir = if download_live_chat {
+            Some(ensure_live_chat_dir(&library_dir)?)
         } else {
             None
         };
@@ -891,7 +877,7 @@ pub async fn download_media_from_url_async(
                     )
                 })?;
 
-                let live_chat_dir = app_live_chat_dir.as_ref().ok_or_else(|| {
+                let live_chat_dir = run_live_chat_dir.as_ref().ok_or_else(|| {
                     AppError::from_code(
                         AppErrorCode::DataDirectoryResolveFailed,
                         "app live chat directory was not initialized",
@@ -907,7 +893,7 @@ pub async fn download_media_from_url_async(
                     &final_live_chat_destination,
                 )?;
 
-                Some(build_app_live_chat_relative_path(Path::new(
+                Some(build_live_chat_relative_path(Path::new(
                     live_chat_file_name,
                 )))
             } else {
@@ -1123,8 +1109,8 @@ mod tests {
     }
 
     #[test]
-    fn build_app_live_chat_relative_path_uses_forward_slashes() {
-        let path = build_app_live_chat_relative_path(Path::new("youtube_abc.live_chat.json"));
+    fn build_live_chat_relative_path_uses_forward_slashes() {
+        let path = build_live_chat_relative_path(Path::new("youtube_abc.live_chat.json"));
         assert_eq!(path, "live_chat/youtube_abc.live_chat.json");
     }
 

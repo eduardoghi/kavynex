@@ -12,27 +12,6 @@
     "dialog:allow-open",
     "dialog:allow-save",
 
-    "process:allow-restart",
-
-    "fs:allow-mkdir",
-    "fs:allow-write-text-file",
-    "fs:allow-read-file",
-    "fs:allow-exists",
-    "fs:allow-read-dir",
-    "fs:allow-remove",
-    {
-      "identifier": "fs:scope",
-      "allow": [
-        {
-          "path": "$APPDATA/live_chat"
-        },
-        {
-          "path": "$APPDATA/live_chat/*"
-        },
-        {
-          "path": "$APPDATA/live_chat/**"
-        }
-      ]
-    }
+    "process:allow-restart"
   ]
 }

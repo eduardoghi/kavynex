@@ -1,24 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { exists, readFile } from "@tauri-apps/plugin-fs";
 import {
     getVisibleLiveChatMessages,
     readLiveChatMessagesFromFile,
     type LiveChatMessageItem,
 } from "./live-chat-service";
+import { invokeCommand } from "../lib/tauri-client";
 
-vi.mock("@tauri-apps/plugin-fs", () => ({
-    BaseDirectory: { AppData: 1 },
-    exists: vi.fn(),
-    mkdir: vi.fn(),
-    readDir: vi.fn(),
-    readFile: vi.fn(),
-    remove: vi.fn(),
-    writeTextFile: vi.fn(),
+vi.mock("../lib/tauri-client", () => ({
+    invokeCommand: vi.fn(),
+    invokeVoid: vi.fn(),
 }));
 
-// Live chat files are read as bytes (they may be gzip-compressed); tests feed plain UTF-8.
+// The backend command returns the already-decompressed JSON text; tests feed it directly.
 function mockFile(content: string): void {
-    vi.mocked(readFile).mockResolvedValue(new TextEncoder().encode(content));
+    vi.mocked(invokeCommand).mockResolvedValue(content);
 }
 
 function rawLine(renderer: Record<string, unknown>, offset = "0"): string {
@@ -33,7 +28,6 @@ function rawLine(renderer: Record<string, unknown>, offset = "0"): string {
 describe("readLiveChatMessagesFromFile", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.mocked(exists).mockResolvedValue(true);
     });
 
     it("parses author_channel_id from authorExternalChannelId", async () => {
@@ -361,19 +355,6 @@ describe("readLiveChatMessagesFromFile", () => {
             message_text: "read the rules",
             pinned_header: "Pinned by @creator",
         });
-    });
-
-    it("decompresses gzip-compressed live chat files", async () => {
-        const line = rawLine({
-            message: { runs: [{ text: "compressed" }] },
-            authorName: { simpleText: "@z" },
-        });
-        const { gzipSync } = await import("node:zlib");
-        vi.mocked(readFile).mockResolvedValue(new Uint8Array(gzipSync(Buffer.from(line, "utf-8"))));
-
-        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
-
-        expect(messages[0]?.message_text).toBe("compressed");
     });
 
     it("returns null author_channel_id when absent", async () => {

@@ -38,7 +38,6 @@ flate2 = "1"
 tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread", "process", "io-util", "net", "test-util"] }
 tauri-plugin-os = "2.3.2"
 chrono = "0.4.44"
-tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
 tauri-plugin-window-state = "2"
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "rustls-platform-verifier"] }

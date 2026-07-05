@@ -1,41 +1,9 @@
-import { BaseDirectory, exists, readDir } from "@tauri-apps/plugin-fs";
+import { listLiveChatFiles } from "./live-chat-service";
 import { listMediaIntegrityReferences } from "../repositories/media-repository";
 import type { LiveChatIntegrityReport, MediaIntegrityReference } from "../types/diagnostics";
 
-type FsEntry = {
-    name?: string;
-    isDirectory?: boolean;
-};
-
 function normalizeNonEmptyUniquePaths(values: Array<string | null | undefined>): string[] {
     return [...new Set(values.map((value) => value?.trim() ?? "").filter((value) => value !== ""))];
-}
-
-async function flattenRelativePaths(relativeDir: string): Promise<string[]> {
-    const entries = (await readDir(relativeDir, {
-        baseDir: BaseDirectory.AppData,
-    })) as FsEntry[];
-
-    const paths: string[] = [];
-
-    for (const entry of entries) {
-        const entryName = entry.name?.trim() ?? "";
-
-        if (!entryName) {
-            continue;
-        }
-
-        const nextPath = `${relativeDir}/${entryName}`;
-
-        if (entry.isDirectory) {
-            paths.push(...(await flattenRelativePaths(nextPath)));
-            continue;
-        }
-
-        paths.push(nextPath);
-    }
-
-    return paths;
 }
 
 function buildExpectedLiveChatPaths(mediaReferences: MediaIntegrityReference[]): string[] {
@@ -58,13 +26,7 @@ export async function getLiveChatIntegrity(): Promise<LiveChatIntegrityReport> {
     const mediaReferences = await listMediaIntegrityReferences();
     const expectedLiveChatPaths = buildExpectedLiveChatPaths(mediaReferences);
 
-    const liveChatDirExists = await exists("live_chat", {
-        baseDir: BaseDirectory.AppData,
-    });
-
-    const actualLiveChatPaths = liveChatDirExists
-        ? await flattenRelativePaths("live_chat")
-        : [];
+    const actualLiveChatPaths = await listLiveChatFiles();
 
     if (expectedLiveChatPaths.length === 0 && actualLiveChatPaths.length === 0) {
         return createEmptyLiveChatIntegrityReport();

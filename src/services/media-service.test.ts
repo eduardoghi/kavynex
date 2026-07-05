@@ -57,7 +57,7 @@ vi.mock("./media-comments-service", () => ({
 }));
 
 vi.mock("./live-chat-service", () => ({
-    deleteLiveChatFileFromAppData: vi.fn(),
+    deleteLiveChatFile: vi.fn(),
 }));
 
 vi.mock("../utils/app-logger", () => ({
@@ -90,7 +90,7 @@ import {
 import { deleteMediaFile } from "./media-file-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
 import { deleteThumbnailFile } from "./thumbnail-service";
-import { deleteLiveChatFileFromAppData } from "./live-chat-service";
+import { deleteLiveChatFile } from "./live-chat-service";
 import { fetchYouTubeComments } from "./media-download-service";
 import { replaceMediaCommentsInBackend } from "./media-comments-service";
 import { logError } from "../utils/app-logger";
@@ -398,7 +398,7 @@ describe("media-service", () => {
         vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
         vi.mocked(insertMedia).mockRejectedValueOnce(new Error("db constraint"));
         vi.mocked(cleanupCreatedArtifacts).mockResolvedValueOnce(undefined);
-        vi.mocked(deleteLiveChatFileFromAppData).mockResolvedValueOnce(undefined);
+        vi.mocked(deleteLiveChatFile).mockResolvedValueOnce(undefined);
 
         await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
 
@@ -407,7 +407,7 @@ describe("media-service", () => {
             "thumbnails/a.jpg",
             "/library"
         );
-        expect(deleteLiveChatFileFromAppData).toHaveBeenCalledWith("live-chat/abc.json");
+        expect(deleteLiveChatFile).toHaveBeenCalledWith("live-chat/abc.json");
     });
 
     it("does not delete a live chat file still referenced by another media row", async () => {
@@ -450,7 +450,7 @@ describe("media-service", () => {
         await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
 
         expect(countMediaUsingLiveChatOutsideMedia).toHaveBeenCalledWith("live-chat/abc.json", -1);
-        expect(deleteLiveChatFileFromAppData).not.toHaveBeenCalled();
+        expect(deleteLiveChatFile).not.toHaveBeenCalled();
     });
 
     it("does not clean artifacts when error occurs after successful insertMedia", async () => {
@@ -498,7 +498,7 @@ describe("media-service", () => {
         );
 
         expect(cleanupCreatedArtifacts).not.toHaveBeenCalled();
-        expect(deleteLiveChatFileFromAppData).not.toHaveBeenCalled();
+        expect(deleteLiveChatFile).not.toHaveBeenCalled();
     });
 
     it("rejects duplicate media for channel", async () => {

@@ -3,6 +3,7 @@ import type { AppSettings, ImportMode } from "../types/settings";
 import { useAppSettingsActions } from "./use-app-settings-actions";
 import { getDefaultAppSettings } from "./use-app-settings-storage";
 import { registerLibraryAssetScope } from "../services/asset-scope-service";
+import { migrateLiveChatToLibrary } from "../services/live-chat-service";
 import { logError } from "../utils/app-logger";
 
 type UseAppSettingsOptions = {
@@ -72,6 +73,14 @@ export function useAppSettings({
 
         void registerLibraryAssetScope(libraryPath).catch((error) => {
             logError("asset-scope", "Failed to register library asset scope.", error, {
+                libraryPath,
+            });
+        });
+
+        // Best effort: move any live chat files still in the old app-data location into the
+        // library so they travel with it and are covered by a library backup. Idempotent.
+        void migrateLiveChatToLibrary().catch((error) => {
+            logError("live-chat", "Failed to migrate live chat into the library.", error, {
                 libraryPath,
             });
         });

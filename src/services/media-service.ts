@@ -16,7 +16,7 @@ import {
 import { deleteMediaFile } from "./media-file-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
 import { deleteThumbnailFile } from "./thumbnail-service";
-import { deleteLiveChatFileFromAppData } from "./live-chat-service";
+import { deleteLiveChatFile } from "./live-chat-service";
 import {
     cleanupCreatedArtifacts,
     prepareLocalArtifacts,
@@ -232,7 +232,7 @@ async function removeMediaLiveChatIfUnused(
     );
 
     if (usageOutsideMedia === 0) {
-        await deleteLiveChatFileFromAppData(normalizedLiveChatFilePath);
+        await deleteLiveChatFile(normalizedLiveChatFilePath);
     }
 }
 

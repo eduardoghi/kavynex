@@ -2,6 +2,7 @@ pub mod channels;
 pub mod comments;
 pub mod database;
 pub mod library;
+pub mod live_chat;
 pub mod media;
 pub mod security;
 pub mod settings;

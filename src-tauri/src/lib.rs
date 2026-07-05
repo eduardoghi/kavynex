@@ -31,38 +31,12 @@ fn spawn_startup_cleanup(app_handle: AppHandle) {
     });
 }
 
-fn spawn_live_chat_compression(app_handle: AppHandle) {
-    tauri::async_runtime::spawn_blocking(move || {
-        match services::live_chat_storage::compress_existing_live_chat_files_for_app(&app_handle) {
-            Ok(summary) => {
-                services::logger::info(
-                    "live_chat_compress",
-                    format!(
-                        "live chat compression finished: scanned={}, compressed={}, already={}, failed={}",
-                        summary.scanned,
-                        summary.compressed,
-                        summary.already_compressed,
-                        summary.failed
-                    ),
-                );
-            }
-            Err(error) => {
-                services::logger::error(
-                    "live_chat_compress",
-                    format!("live chat compression failed: {}", error),
-                );
-            }
-        }
-    });
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
@@ -118,8 +92,7 @@ pub fn run() {
                 }
             }
 
-            spawn_startup_cleanup(app_handle.clone());
-            spawn_live_chat_compression(app_handle);
+            spawn_startup_cleanup(app_handle);
             services::logger::info("app", "application setup finished");
 
             Ok(())
@@ -135,6 +108,10 @@ pub fn run() {
             commands::library::open_path_in_system,
             commands::media::import_media_file,
             commands::media::delete_media_file,
+            commands::live_chat::read_live_chat_file,
+            commands::live_chat::delete_live_chat_file,
+            commands::live_chat::list_live_chat_files,
+            commands::live_chat::migrate_live_chat_to_library,
             commands::thumbnail::generate_temporary_thumbnail,
             commands::thumbnail::persist_thumbnail_file,
             commands::thumbnail::download_thumbnail_from_url,

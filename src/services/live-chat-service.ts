@@ -1,13 +1,5 @@
-import {
-    BaseDirectory,
-    exists,
-    mkdir,
-    readDir,
-    readFile,
-    remove,
-    writeTextFile,
-} from "@tauri-apps/plugin-fs";
-import { createAppError } from "../utils/app-error";
+import { TAURI_COMMANDS } from "../constants/tauri-commands";
+import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 
 export type LiveChatBadgeType = "owner" | "moderator" | "member" | "verified" | "other";
 
@@ -44,25 +36,6 @@ export type LiveChatMessageItem = {
     sticker_image_url: string | null;
     pinned_header: string | null;
 };
-
-type FsEntry = {
-    name?: string;
-    isDirectory?: boolean;
-};
-
-function normalizeRelativePath(relativePath: string): string {
-    const normalized = relativePath.trim().replace(/\\/g, "/");
-
-    if (!normalized) {
-        throw createAppError("INVALID_LIVE_CHAT_PATH", "Live chat path is empty.");
-    }
-
-    if (normalized.startsWith("/") || normalized.includes("..")) {
-        throw createAppError("INVALID_LIVE_CHAT_PATH", "Live chat path is invalid.");
-    }
-
-    return normalized;
-}
 
 function extractRunsText(runs: unknown): string {
     if (!Array.isArray(runs)) {
@@ -561,135 +534,40 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
     return messages;
 }
 
-export async function ensureLiveChatDirectory(): Promise<void> {
-    await mkdir("live_chat", {
-        baseDir: BaseDirectory.AppData,
-        recursive: true,
-    });
+// Live chat files live in the library (under `live_chat/`), whose path is user-configurable,
+// so reads/deletes go through backend commands rather than the plugin-fs (whose scope is
+// fixed to app data at build time). The command returns the already-decompressed JSON text.
+async function readLiveChatFileText(relativePath: string): Promise<string> {
+    return invokeCommand<string>(TAURI_COMMANDS.READ_LIVE_CHAT_FILE, { relativePath });
 }
 
-export async function saveLiveChatTextToAppData(
-    relativePath: string,
-    contents: string
-): Promise<void> {
-    const normalizedPath = normalizeRelativePath(relativePath);
-
-    await ensureLiveChatDirectory();
-
-    await writeTextFile(normalizedPath, contents, {
-        baseDir: BaseDirectory.AppData,
-    });
+/**
+ * Deletes a live chat replay file from the library, if it exists.
+ */
+export async function deleteLiveChatFile(relativePath: string): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.DELETE_LIVE_CHAT_FILE, { relativePath });
 }
 
-export async function readLiveChatTextFromAppData(relativePath: string): Promise<string> {
-    const normalizedPath = normalizeRelativePath(relativePath);
-
-    const fileExists = await exists(normalizedPath, {
-        baseDir: BaseDirectory.AppData,
-    });
-
-    if (!fileExists) {
-        throw createAppError(
-            "LIVE_CHAT_FILE_NOT_FOUND",
-            "Live chat replay file was not found in app storage."
-        );
-    }
-
-    const bytes = await readFile(normalizedPath, {
-        baseDir: BaseDirectory.AppData,
-    });
-
-    return decodeLiveChatBytes(bytes);
+/**
+ * Lists stored live chat files as library-relative paths (e.g. `live_chat/<file>`), for
+ * diagnostics.
+ */
+export async function listLiveChatFiles(): Promise<string[]> {
+    return invokeCommand<string[]>(TAURI_COMMANDS.LIST_LIVE_CHAT_FILES);
 }
 
-// Live chat files are stored gzip-compressed to save disk. Older files may still be plain
-// JSON, so detect the gzip magic bytes and only decompress when present.
-async function decodeLiveChatBytes(bytes: Uint8Array): Promise<string> {
-    const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-
-    if (!isGzip) {
-        return new TextDecoder("utf-8").decode(bytes);
-    }
-
-    const source = new ReadableStream<BufferSource>({
-        start(controller) {
-            controller.enqueue(new Uint8Array(bytes));
-            controller.close();
-        },
-    });
-
-    const decompressed = source.pipeThrough(new DecompressionStream("gzip"));
-
-    return new Response(decompressed).text();
-}
-
-export async function deleteLiveChatFileFromAppData(relativePath: string): Promise<void> {
-    const normalizedPath = normalizeRelativePath(relativePath);
-
-    const fileExists = await exists(normalizedPath, {
-        baseDir: BaseDirectory.AppData,
-    });
-
-    if (!fileExists) {
-        return;
-    }
-
-    await remove(normalizedPath, {
-        baseDir: BaseDirectory.AppData,
-    });
-}
-
-async function listFilesRecursively(relativeDir: string): Promise<string[]> {
-    const entries = (await readDir(relativeDir, {
-        baseDir: BaseDirectory.AppData,
-    })) as FsEntry[];
-
-    const files: string[] = [];
-
-    for (const entry of entries) {
-        const entryName = entry.name?.trim() ?? "";
-
-        if (!entryName) {
-            continue;
-        }
-
-        const nextPath = `${relativeDir}/${entryName}`;
-
-        if (entry.isDirectory) {
-            files.push(...(await listFilesRecursively(nextPath)));
-            continue;
-        }
-
-        files.push(nextPath);
-    }
-
-    return files;
-}
-
-export async function deleteAllLiveChatFilesFromAppData(): Promise<void> {
-    const liveChatExists = await exists("live_chat", {
-        baseDir: BaseDirectory.AppData,
-    });
-
-    if (!liveChatExists) {
-        return;
-    }
-
-    const files = await listFilesRecursively("live_chat");
-
-    await Promise.allSettled(
-        files.map((filePath) =>
-            remove(filePath, {
-                baseDir: BaseDirectory.AppData,
-            })
-        )
-    );
+/**
+ * Moves any live chat files still in the old app-data location into the library and
+ * compresses legacy files. Idempotent; called once the library path is known.
+ */
+export async function migrateLiveChatToLibrary(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.MIGRATE_LIVE_CHAT_TO_LIBRARY);
 }
 
 export async function readLiveChatMessagesFromFile(
     relativePath: string
 ): Promise<LiveChatMessageItem[]> {
-    const contents = await readLiveChatTextFromAppData(relativePath);
+    const contents = await readLiveChatFileText(relativePath);
     const lines = contents.split(/\r?\n/);
 
     const messages: LiveChatMessageItem[] = [];
