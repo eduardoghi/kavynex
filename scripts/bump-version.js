@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -47,4 +48,20 @@ if (!cargoVersionRegex.test(cargo)) {
 writeFileSync(cargoPath, cargo.replace(cargoVersionRegex, `version = "${newVersion}"`));
 console.log(`Cargo.toml       ${oldVersion} -> ${newVersion}`);
 
-console.log(`\nBumped to ${newVersion}. Run 'cargo build' to update Cargo.lock.`);
+// Cargo.lock records the package version too; regenerate it so a bump commit never
+// leaves the lockfile stale (the release builds with --locked and would fail late).
+const cargoUpdate = spawnSync("cargo", ["update", "--package", "kavynex"], {
+    cwd: join(root, "src-tauri"),
+    stdio: "inherit",
+});
+
+if (cargoUpdate.status === 0) {
+    console.log(`Cargo.lock       ${oldVersion} -> ${newVersion}`);
+    console.log(`\nBumped to ${newVersion}.`);
+} else {
+    console.error(
+        "\nCargo.lock was NOT updated (cargo failed or is not installed). " +
+            "Run 'cargo update --package kavynex' inside src-tauri before committing."
+    );
+    process.exit(1);
+}
