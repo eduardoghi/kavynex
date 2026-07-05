@@ -13,7 +13,7 @@ use tokio::{
     time::timeout,
 };
 
-use crate::models::yt_dlp::{DownloadLogEvent, DownloadedMediaResult};
+use crate::models::yt_dlp::{DownloadLogEvent, DownloadedMediaResult, YtDlpFormatMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
@@ -88,6 +88,41 @@ fn redacted_args_for_log(args: &[String]) -> String {
     }
 
     parts.join(" ")
+}
+
+/// Resolves a (possibly `+`-combined) yt-dlp format selector against the fetched metadata
+/// and returns whether the selection has a video track. Returns `None` if the selector - or
+/// any part of a combined selector - is not a real format id from the metadata, which
+/// rejects arbitrary selector syntax reaching yt-dlp's `-f` from a compromised frontend.
+fn resolve_format_has_video(format_id: &str, formats: &[YtDlpFormatMetadata]) -> Option<bool> {
+    let find = |id: &str| {
+        formats.iter().find(|item| {
+            item.format_id
+                .as_deref()
+                .map(|value| value.trim() == id)
+                .unwrap_or(false)
+        })
+    };
+
+    if let Some(format) = find(format_id) {
+        return Some(codec_is_present(&format.vcodec));
+    }
+
+    if format_id.contains('+') {
+        let mut has_video = false;
+
+        for part in format_id.split('+').map(str::trim) {
+            let format = find(part)?;
+
+            if codec_is_present(&format.vcodec) {
+                has_video = true;
+            }
+        }
+
+        return Some(has_video);
+    }
+
+    None
 }
 
 fn infer_is_live(metadata_live_status: Option<&str>, was_live: Option<bool>) -> bool {
@@ -514,17 +549,14 @@ pub async fn download_media_from_url_async(
             })
             .cloned();
 
-        let is_combined_format = normalized_format_id.contains('+');
-
-        let has_video = if let Some(format) = selected_format.as_ref() {
-            codec_is_present(&format.vcodec)
-        } else if is_combined_format {
-            true
-        } else {
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpSelectedFormatNotFound,
-                "selected yt-dlp format was not found in metadata",
-            ));
+        let has_video = match resolve_format_has_video(&normalized_format_id, &metadata.formats) {
+            Some(has_video) => has_video,
+            None => {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpSelectedFormatNotFound,
+                    "selected yt-dlp format was not found in metadata",
+                ));
+            }
         };
 
         let media_subdir = if has_video { "video" } else { "audio" };
@@ -1006,6 +1038,39 @@ mod tests {
                 .unwrap_err()
                 .code,
             AppErrorCode::InvalidFormatId.as_str()
+        );
+    }
+
+    #[test]
+    fn resolve_format_has_video_validates_single_and_combined_selectors() {
+        let formats = vec![
+            YtDlpFormatMetadata {
+                format_id: Some("137".to_string()),
+                vcodec: Some("avc1.640028".to_string()),
+                ..Default::default()
+            },
+            YtDlpFormatMetadata {
+                format_id: Some("140".to_string()),
+                vcodec: Some("none".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        // Single formats present in the metadata.
+        assert_eq!(resolve_format_has_video("137", &formats), Some(true));
+        assert_eq!(resolve_format_has_video("140", &formats), Some(false));
+
+        // Combined video+audio: has video, both parts exist.
+        assert_eq!(resolve_format_has_video("137+140", &formats), Some(true));
+
+        // Unknown single format and a combined selector with an unknown part are rejected.
+        assert_eq!(resolve_format_has_video("999", &formats), None);
+        assert_eq!(resolve_format_has_video("137+999", &formats), None);
+
+        // Arbitrary yt-dlp selector syntax never matches a metadata format id.
+        assert_eq!(
+            resolve_format_has_video("bestvideo[height<=720]+bestaudio", &formats),
+            None
         );
     }
 
