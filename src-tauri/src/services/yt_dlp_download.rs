@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::{
@@ -46,6 +46,15 @@ use crate::{AppError, AppErrorCode, AppResult};
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
 const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
+// A download that produces no output for this long is treated as hung (dead network,
+// stuck ffmpeg merge) and killed. Generous so a slow-but-progressing download or a long
+// remux is never killed by mistake.
+const YT_DLP_STALL_TIMEOUT_SECS: u64 = 300;
+
+/// True when the child has produced no output for longer than the stall threshold.
+fn download_is_stalled(now_ms: u64, last_activity_ms: u64, threshold_ms: u64) -> bool {
+    now_ms.saturating_sub(last_activity_ms) > threshold_ms
+}
 
 fn unique_temp_suffix() -> String {
     let nanos = SystemTime::now()
@@ -641,6 +650,13 @@ pub async fn download_media_from_url_async(
             set_download_pid(&normalized_run_id, pid);
         }
 
+        // Stall detection: the reader tasks record the elapsed millis of the last line the
+        // child produced; the wait loop kills the download if it goes silent for too long.
+        let download_start = Instant::now();
+        let last_activity_ms = Arc::new(AtomicU64::new(0));
+        let last_activity_stdout = Arc::clone(&last_activity_ms);
+        let last_activity_stderr = Arc::clone(&last_activity_ms);
+
         let stdout = child.stdout.take().ok_or_else(|| {
             AppError::from_code(
                 AppErrorCode::YtDlpStdoutCaptureFailed,
@@ -669,6 +685,11 @@ pub async fn download_media_from_url_async(
             while let Ok(Some(line_value)) = lines.next_line().await {
                 let line = line_value.to_string();
 
+                last_activity_stdout.store(
+                    download_start.elapsed().as_millis() as u64,
+                    Ordering::Relaxed,
+                );
+
                 let _ = app_stdout.emit(
                     EVENT_YT_DLP_LOG,
                     DownloadLogEvent {
@@ -686,6 +707,11 @@ pub async fn download_media_from_url_async(
 
             while let Ok(Some(line_value)) = lines.next_line().await {
                 let line = line_value.to_string();
+
+                last_activity_stderr.store(
+                    download_start.elapsed().as_millis() as u64,
+                    Ordering::Relaxed,
+                );
 
                 let mut guard = stderr_buffer_reader.lock().await;
 
@@ -709,9 +735,23 @@ pub async fn download_media_from_url_async(
         });
 
         let mut cancel_requested = false;
+        let mut stalled = false;
 
         let status = loop {
-            if cancel_flag.load(Ordering::SeqCst) && !cancel_requested {
+            let user_cancelled = cancel_flag.load(Ordering::SeqCst);
+
+            if !stalled
+                && !user_cancelled
+                && download_is_stalled(
+                    download_start.elapsed().as_millis() as u64,
+                    last_activity_ms.load(Ordering::Relaxed),
+                    YT_DLP_STALL_TIMEOUT_SECS * 1000,
+                )
+            {
+                stalled = true;
+            }
+
+            if (user_cancelled || stalled) && !cancel_requested {
                 cancel_requested = true;
 
                 if let Some(pid) = child_pid {
@@ -742,6 +782,16 @@ pub async fn download_media_from_url_async(
 
         if let Err(e) = stderr_task.await {
             logger::warn("yt_dlp", format!("yt-dlp stderr task failed: {e}"));
+        }
+
+        if stalled {
+            let message = "yt-dlp download stalled with no progress and was stopped";
+            emit_download_error(app, &normalized_run_id, message);
+
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadTimeout,
+                message,
+            ));
         }
 
         if cancel_requested {
@@ -957,6 +1007,18 @@ mod tests {
                 .code,
             AppErrorCode::InvalidFormatId.as_str()
         );
+    }
+
+    #[test]
+    fn download_is_stalled_only_after_threshold_of_silence() {
+        let threshold = YT_DLP_STALL_TIMEOUT_SECS * 1000;
+
+        // No output for longer than the threshold -> stalled.
+        assert!(download_is_stalled(threshold + 1, 0, threshold));
+        // Recent activity -> not stalled.
+        assert!(!download_is_stalled(threshold + 1, threshold, threshold));
+        // Exactly at the threshold -> not yet stalled.
+        assert!(!download_is_stalled(threshold, 0, threshold));
     }
 
     #[test]
