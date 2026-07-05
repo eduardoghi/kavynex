@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use crate::services::library_guard::ensure_configured_library_path;
 use crate::services::thumbnail;
 use crate::utils::task::run_blocking;
 use crate::AppResult;
@@ -10,7 +11,13 @@ pub async fn generate_temporary_thumbnail(app: AppHandle, path: String) -> AppRe
 }
 
 #[tauri::command]
-pub async fn persist_thumbnail_file(path: String, library_path: String) -> AppResult<String> {
+pub async fn persist_thumbnail_file(
+    app: AppHandle,
+    path: String,
+    library_path: String,
+) -> AppResult<String> {
+    ensure_configured_library_path(&app, &library_path).await?;
+
     run_blocking(move || thumbnail::persist_thumbnail_file_sync(&path, &library_path)).await
 }
 
@@ -20,6 +27,8 @@ pub async fn download_thumbnail_from_url(
     url: String,
     library_path: String,
 ) -> AppResult<String> {
+    ensure_configured_library_path(&app, &library_path).await?;
+
     thumbnail::download_thumbnail_from_url_async(&app, &url, &library_path).await
 }
 
@@ -29,6 +38,8 @@ pub async fn download_channel_avatar_from_handle(
     youtube_handle: String,
     library_path: String,
 ) -> AppResult<String> {
+    ensure_configured_library_path(&app, &library_path).await?;
+
     thumbnail::download_channel_avatar_from_handle_async(&app, &youtube_handle, &library_path).await
 }
 
@@ -38,7 +49,13 @@ pub async fn delete_temporary_thumbnail(app: AppHandle, path: String) -> AppResu
 }
 
 #[tauri::command]
-pub async fn delete_thumbnail_file(thumbnail_path: String, library_path: String) -> AppResult<()> {
+pub async fn delete_thumbnail_file(
+    app: AppHandle,
+    thumbnail_path: String,
+    library_path: String,
+) -> AppResult<()> {
+    ensure_configured_library_path(&app, &library_path).await?;
+
     run_blocking(move || thumbnail::delete_thumbnail_file_sync(&thumbnail_path, &library_path))
         .await
 }

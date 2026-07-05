@@ -4,6 +4,7 @@ use crate::models::yt_dlp::{
     DownloadedMediaResult, ExternalToolsStatus, YtDlpComment, YtDlpFormatsResult,
 };
 use crate::services::binaries::resolve_external_tools_status_async;
+use crate::services::library_guard::ensure_configured_library_path;
 use crate::services::yt_dlp;
 use crate::AppResult;
 
@@ -36,6 +37,8 @@ pub async fn download_media_from_url(
     cookies_browser: Option<String>,
     cookies_path: Option<String>,
 ) -> AppResult<DownloadedMediaResult> {
+    ensure_configured_library_path(&app, &library_path).await?;
+
     yt_dlp::download_media_from_url_async(
         &app,
         &url,

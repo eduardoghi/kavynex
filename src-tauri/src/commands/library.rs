@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use serde::Serialize;
 use tauri::AppHandle;
 
+use crate::services::library_guard::ensure_configured_library_path;
 use crate::services::library_migration;
 use crate::services::library_paths;
 use crate::services::library_summary::LibrarySummaryInfo;
@@ -191,9 +192,16 @@ pub async fn is_directory_empty(path: String) -> AppResult<bool> {
 
 #[tauri::command]
 pub async fn migrate_library_directory(
+    app: AppHandle,
     old_library_path: String,
     new_library_path: String,
 ) -> AppResult<library_migration::MigrateLibraryDirectoryResult> {
+    // The migration removes the managed subdirectories of `old_library_path` after
+    // copying, so the source must be the library the user actually configured. The
+    // settings still hold the old path at this point: the frontend only persists the
+    // new one after the migration succeeds.
+    ensure_configured_library_path(&app, &old_library_path).await?;
+
     run_blocking(move || {
         library_migration::migrate_library_directory_sync(&old_library_path, &new_library_path)
     })
