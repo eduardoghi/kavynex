@@ -74,65 +74,28 @@ export async function updateMediaTitle(mediaId: number, title: string): Promise<
     await updateMediaTitleInRepository(mediaId, normalizedTitle);
 }
 
-function normalizeFetchedComments(comments: unknown): YtDlpComment[] {
-    if (!Array.isArray(comments)) {
-        return [];
-    }
-
-    return comments.map((comment) => {
-        const item = (comment ?? {}) as Record<string, unknown>;
-
-        return {
-            comment_id:
-                typeof item.comment_id === "string" && item.comment_id.trim()
-                    ? item.comment_id.trim()
-                    : null,
-            parent_comment_id:
-                typeof item.parent_comment_id === "string" && item.parent_comment_id.trim()
-                    ? item.parent_comment_id.trim()
-                    : null,
-            author_name:
-                typeof item.author_name === "string" && item.author_name.trim()
-                    ? item.author_name.trim()
-                    : "Unknown author",
-            author_handle:
-                typeof item.author_handle === "string" && item.author_handle.trim()
-                    ? item.author_handle.trim()
-                    : null,
-            author_channel_id:
-                typeof item.author_channel_id === "string" && item.author_channel_id.trim()
-                    ? item.author_channel_id.trim()
-                    : null,
-            author_thumbnail:
-                typeof item.author_thumbnail === "string" && item.author_thumbnail.trim()
-                    ? item.author_thumbnail.trim()
-                    : null,
-            text:
-                typeof item.text === "string"
-                    ? item.text
-                    : "",
-            like_count:
-                typeof item.like_count === "number" && Number.isFinite(item.like_count)
-                    ? Math.max(0, Math.floor(item.like_count))
-                    : 0,
-            reply_count:
-                typeof item.reply_count === "number" && Number.isFinite(item.reply_count)
-                    ? Math.max(0, Math.floor(item.reply_count))
-                    : 0,
-            is_author_uploader: Boolean(item.is_author_uploader),
-            is_favorited: Boolean(item.is_favorited),
-            is_pinned: Boolean(item.is_pinned),
-            is_edited: Boolean(item.is_edited),
-            time_text:
-                typeof item.time_text === "string" && item.time_text.trim()
-                    ? item.time_text.trim()
-                    : null,
-            published_at:
-                typeof item.published_at === "string" && item.published_at.trim()
-                    ? item.published_at.trim()
-                    : null,
-        };
-    });
+function normalizeFetchedComments(comments: YtDlpComment[]): YtDlpComment[] {
+    return comments.map((comment) => ({
+        comment_id: comment.comment_id?.trim() || null,
+        parent_comment_id: comment.parent_comment_id?.trim() || null,
+        author_name: comment.author_name.trim() || "Unknown author",
+        author_handle: comment.author_handle?.trim() || null,
+        author_channel_id: comment.author_channel_id?.trim() || null,
+        author_thumbnail: comment.author_thumbnail?.trim() || null,
+        text: comment.text,
+        like_count: Number.isFinite(comment.like_count)
+            ? Math.max(0, Math.floor(comment.like_count))
+            : 0,
+        reply_count: Number.isFinite(comment.reply_count)
+            ? Math.max(0, Math.floor(comment.reply_count))
+            : 0,
+        is_author_uploader: comment.is_author_uploader,
+        is_favorited: comment.is_favorited,
+        is_pinned: comment.is_pinned,
+        is_edited: comment.is_edited,
+        time_text: comment.time_text?.trim() || null,
+        published_at: comment.published_at?.trim() || null,
+    }));
 }
 
 async function prepareMediaArtifacts(

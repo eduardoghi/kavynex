@@ -1,6 +1,7 @@
 import {
     APP_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
+    type KnownErrorCode,
 } from "../constants/error-codes";
 
 export type AppErrorShape = {
@@ -121,7 +122,13 @@ function extractNestedError(value: unknown): AppErrorShape | null {
     return normalizeDirectAppErrorShape(value);
 }
 
-export function createAppError(code: string, message: string, details?: string | null): AppErrorShape {
+// Restricting the code to the registered union keeps every thrown code in the catalog
+// (and in the friendly-message map) instead of drifting into ad-hoc string literals.
+export function createAppError(
+    code: KnownErrorCode,
+    message: string,
+    details?: string | null
+): AppErrorShape {
     return {
         code: code.trim() || INVALID_INPUT_ERROR_CODE,
         message: message.trim() || "Unknown error.",

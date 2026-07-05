@@ -45,9 +45,7 @@ export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaIn
     const normalizedYtDlpFormatId = normalizeRequiredValue(input.ytDlpFormatId);
     const normalizedCookiesBrowser = normalizeCookiesBrowser(input.cookiesBrowser);
 
-    if (!input.channelId) {
-        throw createAppError("INVALID_CHANNEL_ID", "Channel id is invalid.");
-    }
+    validateChannelId(input.channelId);
 
     if (!normalizedTitle) {
         throw createAppError("INVALID_MEDIA_CREATION_ARGUMENTS", "Media title is required.");

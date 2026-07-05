@@ -1,6 +1,6 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
-import type { DownloadedMediaResult, YtDlpFormatsResult } from "../types/media";
+import type { DownloadedMediaResult, YtDlpComment, YtDlpFormatsResult } from "../types/media";
 import { createAppError } from "../utils/app-error";
 import { COOKIES_BROWSER_VALUES } from "../constants/cookies-browsers";
 
@@ -95,24 +95,14 @@ export async function fetchYouTubeComments(
     youtubeVideoId: string,
     cookiesBrowser?: string | null,
     cookiesPath?: string | null
-): Promise<
-    {
-        comment_id: string | null;
-        parent_comment_id: string | null;
-        author_name: string;
-        author_channel_id: string | null;
-        text: string;
-        like_count: number;
-        published_at: string | null;
-    }[]
-> {
+): Promise<YtDlpComment[]> {
     const normalizedVideoId = youtubeVideoId.trim();
 
     if (!normalizedVideoId) {
         throw createAppError("INVALID_YOUTUBE_VIDEO_ID", "youtube video id is empty");
     }
 
-    return invokeCommand("fetch_youtube_comments", {
+    return invokeCommand<YtDlpComment[]>(TAURI_COMMANDS.FETCH_YOUTUBE_COMMENTS, {
         videoId: normalizedVideoId,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),

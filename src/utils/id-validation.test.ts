@@ -18,12 +18,12 @@ describe("isValidEntityId", () => {
 
 describe("assertValidEntityId", () => {
     it("throws for negatives, fractions and zero", () => {
-        expect(() => assertValidEntityId(-3, "CODE", "bad")).toThrow();
-        expect(() => assertValidEntityId(1.5, "CODE", "bad")).toThrow();
-        expect(() => assertValidEntityId(0, "CODE", "bad")).toThrow();
+        expect(() => assertValidEntityId(-3, "INVALID_CHANNEL_ID", "bad")).toThrow();
+        expect(() => assertValidEntityId(1.5, "INVALID_CHANNEL_ID", "bad")).toThrow();
+        expect(() => assertValidEntityId(0, "INVALID_CHANNEL_ID", "bad")).toThrow();
     });
 
     it("does not throw for a positive integer", () => {
-        expect(() => assertValidEntityId(7, "CODE", "bad")).not.toThrow();
+        expect(() => assertValidEntityId(7, "INVALID_CHANNEL_ID", "bad")).not.toThrow();
     });
 });
