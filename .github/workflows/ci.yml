@@ -50,7 +50,10 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                platform: [ubuntu-22.04, windows-latest]
+                # macOS is included because the release ships macOS binaries; without it,
+                # platform-specific bugs (path semantics, canonicalization) would only
+                # surface at release time.
+                platform: [ubuntu-22.04, windows-latest, macos-latest]
         runs-on: ${{ matrix.platform }}
         steps:
             - name: Checkout repository
