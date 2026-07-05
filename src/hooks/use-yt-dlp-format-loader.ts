@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { listYtDlpFormats } from "../services/media-download-service";
 import type { MediaType, YtDlpFormat } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
@@ -452,11 +452,18 @@ export function useYtDlpFormatLoader({
     const [selectedYtDlpFormatId, setSelectedYtDlpFormatIdState] = useState("");
     const [isLoadingYtDlpFormats, setIsLoadingYtDlpFormats] = useState(false);
 
+    // Guards against a stale format response overwriting state after the URL changed (or was
+    // reset) while yt-dlp was running - otherwise the formats/selection for an old URL could
+    // repopulate over the current one, and that selection feeds the real download command.
+    const latestRequestIdRef = useRef(0);
+
     const selectedYtDlpMediaType = useMemo<MediaType>(() => {
         return inferSelectedMediaType(ytDlpFormats, selectedYtDlpFormatId);
     }, [selectedYtDlpFormatId, ytDlpFormats]);
 
     const resetYtDlpFormats = useCallback((): void => {
+        // Invalidate any in-flight load so its response cannot repopulate the cleared state.
+        latestRequestIdRef.current += 1;
         setYtDlpFormats([]);
         setSelectedYtDlpFormatIdState("");
         onMediaTypeResolved("video");
@@ -492,6 +499,8 @@ export function useYtDlpFormatLoader({
             return;
         }
 
+        const requestId = ++latestRequestIdRef.current;
+
         setIsLoadingYtDlpFormats(true);
 
         const commandParts = [
@@ -520,6 +529,12 @@ export function useYtDlpFormatLoader({
                 cookiesBrowser || null,
                 cookiesPath || null
             );
+
+            // A newer request (or a reset from a URL change) superseded this one; discard the
+            // stale response instead of overwriting the current formats/selection.
+            if (requestId !== latestRequestIdRef.current) {
+                return;
+            }
 
             for (const line of result.terminal_logs ?? []) {
                 onTerminalLog?.(line);
@@ -553,6 +568,12 @@ export function useYtDlpFormatLoader({
                 onTerminalLog?.("No compatible formats were returned.");
             }
         } catch (error) {
+            // A stale request's failure must not clear the current state or surface an error
+            // for a URL the user already moved away from.
+            if (requestId !== latestRequestIdRef.current) {
+                return;
+            }
+
             setYtDlpFormats([]);
             setSelectedYtDlpFormatIdState("");
             onMediaTypeResolved("video");

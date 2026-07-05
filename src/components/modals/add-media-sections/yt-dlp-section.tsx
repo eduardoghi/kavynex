@@ -234,7 +234,7 @@ export function YtDlpSection({
                     }
                 }}
                 leftSection={<LinkIcon size={16} />}
-                disabled={isLocked}
+                disabled={isLocked || isLoadingYtDlpFormats}
             />
 
             <Select

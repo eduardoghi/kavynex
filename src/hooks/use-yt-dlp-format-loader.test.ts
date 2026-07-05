@@ -7,6 +7,7 @@ vi.mock("../services/media-download-service", () => ({
 }));
 
 import { listYtDlpFormats } from "../services/media-download-service";
+import type { YtDlpFormatsResult } from "../types/media";
 
 describe("useYtDlpFormatLoader", () => {
     beforeEach(() => {
@@ -175,5 +176,63 @@ describe("useYtDlpFormatLoader", () => {
         });
 
         expect(onMediaTypeResolved).toHaveBeenCalledWith("video");
+    });
+
+    it("discards a stale format response after a reset mid-load", async () => {
+        // Hold the response so a reset can happen while the load is in flight.
+        let resolveFormats: (value: YtDlpFormatsResult) => void = () => {};
+        vi.mocked(listYtDlpFormats).mockReturnValueOnce(
+            new Promise<YtDlpFormatsResult>((resolve) => {
+                resolveFormats = resolve;
+            })
+        );
+
+        const { result } = renderHook(() =>
+            useYtDlpFormatLoader({
+                getUrl: () => "https://youtube.com/watch?v=a",
+                getCurrentTitle: () => "",
+                onSuggestedTitle: vi.fn(),
+                onMediaTypeResolved: vi.fn(),
+            })
+        );
+
+        let loadPromise: Promise<void> = Promise.resolve();
+        act(() => {
+            loadPromise = result.current.loadYtDlpFormats();
+        });
+
+        // Editing the URL resets the state and must invalidate the in-flight load.
+        act(() => {
+            result.current.resetYtDlpFormats();
+        });
+
+        // The stale response for the old URL finally arrives.
+        await act(async () => {
+            resolveFormats({
+                suggested_title: "",
+                terminal_logs: [],
+                formats: [
+                    {
+                        format_id: "best",
+                        display_name: "1080p",
+                        ext: "mp4",
+                        media_type: "video",
+                        has_video: true,
+                        has_audio: true,
+                        filesize_bytes: 2000,
+                        height: 1080,
+                        abr: null,
+                        tbr: 2500,
+                        vcodec: "avc1",
+                        protocol: "https",
+                    },
+                ],
+            });
+            await loadPromise;
+        });
+
+        // It must not repopulate the cleared formats/selection (which feed the download).
+        expect(result.current.ytDlpFormats).toEqual([]);
+        expect(result.current.selectedYtDlpFormatId).toBe("");
     });
 });
