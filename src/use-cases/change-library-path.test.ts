@@ -41,6 +41,35 @@ describe("executeChangeLibraryPath", () => {
         expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
     });
 
+    it("returns the trimmed current path when the user cancels selection", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce(null);
+
+        const result = await executeChangeLibraryPath({
+            currentLibraryPath: "  /library  ",
+        });
+
+        expect(result).toEqual({
+            changed: false,
+            finalLibraryPath: "/library",
+        });
+    });
+
+    it("returns unchanged when the selected path is whitespace only", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce("   ");
+
+        const result = await executeChangeLibraryPath({
+            currentLibraryPath: "/library",
+        });
+
+        expect(result).toEqual({
+            changed: false,
+            finalLibraryPath: "/library",
+        });
+        expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
+        expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
+        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
+    });
+
     it("returns unchanged when ensured path matches current path", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce("/library");
         ensureDirectoryExistsMock.mockResolvedValueOnce("/library");

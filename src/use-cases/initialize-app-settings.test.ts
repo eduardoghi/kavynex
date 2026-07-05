@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { initializeAppSettings } from "./initialize-app-settings";
+import { getDefaultAppSettings, initializeAppSettings } from "./initialize-app-settings";
 
 vi.mock("../services/library-service", () => ({
     resolveExistingDirectory: vi.fn(),
@@ -37,7 +37,8 @@ describe("initializeAppSettings", () => {
     });
 
     it("clears the path and warns when the stored directory cannot be resolved", async () => {
-        vi.mocked(resolveExistingDirectory).mockRejectedValueOnce(new Error("missing"));
+        const resolveError = new Error("missing");
+        vi.mocked(resolveExistingDirectory).mockRejectedValueOnce(resolveError);
 
         const result = await initializeAppSettings({
             storedSettings: { importMode: "copy", libraryPath: "/library" },
@@ -46,12 +47,18 @@ describe("initializeAppSettings", () => {
         expect(ensureDirectoryExists).not.toHaveBeenCalled();
         expect(result.settings.libraryPath).toBe("");
         expect(result.shouldWarnAboutLibraryPath).toBe(true);
-        expect(logError).toHaveBeenCalled();
+        expect(logError).toHaveBeenCalledWith(
+            "settings",
+            "Failed to resolve stored library directory.",
+            resolveError,
+            { libraryPath: "/library" }
+        );
     });
 
     it("clears the path and warns when the directory cannot be ensured", async () => {
+        const ensureError = new Error("no access");
         vi.mocked(resolveExistingDirectory).mockResolvedValueOnce("/library/resolved");
-        vi.mocked(ensureDirectoryExists).mockRejectedValueOnce(new Error("no access"));
+        vi.mocked(ensureDirectoryExists).mockRejectedValueOnce(ensureError);
 
         const result = await initializeAppSettings({
             storedSettings: { importMode: "move", libraryPath: "/library" },
@@ -59,7 +66,23 @@ describe("initializeAppSettings", () => {
 
         expect(result.settings.libraryPath).toBe("");
         expect(result.shouldWarnAboutLibraryPath).toBe(true);
-        expect(logError).toHaveBeenCalled();
+        expect(logError).toHaveBeenCalledWith(
+            "settings",
+            "Failed to ensure library directory exists.",
+            ensureError,
+            { libraryPath: "/library/resolved" }
+        );
+    });
+
+    it("treats a whitespace-only stored path as empty without touching the filesystem", async () => {
+        const result = await initializeAppSettings({
+            storedSettings: { importMode: "copy", libraryPath: "   " },
+        });
+
+        expect(resolveExistingDirectory).not.toHaveBeenCalled();
+        expect(ensureDirectoryExists).not.toHaveBeenCalled();
+        expect(result.settings.libraryPath).toBe("");
+        expect(result.shouldWarnAboutLibraryPath).toBe(false);
     });
 
     it("does not warn on a fresh install with no stored library path", async () => {
@@ -90,5 +113,12 @@ describe("initializeAppSettings", () => {
             },
         });
         expect(copied.settings.importMode).toBe("copy");
+    });
+
+    it("returns copy mode and an empty library path as the defaults", () => {
+        expect(getDefaultAppSettings()).toStrictEqual({
+            importMode: "copy",
+            libraryPath: "",
+        });
     });
 });

@@ -46,4 +46,34 @@ describe("executeDeleteSelectedChannel", () => {
         expect(closeSelectedChannelUiBeforeDelete).not.toHaveBeenCalled();
         expect(confirmDeleteChannel).toHaveBeenCalled();
     });
+
+    it("deletes directly when there is no channel marked for deletion", async () => {
+        const closeSelectedChannelUiBeforeDelete = vi.fn().mockResolvedValue(undefined);
+        const confirmDeleteChannel = vi.fn().mockResolvedValue(undefined);
+
+        await executeDeleteSelectedChannel({
+            selectedChannelId: 10,
+            channelToDeleteId: null,
+            closeSelectedChannelUiBeforeDelete,
+            confirmDeleteChannel,
+        });
+
+        expect(closeSelectedChannelUiBeforeDelete).not.toHaveBeenCalled();
+        expect(confirmDeleteChannel).toHaveBeenCalled();
+    });
+
+    it("deletes directly when neither side has a channel id", async () => {
+        const closeSelectedChannelUiBeforeDelete = vi.fn().mockResolvedValue(undefined);
+        const confirmDeleteChannel = vi.fn().mockResolvedValue(undefined);
+
+        await executeDeleteSelectedChannel({
+            selectedChannelId: null,
+            channelToDeleteId: null,
+            closeSelectedChannelUiBeforeDelete,
+            confirmDeleteChannel,
+        });
+
+        expect(closeSelectedChannelUiBeforeDelete).not.toHaveBeenCalled();
+        expect(confirmDeleteChannel).toHaveBeenCalled();
+    });
 });
