@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ImportMode } from "../types/settings";
 import { cancelMediaDownload, createMedia } from "../services";
 import { useAddMediaForm } from "./use-add-media-form";
+import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents } from "./use-yt-dlp-events";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
@@ -27,64 +28,6 @@ type UseAddMediaWorkflowReturn = {
     closeAddMediaModal: () => Promise<void>;
 };
 
-type WorkflowState = {
-    addMediaOpen: boolean;
-    isAddingMedia: boolean;
-    isCancellingYtDlp: boolean;
-};
-
-type WorkflowAction =
-    | { type: "SET_ADD_MEDIA_OPEN"; payload: boolean }
-    | { type: "START_ADDING_MEDIA" }
-    | { type: "FINISH_ADDING_MEDIA" }
-    | { type: "START_CANCELLING_YT_DLP" }
-    | { type: "FINISH_CANCELLING_YT_DLP" }
-    | { type: "RESET_CANCELLING_YT_DLP" };
-
-const INITIAL_STATE: WorkflowState = {
-    addMediaOpen: false,
-    isAddingMedia: false,
-    isCancellingYtDlp: false,
-};
-
-function workflowReducer(state: WorkflowState, action: WorkflowAction): WorkflowState {
-    switch (action.type) {
-        case "SET_ADD_MEDIA_OPEN":
-            return {
-                ...state,
-                addMediaOpen: action.payload,
-            };
-
-        case "START_ADDING_MEDIA":
-            return {
-                ...state,
-                isAddingMedia: true,
-            };
-
-        case "FINISH_ADDING_MEDIA":
-            return {
-                ...state,
-                isAddingMedia: false,
-            };
-
-        case "START_CANCELLING_YT_DLP":
-            return {
-                ...state,
-                isCancellingYtDlp: true,
-            };
-
-        case "FINISH_CANCELLING_YT_DLP":
-        case "RESET_CANCELLING_YT_DLP":
-            return {
-                ...state,
-                isCancellingYtDlp: false,
-            };
-
-        default:
-            return state;
-    }
-}
-
 export function useAddMediaWorkflow({
     selectedChannelId,
     importMode,
@@ -92,7 +35,17 @@ export function useAddMediaWorkflow({
     onError,
     onReloadMedia,
 }: UseAddMediaWorkflowOptions): UseAddMediaWorkflowReturn {
-    const [state, dispatch] = useReducer(workflowReducer, INITIAL_STATE);
+    const [addMediaOpen, setAddMediaOpen] = useState(false);
+
+    // Both operations guard reentrancy through useAsyncFlag, whose ref is set before any
+    // await: two synchronous invocations can never both pass the guard, so a double
+    // click cannot start two downloads (each with its own run id).
+    const { isRunning: isAddingMedia, runWithFlag: runAddMedia } = useAsyncFlag();
+    const {
+        isRunning: isCancellingYtDlp,
+        runWithFlag: runCancelYtDlp,
+        resetFlag: resetCancellingYtDlp,
+    } = useAsyncFlag();
 
     const wasAddMediaOpenRef = useRef(false);
     const previousSelectedChannelIdRef = useRef<number | null>(selectedChannelId);
@@ -109,19 +62,6 @@ export function useAddMediaWorkflow({
         },
     });
 
-    const setAddMediaOpen = useCallback(
-        (value: React.SetStateAction<boolean>): void => {
-            const resolvedValue =
-                typeof value === "function" ? value(state.addMediaOpen) : value;
-
-            dispatch({
-                type: "SET_ADD_MEDIA_OPEN",
-                payload: resolvedValue,
-            });
-        },
-        [state.addMediaOpen]
-    );
-
     const addMedia = useCallback(async (): Promise<void> => {
         if (selectedChannelId === null) {
             onError("Select a channel before adding media.");
@@ -131,12 +71,7 @@ export function useAddMediaWorkflow({
         const isPreparingMedia =
             addMediaForm.isGeneratingThumb || addMediaForm.isLoadingYtDlpFormats;
 
-        if (
-            state.isAddingMedia ||
-            state.isCancellingYtDlp ||
-            isPreparingMedia ||
-            ytDlpEvents.isYtDlpRunning
-        ) {
+        if (isCancellingYtDlp || isPreparingMedia || ytDlpEvents.isYtDlpRunning) {
             return;
         }
 
@@ -158,133 +93,126 @@ export function useAddMediaWorkflow({
             return;
         }
 
-        dispatch({ type: "START_ADDING_MEDIA" });
+        await runAddMedia(async () => {
+            try {
+                let ytDlpRunId = "";
+                let ytDlpFormatId = "";
 
-        try {
-            let ytDlpRunId = "";
-            let ytDlpFormatId = "";
+                if (sourceMode === "yt-dlp") {
+                    ytDlpRunId =
+                        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                            ? crypto.randomUUID()
+                            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-            if (sourceMode === "yt-dlp") {
-                ytDlpRunId =
-                    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-                        ? crypto.randomUUID()
-                        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                    ytDlpFormatId = addMediaForm.selectedYtDlpFormatId.trim();
 
-                ytDlpFormatId = addMediaForm.selectedYtDlpFormatId.trim();
+                    const commandPreview = addMediaForm.cookiesBrowser
+                        ? `yt-dlp ${addMediaForm.mediaUrl.trim()} --cookies-from-browser ${addMediaForm.cookiesBrowser} --format ${ytDlpFormatId}`
+                        : `yt-dlp ${addMediaForm.mediaUrl.trim()} --format ${ytDlpFormatId}`;
 
-                const commandPreview = addMediaForm.cookiesBrowser
-                    ? `yt-dlp ${addMediaForm.mediaUrl.trim()} --cookies-from-browser ${addMediaForm.cookiesBrowser} --format ${ytDlpFormatId}`
-                    : `yt-dlp ${addMediaForm.mediaUrl.trim()} --format ${ytDlpFormatId}`;
+                    ytDlpEvents.startRun(ytDlpRunId, commandPreview);
 
-                ytDlpEvents.startRun(ytDlpRunId, commandPreview);
-
-                ytDlpEvents.appendManualLog(
-                    addMediaForm.downloadComments
-                        ? "Comments: enabled"
-                        : "Comments: disabled"
-                );
-
-                ytDlpEvents.appendManualLog(
-                    addMediaForm.downloadLiveChat
-                        ? "Live chat: enabled"
-                        : "Live chat: disabled"
-                );
-
-                if (addMediaForm.cookiesBrowser) {
                     ytDlpEvents.appendManualLog(
-                        `Cookies from browser: ${addMediaForm.cookiesBrowser}`
+                        addMediaForm.downloadComments
+                            ? "Comments: enabled"
+                            : "Comments: disabled"
                     );
-                }
-            }
 
-            await createMedia(
-                {
-                    channelId: selectedChannelId,
-                    title: addMediaForm.title.trim(),
-                    sourceMode,
-                    sourceValue,
-                    thumbnailSourcePath: addMediaForm.thumbPath || null,
-                    mediaType:
-                        sourceMode === "yt-dlp"
-                            ? addMediaForm.selectedYtDlpMediaType
-                            : addMediaForm.mediaType,
-                    importMode,
-                    libraryPath,
-                    publishedAt:
-                        sourceMode === "yt-dlp"
-                            ? null
-                            : addMediaForm.publishedAt.trim() || null,
-                    ytDlpRunId,
-                    ytDlpFormatId,
-                    downloadComments: addMediaForm.downloadComments,
-                    downloadLiveChat: addMediaForm.downloadLiveChat,
-                    cookiesBrowser: addMediaForm.cookiesBrowser || null,
-                },
-                {
-                    onProgress: (message) => {
-                        ytDlpEvents.appendManualLog(message);
+                    ytDlpEvents.appendManualLog(
+                        addMediaForm.downloadLiveChat
+                            ? "Live chat: enabled"
+                            : "Live chat: disabled"
+                    );
+
+                    if (addMediaForm.cookiesBrowser) {
+                        ytDlpEvents.appendManualLog(
+                            `Cookies from browser: ${addMediaForm.cookiesBrowser}`
+                        );
+                    }
+                }
+
+                await createMedia(
+                    {
+                        channelId: selectedChannelId,
+                        title: addMediaForm.title.trim(),
+                        sourceMode,
+                        sourceValue,
+                        thumbnailSourcePath: addMediaForm.thumbPath || null,
+                        mediaType:
+                            sourceMode === "yt-dlp"
+                                ? addMediaForm.selectedYtDlpMediaType
+                                : addMediaForm.mediaType,
+                        importMode,
+                        libraryPath,
+                        publishedAt:
+                            sourceMode === "yt-dlp"
+                                ? null
+                                : addMediaForm.publishedAt.trim() || null,
+                        ytDlpRunId,
+                        ytDlpFormatId,
+                        downloadComments: addMediaForm.downloadComments,
+                        downloadLiveChat: addMediaForm.downloadLiveChat,
+                        cookiesBrowser: addMediaForm.cookiesBrowser || null,
                     },
-                }
-            );
+                    {
+                        onProgress: (message) => {
+                            ytDlpEvents.appendManualLog(message);
+                        },
+                    }
+                );
 
-            await onReloadMedia(selectedChannelId);
-            await addMediaForm.resetForm();
+                await onReloadMedia(selectedChannelId);
+                await addMediaForm.resetForm();
 
-            dispatch({
-                type: "SET_ADD_MEDIA_OPEN",
-                payload: false,
-            });
-        } catch (error) {
-            ytDlpEvents.markStopped();
+                setAddMediaOpen(false);
+            } catch (error) {
+                ytDlpEvents.markStopped();
 
-            logError("add-media", "Failed to add media.", error, {
-                selectedChannelId,
-                sourceMode: addMediaForm.sourceMode,
-                libraryPath,
-                cookiesBrowser: addMediaForm.cookiesBrowser,
-            });
-            onError(resolveErrorMessage(error, "Failed to add media."));
-        } finally {
-            dispatch({ type: "FINISH_ADDING_MEDIA" });
-        }
+                logError("add-media", "Failed to add media.", error, {
+                    selectedChannelId,
+                    sourceMode: addMediaForm.sourceMode,
+                    libraryPath,
+                    cookiesBrowser: addMediaForm.cookiesBrowser,
+                });
+                onError(resolveErrorMessage(error, "Failed to add media."));
+            }
+        });
     }, [
         addMediaForm,
         importMode,
+        isCancellingYtDlp,
         libraryPath,
         onError,
         onReloadMedia,
+        runAddMedia,
         selectedChannelId,
-        state.isAddingMedia,
-        state.isCancellingYtDlp,
         ytDlpEvents,
     ]);
 
     const cancelYtDlpDownload = useCallback(async (): Promise<void> => {
         const runId = ytDlpEvents.currentRunIdRef.current.trim();
 
-        if (!runId || !ytDlpEvents.isYtDlpRunning || state.isCancellingYtDlp) {
+        if (!runId || !ytDlpEvents.isYtDlpRunning) {
             return;
         }
 
-        dispatch({ type: "START_CANCELLING_YT_DLP" });
-
-        try {
-            await cancelMediaDownload(runId);
-        } catch (error) {
-            logError("add-media", "Failed to cancel media download.", error, {
-                runId,
-            });
-            onError(resolveErrorMessage(error, "Failed to cancel media download."));
-        } finally {
-            dispatch({ type: "FINISH_CANCELLING_YT_DLP" });
-        }
-    }, [onError, state.isCancellingYtDlp, ytDlpEvents]);
+        await runCancelYtDlp(async () => {
+            try {
+                await cancelMediaDownload(runId);
+            } catch (error) {
+                logError("add-media", "Failed to cancel media download.", error, {
+                    runId,
+                });
+                onError(resolveErrorMessage(error, "Failed to cancel media download."));
+            }
+        });
+    }, [onError, runCancelYtDlp, ytDlpEvents]);
 
     const closeAddMediaModal = useCallback(async (): Promise<void> => {
         const isModalLocked =
-            state.isAddingMedia ||
+            isAddingMedia ||
             ytDlpEvents.isYtDlpRunning ||
-            state.isCancellingYtDlp ||
+            isCancellingYtDlp ||
             addMediaForm.isGeneratingThumb ||
             addMediaForm.isLoadingYtDlpFormats;
 
@@ -294,14 +222,11 @@ export function useAddMediaWorkflow({
 
         await addMediaForm.resetForm();
 
-        dispatch({
-            type: "SET_ADD_MEDIA_OPEN",
-            payload: false,
-        });
+        setAddMediaOpen(false);
     }, [
         addMediaForm,
-        state.isAddingMedia,
-        state.isCancellingYtDlp,
+        isAddingMedia,
+        isCancellingYtDlp,
         ytDlpEvents.isYtDlpRunning,
     ]);
 
@@ -311,38 +236,35 @@ export function useAddMediaWorkflow({
         if (previousSelectedChannelId !== selectedChannelId) {
             previousSelectedChannelIdRef.current = selectedChannelId;
 
-            if (state.addMediaOpen) {
+            if (addMediaOpen) {
                 void addMediaForm.resetForm();
 
-                dispatch({
-                    type: "SET_ADD_MEDIA_OPEN",
-                    payload: false,
-                });
+                setAddMediaOpen(false);
             }
 
             ytDlpEvents.resetYtDlpState(true);
-            dispatch({ type: "RESET_CANCELLING_YT_DLP" });
+            resetCancellingYtDlp();
         }
-    }, [addMediaForm, selectedChannelId, state.addMediaOpen, ytDlpEvents]);
+    }, [addMediaForm, addMediaOpen, resetCancellingYtDlp, selectedChannelId, ytDlpEvents]);
 
     useEffect(() => {
-        if (state.addMediaOpen && !wasAddMediaOpenRef.current) {
+        if (addMediaOpen && !wasAddMediaOpenRef.current) {
             void addMediaForm.resetForm();
         }
 
-        if (!state.addMediaOpen && wasAddMediaOpenRef.current) {
+        if (!addMediaOpen && wasAddMediaOpenRef.current) {
             ytDlpEvents.resetYtDlpState(true);
-            dispatch({ type: "RESET_CANCELLING_YT_DLP" });
+            resetCancellingYtDlp();
         }
 
-        wasAddMediaOpenRef.current = state.addMediaOpen;
-    }, [addMediaForm, state.addMediaOpen, ytDlpEvents]);
+        wasAddMediaOpenRef.current = addMediaOpen;
+    }, [addMediaForm, addMediaOpen, resetCancellingYtDlp, ytDlpEvents]);
 
     return {
-        addMediaOpen: state.addMediaOpen,
+        addMediaOpen,
         setAddMediaOpen,
-        isAddingMedia: state.isAddingMedia,
-        isCancellingYtDlp: state.isCancellingYtDlp,
+        isAddingMedia,
+        isCancellingYtDlp,
         ytDlpLogs: ytDlpEvents.ytDlpLogs,
         isYtDlpRunning: ytDlpEvents.isYtDlpRunning,
         addMediaForm,

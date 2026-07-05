@@ -325,6 +325,38 @@ describe("useAddMediaWorkflow", () => {
         expect(mockAppendManualLog).toHaveBeenCalledWith("Cookies from browser: edge");
     });
 
+    it("starts a single createMedia run when addMedia fires twice synchronously", async () => {
+        // Regression guard: the reentrancy check must use a synchronous ref, not render
+        // state, so a double click before the next render can never start two downloads.
+        let resolveCreateMedia: (value: { id: number | null }) => void = () => {};
+        vi.mocked(createMedia).mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    resolveCreateMedia = resolve;
+                })
+        );
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            const first = result.current.addMedia();
+            const second = result.current.addMedia();
+
+            resolveCreateMedia({ id: 1 });
+            await Promise.all([first, second]);
+        });
+
+        expect(createMedia).toHaveBeenCalledTimes(1);
+    });
+
     it("reports add error", async () => {
         vi.mocked(createMedia).mockRejectedValue(new Error("boom"));
 
