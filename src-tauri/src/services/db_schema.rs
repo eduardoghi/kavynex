@@ -5,7 +5,7 @@ use crate::AppResult;
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-const SCHEMA_VERSION: i64 = 7;
+pub(crate) const SCHEMA_VERSION: i64 = 7;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before

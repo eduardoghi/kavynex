@@ -13,15 +13,20 @@ import {
 } from "@mantine/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+    Database,
     Download,
     FolderOpen,
     HardDrive,
     RefreshCcw,
     Search,
     Settings2,
+    Upload,
     Wrench,
 } from "lucide-react";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { useAppUpdate } from "../../hooks/use-app-update";
+import { exportDatabase, importDatabase } from "../../services/database-service";
 import { getLibrarySummary, type LibrarySummaryInfo } from "../../services/library-service";
 import type { ImportMode } from "../../types/settings";
 import { parseAppError } from "../../utils/app-error";
@@ -80,6 +85,13 @@ export function SettingsModal({
     const [librarySummary, setLibrarySummary] = useState<LibrarySummaryInfo>(EMPTY_LIBRARY_SUMMARY);
     const [isLoadingLibrarySummary, setIsLoadingLibrarySummary] = useState(false);
     const [librarySummaryError, setLibrarySummaryError] = useState("");
+
+    const [databaseBusy, setDatabaseBusy] = useState<"idle" | "exporting" | "importing">("idle");
+    const [databaseMessage, setDatabaseMessage] = useState<{
+        tone: "success" | "error";
+        text: string;
+    } | null>(null);
+    const [pendingImportPath, setPendingImportPath] = useState<string | null>(null);
 
     const {
         status: appUpdateStatus,
@@ -142,6 +154,90 @@ export function SettingsModal({
         },
         []
     );
+
+    const handleExportDatabase = useCallback(async (): Promise<void> => {
+        setDatabaseMessage(null);
+
+        let destination: string | null;
+
+        try {
+            destination = await save({
+                title: "Export database",
+                defaultPath: "kavynex-backup.db",
+                filters: [{ name: "Database", extensions: ["db"] }],
+            });
+        } catch (error) {
+            logError("settings-modal", "Failed to open the export dialog.", error);
+            setDatabaseMessage({ tone: "error", text: "Could not open the export dialog." });
+            return;
+        }
+
+        if (!destination) {
+            return;
+        }
+
+        setDatabaseBusy("exporting");
+
+        try {
+            await exportDatabase(destination);
+            setDatabaseMessage({ tone: "success", text: "Database exported successfully." });
+        } catch (error) {
+            logError("settings-modal", "Failed to export the database.", error, {
+                parsed: parseAppError(error),
+            });
+            setDatabaseMessage({ tone: "error", text: "Could not export the database." });
+        } finally {
+            setDatabaseBusy("idle");
+        }
+    }, []);
+
+    const handlePickImportFile = useCallback(async (): Promise<void> => {
+        setDatabaseMessage(null);
+
+        let selection: string | string[] | null;
+
+        try {
+            selection = await open({
+                title: "Import database",
+                multiple: false,
+                directory: false,
+                filters: [{ name: "Database", extensions: ["db"] }],
+            });
+        } catch (error) {
+            logError("settings-modal", "Failed to open the import dialog.", error);
+            setDatabaseMessage({ tone: "error", text: "Could not open the import dialog." });
+            return;
+        }
+
+        if (typeof selection === "string") {
+            setPendingImportPath(selection);
+        }
+    }, []);
+
+    const handleConfirmImport = useCallback(async (): Promise<void> => {
+        if (!pendingImportPath) {
+            return;
+        }
+
+        setDatabaseBusy("importing");
+        setDatabaseMessage(null);
+
+        try {
+            await importDatabase(pendingImportPath);
+            // The swap is applied on the next startup, so relaunch to complete the import.
+            await relaunch();
+        } catch (error) {
+            logError("settings-modal", "Failed to import the database.", error, {
+                parsed: parseAppError(error),
+            });
+            setDatabaseMessage({
+                tone: "error",
+                text: "Could not import the selected database.",
+            });
+            setDatabaseBusy("idle");
+            setPendingImportPath(null);
+        }
+    }, [pendingImportPath]);
 
     useEffect(() => {
         if (!opened) {
@@ -325,6 +421,93 @@ export function SettingsModal({
                             <Text size="sm">{libraryPathChangeDisabledReason}</Text>
                         </Alert>
                     )}
+                </Stack>
+
+                <Stack gap="xs">
+                    <Group gap="sm">
+                        <Database size={18} />
+                        <Title order={4}>Database</Title>
+                    </Group>
+
+                    <Paper withBorder radius="md" p="sm">
+                        <Stack gap="sm">
+                            <Text size="sm" c="dimmed">
+                                Export a portable copy of your library database (channels, media,
+                                comments and watch history) to keep off-machine or move to another
+                                install, or import one to restore it. Media files live in the
+                                library folder and are backed up separately.
+                            </Text>
+
+                            <Group gap="sm">
+                                <AppButton
+                                    appVariant="secondary"
+                                    leftSection={<Download size={16} />}
+                                    onClick={() => {
+                                        void handleExportDatabase();
+                                    }}
+                                    loading={databaseBusy === "exporting"}
+                                    disabled={databaseBusy !== "idle"}
+                                >
+                                    Export database
+                                </AppButton>
+
+                                <AppButton
+                                    appVariant="secondary"
+                                    leftSection={<Upload size={16} />}
+                                    onClick={() => {
+                                        void handlePickImportFile();
+                                    }}
+                                    disabled={databaseBusy !== "idle"}
+                                >
+                                    Import database
+                                </AppButton>
+                            </Group>
+
+                            {pendingImportPath && (
+                                <Alert color="yellow" variant="light">
+                                    <Stack gap="xs">
+                                        <Text size="sm" fw={600}>
+                                            Replace the current database?
+                                        </Text>
+                                        <Text size="sm">
+                                            Importing replaces your current library database and
+                                            restarts the app. Your current database is kept as a
+                                            safety copy. Make sure this machine's library folder
+                                            matches the imported data.
+                                        </Text>
+                                        <Group gap="sm">
+                                            <AppButton
+                                                appVariant="primary"
+                                                leftSection={<Upload size={16} />}
+                                                onClick={() => {
+                                                    void handleConfirmImport();
+                                                }}
+                                                loading={databaseBusy === "importing"}
+                                            >
+                                                Replace and restart
+                                            </AppButton>
+                                            <AppButton
+                                                appVariant="ghost"
+                                                onClick={() => setPendingImportPath(null)}
+                                                disabled={databaseBusy === "importing"}
+                                            >
+                                                Cancel
+                                            </AppButton>
+                                        </Group>
+                                    </Stack>
+                                </Alert>
+                            )}
+
+                            {databaseMessage && (
+                                <Alert
+                                    color={databaseMessage.tone === "success" ? "green" : "red"}
+                                    variant="light"
+                                >
+                                    <Text size="sm">{databaseMessage.text}</Text>
+                                </Alert>
+                            )}
+                        </Stack>
+                    </Paper>
                 </Stack>
 
                 <Stack gap="xs">

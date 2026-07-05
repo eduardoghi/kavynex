@@ -77,6 +77,25 @@ pub fn run() {
 
             services::logger::info("app", "application setup started");
 
+            // Apply a database import staged by the import command before the pool can open.
+            // The connection pool is a process-wide singleton that cannot be swapped
+            // in-process, so the actual file swap is deferred to this pre-open point. A
+            // failure is logged but must not stop the app from starting.
+            match services::database::database_path(&app_handle) {
+                Ok(db_path) => match services::db_backup::apply_pending_database_import(&db_path) {
+                    Ok(true) => services::logger::info("app", "applied a pending database import"),
+                    Ok(false) => {}
+                    Err(error) => services::logger::error(
+                        "app",
+                        format!("failed to apply pending database import: {error}"),
+                    ),
+                },
+                Err(error) => services::logger::warn(
+                    "app",
+                    format!("failed to resolve database path for import check: {error}"),
+                ),
+            }
+
             // Authorize the app cache directory in the asset protocol scope so temporary
             // thumbnail previews (generated into the cache dir) can be loaded via
             // convertFileSrc. The library directory is authorized at runtime once the
@@ -133,6 +152,8 @@ pub fn run() {
             commands::database::ensure_database_ready,
             commands::database::get_database_backup_status,
             commands::database::restore_database_from_backup,
+            commands::database::export_database,
+            commands::database::import_database,
             commands::settings::get_app_settings,
             commands::settings::set_app_settings,
             commands::channels::list_channels,

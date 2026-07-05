@@ -33,6 +33,8 @@ export const TAURI_COMMANDS = {
     ENSURE_DATABASE_READY: "ensure_database_ready",
     GET_DATABASE_BACKUP_STATUS: "get_database_backup_status",
     RESTORE_DATABASE_FROM_BACKUP: "restore_database_from_backup",
+    EXPORT_DATABASE: "export_database",
+    IMPORT_DATABASE: "import_database",
     GET_APP_SETTINGS: "get_app_settings",
     SET_APP_SETTINGS: "set_app_settings",
 

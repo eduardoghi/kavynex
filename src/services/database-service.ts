@@ -29,3 +29,20 @@ export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
 export async function restoreDatabaseFromBackup(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.RESTORE_DATABASE_FROM_BACKUP);
 }
+
+/**
+ * Exports a consistent snapshot of the database to a user-chosen path, so it can be kept
+ * off-machine or moved to another install. Distinct from the internal corruption-recovery
+ * backup (which lives next to the live database).
+ */
+export async function exportDatabase(destinationPath: string): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.EXPORT_DATABASE, { destinationPath });
+}
+
+/**
+ * Validates and stages a database file for import. The swap is applied on the next startup,
+ * so the caller must relaunch the app after this resolves.
+ */
+export async function importDatabase(sourcePath: string): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.IMPORT_DATABASE, { sourcePath });
+}

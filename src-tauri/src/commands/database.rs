@@ -36,3 +36,20 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
     let path = database_path(&app)?;
     db_backup::restore_database_from_backup(&path).await
 }
+
+/// Exports a consistent snapshot of the database to a user-chosen path. Portable, so it can
+/// be kept off-machine or moved to another install (unlike the internal corruption-recovery
+/// backup, which lives next to the live database).
+#[tauri::command]
+pub async fn export_database(app: AppHandle, destination_path: String) -> AppResult<()> {
+    let path = database_path(&app)?;
+    db_backup::export_database(&path, std::path::Path::new(&destination_path)).await
+}
+
+/// Validates and stages a user-provided database file for import. The swap is applied on the
+/// next startup, so the caller should relaunch the app after this succeeds.
+#[tauri::command]
+pub async fn import_database(app: AppHandle, source_path: String) -> AppResult<()> {
+    let path = database_path(&app)?;
+    db_backup::stage_database_import(&path, std::path::Path::new(&source_path)).await
+}

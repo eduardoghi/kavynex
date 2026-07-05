@@ -10,6 +10,9 @@
     "opener:default",
     "dialog:default",
     "dialog:allow-open",
+    "dialog:allow-save",
+
+    "process:allow-restart",
 
     "fs:allow-mkdir",
     "fs:allow-write-text-file",

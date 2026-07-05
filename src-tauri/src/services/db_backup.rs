@@ -248,6 +248,160 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     Ok(())
 }
 
+fn import_staged_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".import-staged")
+}
+
+fn pre_import_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".pre-import")
+}
+
+/// Exports a consistent, self-contained snapshot of the database to a user-chosen path via
+/// `VACUUM INTO` (WAL-safe: the snapshot is always fully checkpointed, never combined with a
+/// live write-ahead log). The destination is overwritten. Refuses to export a database that
+/// fails `quick_check` so a corrupt file is never handed out as a good backup.
+pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> {
+    if !db_path.exists() {
+        return Err(AppError::from_code(
+            AppErrorCode::AppError,
+            "there is no database to export yet",
+        ));
+    }
+
+    let pool = open(db_path).await?;
+
+    if !is_healthy(&pool).await {
+        pool.close().await;
+        return Err(AppError::from_code(
+            AppErrorCode::AppError,
+            "cannot export a database that fails an integrity check",
+        ));
+    }
+
+    // VACUUM INTO fails if the target file already exists; the caller's save dialog has
+    // already confirmed any overwrite, so clear it first.
+    let _ = std::fs::remove_file(dest_path);
+
+    let vacuum_sql = format!(
+        "VACUUM INTO '{}'",
+        escape_sql_literal(&dest_path.to_string_lossy())
+    );
+    let result = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
+        .execute(&pool)
+        .await;
+    pool.close().await;
+    result.map_err(|error| backup_error("failed to export database", error))?;
+
+    Ok(())
+}
+
+async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
+    if !is_healthy(pool).await {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected database failed an integrity check",
+        ));
+    }
+
+    let (videos_tables,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'videos'",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+    if videos_tables == 0 {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected file is not a kavynex database",
+        ));
+    }
+
+    let (user_version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+        .fetch_one(pool)
+        .await
+        .map_err(|error| backup_error("failed to read the database schema version", error))?;
+
+    if user_version > crate::services::db_schema::SCHEMA_VERSION {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseSchemaTooNew,
+            "the selected database was created by a newer version of the app",
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validates a user-provided database file and stages it for import. The swap is deferred to
+/// the next startup (`apply_pending_database_import`) because the live connection pool is a
+/// process-wide singleton that cannot be reopened in-process. Rejects a file that is not a
+/// healthy database, is not a kavynex database, or was created by a newer app version.
+pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppResult<()> {
+    if !source_path.exists() {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected file does not exist",
+        ));
+    }
+
+    let pool = open(source_path).await.map_err(|_| {
+        AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected file is not a valid database",
+        )
+    })?;
+    let validation = validate_import_source(&pool).await;
+    pool.close().await;
+    validation?;
+
+    // Stage atomically: copy to a temp name, then rename into the staged slot so a partial
+    // copy is never picked up on the next startup.
+    let staged = import_staged_path(db_path);
+    let staging_tmp = sibling(db_path, ".import-staged.tmp");
+    let _ = std::fs::remove_file(&staging_tmp);
+    std::fs::copy(source_path, &staging_tmp)
+        .map_err(|error| backup_error("failed to stage database import", error))?;
+    let _ = std::fs::remove_file(&staged);
+    std::fs::rename(&staging_tmp, &staged)
+        .map_err(|error| backup_error("failed to stage database import", error))?;
+
+    Ok(())
+}
+
+/// Applies a database import staged by `stage_database_import`, if one is pending. Runs at
+/// startup before the pool opens: the current database is moved aside to `.pre-import` (a
+/// safety net) and the staged file is swapped in, dropping stale WAL sidecars. On a swap
+/// failure the previous database is rolled back so the app still has one to open. Returns
+/// whether an import was applied.
+pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
+    let staged = import_staged_path(db_path);
+
+    if !staged.exists() {
+        return Ok(false);
+    }
+
+    let pre_import = pre_import_path(db_path);
+    let _ = std::fs::remove_file(&pre_import);
+
+    if db_path.exists() {
+        std::fs::rename(db_path, &pre_import)
+            .map_err(|error| backup_error("failed to set aside the current database", error))?;
+    }
+
+    let _ = std::fs::remove_file(sibling(db_path, "-wal"));
+    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
+
+    if let Err(error) = std::fs::rename(&staged, db_path) {
+        // Roll the previous database back so the app is never left without one.
+        let _ = std::fs::rename(&pre_import, db_path);
+        return Err(backup_error("failed to apply the imported database", error));
+    }
+
+    logger::info("db_backup", "imported database applied on startup");
+
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,5 +582,109 @@ mod tests {
     fn filetime_set(path: &Path, time: SystemTime) {
         let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
         file.set_modified(time).unwrap();
+    }
+
+    async fn seed_kavynex_db(path: &Path, title: &str) {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE videos (id INTEGER PRIMARY KEY, title TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "INSERT INTO videos (title) VALUES ('{title}')"
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+    }
+
+    async fn read_video_title(path: &Path) -> String {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(false);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let (title,): (String,) = sqlx::query_as("SELECT title FROM videos LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+        title
+    }
+
+    #[tokio::test]
+    async fn export_creates_importable_snapshot() {
+        let dir = temp_dir("export");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "hello").await;
+
+        let dest = dir.join("exported.db");
+        export_database(&db, &dest).await.unwrap();
+
+        assert!(dest.exists());
+        assert_eq!(read_video_title(&dest).await, "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn stage_and_apply_import_swaps_database_and_keeps_previous() {
+        let dir = temp_dir("import");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("incoming.db");
+        seed_kavynex_db(&source, "imported").await;
+
+        stage_database_import(&db, &source).await.unwrap();
+        assert!(import_staged_path(&db).exists());
+
+        assert!(apply_pending_database_import(&db).unwrap());
+
+        assert_eq!(read_video_title(&db).await, "imported");
+        assert!(pre_import_path(&db).exists());
+        assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn apply_import_is_noop_when_nothing_staged() {
+        let dir = temp_dir("import-noop");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        assert!(!apply_pending_database_import(&db).unwrap());
+        assert_eq!(read_video_title(&db).await, "current");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn stage_import_rejects_non_kavynex_database() {
+        let dir = temp_dir("import-reject");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        // A valid SQLite database, but without a `videos` table.
+        let foreign = dir.join("foreign.db");
+        seed_db(&foreign).await;
+
+        let error = stage_database_import(&db, &foreign).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+        assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

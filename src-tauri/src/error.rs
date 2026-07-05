@@ -12,6 +12,8 @@ pub enum AppErrorCode {
 
     NoDatabaseBackupAvailable,
     DatabaseAlreadyOpen,
+    DatabaseImportInvalid,
+    DatabaseSchemaTooNew,
 
     DataDirectoryResolveFailed,
     CacheDirectoryResolveFailed,
@@ -141,6 +143,8 @@ impl AppErrorCode {
 
             Self::NoDatabaseBackupAvailable => "NO_DATABASE_BACKUP_AVAILABLE",
             Self::DatabaseAlreadyOpen => "DATABASE_ALREADY_OPEN",
+            Self::DatabaseImportInvalid => "DATABASE_IMPORT_INVALID",
+            Self::DatabaseSchemaTooNew => "DATABASE_SCHEMA_TOO_NEW",
 
             Self::DataDirectoryResolveFailed => "DATA_DIRECTORY_RESOLVE_FAILED",
             Self::CacheDirectoryResolveFailed => "CACHE_DIRECTORY_RESOLVE_FAILED",
