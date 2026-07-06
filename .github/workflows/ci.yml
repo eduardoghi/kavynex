@@ -89,3 +89,21 @@ jobs:
               run: |
                   cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings
                   git diff --exit-code -- src/types/generated
+
+    audit:
+        name: Cargo audit
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+
+            - name: Install cargo-audit
+              run: cargo install cargo-audit --locked
+
+            # RUSTSEC advisories are not covered by pnpm audit; this closes that gap for the
+            # Rust dependency tree.
+            - name: Audit Rust dependencies
+              run: cargo audit --file src-tauri/Cargo.lock
