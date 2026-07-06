@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tauri::AppHandle;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader},
+    io::{AsyncRead, AsyncReadExt, BufReader},
     process::Command,
     time::timeout,
 };
@@ -17,6 +17,7 @@ use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::format::{
     build_format_display_name, codec_is_present, normalize_yt_dlp_upload_date, sort_yt_dlp_formats,
 };
+use crate::utils::io::read_lossy_line;
 use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -35,12 +36,13 @@ where
     R: AsyncRead + Unpin,
 {
     // `+ 1` so reading exactly `max_bytes + 1` reveals the real output exceeded the cap.
-    let mut lines = BufReader::new(reader.take(max_bytes + 1)).lines();
+    let mut reader = BufReader::new(reader.take(max_bytes + 1));
+    let mut line_buf: Vec<u8> = Vec::new();
     let mut json_payload = String::new();
     let mut log_lines: Vec<String> = Vec::new();
     let mut total_bytes: u64 = 0;
 
-    while let Ok(Some(line_value)) = lines.next_line().await {
+    while let Some(line_value) = read_lossy_line(&mut reader, &mut line_buf).await {
         total_bytes += line_value.len() as u64 + 1;
 
         let line = line_value.trim_end().to_string();
@@ -254,10 +256,11 @@ async fn run_yt_dlp_and_capture_json(
     let stdout_task = tokio::spawn(read_capped_json_stdout(stdout, MAX_YT_DLP_JSON_BYTES));
 
     let stderr_task = tokio::spawn(async move {
-        let mut lines = BufReader::new(stderr).lines();
+        let mut reader = BufReader::new(stderr);
+        let mut line_buf: Vec<u8> = Vec::new();
         let mut log_lines: Vec<String> = Vec::new();
 
-        while let Ok(Some(line_value)) = lines.next_line().await {
+        while let Some(line_value) = read_lossy_line(&mut reader, &mut line_buf).await {
             let line = line_value.trim_end().to_string();
 
             if should_keep_terminal_line(&line) {

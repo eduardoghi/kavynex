@@ -6,12 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Emitter};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-    sync::Mutex,
-    time::timeout,
-};
+use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
 
 use crate::models::yt_dlp::{DownloadLogEvent, DownloadedMediaResult, YtDlpFormatMetadata};
 use crate::services::binaries::{
@@ -39,6 +34,7 @@ use crate::services::yt_dlp_registry::{
 };
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::format::codec_is_present;
+use crate::utils::io::read_lossy_line;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
 use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -123,6 +119,34 @@ fn resolve_format_has_video(format_id: &str, formats: &[YtDlpFormatMetadata]) ->
     }
 
     None
+}
+
+/// Moves the freshly downloaded temp file into the media directory and returns its final
+/// path. A download filename is deterministic for a given video+format, so a file already at
+/// the destination is content that is already catalogued (and possibly shared with another
+/// channel). It is never overwritten: re-downloading could replace the stored bytes with a
+/// re-encoded variant, silently changing media already in the library. The existing file is
+/// kept, and the caller's duplicate check decides what to do.
+fn place_downloaded_file(
+    downloaded_temp: &Path,
+    media_dir: &Path,
+    library_dir: &Path,
+) -> AppResult<PathBuf> {
+    let file_name = downloaded_temp.file_name().ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::InvalidDownloadedFile,
+            "downloaded file has no valid name",
+        )
+    })?;
+
+    let final_destination = media_dir.join(file_name);
+    ensure_path_parent_inside_dir(&final_destination, library_dir)?;
+
+    if !final_destination.exists() {
+        replace_file_safely(downloaded_temp, &final_destination)?;
+    }
+
+    Ok(final_destination)
 }
 
 fn infer_is_live(metadata_live_status: Option<&str>, was_live: Option<bool>) -> bool {
@@ -706,11 +730,10 @@ pub async fn download_media_from_url_async(
         let stderr_buffer_reader = Arc::clone(&stderr_buffer);
 
         let stdout_task = tauri::async_runtime::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
+            let mut reader = BufReader::new(stdout);
+            let mut line_buf: Vec<u8> = Vec::new();
 
-            while let Ok(Some(line_value)) = lines.next_line().await {
-                let line = line_value.to_string();
-
+            while let Some(line) = read_lossy_line(&mut reader, &mut line_buf).await {
                 last_activity_stdout.store(
                     download_start.elapsed().as_millis() as u64,
                     Ordering::Relaxed,
@@ -729,11 +752,10 @@ pub async fn download_media_from_url_async(
         });
 
         let stderr_task = tauri::async_runtime::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
+            let mut reader = BufReader::new(stderr);
+            let mut line_buf: Vec<u8> = Vec::new();
 
-            while let Ok(Some(line_value)) = lines.next_line().await {
-                let line = line_value.to_string();
-
+            while let Some(line) = read_lossy_line(&mut reader, &mut line_buf).await {
                 last_activity_stderr.store(
                     download_start.elapsed().as_millis() as u64,
                     Ordering::Relaxed,
@@ -864,17 +886,7 @@ pub async fn download_media_from_url_async(
                     )
                 })?;
 
-        let file_name = downloaded_temp.file_name().ok_or_else(|| {
-            AppError::from_code(
-                AppErrorCode::InvalidDownloadedFile,
-                "downloaded file has no valid name",
-            )
-        })?;
-
-        let final_destination = media_dir.join(file_name);
-
-        ensure_path_parent_inside_dir(&final_destination, &library_dir)?;
-        replace_file_safely(&downloaded_temp, &final_destination)?;
+        let final_destination = place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)?;
 
         let live_chat_file_path = if download_live_chat {
             if let Some(temp_live_chat_file) = find_live_chat_temp_file(&temp_dir, &file_prefix) {
@@ -976,6 +988,46 @@ mod tests {
             nanos,
             suffix
         ))
+    }
+
+    #[test]
+    fn place_downloaded_file_moves_when_destination_is_free() {
+        let base = unique_temp_dir("place-move");
+        let media_dir = base.join("video");
+        fs::create_dir_all(&media_dir).unwrap();
+
+        let temp_file = base.join("source.mp4");
+        fs::write(&temp_file, b"fresh-download").unwrap();
+
+        let final_path = place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+
+        assert_eq!(final_path, media_dir.join("source.mp4"));
+        assert_eq!(fs::read(&final_path).unwrap(), b"fresh-download");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn place_downloaded_file_never_overwrites_an_existing_destination() {
+        let base = unique_temp_dir("place-keep");
+        let media_dir = base.join("video");
+        fs::create_dir_all(&media_dir).unwrap();
+
+        // An already-catalogued file (e.g. the same video shared with another channel).
+        let existing = media_dir.join("source.mp4");
+        fs::write(&existing, b"already-catalogued").unwrap();
+
+        // A fresh download of the same video+format lands in temp with the same name.
+        let temp_file = base.join("source.mp4");
+        fs::write(&temp_file, b"re-encoded-variant").unwrap();
+
+        let final_path = place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+
+        assert_eq!(final_path, existing);
+        // The stored bytes must be untouched; the fresh download is discarded.
+        assert_eq!(fs::read(&existing).unwrap(), b"already-catalogued");
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
