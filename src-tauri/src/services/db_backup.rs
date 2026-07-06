@@ -642,6 +642,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn escape_sql_literal_doubles_single_quotes() {
+        assert_eq!(escape_sql_literal("O'Brien"), "O''Brien");
+        assert_eq!(escape_sql_literal("a'b'c"), "a''b''c");
+        assert_eq!(escape_sql_literal("no quotes"), "no quotes");
+    }
+
+    #[tokio::test]
+    async fn export_handles_a_destination_path_with_a_single_quote() {
+        // Regression guard: `VACUUM INTO` cannot bind parameters, so the destination path
+        // is interpolated after escaping. A path containing a single quote (e.g. a user
+        // named O'Brien) must not break the statement.
+        let dir = temp_dir("export_quote");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "hello").await;
+
+        let quoted_dir = dir.join("O'Brien");
+        std::fs::create_dir_all(&quoted_dir).unwrap();
+        let dest = quoted_dir.join("exported.db");
+
+        export_database(&db, &dest).await.unwrap();
+
+        assert!(dest.exists());
+        assert_eq!(read_video_title(&dest).await, "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn stage_and_apply_import_swaps_database_and_keeps_previous() {
         let dir = temp_dir("import");
