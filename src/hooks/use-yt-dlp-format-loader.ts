@@ -513,7 +513,11 @@ export function useYtDlpFormatLoader({
         ];
 
         if (cookiesPath) {
-            commandParts.push("--cookies", cookiesPath);
+            // The cookies file path can reveal the local username/profile layout, and this
+            // preview is shown in the terminal and may be pasted into a bug report. Redact
+            // the value, mirroring the backend's redacted_args_for_log. The real path is
+            // still passed to listYtDlpFormats below.
+            commandParts.push("--cookies", "<redacted>");
         } else if (cookiesBrowser) {
             commandParts.push("--cookies-from-browser", cookiesBrowser);
         }

@@ -1061,10 +1061,13 @@ describe("useYtDlpFormatLoader - command building", () => {
 
         await loadFormats(result, []);
 
+        // The terminal preview redacts the cookies path so it is not leaked in the UI or a
+        // pasted bug report...
         expect(onTerminalStart).toHaveBeenCalledWith(
             "format-loader",
-            "yt-dlp -v --ignore-config --no-playlist --dump-single-json --no-warnings --cookies /home/user/cookies.txt https://youtube.com/watch?v=abc"
+            "yt-dlp -v --ignore-config --no-playlist --dump-single-json --no-warnings --cookies <redacted> https://youtube.com/watch?v=abc"
         );
+        // ...but the real path is still handed to the backend command.
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             "chrome",
