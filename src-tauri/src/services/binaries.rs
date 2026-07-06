@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -27,25 +28,40 @@ fn is_executable_file(path: &Path) -> bool {
     path.is_file()
 }
 
-#[cfg(windows)]
 fn resolve_from_path(candidates: &[&str]) -> Option<String> {
+    let path_var = std::env::var_os("PATH")?;
+    resolve_from_path_var(&path_var, candidates)
+}
+
+#[cfg(windows)]
+fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String> {
+    // Resolve against the directories listed in PATH only. Unlike where.exe, this never
+    // searches the current working directory, which where.exe probes before PATH and would
+    // let a malicious yt-dlp.exe/ffmpeg.exe planted in the process CWD win over the real one
+    // on PATH (arbitrary code execution).
+    //
+    // PATHEXT is honored so a bare candidate like "yt-dlp" still resolves to "yt-dlp.exe" or
+    // a ".cmd"/".bat" shim, matching how the shell would find it.
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+
     for candidate in candidates {
-        let mut command = Command::new("where.exe");
-        command.arg(candidate);
-        hide_console(&mut command);
-        let output = command.output().ok()?;
+        for dir in std::env::split_paths(path_var) {
+            if dir.as_os_str().is_empty() {
+                continue;
+            }
 
-        if !output.status.success() {
-            continue;
-        }
+            let direct = dir.join(candidate);
+            if is_executable_file(&direct) {
+                return Some(direct.to_string_lossy().to_string());
+            }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        if let Some(found) = stdout.lines().map(str::trim).find(|line| !line.is_empty()) {
-            let path = PathBuf::from(found);
-
-            if is_executable_file(&path) {
-                return Some(found.to_string());
+            if Path::new(candidate).extension().is_none() {
+                for ext in pathext.split(';').filter(|value| !value.is_empty()) {
+                    let with_ext = dir.join(format!("{candidate}{ext}"));
+                    if is_executable_file(&with_ext) {
+                        return Some(with_ext.to_string_lossy().to_string());
+                    }
+                }
             }
         }
     }
@@ -54,21 +70,19 @@ fn resolve_from_path(candidates: &[&str]) -> Option<String> {
 }
 
 #[cfg(not(windows))]
-fn resolve_from_path(candidates: &[&str]) -> Option<String> {
+fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String> {
+    // Resolve against the directories listed in PATH only. An empty PATH entry historically
+    // means "current directory"; it is skipped so a binary in the process CWD is never picked
+    // up implicitly.
     for candidate in candidates {
-        let output = Command::new("which").arg(candidate).output().ok()?;
+        for dir in std::env::split_paths(path_var) {
+            if dir.as_os_str().is_empty() {
+                continue;
+            }
 
-        if !output.status.success() {
-            continue;
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        if let Some(found) = stdout.lines().map(str::trim).find(|line| !line.is_empty()) {
-            let path = PathBuf::from(found);
-
-            if is_executable_file(&path) {
-                return Some(found.to_string());
+            let candidate_path = dir.join(candidate);
+            if is_executable_file(&candidate_path) {
+                return Some(candidate_path.to_string_lossy().to_string());
             }
         }
     }
@@ -257,6 +271,77 @@ pub fn ffmpeg_location_argument(ffmpeg_binary: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_executable(path: &Path) {
+        std::fs::write(path, b"binary").unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
+    }
+
+    fn unique_dir(tag: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+
+        std::env::temp_dir().join(format!(
+            "kavynex-binaries-{tag}-{}-{}",
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    // The security guarantee: only directories explicitly listed in PATH are searched. A
+    // binary that exists somewhere not on PATH (the process CWD being the case that matters)
+    // must never be resolved.
+    #[test]
+    fn resolve_from_path_var_only_searches_listed_directories() {
+        let base = unique_dir("path");
+        let dir_a = base.join("a");
+        let dir_b = base.join("b");
+        std::fs::create_dir_all(&dir_a).unwrap();
+        std::fs::create_dir_all(&dir_b).unwrap();
+
+        let name = if cfg!(windows) {
+            "kavynex-fake-tool.exe"
+        } else {
+            "kavynex-fake-tool"
+        };
+        make_executable(&dir_b.join(name));
+        let candidates = [name];
+
+        let only_a = std::env::join_paths([dir_a.as_os_str()]).unwrap();
+        assert!(resolve_from_path_var(&only_a, &candidates).is_none());
+
+        let only_b = std::env::join_paths([dir_b.as_os_str()]).unwrap();
+        let found = resolve_from_path_var(&only_b, &candidates).unwrap();
+        assert!(Path::new(&found).ends_with(name));
+
+        let both = std::env::join_paths([dir_a.as_os_str(), dir_b.as_os_str()]).unwrap();
+        assert!(resolve_from_path_var(&both, &candidates).is_some());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_from_path_var_honors_pathext_for_bare_candidate() {
+        let base = unique_dir("pathext");
+        std::fs::create_dir_all(&base).unwrap();
+        make_executable(&base.join("kavynex-fake-tool.exe"));
+
+        let path = std::env::join_paths([base.as_os_str()]).unwrap();
+        let found = resolve_from_path_var(&path, &["kavynex-fake-tool"]).unwrap();
+        assert!(found.to_lowercase().ends_with("kavynex-fake-tool.exe"));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn ffmpeg_location_argument_returns_bare_name_unchanged() {
