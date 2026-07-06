@@ -22,32 +22,6 @@ function normalizeMeta(meta?: LogMeta): LogMeta | undefined {
     return Object.fromEntries(entries);
 }
 
-function normalizeUnknownError(error: unknown): Record<string, unknown> {
-    if (error instanceof Error) {
-        return {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-        };
-    }
-
-    if (typeof error === "object" && error !== null) {
-        const value = error as Record<string, unknown>;
-
-        return {
-            ...value,
-            message:
-                typeof value.message === "string"
-                    ? value.message
-                    : JSON.stringify(value),
-        };
-    }
-
-    return {
-        message: String(error),
-    };
-}
-
 function writeLog(
     level: LogLevel,
     scope: string,
@@ -59,8 +33,9 @@ function writeLog(
     const normalizedMeta = normalizeMeta(meta);
 
     if (level === "error") {
-        const parsedError = error !== undefined ? parseAppError(error) : undefined;
-        const normalizedError = parsedError ?? (error !== undefined ? normalizeUnknownError(error) : undefined);
+        // parseAppError always returns a shape for any defined error, so this is the sole
+        // normalization step; there is no separate fallback path.
+        const normalizedError = error !== undefined ? parseAppError(error) : undefined;
 
         if (normalizedMeta && normalizedError) {
             console.error(prefix, message, {
