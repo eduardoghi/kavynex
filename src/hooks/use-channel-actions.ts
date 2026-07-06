@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Channel, ChannelAvatarMode } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { useAsyncFlag } from "./use-async-flag";
@@ -74,24 +74,43 @@ export function useChannelActions({
     setChannelToDelete,
     setConfirmDeleteChannelOpen,
 }: UseChannelActionsOptions): UseChannelActionsReturn {
-    const { isRunning: isLoadingChannels, runWithFlag: runLoadChannels } = useAsyncFlag();
+    const [isLoadingChannels, setIsLoadingChannels] = useState(false);
+    const latestLoadRequestIdRef = useRef(0);
+
     const { isRunning: isCreatingChannel, runWithFlag: runCreateChannel } = useAsyncFlag();
     const { isRunning: isDeletingChannel, runWithFlag: runDeleteChannel } = useAsyncFlag();
     const { isRunning: isUpdatingChannelAvatar, runWithFlag: runUpdateChannelAvatar } =
         useAsyncFlag();
     const { isRunning: isEditingChannel, runWithFlag: runEditChannel } = useAsyncFlag();
 
+    // A request-id guard (not a mutex) so a rapid library switch supersedes the previous
+    // load: the newer call runs immediately and the stale response is discarded instead of
+    // leaving the old library's channels on screen.
     const loadChannels = useCallback(async (): Promise<void> => {
-        await runLoadChannels(async () => {
-            try {
-                const items = await listAllChannels();
-                setChannels(items);
-            } catch (error) {
-                logError("channels", "Failed to load channels.", error);
-                onError(resolveErrorMessage(error, "Failed to load channels."));
+        const requestId = ++latestLoadRequestIdRef.current;
+        setIsLoadingChannels(true);
+
+        try {
+            const items = await listAllChannels();
+
+            if (requestId !== latestLoadRequestIdRef.current) {
+                return;
             }
-        });
-    }, [onError, runLoadChannels, setChannels]);
+
+            setChannels(items);
+        } catch (error) {
+            if (requestId !== latestLoadRequestIdRef.current) {
+                return;
+            }
+
+            logError("channels", "Failed to load channels.", error);
+            onError(resolveErrorMessage(error, "Failed to load channels."));
+        } finally {
+            if (requestId === latestLoadRequestIdRef.current) {
+                setIsLoadingChannels(false);
+            }
+        }
+    }, [onError, setChannels]);
 
     const createChannelAction = useCallback(
         async (
