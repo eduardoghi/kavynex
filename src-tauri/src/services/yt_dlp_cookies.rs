@@ -1,5 +1,12 @@
 use std::path::Path;
 
+fn has_txt_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case("txt"))
+        .unwrap_or(false)
+}
+
 pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     let normalized = value?.trim();
 
@@ -9,7 +16,10 @@ pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
 
     let path = Path::new(normalized);
 
-    if path.exists() && path.is_file() {
+    // Only accept an existing `.txt` file. The cookies file is handed to yt-dlp's
+    // `--cookies`, so restricting the extension (mirroring the picker's own check) keeps a
+    // compromised frontend from pointing it at an arbitrary file on disk.
+    if path.is_file() && has_txt_extension(path) {
         Some(normalized.to_string())
     } else {
         None
@@ -119,6 +129,29 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         assert_eq!(normalize_cookies_path(Some(dir.to_str().unwrap())), None);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn normalize_cookies_path_rejects_non_txt_file() {
+        let file = unique_temp_path("cookies.dat");
+        fs::write(&file, b"# cookies").unwrap();
+
+        assert_eq!(normalize_cookies_path(Some(file.to_str().unwrap())), None);
+
+        let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn normalize_cookies_path_accepts_txt_case_insensitively() {
+        let file = unique_temp_path("cookies.TXT");
+        fs::write(&file, b"# cookies").unwrap();
+
+        assert_eq!(
+            normalize_cookies_path(Some(file.to_str().unwrap())).as_deref(),
+            Some(file.to_str().unwrap())
+        );
+
+        let _ = fs::remove_file(&file);
     }
 
     #[test]

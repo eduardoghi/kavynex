@@ -402,10 +402,18 @@ pub async fn download_media_from_url_async(
         )?;
 
         if let Some(path) = normalized_cookies_path.as_ref() {
+            // Show only the file name, never the full path: this line is rendered in the UI
+            // terminal and may be pasted into a public bug report, and the directory reveals
+            // the local username/profile layout.
+            let file_name = Path::new(path)
+                .file_name()
+                .map(|value| value.to_string_lossy().to_string())
+                .unwrap_or_else(|| "<set>".to_string());
+
             emit_download_log(
                 app,
                 &normalized_run_id,
-                format!("Cookies file: {}", path),
+                format!("Cookies file: {}", file_name),
                 "system",
             )?;
         } else if let Some(browser) = normalized_cookies_browser.as_ref() {
