@@ -23,6 +23,7 @@ use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
 use crate::services::thumbnail_persist::persist_thumbnail_from_source;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
 use crate::services::yt_dlp_cookies::normalize_cookies_browser;
+use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -330,6 +331,17 @@ fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
     }
 
     if normalized.starts_with("http://") || normalized.starts_with("https://") {
+        // A pasted URL is handed straight to yt-dlp (with access to browser cookies),
+        // so it must be restricted to YouTube. Without this a compromised frontend, or a
+        // user pasting an arbitrary URL into the handle field, could point yt-dlp at an
+        // internal/loopback host, bypassing the SSRF guard used elsewhere.
+        if !is_allowed_youtube_url(normalized) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidUrl,
+                "channel handle URL must point to YouTube",
+            ));
+        }
+
         return Ok(normalized.to_string());
     }
 
@@ -832,6 +844,43 @@ mod tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn normalize_channel_handle_builds_youtube_url_from_handle() {
+        assert_eq!(
+            normalize_channel_handle_to_url("@Hardwareunboxed").unwrap(),
+            "https://www.youtube.com/@Hardwareunboxed"
+        );
+        assert_eq!(
+            normalize_channel_handle_to_url("Hardwareunboxed").unwrap(),
+            "https://www.youtube.com/@Hardwareunboxed"
+        );
+    }
+
+    #[test]
+    fn normalize_channel_handle_accepts_youtube_urls() {
+        assert_eq!(
+            normalize_channel_handle_to_url("https://www.youtube.com/@Hardwareunboxed").unwrap(),
+            "https://www.youtube.com/@Hardwareunboxed"
+        );
+    }
+
+    #[test]
+    fn normalize_channel_handle_rejects_non_youtube_urls() {
+        for url in [
+            "http://127.0.0.1/x.png",
+            "http://169.254.169.254/latest/meta-data",
+            "http://192.168.1.1/admin",
+            "https://attacker.example/@handle",
+            "https://youtube.com.evil.com/@handle",
+            "https://youtube.com@evil.com/",
+        ] {
+            assert!(
+                normalize_channel_handle_to_url(url).is_err(),
+                "{url} should be rejected"
+            );
+        }
     }
 
     #[test]
