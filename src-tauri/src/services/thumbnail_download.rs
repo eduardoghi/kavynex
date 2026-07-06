@@ -1,6 +1,5 @@
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::Uri;
@@ -22,7 +21,7 @@ use crate::services::library_paths::ensure_library_dir;
 use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
 use crate::services::thumbnail_persist::persist_thumbnail_from_source;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
-use crate::services::yt_dlp_cookies::normalize_cookies_browser;
+use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -391,39 +390,6 @@ fn direct_image_extension(url: &str) -> Option<&'static str> {
     None
 }
 
-fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
-    let normalized = value?.trim();
-
-    if normalized.is_empty() {
-        return None;
-    }
-
-    let path = Path::new(normalized);
-
-    if path.exists() && path.is_file() {
-        Some(normalized.to_string())
-    } else {
-        None
-    }
-}
-
-fn append_auth_args(
-    args: &mut Vec<String>,
-    cookies_browser: Option<&str>,
-    cookies_path: Option<&str>,
-) {
-    if let Some(path) = normalize_cookies_path(cookies_path) {
-        args.push("--cookies".to_string());
-        args.push(path);
-        return;
-    }
-
-    if let Some(browser) = normalize_cookies_browser(cookies_browser) {
-        args.push("--cookies-from-browser".to_string());
-        args.push(browser);
-    }
-}
-
 pub async fn download_thumbnail_from_url_async(
     app: &AppHandle,
     url: &str,
@@ -497,6 +463,14 @@ pub async fn download_thumbnail_from_url_async(
 
             return persist_thumbnail_from_source(&direct_file_path, &library_dir);
         }
+
+        // The direct-image path above runs through http_get_image's SSRF guard. This yt-dlp
+        // fallback has none, so validate the host here too: reject URLs that resolve to
+        // loopback/private/link-local/reserved addresses before handing the URL to yt-dlp.
+        let fallback_uri: Uri = normalized_url.parse().map_err(|e| {
+            AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
+        })?;
+        assert_url_host_is_public(&fallback_uri).await?;
 
         let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
         let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
