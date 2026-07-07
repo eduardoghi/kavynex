@@ -2,7 +2,8 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+use chrono::{SecondsFormat, Utc};
 
 const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 
@@ -19,11 +20,11 @@ pub fn init(log_dir: PathBuf) {
     let _ = LOG_PATH.set(log_dir.join("kavynex.log"));
 }
 
+/// Human-readable UTC timestamp for a log line (RFC 3339, second precision, e.g.
+/// `2026-07-06T12:34:56Z`). Raw epoch seconds are hard to read in a bug report; `Utc::now()`
+/// cannot fail, so this never panics.
 fn timestamp_string() -> String {
-    match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_secs().to_string(),
-        Err(_) => "0".to_string(),
-    }
+    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 fn backup_path(path: &Path) -> PathBuf {
@@ -92,6 +93,8 @@ pub fn error(scope: &str, message: impl AsRef<str>) {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
 
     fn temp_log(label: &str) -> PathBuf {
@@ -102,6 +105,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("kavynex_log_{label}_{nanos}"));
         fs::create_dir_all(&dir).unwrap();
         dir.join("kavynex.log")
+    }
+
+    #[test]
+    fn timestamp_string_is_a_readable_utc_rfc3339_timestamp() {
+        let timestamp = timestamp_string();
+
+        // e.g. "2026-07-06T12:34:56Z" - readable in a bug report, unlike raw epoch seconds.
+        assert!(timestamp.ends_with('Z'), "{timestamp} should end with Z");
+        assert!(timestamp.contains('T'), "{timestamp} should contain T");
+        assert_eq!(timestamp.len(), "2026-07-06T12:34:56Z".len());
     }
 
     #[test]

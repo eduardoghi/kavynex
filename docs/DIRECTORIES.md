@@ -72,7 +72,8 @@ download/thumbnail generation does not leak disk space indefinitely.
 
 The logger writes to stderr always, and additionally appends to `kavynex.log` in that
 directory once `services::logger::init()` has been called from `lib.rs`'s `setup()`. Log
-lines are `[<unix timestamp>] [<LEVEL>] [<scope>] <message>`. When the file passes 5 MB
+lines are `[<RFC 3339 UTC timestamp>] [<LEVEL>] [<scope>] <message>` (for example
+`[2026-07-06T12:34:56Z] [INFO] [app] application setup finished`). When the file passes 5 MB
 (`MAX_LOG_BYTES`), it is rotated: the existing file becomes `kavynex.log.1` (replacing any
 previous rotation) and a fresh `kavynex.log` is started - so at most two generations are
 ever kept.
