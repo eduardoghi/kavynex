@@ -56,10 +56,17 @@ pub fn database_path(app: &AppHandle) -> AppResult<PathBuf> {
 async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
     let path = database_path(app)?;
 
-    // Snapshot the current database before migrations run, so a bad migration or corruption
-    // can be rolled back. Best effort: a backup failure must not stop the app from opening.
-    if let Err(error) = crate::services::db_backup::backup_database(&path).await {
-        crate::services::logger::warn("db_backup", format!("database backup failed: {error}"));
+    // The pre-migration snapshot only matters when a migration will actually run (so a bad
+    // migration or corruption can be rolled back). When one is pending, snapshot
+    // synchronously before opening the pool; otherwise defer the daily snapshot to a
+    // background task so a normal launch is never blocked by a VACUUM of a large database.
+    // Best effort either way: a backup failure must not stop the app from opening.
+    let migration_pending = crate::services::db_backup::is_schema_migration_pending(&path).await;
+
+    if migration_pending {
+        if let Err(error) = crate::services::db_backup::backup_database(&path).await {
+            crate::services::logger::warn("db_backup", format!("database backup failed: {error}"));
+        }
     }
 
     let options = SqliteConnectOptions::new()
@@ -82,6 +89,21 @@ async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
     // The schema is owned by the backend: create/migrate it as part of pool
     // initialization so it is ready before any query runs.
     crate::services::db_schema::ensure_schema(&pool).await?;
+
+    if !migration_pending {
+        // No migration ran, so the snapshot was skipped above; take the (throttled) daily
+        // one off the critical path.
+        let background_path = path.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) = crate::services::db_backup::backup_database(&background_path).await
+            {
+                crate::services::logger::warn(
+                    "db_backup",
+                    format!("background database backup failed: {error}"),
+                );
+            }
+        });
+    }
 
     Ok(pool)
 }

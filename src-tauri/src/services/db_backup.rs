@@ -130,6 +130,31 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     Ok(true)
 }
 
+/// Whether opening the database will run a schema migration: true when the file is missing
+/// (the schema is created on first open) or its `user_version` is below the version this
+/// build ships. Callers use this to decide whether the pre-migration snapshot must block
+/// startup - only when a migration will actually run - or can be deferred to the background.
+/// When the database cannot be inspected, a migration is assumed pending so the safety
+/// snapshot is still taken.
+pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
+    if !db_path.exists() {
+        return true;
+    }
+
+    let Ok(pool) = open(db_path).await else {
+        return true;
+    };
+
+    let version: Result<(i64,), _> = sqlx::query_as("PRAGMA user_version").fetch_one(&pool).await;
+
+    pool.close().await;
+
+    match version {
+        Ok((current,)) => current < crate::services::db_schema::SCHEMA_VERSION,
+        Err(_) => true,
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DatabaseBackupStatus {
@@ -716,6 +741,41 @@ mod tests {
         let error = stage_database_import(&db, &foreign).await.unwrap_err();
         assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
         assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn is_schema_migration_pending_reflects_user_version() {
+        let dir = temp_dir("pending");
+        let db = dir.join("kavynex.db");
+
+        // A missing file: opening it creates the schema, so a migration is pending.
+        assert!(is_schema_migration_pending(&db).await);
+
+        // A database stamped below the current version still needs migrating.
+        seed_kavynex_db(&db, "x").await; // user_version defaults to 0
+        assert!(is_schema_migration_pending(&db).await);
+
+        // Stamp the current version: nothing to migrate, so the backup can be deferred.
+        let options = SqliteConnectOptions::new()
+            .filename(&db)
+            .create_if_missing(false);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        assert!(!is_schema_migration_pending(&db).await);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

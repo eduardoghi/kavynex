@@ -5,7 +5,7 @@ use crate::AppResult;
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 7;
+pub(crate) const SCHEMA_VERSION: i64 = 8;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -86,6 +86,9 @@ const LEGACY_TABLE_DROPS: &[&str] = &["DROP TABLE IF EXISTS video_live_chat_mess
 
 const INDEX_DDLS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)",
+    // Serves the hot "list a channel's media, newest first" query
+    // (WHERE channel_id = ? ORDER BY created_at DESC, id DESC) without a separate sort step.
+    "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)",
     "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)",
     "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)",
     "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)",
@@ -197,18 +200,44 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_baseline_schema(pool).await?;
     }
 
-    // Future non-additive migrations follow the same shape, each guarded by version
-    // and each transactional, e.g.:
-    //
-    //     if current_version < 8 {
-    //         apply_table_rebuilds(pool, &MIGRATION_8_REBUILDS, 8).await?;
-    //     }
-    //
-    // A change to a CHECK/UNIQUE/column type, or dropping a column, cannot be expressed
-    // with `ALTER TABLE ADD COLUMN`, so it rebuilds the affected table with
-    // `apply_table_rebuilds` (create new, copy, drop, rename - with foreign keys disabled
-    // and verified). That is how constraint changes reach databases created by older
-    // versions instead of being silently skipped by the additive baseline above.
+    // v8: adds idx_videos_channel_created_id. Additive, so it just runs the index DDLs.
+    if current_version < 8 {
+        apply_migration_8(pool).await?;
+    }
+
+    // Each migration is guarded by version and transactional (it stamps the new
+    // user_version inside its own transaction, so a crash leaves the database fully at the
+    // old or the new version). An additive migration (a new column or index) runs the
+    // guarded ALTER/CREATE like `apply_migration_8`. A change to a CHECK/UNIQUE/column
+    // type, or dropping a column, cannot be expressed with `ALTER TABLE ADD COLUMN`, so it
+    // rebuilds the affected table with `apply_table_rebuilds` (create new, copy, drop,
+    // rename - with foreign keys disabled and verified) instead of being silently skipped
+    // by the additive baseline above.
+
+    Ok(())
+}
+
+/// v8: creates `idx_videos_channel_created_id`. Re-runs every index DDL (all guarded with
+/// `IF NOT EXISTS`) so the new index reaches databases created before v8 without disturbing
+/// the others, then stamps `user_version = 8` in the same transaction.
+async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    for ddl in INDEX_DDLS {
+        sqlx::query(*ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to create index", error))?;
+    }
+
+    set_user_version(&mut tx, 8).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
 
     Ok(())
 }
@@ -570,6 +599,52 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(version, SCHEMA_VERSION + 1);
+    }
+
+    #[tokio::test]
+    async fn migration_8_adds_the_channel_created_index_to_a_pre_v8_database() {
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        // A fresh database already has the index from the baseline.
+        let fresh: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_videos_channel_created_id'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(fresh.0, 1);
+
+        // Simulate a database left by v7: drop the v8 index and roll the marker back.
+        sqlx::query("DROP INDEX idx_videos_channel_created_id")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA user_version = 7")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        ensure_schema(&pool).await.unwrap();
+
+        let (index_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_videos_channel_created_id'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            index_count, 1,
+            "migration 8 must add the index to a pre-v8 database"
+        );
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
     }
 
     async fn memory_pool_with_foreign_keys() -> SqlitePool {
