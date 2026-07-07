@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Box, rem } from "@mantine/core";
 
 type PlayerVideoSurfaceProps = {
+    title: string;
     mediaSrc: string;
     thumbnailSrc: string;
     shellBorder: string;
@@ -10,6 +11,7 @@ type PlayerVideoSurfaceProps = {
 };
 
 export function PlayerVideoSurface({
+    title,
     mediaSrc,
     thumbnailSrc,
     shellBorder,
@@ -49,7 +51,7 @@ export function PlayerVideoSurface({
                 }}
             >
                 <video
-                    aria-label="video"
+                    aria-label={title ? `Video player: ${title}` : "Video player"}
                     controls
                     autoPlay
                     playsInline

@@ -345,6 +345,7 @@ export function MediaPlayerView({
         />
     ) : (
         <PlayerVideoSurface
+            title={media?.title ?? ""}
             mediaSrc={mediaSrc}
             thumbnailSrc={thumbnailSrc}
             shellBorder={shellBorder}

@@ -133,7 +133,7 @@ describe("MediaPlayerView", () => {
 
         it("mutes on M keypress", () => {
             renderVideoPlayer();
-            const video = screen.getByLabelText("video") as HTMLVideoElement;
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
             expect(video.muted).toBe(false);
             fireEvent.keyDown(document, { code: "KeyM" });
             expect(video.muted).toBe(true);
@@ -141,7 +141,7 @@ describe("MediaPlayerView", () => {
 
         it("unmutes on M keypress when already muted", () => {
             renderVideoPlayer();
-            const video = screen.getByLabelText("video") as HTMLVideoElement;
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
             video.muted = true;
             fireEvent.keyDown(document, { code: "KeyM" });
             expect(video.muted).toBe(false);
@@ -149,14 +149,14 @@ describe("MediaPlayerView", () => {
 
         it("seeks backward on ArrowLeft and clamps to zero", () => {
             renderVideoPlayer();
-            const video = screen.getByLabelText("video") as HTMLVideoElement;
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
             fireEvent.keyDown(document, { code: "ArrowLeft" });
             expect(video.currentTime).toBe(0);
         });
 
         it("does not seek forward on ArrowRight when duration is unknown", () => {
             renderVideoPlayer();
-            const video = screen.getByLabelText("video") as HTMLVideoElement;
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
             const before = video.currentTime;
             fireEvent.keyDown(document, { code: "ArrowRight" });
             expect(video.currentTime).toBe(before);
@@ -193,7 +193,7 @@ describe("MediaPlayerView", () => {
 
         it("ignores repeated keydown events", () => {
             renderVideoPlayer();
-            const video = screen.getByLabelText("video") as HTMLVideoElement;
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
             expect(video.muted).toBe(false);
             fireEvent.keyDown(document, { code: "KeyM", repeat: true });
             expect(video.muted).toBe(false);
@@ -201,7 +201,7 @@ describe("MediaPlayerView", () => {
 
         it("ignores shortcuts when an input is focused", () => {
             renderVideoPlayer();
-            const video = screen.getByLabelText("video") as HTMLVideoElement;
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
             const input = document.createElement("input");
             document.body.appendChild(input);
             fireEvent.keyDown(input, { code: "KeyM" });
@@ -211,7 +211,7 @@ describe("MediaPlayerView", () => {
 
         it("ignores shortcuts while a modal is open over the player", () => {
             renderVideoPlayer();
-            const video = screen.getByLabelText("video") as HTMLVideoElement;
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
 
             const modal = document.createElement("div");
             modal.setAttribute("aria-modal", "true");

@@ -118,6 +118,7 @@ export function PlayerAudioSurface({
                         }}
                     >
                         <audio
+                            aria-label={title ? `Audio player: ${title}` : "Audio player"}
                             controls
                             autoPlay
                             src={mediaSrc}
