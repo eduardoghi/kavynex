@@ -5,18 +5,23 @@ fn main() {
     )
     .expect("failed to run tauri-build");
 
+    // Tauri's default app manifest is disabled above (new_without_app_manifest), so the app
+    // must embed the checked-in windows-app-manifest.xml itself. Do it for every Windows MSVC
+    // artifact - the app binary and the test binaries alike - so both declare the
+    // Common-Controls v6 dependency. Without a manifest the loader falls back to comctl32
+    // v5.82, which does not export TaskDialogIndirect, and the process aborts with
+    // STATUS_ENTRYPOINT_NOT_FOUND the moment a native task dialog is shown. This previously
+    // ran only under __TAURI_WORKSPACE__, so normal `cargo run`/`tauri build`/`cargo test`
+    // produced binaries with no manifest at all.
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV");
-    let is_tauri_workspace = std::env::var("__TAURI_WORKSPACE__")
-        .map(|value| value == "true")
-        .unwrap_or(false);
 
-    if is_tauri_workspace && target_os == "windows" && target_env.as_deref() == Ok("msvc") {
-        embed_manifest_for_tests();
+    if target_os == "windows" && target_env.as_deref() == Ok("msvc") {
+        embed_windows_app_manifest();
     }
 }
 
-fn embed_manifest_for_tests() {
+fn embed_windows_app_manifest() {
     let manifest = std::env::current_dir()
         .expect("failed to resolve current directory")
         .join("windows-app-manifest.xml");
