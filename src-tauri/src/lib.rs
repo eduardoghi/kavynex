@@ -107,7 +107,6 @@ pub fn run() {
             commands::library::check_library_integrity,
             commands::library::open_path_in_system,
             commands::media::import_media_file,
-            commands::media::delete_media_file,
             commands::media::cleanup_unreferenced_media_artifacts,
             commands::live_chat::read_live_chat_file,
             commands::live_chat::delete_live_chat_file,

@@ -46,7 +46,6 @@ export {
 
 export {
     importMediaFile,
-    deleteMediaFile,
 } from "./media-file-service";
 
 export {

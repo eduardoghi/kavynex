@@ -27,20 +27,3 @@ export async function importMediaFile(
 
     return normalizeString(result);
 }
-
-export async function deleteMediaFile(
-    filePath: string,
-    libraryPath: string
-): Promise<void> {
-    const normalizedFilePath = normalizeString(filePath);
-    const normalizedLibraryPath = normalizeString(libraryPath);
-
-    if (!normalizedFilePath || !normalizedLibraryPath) {
-        return;
-    }
-
-    await invokeTauri(TAURI_COMMANDS.DELETE_MEDIA_FILE, {
-        filePath: normalizedFilePath,
-        libraryPath: normalizedLibraryPath,
-    });
-}

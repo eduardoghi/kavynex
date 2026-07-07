@@ -15,7 +15,6 @@ export const TAURI_COMMANDS = {
     DELETE_LIVE_CHAT_FILE: "delete_live_chat_file",
     LIST_LIVE_CHAT_FILES: "list_live_chat_files",
     MIGRATE_LIVE_CHAT_TO_LIBRARY: "migrate_live_chat_to_library",
-    DELETE_MEDIA_FILE: "delete_media_file",
     CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS: "cleanup_unreferenced_media_artifacts",
 
     GENERATE_TEMP_THUMBNAIL: "generate_temporary_thumbnail",
