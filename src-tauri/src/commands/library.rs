@@ -208,16 +208,30 @@ pub async fn migrate_library_directory(
     .await
 }
 
+/// Intentionally accepts a caller-provided `library_path` instead of the persisted setting:
+/// the settings/onboarding UI uses this to preview a candidate library folder before the user
+/// confirms and it is saved. The operation is read-only (it only reads directory metadata), so
+/// there is nothing to protect against here beyond the first-party-webview trust model.
 #[tauri::command]
 pub async fn get_library_summary(library_path: String) -> AppResult<LibrarySummaryInfo> {
     run_blocking(move || library::get_library_summary_sync(&library_path)).await
 }
 
+/// Intentionally accepts a caller-provided `library_path` instead of the persisted setting:
+/// this lets "open in file manager" target a candidate library folder (e.g. during onboarding,
+/// before it is persisted). The operation only spawns the OS file explorer/finder on the
+/// resolved path and never modifies anything, so it relies on the first-party-webview trust
+/// model rather than requiring a configured library.
 #[tauri::command]
 pub async fn open_path_in_system(path: String, library_path: Option<String>) -> AppResult<()> {
     run_blocking(move || library::open_path_in_system_sync(&path, library_path.as_deref())).await
 }
 
+/// Intentionally accepts a caller-provided `library_path` instead of the persisted setting:
+/// the settings UI uses this to check the health of a candidate library folder before it is
+/// persisted. The operation only reads the filesystem to compare it against the given media
+/// and thumbnail paths, so it is non-destructive and relies on the first-party-webview trust
+/// model.
 #[tauri::command]
 pub async fn check_library_integrity(
     library_path: String,
