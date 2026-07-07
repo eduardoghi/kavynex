@@ -472,6 +472,18 @@ pub async fn download_thumbnail_from_url_async(
         })?;
         assert_url_host_is_public(&fallback_uri).await?;
 
+        // yt-dlp's generic extractor is handed the URL with access to the user's browser
+        // cookies (indirectly, via the same yt-dlp binary used elsewhere), so - like every
+        // other yt-dlp invocation in this app - it must be restricted to YouTube. Without
+        // this, a non-image URL would fall through to yt-dlp's generic extractor for any
+        // host, which is far broader than this app ever intends to support.
+        if !is_allowed_youtube_url(&normalized_url) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidUrl,
+                "generic thumbnail extraction is restricted to youtube urls",
+            ));
+        }
+
         let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
         let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
         let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
@@ -521,6 +533,10 @@ pub async fn download_thumbnail_from_url_async(
             "--",
             normalized_url.as_str(),
         ]);
+        // yt-dlp spawns an ffmpeg child for this call (--convert-thumbnails png). `.output()`
+        // is awaited under the timeout below; if it times out, that future is dropped and,
+        // without kill_on_drop, both yt-dlp and its ffmpeg child would keep running detached.
+        command.kill_on_drop(true);
         hide_console_async(&mut command);
 
         let output = timeout(
@@ -664,6 +680,10 @@ pub async fn download_thumbnail_for_media_async(
 
         let mut command = Command::new(&yt_dlp);
         command.args(&args);
+        // yt-dlp spawns an ffmpeg child for this call (--convert-thumbnails png). `.output()`
+        // is awaited under the timeout below; if it times out, that future is dropped and,
+        // without kill_on_drop, both yt-dlp and its ffmpeg child would keep running detached.
+        command.kill_on_drop(true);
         hide_console_async(&mut command);
 
         let output = timeout(
@@ -761,6 +781,10 @@ pub async fn download_channel_avatar_from_handle_async(
             "--",
             normalized_url.as_str(),
         ]);
+        // yt-dlp spawns an ffmpeg child for this call (--convert-thumbnails png). `.output()`
+        // is awaited under the timeout below; if it times out, that future is dropped and,
+        // without kill_on_drop, both yt-dlp and its ffmpeg child would keep running detached.
+        command.kill_on_drop(true);
         hide_console_async(&mut command);
 
         let output = timeout(
