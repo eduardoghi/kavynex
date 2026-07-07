@@ -124,6 +124,7 @@ describe("media-service", () => {
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: null,
+            cookiesPath: null,
         };
 
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
@@ -190,6 +191,7 @@ describe("media-service", () => {
             downloadComments: false,
             downloadLiveChat: true,
             cookiesBrowser: "edge",
+            cookiesPath: null,
         };
 
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
@@ -217,6 +219,7 @@ describe("media-service", () => {
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",
             cookiesBrowser: "edge",
+            cookiesPath: null,
             downloadLiveChat: true,
         });
         expect(readMediaDurationInSeconds).toHaveBeenCalledWith(
@@ -255,6 +258,7 @@ describe("media-service", () => {
             downloadComments: true,
             downloadLiveChat: false,
             cookiesBrowser: "edge",
+            cookiesPath: null,
         };
 
         const fetchedComment = {
@@ -293,7 +297,7 @@ describe("media-service", () => {
 
         await createMedia(normalizedInput);
 
-        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge");
+        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge", null);
         expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(77, [fetchedComment]);
     });
 
@@ -313,6 +317,7 @@ describe("media-service", () => {
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: null,
+            cookiesPath: null,
         };
 
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
@@ -355,6 +360,7 @@ describe("media-service", () => {
             downloadComments: false,
             downloadLiveChat: true,
             cookiesBrowser: null,
+            cookiesPath: null,
         };
 
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
@@ -402,6 +408,7 @@ describe("media-service", () => {
             downloadComments: false,
             downloadLiveChat: true,
             cookiesBrowser: null,
+            cookiesPath: null,
         };
 
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
@@ -449,6 +456,7 @@ describe("media-service", () => {
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: null,
+            cookiesPath: null,
         };
 
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
@@ -568,7 +576,7 @@ describe("media-service", () => {
 
         const result = await refreshMediaComments(10, "abc", "edge");
 
-        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge");
+        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge", null);
         expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(10, [fetchedComment]);
         expect(result).toEqual({ updated: true, totalComments: 1 });
     });

@@ -107,6 +107,7 @@ async function prepareMediaArtifacts(
             ytDlpRunId: input.ytDlpRunId,
             ytDlpFormatId: input.ytDlpFormatId,
             cookiesBrowser: input.cookiesBrowser,
+            cookiesPath: input.cookiesPath,
             downloadLiveChat: input.downloadLiveChat,
         })) as PreparedMediaArtifactsExtended;
     }
@@ -139,6 +140,7 @@ async function tryPersistYouTubeComments(
     mediaId: number | null,
     youtubeVideoId: string | null,
     cookiesBrowser: string | null,
+    cookiesPath: string | null,
     onProgress?: (message: string) => void | Promise<void>
 ): Promise<void> {
     const normalizedVideoId = youtubeVideoId?.trim() ?? "";
@@ -149,7 +151,11 @@ async function tryPersistYouTubeComments(
 
     try {
         await emitProgress(onProgress, "Fetching YouTube comments...");
-        const fetchedComments = await fetchYouTubeComments(normalizedVideoId, cookiesBrowser);
+        const fetchedComments = await fetchYouTubeComments(
+            normalizedVideoId,
+            cookiesBrowser,
+            cookiesPath
+        );
         const comments = normalizeFetchedComments(fetchedComments);
 
         await emitProgress(onProgress, `Comments fetched: ${comments.length}`);
@@ -189,7 +195,8 @@ export async function listMediaComments(mediaId: number): Promise<MediaCommentRo
 export async function refreshMediaComments(
     mediaId: number,
     youtubeVideoId: string | null,
-    cookiesBrowser: string | null
+    cookiesBrowser: string | null,
+    cookiesPath: string | null = null
 ): Promise<RefreshMediaCommentsResult> {
     validateMediaId(mediaId);
 
@@ -202,7 +209,11 @@ export async function refreshMediaComments(
         );
     }
 
-    const fetchedComments = await fetchYouTubeComments(normalizedVideoId, cookiesBrowser);
+    const fetchedComments = await fetchYouTubeComments(
+        normalizedVideoId,
+        cookiesBrowser,
+        cookiesPath
+    );
     const comments = normalizeFetchedComments(fetchedComments);
 
     if (!Array.isArray(fetchedComments)) {
@@ -281,6 +292,7 @@ export async function createMedia(
                     createdId,
                     prepared.youtubeVideoId,
                     normalizedInput.cookiesBrowser,
+                    normalizedInput.cookiesPath,
                     options.onProgress
                 );
             } else {

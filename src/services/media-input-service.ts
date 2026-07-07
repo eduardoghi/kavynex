@@ -19,6 +19,7 @@ export type CreateMediaInput = {
     downloadComments: boolean;
     downloadLiveChat: boolean;
     cookiesBrowser: string | null;
+    cookiesPath: string | null;
 };
 
 function normalizeOptionalValue(value: string | null | undefined): string | null {
@@ -44,6 +45,7 @@ export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaIn
     const normalizedYtDlpRunId = normalizeRequiredValue(input.ytDlpRunId);
     const normalizedYtDlpFormatId = normalizeRequiredValue(input.ytDlpFormatId);
     const normalizedCookiesBrowser = normalizeCookiesBrowser(input.cookiesBrowser);
+    const normalizedCookiesPath = normalizeOptionalValue(input.cookiesPath);
 
     validateChannelId(input.channelId);
 
@@ -81,6 +83,7 @@ export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaIn
         downloadComments: Boolean(input.downloadComments),
         downloadLiveChat: Boolean(input.downloadLiveChat),
         cookiesBrowser: normalizedCookiesBrowser,
+        cookiesPath: normalizedCookiesPath,
     };
 }
 

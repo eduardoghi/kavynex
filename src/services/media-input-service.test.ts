@@ -22,6 +22,7 @@ describe("validateCreateMediaInput", () => {
             downloadComments: true,
             downloadLiveChat: true,
             cookiesBrowser: "  EDGE  ",
+            cookiesPath: null,
         });
 
         expect(result).toEqual({
@@ -39,6 +40,7 @@ describe("validateCreateMediaInput", () => {
             downloadComments: true,
             downloadLiveChat: true,
             cookiesBrowser: "edge",
+            cookiesPath: null,
         });
     });
 
@@ -58,6 +60,7 @@ describe("validateCreateMediaInput", () => {
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: "   ",
+            cookiesPath: null,
         });
 
         expect(result.thumbnailSourcePath).toBeNull();
@@ -82,6 +85,7 @@ describe("validateCreateMediaInput", () => {
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
+                cookiesPath: null,
             })
         ).toThrow("Channel id is invalid.");
     });
@@ -103,6 +107,7 @@ describe("validateCreateMediaInput", () => {
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
+                cookiesPath: null,
             })
         ).toThrow("Media title is required.");
     });
@@ -124,6 +129,7 @@ describe("validateCreateMediaInput", () => {
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
+                cookiesPath: null,
             })
         ).toThrow("Media source is required.");
     });
@@ -145,6 +151,7 @@ describe("validateCreateMediaInput", () => {
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
+                cookiesPath: null,
             })
         ).toThrow("Library path is empty.");
     });
@@ -166,6 +173,7 @@ describe("validateCreateMediaInput", () => {
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
+                cookiesPath: null,
             })
         ).toThrow("yt-dlp run id is required.");
     });
@@ -187,6 +195,7 @@ describe("validateCreateMediaInput", () => {
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
+                cookiesPath: null,
             })
         ).toThrow("yt-dlp format id is required.");
     });
@@ -207,6 +216,7 @@ describe("validateCreateMediaInput", () => {
             downloadComments: 1 as unknown as boolean,
             downloadLiveChat: "" as unknown as boolean,
             cookiesBrowser: "  Firefox  ",
+            cookiesPath: null,
         });
 
         expect(result).toEqual({
@@ -224,6 +234,7 @@ describe("validateCreateMediaInput", () => {
             downloadComments: true,
             downloadLiveChat: false,
             cookiesBrowser: "firefox",
+            cookiesPath: null,
         });
     });
 
@@ -246,6 +257,7 @@ describe("validateCreateMediaInput", () => {
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: browser,
+                cookiesPath: null,
             });
 
             expect(result.cookiesBrowser).toBe(browser);
@@ -268,6 +280,7 @@ describe("validateCreateMediaInput", () => {
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: "internet-explorer",
+            cookiesPath: null,
         });
 
         expect(result.cookiesBrowser).toBeNull();

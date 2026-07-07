@@ -647,6 +647,59 @@ describe("useAddMediaWorkflow", () => {
         expect(mockAppendManualLog).toHaveBeenCalledWith("Cookies from browser: edge");
     });
 
+    it("forwards the manual cookies file to the download instead of a browser", async () => {
+        // Regression guard: "manual" is a UI-only Select option, never a real
+        // --cookies-from-browser value. The picked .txt file path must reach createMedia as
+        // cookiesPath (with cookiesBrowser null), otherwise the download runs unauthenticated
+        // while the UI claims cookies were used.
+        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+
+        mockAddMediaForm.sourceMode = "yt-dlp";
+        mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
+        mockAddMediaForm.mediaPath = "";
+        mockAddMediaForm.selectedYtDlpFormatId = "137";
+        mockAddMediaForm.selectedYtDlpMediaType = "video";
+        mockAddMediaForm.title = "Members only";
+        mockAddMediaForm.downloadComments = true;
+        mockAddMediaForm.downloadLiveChat = false;
+        mockAddMediaForm.cookiesBrowser = "manual";
+        mockAddMediaForm.cookiesPath = "/home/user/cookies.txt";
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(createMedia).toHaveBeenCalledWith(
+            expect.objectContaining({
+                cookiesBrowser: null,
+                cookiesPath: "/home/user/cookies.txt",
+            }),
+            expect.objectContaining({
+                onProgress: expect.any(Function),
+            })
+        );
+
+        // The manual .txt file is used, so the log must say so and never claim a browser
+        // named "manual", and the command preview must not leak the file path.
+        expect(mockAppendManualLog).toHaveBeenCalledWith("Cookies: manual .txt file");
+        expect(mockAppendManualLog).not.toHaveBeenCalledWith("Cookies from browser: manual");
+
+        const previewArg = mockStartRun.mock.calls[0]?.[1] ?? "";
+        expect(previewArg).toContain("--cookies <file>");
+        expect(previewArg).not.toContain("manual");
+        expect(previewArg).not.toContain("/home/user/cookies.txt");
+    });
+
     it("starts a single createMedia run when addMedia fires twice synchronously", async () => {
         // Regression guard: the reentrancy check must use a synchronous ref, not render
         // state, so a double click before the next render can never start two downloads.

@@ -73,6 +73,7 @@ describe("media-artifacts-service", () => {
                 ytDlpRunId: "run-1",
                 ytDlpFormatId: "137",
                 cookiesBrowser: null,
+                cookiesPath: null,
                 downloadLiveChat: false,
             });
 
@@ -125,6 +126,7 @@ describe("media-artifacts-service", () => {
                 ytDlpRunId: "run-1",
                 ytDlpFormatId: "137",
                 cookiesBrowser: null,
+                cookiesPath: null,
                 downloadLiveChat: false,
             });
 

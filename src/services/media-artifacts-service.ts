@@ -28,6 +28,7 @@ type PrepareYtDlpArtifactsInput = {
     ytDlpRunId: string;
     ytDlpFormatId: string;
     cookiesBrowser: string | null;
+    cookiesPath: string | null;
     downloadLiveChat?: boolean;
 };
 
@@ -163,6 +164,7 @@ export async function prepareYtDlpArtifacts({
     ytDlpRunId,
     ytDlpFormatId,
     cookiesBrowser,
+    cookiesPath,
     downloadLiveChat = false,
 }: PrepareYtDlpArtifactsInput): Promise<PreparedMediaArtifacts> {
     const shouldSkipAutoThumbnailDownload = Boolean(thumbnailSourcePath?.trim());
@@ -173,7 +175,7 @@ export async function prepareYtDlpArtifacts({
         ytDlpRunId,
         ytDlpFormatId,
         cookiesBrowser,
-        null,
+        cookiesPath,
         downloadLiveChat,
         shouldSkipAutoThumbnailDownload
     );

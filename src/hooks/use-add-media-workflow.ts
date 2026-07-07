@@ -98,6 +98,17 @@ export function useAddMediaWorkflow({
                 let ytDlpRunId = "";
                 let ytDlpFormatId = "";
 
+                // Resolve the cookies source the same way the format loader does
+                // (use-add-media-form.ts): "manual" selects the user-picked .txt file and is
+                // never a real --cookies-from-browser value, so it must not be sent as one.
+                const isManualCookies = addMediaForm.cookiesBrowser === "manual";
+                const cookiesBrowser = isManualCookies
+                    ? null
+                    : addMediaForm.cookiesBrowser || null;
+                const cookiesPath = isManualCookies
+                    ? addMediaForm.cookiesPath.trim() || null
+                    : null;
+
                 if (sourceMode === "yt-dlp") {
                     ytDlpRunId =
                         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -106,9 +117,14 @@ export function useAddMediaWorkflow({
 
                     ytDlpFormatId = addMediaForm.selectedYtDlpFormatId.trim();
 
-                    const commandPreview = addMediaForm.cookiesBrowser
-                        ? `yt-dlp ${addMediaForm.mediaUrl.trim()} --cookies-from-browser ${addMediaForm.cookiesBrowser} --format ${ytDlpFormatId}`
-                        : `yt-dlp ${addMediaForm.mediaUrl.trim()} --format ${ytDlpFormatId}`;
+                    // Never render the cookies file path in the preview: it can reveal the
+                    // local profile layout and may be pasted into a public bug report.
+                    const authPreview = cookiesPath
+                        ? " --cookies <file>"
+                        : cookiesBrowser
+                          ? ` --cookies-from-browser ${cookiesBrowser}`
+                          : "";
+                    const commandPreview = `yt-dlp ${addMediaForm.mediaUrl.trim()}${authPreview} --format ${ytDlpFormatId}`;
 
                     ytDlpEvents.startRun(ytDlpRunId, commandPreview);
 
@@ -124,10 +140,10 @@ export function useAddMediaWorkflow({
                             : "Live chat: disabled"
                     );
 
-                    if (addMediaForm.cookiesBrowser) {
-                        ytDlpEvents.appendManualLog(
-                            `Cookies from browser: ${addMediaForm.cookiesBrowser}`
-                        );
+                    if (cookiesPath) {
+                        ytDlpEvents.appendManualLog("Cookies: manual .txt file");
+                    } else if (cookiesBrowser) {
+                        ytDlpEvents.appendManualLog(`Cookies from browser: ${cookiesBrowser}`);
                     }
                 }
 
@@ -152,7 +168,8 @@ export function useAddMediaWorkflow({
                         ytDlpFormatId,
                         downloadComments: addMediaForm.downloadComments,
                         downloadLiveChat: addMediaForm.downloadLiveChat,
-                        cookiesBrowser: addMediaForm.cookiesBrowser || null,
+                        cookiesBrowser,
+                        cookiesPath,
                     },
                     {
                         onProgress: (message) => {
