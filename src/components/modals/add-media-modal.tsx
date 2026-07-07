@@ -198,8 +198,13 @@ export function AddMediaModal({
     const [publishedAtInput, setPublishedAtInput] = useState(formattedPublishedAt);
 
     useEffect(() => {
+        // Re-seed the local input only on an external reset (modal open/close or source-mode
+        // switch), never on every publishedAt change. The user's own typing round-trips through
+        // the parent as ISO, and an incomplete date (e.g. while deleting a digit) normalizes to
+        // "", so depending on formattedPublishedAt here would wipe the partial text mid-edit.
         setPublishedAtInput(formattedPublishedAt);
-    }, [formattedPublishedAt, opened, sourceMode]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: seed only when the modal re-opens or the source mode changes, not on each keystroke
+    }, [opened, sourceMode]);
 
     const handleSubmit = (): void => {
         if (!canSubmit || isBusy || isYtDlpRunning) {

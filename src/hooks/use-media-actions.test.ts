@@ -790,4 +790,72 @@ describe("useMediaActions", () => {
             releaseDelete?.();
         });
     });
+
+    it("keeps the media action handlers stable when the active media changes", () => {
+        // In the real player hook setActiveMedia/closePlayer are stable (useCallback []), so
+        // model that here and vary only activeMedia.
+        const setActiveMedia = vi.fn();
+        const closePlayer = vi.fn();
+        const makeProps = (activeMedia: MediaRow) => ({
+            libraryPath: "/library",
+            setMediaItems,
+            mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
+            onError,
+            onNotice,
+        });
+
+        const { result, rerender } = renderHook((props) => useMediaActions(props), {
+            initialProps: makeProps(createMediaRow({ id: 1, title: "Original" })),
+        });
+
+        const before = {
+            markAsWatched: result.current.markAsWatched,
+            markAsUnwatched: result.current.markAsUnwatched,
+            refreshComments: result.current.refreshComments,
+            editTitle: result.current.editTitle,
+        };
+
+        // A new activeMedia object (opening a video, editing its title) must not recreate the
+        // per-card handlers, otherwise every MediaCard re-renders.
+        rerender(makeProps(createMediaRow({ id: 1, title: "Renamed" })));
+
+        expect(result.current.markAsWatched).toBe(before.markAsWatched);
+        expect(result.current.markAsUnwatched).toBe(before.markAsUnwatched);
+        expect(result.current.refreshComments).toBe(before.refreshComments);
+        expect(result.current.editTitle).toBe(before.editTitle);
+    });
+
+    it("marks watched using the latest active media, not a stale closure", async () => {
+        const setActiveMedia = vi.fn();
+        const closePlayer = vi.fn();
+        const makeProps = (activeMedia: MediaRow) => ({
+            libraryPath: "/library",
+            setMediaItems,
+            mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
+            onError,
+            onNotice,
+        });
+
+        vi.mocked(executeMarkMediaWatched).mockResolvedValue("2026-03-31T20:00:00.000Z");
+
+        const { result, rerender } = renderHook((props) => useMediaActions(props), {
+            initialProps: makeProps(createMediaRow({ id: 1, title: "Old" })),
+        });
+
+        // The active media's title is updated after the first render (e.g. an in-place edit).
+        rerender(makeProps(createMediaRow({ id: 1, title: "New" })));
+
+        await act(async () => {
+            await result.current.markAsWatched(1);
+        });
+
+        // It must spread the current active media (title "New"), never the stale "Old".
+        expect(setActiveMedia).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 1,
+                title: "New",
+                watched_at: "2026-03-31T20:00:00.000Z",
+            })
+        );
+    });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MediaRow } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { executeDeleteMedia } from "../use-cases/delete-media";
@@ -66,6 +66,21 @@ export function useMediaActions({
     const { isRunning: isRefreshingComments, runWithFlag: runRefreshCommentsAction } =
         useAsyncFlag();
     const { isRunning: isUpdatingTitle, runWithFlag: runUpdateTitleAction } = useAsyncFlag();
+
+    // A ref that always holds the latest active media so the callbacks below can read it
+    // without listing the per-render activeMedia object as a dependency. Depending on
+    // activeMedia recreated these callbacks - and thus every per-card handler derived from
+    // them in Home - on any player change (opening a video, editing a title), which
+    // re-rendered the entire media grid and defeated the MediaCard memoization. The ref stays
+    // current, so the callbacks can spread the up-to-date media while remaining stable.
+    const activeMediaRef = useRef(mediaPlayer.activeMedia);
+    useEffect(() => {
+        activeMediaRef.current = mediaPlayer.activeMedia;
+    }, [mediaPlayer.activeMedia]);
+
+    // setActiveMedia is stable in useMediaPlayer (useCallback []); pull it out so the callbacks
+    // below can depend on it directly instead of on the per-render mediaPlayer object.
+    const { setActiveMedia } = mediaPlayer;
 
     const requestDeleteMedia = useCallback(
         (media: MediaRow): void => {
@@ -154,9 +169,11 @@ export function useMediaActions({
                         updateMediaItems: setMediaItems,
                     });
 
-                    if (mediaPlayer.activeMedia?.id === mediaId) {
-                        mediaPlayer.setActiveMedia({
-                            ...mediaPlayer.activeMedia,
+                    const active = activeMediaRef.current;
+
+                    if (active?.id === mediaId) {
+                        setActiveMedia({
+                            ...active,
                             watched_at: watchedAt,
                         });
                     }
@@ -169,8 +186,7 @@ export function useMediaActions({
                 }
             });
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
-        [mediaPlayer.activeMedia, mediaPlayer.setActiveMedia, onError, runWatchedAction, setMediaItems]
+        [setActiveMedia, onError, runWatchedAction, setMediaItems]
     );
 
     const markAsUnwatched = useCallback(
@@ -182,9 +198,11 @@ export function useMediaActions({
                         updateMediaItems: setMediaItems,
                     });
 
-                    if (mediaPlayer.activeMedia?.id === mediaId) {
-                        mediaPlayer.setActiveMedia({
-                            ...mediaPlayer.activeMedia,
+                    const active = activeMediaRef.current;
+
+                    if (active?.id === mediaId) {
+                        setActiveMedia({
+                            ...active,
                             watched_at: null,
                         });
                     }
@@ -197,8 +215,7 @@ export function useMediaActions({
                 }
             });
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
-        [mediaPlayer.activeMedia, mediaPlayer.setActiveMedia, onError, runWatchedAction, setMediaItems]
+        [setActiveMedia, onError, runWatchedAction, setMediaItems]
     );
 
     const refreshComments = useCallback(
@@ -232,9 +249,11 @@ export function useMediaActions({
                         )
                     );
 
-                    if (mediaPlayer.activeMedia?.id === media.id) {
-                        mediaPlayer.setActiveMedia({
-                            ...mediaPlayer.activeMedia,
+                    const active = activeMediaRef.current;
+
+                    if (active?.id === media.id) {
+                        setActiveMedia({
+                            ...active,
                             has_comments: result.totalComments > 0 ? 1 : 0,
                             comments_count: result.totalComments,
                         });
@@ -253,10 +272,8 @@ export function useMediaActions({
                 }
             });
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
         [
-            mediaPlayer.activeMedia,
-            mediaPlayer.setActiveMedia,
+            setActiveMedia,
             onError,
             onNotice,
             runRefreshCommentsAction,
@@ -281,9 +298,11 @@ export function useMediaActions({
                         )
                     );
 
-                    if (mediaPlayer.activeMedia?.id === media.id) {
-                        mediaPlayer.setActiveMedia({
-                            ...mediaPlayer.activeMedia,
+                    const active = activeMediaRef.current;
+
+                    if (active?.id === media.id) {
+                        setActiveMedia({
+                            ...active,
                             title: normalizedTitle,
                         });
                     }
@@ -296,8 +315,7 @@ export function useMediaActions({
                 }
             });
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
-        [mediaPlayer.activeMedia, mediaPlayer.setActiveMedia, onError, runUpdateTitleAction, setMediaItems]
+        [setActiveMedia, onError, runUpdateTitleAction, setMediaItems]
     );
 
     const openMediaFileLocation = useCallback(

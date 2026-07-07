@@ -1,53 +1,55 @@
+import { useState } from "react";
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AddMediaModal } from "./add-media-modal";
 import { renderWithMantine } from "../../test/test-utils";
 
+function createDefaultProps(): React.ComponentProps<typeof AddMediaModal> {
+    return {
+        opened: true,
+        onClose: vi.fn(),
+        sourceMode: "local",
+        mediaUrl: "",
+        title: "",
+        mediaPath: "",
+        mediaType: "video",
+        thumbPath: "",
+        publishedAt: "",
+        downloadComments: true,
+        downloadLiveChat: true,
+        cookiesBrowser: "",
+        cookiesPath: "",
+        isGeneratingThumb: false,
+        loading: false,
+        isCancellingYtDlp: false,
+        ytDlpLogs: [],
+        isYtDlpRunning: false,
+        ytDlpFormats: [],
+        selectedYtDlpFormatId: "",
+        isLoadingYtDlpFormats: false,
+        onChangeSourceMode: vi.fn(),
+        onChangeMediaUrl: vi.fn(),
+        onChangeTitle: vi.fn(),
+        onChangePublishedAt: vi.fn(),
+        onChangeDownloadComments: vi.fn(),
+        onChangeDownloadLiveChat: vi.fn(),
+        onChangeCookiesBrowser: vi.fn(),
+        onChangeCookiesPath: vi.fn(),
+        onPickCookiesFile: vi.fn(),
+        onClearCookiesPath: vi.fn(),
+        onChangeSelectedYtDlpFormatId: vi.fn(),
+        onLoadYtDlpFormats: vi.fn(),
+        onPickMedia: vi.fn(),
+        onPickThumb: vi.fn(),
+        onAdd: vi.fn(),
+        onCancelYtDlpDownload: vi.fn(),
+    };
+}
+
 function renderAddMediaModal(
     overrides: Partial<React.ComponentProps<typeof AddMediaModal>> = {}
 ): ReturnType<typeof renderWithMantine> {
-    return renderWithMantine(
-        <AddMediaModal
-            opened
-            onClose={vi.fn()}
-            sourceMode="local"
-            mediaUrl=""
-            title=""
-            mediaPath=""
-            mediaType="video"
-            thumbPath=""
-            publishedAt=""
-            downloadComments={true}
-            downloadLiveChat={true}
-            cookiesBrowser=""
-            cookiesPath=""
-            isGeneratingThumb={false}
-            loading={false}
-            isCancellingYtDlp={false}
-            ytDlpLogs={[]}
-            isYtDlpRunning={false}
-            ytDlpFormats={[]}
-            selectedYtDlpFormatId=""
-            isLoadingYtDlpFormats={false}
-            onChangeSourceMode={vi.fn()}
-            onChangeMediaUrl={vi.fn()}
-            onChangeTitle={vi.fn()}
-            onChangePublishedAt={vi.fn()}
-            onChangeDownloadComments={vi.fn()}
-            onChangeDownloadLiveChat={vi.fn()}
-            onChangeCookiesBrowser={vi.fn()}
-            onChangeCookiesPath={vi.fn()}
-            onPickCookiesFile={vi.fn()}
-            onClearCookiesPath={vi.fn()}
-            onChangeSelectedYtDlpFormatId={vi.fn()}
-            onLoadYtDlpFormats={vi.fn()}
-            onPickMedia={vi.fn()}
-            onPickThumb={vi.fn()}
-            onAdd={vi.fn()}
-            onCancelYtDlpDownload={vi.fn()}
-            {...overrides}
-        />
-    );
+    return renderWithMantine(<AddMediaModal {...createDefaultProps()} {...overrides} />);
 }
 
 describe("AddMediaModal", () => {
@@ -151,6 +153,38 @@ describe("AddMediaModal", () => {
         });
 
         expect(onChangePublishedAt).toHaveBeenCalledWith("2026-03-31");
+    });
+
+    it("keeps a partially edited publication date instead of wiping it mid-edit", () => {
+        // Model the real controlled flow: the parent stores the published date and feeds it
+        // back, so an incomplete date (which normalizes to "") round-trips into the modal.
+        const base = createDefaultProps();
+
+        function Controlled(): JSX.Element {
+            const [publishedAt, setPublishedAt] = useState("");
+
+            return (
+                <AddMediaModal
+                    {...base}
+                    sourceMode="local"
+                    publishedAt={publishedAt}
+                    onChangePublishedAt={setPublishedAt}
+                />
+            );
+        }
+
+        renderWithMantine(<Controlled />);
+
+        const input = screen.getByLabelText("Published date");
+
+        // A complete, valid date.
+        fireEvent.change(input, { target: { value: "31/03/2026" } });
+        expect(input).toHaveValue("31/03/2026");
+
+        // Deleting a digit makes the ISO value round-trip to "" (incomplete), but the partial
+        // text being edited must survive rather than be wiped by the resync effect.
+        fireEvent.change(input, { target: { value: "31/03/202" } });
+        expect(input).toHaveValue("31/03/202");
     });
 
     it("does not call add while busy", () => {
