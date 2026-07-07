@@ -10,6 +10,7 @@
         "src/utils/**/*.ts",
         "src/hooks/**/*.ts",
         "src/use-cases/**/*.ts",
+        "src/services/**/*.ts",
         "!src/**/*.test.ts",
         "!src/**/*.test.tsx",
         "!src/**/*.spec.ts",
