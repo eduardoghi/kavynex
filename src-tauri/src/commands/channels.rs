@@ -59,22 +59,14 @@ pub async fn update_channel_name_and_handle(
     repo::update_channel_name_and_handle(pool, channel_id, &name, &youtube_handle).await
 }
 
+/// Updates a channel's avatar and removes the previous avatar file when nothing else (a
+/// video thumbnail or another channel avatar) still references it, in a single atomic
+/// operation. Files it could not remove are reported back so an orphan stays visible.
 #[tauri::command]
-pub async fn update_channel_avatar_path(
+pub async fn replace_channel_avatar(
     app: AppHandle,
     channel_id: i64,
     avatar_path: Option<String>,
-) -> AppResult<()> {
-    let pool = shared_pool(&app).await?;
-    repo::update_channel_avatar_path(pool, channel_id, avatar_path.as_deref()).await
-}
-
-#[tauri::command]
-pub async fn count_channels_using_avatar_path_outside_channel(
-    app: AppHandle,
-    avatar_path: String,
-    channel_id: i64,
-) -> AppResult<i64> {
-    let pool = shared_pool(&app).await?;
-    repo::count_channels_using_avatar_path_outside_channel(pool, &avatar_path, channel_id).await
+) -> AppResult<ArtifactCleanupReport> {
+    library_cleanup::replace_channel_avatar(&app, channel_id, avatar_path).await
 }

@@ -16,6 +16,7 @@ export const TAURI_COMMANDS = {
     LIST_LIVE_CHAT_FILES: "list_live_chat_files",
     MIGRATE_LIVE_CHAT_TO_LIBRARY: "migrate_live_chat_to_library",
     DELETE_MEDIA_FILE: "delete_media_file",
+    CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS: "cleanup_unreferenced_media_artifacts",
 
     GENERATE_TEMP_THUMBNAIL: "generate_temporary_thumbnail",
     PERSIST_THUMBNAIL_FILE: "persist_thumbnail_file",
@@ -48,10 +49,8 @@ export const TAURI_COMMANDS = {
     GET_CHANNEL_BY_ID: "get_channel_by_id",
     INSERT_CHANNEL: "insert_channel",
     UPDATE_CHANNEL_NAME_AND_HANDLE: "update_channel_name_and_handle",
-    UPDATE_CHANNEL_AVATAR_PATH: "update_channel_avatar_path",
+    REPLACE_CHANNEL_AVATAR: "replace_channel_avatar",
     DELETE_CHANNEL_WITH_ARTIFACTS: "delete_channel_with_artifacts",
-    COUNT_CHANNELS_USING_AVATAR_PATH_OUTSIDE_CHANNEL:
-        "count_channels_using_avatar_path_outside_channel",
 
     UPDATE_MEDIA_TITLE: "update_media_title",
     LIST_MEDIA_BY_CHANNEL: "list_media_by_channel",
@@ -62,9 +61,6 @@ export const TAURI_COMMANDS = {
     MARK_MEDIA_AS_WATCHED: "mark_media_as_watched",
     MARK_MEDIA_AS_UNWATCHED: "mark_media_as_unwatched",
     UPDATE_MEDIA_PROGRESS: "update_media_progress",
-    COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_MEDIA: "count_media_using_thumbnail_outside_media",
-    COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_MEDIA: "count_media_using_file_path_outside_media",
-    COUNT_MEDIA_USING_LIVE_CHAT_OUTSIDE_MEDIA: "count_media_using_live_chat_outside_media",
     GET_MEDIA_REPOSITORY_STATS: "get_media_repository_stats",
     LIST_MEDIA_INTEGRITY_REFERENCES: "list_media_integrity_references",
 } as const;

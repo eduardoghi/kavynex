@@ -108,6 +108,7 @@ pub fn run() {
             commands::library::open_path_in_system,
             commands::media::import_media_file,
             commands::media::delete_media_file,
+            commands::media::cleanup_unreferenced_media_artifacts,
             commands::live_chat::read_live_chat_file,
             commands::live_chat::delete_live_chat_file,
             commands::live_chat::list_live_chat_files,
@@ -139,9 +140,8 @@ pub fn run() {
             commands::channels::get_channel_by_id,
             commands::channels::insert_channel,
             commands::channels::update_channel_name_and_handle,
-            commands::channels::update_channel_avatar_path,
+            commands::channels::replace_channel_avatar,
             commands::channels::delete_channel_with_artifacts,
-            commands::channels::count_channels_using_avatar_path_outside_channel,
             commands::videos::update_media_title,
             commands::videos::list_media_by_channel,
             commands::videos::find_media_by_channel_and_file_path,
@@ -151,9 +151,6 @@ pub fn run() {
             commands::videos::mark_media_as_watched,
             commands::videos::mark_media_as_unwatched,
             commands::videos::update_media_progress,
-            commands::videos::count_media_using_thumbnail_outside_media,
-            commands::videos::count_media_using_file_path_outside_media,
-            commands::videos::count_media_using_live_chat_outside_media,
             commands::videos::get_media_repository_stats,
             commands::videos::list_media_integrity_references
         ])

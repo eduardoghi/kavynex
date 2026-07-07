@@ -277,11 +277,7 @@ export function useChannelActions({
                         );
                     }
 
-                    await updateChannelAvatarWithCleanup(
-                        channel.id,
-                        nextAvatarPath,
-                        normalizedLibraryPath
-                    );
+                    await updateChannelAvatarWithCleanup(channel.id, nextAvatarPath);
 
                     const items = await listAllChannels();
                     setChannels(items);

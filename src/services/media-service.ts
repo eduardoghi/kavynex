@@ -1,6 +1,5 @@
 import type { MediaCommentRow, MediaRow, YtDlpComment } from "../types/media";
 import {
-    countMediaUsingLiveChatOutsideMedia,
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
@@ -12,7 +11,6 @@ import {
     updateMediaTitle as updateMediaTitleInRepository,
 } from "../repositories";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
-import { deleteLiveChatFile } from "./live-chat-service";
 import {
     cleanupCreatedArtifacts,
     prepareLocalArtifacts,
@@ -134,35 +132,6 @@ async function ensureMediaDoesNotAlreadyExist(
             "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
             "This media is already registered for the selected channel."
         );
-    }
-}
-
-// Sentinel media id used when cleaning up artifacts that were prepared but never
-// registered as a media row (createMedia failed before insertMedia). No real media row
-// has this id, so the "outside media" reference counts return the number of *other* rows
-// that rely on the artifact.
-const UNREGISTERED_MEDIA_ID = -1;
-
-async function removeMediaLiveChatIfUnused(
-    mediaId: number,
-    liveChatFilePath: string | null
-): Promise<void> {
-    const normalizedLiveChatFilePath = liveChatFilePath?.trim() ?? "";
-
-    if (!normalizedLiveChatFilePath) {
-        return;
-    }
-
-    // Live chat replays are stored per YouTube video id, so the same file can back more
-    // than one media row (e.g. the same video added to several channels). Only delete it
-    // when no other media row still references it.
-    const usageOutsideMedia = await countMediaUsingLiveChatOutsideMedia(
-        normalizedLiveChatFilePath,
-        mediaId
-    );
-
-    if (usageOutsideMedia === 0) {
-        await deleteLiveChatFile(normalizedLiveChatFilePath);
     }
 }
 
@@ -334,27 +303,14 @@ export async function createMedia(
         };
     } catch (error) {
         if (!mediaRegistered) {
+            // One atomic backend call reference-counts and removes the media file,
+            // thumbnail and live chat replay that were prepared before insertMedia failed,
+            // keeping any that a registered row still shares.
             await cleanupCreatedArtifacts(
                 createdFilePath,
                 createdThumbnailPath,
-                normalizedInput.libraryPath
+                createdLiveChatFilePath
             );
-
-            if (createdLiveChatFilePath) {
-                try {
-                    await removeMediaLiveChatIfUnused(
-                        UNREGISTERED_MEDIA_ID,
-                        createdLiveChatFilePath
-                    );
-                } catch (cleanupError) {
-                    logError(
-                        "media-service",
-                        "Failed to cleanup live chat file after createMedia failure.",
-                        cleanupError,
-                        { liveChatFilePath: createdLiveChatFilePath }
-                    );
-                }
-            }
         }
 
         throw error;

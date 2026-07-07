@@ -45,11 +45,11 @@ export async function updateChannelNameAndHandle(
     });
 }
 
-export async function updateChannelAvatarPath(
+export async function replaceChannelAvatar(
     channelId: number,
     avatarPath: string | null
-): Promise<void> {
-    await invokeVoid(TAURI_COMMANDS.UPDATE_CHANNEL_AVATAR_PATH, {
+): Promise<ArtifactCleanupReport> {
+    return invokeCommand<ArtifactCleanupReport>(TAURI_COMMANDS.REPLACE_CHANNEL_AVATAR, {
         channelId,
         avatarPath,
     });
@@ -61,15 +61,5 @@ export async function deleteChannelWithArtifacts(
     return invokeCommand<ArtifactCleanupReport>(TAURI_COMMANDS.DELETE_CHANNEL_WITH_ARTIFACTS, {
         channelId,
     });
-}
-
-export async function countChannelsUsingAvatarPathOutsideChannel(
-    avatarPath: string,
-    channelId: number
-): Promise<number> {
-    return invokeCommand<number>(
-        TAURI_COMMANDS.COUNT_CHANNELS_USING_AVATAR_PATH_OUTSIDE_CHANNEL,
-        { avatarPath, channelId }
-    );
 }
 

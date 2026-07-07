@@ -2,13 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
-    countChannelsUsingAvatarPathOutsideChannel,
     deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
     getChannelById,
     insertChannel,
     listChannels,
-    updateChannelAvatarPath,
+    replaceChannelAvatar,
     updateChannelNameAndHandle,
 } from "./channel-repository";
 
@@ -69,9 +68,31 @@ describe("channel-repository command wiring", () => {
         );
     });
 
-    it("updateChannelAvatarPath passes null to clear the avatar", async () => {
-        await updateChannelAvatarPath(3, null);
-        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.UPDATE_CHANNEL_AVATAR_PATH, {
+    it("replaceChannelAvatar passes the id and avatar and returns the cleanup report", async () => {
+        const report = {
+            deleted_paths: ["thumbnails/old.jpg"],
+            skipped_shared_paths: [],
+            failed_paths: [],
+        };
+        invokeCommandMock.mockResolvedValueOnce(report as never);
+
+        await expect(replaceChannelAvatar(3, "thumbnails/new.jpg")).resolves.toBe(report);
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.REPLACE_CHANNEL_AVATAR, {
+            channelId: 3,
+            avatarPath: "thumbnails/new.jpg",
+        });
+    });
+
+    it("replaceChannelAvatar passes null to clear the avatar", async () => {
+        const report = {
+            deleted_paths: [],
+            skipped_shared_paths: [],
+            failed_paths: [],
+        };
+        invokeCommandMock.mockResolvedValueOnce(report as never);
+
+        await replaceChannelAvatar(3, null);
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.REPLACE_CHANNEL_AVATAR, {
             channelId: 3,
             avatarPath: null,
         });
@@ -89,18 +110,6 @@ describe("channel-repository command wiring", () => {
         expect(invokeCommandMock).toHaveBeenCalledWith(
             TAURI_COMMANDS.DELETE_CHANNEL_WITH_ARTIFACTS,
             { channelId: 9 }
-        );
-    });
-
-    it("countChannelsUsingAvatarPathOutsideChannel passes path and id", async () => {
-        invokeCommandMock.mockResolvedValueOnce(1 as never);
-
-        await expect(
-            countChannelsUsingAvatarPathOutsideChannel("shared.jpg", 5)
-        ).resolves.toBe(1);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.COUNT_CHANNELS_USING_AVATAR_PATH_OUTSIDE_CHANNEL,
-            { avatarPath: "shared.jpg", channelId: 5 }
         );
     });
 

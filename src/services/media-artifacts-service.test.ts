@@ -6,8 +6,7 @@ import {
 } from "./media-artifacts-service";
 
 vi.mock("../repositories", () => ({
-    countMediaUsingFilePathOutsideMedia: vi.fn(),
-    countMediaUsingThumbnailOutsideMedia: vi.fn(),
+    cleanupUnreferencedMediaArtifacts: vi.fn(),
 }));
 
 vi.mock("./media-download-service", () => ({
@@ -15,38 +14,40 @@ vi.mock("./media-download-service", () => ({
 }));
 
 vi.mock("./media-file-service", () => ({
-    deleteMediaFile: vi.fn(),
     importMediaFile: vi.fn(),
 }));
 
 vi.mock("./thumbnail-service", () => ({
     deleteTemporaryThumbnail: vi.fn(),
-    deleteThumbnailFile: vi.fn(),
     downloadThumbnailFromUrl: vi.fn(),
     generateTemporaryThumbnail: vi.fn(),
     persistThumbnailFile: vi.fn(),
 }));
 
-import {
-    countMediaUsingFilePathOutsideMedia,
-    countMediaUsingThumbnailOutsideMedia,
-} from "../repositories";
+vi.mock("../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
+
+import { cleanupUnreferencedMediaArtifacts } from "../repositories";
 import { downloadMediaFromUrl } from "./media-download-service";
-import { deleteMediaFile, importMediaFile } from "./media-file-service";
+import { importMediaFile } from "./media-file-service";
 import {
     deleteTemporaryThumbnail,
-    deleteThumbnailFile,
     downloadThumbnailFromUrl,
     generateTemporaryThumbnail,
     persistThumbnailFile,
 } from "./thumbnail-service";
+import { logError } from "../utils/app-logger";
 
 describe("media-artifacts-service", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // By default no other media row references the artifacts, so cleanup deletes them.
-        vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValue(0);
-        vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValue(0);
+        // Default: the backend removes everything it was asked to and reports no orphans.
+        vi.mocked(cleanupUnreferencedMediaArtifacts).mockResolvedValue({
+            deleted_paths: [],
+            skipped_shared_paths: [],
+            failed_paths: [],
+        });
     });
 
     describe("prepareYtDlpArtifacts", () => {
@@ -228,80 +229,59 @@ describe("media-artifacts-service", () => {
     });
 
     describe("cleanupCreatedArtifacts", () => {
-        it("cleans both thumbnail and media file when no other media references them", async () => {
-            vi.mocked(deleteThumbnailFile).mockResolvedValue(undefined);
-            vi.mocked(deleteMediaFile).mockResolvedValue(undefined);
-
-            await cleanupCreatedArtifacts("video/a.mp4", "thumbnails/a.jpg", "/library");
-
-            expect(countMediaUsingThumbnailOutsideMedia).toHaveBeenCalledWith("thumbnails/a.jpg", -1);
-            expect(countMediaUsingFilePathOutsideMedia).toHaveBeenCalledWith("video/a.mp4", -1);
-            expect(deleteThumbnailFile).toHaveBeenCalledWith("thumbnails/a.jpg", "/library");
-            expect(deleteMediaFile).toHaveBeenCalledWith("video/a.mp4", "/library");
-        });
-
-        it("does not delete a file still referenced by another media row", async () => {
-            vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValue(1);
-
-            await cleanupCreatedArtifacts("video/a.mp4", null, "/library");
-
-            expect(deleteMediaFile).not.toHaveBeenCalled();
-        });
-
-        it("does not delete a thumbnail still referenced by another media row", async () => {
-            vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValue(2);
-
-            await cleanupCreatedArtifacts(null, "thumbnails/a.jpg", "/library");
-
-            expect(deleteThumbnailFile).not.toHaveBeenCalled();
-        });
-
-        it("deletes an orphaned file while keeping a shared thumbnail", async () => {
-            vi.mocked(countMediaUsingFilePathOutsideMedia).mockResolvedValue(0);
-            vi.mocked(countMediaUsingThumbnailOutsideMedia).mockResolvedValue(1);
-            vi.mocked(deleteMediaFile).mockResolvedValue(undefined);
-
-            await cleanupCreatedArtifacts("video/a.mp4", "thumbnails/shared.jpg", "/library");
-
-            expect(deleteThumbnailFile).not.toHaveBeenCalled();
-            expect(deleteMediaFile).toHaveBeenCalledWith("video/a.mp4", "/library");
-        });
-
-        it("does not delete when the reference count lookup fails", async () => {
-            vi.mocked(countMediaUsingFilePathOutsideMedia).mockRejectedValueOnce(
-                new Error("count failed")
+        it("delegates every artifact to the atomic backend cleanup command", async () => {
+            await cleanupCreatedArtifacts(
+                "video/a.mp4",
+                "thumbnails/a.jpg",
+                "live_chat/a.json.gz"
             );
 
-            const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-            await cleanupCreatedArtifacts("video/a.mp4", null, "/library");
-
-            expect(deleteMediaFile).not.toHaveBeenCalled();
-            expect(consoleErrorSpy).toHaveBeenCalled();
-
-            consoleErrorSpy.mockRestore();
+            expect(cleanupUnreferencedMediaArtifacts).toHaveBeenCalledWith(
+                "video/a.mp4",
+                "thumbnails/a.jpg",
+                "live_chat/a.json.gz"
+            );
+            expect(logError).not.toHaveBeenCalled();
         });
 
-        it("does nothing when library path is empty", async () => {
-            await cleanupCreatedArtifacts("video/a.mp4", "thumbnails/a.jpg", "   ");
+        it("does nothing when no artifact paths are provided", async () => {
+            await cleanupCreatedArtifacts(null, null, null);
 
-            expect(deleteThumbnailFile).not.toHaveBeenCalled();
-            expect(deleteMediaFile).not.toHaveBeenCalled();
+            expect(cleanupUnreferencedMediaArtifacts).not.toHaveBeenCalled();
         });
 
-        it("continues cleanup even when one operation fails", async () => {
-            vi.mocked(deleteThumbnailFile).mockRejectedValueOnce(new Error("thumb error"));
-            vi.mocked(deleteMediaFile).mockResolvedValue(undefined);
+        it("logs an orphan warning when the backend could not remove some artifacts", async () => {
+            vi.mocked(cleanupUnreferencedMediaArtifacts).mockResolvedValueOnce({
+                deleted_paths: [],
+                skipped_shared_paths: [],
+                failed_paths: ["video/a.mp4"],
+            });
 
-            const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+            await cleanupCreatedArtifacts("video/a.mp4", null, null);
 
-            await cleanupCreatedArtifacts("video/a.mp4", "thumbnails/a.jpg", "/library");
+            expect(logError).toHaveBeenCalledWith(
+                "media-artifacts",
+                expect.stringContaining("orphaned"),
+                null,
+                { failedPaths: ["video/a.mp4"] }
+            );
+        });
 
-            expect(deleteThumbnailFile).toHaveBeenCalledWith("thumbnails/a.jpg", "/library");
-            expect(deleteMediaFile).toHaveBeenCalledWith("video/a.mp4", "/library");
-            expect(consoleErrorSpy).toHaveBeenCalled();
+        it("swallows and logs a backend cleanup failure", async () => {
+            vi.mocked(cleanupUnreferencedMediaArtifacts).mockRejectedValueOnce(
+                new Error("boom")
+            );
 
-            consoleErrorSpy.mockRestore();
+            await expect(
+                cleanupCreatedArtifacts("video/a.mp4", null, null)
+            ).resolves.toBeUndefined();
+
+            expect(logError).toHaveBeenCalledWith(
+                "media-artifacts",
+                expect.stringContaining("Failed to clean up"),
+                expect.any(Error),
+                expect.objectContaining({ filePath: "video/a.mp4" })
+            );
         });
     });
 });

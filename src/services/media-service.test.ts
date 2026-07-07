@@ -10,7 +10,6 @@ import {
 } from "./media-service";
 
 vi.mock("../repositories", () => ({
-    countMediaUsingLiveChatOutsideMedia: vi.fn(),
     deleteMediaWithArtifacts: vi.fn(),
     findMediaByChannelAndFilePath: vi.fn(),
     insertMedia: vi.fn(),
@@ -45,16 +44,11 @@ vi.mock("./media-comments-service", () => ({
     replaceMediaCommentsInBackend: vi.fn(),
 }));
 
-vi.mock("./live-chat-service", () => ({
-    deleteLiveChatFile: vi.fn(),
-}));
-
 vi.mock("../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
 import {
-    countMediaUsingLiveChatOutsideMedia,
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
@@ -74,7 +68,6 @@ import {
     validateMediaId,
 } from "./media-input-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
-import { deleteLiveChatFile } from "./live-chat-service";
 import { fetchYouTubeComments } from "./media-download-service";
 import { replaceMediaCommentsInBackend } from "./media-comments-service";
 import { logError } from "../utils/app-logger";
@@ -82,8 +75,6 @@ import { logError } from "../utils/app-logger";
 describe("media-service", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // By default no other media row references a live chat file, so cleanup deletes it.
-        vi.mocked(countMediaUsingLiveChatOutsideMedia).mockResolvedValue(0);
     });
 
     it("lists channel media after validating channel id", async () => {
@@ -344,11 +335,11 @@ describe("media-service", () => {
         expect(cleanupCreatedArtifacts).toHaveBeenCalledWith(
             "video/a.mp4",
             "thumbnails/a.jpg",
-            "/library"
+            null
         );
     });
 
-    it("cleans live chat file when insertMedia rejects before registration", async () => {
+    it("cleans every artifact through one call when insertMedia rejects before registration", async () => {
         const normalizedInput = {
             channelId: 10,
             title: "Video A",
@@ -382,59 +373,17 @@ describe("media-service", () => {
         vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
         vi.mocked(insertMedia).mockRejectedValueOnce(new Error("db constraint"));
         vi.mocked(cleanupCreatedArtifacts).mockResolvedValueOnce(undefined);
-        vi.mocked(deleteLiveChatFile).mockResolvedValueOnce(undefined);
 
         await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
 
+        // The media file, thumbnail and live chat replay are all handed to the single
+        // atomic backend cleanup; the "is the live chat still referenced" decision now lives
+        // in the backend, not in a separate frontend reference-count call.
         expect(cleanupCreatedArtifacts).toHaveBeenCalledWith(
             "video/a.mp4",
             "thumbnails/a.jpg",
-            "/library"
+            "live-chat/abc.json"
         );
-        expect(deleteLiveChatFile).toHaveBeenCalledWith("live-chat/abc.json");
-    });
-
-    it("does not delete a live chat file still referenced by another media row", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            downloadComments: false,
-            downloadLiveChat: true,
-            cookiesBrowser: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-
-        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: "abc",
-            publishedAt: null,
-            mediaType: "video",
-            isLive: true,
-            liveChatFilePath: "live-chat/abc.json",
-        });
-
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
-        vi.mocked(insertMedia).mockRejectedValueOnce(new Error("db constraint"));
-        vi.mocked(cleanupCreatedArtifacts).mockResolvedValueOnce(undefined);
-        // Another media row already uses this live chat file: it must be preserved.
-        vi.mocked(countMediaUsingLiveChatOutsideMedia).mockResolvedValueOnce(1);
-
-        await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
-
-        expect(countMediaUsingLiveChatOutsideMedia).toHaveBeenCalledWith("live-chat/abc.json", -1);
-        expect(deleteLiveChatFile).not.toHaveBeenCalled();
     });
 
     it("does not clean artifacts when error occurs after successful insertMedia", async () => {
@@ -482,7 +431,6 @@ describe("media-service", () => {
         );
 
         expect(cleanupCreatedArtifacts).not.toHaveBeenCalled();
-        expect(deleteLiveChatFile).not.toHaveBeenCalled();
     });
 
     it("rejects duplicate media for channel", async () => {

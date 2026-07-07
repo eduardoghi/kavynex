@@ -7,23 +7,17 @@ import {
 } from "./channel-service";
 
 vi.mock("../repositories/channel-repository", () => ({
-    countChannelsUsingAvatarPathOutsideChannel: vi.fn(),
     deleteChannelWithArtifacts: vi.fn(),
     findChannelByYoutubeHandle: vi.fn(),
     getChannelById: vi.fn(),
     insertChannel: vi.fn(),
     listChannels: vi.fn(),
-    updateChannelAvatarPath: vi.fn(),
+    replaceChannelAvatar: vi.fn(),
 }));
 
 vi.mock("./channel-input-service", () => ({
     validateCreateChannelInput: vi.fn(),
     validateChannelId: vi.fn(),
-    requireLibraryPath: vi.fn(),
-}));
-
-vi.mock("./thumbnail-service", () => ({
-    deleteThumbnailFile: vi.fn(),
 }));
 
 vi.mock("../utils/app-logger", () => ({
@@ -31,20 +25,16 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import {
-    countChannelsUsingAvatarPathOutsideChannel,
     deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
-    getChannelById,
     insertChannel,
     listChannels,
-    updateChannelAvatarPath,
+    replaceChannelAvatar,
 } from "../repositories/channel-repository";
 import {
-    requireLibraryPath,
     validateChannelId,
     validateCreateChannelInput,
 } from "./channel-input-service";
-import { deleteThumbnailFile } from "./thumbnail-service";
 import { logError } from "../utils/app-logger";
 
 describe("channel-service", () => {
@@ -143,150 +133,63 @@ describe("channel-service", () => {
         expect(insertChannel).not.toHaveBeenCalled();
     });
 
-    it("returns without updating avatar when channel does not exist", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
+    it("updates the avatar through the atomic backend command and trims the path", async () => {
+        vi.mocked(validateChannelId).mockReturnValueOnce({ channelId: 10 });
+        vi.mocked(replaceChannelAvatar).mockResolvedValueOnce({
+            deleted_paths: ["thumbnails/old.png"],
+            skipped_shared_paths: [],
+            failed_paths: [],
         });
 
-        vi.mocked(getChannelById).mockResolvedValueOnce(null);
+        await updateChannelAvatarWithCleanup(10, "  thumbnails/new.png  ");
 
-        await updateChannelAvatarWithCleanup(10, "thumbnails/new.png", "/library");
-
-        expect(updateChannelAvatarPath).not.toHaveBeenCalled();
-        expect(countChannelsUsingAvatarPathOutsideChannel).not.toHaveBeenCalled();
-        expect(deleteThumbnailFile).not.toHaveBeenCalled();
-        expect(requireLibraryPath).not.toHaveBeenCalled();
+        expect(replaceChannelAvatar).toHaveBeenCalledWith(10, "thumbnails/new.png");
+        expect(logError).not.toHaveBeenCalled();
     });
 
-    it("updates avatar without deleting previous file when there was no previous avatar", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
+    it("normalizes an empty avatar path to null when clearing the avatar", async () => {
+        vi.mocked(validateChannelId).mockReturnValueOnce({ channelId: 10 });
+        vi.mocked(replaceChannelAvatar).mockResolvedValueOnce({
+            deleted_paths: [],
+            skipped_shared_paths: [],
+            failed_paths: [],
         });
 
-        vi.mocked(getChannelById).mockResolvedValueOnce({
-            id: 10,
-            name: "Canal A",
-            youtube_handle: "@canala",
-            avatar_path: null,
-            created_at: "2026-03-31T10:00:00.000Z",
-        });
+        await updateChannelAvatarWithCleanup(10, "   ");
 
-        vi.mocked(updateChannelAvatarPath).mockResolvedValueOnce(undefined);
-
-        await updateChannelAvatarWithCleanup(10, "thumbnails/new.png", "/library");
-
-        expect(updateChannelAvatarPath).toHaveBeenCalledWith(
-            10,
-            "thumbnails/new.png"
-        );
-        expect(countChannelsUsingAvatarPathOutsideChannel).not.toHaveBeenCalled();
-        expect(deleteThumbnailFile).not.toHaveBeenCalled();
-        expect(requireLibraryPath).not.toHaveBeenCalled();
+        expect(replaceChannelAvatar).toHaveBeenCalledWith(10, null);
     });
 
-    it("updates avatar and deletes previous file when no other channel uses it", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
+    it("logs an orphan warning when the backend could not delete the previous avatar", async () => {
+        vi.mocked(validateChannelId).mockReturnValueOnce({ channelId: 10 });
+        vi.mocked(replaceChannelAvatar).mockResolvedValueOnce({
+            deleted_paths: [],
+            skipped_shared_paths: [],
+            failed_paths: ["thumbnails/old.png"],
         });
-
-        vi.mocked(getChannelById).mockResolvedValueOnce({
-            id: 10,
-            name: "Canal A",
-            youtube_handle: "@canala",
-            avatar_path: "thumbnails/old.png",
-            created_at: "2026-03-31T10:00:00.000Z",
-        });
-
-        vi.mocked(requireLibraryPath).mockReturnValueOnce("/library");
-        vi.mocked(updateChannelAvatarPath).mockResolvedValueOnce(undefined);
-        vi.mocked(countChannelsUsingAvatarPathOutsideChannel).mockResolvedValueOnce(0);
-        vi.mocked(deleteThumbnailFile).mockResolvedValueOnce(undefined);
-
-        await updateChannelAvatarWithCleanup(10, "thumbnails/new.png", "/library");
-
-        expect(requireLibraryPath).toHaveBeenCalledWith(
-            "/library",
-            "Library folder must be configured to replace or remove a saved channel avatar."
-        );
-        expect(updateChannelAvatarPath).toHaveBeenCalledWith(
-            10,
-            "thumbnails/new.png"
-        );
-        expect(countChannelsUsingAvatarPathOutsideChannel).toHaveBeenCalledWith(
-            "thumbnails/old.png",
-            10
-        );
-        expect(deleteThumbnailFile).toHaveBeenCalledWith(
-            "thumbnails/old.png",
-            "/library"
-        );
-    });
-
-    it("updates avatar and keeps previous file when another channel still uses it", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
-        });
-
-        vi.mocked(getChannelById).mockResolvedValueOnce({
-            id: 10,
-            name: "Canal A",
-            youtube_handle: "@canala",
-            avatar_path: "thumbnails/old.png",
-            created_at: "2026-03-31T10:00:00.000Z",
-        });
-
-        vi.mocked(requireLibraryPath).mockReturnValueOnce("/library");
-        vi.mocked(updateChannelAvatarPath).mockResolvedValueOnce(undefined);
-        vi.mocked(countChannelsUsingAvatarPathOutsideChannel).mockResolvedValueOnce(2);
-
-        await updateChannelAvatarWithCleanup(10, "thumbnails/new.png", "/library");
-
-        expect(requireLibraryPath).toHaveBeenCalledWith(
-            "/library",
-            "Library folder must be configured to replace or remove a saved channel avatar."
-        );
-        expect(updateChannelAvatarPath).toHaveBeenCalledWith(
-            10,
-            "thumbnails/new.png"
-        );
-        expect(countChannelsUsingAvatarPathOutsideChannel).toHaveBeenCalledWith(
-            "thumbnails/old.png",
-            10
-        );
-        expect(deleteThumbnailFile).not.toHaveBeenCalled();
-    });
-
-    it("does not fail the avatar update when deleting the previous file fails", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
-        });
-
-        vi.mocked(getChannelById).mockResolvedValueOnce({
-            id: 10,
-            name: "Canal A",
-            youtube_handle: "@canala",
-            avatar_path: "thumbnails/old.png",
-            created_at: "2024-01-01",
-        });
-
-        vi.mocked(updateChannelAvatarPath).mockResolvedValueOnce(undefined);
-        vi.mocked(countChannelsUsingAvatarPathOutsideChannel).mockResolvedValueOnce(0);
-        vi.mocked(deleteThumbnailFile).mockRejectedValueOnce(new Error("locked file"));
 
         await expect(
-            updateChannelAvatarWithCleanup(10, "thumbnails/new.png", "/library")
+            updateChannelAvatarWithCleanup(10, "thumbnails/new.png")
         ).resolves.toBeUndefined();
 
-        expect(updateChannelAvatarPath).toHaveBeenCalledWith(10, "thumbnails/new.png");
         expect(logError).toHaveBeenCalledWith(
             "channel-service",
-            expect.stringContaining("previous avatar file could not be deleted"),
-            expect.any(Error),
-            expect.objectContaining({
-                channelId: 10,
-                previousAvatarPath: "thumbnails/old.png",
-            })
+            expect.stringContaining("orphaned"),
+            null,
+            { channelId: 10, failedPaths: ["thumbnails/old.png"] }
         );
+    });
+
+    it("rejects an invalid channel id without calling the backend", async () => {
+        vi.mocked(validateChannelId).mockImplementationOnce(() => {
+            throw new Error("Channel id is invalid.");
+        });
+
+        await expect(
+            updateChannelAvatarWithCleanup(0, "thumbnails/new.png")
+        ).rejects.toThrow("Channel id is invalid.");
+
+        expect(replaceChannelAvatar).not.toHaveBeenCalled();
     });
 
     it("deletes channel through the atomic backend command without logging when nothing failed", async () => {

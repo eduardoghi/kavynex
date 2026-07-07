@@ -578,8 +578,7 @@ describe("useChannelActions", () => {
         );
         expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(
             10,
-            "thumbnails/new-avatar.png",
-            "/library"
+            "thumbnails/new-avatar.png"
         );
         expect(listAllChannels).toHaveBeenCalled();
         expect(setChannels).toHaveBeenCalled();
@@ -630,8 +629,7 @@ describe("useChannelActions", () => {
         );
         expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(
             10,
-            "thumbnails/youtube-avatar.png",
-            "/library"
+            "thumbnails/youtube-avatar.png"
         );
         expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
     });
@@ -671,11 +669,7 @@ describe("useChannelActions", () => {
             await result.current.updateChannelAvatarAction(channel, "none");
         });
 
-        expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(
-            10,
-            null,
-            "/library"
-        );
+        expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(10, null);
         expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
     });
 

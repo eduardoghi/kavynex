@@ -75,34 +75,15 @@ export async function updateMediaProgress(
     await invokeVoid(TAURI_COMMANDS.UPDATE_MEDIA_PROGRESS, { mediaId, progressSeconds });
 }
 
-export async function countMediaUsingThumbnailOutsideMedia(
-    thumbnailPath: string,
-    mediaId: number
-): Promise<number> {
-    return invokeCommand<number>(TAURI_COMMANDS.COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_MEDIA, {
-        thumbnailPath,
-        mediaId,
-    });
-}
-
-export async function countMediaUsingFilePathOutsideMedia(
-    filePath: string,
-    mediaId: number
-): Promise<number> {
-    return invokeCommand<number>(TAURI_COMMANDS.COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_MEDIA, {
-        filePath,
-        mediaId,
-    });
-}
-
-export async function countMediaUsingLiveChatOutsideMedia(
-    liveChatFilePath: string,
-    mediaId: number
-): Promise<number> {
-    return invokeCommand<number>(TAURI_COMMANDS.COUNT_MEDIA_USING_LIVE_CHAT_OUTSIDE_MEDIA, {
-        liveChatFilePath,
-        mediaId,
-    });
+export async function cleanupUnreferencedMediaArtifacts(
+    filePath: string | null,
+    thumbnailPath: string | null,
+    liveChatFilePath: string | null
+): Promise<ArtifactCleanupReport> {
+    return invokeCommand<ArtifactCleanupReport>(
+        TAURI_COMMANDS.CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS,
+        { filePath, thumbnailPath, liveChatFilePath }
+    );
 }
 
 export async function getMediaRepositoryStats(): Promise<MediaRepositoryStats> {

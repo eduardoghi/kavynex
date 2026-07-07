@@ -104,36 +104,6 @@ pub async fn update_media_progress(
 }
 
 #[tauri::command]
-pub async fn count_media_using_thumbnail_outside_media(
-    app: AppHandle,
-    thumbnail_path: String,
-    media_id: i64,
-) -> AppResult<i64> {
-    let pool = shared_pool(&app).await?;
-    repo::count_media_using_thumbnail_outside_media(pool, &thumbnail_path, media_id).await
-}
-
-#[tauri::command]
-pub async fn count_media_using_file_path_outside_media(
-    app: AppHandle,
-    file_path: String,
-    media_id: i64,
-) -> AppResult<i64> {
-    let pool = shared_pool(&app).await?;
-    repo::count_media_using_file_path_outside_media(pool, &file_path, media_id).await
-}
-
-#[tauri::command]
-pub async fn count_media_using_live_chat_outside_media(
-    app: AppHandle,
-    live_chat_file_path: String,
-    media_id: i64,
-) -> AppResult<i64> {
-    let pool = shared_pool(&app).await?;
-    repo::count_media_using_live_chat_outside_media(pool, &live_chat_file_path, media_id).await
-}
-
-#[tauri::command]
 pub async fn get_media_repository_stats(app: AppHandle) -> AppResult<MediaRepositoryStats> {
     let pool = shared_pool(&app).await?;
     repo::get_media_repository_stats(pool).await

@@ -387,6 +387,138 @@ pub async fn delete_channel_with_artifacts(
     }
 }
 
+/// Reference-counts each provided artifact path against the whole database and removes from
+/// disk only the ones no row still references. Used to clean up artifacts that were prepared
+/// for a media creation that never inserted a row (createMedia failing before insertMedia, a
+/// local import failing mid-way, or a yt-dlp auto-downloaded thumbnail being overridden by a
+/// manual one). Because the reference count and the unlink happen in a single backend call,
+/// the frontend can no longer interleave another operation between "is it still used" and
+/// "delete it" - the check-then-act race that existed when the cleanup was orchestrated over
+/// several IPC round-trips.
+///
+/// Media files, thumbnails and live chat replays are content-addressed and can be shared
+/// (the same video added to several channels, a thumbnail reused as a channel avatar), so a
+/// freshly prepared artifact can already back a registered row; such a path is kept.
+async fn plan_unreferenced_artifacts(
+    conn: &mut SqliteConnection,
+    file_path: Option<String>,
+    thumbnail_path: Option<String>,
+    live_chat_file_path: Option<String>,
+) -> AppResult<ArtifactCleanupPlan> {
+    let mut plan = ArtifactCleanupPlan::default();
+
+    if let Some(path) = normalized(file_path) {
+        plan_artifact(&mut *conn, ArtifactKind::MediaFile, path, &mut plan).await?;
+    }
+
+    if let Some(path) = normalized(thumbnail_path) {
+        plan_artifact(&mut *conn, ArtifactKind::Thumbnail, path, &mut plan).await?;
+    }
+
+    if let Some(path) = normalized(live_chat_file_path) {
+        plan_artifact(&mut *conn, ArtifactKind::LiveChat, path, &mut plan).await?;
+    }
+
+    Ok(plan)
+}
+
+pub async fn cleanup_unreferenced_artifacts(
+    app: &AppHandle,
+    file_path: Option<String>,
+    thumbnail_path: Option<String>,
+    live_chat_file_path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
+    let pool = shared_pool(app).await?;
+
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|error| db_error("failed to acquire a database connection", error))?;
+
+    let plan =
+        plan_unreferenced_artifacts(&mut conn, file_path, thumbnail_path, live_chat_file_path)
+            .await?;
+
+    drop(conn);
+
+    execute_plan(app, plan).await
+}
+
+/// Updates a channel's avatar path and decides, within the same transaction, whether the
+/// previous avatar file became unreferenced. Returns `None` when the channel does not exist.
+///
+/// A thumbnail is referenced both by video rows and by channel avatars, and avatars and
+/// thumbnails are content-addressed (they can share a path), so the previous avatar is only
+/// planned for deletion when nothing else - no video thumbnail and no other channel avatar -
+/// still points at it. Doing this in one transaction (row write plus reference decision)
+/// closes the check-then-act race the frontend had when it updated the avatar and then
+/// counted references over separate IPC calls, and fixes a latent gap where that count
+/// ignored video-thumbnail references entirely.
+pub async fn replace_channel_avatar_and_plan_cleanup(
+    pool: &SqlitePool,
+    channel_id: i64,
+    avatar_path: Option<String>,
+) -> AppResult<Option<ArtifactCleanupPlan>> {
+    let next_avatar = normalized(avatar_path);
+
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to start channel avatar update transaction", error))?;
+
+    let existing: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT avatar_path FROM channels WHERE id = ?")
+            .bind(channel_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to load channel for avatar update", error))?;
+
+    let Some((previous_avatar,)) = existing else {
+        return Ok(None);
+    };
+
+    let previous_avatar = normalized(previous_avatar);
+
+    if previous_avatar == next_avatar {
+        return Ok(Some(ArtifactCleanupPlan::default()));
+    }
+
+    sqlx::query("UPDATE channels SET avatar_path = ? WHERE id = ?")
+        .bind(next_avatar.as_deref())
+        .bind(channel_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to update channel avatar path", error))?;
+
+    let mut plan = ArtifactCleanupPlan::default();
+
+    if let Some(previous) = previous_avatar {
+        plan_artifact(&mut tx, ArtifactKind::Thumbnail, previous, &mut plan).await?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit channel avatar update", error))?;
+
+    Ok(Some(plan))
+}
+
+/// Updates a channel's avatar and removes the previous avatar file when it is no longer
+/// referenced. The row write and the "is the old file still used" decision commit
+/// atomically; the unlink runs after the commit and is reported back.
+pub async fn replace_channel_avatar(
+    app: &AppHandle,
+    channel_id: i64,
+    avatar_path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
+    let pool = shared_pool(app).await?;
+
+    match replace_channel_avatar_and_plan_cleanup(pool, channel_id, avatar_path).await? {
+        Some(plan) => execute_plan(app, plan).await,
+        None => Ok(ArtifactCleanupReport::default()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -651,6 +783,181 @@ mod tests {
         let pool = create_test_pool().await;
 
         let plan = delete_channel_row_and_plan_cleanup(&pool, 999)
+            .await
+            .unwrap();
+
+        assert!(plan.is_none());
+    }
+
+    async fn plan_unreferenced(
+        pool: &SqlitePool,
+        file_path: Option<&str>,
+        thumbnail_path: Option<&str>,
+        live_chat_file_path: Option<&str>,
+    ) -> ArtifactCleanupPlan {
+        let mut conn = pool.acquire().await.unwrap();
+
+        plan_unreferenced_artifacts(
+            &mut conn,
+            file_path.map(str::to_string),
+            thumbnail_path.map(str::to_string),
+            live_chat_file_path.map(str::to_string),
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn cleanup_plan_deletes_orphan_artifacts_no_row_references() {
+        let pool = create_test_pool().await;
+
+        // No rows reference these freshly-prepared paths, so all become deletable.
+        let plan = plan_unreferenced(
+            &pool,
+            Some("video/orphan.mp4"),
+            Some("thumbnails/orphan.jpg"),
+            Some("live_chat/orphan.json.gz"),
+        )
+        .await;
+
+        assert_eq!(
+            paths(&plan.deletable),
+            vec![
+                "video/orphan.mp4",
+                "thumbnails/orphan.jpg",
+                "live_chat/orphan.json.gz"
+            ]
+        );
+        assert!(plan.skipped_shared_paths.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleanup_plan_keeps_artifacts_still_referenced_by_a_registered_row() {
+        let pool = create_test_pool().await;
+        let channel_id = insert_channel(&pool, "@one", Some("thumbnails/shared.jpg")).await;
+        // A registered row references the media file and live chat; the thumbnail is a
+        // channel avatar. Re-preparing the same content-addressed artifacts must not delete
+        // the files the existing row/channel depends on.
+        insert_media(
+            &pool,
+            channel_id,
+            "video/shared.mp4",
+            Some("thumbnails/shared.jpg"),
+            Some("live_chat/shared.json.gz"),
+        )
+        .await;
+
+        let plan = plan_unreferenced(
+            &pool,
+            Some("video/shared.mp4"),
+            Some("thumbnails/shared.jpg"),
+            Some("live_chat/shared.json.gz"),
+        )
+        .await;
+
+        assert!(plan.deletable.is_empty());
+        assert_eq!(
+            plan.skipped_shared_paths,
+            vec![
+                "video/shared.mp4",
+                "thumbnails/shared.jpg",
+                "live_chat/shared.json.gz"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_avatar_plan_deletes_previous_when_unreferenced() {
+        let pool = create_test_pool().await;
+        let channel_id = insert_channel(&pool, "@one", Some("thumbnails/old.jpg")).await;
+
+        let plan = replace_channel_avatar_and_plan_cleanup(
+            &pool,
+            channel_id,
+            Some("thumbnails/new.jpg".to_string()),
+        )
+        .await
+        .unwrap()
+        .expect("channel exists");
+
+        assert_eq!(paths(&plan.deletable), vec!["thumbnails/old.jpg"]);
+        assert!(plan.skipped_shared_paths.is_empty());
+
+        let avatar =
+            sqlx::query_as::<_, (Option<String>,)>("SELECT avatar_path FROM channels WHERE id = ?")
+                .bind(channel_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(avatar.0.as_deref(), Some("thumbnails/new.jpg"));
+    }
+
+    #[tokio::test]
+    async fn replace_avatar_plan_keeps_previous_when_used_as_a_video_thumbnail() {
+        let pool = create_test_pool().await;
+        let channel_id = insert_channel(&pool, "@one", Some("thumbnails/shared.jpg")).await;
+        // The avatar file is also a video's thumbnail: replacing the avatar must not delete
+        // it. This is the reference the old frontend-only count ignored.
+        insert_media(
+            &pool,
+            channel_id,
+            "video/a.mp4",
+            Some("thumbnails/shared.jpg"),
+            None,
+        )
+        .await;
+
+        let plan = replace_channel_avatar_and_plan_cleanup(
+            &pool,
+            channel_id,
+            Some("thumbnails/new.jpg".to_string()),
+        )
+        .await
+        .unwrap()
+        .expect("channel exists");
+
+        assert!(plan.deletable.is_empty());
+        assert_eq!(plan.skipped_shared_paths, vec!["thumbnails/shared.jpg"]);
+    }
+
+    #[tokio::test]
+    async fn replace_avatar_plan_keeps_previous_when_used_by_another_channel() {
+        let pool = create_test_pool().await;
+        let channel_a = insert_channel(&pool, "@a", Some("thumbnails/shared.jpg")).await;
+        insert_channel(&pool, "@b", Some("thumbnails/shared.jpg")).await;
+
+        let plan = replace_channel_avatar_and_plan_cleanup(&pool, channel_a, None)
+            .await
+            .unwrap()
+            .expect("channel exists");
+
+        assert!(plan.deletable.is_empty());
+        assert_eq!(plan.skipped_shared_paths, vec!["thumbnails/shared.jpg"]);
+    }
+
+    #[tokio::test]
+    async fn replace_avatar_plan_is_noop_when_unchanged() {
+        let pool = create_test_pool().await;
+        let channel_id = insert_channel(&pool, "@one", Some("thumbnails/same.jpg")).await;
+
+        let plan = replace_channel_avatar_and_plan_cleanup(
+            &pool,
+            channel_id,
+            Some("  thumbnails/same.jpg  ".to_string()),
+        )
+        .await
+        .unwrap()
+        .expect("channel exists");
+
+        assert!(plan.deletable.is_empty());
+        assert!(plan.skipped_shared_paths.is_empty());
+    }
+
+    #[tokio::test]
+    async fn replace_avatar_plan_returns_none_for_missing_channel() {
+        let pool = create_test_pool().await;
+
+        let plan = replace_channel_avatar_and_plan_cleanup(&pool, 999, None)
             .await
             .unwrap();
 

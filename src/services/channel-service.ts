@@ -1,22 +1,19 @@
 import type { Channel } from "../types/media";
 import {
-    countChannelsUsingAvatarPathOutsideChannel,
     deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
     getChannelById,
     insertChannel,
     listChannels,
-    updateChannelAvatarPath,
+    replaceChannelAvatar,
     updateChannelNameAndHandle,
 } from "../repositories/channel-repository";
 import {
-    requireLibraryPath,
     validateChannelId,
     validateCreateChannelInput,
 } from "./channel-input-service";
 import { createAppError } from "../utils/app-error";
 import { CHANNEL_ALREADY_EXISTS_ERROR_CODE } from "../constants/error-codes";
-import { deleteThumbnailFile } from "./thumbnail-service";
 import { logError } from "../utils/app-logger";
 
 export async function listAllChannels(): Promise<Channel[]> {
@@ -86,55 +83,24 @@ export async function updateChannelNameHandle(
 
 export async function updateChannelAvatarWithCleanup(
     channelId: number,
-    avatarPath: string | null,
-    libraryPath: string
+    avatarPath: string | null
 ): Promise<void> {
     const normalizedInput = validateChannelId(channelId);
-    const existingChannel = await getChannelById(normalizedInput.channelId);
-
-    if (!existingChannel) {
-        return;
-    }
-
-    const previousAvatarPath = existingChannel.avatar_path?.trim() || null;
     const nextAvatarPath = avatarPath?.trim() || null;
 
-    if (previousAvatarPath === nextAvatarPath) {
-        return;
-    }
+    // The backend updates the avatar and, in the same transaction, decides whether the
+    // previous avatar file became unreferenced (across both video thumbnails and other
+    // channel avatars) before removing it. Doing the row write and the reference decision
+    // atomically closes the check-then-act race the old two-call sequence had; the old file
+    // removal is best-effort, so files it could not delete are reported back as orphans.
+    const report = await replaceChannelAvatar(normalizedInput.channelId, nextAvatarPath);
 
-    if (previousAvatarPath) {
-        requireLibraryPath(
-            libraryPath,
-            "Library folder must be configured to replace or remove a saved channel avatar."
-        );
-    }
-
-    await updateChannelAvatarPath(normalizedInput.channelId, nextAvatarPath);
-
-    if (!previousAvatarPath) {
-        return;
-    }
-
-    const normalizedLibraryPath = libraryPath.trim();
-
-    // The avatar change is already persisted at this point; failing to remove the old
-    // file must not surface as a failed update, only leave a logged orphan.
-    try {
-        const usageOutsideChannel = await countChannelsUsingAvatarPathOutsideChannel(
-            previousAvatarPath,
-            normalizedInput.channelId
-        );
-
-        if (usageOutsideChannel === 0) {
-            await deleteThumbnailFile(previousAvatarPath, normalizedLibraryPath);
-        }
-    } catch (error) {
+    if (report.failed_paths.length > 0) {
         logError(
             "channel-service",
             "Channel avatar was updated but the previous avatar file could not be deleted; it may be orphaned in the library.",
-            error,
-            { channelId: normalizedInput.channelId, previousAvatarPath }
+            null,
+            { channelId: normalizedInput.channelId, failedPaths: report.failed_paths }
         );
     }
 }

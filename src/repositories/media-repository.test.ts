@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
-    countMediaUsingFilePathOutsideMedia,
-    countMediaUsingThumbnailOutsideMedia,
+    cleanupUnreferencedMediaArtifacts,
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     getMediaRepositoryStats,
@@ -134,27 +133,28 @@ describe("media-repository command wiring", () => {
         });
     });
 
-    it("countMediaUsingThumbnailOutsideMedia passes path and id", async () => {
-        invokeCommandMock.mockResolvedValueOnce(1 as never);
+    it("cleanupUnreferencedMediaArtifacts passes every path and returns the cleanup report", async () => {
+        const report = {
+            deleted_paths: ["video/a.mp4"],
+            skipped_shared_paths: ["thumbnails/shared.jpg"],
+            failed_paths: [],
+        };
+        invokeCommandMock.mockResolvedValueOnce(report as never);
 
         await expect(
-            countMediaUsingThumbnailOutsideMedia("thumb/s.jpg", 5)
-        ).resolves.toBe(1);
+            cleanupUnreferencedMediaArtifacts(
+                "video/a.mp4",
+                "thumbnails/shared.jpg",
+                "live_chat/a.json.gz"
+            )
+        ).resolves.toBe(report);
         expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.COUNT_MEDIA_USING_THUMBNAIL_OUTSIDE_MEDIA,
-            { thumbnailPath: "thumb/s.jpg", mediaId: 5 }
-        );
-    });
-
-    it("countMediaUsingFilePathOutsideMedia passes path and id", async () => {
-        invokeCommandMock.mockResolvedValueOnce(2 as never);
-
-        await expect(
-            countMediaUsingFilePathOutsideMedia("video/s.mp4", 5)
-        ).resolves.toBe(2);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.COUNT_MEDIA_USING_FILE_PATH_OUTSIDE_MEDIA,
-            { filePath: "video/s.mp4", mediaId: 5 }
+            TAURI_COMMANDS.CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS,
+            {
+                filePath: "video/a.mp4",
+                thumbnailPath: "thumbnails/shared.jpg",
+                liveChatFilePath: "live_chat/a.json.gz",
+            }
         );
     });
 

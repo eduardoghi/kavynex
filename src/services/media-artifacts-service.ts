@@ -1,14 +1,10 @@
 import type { ImportMode } from "../types/settings";
 import type { MediaType } from "../types/media";
-import {
-    countMediaUsingFilePathOutsideMedia,
-    countMediaUsingThumbnailOutsideMedia,
-} from "../repositories";
+import { cleanupUnreferencedMediaArtifacts } from "../repositories";
 import { downloadMediaFromUrl } from "./media-download-service";
-import { deleteMediaFile, importMediaFile } from "./media-file-service";
+import { importMediaFile } from "./media-file-service";
 import {
     deleteTemporaryThumbnail,
-    deleteThumbnailFile,
     downloadThumbnailFromUrl,
     generateTemporaryThumbnail,
     persistThumbnailFile,
@@ -203,8 +199,12 @@ export async function prepareYtDlpArtifacts({
         );
 
         if (managedThumbnailPath && managedThumbnailPath !== thumbnailPath) {
+            // The auto-downloaded thumbnail was overridden by a manual one. Remove it only
+            // when no registered row references it - it can be content-shared with an
+            // existing media (the same video already added elsewhere) - reference-counted
+            // atomically in the backend rather than deleted unconditionally.
             try {
-                await deleteThumbnailFile(managedThumbnailPath, libraryPath);
+                await cleanupUnreferencedMediaArtifacts(null, managedThumbnailPath, null);
             } catch (error) {
                 logError(
                     "media-artifacts",
@@ -265,113 +265,56 @@ export async function prepareLocalArtifacts({
             liveChatFilePath: null,
         };
     } catch (error) {
-        if (thumbnailPath && !isManagedRelativeThumbnailPath(thumbnailSourcePath)) {
-            try {
-                await deleteThumbnailFile(thumbnailPath, libraryPath);
-            } catch (cleanupError) {
-                logError(
-                    "media-artifacts",
-                    "Failed to cleanup thumbnail after local import failure.",
-                    cleanupError,
-                    {
-                        thumbnailPath,
-                        libraryPath,
-                    }
-                );
-            }
-        }
-
-        if (filePath) {
-            try {
-                await deleteMediaFile(filePath, libraryPath);
-            } catch (cleanupError) {
-                logError(
-                    "media-artifacts",
-                    "Failed to cleanup media file after local import failure.",
-                    cleanupError,
-                    {
-                        filePath,
-                        libraryPath,
-                    }
-                );
-            }
-        }
+        // Reference-counted cleanup in the backend: an artifact shared with an existing row
+        // (a content-addressed media file that duplicates an already-imported one, or a
+        // reused managed thumbnail) is kept, never the frontend deleting it unconditionally.
+        await cleanupCreatedArtifacts(filePath, thumbnailPath, null);
 
         throw error;
     }
 }
 
-// Sentinel media id used when cleaning up artifacts that were prepared but never
-// registered as a media row (createMedia failed before insertMedia). No real media row
-// has this id, so the "outside media" reference counts return the number of *other* rows
-// that rely on the artifact.
-const UNREGISTERED_MEDIA_ID = -1;
-
 /**
- * Deletes the on-disk artifacts (file and thumbnail) prepared during a media creation
- * that failed before the DB row was inserted.
+ * Removes the on-disk artifacts (media file, thumbnail, live chat replay) prepared during a
+ * media creation that failed before the DB row was inserted.
  *
- * Media files and thumbnails are content-addressed (`media_<hash>` / `thumb_<hash>`), so
- * a freshly prepared artifact can share its path with an already-registered media row -
- * re-adding an existing video, which is exactly what raises the duplicate-detected error
- * that triggers this cleanup. Deleting unconditionally would destroy the file the existing
- * row depends on, so each artifact is only removed when no registered media row still
- * references its path.
+ * Media files, thumbnails and live chat replays are content-addressed and can be shared with
+ * an already-registered row (re-adding an existing video, or the same video added to several
+ * channels), so deleting unconditionally would destroy a file another row depends on. The
+ * backend reference-counts each path and unlinks only the ones nothing else references, doing
+ * the count and the delete in one call so no other operation can interleave between them. The
+ * library directory is re-derived backend-side from the persisted settings.
  */
 export async function cleanupCreatedArtifacts(
     filePath: string | null,
     thumbnailPath: string | null,
-    libraryPath: string
+    liveChatFilePath: string | null
 ): Promise<void> {
-    const normalizedLibraryPath = libraryPath.trim();
-
-    if (!normalizedLibraryPath) {
+    if (!filePath && !thumbnailPath && !liveChatFilePath) {
         return;
     }
 
-    if (thumbnailPath) {
-        try {
-            const usedByOtherMedia = await countMediaUsingThumbnailOutsideMedia(
-                thumbnailPath,
-                UNREGISTERED_MEDIA_ID
-            );
+    try {
+        const report = await cleanupUnreferencedMediaArtifacts(
+            filePath,
+            thumbnailPath,
+            liveChatFilePath
+        );
 
-            if (usedByOtherMedia === 0) {
-                await deleteThumbnailFile(thumbnailPath, normalizedLibraryPath);
-            }
-        } catch (error) {
+        if (report.failed_paths.length > 0) {
             logError(
                 "media-artifacts",
-                "Failed to cleanup thumbnail after createMedia failure.",
-                error,
-                {
-                    thumbnailPath,
-                    libraryPath: normalizedLibraryPath,
-                }
+                "Some artifacts prepared for a failed media creation could not be removed; they may be orphaned in the library.",
+                null,
+                { failedPaths: report.failed_paths }
             );
         }
-    }
-
-    if (filePath) {
-        try {
-            const usedByOtherMedia = await countMediaUsingFilePathOutsideMedia(
-                filePath,
-                UNREGISTERED_MEDIA_ID
-            );
-
-            if (usedByOtherMedia === 0) {
-                await deleteMediaFile(filePath, normalizedLibraryPath);
-            }
-        } catch (error) {
-            logError(
-                "media-artifacts",
-                "Failed to cleanup media file after createMedia failure.",
-                error,
-                {
-                    filePath,
-                    libraryPath: normalizedLibraryPath,
-                }
-            );
-        }
+    } catch (error) {
+        logError(
+            "media-artifacts",
+            "Failed to clean up artifacts after a media creation failure.",
+            error,
+            { filePath, thumbnailPath, liveChatFilePath }
+        );
     }
 }
