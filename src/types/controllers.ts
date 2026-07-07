@@ -1,4 +1,5 @@
 import type React from "react";
+import type { ErrorModalVariant } from "../components/modals/error-modal";
 import type { DiagnosticsSummary } from "./diagnostics";
 import type {
     Channel,
@@ -172,7 +173,9 @@ export type DiagnosticsController = {
 export type ErrorModalController = {
     errorOpen: boolean;
     errorMessage: string;
+    errorVariant: ErrorModalVariant;
     showError: (message: string) => void;
+    showNotice: (message: string) => void;
     closeErrorModal: () => void;
 };
 

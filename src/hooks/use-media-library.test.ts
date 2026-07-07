@@ -94,6 +94,7 @@ function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
 // render and, combined with useMediaLibrary's own effect depending on loadMedia, would
 // spin into an infinite render loop.
 const onErrorMock = vi.fn();
+const onNoticeMock = vi.fn();
 
 function renderMediaLibrary(selectedChannelId: number | null) {
     return renderHook(
@@ -103,6 +104,7 @@ function renderMediaLibrary(selectedChannelId: number | null) {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError: onErrorMock,
+                onNotice: onNoticeMock,
             }),
         { initialProps: { selectedChannelId } }
     );

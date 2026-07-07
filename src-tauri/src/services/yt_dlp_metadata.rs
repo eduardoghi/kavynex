@@ -469,6 +469,15 @@ fn is_valid_youtube_video_id(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// Decides whether an empty comment result means extraction *failed* rather than the video
+/// genuinely having no comments. yt-dlp succeeded (a hard failure would already be an error),
+/// but returned no comments while YouTube reports a positive `comment_count` - so the comments
+/// exist and could not be retrieved (rate limiting, temporary unavailability). A `None`/`0`
+/// reported count means comments are disabled or genuinely zero, which is not an error.
+fn comments_extraction_looks_incomplete(reported_count: Option<i64>, extracted: usize) -> bool {
+    extracted == 0 && reported_count.is_some_and(|count| count > 0)
+}
+
 pub async fn fetch_youtube_comments_async(
     app: &AppHandle,
     video_id: &str,
@@ -497,11 +506,23 @@ pub async fn fetch_youtube_comments_async(
     let metadata =
         fetch_yt_dlp_metadata_with_comments(&yt_dlp, &url, cookies_browser, cookies_path).await?;
 
+    let reported_comment_count = metadata.comment_count;
+
     let comments = metadata
         .comments
         .into_iter()
         .filter_map(normalize_comment_metadata)
         .collect::<Vec<_>>();
+
+    // Distinguish "the video has no comments" (fine) from "the video has comments but none
+    // could be retrieved" (a failure worth surfacing, so the caller does not report an empty
+    // refresh as success). A genuine hard failure already returned an error above.
+    if comments_extraction_looks_incomplete(reported_comment_count, comments.len()) {
+        return Err(AppError::from_code(
+            AppErrorCode::YtDlpCommentsIncomplete,
+            "the video reports comments but none could be retrieved (they may be rate-limited or temporarily unavailable)",
+        ));
+    }
 
     Ok(comments)
 }
@@ -692,7 +713,10 @@ pub fn normalize_download_metadata(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_valid_youtube_video_id, read_capped_json_stdout, run_yt_dlp_and_capture_json};
+    use super::{
+        comments_extraction_looks_incomplete, is_valid_youtube_video_id, read_capped_json_stdout,
+        run_yt_dlp_and_capture_json,
+    };
     use crate::AppErrorCode;
 
     #[tokio::test]
@@ -781,5 +805,19 @@ mod tests {
     #[test]
     fn rejects_unicode() {
         assert!(!is_valid_youtube_video_id("dQw4w9WgXcé"));
+    }
+
+    #[test]
+    fn empty_comments_are_incomplete_only_when_a_positive_count_is_reported() {
+        // Video reports comments but none came back -> extraction is incomplete (a failure).
+        assert!(comments_extraction_looks_incomplete(Some(42), 0));
+
+        // Genuinely zero, or comments disabled (None): not incomplete.
+        assert!(!comments_extraction_looks_incomplete(Some(0), 0));
+        assert!(!comments_extraction_looks_incomplete(None, 0));
+
+        // Any comments were retrieved: never incomplete, regardless of the reported total.
+        assert!(!comments_extraction_looks_incomplete(Some(42), 10));
+        assert!(!comments_extraction_looks_incomplete(None, 5));
     }
 }

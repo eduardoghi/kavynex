@@ -196,6 +196,7 @@ export function HomeModals({
             <ErrorModal
                 opened={error.errorOpen}
                 onClose={error.closeErrorModal}
+                variant={error.errorVariant}
                 message={error.errorMessage}
             />
         </>

@@ -573,6 +573,27 @@ describe("media-service", () => {
         expect(result).toEqual({ updated: true, totalComments: 1 });
     });
 
+    it("reports no update and preserves saved comments when the refresh returns none", async () => {
+        vi.mocked(validateMediaId).mockImplementationOnce(() => {});
+        vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([]);
+
+        const result = await refreshMediaComments(10, "abc", null);
+
+        // A genuinely empty result is not an error and must not overwrite saved comments.
+        expect(replaceMediaCommentsInBackend).not.toHaveBeenCalled();
+        expect(result).toEqual({ updated: false, totalComments: 0 });
+    });
+
+    it("propagates a real fetch failure from refresh", async () => {
+        vi.mocked(validateMediaId).mockImplementationOnce(() => {});
+        vi.mocked(fetchYouTubeComments).mockRejectedValueOnce(new Error("extraction incomplete"));
+
+        await expect(refreshMediaComments(10, "abc", null)).rejects.toThrow(
+            "extraction incomplete"
+        );
+        expect(replaceMediaCommentsInBackend).not.toHaveBeenCalled();
+    });
+
     it("marks media as unwatched", async () => {
         vi.mocked(validateMediaId).mockImplementationOnce(() => {});
         vi.mocked(markMediaAsUnwatched).mockResolvedValueOnce(undefined);

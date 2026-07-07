@@ -37,6 +37,7 @@ export function useHomeController(): HomeController {
         importMode,
         libraryPath,
         onError: errorState.showError,
+        onNotice: errorState.showNotice,
     });
 
     const diagnosticsState = useDiagnostics({

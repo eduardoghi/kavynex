@@ -18,6 +18,22 @@ describe("ErrorModal", () => {
         expect(screen.getByText("Something failed badly")).toBeInTheDocument();
     });
 
+    it("renders a neutral notice variant instead of an error", () => {
+        renderWithMantine(
+            <ErrorModal
+                opened
+                onClose={vi.fn()}
+                variant="notice"
+                message="No comments were found"
+            />
+        );
+
+        expect(screen.getByText("Notice")).toBeInTheDocument();
+        expect(screen.getByText("Just so you know")).toBeInTheDocument();
+        expect(screen.queryByText("Error")).not.toBeInTheDocument();
+        expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+    });
+
     it("renders custom title", () => {
         renderWithMantine(
             <ErrorModal

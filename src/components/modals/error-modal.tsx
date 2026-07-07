@@ -1,10 +1,13 @@
 import { Button, Group, Modal, Stack, Text, ThemeIcon } from "@mantine/core";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import type { ReactNode } from "react";
+
+export type ErrorModalVariant = "error" | "notice";
 
 type ErrorModalProps = {
     opened: boolean;
     onClose: () => void;
+    variant?: ErrorModalVariant;
     title?: ReactNode;
     message: ReactNode;
 };
@@ -12,18 +15,27 @@ type ErrorModalProps = {
 export function ErrorModal({
     opened,
     onClose,
-    title = (
-        <Text fw={900} c="red">
-            Error
-        </Text>
-    ),
+    variant = "error",
+    title,
     message,
 }: ErrorModalProps): JSX.Element {
+    const isNotice = variant === "notice";
+    const color = isNotice ? "blue" : "red";
+    const heading = isNotice ? "Notice" : "Error";
+    const subheading = isNotice ? "Just so you know" : "Something went wrong";
+    const Icon = isNotice ? Info : AlertTriangle;
+
+    const resolvedTitle = title ?? (
+        <Text fw={900} c={color}>
+            {heading}
+        </Text>
+    );
+
     return (
         <Modal
             opened={opened}
             onClose={onClose}
-            title={title}
+            title={resolvedTitle}
             centered
             radius="xl"
             overlayProps={{ blur: 8 }}
@@ -31,14 +43,14 @@ export function ErrorModal({
         >
             <Stack gap="md">
                 <Group gap="sm" align="center">
-                    <ThemeIcon color="red" variant="light" radius="xl" size="lg">
-                        <AlertTriangle size={18} />
+                    <ThemeIcon color={color} variant="light" radius="xl" size="lg">
+                        <Icon size={18} />
                     </ThemeIcon>
-                    <Text fw={700}>Something went wrong</Text>
+                    <Text fw={700}>{subheading}</Text>
                 </Group>
 
                 <Text
-                    aria-live="assertive"
+                    aria-live={isNotice ? "polite" : "assertive"}
                     style={{
                         whiteSpace: "pre-wrap",
                         wordBreak: "break-word",
@@ -48,7 +60,7 @@ export function ErrorModal({
                 </Text>
 
                 <Group justify="flex-end">
-                    <Button type="button" color="red" onClick={onClose}>
+                    <Button type="button" color={color} onClick={onClose}>
                         Close
                     </Button>
                 </Group>

@@ -10,7 +10,7 @@ describe("useErrorModal", () => {
         expect(result.current.errorMessage).toBe("");
     });
 
-    it("opens modal with provided message", () => {
+    it("opens modal with provided message as an error", () => {
         const { result } = renderHook(() => useErrorModal());
 
         act(() => {
@@ -19,6 +19,19 @@ describe("useErrorModal", () => {
 
         expect(result.current.errorOpen).toBe(true);
         expect(result.current.errorMessage).toBe("Something failed");
+        expect(result.current.errorVariant).toBe("error");
+    });
+
+    it("opens modal as a notice for non-error messages", () => {
+        const { result } = renderHook(() => useErrorModal());
+
+        act(() => {
+            result.current.showNotice("Nothing to worry about");
+        });
+
+        expect(result.current.errorOpen).toBe(true);
+        expect(result.current.errorMessage).toBe("Nothing to worry about");
+        expect(result.current.errorVariant).toBe("notice");
     });
 
     it("closes modal and clears message", () => {

@@ -18,6 +18,7 @@ type UseMediaActionsOptions = {
         closePlayer: () => void;
     };
     onError: (message: string) => void;
+    onNotice: (message: string) => void;
 };
 
 type UseMediaActionsReturn = {
@@ -55,6 +56,7 @@ export function useMediaActions({
     setMediaItems,
     mediaPlayer,
     onError,
+    onNotice,
 }: UseMediaActionsOptions): UseMediaActionsReturn {
     const [confirmDeleteMediaOpen, setConfirmDeleteMediaOpen] = useState(false);
     const [mediaToDelete, setMediaToDelete] = useState<MediaRow | null>(null);
@@ -206,6 +208,17 @@ export function useMediaActions({
                         null
                     );
 
+                    // The refresh returned no comments, so the saved comments were kept
+                    // untouched. This is not a failure (a real extraction problem surfaces as
+                    // a thrown error) - tell the user with a neutral notice and leave the
+                    // stored counts alone.
+                    if (!result.updated) {
+                        onNotice(
+                            "No comments were found for this media. Your saved comments were kept."
+                        );
+                        return;
+                    }
+
                     setMediaItems((currentItems) =>
                         currentItems.map((item) =>
                             updateMediaItem(item, media.id, (currentItem) => ({
@@ -237,7 +250,7 @@ export function useMediaActions({
                 }
             });
         },
-        [mediaPlayer, onError, runRefreshCommentsAction, setMediaItems]
+        [mediaPlayer, onError, onNotice, runRefreshCommentsAction, setMediaItems]
     );
 
     const editTitle = useCallback(

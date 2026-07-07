@@ -108,6 +108,12 @@ pub struct YtDlpMetadata {
     pub formats: Vec<YtDlpFormatMetadata>,
     #[serde(default)]
     pub comments: Vec<YtDlpCommentMetadata>,
+    // The comment total YouTube reports for the video, independent of how many comments were
+    // actually downloaded. Used to tell "the video genuinely has no comments" (null / 0) from
+    // "the video has comments but extraction returned none" (a positive count with an empty
+    // `comments`). Absent/`null` when comments are disabled.
+    #[serde(default)]
+    pub comment_count: Option<i64>,
 }
 
 #[derive(Deserialize, Default, Clone)]

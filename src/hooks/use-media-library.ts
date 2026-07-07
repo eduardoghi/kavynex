@@ -27,6 +27,7 @@ type UseMediaLibraryOptions = {
     libraryPath: string;
     importMode: ImportMode;
     onError: (message: string) => void;
+    onNotice: (message: string) => void;
     selectedChannelId: number | null;
 };
 
@@ -34,6 +35,7 @@ export function useMediaLibrary({
     libraryPath,
     importMode,
     onError,
+    onNotice,
     selectedChannelId,
 }: UseMediaLibraryOptions): MediaLibraryController {
     const mediaPlayer = useMediaPlayer({
@@ -50,6 +52,7 @@ export function useMediaLibrary({
         setMediaItems: mediaList.setMediaItems,
         mediaPlayer,
         onError,
+        onNotice,
     });
 
     const addMediaWorkflow = useAddMediaWorkflow({

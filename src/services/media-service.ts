@@ -212,11 +212,14 @@ export async function refreshMediaComments(
         );
     }
 
+    // Genuinely zero comments (the backend already turns "the video has comments but none
+    // could be retrieved" into an error). Keep the saved comments untouched and report that
+    // nothing was updated, so the caller can show a neutral notice instead of a failure.
     if (comments.length === 0) {
-        throw createAppError(
-            "YOUTUBE_COMMENTS_EMPTY_REFRESH",
-            "Comment refresh returned zero comments. Existing saved comments were preserved."
-        );
+        return {
+            updated: false,
+            totalComments: 0,
+        };
     }
 
     await replaceMediaCommentsInBackend(mediaId, comments);

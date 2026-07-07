@@ -68,6 +68,7 @@ function createMediaPlayer(activeMedia: MediaRow | null = createMediaRow()) {
 
 describe("useMediaActions", () => {
     const onError = vi.fn();
+    const onNotice = vi.fn();
     const setMediaItems = vi.fn();
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -89,6 +90,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -113,6 +115,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -142,6 +145,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -171,6 +175,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -203,6 +208,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -229,6 +235,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -260,6 +267,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -287,6 +295,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -313,6 +322,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -338,6 +348,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -364,6 +375,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -408,6 +420,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -441,6 +454,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -451,6 +465,37 @@ describe("useMediaActions", () => {
         expect(onError).toHaveBeenCalledWith(
             "Failed to refresh comments. Existing saved comments were preserved."
         );
+    });
+
+    it("shows a notice (not an error) and keeps counts when a refresh returns no comments", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(refreshMediaComments).mockResolvedValue({
+            updated: false,
+            totalComments: 0,
+        });
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        await act(async () => {
+            await result.current.refreshComments(mediaPlayer.activeMedia!);
+        });
+
+        expect(onNotice).toHaveBeenCalledWith(
+            "No comments were found for this media. Your saved comments were kept."
+        );
+        expect(onError).not.toHaveBeenCalled();
+        // Saved comment counts must be left untouched, not reset to zero.
+        expect(setMediaItems).not.toHaveBeenCalled();
+        expect(mediaPlayer.setActiveMedia).not.toHaveBeenCalled();
     });
 
     it("updates only the targeted item when editing title", async () => {
@@ -464,6 +509,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -495,6 +541,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -521,6 +568,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -549,6 +597,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -580,6 +629,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -612,6 +662,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -641,6 +692,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -673,6 +725,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 
@@ -715,6 +768,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 mediaPlayer,
                 onError,
+                onNotice,
             })
         );
 

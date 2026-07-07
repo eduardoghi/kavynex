@@ -71,7 +71,9 @@ import { useHomeLibraryPanel } from "./use-home-library-panel";
 const mockErrorState = {
     errorOpen: true,
     errorMessage: "boom",
+    errorVariant: "error" as const,
     showError: vi.fn(),
+    showNotice: vi.fn(),
     closeErrorModal: vi.fn(),
 };
 
@@ -370,6 +372,7 @@ describe("useHomeController", () => {
             importMode: "copy",
             libraryPath: "/library",
             onError: mockErrorState.showError,
+            onNotice: mockErrorState.showNotice,
         });
 
         expect(useDiagnostics).toHaveBeenCalledWith({
