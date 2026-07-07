@@ -6,6 +6,7 @@ import {
     INVALID_RUN_ID_ERROR_CODE,
     INVALID_FORMAT_ID_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,
+    READ_DIR_FAILED_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
     INVALID_MEDIA_PATH_ERROR_CODE,
@@ -92,7 +93,9 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [PATH_OUTSIDE_BASE_DIR_ERROR_CODE]:
         "The selected file path is outside the allowed library folder.",
 
-    READ_DIR_FAILED: "Could not read the selected folder.",
+    [READ_DIR_FAILED_ERROR_CODE]: "Could not read the selected folder.",
+    // The codes below are not (yet) emitted by the Rust backend (see src-tauri/src/error.rs)
+    // and are kept as bare literals rather than added to KnownErrorCode.
     CREATE_DIR_FAILED: "Could not create the selected folder.",
     OPEN_DIR_FAILED: "Could not open the selected folder.",
     OPEN_PATH_FAILED: "Could not open the selected path.",
