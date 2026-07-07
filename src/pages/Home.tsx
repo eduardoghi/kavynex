@@ -179,6 +179,11 @@ export default function Home(): JSX.Element {
                                     }}
                                 >
                                     <SelectedChannelLibrarySection
+                                        // Remount per channel so the section's local
+                                        // search/filter/sort state (and the grid scroll) reset
+                                        // when switching channels, instead of leaking one
+                                        // channel's filters onto the next.
+                                        key={channels.selectedChannel.id}
                                         selectedChannel={channels.selectedChannel}
                                         itemCountLabel={controller.libraryPanelState.itemCountLabel}
                                         disableAddMedia={controller.libraryPanelState.disableAddMedia}

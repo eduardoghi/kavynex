@@ -225,4 +225,62 @@ describe("SelectedChannelLibrarySection", () => {
             "Old publication,New publication,No publication but recently added"
         );
     });
+
+    it("resets search/filters when the channel changes (remounts via key)", () => {
+        const channelA = {
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: null,
+            created_at: "2026-03-31T10:00:00.000Z",
+        };
+        const channelB = { ...channelA, id: 20, name: "Canal B", youtube_handle: "@canalb" };
+
+        const baseProps = {
+            itemCountLabel: "1 item(s)",
+            disableAddMedia: false,
+            isLoadingMedia: false,
+            libraryPath: "/library",
+            shellBorder: "rgba(255,255,255,0.1)",
+            shellSurface: "rgba(255,255,255,0.03)",
+            onAddMedia: vi.fn(),
+            onBack: vi.fn(),
+            onOpenMedia: vi.fn(),
+            onRequestDeleteMedia: vi.fn(),
+        };
+
+        const { rerender } = renderWithMantine(
+            <SelectedChannelLibrarySection
+                key={channelA.id}
+                selectedChannel={channelA}
+                mediaItems={[
+                    createMediaRow({ id: 1, title: "Alpha", file_path: "video/alpha.mp4" }),
+                ]}
+                {...baseProps}
+            />
+        );
+
+        // Narrow channel A down to nothing with a search term that matches no title.
+        fireEvent.change(screen.getByRole("textbox"), {
+            target: { value: "zzz-no-match" },
+        });
+        expect(screen.getByText("grid:0")).toBeInTheDocument();
+
+        // Switching channels changes the key, so the section remounts with fresh state
+        // instead of carrying channel A's search over to channel B.
+        rerender(
+            <SelectedChannelLibrarySection
+                key={channelB.id}
+                selectedChannel={channelB}
+                mediaItems={[
+                    createMediaRow({ id: 2, title: "Beta", file_path: "video/beta.mp4" }),
+                ]}
+                {...baseProps}
+            />
+        );
+
+        expect(screen.getByRole("textbox")).toHaveValue("");
+        expect(screen.getByText("grid:1")).toBeInTheDocument();
+        expect(screen.getByTestId("grid-titles")).toHaveTextContent("Beta");
+    });
 });
