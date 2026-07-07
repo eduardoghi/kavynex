@@ -1,0 +1,12 @@
+# Pins the Rust toolchain so local builds, CI, and releases all compile with the exact same
+# compiler and lints, instead of whatever "stable" happens to be at build time. Bump this
+# deliberately (and re-run clippy/tests) rather than drifting with upstream releases.
+#
+# The Apple targets are listed so the macOS release cross-compile (release.yml builds
+# aarch64/x86_64 darwin) uses this pinned toolchain; rustup installs them on demand. Other
+# jobs simply ignore targets they do not build for.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+profile = "minimal"

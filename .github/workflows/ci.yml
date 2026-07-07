@@ -33,6 +33,11 @@ jobs:
                   node-version: lts/*
                   cache: pnpm
 
+            # Catch a version bumped in only some of package.json/tauri.conf.json/Cargo.toml
+            # here, on every push/PR, instead of only at release time.
+            - name: Verify version consistency
+              run: node scripts/verify-release-version.js
+
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
 
@@ -79,10 +84,10 @@ jobs:
               run: cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 
             - name: Clippy
-              run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+              run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
             - name: Run tests
-              run: cargo test --manifest-path src-tauri/Cargo.toml
+              run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
             - name: Verify generated TS bindings are up to date
               if: matrix.platform == 'ubuntu-22.04'
