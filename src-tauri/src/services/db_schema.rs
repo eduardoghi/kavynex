@@ -1,4 +1,4 @@
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::{Connection, SqliteConnection, SqlitePool};
 
 use crate::services::database::db_error;
 use crate::AppResult;
@@ -201,12 +201,14 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     // and each transactional, e.g.:
     //
     //     if current_version < 8 {
-    //         apply_migration_8(pool).await?;
+    //         apply_table_rebuilds(pool, &MIGRATION_8_REBUILDS, 8).await?;
     //     }
     //
-    // A migration that changes a CHECK/UNIQUE/type rebuilds the table (create new,
-    // copy, drop, rename) inside its transaction, which is how constraint changes
-    // reach existing databases instead of being silently skipped.
+    // A change to a CHECK/UNIQUE/column type, or dropping a column, cannot be expressed
+    // with `ALTER TABLE ADD COLUMN`, so it rebuilds the affected table with
+    // `apply_table_rebuilds` (create new, copy, drop, rename - with foreign keys disabled
+    // and verified). That is how constraint changes reach databases created by older
+    // versions instead of being silently skipped by the additive baseline above.
 
     Ok(())
 }
@@ -245,6 +247,155 @@ async fn apply_baseline_schema(pool: &SqlitePool) -> AppResult<()> {
     }
 
     set_user_version(&mut tx, BASELINE_SCHEMA_VERSION).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
+/// Describes one table to rebuild. `new_ddl` is the full `CREATE TABLE <staging_table> (...)`
+/// with the desired shape; `carried_columns` is the comma-separated list of columns present
+/// in both the old and the new schema (a column the new schema adds is omitted so it takes
+/// its default). All fields are internal schema constants, never user input.
+///
+/// Unused until the first non-additive migration ships; kept ready (and tested) so that
+/// migration is a data change, not new untested plumbing.
+#[allow(dead_code)]
+pub(crate) struct TableRebuild {
+    pub table: &'static str,
+    pub staging_table: &'static str,
+    pub new_ddl: &'static str,
+    pub carried_columns: &'static str,
+}
+
+/// Rebuilds a single table to change what `ALTER TABLE ADD COLUMN` cannot express - a
+/// CHECK, a UNIQUE, a column type, or a dropped column - following SQLite's documented
+/// table-rebuild procedure: create the new shape under a staging name, copy the carried
+/// columns across, drop the old table and rename the staging one into place.
+///
+/// The caller must run this inside a transaction on a connection with foreign keys disabled
+/// (see [`apply_table_rebuilds`]): with enforcement on, `DROP TABLE` performs an implicit
+/// delete of the table's rows, which would fire `ON DELETE CASCADE` on child tables and
+/// wipe them out.
+#[allow(dead_code)]
+async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppResult<()> {
+    sqlx::query(sqlx::AssertSqlSafe(spec.new_ddl))
+        .execute(&mut *conn)
+        .await
+        .map_err(|error| db_error("failed to create the rebuilt table", error))?;
+
+    // Identifiers and the column list are internal constants; DDL cannot bind parameters.
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "INSERT INTO {} ({}) SELECT {} FROM {}",
+        spec.staging_table, spec.carried_columns, spec.carried_columns, spec.table
+    )))
+    .execute(&mut *conn)
+    .await
+    .map_err(|error| db_error("failed to copy rows into the rebuilt table", error))?;
+
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP TABLE {}", spec.table)))
+        .execute(&mut *conn)
+        .await
+        .map_err(|error| db_error("failed to drop the old table during rebuild", error))?;
+
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "ALTER TABLE {} RENAME TO {}",
+        spec.staging_table, spec.table
+    )))
+    .execute(&mut *conn)
+    .await
+    .map_err(|error| db_error("failed to rename the rebuilt table into place", error))?;
+
+    Ok(())
+}
+
+/// Applies one or more table rebuilds atomically and stamps `target_version`.
+///
+/// Foreign keys are disabled for the duration - required because a rebuild drops and
+/// recreates tables that `ON DELETE CASCADE` children reference - then
+/// `PRAGMA foreign_key_check` verifies the rebuilt schema introduced no dangling references
+/// before the transaction commits. `PRAGMA foreign_keys` is a no-op inside a transaction,
+/// so it is toggled on a dedicated pooled connection around the transaction, and enforcement
+/// is always restored before that connection returns to the pool. Indexes dropped along with
+/// the old tables are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`).
+#[allow(dead_code)]
+pub(crate) async fn apply_table_rebuilds(
+    pool: &SqlitePool,
+    rebuilds: &[TableRebuild],
+    target_version: i64,
+) -> AppResult<()> {
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|error| db_error("failed to acquire a connection for schema migration", error))?;
+
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *conn)
+        .await
+        .map_err(|error| db_error("failed to disable foreign keys for migration", error))?;
+
+    let outcome = apply_table_rebuilds_in_transaction(&mut conn, rebuilds, target_version).await;
+
+    // Restore enforcement before the connection returns to the pool, regardless of the
+    // outcome, so a later consumer never gets a connection with foreign keys silently off.
+    if let Err(error) = sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *conn)
+        .await
+    {
+        // The connection's enforcement state is unknown; drop it out of the pool rather than
+        // hand it back for reuse.
+        conn.detach();
+        return Err(db_error(
+            "failed to re-enable foreign keys after migration",
+            error,
+        ));
+    }
+
+    outcome
+}
+
+#[allow(dead_code)]
+async fn apply_table_rebuilds_in_transaction(
+    conn: &mut SqliteConnection,
+    rebuilds: &[TableRebuild],
+    target_version: i64,
+) -> AppResult<()> {
+    let mut tx = conn
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration transaction", error))?;
+
+    for spec in rebuilds {
+        rebuild_table(&mut tx, spec).await?;
+    }
+
+    // The rebuilt tables lost their indexes when dropped; recreate every index.
+    for ddl in INDEX_DDLS {
+        sqlx::query(*ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to recreate index after rebuild", error))?;
+    }
+
+    // A rebuild must never leave a child row pointing at a now-missing parent.
+    let violations = sqlx::query("PRAGMA foreign_key_check")
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to run foreign key check after rebuild", error))?;
+
+    if !violations.is_empty() {
+        return Err(db_error(
+            "table rebuild left dangling foreign-key references",
+            format!(
+                "{} violation(s) reported by foreign_key_check",
+                violations.len()
+            ),
+        ));
+    }
+
+    set_user_version(&mut tx, target_version).await?;
 
     tx.commit()
         .await
@@ -419,5 +570,202 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(version, SCHEMA_VERSION + 1);
+    }
+
+    async fn memory_pool_with_foreign_keys() -> SqlitePool {
+        let options = "sqlite::memory:"
+            .parse::<sqlx::sqlite::SqliteConnectOptions>()
+            .expect("parse sqlite memory url")
+            .foreign_keys(true);
+
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("create sqlite memory pool with foreign keys")
+    }
+
+    #[tokio::test]
+    async fn apply_table_rebuilds_applies_a_new_check_and_preserves_rows() {
+        let pool = memory_pool().await;
+
+        // A table created by an older schema that lacks a CHECK the new schema wants.
+        sqlx::query("CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO widget (id, name) VALUES (1, 'kept')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let rebuild = TableRebuild {
+            table: "widget",
+            staging_table: "widget_rebuilt",
+            new_ddl: "CREATE TABLE widget_rebuilt (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL CHECK (TRIM(name) <> '')
+            )",
+            carried_columns: "id, name",
+        };
+
+        apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), 8)
+            .await
+            .unwrap();
+
+        // Existing rows survived the rebuild.
+        let (name,): (String,) = sqlx::query_as("SELECT name FROM widget WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(name, "kept");
+
+        // The new CHECK is now enforced, which the additive path could never have added.
+        let blank = sqlx::query("INSERT INTO widget (id, name) VALUES (2, '   ')")
+            .execute(&pool)
+            .await;
+        assert!(
+            blank.is_err(),
+            "the rebuilt CHECK should reject a blank name"
+        );
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, 8);
+    }
+
+    #[tokio::test]
+    async fn apply_table_rebuilds_keeps_foreign_key_children_when_rebuilding_a_parent() {
+        let pool = memory_pool_with_foreign_keys().await;
+        ensure_schema(&pool).await.unwrap();
+
+        // A channel with a video and a comment, wired by ON DELETE CASCADE foreign keys.
+        // With enforcement on, a naive DROP TABLE channels would cascade these away.
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'Chan', '@chan')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, file_path, media_type)
+             VALUES (1, 1, 'V', 'video/v.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO video_comments (id, video_id, author_name, text)
+             VALUES (1, 1, 'Author', 'hi')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Rebuild the parent table (adding a new column), which drops and recreates it.
+        let rebuild = TableRebuild {
+            table: "channels",
+            staging_table: "channels_rebuilt",
+            new_ddl: "CREATE TABLE channels_rebuilt (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL CHECK (TRIM(name) <> ''),
+                youtube_handle TEXT NOT NULL UNIQUE CHECK (TRIM(youtube_handle) <> ''),
+                avatar_path TEXT CHECK (avatar_path IS NULL OR TRIM(avatar_path) <> ''),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                note TEXT CHECK (note IS NULL OR TRIM(note) <> '')
+            )",
+            carried_columns: "id, name, youtube_handle, avatar_path, created_at",
+        };
+
+        apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), 8)
+            .await
+            .unwrap();
+
+        // The channel survived and gained the new column...
+        let (name,): (String,) = sqlx::query_as("SELECT name FROM channels WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(name, "Chan");
+
+        // ...and dropping/recreating the parent did NOT cascade-delete its children,
+        // because foreign keys were disabled for the rebuild.
+        let (videos,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let (comments,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM video_comments")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            videos, 1,
+            "rebuilding the parent must not delete child videos"
+        );
+        assert_eq!(
+            comments, 1,
+            "rebuilding the parent must not delete comments"
+        );
+
+        // Enforcement is back on after the migration...
+        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            foreign_keys, 1,
+            "foreign keys must be re-enabled after rebuild"
+        );
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, 8);
+    }
+
+    #[tokio::test]
+    async fn apply_table_rebuilds_rejects_data_that_violates_the_new_constraint() {
+        let pool = memory_pool().await;
+
+        sqlx::query("CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        // A pre-existing row that the new CHECK would reject.
+        sqlx::query("INSERT INTO widget (id, name) VALUES (1, '   ')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let rebuild = TableRebuild {
+            table: "widget",
+            staging_table: "widget_rebuilt",
+            new_ddl: "CREATE TABLE widget_rebuilt (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL CHECK (TRIM(name) <> '')
+            )",
+            carried_columns: "id, name",
+        };
+
+        // The copy step fails the CHECK, so the whole migration rolls back: the original
+        // table is untouched and the version is not bumped.
+        assert!(
+            apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), 8)
+                .await
+                .is_err()
+        );
+
+        let (name,): (String,) = sqlx::query_as("SELECT name FROM widget WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(name, "   ");
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, 0);
     }
 }
