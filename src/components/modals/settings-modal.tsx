@@ -19,6 +19,7 @@ import {
     RefreshCcw,
     Search,
     Settings2,
+    Undo2,
     Upload,
     Wrench,
 } from "lucide-react";
@@ -79,6 +80,11 @@ export function SettingsModal({
         pickImportFileAction,
         confirmImportAction,
         cancelImport,
+        canUndoImport,
+        isUndoImportConfirmOpen,
+        requestUndoImport,
+        cancelUndoImport,
+        confirmUndoImportAction,
         appUpdateStatus,
         updateInfo,
         appUpdateProgress,
@@ -296,7 +302,54 @@ export function SettingsModal({
                                 >
                                     Import database
                                 </AppButton>
+
+                                {canUndoImport && (
+                                    <AppButton
+                                        appVariant="ghost"
+                                        leftSection={<Undo2 size={16} />}
+                                        onClick={requestUndoImport}
+                                        disabled={
+                                            databaseBusy !== "idle" || Boolean(pendingImportPath)
+                                        }
+                                    >
+                                        Undo last import
+                                    </AppButton>
+                                )}
                             </Group>
+
+                            {isUndoImportConfirmOpen && (
+                                <Alert color="yellow" variant="light">
+                                    <Stack gap="xs">
+                                        <Text size="sm" fw={600}>
+                                            Undo the last database import?
+                                        </Text>
+                                        <Text size="sm">
+                                            This restores the database from just before your last
+                                            import and restarts the app. Any changes made since that
+                                            import will be lost. Your media files are not affected.
+                                        </Text>
+                                        <Group gap="sm">
+                                            <AppButton
+                                                appVariant="primary"
+                                                leftSection={<Undo2 size={16} />}
+                                                onClick={() => {
+                                                    void confirmUndoImportAction();
+                                                }}
+                                                loading={databaseBusy === "undoing"}
+                                            >
+                                                Undo and restart
+                                            </AppButton>
+                                            <AppButton
+                                                appVariant="ghost"
+                                                onClick={cancelUndoImport}
+                                                disabled={databaseBusy === "undoing"}
+                                            >
+                                                Cancel
+                                            </AppButton>
+                                        </Group>
+                                    </Stack>
+                                </Alert>
+                            )}
 
                             {pendingImportPath && (
                                 <Alert color="yellow" variant="light">

@@ -336,18 +336,25 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         ));
     }
 
-    let (videos_tables,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'videos'",
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+    // Require every core table, not just `videos`. A file with only a stray `videos` table
+    // (and a high user_version, so the baseline reconcile in `ensure_schema` would not run)
+    // could otherwise be swapped in and then fail every query at runtime with "no such
+    // table"/"no such column". Checking the full set keeps a foreign or truncated database
+    // from being accepted as a kavynex one.
+    for table in ["channels", "videos", "video_comments", "app_settings"] {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?")
+                .bind(table)
+                .fetch_one(pool)
+                .await
+                .map_err(|error| backup_error("failed to inspect the selected database", error))?;
 
-    if videos_tables == 0 {
-        return Err(AppError::from_code(
-            AppErrorCode::DatabaseImportInvalid,
-            "the selected file is not a kavynex database",
-        ));
+        if count == 0 {
+            return Err(AppError::from_code(
+                AppErrorCode::DatabaseImportInvalid,
+                "the selected file is not a kavynex database",
+            ));
+        }
     }
 
     let (user_version,): (i64,) = sqlx::query_as("PRAGMA user_version")
@@ -433,6 +440,33 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     logger::info("db_backup", "imported database applied on startup");
 
     Ok(true)
+}
+
+/// Whether a `.pre-import` snapshot from the last applied import exists, so the frontend can
+/// offer to undo that import. The snapshot persists across restarts until the next import
+/// overwrites it.
+pub fn database_import_undo_available(db_path: &Path) -> bool {
+    pre_import_path(db_path).exists()
+}
+
+/// Stages the `.pre-import` snapshot (the database as it was before the last applied import)
+/// as a pending import, so the last import is reverted on the next startup. This deliberately
+/// reuses the normal import path - the same validation and the same atomic, deferred swap in
+/// `apply_pending_database_import` - so the live connection pool is never swapped underneath
+/// while the app is running, whether the undo is triggered from Settings (pool open) or from
+/// the startup recovery flow (pool closed). The caller relaunches the app afterward. Errors
+/// when there is no snapshot to revert to.
+pub async fn stage_database_import_undo(db_path: &Path) -> AppResult<()> {
+    let pre_import = pre_import_path(db_path);
+
+    if !pre_import.exists() {
+        return Err(AppError::from_code(
+            AppErrorCode::NoDatabaseImportToUndo,
+            "there is no previous database to restore from the last import",
+        ));
+    }
+
+    stage_database_import(db_path, &pre_import).await
 }
 
 #[cfg(test)]
@@ -626,10 +660,16 @@ mod tests {
             .connect_with(options)
             .await
             .unwrap();
-        sqlx::query("CREATE TABLE videos (id INTEGER PRIMARY KEY, title TEXT)")
-            .execute(&pool)
-            .await
-            .unwrap();
+        // Import validation now requires every core table, so a representative kavynex
+        // database in tests must have all of them, not just `videos`.
+        for ddl in [
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, title TEXT)",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, text TEXT)",
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "INSERT INTO videos (title) VALUES ('{title}')"
         )))
@@ -745,6 +785,78 @@ mod tests {
         let error = stage_database_import(&db, &foreign).await.unwrap_err();
         assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
         assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn stage_import_rejects_database_missing_a_core_table() {
+        let dir = temp_dir("import-missing-table");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        // A database that has `videos` but is missing the other core tables must be rejected,
+        // otherwise it would swap in and then fail queries at runtime with "no such table".
+        let partial = dir.join("partial.db");
+        let options = SqliteConnectOptions::new()
+            .filename(&partial)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE videos (id INTEGER PRIMARY KEY, title TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+
+        let error = stage_database_import(&db, &partial).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+        assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn undo_reverts_the_last_import_on_the_next_startup() {
+        let dir = temp_dir("undo");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("incoming.db");
+        seed_kavynex_db(&source, "imported").await;
+
+        // Apply an import, leaving the previous database as the `.pre-import` snapshot.
+        stage_database_import(&db, &source).await.unwrap();
+        assert!(apply_pending_database_import(&db).unwrap());
+        assert_eq!(read_video_title(&db).await, "imported");
+        assert!(database_import_undo_available(&db));
+
+        // Undo stages the pre-import snapshot; the swap happens on the next startup, like a
+        // normal import, so the live database is never swapped underneath.
+        stage_database_import_undo(&db).await.unwrap();
+        assert!(import_staged_path(&db).exists());
+        assert!(apply_pending_database_import(&db).unwrap());
+
+        // The database is back to the pre-import content.
+        assert_eq!(read_video_title(&db).await, "current");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn undo_fails_when_no_import_was_applied() {
+        let dir = temp_dir("undo-none");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        assert!(!database_import_undo_available(&db));
+        assert_eq!(
+            stage_database_import_undo(&db).await.unwrap_err().code,
+            AppErrorCode::NoDatabaseImportToUndo.as_str()
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

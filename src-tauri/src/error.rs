@@ -11,6 +11,7 @@ pub enum AppErrorCode {
     AssetScopeRegisterFailed,
 
     NoDatabaseBackupAvailable,
+    NoDatabaseImportToUndo,
     DatabaseAlreadyOpen,
     DatabaseImportInvalid,
     DatabaseSchemaTooNew,
@@ -143,6 +144,7 @@ impl AppErrorCode {
             Self::AssetScopeRegisterFailed => "ASSET_SCOPE_REGISTER_FAILED",
 
             Self::NoDatabaseBackupAvailable => "NO_DATABASE_BACKUP_AVAILABLE",
+            Self::NoDatabaseImportToUndo => "NO_DATABASE_IMPORT_TO_UNDO",
             Self::DatabaseAlreadyOpen => "DATABASE_ALREADY_OPEN",
             Self::DatabaseImportInvalid => "DATABASE_IMPORT_INVALID",
             Self::DatabaseSchemaTooNew => "DATABASE_SCHEMA_TOO_NEW",

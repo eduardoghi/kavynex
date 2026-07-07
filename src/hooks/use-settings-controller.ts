@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import type { AppUpdateInfo, AppUpdateProgress } from "../services/app-update-service";
-import { exportDatabase, importDatabase } from "../services/database-service";
+import {
+    exportDatabase,
+    getDatabaseImportUndoStatus,
+    importDatabase,
+    undoDatabaseImport,
+} from "../services/database-service";
 import { getLibrarySummary, type LibrarySummaryInfo } from "../services/library-service";
 import { parseAppError } from "../utils/app-error";
 import { logError } from "../utils/app-logger";
@@ -31,13 +36,18 @@ export type SettingsController = {
     isLoadingLibrarySummary: boolean;
     librarySummaryError: string;
     refreshLibrarySummary: () => Promise<void>;
-    databaseBusy: "idle" | "exporting" | "importing";
+    databaseBusy: "idle" | "exporting" | "importing" | "undoing";
     databaseMessage: DatabaseMessage | null;
     pendingImportPath: string | null;
     exportDatabaseAction: () => Promise<void>;
     pickImportFileAction: () => Promise<void>;
     confirmImportAction: () => Promise<void>;
     cancelImport: () => void;
+    canUndoImport: boolean;
+    isUndoImportConfirmOpen: boolean;
+    requestUndoImport: () => void;
+    cancelUndoImport: () => void;
+    confirmUndoImportAction: () => Promise<void>;
     appUpdateStatus: AppUpdateStatus;
     updateInfo: AppUpdateInfo | null;
     appUpdateProgress: AppUpdateProgress | null;
@@ -54,9 +64,13 @@ export function useSettingsController({
     const [isLoadingLibrarySummary, setIsLoadingLibrarySummary] = useState(false);
     const [librarySummaryError, setLibrarySummaryError] = useState("");
 
-    const [databaseBusy, setDatabaseBusy] = useState<"idle" | "exporting" | "importing">("idle");
+    const [databaseBusy, setDatabaseBusy] = useState<
+        "idle" | "exporting" | "importing" | "undoing"
+    >("idle");
     const [databaseMessage, setDatabaseMessage] = useState<DatabaseMessage | null>(null);
     const [pendingImportPath, setPendingImportPath] = useState<string | null>(null);
+    const [canUndoImport, setCanUndoImport] = useState(false);
+    const [isUndoImportConfirmOpen, setIsUndoImportConfirmOpen] = useState(false);
 
     const {
         status: appUpdateStatus,
@@ -212,6 +226,36 @@ export function useSettingsController({
         setPendingImportPath(null);
     }, []);
 
+    const requestUndoImport = useCallback((): void => {
+        setDatabaseMessage(null);
+        setIsUndoImportConfirmOpen(true);
+    }, []);
+
+    const cancelUndoImport = useCallback((): void => {
+        setIsUndoImportConfirmOpen(false);
+    }, []);
+
+    const confirmUndoImportAction = useCallback(async (): Promise<void> => {
+        setDatabaseBusy("undoing");
+        setDatabaseMessage(null);
+
+        try {
+            await undoDatabaseImport();
+            // The revert is applied on the next startup, so relaunch to complete it.
+            await relaunch();
+        } catch (error) {
+            logError("settings-modal", "Failed to undo the last database import.", error, {
+                parsed: parseAppError(error),
+            });
+            setDatabaseMessage({
+                tone: "error",
+                text: "Could not undo the last database import.",
+            });
+            setDatabaseBusy("idle");
+            setIsUndoImportConfirmOpen(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (!opened) {
             summaryRequestIdRef.current += 1;
@@ -219,10 +263,38 @@ export function useSettingsController({
             setLibrarySummary(EMPTY_LIBRARY_SUMMARY);
             setLibrarySummaryError("");
             setIsLoadingLibrarySummary(false);
+            setCanUndoImport(false);
+            setIsUndoImportConfirmOpen(false);
             return;
         }
 
         void loadLibrarySummary(libraryPath);
+
+        // Whether the last applied import can still be reverted, so the UI can offer it.
+        let cancelled = false;
+        void (async () => {
+            try {
+                const available = await getDatabaseImportUndoStatus();
+
+                if (!cancelled) {
+                    setCanUndoImport(available);
+                }
+            } catch (error) {
+                logError(
+                    "settings-modal",
+                    "Failed to read database import undo status.",
+                    error
+                );
+
+                if (!cancelled) {
+                    setCanUndoImport(false);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
     }, [opened, libraryPath, loadLibrarySummary]);
 
     return {
@@ -237,6 +309,11 @@ export function useSettingsController({
         pickImportFileAction,
         confirmImportAction,
         cancelImport,
+        canUndoImport,
+        isUndoImportConfirmOpen,
+        requestUndoImport,
+        cancelUndoImport,
+        confirmUndoImportAction,
         appUpdateStatus,
         updateInfo,
         appUpdateProgress,

@@ -14,6 +14,8 @@ vi.mock("@tauri-apps/plugin-process", () => ({
 vi.mock("../services/database-service", () => ({
     exportDatabase: vi.fn(),
     importDatabase: vi.fn(),
+    getDatabaseImportUndoStatus: vi.fn(),
+    undoDatabaseImport: vi.fn(),
 }));
 
 vi.mock("../services/library-service", () => ({
@@ -44,7 +46,12 @@ vi.mock("./use-app-update", () => ({
 
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { exportDatabase, importDatabase } from "../services/database-service";
+import {
+    exportDatabase,
+    getDatabaseImportUndoStatus,
+    importDatabase,
+    undoDatabaseImport,
+} from "../services/database-service";
 import { getLibrarySummary } from "../services/library-service";
 import { useSettingsController } from "./use-settings-controller";
 
@@ -53,6 +60,8 @@ const saveMock = vi.mocked(save);
 const relaunchMock = vi.mocked(relaunch);
 const exportDatabaseMock = vi.mocked(exportDatabase);
 const importDatabaseMock = vi.mocked(importDatabase);
+const getDatabaseImportUndoStatusMock = vi.mocked(getDatabaseImportUndoStatus);
+const undoDatabaseImportMock = vi.mocked(undoDatabaseImport);
 const getLibrarySummaryMock = vi.mocked(getLibrarySummary);
 
 function createSummary(overrides: Partial<LibrarySummaryInfo> = {}): LibrarySummaryInfo {
@@ -74,6 +83,8 @@ type HookProps = {
 describe("useSettingsController", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // No previous import to undo unless a test opts in.
+        getDatabaseImportUndoStatusMock.mockResolvedValue(false);
     });
 
     it("loads the library summary when opened", async () => {
@@ -438,6 +449,76 @@ describe("useSettingsController", () => {
         });
 
         expect(result.current.pendingImportPath).toBeNull();
+    });
+
+    it("reports when the last import can be undone", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        getDatabaseImportUndoStatusMock.mockResolvedValueOnce(true);
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await waitFor(() => {
+            expect(result.current.canUndoImport).toBe(true);
+        });
+    });
+
+    it("undoes the last import and relaunches the app on confirm", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        getDatabaseImportUndoStatusMock.mockResolvedValueOnce(true);
+        undoDatabaseImportMock.mockResolvedValueOnce(undefined);
+        relaunchMock.mockResolvedValueOnce(undefined);
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await waitFor(() => {
+            expect(result.current.canUndoImport).toBe(true);
+        });
+
+        act(() => {
+            result.current.requestUndoImport();
+        });
+        expect(result.current.isUndoImportConfirmOpen).toBe(true);
+
+        await act(async () => {
+            await result.current.confirmUndoImportAction();
+        });
+
+        expect(undoDatabaseImportMock).toHaveBeenCalledTimes(1);
+        expect(relaunchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports an error and stays idle when the undo fails", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        getDatabaseImportUndoStatusMock.mockResolvedValueOnce(true);
+        undoDatabaseImportMock.mockRejectedValueOnce(new Error("no snapshot"));
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await waitFor(() => {
+            expect(result.current.canUndoImport).toBe(true);
+        });
+
+        act(() => {
+            result.current.requestUndoImport();
+        });
+
+        await act(async () => {
+            await result.current.confirmUndoImportAction();
+        });
+
+        expect(relaunchMock).not.toHaveBeenCalled();
+        expect(result.current.databaseBusy).toBe("idle");
+        expect(result.current.isUndoImportConfirmOpen).toBe(false);
+        expect(result.current.databaseMessage).toEqual({
+            tone: "error",
+            text: "Could not undo the last database import.",
+        });
     });
 
     it("exposes the app update state and actions from useAppUpdate", () => {

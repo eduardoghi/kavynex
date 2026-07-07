@@ -46,3 +46,21 @@ export async function exportDatabase(destinationPath: string): Promise<void> {
 export async function importDatabase(sourcePath: string): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.IMPORT_DATABASE, { sourcePath });
 }
+
+/**
+ * Reports whether the last applied database import can still be undone (a snapshot of the
+ * database from before that import exists). Used to offer recovery when the wrong or an
+ * incompatible database was imported.
+ */
+export async function getDatabaseImportUndoStatus(): Promise<boolean> {
+    return invokeCommand<boolean>(TAURI_COMMANDS.GET_DATABASE_IMPORT_UNDO_STATUS);
+}
+
+/**
+ * Reverts the last applied database import by staging the pre-import snapshot. Like an import,
+ * the swap is applied on the next startup, so the caller must relaunch the app after this
+ * resolves.
+ */
+export async function undoDatabaseImport(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.UNDO_DATABASE_IMPORT);
+}

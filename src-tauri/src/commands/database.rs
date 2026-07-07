@@ -53,3 +53,21 @@ pub async fn import_database(app: AppHandle, source_path: String) -> AppResult<(
     let path = database_path(&app)?;
     db_backup::stage_database_import(&path, std::path::Path::new(&source_path)).await
 }
+
+/// Reports whether the last applied import can still be undone (a `.pre-import` snapshot of
+/// the database from before that import exists). Lets the frontend offer a recovery path when
+/// the wrong or an incompatible database was imported.
+#[tauri::command]
+pub async fn get_database_import_undo_status(app: AppHandle) -> AppResult<bool> {
+    let path = database_path(&app)?;
+    Ok(db_backup::database_import_undo_available(&path))
+}
+
+/// Reverts the last applied database import by staging the pre-import snapshot as a pending
+/// import; the swap is applied on the next startup (reusing the import path so the live pool
+/// is never swapped underneath), so the caller should relaunch the app after this succeeds.
+#[tauri::command]
+pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
+    let path = database_path(&app)?;
+    db_backup::stage_database_import_undo(&path).await
+}
