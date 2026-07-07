@@ -141,6 +141,25 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
     hints
 }
 
+/// Redacts a cookies file path from a yt-dlp log line before it is returned to the frontend.
+///
+/// `list_yt_dlp_formats_async` runs yt-dlp with `-v` and returns the captured stdout/stderr
+/// as `terminal_logs`, unlike the other metadata functions which discard theirs. yt-dlp's
+/// verbose mode prints a `[debug] Command-line config: [...]` line that echoes the full argv
+/// verbatim, including the value passed to `--cookies`. That local filesystem path can reveal
+/// the user's OS username/profile layout, and this log line may end up pasted into a public
+/// bug report, so any occurrence of the path is replaced regardless of which line it shows up
+/// in (the `Command-line config` echo, or any other yt-dlp message that happens to mention it).
+fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
+    match cookies_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(path) if line.contains(path) => line.replace(path, "<redacted>"),
+        _ => line.to_string(),
+    }
+}
+
 fn is_traceback_noise(line: &str) -> bool {
     let trimmed = line.trim();
     let normalized = trimmed.to_lowercase();
@@ -563,7 +582,7 @@ pub async fn list_yt_dlp_formats_async(
     args.push("--".to_string());
     args.push(normalized_url.clone());
 
-    let (json_payload, mut stdout_logs, stderr_logs) = run_yt_dlp_and_capture_json(
+    let (json_payload, mut stdout_logs, mut stderr_logs) = run_yt_dlp_and_capture_json(
         &yt_dlp,
         &args,
         YT_DLP_METADATA_TIMEOUT_SECS,
@@ -575,6 +594,12 @@ pub async fn list_yt_dlp_formats_async(
         "yt-dlp could not load media information for this URL.",
     )
     .await?;
+
+    // These logs are returned to the frontend below (`terminal_logs`); the cookies file path
+    // must not survive into them (see `redact_cookies_path_from_line`).
+    for line in stdout_logs.iter_mut().chain(stderr_logs.iter_mut()) {
+        *line = redact_cookies_path_from_line(line, cookies_path);
+    }
 
     let metadata: YtDlpMetadata = serde_json::from_str(&json_payload).map_err(|e| {
         AppError::from_code_with_details(
@@ -715,7 +740,7 @@ pub fn normalize_download_metadata(
 mod tests {
     use super::{
         comments_extraction_looks_incomplete, is_valid_youtube_video_id, read_capped_json_stdout,
-        run_yt_dlp_and_capture_json,
+        redact_cookies_path_from_line, run_yt_dlp_and_capture_json,
     };
     use crate::AppErrorCode;
 
@@ -805,6 +830,35 @@ mod tests {
     #[test]
     fn rejects_unicode() {
         assert!(!is_valid_youtube_video_id("dQw4w9WgXcé"));
+    }
+
+    #[test]
+    fn redact_cookies_path_strips_path_from_command_line_config_echo() {
+        // This mirrors the line yt-dlp's `-v` flag prints, which echoes the full argv
+        // (including `--cookies <path>`) verbatim.
+        let line = "[debug] Command-line config: ['-v', '--cookies', '/home/user/.config/cookies.txt', '--', 'https://youtube.com/watch?v=x']";
+
+        let redacted = redact_cookies_path_from_line(line, Some("/home/user/.config/cookies.txt"));
+
+        assert!(!redacted.contains("/home/user/.config/cookies.txt"));
+        assert!(redacted.contains("<redacted>"));
+    }
+
+    #[test]
+    fn redact_cookies_path_leaves_unrelated_lines_untouched() {
+        let line = "[youtube] Extracting URL: https://youtube.com/watch?v=x";
+
+        assert_eq!(
+            redact_cookies_path_from_line(line, Some("/home/user/.config/cookies.txt")),
+            line
+        );
+    }
+
+    #[test]
+    fn redact_cookies_path_is_a_noop_when_no_cookies_path_was_used() {
+        let line = "[debug] Command-line config: ['-v', '--cookies-from-browser', 'firefox']";
+
+        assert_eq!(redact_cookies_path_from_line(line, None), line);
     }
 
     #[test]
