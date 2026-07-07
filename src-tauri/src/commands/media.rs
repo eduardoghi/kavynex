@@ -39,3 +39,191 @@ pub async fn cleanup_unreferenced_media_artifacts(
     )
     .await
 }
+
+// Neither command in this file can be driven through a true IPC round trip with the
+// harness `commands/library.rs` uses (`tauri::test::mock_builder` + `get_ipc_response`).
+// Both take an `app: AppHandle` parameter, and `AppHandle` resolves (via its default
+// generic parameter) to the concrete type `AppHandle<tauri::Wry>` - the real runtime.
+// `mock_builder()` builds an `App<tauri::test::MockRuntime>`, a different concrete
+// runtime, so registering either command with `tauri::generate_handler!` for that app
+// fails to *compile*: there is no `CommandArg<'_, MockRuntime>` impl for
+// `AppHandle<Wry>`. (This is exactly why `library.rs`'s existing IPC tests only cover
+// `ensure_directory_exists` and `check_library_integrity` - the only two commands in
+// that file with no `AppHandle` parameter.) The same mismatch means the underlying
+// async service functions (`library_media`/`library_cleanup`) cannot be called directly
+// with a mock `AppHandle` either, since their signatures take the same concrete type.
+//
+// Even setting that aside, both commands would immediately call
+// `services::library_guard::ensure_configured_library_path` /
+// `services::library_cleanup::cleanup_unreferenced_artifacts`, which read the app
+// settings through `services::database::shared_pool` - a process-wide `OnceCell` whose
+// backing sqlite file location is derived from `AppHandle::path().app_config_dir()`.
+// Under a real `AppHandle<Wry>` built from `tauri::test::mock_context()` (empty config
+// `identifier`), that resolves to the real OS user config directory
+// (`dirs::config_dir()` itself), with no test-friendly override available without
+// touching production code; and since the pool only ever initializes once per test
+// binary (this repo's CI runs plain `cargo test`, not a per-test-process runner like
+// `nextest`), a real round trip would either write into the developer's actual AppData
+// directory or silently reuse whatever pool a different test already opened - failing
+// both the "self-contained" and "deterministic" requirements.
+//
+// `cleanup_unreferenced_media_artifacts`'s reference-counting behavior (a file shared by
+// two rows is kept, an unreferenced one is deleted) is already covered thoroughly at the
+// service layer by the existing tests in `services/library_cleanup.rs`
+// (`cleanup_plan_deletes_orphan_artifacts_no_row_references`,
+// `cleanup_plan_keeps_artifacts_still_referenced_by_a_registered_row`, etc.), which build
+// their own in-memory sqlite pool and call the plan/cleanup functions directly instead of
+// going through `shared_pool`.
+//
+// What *is* tested below is `library_media::import_media_file_sync` - a plain sync
+// function taking only `&str`/`ImportMode` arguments (no `AppHandle`) - which is exactly
+// what `import_media_file` runs inside `run_blocking` once its guard passes. This locks
+// down the command's actual behavior: content-addressed destination naming, copy vs.
+// move, and reuse of an already-imported file by content hash.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::hash::file_hash;
+    use crate::AppErrorCode;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "kavynex-media-command-test-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    fn write_temp_file(dir: &PathBuf, name: &str, content: &[u8]) -> PathBuf {
+        fs::create_dir_all(dir).unwrap();
+        let path = dir.join(name);
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn import_media_file_sync_copies_into_content_addressed_path_and_keeps_source() {
+        let root = unique_test_dir("copy");
+        let library = root.join("library");
+        let source = write_temp_file(&root.join("source"), "clip.mp4", b"copy-me");
+
+        let relative = library_media::import_media_file_sync(
+            &source.to_string_lossy(),
+            ImportMode::Copy,
+            &library.to_string_lossy(),
+        )
+        .unwrap();
+
+        let expected_hash = file_hash(&source).unwrap();
+        assert_eq!(relative, format!("video/media_{expected_hash}.mp4"));
+
+        let destination = library.join(&relative);
+        assert!(destination.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"copy-me");
+        // Copy mode must leave the original source file in place.
+        assert!(source.exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn import_media_file_sync_moves_source_into_library() {
+        let root = unique_test_dir("move");
+        let library = root.join("library");
+        let source = write_temp_file(&root.join("source"), "clip.mp3", b"move-me");
+
+        let relative = library_media::import_media_file_sync(
+            &source.to_string_lossy(),
+            ImportMode::Move,
+            &library.to_string_lossy(),
+        )
+        .unwrap();
+
+        assert!(relative.starts_with("audio/media_"));
+
+        let destination = library.join(&relative);
+        assert!(destination.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"move-me");
+        // Move mode must remove the original source file.
+        assert!(!source.exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    // Locks down the content-addressing behavior the reference-counted cleanup depends
+    // on: two different source files with identical bytes converge on the same
+    // destination path instead of being duplicated in the library.
+    #[test]
+    fn import_media_file_sync_reuses_existing_content_addressed_file() {
+        let root = unique_test_dir("dedupe");
+        let library = root.join("library");
+        let source_dir = root.join("source");
+        let first_source = write_temp_file(&source_dir, "first.mp4", b"same-bytes");
+        let second_source = write_temp_file(&source_dir, "second.mp4", b"same-bytes");
+
+        let first_relative = library_media::import_media_file_sync(
+            &first_source.to_string_lossy(),
+            ImportMode::Copy,
+            &library.to_string_lossy(),
+        )
+        .unwrap();
+
+        let second_relative = library_media::import_media_file_sync(
+            &second_source.to_string_lossy(),
+            ImportMode::Copy,
+            &library.to_string_lossy(),
+        )
+        .unwrap();
+
+        assert_eq!(first_relative, second_relative);
+
+        let destination = library.join(&first_relative);
+        assert_eq!(fs::read(&destination).unwrap(), b"same-bytes");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn import_media_file_sync_rejects_missing_source_file() {
+        let root = unique_test_dir("missing-source");
+        let library = root.join("library");
+        let missing_source = root.join("does-not-exist.mp4");
+
+        let error = library_media::import_media_file_sync(
+            &missing_source.to_string_lossy(),
+            ImportMode::Copy,
+            &library.to_string_lossy(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::SourceMediaNotFound.as_str());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn import_media_file_sync_rejects_unsupported_extension() {
+        let root = unique_test_dir("bad-ext");
+        let library = root.join("library");
+        let source = write_temp_file(&root.join("source"), "notes.txt", b"not media");
+
+        let error = library_media::import_media_file_sync(
+            &source.to_string_lossy(),
+            ImportMode::Copy,
+            &library.to_string_lossy(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::UnsupportedMediaExtension.as_str());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+}
