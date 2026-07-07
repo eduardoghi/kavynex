@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager};
 use crate::services::library_guard::ensure_configured_library_path;
 use crate::utils::format::is_allowed_thumbnail_extension;
 use crate::utils::path::extension_from_path;
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 fn allow_directory_in_asset_scope(app: &AppHandle, dir: &Path) -> AppResult<()> {
@@ -42,16 +43,22 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
     // registration changes), so a legitimate request always matches.
     ensure_configured_library_path(&app, &trimmed).await?;
 
-    let path = Path::new(&trimmed);
-    allow_directory_in_asset_scope(&app, path)?;
+    // canonicalize() and the asset scope registration are blocking filesystem/IPC calls;
+    // run them off the async runtime's worker threads, consistent with other commands
+    // (e.g. commands/library.rs, commands/thumbnail.rs).
+    run_blocking(move || {
+        let path = Path::new(&trimmed);
+        allow_directory_in_asset_scope(&app, path)?;
 
-    if let Ok(canonical) = std::fs::canonicalize(path) {
-        if canonical != path {
-            let _ = allow_directory_in_asset_scope(&app, &canonical);
+        if let Ok(canonical) = std::fs::canonicalize(path) {
+            if canonical != path {
+                let _ = allow_directory_in_asset_scope(&app, &canonical);
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 /// Authorizes the asset protocol to read a single user-selected image file.
@@ -72,34 +79,40 @@ pub async fn allow_asset_file(app: AppHandle, path: String) -> AppResult<()> {
         ));
     }
 
-    let candidate = Path::new(&trimmed);
+    // is_file()/canonicalize() and the asset scope registration are blocking filesystem/IPC
+    // calls; run them off the async runtime's worker threads, consistent with other commands
+    // (e.g. commands/library.rs, commands/thumbnail.rs).
+    run_blocking(move || {
+        let candidate = Path::new(&trimmed);
 
-    if !candidate.is_file() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidThumbnailFile,
-            "path is not an existing file",
-        ));
-    }
+        if !candidate.is_file() {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidThumbnailFile,
+                "path is not an existing file",
+            ));
+        }
 
-    if !is_allowed_thumbnail_extension(&extension_from_path(candidate)) {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidThumbnailFile,
-            "only image files can be authorized for preview",
-        ));
-    }
+        if !is_allowed_thumbnail_extension(&extension_from_path(candidate)) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidThumbnailFile,
+                "only image files can be authorized for preview",
+            ));
+        }
 
-    app.asset_protocol_scope()
-        .allow_file(&trimmed)
-        .map_err(|error| {
-            AppError::from_code(
-                AppErrorCode::AssetScopeRegisterFailed,
-                format!("failed to allow file in asset scope: {error}"),
-            )
-        })?;
+        app.asset_protocol_scope()
+            .allow_file(&trimmed)
+            .map_err(|error| {
+                AppError::from_code(
+                    AppErrorCode::AssetScopeRegisterFailed,
+                    format!("failed to allow file in asset scope: {error}"),
+                )
+            })?;
 
-    if let Ok(canonical) = std::fs::canonicalize(&trimmed) {
-        let _ = app.asset_protocol_scope().allow_file(&canonical);
-    }
+        if let Ok(canonical) = std::fs::canonicalize(&trimmed) {
+            let _ = app.asset_protocol_scope().allow_file(&canonical);
+        }
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
