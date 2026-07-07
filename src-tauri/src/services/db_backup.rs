@@ -44,6 +44,10 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
         // Backup/export/import can run while the main pool holds the write lock; without
         // a busy timeout any contention surfaces as an immediate SQLITE_BUSY failure.
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS));
+    // Unlike the main pool (services::database), this one does not enable
+    // `.foreign_keys(true)`. That is intentional, not an oversight: this pool is only ever
+    // used read-only (quick_check, VACUUM INTO, import validation), so there are no
+    // INSERT/UPDATE/DELETE statements here for FK enforcement to guard against.
 
     SqlitePoolOptions::new()
         .max_connections(1)
