@@ -472,28 +472,30 @@ export function LiveChatPanel({
                     }}
                 >
                     <Stack gap="md">
-                        {isLoadingLiveChat && (
-                            <Group gap="sm">
-                                <Loader size="sm" />
-                                <Text size="sm" c="dimmed">
-                                    Loading live chat replay...
-                                </Text>
-                            </Group>
-                        )}
+                        <Box role="status" aria-live="polite">
+                            {isLoadingLiveChat && (
+                                <Group gap="sm">
+                                    <Loader size="sm" />
+                                    <Text size="sm" c="dimmed">
+                                        Loading live chat replay...
+                                    </Text>
+                                </Group>
+                            )}
 
-                        {!isLoadingLiveChat && liveChatMessages.length === 0 && (
-                            <Text size="sm" c="dimmed">
-                                No live chat messages were loaded.
-                            </Text>
-                        )}
-
-                        {!isLoadingLiveChat &&
-                            liveChatMessages.length > 0 &&
-                            visibleLiveChatMessages.length === 0 && (
+                            {!isLoadingLiveChat && liveChatMessages.length === 0 && (
                                 <Text size="sm" c="dimmed">
-                                    No messages visible for the current playback time.
+                                    No live chat messages were loaded.
                                 </Text>
                             )}
+
+                            {!isLoadingLiveChat &&
+                                liveChatMessages.length > 0 &&
+                                visibleLiveChatMessages.length === 0 && (
+                                    <Text size="sm" c="dimmed">
+                                        No messages visible for the current playback time.
+                                    </Text>
+                                )}
+                        </Box>
 
                         {!isLoadingLiveChat &&
                             inlineMessages.length > 0 &&

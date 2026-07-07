@@ -325,32 +325,36 @@ export function CommentsPanel({
 
                 <Divider color={shellBorder} />
 
-                {isLoadingComments && (
-                    <Group gap="sm">
-                        <Loader size="sm" />
+                <Box role="status" aria-live="polite">
+                    {isLoadingComments && (
+                        <Group gap="sm">
+                            <Loader size="sm" />
+                            <Text size="sm" c="dimmed">
+                                {UI_TEXT.comments.loading}
+                            </Text>
+                        </Group>
+                    )}
+
+                    {!isLoadingComments && !hasComments && (
                         <Text size="sm" c="dimmed">
-                            {UI_TEXT.comments.loading}
+                            {UI_TEXT.comments.noCommentsAvailable}
                         </Text>
-                    </Group>
-                )}
+                    )}
 
-                {!isLoadingComments && !hasComments && (
-                    <Text size="sm" c="dimmed">
-                        {UI_TEXT.comments.noCommentsAvailable}
-                    </Text>
-                )}
+                    {!isLoadingComments && hasComments && comments.length === 0 && (
+                        <Text size="sm" c="dimmed">
+                            {UI_TEXT.comments.missingFromDatabase}
+                        </Text>
+                    )}
 
-                {!isLoadingComments && hasComments && comments.length === 0 && (
-                    <Text size="sm" c="dimmed">
-                        {UI_TEXT.comments.missingFromDatabase}
-                    </Text>
-                )}
-
-                {!isLoadingComments && comments.length > 0 && filteredCommentTree.length === 0 && (
-                    <Text size="sm" c="dimmed">
-                        {UI_TEXT.comments.noSearchResults}
-                    </Text>
-                )}
+                    {!isLoadingComments &&
+                        comments.length > 0 &&
+                        filteredCommentTree.length === 0 && (
+                            <Text size="sm" c="dimmed">
+                                {UI_TEXT.comments.noSearchResults}
+                            </Text>
+                        )}
+                </Box>
 
                 {!isLoadingComments && filteredCommentTree.length > 0 && (
                     <Stack gap="lg">
