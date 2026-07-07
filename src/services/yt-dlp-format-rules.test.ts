@@ -1,0 +1,140 @@
+import { describe, expect, it } from "vitest";
+import type { YtDlpFormat } from "../types/media";
+import {
+    buildCompactLabel,
+    buildMergedFormats,
+    inferPreferredFormatId,
+    inferSelectedMediaType,
+} from "./yt-dlp-format-rules";
+
+function format(overrides: Partial<YtDlpFormat> = {}): YtDlpFormat {
+    return {
+        format_id: "0",
+        display_name: "",
+        ext: "mp4",
+        media_type: "video",
+        has_video: true,
+        has_audio: true,
+        filesize_bytes: null,
+        height: null,
+        abr: null,
+        tbr: null,
+        vcodec: null,
+        protocol: null,
+        ...overrides,
+    };
+}
+
+describe("buildCompactLabel", () => {
+    it("labels a merged video with resolution, ext and codec", () => {
+        const label = buildCompactLabel(
+            "merged",
+            format({ height: 1080, ext: "mp4", vcodec: "avc1.640028" })
+        );
+        expect(label).toBe("Merged · 1080p · MP4 · AVC (H.264)");
+    });
+
+    it("labels an audio-only format with the preferred ext and bitrate", () => {
+        const label = buildCompactLabel(
+            "audio_only",
+            format({ ext: "m4a", abr: 128, has_video: false }),
+            "M4A"
+        );
+        expect(label).toBe("Audio only · M4A · 128 kbps");
+    });
+
+    it("marks DRC audio and appends the protocol", () => {
+        const label = buildCompactLabel(
+            "audio_only",
+            format({ format_id: "251-drc", ext: "webm", abr: 160, protocol: "https" })
+        );
+        expect(label).toContain("DRC");
+        expect(label).toContain("HTTPS");
+    });
+});
+
+describe("buildMergedFormats", () => {
+    it("synthesizes a merged video+audio option from separate streams", () => {
+        const merged = buildMergedFormats([
+            format({ format_id: "137", height: 1080, has_video: true, has_audio: false }),
+            format({ format_id: "140", ext: "m4a", abr: 128, has_video: false, has_audio: true }),
+        ]);
+
+        // The first entry is the synthesized merged selector (rank 0), combining both ids.
+        expect(merged[0].format_id).toBe("137+140");
+        expect(merged[0].has_video).toBe(true);
+        expect(merged[0].has_audio).toBe(true);
+    });
+
+    it("prefers m4a and higher bitrate audio as the merge partner", () => {
+        const merged = buildMergedFormats([
+            format({ format_id: "137", height: 1080, has_video: true, has_audio: false }),
+            format({ format_id: "251", ext: "webm", abr: 160, has_video: false, has_audio: true }),
+            format({ format_id: "140", ext: "m4a", abr: 128, has_video: false, has_audio: true }),
+        ]);
+
+        // m4a wins the boost over the higher-bitrate webm, so the merge uses 140.
+        expect(merged[0].format_id).toBe("137+140");
+    });
+
+    it("orders video-only options by descending resolution", () => {
+        const merged = buildMergedFormats([
+            format({ format_id: "a", height: 720, has_video: true, has_audio: false }),
+            format({ format_id: "b", height: 2160, has_video: true, has_audio: false }),
+            format({ format_id: "c", height: 1080, has_video: true, has_audio: false }),
+        ]);
+
+        // No audio means no merged entries; video-only ranked by resolution desc.
+        expect(merged.map((f) => f.height)).toEqual([2160, 1080, 720]);
+    });
+
+    it("drops duplicate format ids", () => {
+        const merged = buildMergedFormats([
+            format({ format_id: "137", height: 1080, has_video: true, has_audio: false }),
+            format({ format_id: "137", height: 1080, has_video: true, has_audio: false }),
+        ]);
+
+        expect(merged.filter((f) => f.format_id === "137")).toHaveLength(1);
+    });
+});
+
+describe("inferPreferredFormatId", () => {
+    it("prefers a merged selector, then a native format, then the first", () => {
+        expect(
+            inferPreferredFormatId([
+                format({ format_id: "137", has_audio: false }),
+                format({ format_id: "137+140" }),
+            ])
+        ).toBe("137+140");
+
+        expect(
+            inferPreferredFormatId([
+                format({ format_id: "18", has_video: true, has_audio: true }),
+                format({ format_id: "137", has_audio: false }),
+            ])
+        ).toBe("18");
+
+        expect(
+            inferPreferredFormatId([format({ format_id: "251", has_video: false, has_audio: true })])
+        ).toBe("251");
+    });
+
+    it("returns an empty string with no formats", () => {
+        expect(inferPreferredFormatId([])).toBe("");
+    });
+});
+
+describe("inferSelectedMediaType", () => {
+    it("returns the selected format's media type", () => {
+        const formats = [
+            format({ format_id: "137", media_type: "video" }),
+            format({ format_id: "140", media_type: "audio" }),
+        ];
+        expect(inferSelectedMediaType(formats, "140")).toBe("audio");
+    });
+
+    it("falls back to the first format, then to video", () => {
+        expect(inferSelectedMediaType([format({ media_type: "audio" })], "missing")).toBe("audio");
+        expect(inferSelectedMediaType([], "anything")).toBe("video");
+    });
+});

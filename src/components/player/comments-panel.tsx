@@ -18,16 +18,18 @@ import {
 import { ChevronDown, ChevronUp, MessageCircle, Search, ThumbsUp, X } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
-import { formatPublishedDate } from "../../utils/media-utils";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { SafeAvatar } from "./safe-avatar";
-
-type CommentTreeNode = MediaCommentRow & {
-    replies: CommentTreeNode[];
-};
-
-type CommentSortMode = "likes" | "newest" | "oldest";
+import {
+    buildCommentTree,
+    countCommentsInTree,
+    filterCommentTree,
+    formatCommentPublishedAt,
+    normalizeSearchValue,
+    type CommentSortMode,
+    type CommentTreeNode,
+} from "./comment-tree";
 
 // Cap how many top-level comment threads are mounted at once so media with thousands of
 // comments does not build an unbounded DOM. More threads are revealed on demand.
@@ -41,180 +43,6 @@ type CommentsPanelProps = {
     isLoadingComments: boolean;
     shellBorder: string;
 };
-
-function normalizeSearchValue(value: string): string {
-    return value.trim().toLocaleLowerCase();
-}
-
-function matchesCommentSearch(comment: MediaCommentRow, query: string): boolean {
-    if (!query) {
-        return true;
-    }
-
-    const haystack = [comment.author_name, comment.author_handle ?? "", comment.text]
-        .join(" ")
-        .toLocaleLowerCase();
-
-    return haystack.includes(query);
-}
-
-function parseCommentTimestamp(comment: MediaCommentRow): number {
-    const publishedAt = comment.published_at?.trim() ?? "";
-
-    if (/^\d+$/.test(publishedAt)) {
-        const unixSeconds = Number(publishedAt);
-
-        if (Number.isFinite(unixSeconds) && unixSeconds > 0) {
-            return unixSeconds * 1000;
-        }
-    }
-
-    if (publishedAt) {
-        const parsed = Date.parse(publishedAt);
-
-        if (Number.isFinite(parsed)) {
-            return parsed;
-        }
-    }
-
-    return 0;
-}
-
-function formatCommentPublishedAt(value: string | null, timeText: string | null): string {
-    const normalizedTimeText = timeText?.trim() ?? "";
-
-    if (normalizedTimeText) {
-        return normalizedTimeText;
-    }
-
-    const normalized = value?.trim() ?? "";
-
-    if (!normalized) {
-        return "";
-    }
-
-    if (/^\d+$/.test(normalized)) {
-        const unixSeconds = Number(normalized);
-
-        if (Number.isFinite(unixSeconds) && unixSeconds > 0) {
-            const formatted = formatPublishedDate(new Date(unixSeconds * 1000).toISOString());
-            return formatted || new Date(unixSeconds * 1000).toLocaleDateString();
-        }
-    }
-
-    const formatted = formatPublishedDate(normalized);
-    return formatted || normalized;
-}
-
-function compareComments(
-    left: MediaCommentRow,
-    right: MediaCommentRow,
-    sortMode: CommentSortMode
-): number {
-    if (sortMode === "likes") {
-        if (right.like_count !== left.like_count) {
-            return right.like_count - left.like_count;
-        }
-
-        return left.id - right.id;
-    }
-
-    const leftTime = parseCommentTimestamp(left);
-    const rightTime = parseCommentTimestamp(right);
-
-    if (sortMode === "newest") {
-        if (rightTime !== leftTime) {
-            return rightTime - leftTime;
-        }
-
-        return left.id - right.id;
-    }
-
-    if (leftTime !== rightTime) {
-        return leftTime - rightTime;
-    }
-
-    return left.id - right.id;
-}
-
-function buildCommentTree(
-    comments: MediaCommentRow[],
-    sortMode: CommentSortMode
-): CommentTreeNode[] {
-    const nodes = comments.map((comment) => ({
-        ...comment,
-        replies: [],
-    }));
-
-    const byCommentId = new Map<string, CommentTreeNode>();
-    const roots: CommentTreeNode[] = [];
-
-    for (const node of nodes) {
-        const commentId = node.comment_id?.trim() ?? "";
-
-        if (commentId) {
-            byCommentId.set(commentId, node);
-        }
-    }
-
-    for (const node of nodes) {
-        const parentId = node.parent_comment_id?.trim() ?? "";
-
-        if (!parentId || parentId.toLowerCase() === "root") {
-            roots.push(node);
-            continue;
-        }
-
-        const parentNode = byCommentId.get(parentId);
-
-        if (!parentNode) {
-            roots.push(node);
-            continue;
-        }
-
-        parentNode.replies.push(node);
-    }
-
-    const sortNodes = (items: CommentTreeNode[]): void => {
-        items.sort((left, right) => compareComments(left, right, sortMode));
-
-        for (const item of items) {
-            sortNodes(item.replies);
-        }
-    };
-
-    sortNodes(roots);
-
-    return roots;
-}
-
-function filterCommentTree(nodes: CommentTreeNode[], query: string): CommentTreeNode[] {
-    if (!query) {
-        return nodes;
-    }
-
-    const nextNodes: CommentTreeNode[] = [];
-
-    for (const node of nodes) {
-        const filteredReplies = filterCommentTree(node.replies, query);
-        const matchesSelf = matchesCommentSearch(node, query);
-
-        if (matchesSelf || filteredReplies.length > 0) {
-            nextNodes.push({
-                ...node,
-                replies: filteredReplies,
-            });
-        }
-    }
-
-    return nextNodes;
-}
-
-function countCommentsInTree(nodes: CommentTreeNode[]): number {
-    return nodes.reduce((total, node) => {
-        return total + 1 + countCommentsInTree(node.replies);
-    }, 0);
-}
 
 type CommentItemProps = {
     comment: CommentTreeNode;
