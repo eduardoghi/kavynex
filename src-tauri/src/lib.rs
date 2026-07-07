@@ -7,7 +7,14 @@ pub mod utils;
 
 pub use error::{AppError, AppErrorCode, AppResult};
 
+use std::time::Duration;
+
 use tauri::{AppHandle, Manager};
+
+// How often the in-session backup check below wakes up. `backup_database` itself throttles
+// the actual snapshot to once per 24h, so this only needs to be frequent enough that a
+// long-running session eventually crosses that threshold - it does not create extra backups.
+const PERIODIC_BACKUP_CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 fn spawn_startup_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
@@ -26,6 +33,38 @@ fn spawn_startup_cleanup(app_handle: AppHandle) {
                     "startup_cleanup",
                     format!("startup temp cleanup failed: {}", error),
                 );
+            }
+        }
+    });
+}
+
+/// The pre-migration/post-open backup in `services::database` only runs once, at pool init,
+/// so an app left running for several days never gets a fresh daily snapshot mid-session.
+/// This periodically re-invokes the (internally throttled) `backup_database` so a long
+/// session still gets its daily snapshot without waiting for the next restart. Failures are
+/// logged and never stop the loop or the app.
+fn spawn_periodic_backup(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(PERIODIC_BACKUP_CHECK_INTERVAL_SECS)).await;
+
+            let db_path = match services::database::database_path(&app_handle) {
+                Ok(db_path) => db_path,
+                Err(error) => {
+                    services::logger::warn(
+                        "db_backup",
+                        format!("periodic backup: failed to resolve database path: {error}"),
+                    );
+                    continue;
+                }
+            };
+
+            match services::db_backup::backup_database(&db_path).await {
+                Ok(true) => services::logger::info("db_backup", "periodic snapshot written"),
+                Ok(false) => {}
+                Err(error) => {
+                    services::logger::warn("db_backup", format!("periodic backup failed: {error}"))
+                }
             }
         }
     });
@@ -92,7 +131,8 @@ pub fn run() {
                 }
             }
 
-            spawn_startup_cleanup(app_handle);
+            spawn_startup_cleanup(app_handle.clone());
+            spawn_periodic_backup(app_handle);
             services::logger::info("app", "application setup finished");
 
             Ok(())
