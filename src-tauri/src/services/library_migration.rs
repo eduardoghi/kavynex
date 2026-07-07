@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, TryLockError};
 
 use serde::Serialize;
 
@@ -85,12 +85,20 @@ pub fn migrate_library_directory_sync(
     old_library_path: &str,
     new_library_path: &str,
 ) -> AppResult<MigrateLibraryDirectoryResult> {
-    let migration_guard = library_migration_lock().try_lock().map_err(|_| {
-        AppError::from_code(
-            AppErrorCode::LibraryMigrationAlreadyRunning,
-            "a library migration is already running",
-        )
-    })?;
+    let migration_guard = match library_migration_lock().try_lock() {
+        Ok(guard) => guard,
+        Err(TryLockError::WouldBlock) => {
+            return Err(AppError::from_code(
+                AppErrorCode::LibraryMigrationAlreadyRunning,
+                "a library migration is already running",
+            ));
+        }
+        // A previous migration panicked while holding this lock. The mutex guards no shared
+        // state (`Mutex<()>`; it only serializes migrations), so the poison carries no
+        // corrupted data - recover the guard and proceed. Treating poison as "already
+        // running" would instead wedge every future migration until the app is restarted.
+        Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+    };
 
     let canonical_new = ensure_library_dir(new_library_path)?;
     let old_library_dir = PathBuf::from(old_library_path.trim());
@@ -415,6 +423,33 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(old_root);
+        let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
+    fn migrate_library_directory_sync_recovers_from_a_poisoned_lock() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        // Simulate a previous migration that panicked mid-flight while holding the lock.
+        let poisoning = std::thread::spawn(|| {
+            let _held = library_migration_lock().lock().unwrap();
+            panic!("simulated migration panic while holding the lock");
+        })
+        .join();
+        assert!(poisoning.is_err(), "the helper thread should have panicked");
+        assert!(library_migration_lock().is_poisoned());
+
+        // The next migration must still succeed: the poison guards no real state, so it is
+        // recovered instead of surfacing as a misleading "already running" error that would
+        // wedge every future migration until the app restarts.
+        let new_root = unique_test_dir("poison-recover");
+        let result =
+            migrate_library_directory_sync("   ", new_root.to_string_lossy().as_ref()).unwrap();
+        assert!(result.changed);
+
+        // Leave the shared lock clean for any test that runs after this one.
+        library_migration_lock().clear_poison();
+
         let _ = fs::remove_dir_all(new_root);
     }
 }
