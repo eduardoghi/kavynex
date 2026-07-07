@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type {
     AppSettingsController,
     ChannelsController,
@@ -38,7 +38,14 @@ export function useHomeActions({
             await mediaLibrary.addMediaForm.resetForm();
             mediaLibrary.setAddMediaOpen(false);
         }
-    }, [channelsState, mediaLibrary]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render channelsState/mediaLibrary objects
+    }, [
+        channelsState.setSelectedChannelId,
+        mediaLibrary.addMediaForm.resetForm,
+        mediaLibrary.addMediaOpen,
+        mediaLibrary.clearMediaAndPlayer,
+        mediaLibrary.setAddMediaOpen,
+    ]);
 
     const confirmDeleteChannel = useCallback(async (): Promise<void> => {
         if (uiGuards.disableChannelDeletion) {
@@ -65,13 +72,15 @@ export function useHomeActions({
             });
             errorState.showError(resolveErrorMessage(error, "Failed to delete channel."));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render errorState/uiGuards objects
     }, [
         channelsState.selectedChannelId,
         channelsState.channelToDelete,
         channelsState.confirmDeleteChannel,
         closeSelectedChannelUiBeforeDelete,
-        errorState,
-        uiGuards,
+        errorState.showError,
+        uiGuards.disableChannelDeletion,
+        uiGuards.channelDeletionDisabledReason,
     ]);
 
     const chooseLibraryPath = useCallback(async (): Promise<void> => {
@@ -89,10 +98,19 @@ export function useHomeActions({
             logError("home-actions", "Failed to choose library path.", error);
             errorState.showError(resolveErrorMessage(error, "Failed to choose library folder."));
         }
-    }, [errorState, settingsState, uiGuards]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render errorState/settingsState/uiGuards objects
+    }, [
+        errorState.showError,
+        settingsState.chooseLibraryPath,
+        uiGuards.disableLibraryPathChange,
+        uiGuards.libraryPathChangeDisabledReason,
+    ]);
 
-    return {
-        chooseLibraryPath,
-        confirmDeleteChannel,
-    };
+    return useMemo(
+        () => ({
+            chooseLibraryPath,
+            confirmDeleteChannel,
+        }),
+        [chooseLibraryPath, confirmDeleteChannel]
+    );
 }

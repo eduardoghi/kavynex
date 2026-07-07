@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
     openFileLocation,
     refreshMediaComments,
@@ -35,7 +35,8 @@ export function useHomePlayerActions({
 
     const openInYoutube = useCallback(async (): Promise<void> => {
         await mediaPlayer.openInYoutube();
-    }, [mediaPlayer]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaPlayer object
+    }, [mediaPlayer.openInYoutube]);
 
     const openCurrentFileLocation = useCallback(async (): Promise<void> => {
         const activeMedia = mediaPlayer.activeMedia;
@@ -99,7 +100,14 @@ export function useHomePlayerActions({
         } finally {
             setIsRefreshingComments(false);
         }
-    }, [isRefreshingComments, mediaPlayer, onError, onReloadMedia]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
+    }, [
+        isRefreshingComments,
+        mediaPlayer.activeMedia,
+        mediaPlayer.setActiveMedia,
+        onError,
+        onReloadMedia,
+    ]);
 
     const markActiveAsWatched = useCallback(async (): Promise<void> => {
         const activeMedia = mediaPlayer.activeMedia;
@@ -116,7 +124,8 @@ export function useHomePlayerActions({
             watched_at: new Date().toISOString(),
             progress_seconds: 0,
         });
-    }, [homeMediaActions, mediaPlayer]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render homeMediaActions/mediaPlayer objects
+    }, [homeMediaActions.markAsWatched, mediaPlayer.activeMedia, mediaPlayer.setActiveMedia]);
 
     const markActiveAsUnwatched = useCallback(async (): Promise<void> => {
         const activeMedia = mediaPlayer.activeMedia;
@@ -132,7 +141,8 @@ export function useHomePlayerActions({
             ...activeMedia,
             watched_at: null,
         });
-    }, [homeMediaActions, mediaPlayer]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render homeMediaActions/mediaPlayer objects
+    }, [homeMediaActions.markAsUnwatched, mediaPlayer.activeMedia, mediaPlayer.setActiveMedia]);
 
     const closePlayer = useCallback(
         async (progressSeconds = 0): Promise<void> => {
@@ -144,16 +154,28 @@ export function useHomePlayerActions({
 
             mediaPlayer.closePlayer();
         },
-        [homeMediaActions, mediaPlayer]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render homeMediaActions/mediaPlayer objects
+        [homeMediaActions.saveMediaProgress, mediaPlayer.activeMedia, mediaPlayer.closePlayer]
     );
 
-    return {
-        openInYoutube,
-        openFileLocation: openCurrentFileLocation,
-        refreshComments: refreshActiveComments,
-        isRefreshingComments,
-        markActiveAsWatched,
-        markActiveAsUnwatched,
-        closePlayer,
-    };
+    return useMemo(
+        () => ({
+            openInYoutube,
+            openFileLocation: openCurrentFileLocation,
+            refreshComments: refreshActiveComments,
+            isRefreshingComments,
+            markActiveAsWatched,
+            markActiveAsUnwatched,
+            closePlayer,
+        }),
+        [
+            openInYoutube,
+            openCurrentFileLocation,
+            refreshActiveComments,
+            isRefreshingComments,
+            markActiveAsWatched,
+            markActiveAsUnwatched,
+            closePlayer,
+        ]
+    );
 }

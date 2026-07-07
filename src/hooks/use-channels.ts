@@ -186,8 +186,9 @@ export function useChannels({
         if (created) {
             setCreateChannelOpenState(false);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
     }, [
-        channelActions,
+        channelActions.createChannelAction,
         newChannelAvatarMode,
         newChannelAvatarPath,
         newChannelName,
@@ -216,7 +217,14 @@ export function useChannels({
             setEditChannelOpenState(false);
             resetEditChannelForm();
         }
-    }, [channelActions, editChannelName, editYoutubeHandle, editingChannel, resetEditChannelForm]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
+    }, [
+        channelActions.updateChannelIdentityAction,
+        editChannelName,
+        editYoutubeHandle,
+        editingChannel,
+        resetEditChannelForm,
+    ]);
 
     const requestDeleteChannel = useCallback((channel: Channel): void => {
         setChannelToDelete(channel);
@@ -256,21 +264,24 @@ export function useChannels({
                 onError("Failed to select avatar file.");
             }
         },
-        [channelActions, onError]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
+        [channelActions.updateChannelAvatarAction, onError]
     );
 
     const updateChannelAvatarFromYouTube = useCallback(
         async (channel: Channel): Promise<void> => {
             await channelActions.updateChannelAvatarAction(channel, "youtube");
         },
-        [channelActions]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
+        [channelActions.updateChannelAvatarAction]
     );
 
     const removeChannelAvatar = useCallback(
         async (channel: Channel): Promise<void> => {
             await channelActions.updateChannelAvatarAction(channel, "none");
         },
-        [channelActions]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
+        [channelActions.updateChannelAvatarAction]
     );
 
     const closeDeleteChannelModal = useCallback((): void => {
@@ -331,51 +342,107 @@ export function useChannels({
         }
     }, [channels, editingChannel, resetEditChannelForm]);
 
-    return {
-        channels,
-        selectedChannelId,
-        selectedChannel,
+    const isEditingChannel = channelActions.isEditingChannel;
+    const isLoadingChannels = channelActions.isLoadingChannels;
+    const isCreatingChannel = channelActions.isCreatingChannel;
+    const isDeletingChannel = channelActions.isDeletingChannel;
+    const isUpdatingChannelAvatar = channelActions.isUpdatingChannelAvatar;
+    const confirmDeleteChannel = channelActions.confirmDeleteChannelAction;
 
-        createChannelOpen,
-        setCreateChannelOpen,
-        newChannelName,
-        setNewChannelName,
-        newYoutubeHandle,
-        setNewYoutubeHandle,
-        newChannelAvatarMode,
-        setNewChannelAvatarMode,
-        newChannelAvatarPath,
-        setNewChannelAvatarPath,
-        pickChannelAvatarViaDialog,
-        clearNewChannelAvatarPath,
+    return useMemo(
+        () => ({
+            channels,
+            selectedChannelId,
+            selectedChannel,
 
-        editChannelOpen,
-        setEditChannelOpen,
-        editingChannel,
-        editChannelName,
-        setEditChannelName,
-        editYoutubeHandle,
-        setEditYoutubeHandle,
-        requestEditChannel,
-        saveEditedChannel,
-        isEditingChannel: channelActions.isEditingChannel,
+            createChannelOpen,
+            setCreateChannelOpen,
+            newChannelName,
+            setNewChannelName,
+            newYoutubeHandle,
+            setNewYoutubeHandle,
+            newChannelAvatarMode,
+            setNewChannelAvatarMode,
+            newChannelAvatarPath,
+            setNewChannelAvatarPath,
+            pickChannelAvatarViaDialog,
+            clearNewChannelAvatarPath,
 
-        confirmDeleteChannelOpen,
-        channelToDelete,
+            editChannelOpen,
+            setEditChannelOpen,
+            editingChannel,
+            editChannelName,
+            setEditChannelName,
+            editYoutubeHandle,
+            setEditYoutubeHandle,
+            requestEditChannel,
+            saveEditedChannel,
+            isEditingChannel,
 
-        isLoadingChannels: channelActions.isLoadingChannels,
-        isCreatingChannel: channelActions.isCreatingChannel,
-        isDeletingChannel: channelActions.isDeletingChannel,
-        isUpdatingChannelAvatar: channelActions.isUpdatingChannelAvatar,
-        updatingChannelAvatarId,
+            confirmDeleteChannelOpen,
+            channelToDelete,
 
-        setSelectedChannelId,
-        createChannel,
-        requestDeleteChannel,
-        updateChannelAvatarFromFile,
-        updateChannelAvatarFromYouTube,
-        removeChannelAvatar,
-        confirmDeleteChannel: channelActions.confirmDeleteChannelAction,
-        closeDeleteChannelModal,
-    };
+            isLoadingChannels,
+            isCreatingChannel,
+            isDeletingChannel,
+            isUpdatingChannelAvatar,
+            updatingChannelAvatarId,
+
+            setSelectedChannelId,
+            createChannel,
+            requestDeleteChannel,
+            updateChannelAvatarFromFile,
+            updateChannelAvatarFromYouTube,
+            removeChannelAvatar,
+            confirmDeleteChannel,
+            closeDeleteChannelModal,
+        }),
+        [
+            channels,
+            selectedChannelId,
+            selectedChannel,
+
+            createChannelOpen,
+            setCreateChannelOpen,
+            newChannelName,
+            setNewChannelName,
+            newYoutubeHandle,
+            setNewYoutubeHandle,
+            newChannelAvatarMode,
+            setNewChannelAvatarMode,
+            newChannelAvatarPath,
+            setNewChannelAvatarPath,
+            pickChannelAvatarViaDialog,
+            clearNewChannelAvatarPath,
+
+            editChannelOpen,
+            setEditChannelOpen,
+            editingChannel,
+            editChannelName,
+            setEditChannelName,
+            editYoutubeHandle,
+            setEditYoutubeHandle,
+            requestEditChannel,
+            saveEditedChannel,
+            isEditingChannel,
+
+            confirmDeleteChannelOpen,
+            channelToDelete,
+
+            isLoadingChannels,
+            isCreatingChannel,
+            isDeletingChannel,
+            isUpdatingChannelAvatar,
+            updatingChannelAvatarId,
+
+            setSelectedChannelId,
+            createChannel,
+            requestDeleteChannel,
+            updateChannelAvatarFromFile,
+            updateChannelAvatarFromYouTube,
+            removeChannelAvatar,
+            confirmDeleteChannel,
+            closeDeleteChannelModal,
+        ]
+    );
 }

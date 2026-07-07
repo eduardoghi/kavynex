@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type {
     ChannelsController,
     DiagnosticsController,
@@ -25,7 +25,8 @@ export function useHomeMediaActions({
         }
 
         await diagnosticsState.reloadDiagnostics();
-    }, [diagnosticsState]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render diagnosticsState object
+    }, [diagnosticsState.diagnosticsOpen, diagnosticsState.reloadDiagnostics]);
 
     const runActionAndRefreshDiagnostics = useCallback(
         async (action: () => Promise<void>): Promise<void> => {
@@ -51,21 +52,24 @@ export function useHomeMediaActions({
         async (mediaId: number): Promise<void> => {
             await runActionAndRefreshDiagnostics(() => mediaLibrary.markAsWatched(mediaId));
         },
-        [mediaLibrary, runActionAndRefreshDiagnostics]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
+        [mediaLibrary.markAsWatched, runActionAndRefreshDiagnostics]
     );
 
     const markAsUnwatched = useCallback(
         async (mediaId: number): Promise<void> => {
             await runActionAndRefreshDiagnostics(() => mediaLibrary.markAsUnwatched(mediaId));
         },
-        [mediaLibrary, runActionAndRefreshDiagnostics]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
+        [mediaLibrary.markAsUnwatched, runActionAndRefreshDiagnostics]
     );
 
     const editMediaTitle = useCallback(
         async (media: MediaRow, title: string): Promise<void> => {
             await runActionAndRefreshDiagnostics(() => mediaLibrary.editTitle(media, title));
         },
-        [mediaLibrary, runActionAndRefreshDiagnostics]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
+        [mediaLibrary.editTitle, runActionAndRefreshDiagnostics]
     );
 
     const saveMediaProgress = useCallback(
@@ -74,16 +78,28 @@ export function useHomeMediaActions({
                 mediaLibrary.saveMediaProgress(mediaId, progressSeconds)
             );
         },
-        [mediaLibrary, runActionAndRefreshDiagnostics]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
+        [mediaLibrary.saveMediaProgress, runActionAndRefreshDiagnostics]
     );
 
-    return {
-        addMedia,
-        confirmDeleteMedia,
-        confirmDeleteChannel,
-        markAsWatched,
-        markAsUnwatched,
-        editMediaTitle,
-        saveMediaProgress,
-    };
+    return useMemo(
+        () => ({
+            addMedia,
+            confirmDeleteMedia,
+            confirmDeleteChannel,
+            markAsWatched,
+            markAsUnwatched,
+            editMediaTitle,
+            saveMediaProgress,
+        }),
+        [
+            addMedia,
+            confirmDeleteMedia,
+            confirmDeleteChannel,
+            markAsWatched,
+            markAsUnwatched,
+            editMediaTitle,
+            saveMediaProgress,
+        ]
+    );
 }

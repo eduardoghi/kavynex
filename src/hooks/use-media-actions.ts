@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { MediaRow } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { executeDeleteMedia } from "../use-cases/delete-media";
@@ -94,7 +94,8 @@ export function useMediaActions({
                 mediaPlayer.closePlayer();
             }
         },
-        [mediaPlayer]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
+        [mediaPlayer.activeMedia?.id, mediaPlayer.closePlayer]
     );
 
     const removeDeletedMediaFromMemory = useCallback(
@@ -168,7 +169,8 @@ export function useMediaActions({
                 }
             });
         },
-        [mediaPlayer, onError, runWatchedAction, setMediaItems]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
+        [mediaPlayer.activeMedia, mediaPlayer.setActiveMedia, onError, runWatchedAction, setMediaItems]
     );
 
     const markAsUnwatched = useCallback(
@@ -195,7 +197,8 @@ export function useMediaActions({
                 }
             });
         },
-        [mediaPlayer, onError, runWatchedAction, setMediaItems]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
+        [mediaPlayer.activeMedia, mediaPlayer.setActiveMedia, onError, runWatchedAction, setMediaItems]
     );
 
     const refreshComments = useCallback(
@@ -250,7 +253,15 @@ export function useMediaActions({
                 }
             });
         },
-        [mediaPlayer, onError, onNotice, runRefreshCommentsAction, setMediaItems]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
+        [
+            mediaPlayer.activeMedia,
+            mediaPlayer.setActiveMedia,
+            onError,
+            onNotice,
+            runRefreshCommentsAction,
+            setMediaItems,
+        ]
     );
 
     const editTitle = useCallback(
@@ -285,7 +296,8 @@ export function useMediaActions({
                 }
             });
         },
-        [mediaPlayer, onError, runUpdateTitleAction, setMediaItems]
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
+        [mediaPlayer.activeMedia, mediaPlayer.setActiveMedia, onError, runUpdateTitleAction, setMediaItems]
     );
 
     const openMediaFileLocation = useCallback(
@@ -328,21 +340,40 @@ export function useMediaActions({
         [onError]
     );
 
-    return {
-        confirmDeleteMediaOpen,
-        mediaToDelete,
-        isDeletingMedia,
-        isUpdatingWatched,
-        isRefreshingComments,
-        isUpdatingTitle,
-        requestDeleteMedia,
-        confirmDeleteMedia,
-        closeDeleteMediaModal,
-        markAsWatched,
-        markAsUnwatched,
-        refreshComments,
-        editTitle,
-        openMediaFileLocation,
-        openMediaSourceInYoutube,
-    };
+    return useMemo(
+        () => ({
+            confirmDeleteMediaOpen,
+            mediaToDelete,
+            isDeletingMedia,
+            isUpdatingWatched,
+            isRefreshingComments,
+            isUpdatingTitle,
+            requestDeleteMedia,
+            confirmDeleteMedia,
+            closeDeleteMediaModal,
+            markAsWatched,
+            markAsUnwatched,
+            refreshComments,
+            editTitle,
+            openMediaFileLocation,
+            openMediaSourceInYoutube,
+        }),
+        [
+            confirmDeleteMediaOpen,
+            mediaToDelete,
+            isDeletingMedia,
+            isUpdatingWatched,
+            isRefreshingComments,
+            isUpdatingTitle,
+            requestDeleteMedia,
+            confirmDeleteMedia,
+            closeDeleteMediaModal,
+            markAsWatched,
+            markAsUnwatched,
+            refreshComments,
+            editTitle,
+            openMediaFileLocation,
+            openMediaSourceInYoutube,
+        ]
+    );
 }

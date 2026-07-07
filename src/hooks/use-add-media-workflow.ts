@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ImportMode } from "../types/settings";
 import { cancelMediaDownload, createMedia } from "../services";
 import { useAddMediaForm } from "./use-add-media-form";
@@ -206,7 +206,7 @@ export function useAddMediaWorkflow({
                 onError(resolveErrorMessage(error, "Failed to cancel media download."));
             }
         });
-    }, [onError, runCancelYtDlp, ytDlpEvents]);
+    }, [onError, runCancelYtDlp, ytDlpEvents.currentRunIdRef, ytDlpEvents.isYtDlpRunning]);
 
     const closeAddMediaModal = useCallback(async (): Promise<void> => {
         const isModalLocked =
@@ -223,8 +223,11 @@ export function useAddMediaWorkflow({
         await addMediaForm.resetForm();
 
         setAddMediaOpen(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render addMediaForm/ytDlpEvents objects
     }, [
-        addMediaForm,
+        addMediaForm.isGeneratingThumb,
+        addMediaForm.isLoadingYtDlpFormats,
+        addMediaForm.resetForm,
         isAddingMedia,
         isCancellingYtDlp,
         ytDlpEvents.isYtDlpRunning,
@@ -245,7 +248,14 @@ export function useAddMediaWorkflow({
             ytDlpEvents.resetYtDlpState(true);
             resetCancellingYtDlp();
         }
-    }, [addMediaForm, addMediaOpen, resetCancellingYtDlp, selectedChannelId, ytDlpEvents]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render addMediaForm/ytDlpEvents objects
+    }, [
+        addMediaForm.resetForm,
+        addMediaOpen,
+        resetCancellingYtDlp,
+        selectedChannelId,
+        ytDlpEvents.resetYtDlpState,
+    ]);
 
     useEffect(() => {
         if (addMediaOpen && !wasAddMediaOpenRef.current) {
@@ -258,18 +268,36 @@ export function useAddMediaWorkflow({
         }
 
         wasAddMediaOpenRef.current = addMediaOpen;
-    }, [addMediaForm, addMediaOpen, resetCancellingYtDlp, ytDlpEvents]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render addMediaForm/ytDlpEvents objects
+    }, [addMediaForm.resetForm, addMediaOpen, resetCancellingYtDlp, ytDlpEvents.resetYtDlpState]);
 
-    return {
-        addMediaOpen,
-        setAddMediaOpen,
-        isAddingMedia,
-        isCancellingYtDlp,
-        ytDlpLogs: ytDlpEvents.ytDlpLogs,
-        isYtDlpRunning: ytDlpEvents.isYtDlpRunning,
-        addMediaForm,
-        addMedia,
-        cancelYtDlpDownload,
-        closeAddMediaModal,
-    };
+    const ytDlpLogs = ytDlpEvents.ytDlpLogs;
+    const isYtDlpRunning = ytDlpEvents.isYtDlpRunning;
+
+    return useMemo(
+        () => ({
+            addMediaOpen,
+            setAddMediaOpen,
+            isAddingMedia,
+            isCancellingYtDlp,
+            ytDlpLogs,
+            isYtDlpRunning,
+            addMediaForm,
+            addMedia,
+            cancelYtDlpDownload,
+            closeAddMediaModal,
+        }),
+        [
+            addMediaOpen,
+            setAddMediaOpen,
+            isAddingMedia,
+            isCancellingYtDlp,
+            ytDlpLogs,
+            isYtDlpRunning,
+            addMediaForm,
+            addMedia,
+            cancelYtDlpDownload,
+            closeAddMediaModal,
+        ]
+    );
 }

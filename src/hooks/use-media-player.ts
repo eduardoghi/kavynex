@@ -75,18 +75,34 @@ export function useMediaPlayer({
         }
     }, [activeMedia?.id, activeYoutubeUrl]);
 
-    return {
-        viewMode,
-        activeMedia,
-        activeIsAudio,
-        activeSrc,
-        activeThumbSrc,
-        activeYoutubeUrl,
-        canOpenInYoutube,
-        activeIsWatched,
-        openPlayer,
-        setActiveMedia,
-        closePlayer,
-        openInYoutube,
-    };
+    return useMemo(
+        () => ({
+            viewMode,
+            activeMedia,
+            activeIsAudio,
+            activeSrc,
+            activeThumbSrc,
+            activeYoutubeUrl,
+            canOpenInYoutube,
+            activeIsWatched,
+            openPlayer,
+            setActiveMedia,
+            closePlayer,
+            openInYoutube,
+        }),
+        [
+            viewMode,
+            activeMedia,
+            activeIsAudio,
+            activeSrc,
+            activeThumbSrc,
+            activeYoutubeUrl,
+            canOpenInYoutube,
+            activeIsWatched,
+            openPlayer,
+            setActiveMedia,
+            closePlayer,
+            openInYoutube,
+        ]
+    );
 }
