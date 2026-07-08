@@ -2,7 +2,7 @@ import type { ImportMode } from "../types/settings";
 import type { MediaSourceMode, MediaType } from "../types/media";
 import { createAppError } from "../utils/app-error";
 import { assertValidEntityId } from "../utils/id-validation";
-import { COOKIES_BROWSER_VALUES } from "../constants/cookies-browsers";
+import { normalizeCookiesBrowser } from "../constants/cookies-browsers";
 
 export type CreateMediaInput = {
     channelId: number;
@@ -29,11 +29,6 @@ function normalizeOptionalValue(value: string | null | undefined): string | null
 
 function normalizeRequiredValue(value: string): string {
     return value.trim();
-}
-
-function normalizeCookiesBrowser(value: string | null | undefined): string | null {
-    const normalized = value?.trim().toLowerCase() ?? "";
-    return COOKIES_BROWSER_VALUES.has(normalized) ? normalized : null;
 }
 
 export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaInput {

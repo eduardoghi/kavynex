@@ -2,12 +2,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import type { DownloadedMediaResult, YtDlpComment, YtDlpFormatsResult } from "../types/media";
 import { createAppError } from "../utils/app-error";
-import { COOKIES_BROWSER_VALUES } from "../constants/cookies-browsers";
-
-function normalizeCookiesBrowser(value: string | null | undefined): string | null {
-    const normalized = value?.trim().toLowerCase() ?? "";
-    return COOKIES_BROWSER_VALUES.has(normalized) ? normalized : null;
-}
+import { normalizeCookiesBrowser } from "../constants/cookies-browsers";
 
 function normalizeCookiesPath(value: string | null | undefined): string | null {
     const normalized = value?.trim() ?? "";

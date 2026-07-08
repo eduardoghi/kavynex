@@ -22,10 +22,6 @@ export {
 } from "./diagnostics-runtime";
 
 export {
-    loadExternalToolsStatus,
-} from "./external-tools-service";
-
-export {
     resolveDefaultLibraryDirectory,
     ensureDirectoryExists,
     resolveExistingDirectory,

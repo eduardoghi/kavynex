@@ -66,16 +66,5 @@ export const TAURI_COMMANDS = {
     LIST_MEDIA_INTEGRITY_REFERENCES: "list_media_integrity_references",
 } as const;
 
-export const TAURI_EVENTS = {
-    YT_DLP_LOG: "yt-dlp-log",
-    YT_DLP_ERROR: "yt-dlp-error",
-    YT_DLP_FINISHED: "yt-dlp-finished",
-    YT_DLP_CANCELLED: "yt-dlp-cancelled",
-    YT_DLP_TERMINAL: "yt-dlp-terminal",
-} as const;
-
 export type TauriCommandName =
     typeof TAURI_COMMANDS[keyof typeof TAURI_COMMANDS];
-
-export type TauriEventName =
-    typeof TAURI_EVENTS[keyof typeof TAURI_EVENTS];

@@ -32,8 +32,6 @@ type UseAddMediaFormReturn = {
     downloadLiveChat: boolean;
     cookiesBrowser: string;
     cookiesPath: string;
-    isDragging: boolean;
-    isThumbDragging: boolean;
     isGeneratingThumb: boolean;
 
     ytDlpFormats: YtDlpFormat[];
@@ -56,14 +54,6 @@ type UseAddMediaFormReturn = {
 
     pickMediaViaDialog: () => Promise<void>;
     pickThumbViaDialog: () => Promise<void>;
-    applyDroppedMediaPath: () => Promise<void>;
-    applyDroppedThumbPath: () => Promise<void>;
-    onDropMedia: () => void;
-    onDragOverMedia: () => void;
-    onDragLeaveMedia: () => void;
-    onDropThumb: () => void;
-    onDragOverThumb: () => void;
-    onDragLeaveThumb: () => void;
     resetForm: () => Promise<void>;
 };
 
@@ -108,8 +98,6 @@ export function useAddMediaForm({
         mediaPath,
         mediaType,
         publishedAt,
-        isDragging,
-        isThumbDragging,
     } = formState.state;
 
     const thumbnailState = useTempThumbnail();
@@ -138,11 +126,6 @@ export function useAddMediaForm({
         },
         [onError]
     );
-
-    const resetDragState = useCallback((): void => {
-        formState.setIsDraggingState(false);
-        formState.setIsThumbDraggingState(false);
-    }, [formState]);
 
     const applyMediaSelection = useCallback(
         async (path: string): Promise<void> => {
@@ -186,8 +169,6 @@ export function useAddMediaForm({
                 return;
             }
 
-            formState.setIsThumbDraggingState(false);
-
             // The picked thumbnail lives outside the library. Authorize the asset
             // protocol to read this specific file so the preview can load. Failure is
             // non-fatal: only the preview thumbnail would be missing.
@@ -199,7 +180,7 @@ export function useAddMediaForm({
 
             await thumbnailState.setManualThumbPath(normalizedPath);
         },
-        [formState, thumbnailState]
+        [thumbnailState]
     );
 
     const pickSinglePathFromDialog = useCallback(async (): Promise<string> => {
@@ -247,14 +228,13 @@ export function useAddMediaForm({
             formState.setSourceModeState(value);
             ytDlpState.resetYtDlpFormats();
             ytDlpTerminal?.resetYtDlpState(true);
-            resetDragState();
             setDownloadComments(true);
             setDownloadLiveChat(true);
             setCookiesBrowserState("");
             setCookiesPathState("");
             await thumbnailState.resetThumbState();
         },
-        [formState, resetDragState, thumbnailState, ytDlpState, ytDlpTerminal]
+        [formState, thumbnailState, ytDlpState, ytDlpTerminal]
     );
 
     const setMediaUrl = useCallback(
@@ -350,25 +330,16 @@ export function useAddMediaForm({
         }
     }, [applyThumbSelection, pickSinglePathFromDialog, reportError]);
 
-    const noopAsync = useCallback(async (): Promise<void> => {
-        return;
-    }, []);
-
-    const noop = useCallback((): void => {
-        return;
-    }, []);
-
     const resetForm = useCallback(async (): Promise<void> => {
         formState.resetFormState();
         ytDlpState.resetYtDlpFormats();
         ytDlpTerminal?.resetYtDlpState(true);
-        resetDragState();
         setDownloadComments(true);
         setDownloadLiveChat(true);
         setCookiesBrowserState("");
         setCookiesPathState("");
         await thumbnailState.resetThumbState();
-    }, [formState, resetDragState, thumbnailState, ytDlpState, ytDlpTerminal]);
+    }, [formState, thumbnailState, ytDlpState, ytDlpTerminal]);
 
     return {
         sourceMode,
@@ -382,8 +353,6 @@ export function useAddMediaForm({
         downloadLiveChat,
         cookiesBrowser,
         cookiesPath,
-        isDragging,
-        isThumbDragging,
         isGeneratingThumb: thumbnailState.isGeneratingThumb,
 
         ytDlpFormats: ytDlpState.ytDlpFormats,
@@ -406,14 +375,6 @@ export function useAddMediaForm({
 
         pickMediaViaDialog,
         pickThumbViaDialog,
-        applyDroppedMediaPath: noopAsync,
-        applyDroppedThumbPath: noopAsync,
-        onDropMedia: noop,
-        onDragOverMedia: noop,
-        onDragLeaveMedia: noop,
-        onDropThumb: noop,
-        onDragOverThumb: noop,
-        onDragLeaveThumb: noop,
         resetForm,
     };
 }

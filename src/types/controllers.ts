@@ -24,8 +24,6 @@ export type AddMediaFormController = {
     downloadLiveChat: boolean;
     cookiesBrowser: string;
     cookiesPath: string;
-    isDragging: boolean;
-    isThumbDragging: boolean;
     isGeneratingThumb: boolean;
     ytDlpFormats: YtDlpFormat[];
     selectedYtDlpFormatId: string;
@@ -45,14 +43,6 @@ export type AddMediaFormController = {
     loadYtDlpFormats: () => Promise<void>;
     pickMediaViaDialog: () => Promise<void>;
     pickThumbViaDialog: () => Promise<void>;
-    applyDroppedMediaPath: (path: string) => Promise<void>;
-    applyDroppedThumbPath: (path: string) => Promise<void>;
-    onDropMedia: (event: React.DragEvent<HTMLDivElement>) => void | Promise<void>;
-    onDragOverMedia: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDragLeaveMedia: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDropThumb: (event: React.DragEvent<HTMLDivElement>) => void | Promise<void>;
-    onDragOverThumb: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDragLeaveThumb: (event: React.DragEvent<HTMLDivElement>) => void;
     resetForm: () => Promise<void>;
 };
 

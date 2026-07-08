@@ -5,11 +5,6 @@ import {
 } from "../services/library-service";
 import { logError } from "../utils/app-logger";
 
-const DEFAULT_SETTINGS: AppSettings = {
-    importMode: "copy",
-    libraryPath: "",
-};
-
 export type InitializeAppSettingsResult = {
     settings: AppSettings;
     shouldWarnAboutLibraryPath: boolean;
@@ -57,8 +52,4 @@ export async function initializeAppSettings({
         // path is the normal empty state, not a warning.
         shouldWarnAboutLibraryPath: storedLibraryPath !== "" && libraryPath === "",
     };
-}
-
-export function getDefaultAppSettings(): AppSettings {
-    return DEFAULT_SETTINGS;
 }

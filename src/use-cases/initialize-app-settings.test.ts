@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getDefaultAppSettings, initializeAppSettings } from "./initialize-app-settings";
+import { initializeAppSettings } from "./initialize-app-settings";
 
 vi.mock("../services/library-service", () => ({
     resolveExistingDirectory: vi.fn(),
@@ -113,12 +113,5 @@ describe("initializeAppSettings", () => {
             },
         });
         expect(copied.settings.importMode).toBe("copy");
-    });
-
-    it("returns copy mode and an empty library path as the defaults", () => {
-        expect(getDefaultAppSettings()).toStrictEqual({
-            importMode: "copy",
-            libraryPath: "",
-        });
     });
 });

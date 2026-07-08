@@ -477,20 +477,6 @@ describe("useAddMediaForm", () => {
         expect(result.current.mediaType).toBe("audio");
     });
 
-    it("keeps drag flags disabled", () => {
-        const { result } = renderHook(() => useAddMediaForm());
-
-        act(() => {
-            result.current.onDragOverMedia();
-            result.current.onDragLeaveMedia();
-            result.current.onDragOverThumb();
-            result.current.onDragLeaveThumb();
-        });
-
-        expect(result.current.isDragging).toBe(false);
-        expect(result.current.isThumbDragging).toBe(false);
-    });
-
     it("resets form", async () => {
         const { result } = renderHook(() => useAddMediaForm());
 

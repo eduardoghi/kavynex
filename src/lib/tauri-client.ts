@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
-import type { TauriCommandName, TauriEventName } from "../constants/tauri-commands";
+import type { TauriCommandName } from "../constants/tauri-commands";
 import { parseAppError } from "../utils/app-error";
 
 type InvokeArgs = Record<string, unknown> | undefined;
@@ -31,7 +31,7 @@ export async function invokeVoid(
 }
 
 export async function listenTauri<TPayload>(
-    eventName: TauriEventName | string,
+    eventName: string,
     handler: (event: Event<TPayload>) => void
 ): Promise<UnlistenFn> {
     return listen<TPayload>(eventName, handler);

@@ -1,10 +1,7 @@
 import { listLiveChatFiles } from "./live-chat-service";
 import { listMediaIntegrityReferences } from "../repositories/media-repository";
 import type { LiveChatIntegrityReport, MediaIntegrityReference } from "../types/diagnostics";
-
-function normalizeNonEmptyUniquePaths(values: Array<string | null | undefined>): string[] {
-    return [...new Set(values.map((value) => value?.trim() ?? "").filter((value) => value !== ""))];
-}
+import { normalizeNonEmptyUniquePaths } from "../utils/paths";
 
 function buildExpectedLiveChatPaths(mediaReferences: MediaIntegrityReference[]): string[] {
     return normalizeNonEmptyUniquePaths(

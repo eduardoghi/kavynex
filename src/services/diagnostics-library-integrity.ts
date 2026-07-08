@@ -2,6 +2,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeTauri } from "../lib/tauri-client";
 import { listMediaIntegrityReferences } from "../repositories/media-repository";
 import type { LibraryIntegrityReport, MediaIntegrityReference } from "../types/diagnostics";
+import { normalizeNonEmptyUniquePaths } from "../utils/paths";
 
 function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
     return {
@@ -16,10 +17,6 @@ function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
         orphan_thumbnail_files: 0,
         orphan_thumbnail_examples: [],
     };
-}
-
-function normalizeNonEmptyUniquePaths(values: Array<string | null | undefined>): string[] {
-    return [...new Set(values.map((value) => value?.trim() ?? "").filter((value) => value !== ""))];
 }
 
 function buildIntegrityPayload(mediaReferences: MediaIntegrityReference[]): {

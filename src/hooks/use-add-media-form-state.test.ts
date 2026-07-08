@@ -13,8 +13,6 @@ describe("useAddMediaFormState", () => {
             mediaPath: "",
             mediaType: "video",
             publishedAt: "",
-            isDragging: false,
-            isThumbDragging: false,
         });
     });
 
@@ -25,8 +23,6 @@ describe("useAddMediaFormState", () => {
             result.current.setTitleState("Test");
             result.current.setMediaUrlState("https://youtube.com/watch?v=123");
             result.current.setPublishedAtState("2026-03-31");
-            result.current.setIsDraggingState(true);
-            result.current.setIsThumbDraggingState(true);
             result.current.setSourceModeState("yt-dlp");
         });
 
@@ -37,8 +33,6 @@ describe("useAddMediaFormState", () => {
             mediaPath: "",
             mediaType: "video",
             publishedAt: "",
-            isDragging: false,
-            isThumbDragging: false,
         });
     });
 
@@ -59,7 +53,6 @@ describe("useAddMediaFormState", () => {
         expect(result.current.state.title).toBe("Custom title");
         expect(result.current.state.mediaUrl).toBe("");
         expect(result.current.state.publishedAt).toBe("");
-        expect(result.current.state.isDragging).toBe(false);
     });
 
     it("applies local media selection and fills title when current title is empty", () => {
@@ -91,40 +84,6 @@ describe("useAddMediaFormState", () => {
         expect(result.current.state.sourceMode).toBe("local");
     });
 
-    it("toggles the media dragging flag without touching the thumb dragging flag", () => {
-        const { result } = renderHook(() => useAddMediaFormState());
-
-        act(() => {
-            result.current.setIsDraggingState(true);
-        });
-
-        expect(result.current.state.isDragging).toBe(true);
-        expect(result.current.state.isThumbDragging).toBe(false);
-
-        act(() => {
-            result.current.setIsDraggingState(false);
-        });
-
-        expect(result.current.state.isDragging).toBe(false);
-    });
-
-    it("toggles the thumb dragging flag without touching the media dragging flag", () => {
-        const { result } = renderHook(() => useAddMediaFormState());
-
-        act(() => {
-            result.current.setIsThumbDraggingState(true);
-        });
-
-        expect(result.current.state.isThumbDragging).toBe(true);
-        expect(result.current.state.isDragging).toBe(false);
-
-        act(() => {
-            result.current.setIsThumbDraggingState(false);
-        });
-
-        expect(result.current.state.isThumbDragging).toBe(false);
-    });
-
     it("resets the whole form", () => {
         const { result } = renderHook(() => useAddMediaFormState());
 
@@ -142,8 +101,6 @@ describe("useAddMediaFormState", () => {
             mediaPath: "",
             mediaType: "video",
             publishedAt: "",
-            isDragging: false,
-            isThumbDragging: false,
         });
     });
 });

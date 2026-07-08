@@ -8,8 +8,6 @@ type AddMediaFormState = {
     mediaPath: string;
     mediaType: MediaType;
     publishedAt: string;
-    isDragging: boolean;
-    isThumbDragging: boolean;
 };
 
 type AddMediaFormAction =
@@ -37,14 +35,6 @@ type AddMediaFormAction =
           payload: MediaType;
       }
     | {
-          type: "SET_MEDIA_DRAGGING";
-          payload: boolean;
-      }
-    | {
-          type: "SET_THUMB_DRAGGING";
-          payload: boolean;
-      }
-    | {
           type: "APPLY_LOCAL_MEDIA_SELECTION";
           payload: {
               mediaPath: string;
@@ -61,8 +51,6 @@ function createInitialState(): AddMediaFormState {
         mediaPath: "",
         mediaType: "video",
         publishedAt: "",
-        isDragging: false,
-        isThumbDragging: false,
     };
 }
 
@@ -104,25 +92,12 @@ function addMediaFormStateReducer(
                 mediaType: action.payload,
             };
 
-        case "SET_MEDIA_DRAGGING":
-            return {
-                ...state,
-                isDragging: action.payload,
-            };
-
-        case "SET_THUMB_DRAGGING":
-            return {
-                ...state,
-                isThumbDragging: action.payload,
-            };
-
         case "APPLY_LOCAL_MEDIA_SELECTION":
             return {
                 ...state,
                 mediaUrl: "",
                 mediaPath: action.payload.mediaPath,
                 mediaType: action.payload.mediaType,
-                isDragging: false,
                 title: action.payload.nextTitle ?? state.title,
             };
 
@@ -138,8 +113,6 @@ type UseAddMediaFormStateReturn = {
     setTitleState: (value: string) => void;
     setPublishedAtState: (value: string) => void;
     setMediaTypeState: (value: MediaType) => void;
-    setIsDraggingState: (value: boolean) => void;
-    setIsThumbDraggingState: (value: boolean) => void;
     applyLocalMediaSelectionState: (
         mediaPath: string,
         mediaType: MediaType,
@@ -186,20 +159,6 @@ export function useAddMediaFormState(): UseAddMediaFormStateReturn {
         });
     }, []);
 
-    const setIsDraggingState = useCallback((value: boolean): void => {
-        dispatch({
-            type: "SET_MEDIA_DRAGGING",
-            payload: value,
-        });
-    }, []);
-
-    const setIsThumbDraggingState = useCallback((value: boolean): void => {
-        dispatch({
-            type: "SET_THUMB_DRAGGING",
-            payload: value,
-        });
-    }, []);
-
     const applyLocalMediaSelectionState = useCallback(
         (mediaPath: string, mediaType: MediaType, nextTitle: string | null): void => {
             dispatch({
@@ -227,8 +186,6 @@ export function useAddMediaFormState(): UseAddMediaFormStateReturn {
         setTitleState,
         setPublishedAtState,
         setMediaTypeState,
-        setIsDraggingState,
-        setIsThumbDraggingState,
         applyLocalMediaSelectionState,
         resetFormState,
     };

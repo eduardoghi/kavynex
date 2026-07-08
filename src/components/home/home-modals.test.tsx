@@ -28,8 +28,6 @@ function createAddMediaForm(): AddMediaFormController {
         downloadLiveChat: true,
         cookiesBrowser: "",
         cookiesPath: "",
-        isDragging: false,
-        isThumbDragging: false,
         isGeneratingThumb: false,
         ytDlpFormats: [],
         selectedYtDlpFormatId: "",
@@ -49,14 +47,6 @@ function createAddMediaForm(): AddMediaFormController {
         loadYtDlpFormats: vi.fn().mockResolvedValue(undefined),
         pickMediaViaDialog: vi.fn().mockResolvedValue(undefined),
         pickThumbViaDialog: vi.fn().mockResolvedValue(undefined),
-        applyDroppedMediaPath: vi.fn().mockResolvedValue(undefined),
-        applyDroppedThumbPath: vi.fn().mockResolvedValue(undefined),
-        onDropMedia: vi.fn(),
-        onDragOverMedia: vi.fn(),
-        onDragLeaveMedia: vi.fn(),
-        onDropThumb: vi.fn(),
-        onDragOverThumb: vi.fn(),
-        onDragLeaveThumb: vi.fn(),
         resetForm: vi.fn().mockResolvedValue(undefined),
     };
 }
