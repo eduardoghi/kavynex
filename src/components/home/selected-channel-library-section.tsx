@@ -15,14 +15,16 @@ import { ArrowDownAZ, ArrowLeft, ArrowUpAZ, Search, Video } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
+import {
+    filterAndSortMedia,
+    type MediaTypeFilter,
+    type PublicationDateFilter,
+    type SortCategory,
+    type SortDirection,
+    type WatchedFilter,
+} from "../../utils/media-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
 import { AppButton } from "../ui/app-button";
-
-type MediaTypeFilter = "all" | "video" | "audio";
-type WatchedFilter = "all" | "watched" | "unwatched";
-type PublicationDateFilter = "all" | "with" | "without";
-type SortCategory = "publication_date" | "added_date" | "title" | "duration" | "comments";
-type SortDirection = "desc" | "asc";
 
 type SelectedChannelLibrarySectionProps = {
     selectedChannel: Channel;
@@ -45,80 +47,6 @@ type SelectedChannelLibrarySectionProps = {
     onOpenSourceInYoutube?: (media: MediaRow) => void;
     onEditTitle?: (media: MediaRow) => void;
 };
-
-function normalizeText(value: string): string {
-    return value
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .toLocaleLowerCase("en-US");
-}
-
-function parseDateValue(value: string | null | undefined): number {
-    const normalized = value?.trim() ?? "";
-
-    if (!normalized) {
-        return 0;
-    }
-
-    const parsed = Date.parse(normalized.replace(" ", "T"));
-    return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function getCommentsCount(media: MediaRow): number {
-    return Math.max(0, media.comments_count ?? 0);
-}
-
-function getDuration(media: MediaRow): number {
-    return Math.max(0, media.duration_seconds ?? 0);
-}
-
-function getAddedDateValue(media: MediaRow): number {
-    return parseDateValue(media.created_at);
-}
-
-function getPublicationDateValue(media: MediaRow): number {
-    return parseDateValue(media.published_at);
-}
-
-function compareText(left: string, right: string): number {
-    return left.localeCompare(right, undefined, {
-        sensitivity: "base",
-        numeric: true,
-    });
-}
-
-function comparePublicationDate(
-    left: MediaRow,
-    right: MediaRow,
-    sortDirection: SortDirection
-): number {
-    const leftDate = getPublicationDateValue(left);
-    const rightDate = getPublicationDateValue(right);
-    const leftHasDate = leftDate > 0;
-    const rightHasDate = rightDate > 0;
-
-    if (leftHasDate && !rightHasDate) {
-        return -1;
-    }
-
-    if (!leftHasDate && rightHasDate) {
-        return 1;
-    }
-
-    if (!leftHasDate && !rightHasDate) {
-        return compareText(left.title, right.title);
-    }
-
-    const result = leftDate - rightDate;
-
-    if (result === 0) {
-        return compareText(left.title, right.title);
-    }
-
-    return sortDirection === "asc" ? result : result * -1;
-}
 
 export function SelectedChannelLibrarySection({
     selectedChannel,
@@ -151,81 +79,26 @@ export function SelectedChannelLibrarySection({
     const [sortCategory, setSortCategory] = useState<SortCategory>("publication_date");
     const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-    const filteredItems = useMemo(() => {
-        const searchTerm = normalizeText(searchValue);
-
-        const nextItems = mediaItems.filter((media) => {
-            if (mediaTypeFilter !== "all" && media.media_type !== mediaTypeFilter) {
-                return false;
-            }
-
-            const isWatched = Boolean(media.watched_at?.trim());
-
-            if (watchedFilter === "watched" && !isWatched) {
-                return false;
-            }
-
-            if (watchedFilter === "unwatched" && isWatched) {
-                return false;
-            }
-
-            const hasPublicationDate = Boolean(media.published_at?.trim());
-
-            if (publicationDateFilter === "with" && !hasPublicationDate) {
-                return false;
-            }
-
-            if (publicationDateFilter === "without" && hasPublicationDate) {
-                return false;
-            }
-
-            if (searchTerm && !normalizeText(media.title).includes(searchTerm)) {
-                return false;
-            }
-
-            return true;
-        });
-
-        nextItems.sort((left, right) => {
-            let result = 0;
-
-            if (sortCategory === "publication_date") {
-                return comparePublicationDate(left, right, sortDirection);
-            } else if (sortCategory === "added_date") {
-                result = getAddedDateValue(left) - getAddedDateValue(right);
-
-                if (result === 0) {
-                    result = compareText(left.title, right.title);
-                }
-            } else if (sortCategory === "title") {
-                result = compareText(left.title, right.title);
-            } else if (sortCategory === "duration") {
-                result = getDuration(left) - getDuration(right);
-
-                if (result === 0) {
-                    result = compareText(left.title, right.title);
-                }
-            } else if (sortCategory === "comments") {
-                result = getCommentsCount(left) - getCommentsCount(right);
-
-                if (result === 0) {
-                    result = compareText(left.title, right.title);
-                }
-            }
-
-            return sortDirection === "asc" ? result : result * -1;
-        });
-
-        return nextItems;
-    }, [
-        mediaItems,
-        mediaTypeFilter,
-        watchedFilter,
-        publicationDateFilter,
-        searchValue,
-        sortCategory,
-        sortDirection,
-    ]);
+    const filteredItems = useMemo(
+        () =>
+            filterAndSortMedia(mediaItems, {
+                searchValue,
+                mediaTypeFilter,
+                watchedFilter,
+                publicationDateFilter,
+                sortCategory,
+                sortDirection,
+            }),
+        [
+            mediaItems,
+            mediaTypeFilter,
+            watchedFilter,
+            publicationDateFilter,
+            searchValue,
+            sortCategory,
+            sortDirection,
+        ]
+    );
 
     const filteredCountLabel = `${UI_TEXT.library.showing} ${filteredItems.length} ${UI_TEXT.library.of} ${mediaItems.length} ${UI_TEXT.home.itemCountSuffix}`;
 

@@ -8,6 +8,7 @@ import {
     fileSrcFromStoredPath,
     formatBytes,
     formatCreatedAt,
+    formatDuration,
     formatPublishedDate,
     initials,
     isThumbnailFile,
@@ -342,6 +343,33 @@ describe("media-utils", () => {
         it("formats gigabytes starting exactly at 1024 MB", () => {
             expect(formatBytes(1024 * 1024 * 1024)).toBe("1.00 GB");
             expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe("2.50 GB");
+        });
+    });
+
+    describe("formatDuration", () => {
+        it("returns an empty string for null, undefined, non-finite and non-positive values", () => {
+            expect(formatDuration(null)).toBe("");
+            expect(formatDuration(undefined)).toBe("");
+            expect(formatDuration(0)).toBe("");
+            expect(formatDuration(-5)).toBe("");
+            expect(formatDuration(Number.POSITIVE_INFINITY)).toBe("");
+            expect(formatDuration(Number.NaN)).toBe("");
+        });
+
+        it("formats durations under an hour as m:ss", () => {
+            expect(formatDuration(5)).toBe("0:05");
+            expect(formatDuration(65)).toBe("1:05");
+            expect(formatDuration(600)).toBe("10:00");
+        });
+
+        it("formats durations of an hour or more as h:mm:ss", () => {
+            expect(formatDuration(3600)).toBe("1:00:00");
+            expect(formatDuration(3661)).toBe("1:01:01");
+            expect(formatDuration(37325)).toBe("10:22:05");
+        });
+
+        it("floors fractional seconds", () => {
+            expect(formatDuration(65.9)).toBe("1:05");
         });
     });
 

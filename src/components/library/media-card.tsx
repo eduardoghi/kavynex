@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
-import { fileSrcFromStoredPath, formatPublishedDate } from "../../utils/media-utils";
+import { fileSrcFromStoredPath, formatDuration, formatPublishedDate } from "../../utils/media-utils";
 
 type MediaCardProps = {
     media: MediaRow;
@@ -36,23 +36,6 @@ export const MEDIA_CARD_HEIGHT = 292;
 const MEDIA_THUMBNAIL_HEIGHT = 158;
 const MEDIA_TITLE_HEIGHT = 44;
 const MEDIA_FOOTER_HEIGHT = 28;
-
-function formatDuration(seconds: number | null): string {
-    if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) {
-        return "";
-    }
-
-    const totalSeconds = Math.floor(seconds);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const remainingSeconds = totalSeconds % 60;
-
-    if (hours > 0) {
-        return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-    }
-
-    return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
 
 function MediaCardComponent({
     media,
