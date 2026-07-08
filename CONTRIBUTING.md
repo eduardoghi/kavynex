@@ -10,8 +10,9 @@ See also `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/DIRECTORIES.md`, and
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) (an LTS version; CI uses `lts/*`)
-- [pnpm](https://pnpm.io/) (CI pins `pnpm/action-setup` to major version 10)
+- [Node.js](https://nodejs.org/) - match the version the CI/release workflows pin (see
+  `.github/workflows/`), so local builds and CI agree
+- [pnpm](https://pnpm.io/) - match the `pnpm/action-setup` major those workflows pin
 - [Rust](https://www.rust-lang.org/), via [rustup](https://rustup.rs/). The exact
   toolchain is pinned in `rust-toolchain.toml` (`1.96.0`, with `rustfmt` and `clippy`) -
   rustup will pick it up automatically when you run any `cargo`/`rustc` command inside the
