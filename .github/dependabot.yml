@@ -5,15 +5,23 @@ updates:
       schedule:
           interval: weekly
       open-pull-requests-limit: 10
+      # Dependency bumps are committed as `build:` per CONTRIBUTING.md, so the message
+      # survives a squash-merge without violating the commit convention.
+      commit-message:
+          prefix: "build"
 
     - package-ecosystem: cargo
       directory: "/src-tauri"
       schedule:
           interval: weekly
       open-pull-requests-limit: 10
+      commit-message:
+          prefix: "build"
 
     - package-ecosystem: github-actions
       directory: "/"
       schedule:
           interval: weekly
       open-pull-requests-limit: 10
+      commit-message:
+          prefix: "build"
