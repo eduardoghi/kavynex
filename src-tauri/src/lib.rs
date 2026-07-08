@@ -70,6 +70,62 @@ fn spawn_periodic_backup(app_handle: AppHandle) {
     });
 }
 
+/// Reports a fatal startup failure and terminates with a non-zero code. The app is built with
+/// `windows_subsystem = "windows"` (no console), so a panic here would be invisible - the user
+/// would just see the app fail to open. This logs the reason (stderr, plus the file log if it
+/// was initialized) and, on Windows, shows it in a native dialog before exiting.
+fn fail_startup(message: &str) -> ! {
+    services::logger::error("app", message);
+    show_startup_error_dialog(message);
+    std::process::exit(1);
+}
+
+#[cfg(windows)]
+fn show_startup_error_dialog(message: &str) {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    fn to_wide(value: &str) -> Vec<u16> {
+        OsStr::new(value)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn MessageBoxW(
+            hwnd: *mut core::ffi::c_void,
+            text: *const u16,
+            caption: *const u16,
+            u_type: u32,
+        ) -> i32;
+    }
+
+    const MB_OK: u32 = 0x0000_0000;
+    const MB_ICONERROR: u32 = 0x0000_0010;
+
+    let text = to_wide(message);
+    let caption = to_wide("Kavynex could not start");
+
+    // SAFETY: both buffers are NUL-terminated UTF-16 and outlive the call; a null hwnd shows
+    // an unowned modal dialog, which is what we want when there is no application window yet.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn show_startup_error_dialog(_message: &str) {
+    // Non-Windows builds do not hide the console, so the stderr line logged above is already
+    // visible in the terminal/journal; no native dialog is needed.
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -196,7 +252,7 @@ pub fn run() {
             commands::videos::list_media_integrity_references
         ])
         .build(tauri::generate_context!())
-        .expect("failed to build tauri application")
+        .unwrap_or_else(|error| fail_startup(&format!("failed to build the application: {error}")))
         .run(|_app_handle, event| {
             // Terminate any in-flight yt-dlp/ffmpeg downloads when the app is exiting so
             // they are not left running as orphaned processes after the window closes.
