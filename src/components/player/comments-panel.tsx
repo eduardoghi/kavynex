@@ -15,6 +15,7 @@ import {
     TextInput,
     rem,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { ChevronDown, ChevronUp, MessageCircle, Search, ThumbsUp, X } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
@@ -35,6 +36,11 @@ import {
 // comments does not build an unbounded DOM. More threads are revealed on demand.
 const INITIAL_VISIBLE_THREADS = 30;
 const LOAD_MORE_STEP = 30;
+
+// Debounce the search before it drives the (whole-tree) filter, so typing in media with
+// thousands of comments does not re-walk the tree on every keystroke. The input itself stays
+// controlled and responsive.
+const COMMENT_SEARCH_DEBOUNCE_MS = 200;
 
 type CommentsPanelProps = {
     comments: MediaCommentRow[];
@@ -202,6 +208,10 @@ export function CommentsPanel({
 }: CommentsPanelProps): JSX.Element {
     const [commentSortMode, setCommentSortMode] = useState<CommentSortMode>("likes");
     const [commentSearchValue, setCommentSearchValue] = useState("");
+    const [debouncedCommentSearch] = useDebouncedValue(
+        commentSearchValue,
+        COMMENT_SEARCH_DEBOUNCE_MS
+    );
 
     const commentTree = useMemo(
         () => buildCommentTree(comments, commentSortMode),
@@ -209,8 +219,8 @@ export function CommentsPanel({
     );
 
     const normalizedCommentSearch = useMemo(
-        () => normalizeSearchValue(commentSearchValue),
-        [commentSearchValue]
+        () => normalizeSearchValue(debouncedCommentSearch),
+        [debouncedCommentSearch]
     );
 
     const filteredCommentTree = useMemo(
