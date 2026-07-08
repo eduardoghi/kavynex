@@ -4,6 +4,7 @@ import { spawnSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { isValidSemver, replaceCargoVersion } from "./version-utils.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +16,7 @@ if (!newVersion) {
     process.exit(1);
 }
 
-if (!/^\d+\.\d+\.\d+$/.test(newVersion)) {
+if (!isValidSemver(newVersion)) {
     console.error(`Invalid version "${newVersion}". Expected semver format: X.Y.Z`);
     process.exit(1);
 }
@@ -37,15 +38,15 @@ tauriConf.version = newVersion;
 writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 4) + "\n");
 console.log(`tauri.conf.json  ${oldVersion} -> ${newVersion}`);
 
-// src-tauri/Cargo.toml - only matches the [package] version (full X.Y.Z semver)
-const cargoVersionRegex = /^version = "\d+\.\d+\.\d+"/m;
+// src-tauri/Cargo.toml - only the [package] version line (full X.Y.Z semver) is touched.
 const cargoPath = join(root, "src-tauri", "Cargo.toml");
 const cargo = readFileSync(cargoPath, "utf8");
-if (!cargoVersionRegex.test(cargo)) {
+const updatedCargo = replaceCargoVersion(cargo, newVersion);
+if (updatedCargo === null) {
     console.error("Cargo.toml: version line not found - update manually");
     process.exit(1);
 }
-writeFileSync(cargoPath, cargo.replace(cargoVersionRegex, `version = "${newVersion}"`));
+writeFileSync(cargoPath, updatedCargo);
 console.log(`Cargo.toml       ${oldVersion} -> ${newVersion}`);
 
 // Cargo.lock records the package version too; regenerate it so a bump commit never

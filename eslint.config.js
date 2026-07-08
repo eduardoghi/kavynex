@@ -10,7 +10,6 @@ export default tseslint.config(
             "coverage/**",
             "node_modules/**",
             "src-tauri/**",
-            "scripts/**",
             "src/types/generated/**",
             "**/*.config.{js,cjs,ts}",
         ],
@@ -50,6 +49,15 @@ export default tseslint.config(
         rules: {
             // Test mocks legitimately use `any`; production code has none (enforced above).
             "@typescript-eslint/no-explicit-any": "off",
+        },
+    },
+    {
+        // Release/build helper scripts: plain ESM run by Node, not the browser bundle.
+        files: ["scripts/**/*.js"],
+        languageOptions: {
+            globals: {
+                ...globals.node,
+            },
         },
     }
 );
