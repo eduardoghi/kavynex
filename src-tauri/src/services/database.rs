@@ -161,11 +161,29 @@ where
     .map(|_| ())
 }
 
+/// Accepts only the two supported import modes. The UI only ever sends these, so any other
+/// value comes from a bug or a compromised frontend and is rejected rather than persisted -
+/// otherwise a later read would surface a nonsensical mode in the settings UI. `library_path`
+/// is intentionally left free-form: it is re-derived and canonicalized downstream
+/// (`library_guard`, `ensure_library_dir`), and an empty value is the valid "not configured
+/// yet" state.
+fn validate_import_mode(value: &str) -> AppResult<&str> {
+    match value.trim() {
+        mode @ ("copy" | "move") => Ok(mode),
+        other => Err(AppError::from_code(
+            AppErrorCode::InvalidInput,
+            format!("unsupported import mode '{other}'; expected 'copy' or 'move'"),
+        )),
+    }
+}
+
 pub async fn set_app_settings_in_pool(
     pool: &SqlitePool,
     import_mode: &str,
     library_path: &str,
 ) -> AppResult<()> {
+    let import_mode = validate_import_mode(import_mode)?;
+
     let mut tx = pool
         .begin()
         .await
@@ -265,5 +283,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn set_app_settings_rejects_an_unknown_import_mode() {
+        let pool = create_test_pool().await;
+
+        let error = set_app_settings_in_pool(&pool, "teleport", "/library")
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+
+        // Validation happens before the transaction opens, so nothing is persisted.
+        let settings = get_app_settings_from_pool(&pool).await.unwrap();
+        assert_eq!(settings.import_mode, None);
+        assert_eq!(settings.library_path, None);
+    }
+
+    #[tokio::test]
+    async fn set_app_settings_accepts_and_trims_valid_modes() {
+        let pool = create_test_pool().await;
+
+        set_app_settings_in_pool(&pool, "  move  ", "/library")
+            .await
+            .unwrap();
+
+        let settings = get_app_settings_from_pool(&pool).await.unwrap();
+        assert_eq!(settings.import_mode.as_deref(), Some("move"));
     }
 }
