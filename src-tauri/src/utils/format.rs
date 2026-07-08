@@ -213,6 +213,19 @@ mod tests {
     }
 
     #[test]
+    fn is_allowed_thumbnail_extension_accepts_only_image_types() {
+        // The allow_asset_file command uses this to decide what can be authorized for the
+        // asset protocol, so a non-image extension must be rejected.
+        for ext in ["png", "jpg", "jpeg", "webp", "bmp", "avif", ".PNG", "JPG"] {
+            assert!(is_allowed_thumbnail_extension(ext), "should allow {ext}");
+        }
+
+        for ext in ["txt", "exe", "mp4", "svg", "gif", ""] {
+            assert!(!is_allowed_thumbnail_extension(ext), "should reject {ext}");
+        }
+    }
+
+    #[test]
     fn normalize_yt_dlp_upload_date_returns_iso_date() {
         assert_eq!(
             normalize_yt_dlp_upload_date(Some("20260131".to_string())),

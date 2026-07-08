@@ -68,36 +68,47 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
 /// library. To keep this from becoming a general arbitrary-file read primitive, only an
 /// existing regular file whose extension is an allowed thumbnail image type can be
 /// authorized, and only that exact file is granted (never its directory).
-#[tauri::command]
-pub async fn allow_asset_file(app: AppHandle, path: String) -> AppResult<()> {
-    let trimmed = path.trim().to_string();
-
-    if trimmed.is_empty() {
+/// Validates that `path` is something that may be authorized for the manual-thumbnail
+/// preview: an existing regular file with an allowed image extension. Extracted from the
+/// command (which additionally needs the Tauri runtime to register the asset scope) so this
+/// security check can be unit-tested without a runtime - the `AppHandle` command itself cannot
+/// run under the mock runtime used in tests.
+fn validate_asset_file_for_preview(path: &str) -> AppResult<()> {
+    if path.trim().is_empty() {
         return Err(AppError::from_code(
             AppErrorCode::InvalidTargetPath,
             "path is empty",
         ));
     }
 
+    let candidate = Path::new(path);
+
+    if !candidate.is_file() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            "path is not an existing file",
+        ));
+    }
+
+    if !is_allowed_thumbnail_extension(&extension_from_path(candidate)) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            "only image files can be authorized for preview",
+        ));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn allow_asset_file(app: AppHandle, path: String) -> AppResult<()> {
+    let trimmed = path.trim().to_string();
+
     // is_file()/canonicalize() and the asset scope registration are blocking filesystem/IPC
     // calls; run them off the async runtime's worker threads, consistent with other commands
     // (e.g. commands/library.rs, commands/thumbnail.rs).
     run_blocking(move || {
-        let candidate = Path::new(&trimmed);
-
-        if !candidate.is_file() {
-            return Err(AppError::from_code(
-                AppErrorCode::InvalidThumbnailFile,
-                "path is not an existing file",
-            ));
-        }
-
-        if !is_allowed_thumbnail_extension(&extension_from_path(candidate)) {
-            return Err(AppError::from_code(
-                AppErrorCode::InvalidThumbnailFile,
-                "only image files can be authorized for preview",
-            ));
-        }
+        validate_asset_file_for_preview(&trimmed)?;
 
         app.asset_protocol_scope()
             .allow_file(&trimmed)
@@ -115,4 +126,85 @@ pub async fn allow_asset_file(app: AppHandle, path: String) -> AppResult<()> {
         Ok(())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(suffix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+
+        std::env::temp_dir().join(format!(
+            "kavynex-security-cmd-test-{}-{}-{}",
+            std::process::id(),
+            nanos,
+            suffix
+        ))
+    }
+
+    // The asset-scope registration itself needs the Tauri runtime, which does not run under
+    // the mock runtime; these cover the gate that decides what allow_asset_file will ever
+    // authorize. The library-path guard behind register_library_asset_scope is covered by
+    // services::library_guard's paths_refer_to_same_location tests.
+
+    #[test]
+    fn validate_asset_file_rejects_an_empty_path() {
+        let error = validate_asset_file_for_preview("   ").unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+    }
+
+    #[test]
+    fn validate_asset_file_rejects_a_missing_file() {
+        let missing = unique_test_dir("missing").join("nope.png");
+        let error = validate_asset_file_for_preview(&missing.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+    }
+
+    #[test]
+    fn validate_asset_file_rejects_an_existing_non_image_file() {
+        let dir = unique_test_dir("nonimage");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("notes.txt");
+        fs::write(&file, b"x").unwrap();
+
+        let error = validate_asset_file_for_preview(&file.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_asset_file_rejects_a_directory_with_an_image_name() {
+        // A directory named like an image must not be authorized - only regular files are.
+        let dir = unique_test_dir("dir");
+        let fake = dir.join("thumb.png");
+        fs::create_dir_all(&fake).unwrap();
+
+        let error = validate_asset_file_for_preview(&fake.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_asset_file_accepts_an_existing_image() {
+        let dir = unique_test_dir("image");
+        fs::create_dir_all(&dir).unwrap();
+
+        for name in ["thumb.png", "photo.JPG", "art.webp"] {
+            let file = dir.join(name);
+            fs::write(&file, b"\x89PNG\r\n").unwrap();
+            validate_asset_file_for_preview(&file.to_string_lossy())
+                .unwrap_or_else(|error| panic!("{name} should be accepted: {error}"));
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
