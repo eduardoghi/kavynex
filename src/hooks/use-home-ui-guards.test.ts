@@ -137,34 +137,6 @@ describe("useHomeUiGuards", () => {
         };
     }
 
-    it("locks add media modal while adding media", () => {
-        const { result } = renderHook(() =>
-            useHomeUiGuards({
-                settingsState: createSettingsState(),
-                mediaLibrary: createMediaLibrary({
-                    isAddingMedia: true,
-                }),
-                channelsState: createChannelsState(),
-            })
-        );
-
-        expect(result.current.isAddMediaModalLocked).toBe(true);
-    });
-
-    it("locks add media modal while yt-dlp is running", () => {
-        const { result } = renderHook(() =>
-            useHomeUiGuards({
-                settingsState: createSettingsState(),
-                mediaLibrary: createMediaLibrary({
-                    isYtDlpRunning: true,
-                }),
-                channelsState: createChannelsState(),
-            })
-        );
-
-        expect(result.current.isAddMediaModalLocked).toBe(true);
-    });
-
     it("disables library path change during migration", () => {
         const { result } = renderHook(() =>
             useHomeUiGuards({
@@ -363,26 +335,6 @@ describe("useHomeUiGuards", () => {
             "Wait for the media import or download to finish before deleting a channel."
         );
         expect(result.current.disableChannelDeletion).toBe(true);
-    });
-
-    it("recomputes isAddMediaModalLocked when the media busy state changes across rerenders", () => {
-        const { result, rerender } = renderHook((props: any) => useHomeUiGuards(props), {
-            initialProps: {
-                settingsState: createSettingsState(),
-                mediaLibrary: createMediaLibrary(),
-                channelsState: createChannelsState(),
-            },
-        });
-
-        expect(result.current.isAddMediaModalLocked).toBe(false);
-
-        rerender({
-            settingsState: createSettingsState(),
-            mediaLibrary: createMediaLibrary({ isAddingMedia: true }),
-            channelsState: createChannelsState(),
-        });
-
-        expect(result.current.isAddMediaModalLocked).toBe(true);
     });
 
     it("recomputes channel deletion guard state when the media busy state changes across rerenders", () => {

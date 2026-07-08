@@ -136,9 +136,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -161,9 +158,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -186,9 +180,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -211,9 +202,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary: createMediaLibrary(),
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow,
             })
         );
@@ -236,9 +224,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -261,9 +246,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -287,9 +269,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -313,9 +292,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -338,9 +314,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -363,9 +336,6 @@ describe("useHomeMediaActions", () => {
             useHomeMediaActions({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: {
-                    selectedChannelId: 10,
-                },
                 confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
             })
         );
@@ -392,7 +362,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -404,7 +373,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState,
                 mediaLibrary: nextMediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow,
             });
 
@@ -429,7 +397,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -444,7 +411,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState,
                 mediaLibrary: nextMediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow,
             });
 
@@ -469,7 +435,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -480,7 +445,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState,
                 mediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow: newConfirmDeleteChannelFlow,
             });
 
@@ -505,7 +469,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -517,7 +480,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState,
                 mediaLibrary: nextMediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow,
             });
 
@@ -542,7 +504,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -554,7 +515,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState,
                 mediaLibrary: nextMediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow,
             });
 
@@ -579,7 +539,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -591,7 +550,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState,
                 mediaLibrary: nextMediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow,
             });
 
@@ -618,7 +576,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -633,7 +590,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState,
                 mediaLibrary: nextMediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow,
             });
 
@@ -658,7 +614,6 @@ describe("useHomeMediaActions", () => {
                     initialProps: {
                         diagnosticsState,
                         mediaLibrary,
-                        channelsState: { selectedChannelId: 10 },
                         confirmDeleteChannelFlow,
                     },
                 }
@@ -673,7 +628,6 @@ describe("useHomeMediaActions", () => {
             rerender({
                 diagnosticsState: nextDiagnosticsState,
                 mediaLibrary,
-                channelsState: { selectedChannelId: 10 },
                 confirmDeleteChannelFlow,
             });
 

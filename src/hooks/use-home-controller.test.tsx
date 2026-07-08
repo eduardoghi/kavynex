@@ -268,7 +268,6 @@ const mockDiagnosticsState = {
 };
 
 const mockUiGuards = {
-    isAddMediaModalLocked: false,
     disableLibraryPathChange: false,
     libraryPathChangeDisabledReason: "",
     disableChannelDeletion: false,

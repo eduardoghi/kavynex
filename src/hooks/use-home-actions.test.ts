@@ -214,7 +214,6 @@ describe("useHomeActions", () => {
 
     function createUiGuards(overrides?: Partial<any>): any {
         return {
-            isAddMediaModalLocked: false,
             disableLibraryPathChange: false,
             libraryPathChangeDisabledReason: "",
             disableChannelDeletion: false,

@@ -178,7 +178,6 @@ export type DatabaseRecoveryController = {
 };
 
 export type HomeUiGuardsController = {
-    isAddMediaModalLocked: boolean;
     disableLibraryPathChange: boolean;
     libraryPathChangeDisabledReason: string;
     disableChannelDeletion: boolean;

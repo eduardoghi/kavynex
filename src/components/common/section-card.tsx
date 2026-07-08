@@ -5,7 +5,6 @@ type SectionCardProps = {
     title: ReactNode;
     description?: ReactNode;
     shellBorder?: string;
-    shellSurface?: string;
     children: ReactNode;
 };
 

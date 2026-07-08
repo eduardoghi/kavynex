@@ -3,7 +3,6 @@ import { Card, Group, Loader, Stack, Text } from "@mantine/core";
 type LoadingStateCardProps = {
     message: string;
     shellBorder: string;
-    shellSurface: string;
 };
 
 export function LoadingStateCard({

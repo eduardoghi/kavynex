@@ -63,7 +63,6 @@ export function useHomeController(): HomeController {
     const homeMediaActions = useHomeMediaActions({
         diagnosticsState,
         mediaLibrary,
-        channelsState,
         confirmDeleteChannelFlow: homeActions.confirmDeleteChannel,
     });
 

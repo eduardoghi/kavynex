@@ -128,7 +128,6 @@ export default function Home(): JSX.Element {
                                 <LoadingStateCard
                                     message={UI_TEXT.home.loadingApp}
                                     shellBorder={viewState.shellBorder}
-                                    shellSurface={viewState.shellSurface}
                                 />
                             )}
 

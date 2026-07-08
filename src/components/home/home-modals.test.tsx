@@ -200,7 +200,6 @@ function createError(): ErrorModalController {
 
 function createUiGuards(): HomeUiGuardsController {
     return {
-        isAddMediaModalLocked: false,
         disableLibraryPathChange: false,
         libraryPathChangeDisabledReason: "",
         disableChannelDeletion: false,

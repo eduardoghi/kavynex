@@ -62,17 +62,6 @@ export function useHomeUiGuards({
     mediaLibrary,
     channelsState,
 }: UseHomeUiGuardsOptions): HomeUiGuardsController {
-    const isAddMediaModalLocked = useMemo(() => {
-        return isMediaOperationBusy(buildMediaPreparationState(mediaLibrary));
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives read inside, not the whole per-render mediaLibrary object
-    }, [
-        mediaLibrary.isAddingMedia,
-        mediaLibrary.isYtDlpRunning,
-        mediaLibrary.isCancellingYtDlp,
-        mediaLibrary.addMediaForm.isGeneratingThumb,
-        mediaLibrary.addMediaForm.isLoadingYtDlpFormats,
-    ]);
-
     // Deleting a channel while a download for it is in flight would make the pending
     // insert fail against a missing channel and waste the whole download.
     const channelDeletionDisabledReason = useMemo(() => {
@@ -134,7 +123,6 @@ export function useHomeUiGuards({
     ]);
 
     return {
-        isAddMediaModalLocked,
         disableLibraryPathChange,
         libraryPathChangeDisabledReason,
         disableChannelDeletion,

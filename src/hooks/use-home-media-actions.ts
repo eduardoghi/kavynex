@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from "react";
 import type {
-    ChannelsController,
     DiagnosticsController,
     HomeMediaActionsController,
     MediaLibraryController,
@@ -10,7 +9,6 @@ import type { MediaRow } from "../types/media";
 type UseHomeMediaActionsOptions = {
     diagnosticsState: DiagnosticsController;
     mediaLibrary: MediaLibraryController;
-    channelsState: Pick<ChannelsController, "selectedChannelId">;
     confirmDeleteChannelFlow: () => Promise<void>;
 };
 

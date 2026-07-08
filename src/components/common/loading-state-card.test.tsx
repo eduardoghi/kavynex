@@ -9,7 +9,6 @@ describe("LoadingStateCard", () => {
             <LoadingStateCard
                 message="Loading application..."
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
             />
         );
 
