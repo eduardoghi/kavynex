@@ -84,26 +84,30 @@ const TABLE_DDLS: &[&str] = &[
 // empty. Dropped on startup to remove it from existing databases.
 const LEGACY_TABLE_DROPS: &[&str] = &["DROP TABLE IF EXISTS video_live_chat_messages"];
 
-const INDEX_DDLS: &[&str] = &[
-    "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)",
+// Every index, paired with the table it belongs to. The baseline and versioned migrations
+// recreate all of them (every table exists at that point); the table-rebuild path uses the
+// pairing to recreate only the indexes of the tables it actually dropped, since dropping a
+// table only drops that table's indexes.
+const INDEX_DDLS: &[(&str, &str)] = &[
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)"),
     // Serves the hot "list a channel's media, newest first" query
     // (WHERE channel_id = ? ORDER BY created_at DESC, id DESC) without a separate sort step.
-    "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)",
-    "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_file_path_unique ON videos(channel_id, file_path)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_has_comments ON videos(has_comments)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)",
-    "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_youtube_video_id_unique ON videos(channel_id, youtube_video_id) WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''",
-    "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)",
-    "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)",
-    "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)",
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)"),
+    ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
+    ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)"),
+    ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_file_path_unique ON videos(channel_id, file_path)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_has_comments ON videos(has_comments)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)"),
+    ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_youtube_video_id_unique ON videos(channel_id, youtube_video_id) WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''"),
+    ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)"),
+    ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)"),
+    ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)"),
 ];
 
 /// Additive columns for the videos table. Fresh databases already get these from the
@@ -226,8 +230,8 @@ async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
         .await
         .map_err(|error| db_error("failed to begin schema migration", error))?;
 
-    for ddl in INDEX_DDLS {
-        sqlx::query(*ddl)
+    for &(_, ddl) in INDEX_DDLS {
+        sqlx::query(ddl)
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to create index", error))?;
@@ -268,8 +272,8 @@ async fn apply_baseline_schema(pool: &SqlitePool) -> AppResult<()> {
 
     ensure_videos_additive_columns(&mut tx).await?;
 
-    for ddl in INDEX_DDLS {
-        sqlx::query(*ddl)
+    for &(_, ddl) in INDEX_DDLS {
+        sqlx::query(ddl)
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to create index", error))?;
@@ -347,8 +351,9 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
 /// `PRAGMA foreign_key_check` verifies the rebuilt schema introduced no dangling references
 /// before the transaction commits. `PRAGMA foreign_keys` is a no-op inside a transaction,
 /// so it is toggled on a dedicated pooled connection around the transaction, and enforcement
-/// is always restored before that connection returns to the pool. Indexes dropped along with
-/// the old tables are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`).
+/// is always restored before that connection returns to the pool. The rebuilt tables' indexes
+/// are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`); other tables' indexes
+/// are left in place since their tables were never dropped.
 #[allow(dead_code)]
 pub(crate) async fn apply_table_rebuilds(
     pool: &SqlitePool,
@@ -400,9 +405,17 @@ async fn apply_table_rebuilds_in_transaction(
         rebuild_table(&mut tx, spec).await?;
     }
 
-    // The rebuilt tables lost their indexes when dropped; recreate every index.
-    for ddl in INDEX_DDLS {
-        sqlx::query(*ddl)
+    // Dropping a table drops only its own indexes, so recreate the indexes of the rebuilt
+    // tables and leave every other table's indexes untouched. Recreating the whole catalog
+    // here would touch tables this rebuild never dropped - harmless in a full schema, but it
+    // also assumes every table exists, which a targeted rebuild must not require.
+    let rebuilt_tables: std::collections::HashSet<&str> =
+        rebuilds.iter().map(|spec| spec.table).collect();
+    for &(table, ddl) in INDEX_DDLS {
+        if !rebuilt_tables.contains(table) {
+            continue;
+        }
+        sqlx::query(ddl)
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to recreate index after rebuild", error))?;
