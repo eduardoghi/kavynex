@@ -144,11 +144,25 @@ export function useHomePlayerActions({
         // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render homeMediaActions/mediaPlayer objects
     }, [homeMediaActions.markAsUnwatched, mediaPlayer.activeMedia, mediaPlayer.setActiveMedia]);
 
+    const saveProgress = useCallback(
+        async (mediaId: number, progressSeconds: number): Promise<void> => {
+            await homeMediaActions.saveMediaProgress(mediaId, progressSeconds);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render homeMediaActions object
+        [homeMediaActions.saveMediaProgress]
+    );
+
     const closePlayer = useCallback(
-        async (progressSeconds = 0): Promise<void> => {
+        async (progressSeconds?: number): Promise<void> => {
             const activeMedia = mediaPlayer.activeMedia;
 
-            if (activeMedia && !activeMedia.watched_at) {
+            // Only persist when a concrete position was supplied - the Back button reads it
+            // from the media element and passes it here. Navigation-only closes (switching
+            // channels from the sidebar, deleting the active media) call this with no argument
+            // and must not overwrite the saved position with 0. The player view persists
+            // progress on its own (periodically and on unmount), so those paths still keep the
+            // latest position.
+            if (progressSeconds !== undefined && activeMedia && !activeMedia.watched_at) {
                 await homeMediaActions.saveMediaProgress(activeMedia.id, progressSeconds);
             }
 
@@ -166,6 +180,7 @@ export function useHomePlayerActions({
             isRefreshingComments,
             markActiveAsWatched,
             markActiveAsUnwatched,
+            saveProgress,
             closePlayer,
         }),
         [
@@ -175,6 +190,7 @@ export function useHomePlayerActions({
             isRefreshingComments,
             markActiveAsWatched,
             markActiveAsUnwatched,
+            saveProgress,
             closePlayer,
         ]
     );

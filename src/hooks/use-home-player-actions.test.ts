@@ -233,6 +233,43 @@ describe("useHomePlayerActions", () => {
         expect(options.mediaPlayer.closePlayer).toHaveBeenCalledTimes(1);
     });
 
+    it("does not save progress when closing without an explicit position", async () => {
+        // Switching channels from the sidebar closes the player with no argument; it must not
+        // overwrite the saved position with 0. The player view persists the real position on
+        // unmount instead.
+        const activeMedia = createMediaRow({
+            id: 88,
+            watched_at: null,
+        });
+
+        const options = createDefaultOptions({
+            activeMedia,
+        });
+
+        const { result } = renderHook(() => useHomePlayerActions(options));
+
+        await act(async () => {
+            await result.current.closePlayer();
+        });
+
+        expect(options.homeMediaActions.saveMediaProgress).not.toHaveBeenCalled();
+        expect(options.mediaPlayer.closePlayer).toHaveBeenCalledTimes(1);
+    });
+
+    it("saves progress for the given media", async () => {
+        const options = createDefaultOptions({
+            activeMedia: createMediaRow({ id: 88 }),
+        });
+
+        const { result } = renderHook(() => useHomePlayerActions(options));
+
+        await act(async () => {
+            await result.current.saveProgress(88, 45.2);
+        });
+
+        expect(options.homeMediaActions.saveMediaProgress).toHaveBeenCalledWith(88, 45.2);
+    });
+
     it("starts with isRefreshingComments as false", () => {
         const options = createDefaultOptions();
 

@@ -297,6 +297,7 @@ const mockPlayerActions = {
     isRefreshingComments: false,
     markActiveAsWatched: vi.fn(),
     markActiveAsUnwatched: vi.fn(),
+    saveProgress: vi.fn(),
     closePlayer: vi.fn(),
 };
 

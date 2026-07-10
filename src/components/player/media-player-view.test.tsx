@@ -1,5 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { MediaRow } from "../../types/media";
 import { MediaPlayerView } from "./media-player-view";
 import { createMedia } from "../../test/factories/media";
 import { renderWithMantine } from "../../test/test-utils";
@@ -28,6 +29,7 @@ describe("MediaPlayerView", () => {
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
                 onBack={vi.fn()}
             />
         );
@@ -53,6 +55,7 @@ describe("MediaPlayerView", () => {
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
                 onBack={vi.fn()}
             />
         );
@@ -77,6 +80,7 @@ describe("MediaPlayerView", () => {
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={onMarkWatched}
                 onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
                 onBack={vi.fn()}
             />
         );
@@ -102,6 +106,7 @@ describe("MediaPlayerView", () => {
                 onOpenInYoutube={onOpenInYoutube}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
                 onBack={vi.fn()}
             />
         );
@@ -109,6 +114,70 @@ describe("MediaPlayerView", () => {
         fireEvent.click(screen.getByRole("button", { name: /open source on youtube/i }));
 
         expect(onOpenInYoutube).toHaveBeenCalledTimes(1);
+    });
+
+    describe("progress persistence", () => {
+        function renderVideo(
+            media: MediaRow,
+            onSaveProgress: (mediaId: number, progressSeconds: number) => void
+        ) {
+            return renderWithMantine(
+                <MediaPlayerView
+                    media={media}
+                    mediaSrc="file:///media/test.mp4"
+                    thumbnailSrc=""
+                    isAudio={false}
+                    shellBorder="rgba(255,255,255,0.1)"
+                    canOpenInYoutube={false}
+                    isWatched={Boolean(media.watched_at)}
+                    libraryPath="/library"
+                    onOpenInYoutube={vi.fn()}
+                    onMarkWatched={vi.fn()}
+                    onMarkUnwatched={vi.fn()}
+                    onSaveProgress={onSaveProgress}
+                    onBack={vi.fn()}
+                />
+            );
+        }
+
+        it("saves the element position on timeupdate", () => {
+            const onSaveProgress = vi.fn();
+            renderVideo(createMedia({ id: 7 }), onSaveProgress);
+
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
+            Object.defineProperty(video, "currentTime", { configurable: true, value: 30 });
+
+            fireEvent.timeUpdate(video);
+
+            expect(onSaveProgress).toHaveBeenCalledWith(7, 30);
+        });
+
+        it("saves the stored position when the player unmounts", () => {
+            const onSaveProgress = vi.fn();
+            const { unmount } = renderVideo(
+                createMedia({ id: 7, progress_seconds: 42 }),
+                onSaveProgress
+            );
+
+            unmount();
+
+            expect(onSaveProgress).toHaveBeenCalledWith(7, 42);
+        });
+
+        it("does not save progress for watched media", () => {
+            const onSaveProgress = vi.fn();
+            const { unmount } = renderVideo(
+                createMedia({ id: 7, watched_at: "2026-03-31T12:00:00.000Z" }),
+                onSaveProgress
+            );
+
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
+            Object.defineProperty(video, "currentTime", { configurable: true, value: 30 });
+            fireEvent.timeUpdate(video);
+            unmount();
+
+            expect(onSaveProgress).not.toHaveBeenCalled();
+        });
     });
 
     describe("keyboard shortcuts", () => {
@@ -126,6 +195,7 @@ describe("MediaPlayerView", () => {
                     onOpenInYoutube={vi.fn()}
                     onMarkWatched={vi.fn()}
                     onMarkUnwatched={vi.fn()}
+                    onSaveProgress={vi.fn()}
                     onBack={vi.fn()}
                 />
             );

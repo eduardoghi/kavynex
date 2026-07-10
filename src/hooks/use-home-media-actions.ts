@@ -72,12 +72,15 @@ export function useHomeMediaActions({
 
     const saveMediaProgress = useCallback(
         async (mediaId: number, progressSeconds: number): Promise<void> => {
-            await runActionAndRefreshDiagnostics(() =>
-                mediaLibrary.saveMediaProgress(mediaId, progressSeconds)
-            );
+            // Playback progress does not affect anything the diagnostics dialog reports
+            // (library integrity, tool status, database counts), so this deliberately skips
+            // the diagnostics refresh the other actions run - otherwise the periodic saves the
+            // player makes during playback would reload an open diagnostics dialog every few
+            // seconds.
+            await mediaLibrary.saveMediaProgress(mediaId, progressSeconds);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
-        [mediaLibrary.saveMediaProgress, runActionAndRefreshDiagnostics]
+        [mediaLibrary.saveMediaProgress]
     );
 
     return useMemo(

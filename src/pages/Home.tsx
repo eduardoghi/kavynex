@@ -161,6 +161,7 @@ export default function Home(): JSX.Element {
                                     onRefreshComments={playerActions.refreshComments}
                                     onMarkWatched={playerActions.markActiveAsWatched}
                                     onMarkUnwatched={playerActions.markActiveAsUnwatched}
+                                    onSaveProgress={playerActions.saveProgress}
                                     onBack={playerActions.closePlayer}
                                 />
                             )}

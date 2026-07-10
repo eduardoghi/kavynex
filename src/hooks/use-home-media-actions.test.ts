@@ -304,7 +304,10 @@ describe("useHomeMediaActions", () => {
         expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
     });
 
-    it("saves media progress and reloads diagnostics when diagnostics is open", async () => {
+    it("saves media progress without reloading diagnostics even when diagnostics is open", async () => {
+        // Progress saves happen periodically during playback and are irrelevant to what the
+        // diagnostics dialog reports, so they never trigger a reload - otherwise an open
+        // dialog would refresh every few seconds behind a playing video.
         const diagnosticsState = createDiagnosticsState({
             diagnosticsOpen: true,
         });
@@ -323,7 +326,7 @@ describe("useHomeMediaActions", () => {
         });
 
         expect(mediaLibrary.saveMediaProgress).toHaveBeenCalledWith(23, 12.5);
-        expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
+        expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
     });
 
     it("saves media progress without reloading diagnostics when diagnostics is closed", async () => {

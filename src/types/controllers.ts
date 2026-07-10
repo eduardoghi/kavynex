@@ -199,6 +199,7 @@ export type HomePlayerActionsController = {
     openInYoutube: () => Promise<void>;
     markActiveAsWatched: () => Promise<void>;
     markActiveAsUnwatched: () => Promise<void>;
+    saveProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
     closePlayer: (progressSeconds?: number) => Promise<void>;
     openFileLocation: () => Promise<void>;
     refreshComments: () => Promise<void>;
