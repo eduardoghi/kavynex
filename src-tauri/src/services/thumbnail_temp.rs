@@ -8,27 +8,8 @@ use crate::services::temp_paths::thumbs_temp_dir;
 use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extension};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path};
-use crate::utils::process::hide_console;
+use crate::utils::process::{hide_console, read_process_error};
 use crate::{AppError, AppErrorCode, AppResult};
-
-fn read_process_error(
-    output: &std::process::Output,
-    default_code: AppErrorCode,
-    default_message: &str,
-) -> AppError {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-    if !stderr.is_empty() {
-        return AppError::from_code(default_code, format!("{default_message}: {stderr}"));
-    }
-
-    if !stdout.is_empty() {
-        return AppError::from_code(default_code, format!("{default_message}: {stdout}"));
-    }
-
-    AppError::from_code(default_code, default_message)
-}
 
 fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<PathBuf>> {
     let target_path = PathBuf::from(path.trim());
@@ -230,61 +211,6 @@ pub fn delete_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Output;
-
-    #[test]
-    fn read_process_error_prefers_stderr() {
-        let output = Output {
-            status: exit_status(1),
-            stdout: b"stdout message".to_vec(),
-            stderr: b"stderr message".to_vec(),
-        };
-
-        let error = read_process_error(
-            &output,
-            AppErrorCode::FfmpegFailed,
-            "ffmpeg failed to generate thumbnail",
-        );
-
-        assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
-        assert!(error.message.contains("stderr message"));
-    }
-
-    #[test]
-    fn read_process_error_falls_back_to_stdout() {
-        let output = Output {
-            status: exit_status(1),
-            stdout: b"stdout message".to_vec(),
-            stderr: Vec::new(),
-        };
-
-        let error = read_process_error(
-            &output,
-            AppErrorCode::FfmpegFailed,
-            "ffmpeg failed to generate thumbnail",
-        );
-
-        assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
-        assert!(error.message.contains("stdout message"));
-    }
-
-    #[test]
-    fn read_process_error_falls_back_to_default_message() {
-        let output = Output {
-            status: exit_status(1),
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        };
-
-        let error = read_process_error(
-            &output,
-            AppErrorCode::FfmpegFailed,
-            "ffmpeg failed to generate thumbnail",
-        );
-
-        assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
-        assert_eq!(error.message, "ffmpeg failed to generate thumbnail");
-    }
 
     #[test]
     fn validate_temporary_thumbnail_delete_path_rejects_directory_path_before_app_access() {
@@ -344,17 +270,5 @@ mod tests {
             std::process::id(),
             nanos
         ))
-    }
-
-    #[cfg(unix)]
-    fn exit_status(code: i32) -> std::process::ExitStatus {
-        use std::os::unix::process::ExitStatusExt;
-        std::process::ExitStatus::from_raw(code)
-    }
-
-    #[cfg(windows)]
-    fn exit_status(code: u32) -> std::process::ExitStatus {
-        use std::os::windows::process::ExitStatusExt;
-        std::process::ExitStatus::from_raw(code)
     }
 }

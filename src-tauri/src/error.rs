@@ -342,26 +342,4 @@ impl fmt::Display for AppError {
 
 impl std::error::Error for AppError {}
 
-impl From<String> for AppError {
-    fn from(value: String) -> Self {
-        Self::internal(value)
-    }
-}
-
-impl From<&str> for AppError {
-    fn from(value: &str) -> Self {
-        Self::internal(value)
-    }
-}
-
-impl From<std::io::Error> for AppError {
-    fn from(value: std::io::Error) -> Self {
-        Self::from_code_with_details(
-            AppErrorCode::AppError,
-            "i/o operation failed",
-            value.to_string(),
-        )
-    }
-}
-
 pub type AppResult<T> = Result<T, AppError>;

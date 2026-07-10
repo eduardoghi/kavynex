@@ -8,6 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
 
+use crate::constants::EVENT_YT_DLP_LOG;
 use crate::models::yt_dlp::{DownloadLogEvent, DownloadedMediaResult, YtDlpFormatMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
@@ -41,7 +42,6 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
-const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
 // A download that produces no output for this long is treated as hung (dead network,
 // stuck ffmpeg merge) and killed. Generous so a slow-but-progressing download or a long
 // remux is never killed by mistake.

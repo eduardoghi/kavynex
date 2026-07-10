@@ -23,7 +23,7 @@ use crate::services::thumbnail_persist::persist_thumbnail_from_source;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
-use crate::utils::process::hide_console_async;
+use crate::utils::process::{hide_console_async, read_process_error};
 use crate::{AppError, AppErrorCode, AppResult};
 
 const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
@@ -298,25 +298,6 @@ fn unique_temp_suffix() -> String {
         .unwrap_or(0);
 
     format!("{}-{}", std::process::id(), nanos)
-}
-
-fn read_process_error(
-    output: &std::process::Output,
-    default_code: AppErrorCode,
-    default_message: &str,
-) -> AppError {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-    if !stderr.is_empty() {
-        return AppError::from_code(default_code, format!("{default_message}: {stderr}"));
-    }
-
-    if !stdout.is_empty() {
-        return AppError::from_code(default_code, format!("{default_message}: {stdout}"));
-    }
-
-    AppError::from_code(default_code, default_message)
 }
 
 fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
