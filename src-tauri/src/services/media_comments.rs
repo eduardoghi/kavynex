@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sqlx::SqlitePool;
 use tauri::AppHandle;
 
@@ -15,6 +17,25 @@ fn normalize_optional_text(value: &Option<String>) -> Option<String> {
 
 fn sqlite_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
     AppError::from_code_with_details(AppErrorCode::AppError, message, error.to_string())
+}
+
+/// Drops comments that share a non-null `comment_id` with an earlier one in the same payload,
+/// keeping the first occurrence. There is no UNIQUE(video_id, comment_id) constraint on the
+/// table, so a yt-dlp payload with a repeated id would otherwise insert both rows. Comments
+/// with a null/empty id (e.g. replies yt-dlp did not assign one) are never deduplicated against
+/// each other, since they are legitimately distinct rows.
+fn dedupe_comments_by_id(comments: Vec<YtDlpComment>) -> Vec<YtDlpComment> {
+    let mut seen_ids = HashSet::new();
+
+    comments
+        .into_iter()
+        .filter(
+            |comment| match normalize_optional_text(&comment.comment_id) {
+                Some(id) => seen_ids.insert(id),
+                None => true,
+            },
+        )
+        .collect()
 }
 
 pub async fn replace_media_comments(
@@ -51,7 +72,7 @@ async fn replace_media_comments_in_pool(
 
         let mut inserted_count = 0_u64;
 
-        for comment in comments {
+        for comment in dedupe_comments_by_id(comments) {
             let normalized_text = comment.text.trim().to_owned();
 
             if normalized_text.is_empty() {
@@ -219,8 +240,12 @@ mod tests {
     }
 
     fn sample_comment(text: &str) -> YtDlpComment {
+        comment_with_id(text, Some("c1"))
+    }
+
+    fn comment_with_id(text: &str, comment_id: Option<&str>) -> YtDlpComment {
         YtDlpComment {
-            comment_id: Some("c1".to_string()),
+            comment_id: comment_id.map(ToOwned::to_owned),
             parent_comment_id: None,
             author_name: "Alice".to_string(),
             author_handle: Some("@alice".to_string()),
@@ -236,6 +261,25 @@ mod tests {
             time_text: Some("1 day ago".to_string()),
             published_at: Some("2026-01-01".to_string()),
         }
+    }
+
+    #[test]
+    fn dedupe_comments_by_id_keeps_first_occurrence_and_all_null_id_rows() {
+        let comments = vec![
+            comment_with_id("first", Some("c1")),
+            comment_with_id("duplicate", Some("c1")),
+            comment_with_id("other", Some("c2")),
+            comment_with_id("reply without id 1", None),
+            comment_with_id("reply without id 2", None),
+        ];
+
+        let deduped = dedupe_comments_by_id(comments);
+
+        assert_eq!(deduped.len(), 4);
+        assert_eq!(deduped[0].text, "first");
+        assert_eq!(deduped[1].text, "other");
+        assert_eq!(deduped[2].text, "reply without id 1");
+        assert_eq!(deduped[3].text, "reply without id 2");
     }
 
     #[tokio::test]
@@ -265,6 +309,47 @@ mod tests {
         assert_eq!(total_comments, 1);
         assert_eq!(has_comments, 1);
         assert_eq!(comments_count, 1);
+    }
+
+    #[tokio::test]
+    async fn replace_media_comments_drops_repeated_comment_id_but_keeps_null_id_rows() {
+        let pool = create_test_pool().await;
+
+        let inserted = replace_media_comments_in_pool(
+            &pool,
+            1,
+            vec![
+                comment_with_id("first", Some("c1")),
+                comment_with_id("duplicate", Some("c1")),
+                comment_with_id("reply without id 1", None),
+                comment_with_id("reply without id 2", None),
+            ],
+        )
+        .await
+        .expect("replace comments");
+
+        let (total_comments,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE video_id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("count comments");
+        let (c1_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE comment_id = 'c1'")
+                .fetch_one(&pool)
+                .await
+                .expect("count c1 comments");
+        let (kept_text,): (String,) =
+            sqlx::query_as("SELECT text FROM video_comments WHERE comment_id = 'c1'")
+                .fetch_one(&pool)
+                .await
+                .expect("read kept comment");
+
+        // The repeated "c1" is collapsed to a single row (the first occurrence), while the
+        // two null-id replies are both kept since they are legitimately distinct rows.
+        assert_eq!(inserted, 3);
+        assert_eq!(total_comments, 3);
+        assert_eq!(c1_count, 1);
+        assert_eq!(kept_text, "first");
     }
 
     #[tokio::test]
