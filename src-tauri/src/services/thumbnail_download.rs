@@ -382,6 +382,40 @@ fn direct_image_extension(url: &str) -> Option<&'static str> {
     None
 }
 
+/// Sniffs `bytes` against the magic numbers of the image formats this app accepts. The
+/// Content-Type header on a direct thumbnail download is attacker-controlled (any server the
+/// URL points to), so it is not sufficient on its own to prove the bytes are actually an
+/// image before they are written to disk and later served from the library.
+fn looks_like_supported_image(bytes: &[u8]) -> bool {
+    const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    const JPEG_SIGNATURE: &[u8] = b"\xFF\xD8\xFF";
+    const GIF_SIGNATURE: &[u8] = b"GIF8";
+    const BMP_SIGNATURE: &[u8] = b"BM";
+
+    if bytes.starts_with(PNG_SIGNATURE)
+        || bytes.starts_with(JPEG_SIGNATURE)
+        || bytes.starts_with(GIF_SIGNATURE)
+        || bytes.starts_with(BMP_SIGNATURE)
+    {
+        return true;
+    }
+
+    // WEBP: a RIFF container with a "WEBP" fourCC at offset 8.
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return true;
+    }
+
+    // AVIF: an ISOBMFF `ftyp` box (offset 4) whose brand (offset 8) is avif/avis.
+    if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
+    {
+        return true;
+    }
+
+    false
+}
+
 pub async fn download_thumbnail_from_url_async(
     app: &AppHandle,
     url: &str,
@@ -437,12 +471,27 @@ pub async fn download_thumbnail_from_url_async(
                 .map(|v| v.trim().to_ascii_lowercase())
                 .unwrap_or_default();
 
-            if !content_type.is_empty()
-                && !ALLOWED_THUMBNAIL_CONTENT_TYPES.contains(&content_type.as_str())
-            {
+            if content_type.is_empty() {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    "thumbnail response is missing a content type",
+                ));
+            }
+
+            if !ALLOWED_THUMBNAIL_CONTENT_TYPES.contains(&content_type.as_str()) {
                 return Err(AppError::from_code(
                     AppErrorCode::YtDlpThumbnailFailed,
                     format!("unexpected content type for thumbnail: {content_type}"),
+                ));
+            }
+
+            // The Content-Type header is attacker-controlled (any server the URL points to),
+            // so it is only a first filter. Sniff the actual bytes against known image file
+            // signatures before writing them to disk as an "image".
+            if !looks_like_supported_image(&buffer) {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    "downloaded thumbnail does not look like a supported image",
                 ));
             }
 
@@ -841,6 +890,29 @@ mod tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn looks_like_supported_image_accepts_known_signatures() {
+        assert!(looks_like_supported_image(b"\x89PNG\r\n\x1a\nrest-of-file"));
+        assert!(looks_like_supported_image(b"\xFF\xD8\xFFrest-of-file"));
+        assert!(looks_like_supported_image(b"GIF89arest-of-file"));
+        assert!(looks_like_supported_image(b"BMrest-of-file"));
+        assert!(looks_like_supported_image(b"RIFF\x00\x00\x00\x00WEBPrest"));
+        assert!(looks_like_supported_image(b"\x00\x00\x00\x18ftypavifrest"));
+        assert!(looks_like_supported_image(b"\x00\x00\x00\x18ftypavisrest"));
+    }
+
+    #[test]
+    fn looks_like_supported_image_rejects_arbitrary_bytes() {
+        assert!(!looks_like_supported_image(b"not an image, just text"));
+        assert!(!looks_like_supported_image(b"<html><body>evil</body>"));
+        assert!(!looks_like_supported_image(b"RIFF\x00\x00\x00\x00WAVEfmt "));
+    }
+
+    #[test]
+    fn looks_like_supported_image_rejects_empty_slice() {
+        assert!(!looks_like_supported_image(&[]));
     }
 
     #[test]
