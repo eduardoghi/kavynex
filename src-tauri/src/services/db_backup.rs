@@ -77,6 +77,17 @@ async fn is_healthy(pool: &SqlitePool) -> bool {
     }
 }
 
+/// Runs a full `PRAGMA integrity_check`, a thorough (and slower) check than the `quick_check`
+/// used by the automatic health paths above. User-triggered only, so the extra cost is fine.
+pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<bool> {
+    let (result,): (String,) = sqlx::query_as("PRAGMA integrity_check")
+        .fetch_one(pool)
+        .await
+        .map_err(|error| backup_error("failed to run the database integrity check", error))?;
+
+    Ok(result == "ok")
+}
+
 fn escape_sql_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
@@ -955,5 +966,19 @@ mod tests {
         assert!(!is_schema_migration_pending(&db).await);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn run_full_integrity_check_reports_ok_for_a_healthy_schema() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::services::db_schema::ensure_schema(&pool).await.unwrap();
+
+        assert!(run_full_integrity_check(&pool).await.unwrap());
+
+        pool.close().await;
     }
 }

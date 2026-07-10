@@ -62,3 +62,12 @@ export async function getDatabaseImportUndoStatus(): Promise<boolean> {
 export async function undoDatabaseImport(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.UNDO_DATABASE_IMPORT);
 }
+
+/**
+ * Runs a full `PRAGMA integrity_check` against the live database, a more thorough (and
+ * slower) check than the quick check used by the automatic health paths. Resolves to whether
+ * the database reported no problems.
+ */
+export async function checkDatabaseIntegrity(): Promise<boolean> {
+    return invokeCommand<boolean>(TAURI_COMMANDS.CHECK_DATABASE_INTEGRITY);
+}

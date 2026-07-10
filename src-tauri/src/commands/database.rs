@@ -71,3 +71,12 @@ pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
     let path = database_path(&app)?;
     db_backup::stage_database_import_undo(&path).await
 }
+
+/// Runs a full `PRAGMA integrity_check` against the live database, a more thorough (and
+/// slower) check than the `quick_check` used by the automatic health paths. User-triggered
+/// from the Diagnostics dialog.
+#[tauri::command]
+pub async fn check_database_integrity(app: AppHandle) -> AppResult<bool> {
+    let pool = shared_pool(&app).await?;
+    db_backup::run_full_integrity_check(pool).await
+}

@@ -22,6 +22,7 @@ import type {
     DiagnosticsOverviewStatus,
     DiagnosticsSummary,
 } from "../../../types/diagnostics";
+import { DiagnosticsDatabaseIntegrityCheck } from "./diagnostics-database-integrity-check";
 import { DiagnosticsMetricCard } from "./diagnostics-metric-card";
 
 type DiagnosticsSummarySectionsProps = {
@@ -328,6 +329,8 @@ export function DiagnosticsSummarySections({
                             value={diagnostics.mediaRepositoryStats.total_unwatched}
                         />
                     </Group>
+
+                    <DiagnosticsDatabaseIntegrityCheck />
                 </Stack>
             </Paper>
 

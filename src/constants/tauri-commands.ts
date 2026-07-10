@@ -42,6 +42,7 @@ export const TAURI_COMMANDS = {
     IMPORT_DATABASE: "import_database",
     GET_DATABASE_IMPORT_UNDO_STATUS: "get_database_import_undo_status",
     UNDO_DATABASE_IMPORT: "undo_database_import",
+    CHECK_DATABASE_INTEGRITY: "check_database_integrity",
     GET_APP_SETTINGS: "get_app_settings",
     SET_APP_SETTINGS: "set_app_settings",
 
