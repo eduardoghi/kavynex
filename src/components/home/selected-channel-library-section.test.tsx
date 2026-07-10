@@ -1,5 +1,5 @@
-import { fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectedChannelLibrarySection } from "./selected-channel-library-section";
 import { renderWithMantine } from "../../test/test-utils";
 import type { MediaRow } from "../../types/media";
@@ -52,6 +52,14 @@ function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
 }
 
 describe("SelectedChannelLibrarySection", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it("renders channel header", () => {
         renderWithMantine(
             <SelectedChannelLibrarySection
@@ -261,9 +269,16 @@ describe("SelectedChannelLibrarySection", () => {
         );
 
         // Narrow channel A down to nothing with a search term that matches no title.
-        fireEvent.change(screen.getByRole("textbox"), {
-            target: { value: "zzz-no-match" },
+        act(() => {
+            fireEvent.change(screen.getByRole("textbox"), {
+                target: { value: "zzz-no-match" },
+            });
         });
+
+        act(() => {
+            vi.advanceTimersByTime(200);
+        });
+
         expect(screen.getByText("grid:0")).toBeInTheDocument();
 
         // Switching channels changes the key, so the section remounts with fresh state

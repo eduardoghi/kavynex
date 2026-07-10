@@ -11,6 +11,7 @@ import {
     Title,
     Tooltip,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { ArrowDownAZ, ArrowLeft, ArrowUpAZ, Search, Video } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
@@ -25,6 +26,11 @@ import {
 } from "../../utils/media-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
 import { AppButton } from "../ui/app-button";
+
+// Debounce the search before it drives the (O(n log n) filter+sort) memo, so typing in a
+// large library does not re-filter and re-sort on every keystroke. The input itself stays
+// controlled and responsive.
+const LIBRARY_SEARCH_DEBOUNCE_MS = 200;
 
 type SelectedChannelLibrarySectionProps = {
     selectedChannel: Channel;
@@ -72,6 +78,7 @@ export function SelectedChannelLibrarySection({
     const avatarSrc = fileSrcFromStoredPath(selectedChannel.avatar_path, libraryPath);
 
     const [searchValue, setSearchValue] = useState("");
+    const [debouncedSearchValue] = useDebouncedValue(searchValue, LIBRARY_SEARCH_DEBOUNCE_MS);
     const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaTypeFilter>("all");
     const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>("all");
     const [publicationDateFilter, setPublicationDateFilter] =
@@ -82,7 +89,7 @@ export function SelectedChannelLibrarySection({
     const filteredItems = useMemo(
         () =>
             filterAndSortMedia(mediaItems, {
-                searchValue,
+                searchValue: debouncedSearchValue,
                 mediaTypeFilter,
                 watchedFilter,
                 publicationDateFilter,
@@ -94,7 +101,7 @@ export function SelectedChannelLibrarySection({
             mediaTypeFilter,
             watchedFilter,
             publicationDateFilter,
-            searchValue,
+            debouncedSearchValue,
             sortCategory,
             sortDirection,
         ]
