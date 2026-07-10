@@ -36,7 +36,7 @@ export function ThumbnailSection({
         badgeLabel = "blocked";
         badgeBackground = "rgba(255,255,255,0.045)";
         badgeBorder = "rgba(255,255,255,0.10)";
-        badgeColor = "rgba(255,255,255,0.42)";
+        badgeColor = "rgba(255,255,255,0.7)";
         shouldShowBadge = true;
     } else if (isGeneratingThumb) {
         badgeLabel = "loading";
