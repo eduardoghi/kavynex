@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { MediaRow } from "../../types/media";
 import { MediaPlayerView } from "./media-player-view";
@@ -177,6 +177,71 @@ describe("MediaPlayerView", () => {
             unmount();
 
             expect(onSaveProgress).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("playback errors", () => {
+        it("shows a banner with an open-location action when the media element fails", () => {
+            const onOpenFileLocation = vi.fn();
+
+            renderWithMantine(
+                <MediaPlayerView
+                    media={createMedia({ title: "Broken", file_path: "video/broken.wmv" })}
+                    mediaSrc="file:///media/broken.wmv"
+                    thumbnailSrc=""
+                    isAudio={false}
+                    shellBorder="rgba(255,255,255,0.1)"
+                    canOpenInYoutube={false}
+                    isWatched={false}
+                    libraryPath="/library"
+                    onOpenInYoutube={vi.fn()}
+                    onOpenFileLocation={onOpenFileLocation}
+                    onMarkWatched={vi.fn()}
+                    onMarkUnwatched={vi.fn()}
+                    onSaveProgress={vi.fn()}
+                    onBack={vi.fn()}
+                />
+            );
+
+            expect(screen.queryByText(/can't be played here/i)).not.toBeInTheDocument();
+
+            const video = screen.getByLabelText(/video player/i);
+            fireEvent.error(video);
+
+            const banner = screen.getByRole("alert");
+            expect(within(banner).getByText(/can't be played here/i)).toBeInTheDocument();
+
+            fireEvent.click(
+                within(banner).getByRole("button", { name: /open file location/i })
+            );
+            expect(onOpenFileLocation).toHaveBeenCalledTimes(1);
+        });
+
+        it("clears the banner once the media can play again", () => {
+            renderWithMantine(
+                <MediaPlayerView
+                    media={createMedia({ title: "Recovers" })}
+                    mediaSrc="file:///media/test.mp4"
+                    thumbnailSrc=""
+                    isAudio={false}
+                    shellBorder="rgba(255,255,255,0.1)"
+                    canOpenInYoutube={false}
+                    isWatched={false}
+                    libraryPath="/library"
+                    onOpenInYoutube={vi.fn()}
+                    onMarkWatched={vi.fn()}
+                    onMarkUnwatched={vi.fn()}
+                    onSaveProgress={vi.fn()}
+                    onBack={vi.fn()}
+                />
+            );
+
+            const video = screen.getByLabelText(/video player/i);
+            fireEvent.error(video);
+            expect(screen.getByText(/can't be played here/i)).toBeInTheDocument();
+
+            fireEvent.canPlay(video);
+            expect(screen.queryByText(/can't be played here/i)).not.toBeInTheDocument();
         });
     });
 

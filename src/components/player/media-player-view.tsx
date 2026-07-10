@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Group, Paper, Stack, Text, rem } from "@mantine/core";
-import { ArrowLeft, PlayCircle } from "lucide-react";
+import { Alert, Box, Button, Group, Paper, Stack, Text, rem } from "@mantine/core";
+import { AlertTriangle, ArrowLeft, FolderOpen, PlayCircle } from "lucide-react";
 import type { MediaCommentRow, MediaRow } from "../../types/media";
 import { listMediaComments } from "../../services/media-service";
 import {
@@ -66,6 +66,7 @@ export function MediaPlayerView({
     const [liveChatMessages, setLiveChatMessages] = useState<LiveChatMessageItem[]>([]);
     const [isLoadingLiveChat, setIsLoadingLiveChat] = useState(false);
     const [playerElement, setPlayerElement] = useState<HTMLMediaElement | null>(null);
+    const [hasPlaybackError, setHasPlaybackError] = useState(false);
 
     // Latest media, so the event listeners below (which are wired once per element) always
     // persist against the media that is actually playing without re-subscribing on every
@@ -174,6 +175,33 @@ export function MediaPlayerView({
             persistProgress();
         };
     }, [persistProgress]);
+
+    // Clear the "can't play" banner whenever the media (or its resolved source) changes, so a
+    // playable file never inherits the previous file's error.
+    useEffect(() => {
+        setHasPlaybackError(false);
+    }, [media?.id, mediaSrc]);
+
+    const handlePlaybackError = useCallback(
+        (error: MediaError | null): void => {
+            setHasPlaybackError(true);
+            logError(
+                "media-player",
+                "The built-in player could not play the media file.",
+                error ?? undefined,
+                {
+                    mediaId: media?.id ?? null,
+                    filePath: media?.file_path ?? null,
+                    errorCode: error?.code ?? null,
+                }
+            );
+        },
+        [media?.id, media?.file_path]
+    );
+
+    const handlePlaybackRecovered = useCallback((): void => {
+        setHasPlaybackError(false);
+    }, []);
 
     const canPlay = Boolean(media && mediaSrc);
     const publishedLabel = formatPublishedDate(media?.published_at);
@@ -457,6 +485,8 @@ export function MediaPlayerView({
             filePathLabel={filePathLabel}
             progressSeconds={media?.watched_at ? 0 : (media?.progress_seconds ?? 0)}
             onPlayerElementChange={setAudioElement}
+            onPlaybackError={handlePlaybackError}
+            onPlaybackRecovered={handlePlaybackRecovered}
         />
     ) : (
         <PlayerVideoSurface
@@ -466,6 +496,8 @@ export function MediaPlayerView({
             shellBorder={shellBorder}
             progressSeconds={media?.watched_at ? 0 : (media?.progress_seconds ?? 0)}
             onPlayerElementChange={setVideoElement}
+            onPlaybackError={handlePlaybackError}
+            onPlaybackRecovered={handlePlaybackRecovered}
         />
     );
 
@@ -489,6 +521,37 @@ export function MediaPlayerView({
                     void handleBack();
                 }}
             />
+
+            {hasPlaybackError && (
+                <Alert
+                    variant="light"
+                    color="yellow"
+                    icon={<AlertTriangle size={18} />}
+                    title="This file can't be played here"
+                >
+                    <Stack gap="sm">
+                        <Text size="sm">
+                            Kavynex's built-in player couldn't play this file - it may use a
+                            format the player doesn't support. The file is still saved on disk;
+                            open its location to play it in another app.
+                        </Text>
+
+                        {onOpenFileLocation && (
+                            <Group>
+                                <Button
+                                    size="xs"
+                                    variant="light"
+                                    color="yellow"
+                                    leftSection={<FolderOpen size={14} />}
+                                    onClick={() => void onOpenFileLocation()}
+                                >
+                                    Open file location
+                                </Button>
+                            </Group>
+                        )}
+                    </Stack>
+                </Alert>
+            )}
 
             {hasLiveChat ? (
                 <Box className={styles.liveLayout}>

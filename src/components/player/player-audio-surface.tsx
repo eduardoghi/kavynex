@@ -12,6 +12,8 @@ type PlayerAudioSurfaceProps = {
     filePathLabel: string;
     progressSeconds: number;
     onPlayerElementChange: (element: HTMLAudioElement | null) => void;
+    onPlaybackError?: (error: MediaError | null) => void;
+    onPlaybackRecovered?: () => void;
 };
 
 export function PlayerAudioSurface({
@@ -24,6 +26,8 @@ export function PlayerAudioSurface({
     filePathLabel,
     progressSeconds,
     onPlayerElementChange,
+    onPlaybackError,
+    onPlaybackRecovered,
 }: PlayerAudioSurfaceProps): JSX.Element {
     const handleLoadedMetadata = useCallback(
         (event: React.SyntheticEvent<HTMLAudioElement>): void => {
@@ -36,6 +40,17 @@ export function PlayerAudioSurface({
         },
         [progressSeconds]
     );
+
+    const handleError = useCallback(
+        (event: React.SyntheticEvent<HTMLAudioElement>): void => {
+            onPlaybackError?.(event.currentTarget.error);
+        },
+        [onPlaybackError]
+    );
+
+    const handleCanPlay = useCallback((): void => {
+        onPlaybackRecovered?.();
+    }, [onPlaybackRecovered]);
 
     return (
         <Box
@@ -124,6 +139,8 @@ export function PlayerAudioSurface({
                             src={mediaSrc}
                             ref={onPlayerElementChange}
                             onLoadedMetadata={handleLoadedMetadata}
+                            onError={handleError}
+                            onCanPlay={handleCanPlay}
                             style={{
                                 width: "100%",
                                 display: "block",

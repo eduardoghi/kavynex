@@ -8,6 +8,8 @@ type PlayerVideoSurfaceProps = {
     shellBorder: string;
     progressSeconds: number;
     onPlayerElementChange: (element: HTMLVideoElement | null) => void;
+    onPlaybackError?: (error: MediaError | null) => void;
+    onPlaybackRecovered?: () => void;
 };
 
 export function PlayerVideoSurface({
@@ -17,6 +19,8 @@ export function PlayerVideoSurface({
     shellBorder,
     progressSeconds,
     onPlayerElementChange,
+    onPlaybackError,
+    onPlaybackRecovered,
 }: PlayerVideoSurfaceProps): JSX.Element {
     const handleLoadedMetadata = useCallback(
         (event: React.SyntheticEvent<HTMLVideoElement>): void => {
@@ -29,6 +33,17 @@ export function PlayerVideoSurface({
         },
         [progressSeconds]
     );
+
+    const handleError = useCallback(
+        (event: React.SyntheticEvent<HTMLVideoElement>): void => {
+            onPlaybackError?.(event.currentTarget.error);
+        },
+        [onPlaybackError]
+    );
+
+    const handleCanPlay = useCallback((): void => {
+        onPlaybackRecovered?.();
+    }, [onPlaybackRecovered]);
 
     return (
         <Box
@@ -59,6 +74,8 @@ export function PlayerVideoSurface({
                     poster={thumbnailSrc || undefined}
                     ref={onPlayerElementChange}
                     onLoadedMetadata={handleLoadedMetadata}
+                    onError={handleError}
+                    onCanPlay={handleCanPlay}
                     style={{
                         width: "100%",
                         height: "100%",
