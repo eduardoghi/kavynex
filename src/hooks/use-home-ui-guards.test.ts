@@ -9,12 +9,14 @@ describe("useHomeUiGuards", () => {
             settings: {
                 importMode: "copy" as const,
                 libraryPath: "/library",
+                loadRemoteImages: true,
             },
             isPreparingSettings: false,
             isMigratingLibraryPath: false,
             openSettings: vi.fn(),
             closeSettings: vi.fn(),
             setImportMode: vi.fn(),
+            setLoadRemoteImages: vi.fn(),
             chooseLibraryPath: vi.fn(),
             openCurrentLibraryPath: vi.fn(),
             ...overrides,
@@ -233,6 +235,7 @@ describe("useHomeUiGuards", () => {
                     settings: {
                         importMode: "copy",
                         libraryPath: "/library",
+                        loadRemoteImages: true,
                     },
                 }),
                 mediaLibrary: createMediaLibrary(),
@@ -253,6 +256,7 @@ describe("useHomeUiGuards", () => {
                     settings: {
                         importMode: "copy",
                         libraryPath: "",
+                        loadRemoteImages: true,
                     },
                 }),
                 mediaLibrary: createMediaLibrary(),
@@ -273,6 +277,7 @@ describe("useHomeUiGuards", () => {
                     settings: {
                         importMode: "copy",
                         libraryPath: "   ",
+                        loadRemoteImages: true,
                     },
                 }),
                 mediaLibrary: createMediaLibrary(),

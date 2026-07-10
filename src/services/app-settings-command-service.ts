@@ -14,14 +14,16 @@ export async function getStoredAppSettings(): Promise<StoredAppSettingsPayload> 
 }
 
 /**
- * Persists both app settings keys atomically through the backend database.
+ * Persists all app settings keys atomically through the backend database.
  */
 export async function setStoredAppSettings(
     importMode: string,
-    libraryPath: string
+    libraryPath: string,
+    loadRemoteImages: boolean
 ): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.SET_APP_SETTINGS, {
         importMode,
         libraryPath,
+        loadRemoteImages,
     });
 }

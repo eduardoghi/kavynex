@@ -16,6 +16,7 @@ import type { LiveChatMessageItem } from "../../services/live-chat-service";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { SafeAvatar } from "./safe-avatar";
+import { useRemoteImagesEnabled } from "./remote-images-context";
 
 // YouTube colors the whole author name by role instead of using separate badge chips.
 const OWNER_HIGHLIGHT_COLOR = "#ffd600";
@@ -26,8 +27,11 @@ const MEMBER_NAME_COLOR = "#2ba640";
 // (the image URLs can expire).
 function EmojiImage({ url, label }: { url: string; label: string }): JSX.Element {
     const [failed, setFailed] = useState(false);
+    const remoteImagesEnabled = useRemoteImagesEnabled();
 
-    if (failed) {
+    // With remote images off, fall back to the emoji's shortcut text instead of loading it
+    // from Google.
+    if (failed || !remoteImagesEnabled) {
         return <>{label}</>;
     }
 
@@ -79,7 +83,10 @@ const LiveChatItem = memo(function LiveChatItem({
     message,
     shellBorder,
 }: LiveChatItemProps): JSX.Element {
-    const avatarSrc = resolveAvatarSrc(message.author_thumbnail);
+    const remoteImagesEnabled = useRemoteImagesEnabled();
+    const avatarSrc = remoteImagesEnabled
+        ? resolveAvatarSrc(message.author_thumbnail)
+        : undefined;
     const authorChannelId = message.author_channel_id;
     const isOwner = message.author_badges.some((badge) => badge.type === "owner");
     const isModerator = message.author_badges.some((badge) => badge.type === "moderator");
@@ -266,7 +273,7 @@ const LiveChatItem = memo(function LiveChatItem({
                             </Text>
                         )}
 
-                        {message.sticker_image_url && (
+                        {remoteImagesEnabled && message.sticker_image_url && (
                             <img
                                 src={message.sticker_image_url}
                                 alt="Super Sticker"

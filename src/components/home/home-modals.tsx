@@ -158,7 +158,9 @@ export function HomeModals({
                 onClose={settings.closeSettings}
                 importMode={settings.settings.importMode}
                 libraryPath={settings.settings.libraryPath}
+                loadRemoteImages={settings.settings.loadRemoteImages}
                 onChangeImportMode={settings.setImportMode}
+                onChangeLoadRemoteImages={settings.setLoadRemoteImages}
                 onChooseLibraryPath={() => void settings.chooseLibraryPath()}
                 onOpenLibraryPath={() => void settings.openCurrentLibraryPath()}
                 onOpenDiagnostics={() => {

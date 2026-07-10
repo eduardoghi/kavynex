@@ -46,6 +46,7 @@ describe("useAppSettings", () => {
         mockedGetDefaultAppSettings.mockReturnValue({
             importMode: "copy",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
 
         mockedUseAppSettingsActions.mockReturnValue({
@@ -54,6 +55,7 @@ describe("useAppSettings", () => {
             prepareSettings,
             changeLibraryPath,
             setImportModeAction,
+            setLoadRemoteImagesAction: vi.fn(),
             openCurrentLibraryPathAction,
         });
 
@@ -165,6 +167,7 @@ describe("useAppSettings", () => {
             prepareSettings,
             changeLibraryPath,
             setImportModeAction: nextSetImportModeAction,
+            setLoadRemoteImagesAction: vi.fn(),
             openCurrentLibraryPathAction,
         });
 
@@ -199,6 +202,7 @@ describe("useAppSettings", () => {
             prepareSettings,
             changeLibraryPath: nextChangeLibraryPath,
             setImportModeAction,
+            setLoadRemoteImagesAction: vi.fn(),
             openCurrentLibraryPathAction: nextOpenCurrentLibraryPathAction,
         });
 
@@ -233,6 +237,7 @@ describe("useAppSettings", () => {
             prepareSettings: nextPrepareSettings,
             changeLibraryPath,
             setImportModeAction,
+            setLoadRemoteImagesAction: vi.fn(),
             openCurrentLibraryPathAction,
         });
 
@@ -249,6 +254,7 @@ describe("useAppSettings", () => {
         mockedGetDefaultAppSettings.mockReturnValue({
             importMode: "copy",
             libraryPath: "   ",
+            loadRemoteImages: true,
         });
 
         renderHook(() =>
@@ -265,6 +271,7 @@ describe("useAppSettings", () => {
         mockedGetDefaultAppSettings.mockReturnValue({
             importMode: "copy",
             libraryPath: "  /library  ",
+            loadRemoteImages: true,
         });
 
         renderHook(() =>
@@ -281,6 +288,7 @@ describe("useAppSettings", () => {
         mockedGetDefaultAppSettings.mockReturnValue({
             importMode: "copy",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
 
         const failure = new Error("scope failure");
@@ -306,6 +314,7 @@ describe("useAppSettings", () => {
         mockedGetDefaultAppSettings.mockReturnValue({
             importMode: "copy",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
 
         const failure = new Error("migration failure");
@@ -331,6 +340,7 @@ describe("useAppSettings", () => {
         mockedGetDefaultAppSettings.mockReturnValue({
             importMode: "copy",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
 
         renderHook(() =>

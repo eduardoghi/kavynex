@@ -14,6 +14,7 @@ import { LiveChatReplay } from "./live-chat-replay";
 import { PlayerAudioSurface } from "./player-audio-surface";
 import { PlayerMediaHeader } from "./player-media-header";
 import { PlayerVideoSurface } from "./player-video-surface";
+import { RemoteImagesProvider } from "./remote-images-context";
 import styles from "./media-player-view.module.css";
 
 // timeupdate fires ~4x/second; persist at most this often so a crash, a force-close, or the
@@ -31,6 +32,7 @@ type MediaPlayerViewProps = {
     isWatched: boolean;
     libraryPath: string;
     isRefreshingComments?: boolean;
+    loadRemoteImages?: boolean;
     onOpenInYoutube: () => void | Promise<void>;
     onOpenFileLocation?: () => void | Promise<void>;
     onRefreshComments?: () => void | Promise<void>;
@@ -50,6 +52,7 @@ export function MediaPlayerView({
     isWatched,
     libraryPath,
     isRefreshingComments = false,
+    loadRemoteImages = true,
     onOpenInYoutube,
     onOpenFileLocation,
     onRefreshComments,
@@ -502,83 +505,85 @@ export function MediaPlayerView({
     );
 
     return (
-        <Stack gap="md">
-            <PlayerMediaHeader
-                title={media?.title ?? ""}
-                publishedLabel={publishedLabel}
-                createdLabel={kavynexCreatedLabel}
-                shellBorder={shellBorder}
-                canOpenInYoutube={canOpenInYoutube}
-                isWatched={isWatched}
-                isAudio={isAudio}
-                onOpenInYoutube={onOpenInYoutube}
-                onOpenFileLocation={onOpenFileLocation}
-                onRefreshComments={onRefreshComments}
-                isRefreshingComments={isRefreshingComments}
-                onMarkWatched={onMarkWatched}
-                onMarkUnwatched={onMarkUnwatched}
-                onBack={() => {
-                    void handleBack();
-                }}
-            />
+        <RemoteImagesProvider value={loadRemoteImages}>
+            <Stack gap="md">
+                <PlayerMediaHeader
+                    title={media?.title ?? ""}
+                    publishedLabel={publishedLabel}
+                    createdLabel={kavynexCreatedLabel}
+                    shellBorder={shellBorder}
+                    canOpenInYoutube={canOpenInYoutube}
+                    isWatched={isWatched}
+                    isAudio={isAudio}
+                    onOpenInYoutube={onOpenInYoutube}
+                    onOpenFileLocation={onOpenFileLocation}
+                    onRefreshComments={onRefreshComments}
+                    isRefreshingComments={isRefreshingComments}
+                    onMarkWatched={onMarkWatched}
+                    onMarkUnwatched={onMarkUnwatched}
+                    onBack={() => {
+                        void handleBack();
+                    }}
+                />
 
-            {hasPlaybackError && (
-                <Alert
-                    variant="light"
-                    color="yellow"
-                    icon={<AlertTriangle size={18} />}
-                    title="This file can't be played here"
-                >
-                    <Stack gap="sm">
-                        <Text size="sm">
-                            Kavynex's built-in player couldn't play this file - it may use a
-                            format the player doesn't support. The file is still saved on disk;
-                            open its location to play it in another app.
-                        </Text>
+                {hasPlaybackError && (
+                    <Alert
+                        variant="light"
+                        color="yellow"
+                        icon={<AlertTriangle size={18} />}
+                        title="This file can't be played here"
+                    >
+                        <Stack gap="sm">
+                            <Text size="sm">
+                                Kavynex's built-in player couldn't play this file - it may use a
+                                format the player doesn't support. The file is still saved on
+                                disk; open its location to play it in another app.
+                            </Text>
 
-                        {onOpenFileLocation && (
-                            <Group>
-                                <Button
-                                    size="xs"
-                                    variant="light"
-                                    color="yellow"
-                                    leftSection={<FolderOpen size={14} />}
-                                    onClick={() => void onOpenFileLocation()}
-                                >
-                                    Open file location
-                                </Button>
-                            </Group>
-                        )}
-                    </Stack>
-                </Alert>
-            )}
+                            {onOpenFileLocation && (
+                                <Group>
+                                    <Button
+                                        size="xs"
+                                        variant="light"
+                                        color="yellow"
+                                        leftSection={<FolderOpen size={14} />}
+                                        onClick={() => void onOpenFileLocation()}
+                                    >
+                                        Open file location
+                                    </Button>
+                                </Group>
+                            )}
+                        </Stack>
+                    </Alert>
+                )}
 
-            {hasLiveChat ? (
-                <Box className={styles.liveLayout}>
-                    <Box style={{ minWidth: 0 }}>
-                        {mediaSurface}
+                {hasLiveChat ? (
+                    <Box className={styles.liveLayout}>
+                        <Box style={{ minWidth: 0 }}>
+                            {mediaSurface}
+                        </Box>
+
+                        <Box style={{ minWidth: 0 }}>
+                            <LiveChatReplay
+                                liveChatMessages={liveChatMessages}
+                                playerElement={playerElement}
+                                isLoadingLiveChat={isLoadingLiveChat}
+                                shellBorder={shellBorder}
+                            />
+                        </Box>
                     </Box>
+                ) : (
+                    mediaSurface
+                )}
 
-                    <Box style={{ minWidth: 0 }}>
-                        <LiveChatReplay
-                            liveChatMessages={liveChatMessages}
-                            playerElement={playerElement}
-                            isLoadingLiveChat={isLoadingLiveChat}
-                            shellBorder={shellBorder}
-                        />
-                    </Box>
-                </Box>
-            ) : (
-                mediaSurface
-            )}
-
-            <CommentsPanel
-                comments={comments}
-                hasComments={hasComments}
-                commentsCount={media?.comments_count ?? comments.length}
-                isLoadingComments={isLoadingComments}
-                shellBorder={shellBorder}
-            />
-        </Stack>
+                <CommentsPanel
+                    comments={comments}
+                    hasComments={hasComments}
+                    commentsCount={media?.comments_count ?? comments.length}
+                    isLoadingComments={isLoadingComments}
+                    shellBorder={shellBorder}
+                />
+            </Stack>
+        </RemoteImagesProvider>
     );
 }

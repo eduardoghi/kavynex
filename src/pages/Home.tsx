@@ -156,6 +156,7 @@ export default function Home(): JSX.Element {
                                     isWatched={controller.playerPanelState.isWatched}
                                     libraryPath={controller.libraryPath}
                                     isRefreshingComments={playerActions.isRefreshingComments}
+                                    loadRemoteImages={settings.settings.loadRemoteImages}
                                     onOpenInYoutube={playerActions.openInYoutube}
                                     onOpenFileLocation={playerActions.openFileLocation}
                                     onRefreshComments={playerActions.refreshComments}

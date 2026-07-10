@@ -47,6 +47,8 @@ describe("SettingsModal", () => {
                 disableLibraryPathChange={false}
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={vi.fn()}
             />
         );
 
@@ -59,6 +61,39 @@ describe("SettingsModal", () => {
         expect(screen.getByText("2")).toBeInTheDocument();
         expect(screen.getByText("3")).toBeInTheDocument();
         expect(screen.getByText("4")).toBeInTheDocument();
+    });
+
+    it("toggles the load-remote-images preference", () => {
+        const onChangeLoadRemoteImages = vi.fn();
+
+        renderWithMantine(
+            <SettingsModal
+                opened
+                onClose={vi.fn()}
+                importMode="copy"
+                libraryPath="/library"
+                onChangeImportMode={vi.fn()}
+                onChooseLibraryPath={vi.fn()}
+                onOpenLibraryPath={vi.fn()}
+                onOpenDiagnostics={vi.fn()}
+                disableLibraryPathChange={false}
+                libraryPathChangeDisabledReason=""
+                isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={onChangeLoadRemoteImages}
+            />
+        );
+
+        // The Modal renders in a portal (outside the render container), and the only
+        // checkbox-type input is the Privacy switch (import mode uses radios), so this
+        // unambiguously targets it from the document.
+        const toggle = document.querySelector<HTMLInputElement>('input[type="checkbox"]');
+        expect(toggle).not.toBeNull();
+        expect(toggle).toBeChecked();
+
+        fireEvent.click(toggle as HTMLInputElement);
+
+        expect(onChangeLoadRemoteImages).toHaveBeenCalledWith(false);
     });
 
     it("clears stale summary while loading a different library path", async () => {
@@ -92,6 +127,8 @@ describe("SettingsModal", () => {
                 disableLibraryPathChange={false}
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={vi.fn()}
             />
         );
 
@@ -112,6 +149,8 @@ describe("SettingsModal", () => {
                 disableLibraryPathChange={false}
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={vi.fn()}
             />
         );
 
@@ -151,6 +190,8 @@ describe("SettingsModal", () => {
                 disableLibraryPathChange={false}
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={vi.fn()}
             />
         );
 
@@ -176,6 +217,8 @@ describe("SettingsModal", () => {
                 disableLibraryPathChange={false}
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={vi.fn()}
             />
         );
 
@@ -202,6 +245,8 @@ describe("SettingsModal", () => {
                 disableLibraryPathChange
                 libraryPathChangeDisabledReason="Blocked right now"
                 isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={vi.fn()}
             />
         );
 
@@ -226,6 +271,8 @@ describe("SettingsModal", () => {
                 disableLibraryPathChange={false}
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
+                loadRemoteImages={true}
+                onChangeLoadRemoteImages={vi.fn()}
             />
         );
 

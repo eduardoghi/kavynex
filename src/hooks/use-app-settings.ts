@@ -18,6 +18,7 @@ type UseAppSettingsReturn = {
     openSettings: () => void;
     closeSettings: () => void;
     setImportMode: (mode: ImportMode) => void;
+    setLoadRemoteImages: (loadRemoteImages: boolean) => void;
     chooseLibraryPath: () => Promise<void>;
     openCurrentLibraryPath: () => Promise<void>;
 };
@@ -44,6 +45,13 @@ export function useAppSettings({
     const setImportMode = useCallback(
         (mode: ImportMode): void => {
             settingsActions.setImportModeAction(mode);
+        },
+        [settingsActions]
+    );
+
+    const setLoadRemoteImages = useCallback(
+        (loadRemoteImages: boolean): void => {
+            settingsActions.setLoadRemoteImagesAction(loadRemoteImages);
         },
         [settingsActions]
     );
@@ -94,6 +102,7 @@ export function useAppSettings({
         openSettings,
         closeSettings,
         setImportMode,
+        setLoadRemoteImages,
         chooseLibraryPath,
         openCurrentLibraryPath,
     };

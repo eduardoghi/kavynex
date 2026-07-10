@@ -16,6 +16,7 @@ const MAX_CONNECTIONS: u32 = 4;
 
 const IMPORT_MODE_KEY: &str = "import_mode";
 const LIBRARY_PATH_KEY: &str = "library_path";
+const LOAD_REMOTE_IMAGES_KEY: &str = "load_remote_images";
 
 /// Process-wide shared connection pool to the application database. The pool is created
 /// once, lazily, on first access and reused for the lifetime of the app. Connection
@@ -35,6 +36,9 @@ static POOL: OnceCell<SqlitePool> = OnceCell::const_new();
 pub struct StoredAppSettings {
     pub import_mode: Option<String>,
     pub library_path: Option<String>,
+    // "true"/"false" (absent means never set); controls whether the webview loads remote
+    // comment/live-chat author avatars and custom emojis from Google's CDNs.
+    pub load_remote_images: Option<String>,
 }
 
 pub(crate) fn db_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
@@ -121,9 +125,10 @@ pub fn is_pool_initialized() -> bool {
 
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
     let rows: Vec<(String, String)> =
-        sqlx::query_as("SELECT key, value FROM app_settings WHERE key IN (?, ?)")
+        sqlx::query_as("SELECT key, value FROM app_settings WHERE key IN (?, ?, ?)")
             .bind(IMPORT_MODE_KEY)
             .bind(LIBRARY_PATH_KEY)
+            .bind(LOAD_REMOTE_IMAGES_KEY)
             .fetch_all(pool)
             .await
             .map_err(|error| db_error("failed to read app settings", error))?;
@@ -135,6 +140,8 @@ pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAp
             settings.import_mode = Some(value);
         } else if key == LIBRARY_PATH_KEY {
             settings.library_path = Some(value);
+        } else if key == LOAD_REMOTE_IMAGES_KEY {
+            settings.load_remote_images = Some(value);
         }
     }
 
@@ -181,8 +188,10 @@ pub async fn set_app_settings_in_pool(
     pool: &SqlitePool,
     import_mode: &str,
     library_path: &str,
+    load_remote_images: bool,
 ) -> AppResult<()> {
     let import_mode = validate_import_mode(import_mode)?;
+    let load_remote_images = if load_remote_images { "true" } else { "false" };
 
     let mut tx = pool
         .begin()
@@ -192,6 +201,7 @@ pub async fn set_app_settings_in_pool(
     let result = async {
         upsert_setting(&mut *tx, IMPORT_MODE_KEY, import_mode).await?;
         upsert_setting(&mut *tx, LIBRARY_PATH_KEY, library_path).await?;
+        upsert_setting(&mut *tx, LOAD_REMOTE_IMAGES_KEY, load_remote_images).await?;
         Ok::<(), sqlx::Error>(())
     }
     .await;
@@ -252,7 +262,7 @@ mod tests {
     async fn set_then_get_app_settings_roundtrip() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "move", "/library")
+        set_app_settings_in_pool(&pool, "move", "/library", true)
             .await
             .unwrap();
 
@@ -260,16 +270,29 @@ mod tests {
 
         assert_eq!(settings.import_mode.as_deref(), Some("move"));
         assert_eq!(settings.library_path.as_deref(), Some("/library"));
+        assert_eq!(settings.load_remote_images.as_deref(), Some("true"));
+    }
+
+    #[tokio::test]
+    async fn set_app_settings_persists_the_remote_images_preference() {
+        let pool = create_test_pool().await;
+
+        set_app_settings_in_pool(&pool, "copy", "/library", false)
+            .await
+            .unwrap();
+
+        let settings = get_app_settings_from_pool(&pool).await.unwrap();
+        assert_eq!(settings.load_remote_images.as_deref(), Some("false"));
     }
 
     #[tokio::test]
     async fn set_app_settings_upserts_existing_keys() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "copy", "/old")
+        set_app_settings_in_pool(&pool, "copy", "/old", true)
             .await
             .unwrap();
-        set_app_settings_in_pool(&pool, "move", "/new")
+        set_app_settings_in_pool(&pool, "move", "/new", false)
             .await
             .unwrap();
 
@@ -277,19 +300,20 @@ mod tests {
 
         assert_eq!(settings.import_mode.as_deref(), Some("move"));
         assert_eq!(settings.library_path.as_deref(), Some("/new"));
+        assert_eq!(settings.load_remote_images.as_deref(), Some("false"));
 
         let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM app_settings")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count, 2);
+        assert_eq!(count, 3);
     }
 
     #[tokio::test]
     async fn set_app_settings_rejects_an_unknown_import_mode() {
         let pool = create_test_pool().await;
 
-        let error = set_app_settings_in_pool(&pool, "teleport", "/library")
+        let error = set_app_settings_in_pool(&pool, "teleport", "/library", true)
             .await
             .unwrap_err();
         assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
@@ -304,7 +328,7 @@ mod tests {
     async fn set_app_settings_accepts_and_trims_valid_modes() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "  move  ", "/library")
+        set_app_settings_in_pool(&pool, "  move  ", "/library", true)
             .await
             .unwrap();
 

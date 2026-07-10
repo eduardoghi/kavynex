@@ -48,12 +48,14 @@ describe("useAppSettingsActions", () => {
         vi.mocked(loadStoredSettings).mockResolvedValueOnce({
             importMode: "copy",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
 
         vi.mocked(initializeAppSettings).mockResolvedValueOnce({
             settings: {
                 importMode: "copy",
                 libraryPath: "/library",
+                loadRemoteImages: true,
             },
             shouldWarnAboutLibraryPath: false,
         });
@@ -76,15 +78,18 @@ describe("useAppSettingsActions", () => {
             storedSettings: {
                 importMode: "copy",
                 libraryPath: "/library",
+                loadRemoteImages: true,
             },
         });
         expect(setSettings).toHaveBeenCalledWith({
             importMode: "copy",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
         expect(persistSettings).toHaveBeenCalledWith({
             importMode: "copy",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
         expect(onError).not.toHaveBeenCalled();
@@ -97,12 +102,14 @@ describe("useAppSettingsActions", () => {
         vi.mocked(loadStoredSettings).mockResolvedValueOnce({
             importMode: "copy",
             libraryPath: "",
+            loadRemoteImages: true,
         });
 
         vi.mocked(initializeAppSettings).mockResolvedValueOnce({
             settings: {
                 importMode: "copy",
                 libraryPath: "",
+                loadRemoteImages: true,
             },
             shouldWarnAboutLibraryPath: true,
         });
@@ -123,10 +130,12 @@ describe("useAppSettingsActions", () => {
         expect(setSettings).toHaveBeenCalledWith({
             importMode: "copy",
             libraryPath: "",
+            loadRemoteImages: true,
         });
         expect(persistSettings).toHaveBeenCalledWith({
             importMode: "copy",
             libraryPath: "",
+            loadRemoteImages: true,
         });
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
         expect(onError).toHaveBeenCalledTimes(1);
@@ -176,6 +185,7 @@ describe("useAppSettingsActions", () => {
         vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce({
             importMode: "copy",
             libraryPath: "/new-library",
+            loadRemoteImages: true,
         });
 
         const { result } = renderHook(() =>
@@ -196,6 +206,7 @@ describe("useAppSettingsActions", () => {
         expect(setSettings).toHaveBeenCalledWith({
             importMode: "copy",
             libraryPath: "/new-library",
+            loadRemoteImages: true,
         });
     });
 
@@ -261,6 +272,7 @@ describe("useAppSettingsActions", () => {
         vi.mocked(updateStoredImportMode).mockResolvedValueOnce({
             importMode: "move",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
 
         const { result } = renderHook(() =>
@@ -281,6 +293,7 @@ describe("useAppSettingsActions", () => {
         expect(setSettings).toHaveBeenCalledWith({
             importMode: "move",
             libraryPath: "/library",
+            loadRemoteImages: true,
         });
         expect(onError).not.toHaveBeenCalled();
     });

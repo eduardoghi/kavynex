@@ -1,6 +1,7 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentsPanel } from "./comments-panel";
+import { RemoteImagesProvider } from "./remote-images-context";
 import { renderWithMantine } from "../../test/test-utils";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
@@ -36,6 +37,57 @@ describe("CommentsPanel", () => {
 
     afterEach(() => {
         vi.useRealTimers();
+    });
+
+    it("renders a monogram and skips the remote thumbnail when remote images are off", () => {
+        const { container } = renderWithMantine(
+            <RemoteImagesProvider value={false}>
+                <CommentsPanel
+                    comments={[
+                        comment({
+                            id: 1,
+                            comment_id: "c1",
+                            author_name: "Zoe",
+                            author_thumbnail: "https://yt3.ggpht.com/avatar.jpg",
+                        }),
+                    ]}
+                    hasComments
+                    commentsCount={1}
+                    isLoadingComments={false}
+                    shellBorder="rgba(255,255,255,0.1)"
+                />
+            </RemoteImagesProvider>
+        );
+
+        expect(
+            container.querySelector('img[src="https://yt3.ggpht.com/avatar.jpg"]')
+        ).toBeNull();
+        expect(screen.getByText("ZO")).toBeInTheDocument();
+    });
+
+    it("loads the remote thumbnail when remote images are on", () => {
+        const { container } = renderWithMantine(
+            <RemoteImagesProvider value={true}>
+                <CommentsPanel
+                    comments={[
+                        comment({
+                            id: 1,
+                            comment_id: "c1",
+                            author_name: "Zoe",
+                            author_thumbnail: "https://yt3.ggpht.com/avatar.jpg",
+                        }),
+                    ]}
+                    hasComments
+                    commentsCount={1}
+                    isLoadingComments={false}
+                    shellBorder="rgba(255,255,255,0.1)"
+                />
+            </RemoteImagesProvider>
+        );
+
+        expect(
+            container.querySelector('img[src="https://yt3.ggpht.com/avatar.jpg"]')
+        ).not.toBeNull();
     });
 
     it("debounces the search before filtering the comment tree", () => {

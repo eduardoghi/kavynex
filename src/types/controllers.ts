@@ -146,6 +146,7 @@ export type AppSettingsController = {
     openSettings: () => void;
     closeSettings: () => void;
     setImportMode: (mode: ImportMode) => void;
+    setLoadRemoteImages: (loadRemoteImages: boolean) => void;
     chooseLibraryPath: () => Promise<void>;
     openCurrentLibraryPath: () => Promise<void>;
 };

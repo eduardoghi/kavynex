@@ -46,6 +46,7 @@ export async function initializeAppSettings({
         settings: {
             importMode: storedSettings.importMode === "move" ? "move" : "copy",
             libraryPath,
+            loadRemoteImages: storedSettings.loadRemoteImages,
         },
         // Only warn when a previously configured library path was lost (e.g. a removable
         // drive is unplugged or the folder was deleted). A fresh install with no stored

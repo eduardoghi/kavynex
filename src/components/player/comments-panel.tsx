@@ -22,6 +22,7 @@ import type { MediaCommentRow } from "../../types/media";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { SafeAvatar } from "./safe-avatar";
+import { useRemoteImagesEnabled } from "./remote-images-context";
 import {
     buildCommentTree,
     countCommentsInTree,
@@ -71,7 +72,10 @@ function CommentItem({
         replyCount === 1
             ? `1 ${UI_TEXT.comments.reply}`
             : `${replyCount} ${UI_TEXT.comments.replies}`;
-    const avatarSrc = resolveAvatarSrc(comment.author_thumbnail);
+    const remoteImagesEnabled = useRemoteImagesEnabled();
+    const avatarSrc = remoteImagesEnabled
+        ? resolveAvatarSrc(comment.author_thumbnail)
+        : undefined;
     const authorChannelId = comment.author_channel_id;
     const repliesVisible = forceExpandReplies || expandedReplies;
 

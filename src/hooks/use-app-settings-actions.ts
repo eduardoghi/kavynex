@@ -10,6 +10,7 @@ import {
     persistSettings,
     updateStoredImportMode,
     updateStoredLibraryPath,
+    updateStoredLoadRemoteImages,
 } from "./use-app-settings-storage";
 import { logError } from "../utils/app-logger";
 
@@ -24,6 +25,7 @@ type UseAppSettingsActionsReturn = {
     prepareSettings: () => Promise<void>;
     changeLibraryPath: (currentLibraryPath: string) => Promise<void>;
     setImportModeAction: (mode: AppSettings["importMode"]) => void;
+    setLoadRemoteImagesAction: (loadRemoteImages: boolean) => void;
     openCurrentLibraryPathAction: (libraryPath: string) => Promise<void>;
 };
 
@@ -106,6 +108,28 @@ export function useAppSettingsActions({
         [onError, setSettings]
     );
 
+    const setLoadRemoteImagesAction = useCallback(
+        (loadRemoteImages: boolean): void => {
+            void (async () => {
+                try {
+                    const nextSettings = await updateStoredLoadRemoteImages(loadRemoteImages);
+                    setSettings(nextSettings);
+                } catch (error) {
+                    logError("settings", "Failed to change the remote images preference.", error, {
+                        loadRemoteImages,
+                    });
+                    onError(
+                        resolveErrorMessage(
+                            error,
+                            "Failed to change the remote images preference."
+                        )
+                    );
+                }
+            })();
+        },
+        [onError, setSettings]
+    );
+
     const openCurrentLibraryPathAction = useCallback(
         async (libraryPath: string): Promise<void> => {
             try {
@@ -126,6 +150,7 @@ export function useAppSettingsActions({
         prepareSettings,
         changeLibraryPath,
         setImportModeAction,
+        setLoadRemoteImagesAction,
         openCurrentLibraryPathAction,
     };
 }

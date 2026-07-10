@@ -147,6 +147,13 @@ activity Kavynex initiates is:
   explicitly requested, directly from YouTube.
 - A manual, user-triggered check against the GitHub releases endpoint when you open
   Settings and ask the app to check for updates.
+- When you open a saved video's comments or live chat, the player loads each comment/chat
+  author's avatar and any custom emojis or super-sticker images on demand from Google's
+  image servers (the same CDNs YouTube uses). Only those small profile/emoji images are
+  fetched - never the video, your library, or any of your data. You can turn this off in
+  **Settings -> Privacy** ("Load comment and live chat images from Google"): with it off,
+  avatars render as monograms, custom emojis fall back to their shortcut text, and viewing
+  saved media makes no network requests at all. It is on by default.
 
 The optional "cookies from browser" option (used to back up member-only or otherwise
 authenticated content) reads cookies directly from your local browser profile and hands

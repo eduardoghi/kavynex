@@ -26,7 +26,11 @@ describe("initializeAppSettings", () => {
         vi.mocked(ensureDirectoryExists).mockResolvedValueOnce("/library/resolved");
 
         const result = await initializeAppSettings({
-            storedSettings: { importMode: "copy", libraryPath: "/library" },
+            storedSettings: {
+                importMode: "copy",
+                libraryPath: "/library",
+                loadRemoteImages: true,
+            },
         });
 
         expect(resolveExistingDirectory).toHaveBeenCalledWith("/library");
@@ -41,7 +45,11 @@ describe("initializeAppSettings", () => {
         vi.mocked(resolveExistingDirectory).mockRejectedValueOnce(resolveError);
 
         const result = await initializeAppSettings({
-            storedSettings: { importMode: "copy", libraryPath: "/library" },
+            storedSettings: {
+                importMode: "copy",
+                libraryPath: "/library",
+                loadRemoteImages: true,
+            },
         });
 
         expect(ensureDirectoryExists).not.toHaveBeenCalled();
@@ -61,7 +69,11 @@ describe("initializeAppSettings", () => {
         vi.mocked(ensureDirectoryExists).mockRejectedValueOnce(ensureError);
 
         const result = await initializeAppSettings({
-            storedSettings: { importMode: "move", libraryPath: "/library" },
+            storedSettings: {
+                importMode: "move",
+                libraryPath: "/library",
+                loadRemoteImages: true,
+            },
         });
 
         expect(result.settings.libraryPath).toBe("");
@@ -76,7 +88,11 @@ describe("initializeAppSettings", () => {
 
     it("treats a whitespace-only stored path as empty without touching the filesystem", async () => {
         const result = await initializeAppSettings({
-            storedSettings: { importMode: "copy", libraryPath: "   " },
+            storedSettings: {
+                importMode: "copy",
+                libraryPath: "   ",
+                loadRemoteImages: true,
+            },
         });
 
         expect(resolveExistingDirectory).not.toHaveBeenCalled();
@@ -87,7 +103,11 @@ describe("initializeAppSettings", () => {
 
     it("does not warn on a fresh install with no stored library path", async () => {
         const result = await initializeAppSettings({
-            storedSettings: { importMode: "copy", libraryPath: "" },
+            storedSettings: {
+                importMode: "copy",
+                libraryPath: "",
+                loadRemoteImages: true,
+            },
         });
 
         expect(resolveExistingDirectory).not.toHaveBeenCalled();
@@ -102,7 +122,11 @@ describe("initializeAppSettings", () => {
         vi.mocked(ensureDirectoryExists).mockResolvedValue("/library");
 
         const moved = await initializeAppSettings({
-            storedSettings: { importMode: "move", libraryPath: "/library" },
+            storedSettings: {
+                importMode: "move",
+                libraryPath: "/library",
+                loadRemoteImages: true,
+            },
         });
         expect(moved.settings.importMode).toBe("move");
 
@@ -110,6 +134,7 @@ describe("initializeAppSettings", () => {
             storedSettings: {
                 importMode: "unexpected" as never,
                 libraryPath: "/library",
+                loadRemoteImages: true,
             },
         });
         expect(copied.settings.importMode).toBe("copy");

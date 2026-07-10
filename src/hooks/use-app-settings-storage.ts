@@ -7,12 +7,14 @@ import {
 const DEFAULT_SETTINGS: AppSettings = {
     importMode: "copy",
     libraryPath: "",
+    loadRemoteImages: true,
 };
 
 function cloneDefaultSettings(): AppSettings {
     return {
         importMode: DEFAULT_SETTINGS.importMode,
         libraryPath: DEFAULT_SETTINGS.libraryPath,
+        loadRemoteImages: DEFAULT_SETTINGS.loadRemoteImages,
     };
 }
 
@@ -22,6 +24,12 @@ function normalizeImportMode(value: string | null | undefined): ImportMode {
 
 function normalizeLibraryPath(value: string | null | undefined): string {
     return typeof value === "string" ? value.trim() : "";
+}
+
+// Only an explicit "false" disables remote images; an absent key (older databases) or any
+// other value keeps the default-on behavior.
+function normalizeLoadRemoteImages(value: string | null | undefined): boolean {
+    return value !== "false";
 }
 
 export function getDefaultAppSettings(): AppSettings {
@@ -34,11 +42,16 @@ export async function loadStoredSettings(): Promise<AppSettings> {
     return {
         importMode: normalizeImportMode(stored.importMode),
         libraryPath: normalizeLibraryPath(stored.libraryPath),
+        loadRemoteImages: normalizeLoadRemoteImages(stored.loadRemoteImages),
     };
 }
 
 export async function persistSettings(settings: AppSettings): Promise<void> {
-    await setStoredAppSettings(settings.importMode, settings.libraryPath.trim());
+    await setStoredAppSettings(
+        settings.importMode,
+        settings.libraryPath.trim(),
+        settings.loadRemoteImages
+    );
 }
 
 export async function updateStoredImportMode(mode: ImportMode): Promise<AppSettings> {
@@ -59,6 +72,20 @@ export async function updateStoredLibraryPath(libraryPath: string): Promise<AppS
     const next: AppSettings = {
         ...current,
         libraryPath: normalizeLibraryPath(libraryPath),
+    };
+
+    await persistSettings(next);
+    return next;
+}
+
+export async function updateStoredLoadRemoteImages(
+    loadRemoteImages: boolean
+): Promise<AppSettings> {
+    const current = await loadStoredSettings();
+
+    const next: AppSettings = {
+        ...current,
+        loadRemoteImages,
     };
 
     await persistSettings(next);
