@@ -5,6 +5,21 @@ use tauri::{AppHandle, Manager};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// Rejects a canonicalized path that has no parent, i.e. a filesystem/volume root (`C:\`,
+/// `/`, a UNC share root, ...). Choosing a root as the library folder would make the asset://
+/// scope recursive over the whole drive, so this is checked defense-in-depth even though the
+/// frontend already rejects the selection before it reaches here.
+fn reject_filesystem_root(library_dir: &std::path::Path) -> AppResult<()> {
+    if library_dir.parent().is_none() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidLibraryPath,
+            "library path cannot be a drive or volume root",
+        ));
+    }
+
+    Ok(())
+}
+
 pub fn ensure_library_dir(path: &str) -> AppResult<PathBuf> {
     let library_dir = PathBuf::from(path.trim());
 
@@ -22,12 +37,16 @@ pub fn ensure_library_dir(path: &str) -> AppResult<PathBuf> {
         )
     })?;
 
-    library_dir.canonicalize().map_err(|e| {
+    let canonical_dir = library_dir.canonicalize().map_err(|e| {
         AppError::from_code(
             AppErrorCode::CanonicalizeLibraryPathFailed,
             format!("failed to canonicalize library path: {e}"),
         )
-    })
+    })?;
+
+    reject_filesystem_root(&canonical_dir)?;
+
+    Ok(canonical_dir)
 }
 
 pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
@@ -54,12 +73,16 @@ pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
         ));
     }
 
-    library_dir.canonicalize().map_err(|e| {
+    let canonical_dir = library_dir.canonicalize().map_err(|e| {
         AppError::from_code(
             AppErrorCode::CanonicalizeLibraryPathFailed,
             format!("failed to canonicalize library path: {e}"),
         )
-    })
+    })?;
+
+    reject_filesystem_root(&canonical_dir)?;
+
+    Ok(canonical_dir)
 }
 
 pub fn resolve_default_library_directory_sync(app: &AppHandle) -> AppResult<String> {
@@ -218,6 +241,34 @@ mod tests {
     fn ensure_library_dir_rejects_empty_path() {
         let result = ensure_library_dir("   ");
         assert!(result.is_err());
+    }
+
+    /// The topmost ancestor of any path is the filesystem/volume root (`C:\` on Windows,
+    /// `/` on Unix). It always exists, so this needs no directory setup or cleanup.
+    fn drive_root() -> PathBuf {
+        std::env::temp_dir().ancestors().last().unwrap().to_path_buf()
+    }
+
+    #[test]
+    fn ensure_library_dir_rejects_a_drive_root() {
+        let result = ensure_library_dir(drive_root().to_string_lossy().as_ref());
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap().code,
+            AppErrorCode::InvalidLibraryPath.as_str()
+        );
+    }
+
+    #[test]
+    fn resolve_existing_library_dir_rejects_a_drive_root() {
+        let result = resolve_existing_library_dir(drive_root().to_string_lossy().as_ref());
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap().code,
+            AppErrorCode::InvalidLibraryPath.as_str()
+        );
     }
 
     #[test]

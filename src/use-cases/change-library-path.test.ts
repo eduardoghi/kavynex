@@ -158,4 +158,53 @@ describe("executeChangeLibraryPath", () => {
 
         expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
     });
+
+    it("rejects a Windows drive root selection without touching the filesystem", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce("C:\\");
+
+        await expect(
+            executeChangeLibraryPath({
+                currentLibraryPath: "/library",
+            })
+        ).rejects.toThrow(
+            "A drive or volume root cannot be used as the library folder. Choose a regular folder instead."
+        );
+
+        expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
+        expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
+        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects a UNC share root selection", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce("\\\\server\\share");
+
+        await expect(
+            executeChangeLibraryPath({
+                currentLibraryPath: "/library",
+            })
+        ).rejects.toThrow(
+            "A drive or volume root cannot be used as the library folder. Choose a regular folder instead."
+        );
+
+        expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
+    });
+
+    it("accepts a normal empty folder that is not a drive root", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce("C:\\Users\\bob\\Library");
+        ensureDirectoryExistsMock.mockResolvedValueOnce("C:\\Users\\bob\\Library");
+        isDirectoryEmptyMock.mockResolvedValueOnce(true);
+        migrateLibraryDirectoryMock.mockResolvedValueOnce({
+            final_library_path: "C:\\Users\\bob\\Library",
+            changed: true,
+        });
+
+        const result = await executeChangeLibraryPath({
+            currentLibraryPath: "/library",
+        });
+
+        expect(result).toEqual({
+            changed: true,
+            finalLibraryPath: "C:\\Users\\bob\\Library",
+        });
+    });
 });

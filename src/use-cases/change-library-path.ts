@@ -4,6 +4,7 @@ import {
     isDirectoryEmpty,
     migrateLibraryDirectory,
 } from "../services/library-service";
+import { isFilesystemRootPath } from "../utils/paths";
 
 type ExecuteChangeLibraryPathInput = {
     currentLibraryPath: string;
@@ -17,6 +18,12 @@ export type ExecuteChangeLibraryPathResult = {
 function createNonEmptyFolderError(): Error {
     return new Error(
         "The selected folder must be empty before it can be used as the library folder."
+    );
+}
+
+function createDriveRootError(): Error {
+    return new Error(
+        "A drive or volume root cannot be used as the library folder. Choose a regular folder instead."
     );
 }
 
@@ -41,6 +48,10 @@ export async function executeChangeLibraryPath({
             changed: false,
             finalLibraryPath: normalizedCurrentLibraryPath,
         };
+    }
+
+    if (isFilesystemRootPath(normalizedSelectedPath)) {
+        throw createDriveRootError();
     }
 
     const ensuredSelectedPath = await ensureDirectoryExists(normalizedSelectedPath);
