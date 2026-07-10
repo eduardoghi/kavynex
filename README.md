@@ -132,9 +132,10 @@ and try again.
 Kavynex writes a rolling log file in addition to stderr. On the current platform's app
 log directory (see `docs/DIRECTORIES.md`) look for `kavynex.log` (and `kavynex.log.1`,
 the previous rotation, once the current file passes 5 MB). Attach the relevant lines when
-reporting a bug. Logs can contain file paths and, when the cookies-from-browser feature is
-used, the fact that a browser cookie source was used (not the cookie values themselves) -
-still avoid pasting full logs in a public issue without a quick read-through first.
+reporting a bug. Logs can contain file paths, the full URL of each video you download (so
+they reveal which videos were fetched), and, when the cookies-from-browser feature is used,
+the fact that a browser cookie source was used (not the cookie values themselves) - still
+avoid pasting full logs in a public issue without a quick read-through first.
 
 ## Privacy
 
