@@ -20,6 +20,7 @@ type UseHomePlayerActionsOptions = {
         "markAsWatched" | "markAsUnwatched" | "saveMediaProgress"
     >;
     onError: (message: string) => void;
+    onNotice: (message: string) => void;
     onReloadMedia: (channelId?: number | null) => Promise<void>;
     libraryPath: string;
 };
@@ -28,6 +29,7 @@ export function useHomePlayerActions({
     mediaPlayer,
     homeMediaActions,
     onError,
+    onNotice,
     onReloadMedia,
     libraryPath,
 }: UseHomePlayerActionsOptions): HomePlayerActionsController {
@@ -81,6 +83,17 @@ export function useHomePlayerActions({
                 null
             );
 
+            // The refresh returned no comments, so the backend kept the saved comments
+            // untouched (a real extraction problem surfaces as a thrown error). This is not a
+            // failure: leave the stored counts alone - overwriting them with 0 would hide
+            // comments that are still on disk - and tell the user with a neutral notice.
+            if (!result.updated) {
+                onNotice(
+                    "No comments were found for this media. Your saved comments were kept."
+                );
+                return;
+            }
+
             const nextCommentsCount = result.totalComments;
 
             mediaPlayer.setActiveMedia({
@@ -106,6 +119,7 @@ export function useHomePlayerActions({
         mediaPlayer.activeMedia,
         mediaPlayer.setActiveMedia,
         onError,
+        onNotice,
         onReloadMedia,
     ]);
 

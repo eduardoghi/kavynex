@@ -49,6 +49,7 @@ type MockOptions = {
     mediaPlayer: MockMediaPlayer;
     homeMediaActions: MockHomeMediaActions;
     onError: (message: string) => void;
+    onNotice: (message: string) => void;
     onReloadMedia: (channelId?: number | null) => Promise<void>;
     libraryPath: string;
 };
@@ -68,6 +69,7 @@ function createDefaultOptions(overrides?: {
     mediaPlayer?: Partial<MockMediaPlayer>;
     homeMediaActions?: MockHomeMediaActions;
     onError?: (message: string) => void;
+    onNotice?: (message: string) => void;
     onReloadMedia?: (channelId?: number | null) => Promise<void>;
     libraryPath?: string;
 }): MockOptions {
@@ -83,6 +85,7 @@ function createDefaultOptions(overrides?: {
         mediaPlayer,
         homeMediaActions: overrides?.homeMediaActions ?? createHomeMediaActions(),
         onError: overrides?.onError ?? vi.fn<(message: string) => void>(),
+        onNotice: overrides?.onNotice ?? vi.fn<(message: string) => void>(),
         onReloadMedia:
             overrides?.onReloadMedia ??
             vi.fn<(channelId?: number | null) => Promise<void>>().mockResolvedValue(undefined),
@@ -489,9 +492,12 @@ describe("useHomePlayerActions", () => {
             expect(result.current.isRefreshingComments).toBe(false);
         });
 
-        it("marks has_comments as 0 when the refreshed total is exactly 0", async () => {
+        it("preserves the saved comment indicator and notifies when the refresh returns nothing", async () => {
             const activeMedia = createMediaRow({
                 youtube_video_id: "yt-123",
+                has_comments: 1,
+                comments_count: 8,
+                channel_id: 42,
             });
 
             const options = createDefaultOptions({
@@ -506,11 +512,12 @@ describe("useHomePlayerActions", () => {
                 await result.current.refreshComments();
             });
 
-            expect(options.mediaPlayer.setActiveMedia).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    has_comments: 0,
-                    comments_count: 0,
-                })
+            // The backend kept the saved comments, so the indicator must not be zeroed and the
+            // media must not be reloaded - only a neutral notice is shown.
+            expect(options.mediaPlayer.setActiveMedia).not.toHaveBeenCalled();
+            expect(options.onReloadMedia).not.toHaveBeenCalled();
+            expect(options.onNotice).toHaveBeenCalledWith(
+                "No comments were found for this media. Your saved comments were kept."
             );
         });
 
