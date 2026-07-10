@@ -17,6 +17,7 @@ vi.mock("../repositories", () => ({
     listMediaCommentsByMediaId: vi.fn(),
     markMediaAsUnwatched: vi.fn(),
     markMediaAsWatched: vi.fn(),
+    mediaExistsForChannelAndYoutubeId: vi.fn(),
     updateMediaProgress: vi.fn(),
 }));
 
@@ -55,6 +56,7 @@ import {
     listMediaByChannel,
     markMediaAsUnwatched,
     markMediaAsWatched,
+    mediaExistsForChannelAndYoutubeId,
     updateMediaProgress,
 } from "../repositories";
 import {
@@ -121,6 +123,7 @@ describe("media-service", () => {
             publishedAt: "2026-03-31",
             ytDlpRunId: "",
             ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: null,
@@ -188,6 +191,7 @@ describe("media-service", () => {
             publishedAt: null,
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: null,
             downloadComments: false,
             downloadLiveChat: true,
             cookiesBrowser: "edge",
@@ -242,6 +246,124 @@ describe("media-service", () => {
         expect(result).toEqual({ id: 77 });
     });
 
+    it("checks for a yt-dlp duplicate by the resolved youtube video id and proceeds when none exists", async () => {
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "yt-dlp" as const,
+            sourceValue: "https://youtube.com/watch?v=abc",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: "abc",
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        vi.mocked(mediaExistsForChannelAndYoutubeId).mockResolvedValueOnce(false);
+        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            youtubeVideoId: "abc",
+            publishedAt: "2026-03-31",
+            mediaType: "video",
+            isLive: false,
+            liveChatFilePath: null,
+        });
+        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(242);
+        vi.mocked(insertMedia).mockResolvedValueOnce(78);
+
+        const result = await createMedia(normalizedInput);
+
+        expect(mediaExistsForChannelAndYoutubeId).toHaveBeenCalledWith(10, "abc");
+        expect(prepareYtDlpArtifacts).toHaveBeenCalled();
+        expect(insertMedia).toHaveBeenCalled();
+        expect(result).toEqual({ id: 78 });
+    });
+
+    it("rejects a yt-dlp duplicate by the resolved youtube video id before downloading", async () => {
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "yt-dlp" as const,
+            sourceValue: "https://youtube.com/watch?v=abc",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: "abc",
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        vi.mocked(mediaExistsForChannelAndYoutubeId).mockResolvedValueOnce(true);
+
+        await expect(createMedia(normalizedInput)).rejects.toThrow(
+            "This media is already registered for the selected channel."
+        );
+
+        expect(mediaExistsForChannelAndYoutubeId).toHaveBeenCalledWith(10, "abc");
+        // The heavy yt-dlp download/artifact preparation must never run for an
+        // already-registered video: this must fail fast, before wasting bandwidth/time.
+        expect(prepareYtDlpArtifacts).not.toHaveBeenCalled();
+        expect(insertMedia).not.toHaveBeenCalled();
+    });
+
+    it("skips the yt-dlp duplicate check when no youtube video id was resolved", async () => {
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "yt-dlp" as const,
+            sourceValue: "https://youtube.com/watch?v=abc",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: null,
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            youtubeVideoId: null,
+            publishedAt: null,
+            mediaType: "video",
+            isLive: false,
+            liveChatFilePath: null,
+        });
+        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
+        vi.mocked(insertMedia).mockResolvedValueOnce(79);
+
+        const result = await createMedia(normalizedInput);
+
+        expect(mediaExistsForChannelAndYoutubeId).not.toHaveBeenCalled();
+        expect(prepareYtDlpArtifacts).toHaveBeenCalled();
+        expect(result).toEqual({ id: 79 });
+    });
+
     it("persists fetched comments through the backend when adding yt-dlp media", async () => {
         const normalizedInput = {
             channelId: 10,
@@ -255,6 +377,7 @@ describe("media-service", () => {
             publishedAt: null,
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: null,
             downloadComments: true,
             downloadLiveChat: false,
             cookiesBrowser: "edge",
@@ -314,6 +437,7 @@ describe("media-service", () => {
             publishedAt: null,
             ytDlpRunId: "",
             ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: null,
@@ -357,6 +481,7 @@ describe("media-service", () => {
             publishedAt: null,
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: null,
             downloadComments: false,
             downloadLiveChat: true,
             cookiesBrowser: null,
@@ -405,6 +530,7 @@ describe("media-service", () => {
             publishedAt: null,
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: null,
             downloadComments: false,
             downloadLiveChat: true,
             cookiesBrowser: null,
@@ -453,6 +579,7 @@ describe("media-service", () => {
             publishedAt: null,
             ytDlpRunId: "",
             ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: null,

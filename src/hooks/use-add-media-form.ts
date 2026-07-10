@@ -38,6 +38,7 @@ type UseAddMediaFormReturn = {
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
     selectedYtDlpMediaType: MediaType;
+    resolvedYoutubeVideoId: string | null;
 
     setSourceMode: (value: MediaSourceMode) => Promise<void>;
     setMediaUrl: (value: string) => void;
@@ -359,6 +360,7 @@ export function useAddMediaForm({
         selectedYtDlpFormatId: ytDlpState.selectedYtDlpFormatId,
         isLoadingYtDlpFormats: ytDlpState.isLoadingYtDlpFormats,
         selectedYtDlpMediaType: ytDlpState.selectedYtDlpMediaType,
+        resolvedYoutubeVideoId: ytDlpState.resolvedYoutubeVideoId,
 
         setSourceMode,
         setMediaUrl,

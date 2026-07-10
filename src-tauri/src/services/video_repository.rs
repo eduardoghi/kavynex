@@ -154,6 +154,34 @@ pub async fn find_media_by_channel_and_file_path(
     .map_err(|error| db_error("failed to find media by file path", error))
 }
 
+/// Cheap pre-check for the yt-dlp (URL) add flow: whether `channel_id` already has a media row
+/// for `youtube_video_id`, mirroring the "non-empty trimmed id" semantics of the unique partial
+/// index `idx_videos_channel_youtube_video_id_unique`. Letting the caller run this before
+/// downloading the video avoids downloading the whole file only to have `insert_media` fail on
+/// that index afterwards.
+pub async fn media_exists_for_channel_and_youtube_id(
+    pool: &SqlitePool,
+    channel_id: i64,
+    youtube_video_id: &str,
+) -> AppResult<bool> {
+    let normalized_id = youtube_video_id.trim();
+
+    if normalized_id.is_empty() {
+        return Ok(false);
+    }
+
+    let (exists,): (i64,) = sqlx::query_as(
+        "SELECT EXISTS(SELECT 1 FROM videos WHERE channel_id = ? AND youtube_video_id = ?)",
+    )
+    .bind(channel_id)
+    .bind(normalized_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| db_error("failed to check media existence for youtube video id", error))?;
+
+    Ok(exists != 0)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_media(
     pool: &SqlitePool,
@@ -506,6 +534,67 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(found.title, "A");
+    }
+
+    #[tokio::test]
+    async fn media_exists_for_channel_and_youtube_id_matches_channel_and_id() {
+        let pool = create_test_pool().await;
+        insert_media(
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            None,
+            "video",
+            Some("yt1"),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(media_exists_for_channel_and_youtube_id(&pool, 1, "yt1")
+            .await
+            .unwrap());
+
+        // Same youtube id but a different channel: not a duplicate for that channel.
+        assert!(!media_exists_for_channel_and_youtube_id(&pool, 2, "yt1")
+            .await
+            .unwrap());
+
+        // Same channel but a different youtube id: not a duplicate.
+        assert!(!media_exists_for_channel_and_youtube_id(&pool, 1, "yt2")
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn media_exists_for_channel_and_youtube_id_treats_blank_id_as_absent() {
+        let pool = create_test_pool().await;
+        insert_media(
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            None,
+            "video",
+            Some("yt1"),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!media_exists_for_channel_and_youtube_id(&pool, 1, "   ")
+            .await
+            .unwrap());
+        assert!(!media_exists_for_channel_and_youtube_id(&pool, 1, "")
+            .await
+            .unwrap());
     }
 
     #[tokio::test]

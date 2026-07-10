@@ -19,6 +19,7 @@ describe("validateCreateMediaInput", () => {
             publishedAt: "  2026-03-31  ",
             ytDlpRunId: "",
             ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
             downloadComments: true,
             downloadLiveChat: true,
             cookiesBrowser: "  EDGE  ",
@@ -37,6 +38,7 @@ describe("validateCreateMediaInput", () => {
             publishedAt: "2026-03-31",
             ytDlpRunId: "",
             ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
             downloadComments: true,
             downloadLiveChat: true,
             cookiesBrowser: "edge",
@@ -57,6 +59,7 @@ describe("validateCreateMediaInput", () => {
             publishedAt: "   ",
             ytDlpRunId: "",
             ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: "   ",
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: "   ",
@@ -66,6 +69,30 @@ describe("validateCreateMediaInput", () => {
         expect(result.thumbnailSourcePath).toBeNull();
         expect(result.publishedAt).toBeNull();
         expect(result.cookiesBrowser).toBeNull();
+        expect(result.ytDlpYoutubeVideoId).toBeNull();
+    });
+
+    it("trims a resolved yt-dlp youtube video id", () => {
+        const result = validateCreateMediaInput({
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "yt-dlp",
+            sourceValue: "https://youtube.com/watch?v=123",
+            thumbnailSourcePath: null,
+            mediaType: "video",
+            importMode: "copy",
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: "  abc123  ",
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        });
+
+        expect(result.ytDlpYoutubeVideoId).toBe("abc123");
     });
 
     it("requires valid channel id", () => {
@@ -82,6 +109,7 @@ describe("validateCreateMediaInput", () => {
                 publishedAt: null,
                 ytDlpRunId: "",
                 ytDlpFormatId: "",
+                ytDlpYoutubeVideoId: null,
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
@@ -104,6 +132,7 @@ describe("validateCreateMediaInput", () => {
                 publishedAt: null,
                 ytDlpRunId: "",
                 ytDlpFormatId: "",
+                ytDlpYoutubeVideoId: null,
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
@@ -126,6 +155,7 @@ describe("validateCreateMediaInput", () => {
                 publishedAt: null,
                 ytDlpRunId: "",
                 ytDlpFormatId: "",
+                ytDlpYoutubeVideoId: null,
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
@@ -148,6 +178,7 @@ describe("validateCreateMediaInput", () => {
                 publishedAt: null,
                 ytDlpRunId: "",
                 ytDlpFormatId: "",
+                ytDlpYoutubeVideoId: null,
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
@@ -170,6 +201,7 @@ describe("validateCreateMediaInput", () => {
                 publishedAt: null,
                 ytDlpRunId: "   ",
                 ytDlpFormatId: "137",
+                ytDlpYoutubeVideoId: null,
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
@@ -192,6 +224,7 @@ describe("validateCreateMediaInput", () => {
                 publishedAt: null,
                 ytDlpRunId: "run-1",
                 ytDlpFormatId: "   ",
+                ytDlpYoutubeVideoId: null,
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: null,
@@ -213,6 +246,7 @@ describe("validateCreateMediaInput", () => {
             publishedAt: null,
             ytDlpRunId: "  run-1  ",
             ytDlpFormatId: "  137  ",
+            ytDlpYoutubeVideoId: "  123  ",
             downloadComments: 1 as unknown as boolean,
             downloadLiveChat: "" as unknown as boolean,
             cookiesBrowser: "  Firefox  ",
@@ -231,6 +265,7 @@ describe("validateCreateMediaInput", () => {
             publishedAt: null,
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: "123",
             downloadComments: true,
             downloadLiveChat: false,
             cookiesBrowser: "firefox",
@@ -254,6 +289,7 @@ describe("validateCreateMediaInput", () => {
                 publishedAt: null,
                 ytDlpRunId: "run-1",
                 ytDlpFormatId: "137",
+                ytDlpYoutubeVideoId: null,
                 downloadComments: false,
                 downloadLiveChat: false,
                 cookiesBrowser: browser,
@@ -277,6 +313,7 @@ describe("validateCreateMediaInput", () => {
             publishedAt: null,
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: null,
             downloadComments: false,
             downloadLiveChat: false,
             cookiesBrowser: "internet-explorer",

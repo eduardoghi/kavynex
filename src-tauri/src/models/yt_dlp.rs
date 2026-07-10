@@ -184,6 +184,10 @@ pub struct YtDlpFormatOption {
 #[ts(export, export_to = "../../src/types/generated/")]
 pub struct YtDlpFormatsResult {
     pub suggested_title: String,
+    // Resolved from the same metadata fetch, before any download starts, so the frontend can
+    // pre-check for an already-registered duplicate (see `media_exists_for_channel_and_youtube_id`)
+    // without having to download the video first.
+    pub youtube_video_id: Option<String>,
     pub formats: Vec<YtDlpFormatOption>,
     pub terminal_logs: Vec<String>,
 }

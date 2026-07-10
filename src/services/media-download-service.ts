@@ -19,6 +19,7 @@ export async function listYtDlpFormats(
     if (!normalizedUrl) {
         return {
             suggested_title: "",
+            youtube_video_id: null,
             formats: [],
             terminal_logs: [],
         };

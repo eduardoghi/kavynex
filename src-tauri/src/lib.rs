@@ -250,6 +250,7 @@ pub fn run() {
             commands::videos::update_media_title,
             commands::videos::list_media_by_channel,
             commands::videos::find_media_by_channel_and_file_path,
+            commands::videos::media_exists_for_channel_and_youtube_id,
             commands::videos::insert_media,
             commands::videos::list_media_comments_by_media_id,
             commands::videos::delete_media_with_artifacts,

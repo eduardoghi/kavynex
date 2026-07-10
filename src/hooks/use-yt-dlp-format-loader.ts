@@ -25,6 +25,10 @@ type UseYtDlpFormatLoaderReturn = {
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
     selectedYtDlpMediaType: MediaType;
+    // Resolved from the same metadata fetch that loads the formats, before any download
+    // starts. Lets the add-media flow pre-check for an already-registered duplicate instead
+    // of only finding out after downloading the whole file (see media-service.ts).
+    resolvedYoutubeVideoId: string | null;
     setSelectedYtDlpFormatId: (value: string) => void;
     resetYtDlpFormats: () => void;
     loadYtDlpFormats: () => Promise<void>;
@@ -46,6 +50,7 @@ export function useYtDlpFormatLoader({
     const [ytDlpFormats, setYtDlpFormats] = useState<YtDlpFormat[]>([]);
     const [selectedYtDlpFormatId, setSelectedYtDlpFormatIdState] = useState("");
     const [isLoadingYtDlpFormats, setIsLoadingYtDlpFormats] = useState(false);
+    const [resolvedYoutubeVideoId, setResolvedYoutubeVideoId] = useState<string | null>(null);
 
     // Guards against a stale format response overwriting state after the URL changed (or was
     // reset) while yt-dlp was running - otherwise the formats/selection for an old URL could
@@ -61,6 +66,7 @@ export function useYtDlpFormatLoader({
         latestRequestIdRef.current += 1;
         setYtDlpFormats([]);
         setSelectedYtDlpFormatIdState("");
+        setResolvedYoutubeVideoId(null);
         onMediaTypeResolved("video");
     }, [onMediaTypeResolved]);
 
@@ -146,6 +152,7 @@ export function useYtDlpFormatLoader({
 
             setYtDlpFormats(nextFormats);
             setSelectedYtDlpFormatIdState(nextSelectedFormatId);
+            setResolvedYoutubeVideoId(result.youtube_video_id?.trim() || null);
             onMediaTypeResolved(nextMediaType);
 
             const currentTitle = getCurrentTitle().trim();
@@ -175,6 +182,7 @@ export function useYtDlpFormatLoader({
 
             setYtDlpFormats([]);
             setSelectedYtDlpFormatIdState("");
+            setResolvedYoutubeVideoId(null);
             onMediaTypeResolved("video");
 
             let message = resolveErrorMessage(
@@ -217,6 +225,7 @@ export function useYtDlpFormatLoader({
         selectedYtDlpFormatId,
         isLoadingYtDlpFormats,
         selectedYtDlpMediaType,
+        resolvedYoutubeVideoId,
         setSelectedYtDlpFormatId,
         resetYtDlpFormats,
         loadYtDlpFormats,

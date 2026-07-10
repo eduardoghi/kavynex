@@ -12,6 +12,7 @@ import {
     listMediaIntegrityReferences,
     markMediaAsUnwatched,
     markMediaAsWatched,
+    mediaExistsForChannelAndYoutubeId,
     updateMediaProgress,
     updateMediaTitle,
 } from "./media-repository";
@@ -54,6 +55,16 @@ describe("media-repository command wiring", () => {
         expect(invokeCommandMock).toHaveBeenCalledWith(
             TAURI_COMMANDS.FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH,
             { channelId: 3, filePath: "video/a.mp4" }
+        );
+    });
+
+    it("mediaExistsForChannelAndYoutubeId passes channel id and youtube video id and returns the result", async () => {
+        invokeCommandMock.mockResolvedValueOnce(true as never);
+
+        await expect(mediaExistsForChannelAndYoutubeId(3, "abc123")).resolves.toBe(true);
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID,
+            { channelId: 3, youtubeVideoId: "abc123" }
         );
     });
 

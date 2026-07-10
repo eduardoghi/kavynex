@@ -16,6 +16,10 @@ export type CreateMediaInput = {
     publishedAt: string | null;
     ytDlpRunId: string;
     ytDlpFormatId: string;
+    // Resolved from the yt-dlp format metadata before any download starts (see
+    // use-yt-dlp-format-loader.ts). Used to pre-check for an already-registered duplicate;
+    // null when unresolved or when sourceMode is "local".
+    ytDlpYoutubeVideoId: string | null;
     downloadComments: boolean;
     downloadLiveChat: boolean;
     cookiesBrowser: string | null;
@@ -39,6 +43,7 @@ export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaIn
     const normalizedPublishedAt = normalizeOptionalValue(input.publishedAt);
     const normalizedYtDlpRunId = normalizeRequiredValue(input.ytDlpRunId);
     const normalizedYtDlpFormatId = normalizeRequiredValue(input.ytDlpFormatId);
+    const normalizedYtDlpYoutubeVideoId = normalizeOptionalValue(input.ytDlpYoutubeVideoId);
     const normalizedCookiesBrowser = normalizeCookiesBrowser(input.cookiesBrowser);
     const normalizedCookiesPath = normalizeOptionalValue(input.cookiesPath);
 
@@ -75,6 +80,7 @@ export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaIn
         publishedAt: normalizedPublishedAt,
         ytDlpRunId: normalizedYtDlpRunId,
         ytDlpFormatId: normalizedYtDlpFormatId,
+        ytDlpYoutubeVideoId: normalizedYtDlpYoutubeVideoId,
         downloadComments: Boolean(input.downloadComments),
         downloadLiveChat: Boolean(input.downloadLiveChat),
         cookiesBrowser: normalizedCookiesBrowser,

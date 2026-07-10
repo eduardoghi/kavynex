@@ -166,6 +166,8 @@ export function useAddMediaWorkflow({
                                 : addMediaForm.publishedAt.trim() || null,
                         ytDlpRunId,
                         ytDlpFormatId,
+                        ytDlpYoutubeVideoId:
+                            sourceMode === "yt-dlp" ? addMediaForm.resolvedYoutubeVideoId : null,
                         downloadComments: addMediaForm.downloadComments,
                         downloadLiveChat: addMediaForm.downloadLiveChat,
                         cookiesBrowser,

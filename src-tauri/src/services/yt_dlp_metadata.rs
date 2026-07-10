@@ -614,6 +614,9 @@ pub async fn list_yt_dlp_formats_async(
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "Untitled".to_string());
 
+    let youtube_video_id =
+        resolve_youtube_video_id(metadata.id.as_deref(), metadata.extractor.as_deref());
+
     let mut formats: Vec<YtDlpFormatOption> = metadata
         .formats
         .into_iter()
@@ -688,9 +691,26 @@ pub async fn list_yt_dlp_formats_async(
 
     Ok(YtDlpFormatsResult {
         suggested_title,
+        youtube_video_id,
         formats,
         terminal_logs,
     })
+}
+
+/// True when yt-dlp's `extractor` field indicates the media came from YouTube. Shared by the
+/// download flow (`normalize_download_metadata`) and the format-listing flow
+/// (`list_yt_dlp_formats_async`) so both resolve the same youtube video id from the same
+/// metadata fetch - the latter lets the frontend pre-check for an already-registered duplicate
+/// before any download starts, instead of only after downloading the whole file.
+fn resolve_youtube_video_id(id: Option<&str>, extractor: Option<&str>) -> Option<String> {
+    let id = id.map(str::trim).filter(|value| !value.is_empty())?;
+    let extractor = extractor.unwrap_or_default().to_lowercase();
+
+    if extractor.contains("youtube") {
+        Some(id.to_string())
+    } else {
+        None
+    }
 }
 
 pub fn normalize_download_metadata(
@@ -719,11 +739,7 @@ pub fn normalize_download_metadata(
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "Untitled".to_string());
 
-    let youtube_video_id = if extractor.to_lowercase().contains("youtube") {
-        Some(id.clone())
-    } else {
-        None
-    };
+    let youtube_video_id = resolve_youtube_video_id(Some(&id), Some(&extractor));
 
     let published_at = normalize_yt_dlp_upload_date(metadata.upload_date.clone());
 
@@ -740,7 +756,7 @@ pub fn normalize_download_metadata(
 mod tests {
     use super::{
         comments_extraction_looks_incomplete, is_valid_youtube_video_id, read_capped_json_stdout,
-        redact_cookies_path_from_line, run_yt_dlp_and_capture_json,
+        redact_cookies_path_from_line, resolve_youtube_video_id, run_yt_dlp_and_capture_json,
     };
     use crate::AppErrorCode;
 
@@ -859,6 +875,30 @@ mod tests {
         let line = "[debug] Command-line config: ['-v', '--cookies-from-browser', 'firefox']";
 
         assert_eq!(redact_cookies_path_from_line(line, None), line);
+    }
+
+    #[test]
+    fn resolve_youtube_video_id_accepts_a_youtube_extractor() {
+        assert_eq!(
+            resolve_youtube_video_id(Some("abc123"), Some("Youtube")),
+            Some("abc123".to_string())
+        );
+        assert_eq!(
+            resolve_youtube_video_id(Some("abc123"), Some("youtube:tab")),
+            Some("abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_youtube_video_id_rejects_a_non_youtube_extractor() {
+        assert_eq!(resolve_youtube_video_id(Some("abc123"), Some("vimeo")), None);
+        assert_eq!(resolve_youtube_video_id(Some("abc123"), None), None);
+    }
+
+    #[test]
+    fn resolve_youtube_video_id_rejects_a_missing_or_blank_id() {
+        assert_eq!(resolve_youtube_video_id(None, Some("youtube")), None);
+        assert_eq!(resolve_youtube_video_id(Some("   "), Some("youtube")), None);
     }
 
     #[test]

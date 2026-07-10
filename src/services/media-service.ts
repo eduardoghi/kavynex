@@ -7,6 +7,7 @@ import {
     listMediaCommentsByMediaId,
     markMediaAsUnwatched,
     markMediaAsWatched,
+    mediaExistsForChannelAndYoutubeId,
     updateMediaProgress,
     updateMediaTitle as updateMediaTitleInRepository,
 } from "../repositories";
@@ -136,6 +137,33 @@ async function ensureMediaDoesNotAlreadyExist(
     }
 }
 
+// Pre-download duplicate guard for the yt-dlp (URL) add flow: the youtube video id resolved
+// from the format-loading metadata (see use-yt-dlp-format-loader.ts) is known before the media
+// is downloaded, so a re-add of an already-registered video can fail fast with the same
+// friendly error `ensureMediaDoesNotAlreadyExist` raises for the local-import path, instead of
+// downloading the whole file and only then hitting the `idx_videos_channel_youtube_video_id_unique`
+// unique index in `insert_media`. The post-download index check stays in place as a safety net
+// (e.g. when the id could not be resolved up front, or a race with another add).
+async function ensureYtDlpMediaDoesNotAlreadyExist(
+    channelId: number,
+    youtubeVideoId: string | null
+): Promise<void> {
+    const normalizedVideoId = youtubeVideoId?.trim() ?? "";
+
+    if (!normalizedVideoId) {
+        return;
+    }
+
+    const alreadyExists = await mediaExistsForChannelAndYoutubeId(channelId, normalizedVideoId);
+
+    if (alreadyExists) {
+        throw createAppError(
+            "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
+            "This media is already registered for the selected channel."
+        );
+    }
+}
+
 async function tryPersistYouTubeComments(
     mediaId: number | null,
     youtubeVideoId: string | null,
@@ -253,6 +281,13 @@ export async function createMedia(
     let mediaRegistered = false;
 
     try {
+        if (normalizedInput.sourceMode === "yt-dlp") {
+            await ensureYtDlpMediaDoesNotAlreadyExist(
+                normalizedInput.channelId,
+                normalizedInput.ytDlpYoutubeVideoId
+            );
+        }
+
         const prepared = await prepareMediaArtifacts(normalizedInput);
 
         createdFilePath = prepared.filePath;

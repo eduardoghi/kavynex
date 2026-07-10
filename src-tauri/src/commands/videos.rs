@@ -40,6 +40,19 @@ pub async fn find_media_by_channel_and_file_path(
     repo::find_media_by_channel_and_file_path(pool, channel_id, &file_path).await
 }
 
+/// Pre-check used by the yt-dlp (URL) add flow before the video is downloaded: lets the
+/// frontend fail early with the friendly "already registered" error instead of downloading the
+/// whole file only to hit the unique index in `insert_media` afterwards.
+#[tauri::command]
+pub async fn media_exists_for_channel_and_youtube_id(
+    app: AppHandle,
+    channel_id: i64,
+    youtube_video_id: String,
+) -> AppResult<bool> {
+    let pool = shared_pool(&app).await?;
+    repo::media_exists_for_channel_and_youtube_id(pool, channel_id, &youtube_video_id).await
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_media(

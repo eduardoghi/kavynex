@@ -22,6 +22,16 @@ export async function findMediaByChannelAndFilePath(
     );
 }
 
+export async function mediaExistsForChannelAndYoutubeId(
+    channelId: number,
+    youtubeVideoId: string
+): Promise<boolean> {
+    return invokeCommand<boolean>(TAURI_COMMANDS.MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID, {
+        channelId,
+        youtubeVideoId,
+    });
+}
+
 export async function insertMedia(
     channelId: number,
     title: string,

@@ -33,6 +33,7 @@ function resultWithFormats(
 ): YtDlpFormatsResult {
     return {
         suggested_title: "",
+        youtube_video_id: null,
         terminal_logs: [],
         formats,
         ...overrides,
@@ -108,6 +109,115 @@ describe("useYtDlpFormatLoader", () => {
         expect(result.current.selectedYtDlpFormatId).toBe("");
         expect(result.current.isLoadingYtDlpFormats).toBe(false);
         expect(result.current.selectedYtDlpMediaType).toBe("video");
+        expect(result.current.resolvedYoutubeVideoId).toBeNull();
+    });
+
+    it("resolves the youtube video id from the format metadata response", async () => {
+        vi.mocked(listYtDlpFormats).mockResolvedValueOnce({
+            suggested_title: "",
+            youtube_video_id: "  abc123  ",
+            terminal_logs: [],
+            formats: [],
+        });
+
+        const { result } = renderHook(() =>
+            useYtDlpFormatLoader({
+                getUrl: () => "https://youtube.com/watch?v=abc123",
+                getCurrentTitle: () => "",
+                onSuggestedTitle: vi.fn(),
+                onMediaTypeResolved: vi.fn(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats();
+        });
+
+        expect(result.current.resolvedYoutubeVideoId).toBe("abc123");
+    });
+
+    it("treats a missing or blank resolved youtube video id as null", async () => {
+        vi.mocked(listYtDlpFormats).mockResolvedValueOnce({
+            suggested_title: "",
+            youtube_video_id: "   ",
+            terminal_logs: [],
+            formats: [],
+        });
+
+        const { result } = renderHook(() =>
+            useYtDlpFormatLoader({
+                getUrl: () => "https://vimeo.com/1",
+                getCurrentTitle: () => "",
+                onSuggestedTitle: vi.fn(),
+                onMediaTypeResolved: vi.fn(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats();
+        });
+
+        expect(result.current.resolvedYoutubeVideoId).toBeNull();
+    });
+
+    it("clears the resolved youtube video id on reset", async () => {
+        vi.mocked(listYtDlpFormats).mockResolvedValueOnce({
+            suggested_title: "",
+            youtube_video_id: "abc123",
+            terminal_logs: [],
+            formats: [],
+        });
+
+        const { result } = renderHook(() =>
+            useYtDlpFormatLoader({
+                getUrl: () => "https://youtube.com/watch?v=abc123",
+                getCurrentTitle: () => "",
+                onSuggestedTitle: vi.fn(),
+                onMediaTypeResolved: vi.fn(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats();
+        });
+        expect(result.current.resolvedYoutubeVideoId).toBe("abc123");
+
+        act(() => {
+            result.current.resetYtDlpFormats();
+        });
+
+        expect(result.current.resolvedYoutubeVideoId).toBeNull();
+    });
+
+    it("clears the resolved youtube video id when format loading fails", async () => {
+        vi.mocked(listYtDlpFormats).mockResolvedValueOnce({
+            suggested_title: "",
+            youtube_video_id: "abc123",
+            terminal_logs: [],
+            formats: [],
+        });
+
+        const { result } = renderHook(() =>
+            useYtDlpFormatLoader({
+                getUrl: () => "https://youtube.com/watch?v=abc123",
+                getCurrentTitle: () => "",
+                onSuggestedTitle: vi.fn(),
+                onMediaTypeResolved: vi.fn(),
+            })
+        );
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats();
+        });
+        expect(result.current.resolvedYoutubeVideoId).toBe("abc123");
+
+        vi.mocked(listYtDlpFormats).mockRejectedValueOnce(new Error("boom"));
+
+        await act(async () => {
+            await expect(result.current.loadYtDlpFormats()).rejects.toThrow("boom");
+        });
+
+        expect(result.current.resolvedYoutubeVideoId).toBeNull();
     });
 
     it("loads formats and selects best candidate", async () => {
@@ -116,6 +226,7 @@ describe("useYtDlpFormatLoader", () => {
 
         vi.mocked(listYtDlpFormats).mockResolvedValueOnce({
             suggested_title: "Video A",
+            youtube_video_id: null,
             terminal_logs: [],
             formats: [
                 {
@@ -290,6 +401,7 @@ describe("useYtDlpFormatLoader", () => {
         await act(async () => {
             resolveFormats({
                 suggested_title: "",
+                youtube_video_id: null,
                 terminal_logs: [],
                 formats: [
                     {

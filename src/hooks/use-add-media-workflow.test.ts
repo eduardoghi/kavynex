@@ -42,6 +42,7 @@ type MockAddMediaForm = {
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
     selectedYtDlpMediaType: MediaType;
+    resolvedYoutubeVideoId: string | null;
     setSourceMode: ReturnType<typeof vi.fn>;
     setMediaUrl: ReturnType<typeof vi.fn>;
     setTitle: ReturnType<typeof vi.fn>;
@@ -101,6 +102,7 @@ function createMockAddMediaForm(): MockAddMediaForm {
         selectedYtDlpFormatId: "",
         isLoadingYtDlpFormats: false,
         selectedYtDlpMediaType: "video",
+        resolvedYoutubeVideoId: null,
         setSourceMode: vi.fn(),
         setMediaUrl: vi.fn(),
         setTitle: vi.fn(),
@@ -645,6 +647,69 @@ describe("useAddMediaWorkflow", () => {
         expect(mockAppendManualLog).toHaveBeenCalledWith("Comments: disabled");
         expect(mockAppendManualLog).toHaveBeenCalledWith("Live chat: enabled");
         expect(mockAppendManualLog).toHaveBeenCalledWith("Cookies from browser: edge");
+    });
+
+    it("forwards the resolved youtube video id for yt-dlp source mode", async () => {
+        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+
+        mockAddMediaForm.sourceMode = "yt-dlp";
+        mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
+        mockAddMediaForm.mediaPath = "";
+        mockAddMediaForm.selectedYtDlpFormatId = "251";
+        mockAddMediaForm.resolvedYoutubeVideoId = "abc";
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(createMedia).toHaveBeenCalledWith(
+            expect.objectContaining({
+                ytDlpYoutubeVideoId: "abc",
+            }),
+            expect.objectContaining({
+                onProgress: expect.any(Function),
+            })
+        );
+    });
+
+    it("does not forward a resolved youtube video id for local source mode", async () => {
+        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+
+        // A stale value from a previous yt-dlp session must never leak into a local import.
+        mockAddMediaForm.resolvedYoutubeVideoId = "abc";
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(createMedia).toHaveBeenCalledWith(
+            expect.objectContaining({
+                ytDlpYoutubeVideoId: null,
+            }),
+            expect.objectContaining({
+                onProgress: expect.any(Function),
+            })
+        );
     });
 
     it("forwards the manual cookies file to the download instead of a browser", async () => {

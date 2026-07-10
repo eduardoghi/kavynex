@@ -56,6 +56,7 @@ export const TAURI_COMMANDS = {
     UPDATE_MEDIA_TITLE: "update_media_title",
     LIST_MEDIA_BY_CHANNEL: "list_media_by_channel",
     FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH: "find_media_by_channel_and_file_path",
+    MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID: "media_exists_for_channel_and_youtube_id",
     INSERT_MEDIA: "insert_media",
     LIST_MEDIA_COMMENTS_BY_MEDIA_ID: "list_media_comments_by_media_id",
     DELETE_MEDIA_WITH_ARTIFACTS: "delete_media_with_artifacts",

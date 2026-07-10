@@ -55,6 +55,7 @@ const mockUseYtDlpFormatLoader = vi.fn((_options: YtDlpFormatLoaderOptions) => (
     selectedYtDlpFormatId: "",
     isLoadingYtDlpFormats: false,
     selectedYtDlpMediaType: "video" as const,
+    resolvedYoutubeVideoId: null as string | null,
     setSelectedYtDlpFormatId: mockSetSelectedYtDlpFormatId,
     loadYtDlpFormats: mockLoadYtDlpFormats,
     resetYtDlpFormats: mockResetYtDlpFormats,
@@ -94,6 +95,24 @@ describe("useAddMediaForm", () => {
         expect(result.current.downloadLiveChat).toBe(true);
         expect(result.current.cookiesBrowser).toBe("");
         expect(result.current.cookiesPath).toBe("");
+        expect(result.current.resolvedYoutubeVideoId).toBeNull();
+    });
+
+    it("exposes the youtube video id resolved by the format loader", () => {
+        mockUseYtDlpFormatLoader.mockReturnValueOnce({
+            ytDlpFormats: [],
+            selectedYtDlpFormatId: "",
+            isLoadingYtDlpFormats: false,
+            selectedYtDlpMediaType: "video",
+            resolvedYoutubeVideoId: "abc123",
+            setSelectedYtDlpFormatId: mockSetSelectedYtDlpFormatId,
+            loadYtDlpFormats: mockLoadYtDlpFormats,
+            resetYtDlpFormats: mockResetYtDlpFormats,
+        });
+
+        const { result } = renderHook(() => useAddMediaForm());
+
+        expect(result.current.resolvedYoutubeVideoId).toBe("abc123");
     });
 
     it("requests a single, non-directory file from the dialog", async () => {

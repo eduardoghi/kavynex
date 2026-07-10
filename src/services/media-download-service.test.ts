@@ -20,6 +20,7 @@ describe("media-download-service", () => {
     it("returns empty formats result when url is empty", async () => {
         await expect(listYtDlpFormats("   ")).resolves.toEqual({
             suggested_title: "",
+            youtube_video_id: null,
             formats: [],
             terminal_logs: [],
         });
