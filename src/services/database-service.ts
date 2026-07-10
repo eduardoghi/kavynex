@@ -1,10 +1,8 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
+import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 
-export type DatabaseBackupStatus = {
-    available: boolean;
-    backedUpAtMs: number | null;
-};
+export type { DatabaseBackupStatus };
 
 /**
  * Initializes the backend database (creating and migrating the schema on first call)

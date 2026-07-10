@@ -159,11 +159,13 @@ pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct DatabaseBackupStatus {
     pub available: bool,
     /// Modification time of the backup that would be restored, in epoch milliseconds.
+    #[ts(type = "number | null")]
     pub backed_up_at_ms: Option<u64>,
 }
 

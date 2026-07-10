@@ -4,19 +4,10 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { normalizeString } from "../utils/guards";
 import { logError } from "../utils/app-logger";
+import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
+import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 
-export type LibrarySummaryInfo = {
-    total_bytes: number;
-    formatted_size: string;
-    video_files: number;
-    audio_files: number;
-    thumbnail_files: number;
-};
-
-type MigrateLibraryDirectoryResult = {
-    final_library_path: string;
-    changed: boolean;
-};
+export type { LibrarySummaryInfo };
 
 export function createEmptyLibrarySummary(): LibrarySummaryInfo {
     return {

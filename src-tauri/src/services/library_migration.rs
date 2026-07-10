@@ -10,7 +10,8 @@ use crate::services::library_paths::ensure_library_dir;
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub struct MigrateLibraryDirectoryResult {
     pub final_library_path: String,
     pub changed: bool,
