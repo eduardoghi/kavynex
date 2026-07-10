@@ -141,3 +141,163 @@ pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+
+        std::env::temp_dir().join(format!(
+            "kavynex-library-media-test-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    #[test]
+    fn import_media_file_sync_rejects_unsupported_extension() {
+        let root = unique_test_dir("unsupported-ext");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("notes.txt");
+        fs::write(&source, b"not media").unwrap();
+
+        let result = import_media_file_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+        );
+
+        let error = result.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::UnsupportedMediaExtension.as_str());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn import_media_file_sync_copy_mode_preserves_source_file() {
+        let root = unique_test_dir("copy-preserves");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"video-bytes").unwrap();
+
+        let relative = import_media_file_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        assert!(source.exists(), "copy mode must keep the source file");
+        assert!(library_dir
+            .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+            .exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn import_media_file_sync_move_mode_removes_source_file() {
+        let root = unique_test_dir("move-removes");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"video-bytes").unwrap();
+
+        let relative = import_media_file_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_dir.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        assert!(!source.exists(), "move mode must remove the source file");
+        assert!(library_dir
+            .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+            .exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn import_media_file_sync_is_a_noop_when_destination_already_exists() {
+        let root = unique_test_dir("noop-existing");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"identical-content").unwrap();
+
+        // Copy mode keeps the source in place, so importing the same content twice must
+        // resolve to the same content-addressed destination without erroring or duplicating.
+        let first = import_media_file_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        let second = import_media_file_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        assert_eq!(first, second);
+
+        let video_dir = library_dir.join("video");
+        let entries: Vec<_> = fs::read_dir(&video_dir).unwrap().flatten().collect();
+        assert_eq!(
+            entries.len(),
+            1,
+            "the destination file must not be duplicated"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_media_file_sync_returns_ok_for_missing_file() {
+        let root = unique_test_dir("delete-missing");
+        let library_dir = root.join("library");
+        fs::create_dir_all(library_dir.join("video")).unwrap();
+
+        let result =
+            delete_media_file_sync("video/missing.mp4", library_dir.to_string_lossy().as_ref());
+
+        assert!(result.is_ok());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_media_file_sync_rejects_path_outside_library() {
+        let root = unique_test_dir("delete-outside");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
+
+        let result =
+            delete_media_file_sync("../outside.mp4", library_dir.to_string_lossy().as_ref());
+
+        let error = result.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+
+        let _ = fs::remove_dir_all(root);
+    }
+}
