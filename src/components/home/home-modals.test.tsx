@@ -242,6 +242,26 @@ describe("HomeModals", () => {
         expect(screen.getByText("Something went wrong")).toBeInTheDocument();
     });
 
+    it("warns that deleting media permanently removes the file from disk", () => {
+        renderWithMantine(<HomeModals {...createProps()} />);
+
+        expect(
+            screen.getByText(
+                "This permanently deletes the media file and its thumbnail from disk. This cannot be undone."
+            )
+        ).toBeInTheDocument();
+    });
+
+    it("warns that deleting a channel permanently removes its files from disk", () => {
+        renderWithMantine(<HomeModals {...createProps()} />);
+
+        expect(
+            screen.getByText(
+                "This permanently deletes all of this channel's saved videos, audio, thumbnails and live chat replays from disk, and removes its comments. This cannot be undone."
+            )
+        ).toBeInTheDocument();
+    });
+
     it("closes settings before opening diagnostics", () => {
         const props = createProps();
 

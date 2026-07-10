@@ -136,7 +136,7 @@ export function HomeModals({
                         Delete <b>{media.mediaToDelete?.title ?? "this item"}</b>?
                     </>
                 }
-                description="This will remove it from the library."
+                description="This permanently deletes the media file and its thumbnail from disk. This cannot be undone."
             />
 
             <ConfirmDeleteModal
@@ -150,7 +150,7 @@ export function HomeModals({
                         Delete channel <b>{channels.channelToDelete?.name ?? "this channel"}</b>?
                     </>
                 }
-                description="Channel records will be removed."
+                description="This permanently deletes all of this channel's saved videos, audio, thumbnails and live chat replays from disk, and removes its comments. This cannot be undone."
             />
 
             <SettingsModal
