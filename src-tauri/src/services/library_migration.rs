@@ -76,9 +76,55 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
         }
     }
 
+    let leftovers = list_leftover_entries(old_library_dir);
+
+    if !leftovers.is_empty() {
+        let examples = leftovers
+            .iter()
+            .take(5)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        logger::warn(
+            "library",
+            format!(
+                "library migration left {} entr{} behind in the old library directory '{}' that were not part of the managed folders: {}",
+                leftovers.len(),
+                if leftovers.len() == 1 { "y" } else { "ies" },
+                old_library_dir.to_string_lossy(),
+                examples
+            ),
+        );
+    }
+
     let _ = fs::remove_dir(old_library_dir);
 
     Ok(())
+}
+
+/// Lists the top-level entries of `old_library_dir` that are not one of the managed library
+/// folders (video/audio/thumbnails/live_chat). The library folder is normally fully owned by
+/// the app, but a user can still drop files directly into it; those are never migrated, so
+/// they would otherwise be silently left behind (and keep the old directory from being
+/// removed) without any indication of why.
+fn list_leftover_entries(old_library_dir: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(old_library_dir) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            if MANAGED_LIBRARY_DIRS.contains(&name.as_str()) {
+                None
+            } else {
+                Some(name)
+            }
+        })
+        .collect()
 }
 
 pub fn migrate_library_directory_sync(
@@ -249,6 +295,61 @@ mod tests {
         assert!(new_root.join("video").join("a.mp4").exists());
         assert!(new_root.join("audio").join("a.mp3").exists());
         assert!(new_root.join("thumbnails").join("a.jpg").exists());
+
+        let _ = fs::remove_dir_all(new_root);
+        let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn list_leftover_entries_finds_files_outside_managed_dirs() {
+        let old_root = unique_test_dir("leftovers");
+
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::create_dir_all(old_root.join("thumbnails")).unwrap();
+        fs::write(old_root.join("stray-file.txt"), b"leftover").unwrap();
+
+        let leftovers = list_leftover_entries(&old_root);
+
+        assert_eq!(leftovers, vec!["stray-file.txt".to_string()]);
+
+        let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn list_leftover_entries_is_empty_when_only_managed_dirs_are_present() {
+        let old_root = unique_test_dir("no-leftovers");
+
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::create_dir_all(old_root.join("audio")).unwrap();
+        fs::create_dir_all(old_root.join("thumbnails")).unwrap();
+        fs::create_dir_all(old_root.join("live_chat")).unwrap();
+
+        let leftovers = list_leftover_entries(&old_root);
+
+        assert!(leftovers.is_empty());
+
+        let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn migrate_library_contents_keeps_old_dir_when_a_stray_file_is_left_behind() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let old_root = unique_test_dir("stray");
+        let new_root = unique_test_dir("stray-new");
+
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video").unwrap();
+        // Not part of any managed directory: the migration never touches it, so it stays
+        // behind and the old directory can no longer be removed.
+        fs::write(old_root.join("notes.txt"), b"leftover notes").unwrap();
+
+        migrate_library_contents(&old_root, &new_root).unwrap();
+
+        assert!(new_root.join("video").join("a.mp4").exists());
+        // The stray file (and therefore the old directory) is left in place, best-effort.
+        assert!(old_root.join("notes.txt").exists());
+        assert!(old_root.exists());
 
         let _ = fs::remove_dir_all(new_root);
         let _ = fs::remove_dir_all(old_root);
