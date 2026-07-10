@@ -5,11 +5,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
 
-use crate::constants::EVENT_YT_DLP_LOG;
-use crate::models::yt_dlp::{DownloadLogEvent, DownloadedMediaResult, YtDlpFormatMetadata};
+use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
@@ -25,7 +24,7 @@ use crate::services::yt_dlp_cookies::{
 };
 use crate::services::yt_dlp_events::{
     emit_download_cancelled, emit_download_error, emit_download_finished, emit_download_log,
-    infer_log_level,
+    emit_download_log_infallible,
 };
 use crate::services::yt_dlp_metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
@@ -755,15 +754,7 @@ pub async fn download_media_from_url_async(
                     Ordering::Relaxed,
                 );
 
-                let _ = app_stdout.emit(
-                    EVENT_YT_DLP_LOG,
-                    DownloadLogEvent {
-                        run_id: run_id_stdout.clone(),
-                        level: infer_log_level(&line, "stdout"),
-                        line: line.clone(),
-                        stream: "stdout".to_string(),
-                    },
-                );
+                emit_download_log_infallible(&app_stdout, &run_id_stdout, line, "stdout");
             }
         });
 
@@ -786,15 +777,7 @@ pub async fn download_media_from_url_async(
                 guard.push(line.clone());
                 drop(guard);
 
-                let _ = app_stderr.emit(
-                    EVENT_YT_DLP_LOG,
-                    DownloadLogEvent {
-                        run_id: run_id_stderr.clone(),
-                        level: infer_log_level(&line, "stderr"),
-                        line: line.clone(),
-                        stream: "stderr".to_string(),
-                    },
-                );
+                emit_download_log_infallible(&app_stderr, &run_id_stderr, line, "stderr");
             }
         });
 
