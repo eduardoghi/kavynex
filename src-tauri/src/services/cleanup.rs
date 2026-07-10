@@ -129,3 +129,177 @@ pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummar
 
     Ok(summary)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::UNIX_EPOCH;
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+
+        std::env::temp_dir().join(format!(
+            "kavynex-cleanup-test-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    fn set_modified(path: &Path, time: SystemTime) {
+        let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.set_modified(time).unwrap();
+    }
+
+    fn make_old_file(path: &Path, max_age: Duration) {
+        fs::write(path, b"stale").unwrap();
+        set_modified(path, SystemTime::now() - max_age - Duration::from_secs(60));
+    }
+
+    fn make_recent_file(path: &Path) {
+        fs::write(path, b"fresh").unwrap();
+        set_modified(path, SystemTime::now());
+    }
+
+    #[test]
+    fn is_older_than_threshold_true_for_a_time_beyond_the_max_age() {
+        let max_age = Duration::from_secs(60);
+        let modified_at = SystemTime::now() - max_age - Duration::from_secs(1);
+
+        assert!(is_older_than_threshold(modified_at, max_age));
+    }
+
+    #[test]
+    fn is_older_than_threshold_false_for_a_recent_time() {
+        let max_age = Duration::from_secs(60);
+        let modified_at = SystemTime::now();
+
+        assert!(!is_older_than_threshold(modified_at, max_age));
+    }
+
+    #[test]
+    fn remove_path_if_old_removes_an_old_file() {
+        let dir = unique_test_dir("remove-old-file");
+        fs::create_dir_all(&dir).unwrap();
+        let max_age = Duration::from_secs(60);
+        let target = dir.join("stale.tmp");
+        make_old_file(&target, max_age);
+
+        let (removed, failed) = remove_path_if_old(&target, max_age);
+
+        assert!(removed);
+        assert!(!failed);
+        assert!(!target.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_path_if_old_preserves_a_recent_file() {
+        let dir = unique_test_dir("preserve-recent-file");
+        fs::create_dir_all(&dir).unwrap();
+        let max_age = Duration::from_secs(60);
+        let target = dir.join("fresh.tmp");
+        make_recent_file(&target);
+
+        let (removed, failed) = remove_path_if_old(&target, max_age);
+
+        assert!(!removed);
+        assert!(!failed);
+        assert!(target.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_path_if_old_is_a_noop_for_a_missing_path() {
+        let dir = unique_test_dir("missing-path");
+        let target = dir.join("does-not-exist.tmp");
+
+        let (removed, failed) = remove_path_if_old(&target, Duration::from_secs(60));
+
+        assert!(!removed);
+        assert!(!failed);
+    }
+
+    #[test]
+    fn cleanup_dir_children_returns_empty_summary_for_nonexistent_dir() {
+        let dir = unique_test_dir("nonexistent");
+
+        let summary = cleanup_dir_children(&dir, Duration::from_secs(60)).unwrap();
+
+        assert_eq!(summary.scanned_entries, 0);
+        assert_eq!(summary.removed_entries, 0);
+        assert_eq!(summary.failed_removals, 0);
+    }
+
+    #[test]
+    fn cleanup_dir_children_returns_empty_summary_for_empty_dir() {
+        let dir = unique_test_dir("empty");
+        fs::create_dir_all(&dir).unwrap();
+
+        let summary = cleanup_dir_children(&dir, Duration::from_secs(60)).unwrap();
+
+        assert_eq!(summary.scanned_entries, 0);
+        assert_eq!(summary.removed_entries, 0);
+        assert_eq!(summary.failed_removals, 0);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cleanup_dir_children_removes_old_entries_and_keeps_recent_ones() {
+        let dir = unique_test_dir("mixed");
+        fs::create_dir_all(&dir).unwrap();
+        let max_age = Duration::from_secs(60);
+
+        let old = dir.join("old.tmp");
+        let recent = dir.join("recent.tmp");
+        make_old_file(&old, max_age);
+        make_recent_file(&recent);
+
+        let summary = cleanup_dir_children(&dir, max_age).unwrap();
+
+        assert_eq!(summary.scanned_entries, 2);
+        assert_eq!(summary.removed_entries, 1);
+        assert_eq!(summary.failed_removals, 0);
+        assert!(!old.exists());
+        assert!(recent.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn cleanup_dir_children_continues_past_an_inaccessible_entry() {
+        use std::os::unix::fs::symlink;
+
+        let dir = unique_test_dir("dangling-symlink");
+        fs::create_dir_all(&dir).unwrap();
+        let max_age = Duration::from_secs(60);
+
+        // A symlink whose target does not exist: `fs::metadata` (which follows symlinks)
+        // fails on it, so `entry_modified_time` returns None. This must not abort the sweep
+        // of the remaining entries.
+        symlink(dir.join("does-not-exist"), dir.join("dangling")).unwrap();
+
+        let old = dir.join("old.tmp");
+        let recent = dir.join("recent.tmp");
+        make_old_file(&old, max_age);
+        make_recent_file(&recent);
+
+        let summary = cleanup_dir_children(&dir, max_age).unwrap();
+
+        assert_eq!(summary.scanned_entries, 3);
+        assert_eq!(summary.removed_entries, 1);
+        assert_eq!(summary.failed_removals, 0);
+        assert!(!old.exists());
+        assert!(recent.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
