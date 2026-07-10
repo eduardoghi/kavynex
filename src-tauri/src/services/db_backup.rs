@@ -293,8 +293,12 @@ fn pre_import_path(db_path: &Path) -> PathBuf {
 
 /// Exports a consistent, self-contained snapshot of the database to a user-chosen path via
 /// `VACUUM INTO` (WAL-safe: the snapshot is always fully checkpointed, never combined with a
-/// live write-ahead log). The destination is overwritten. Refuses to export a database that
-/// fails `quick_check` so a corrupt file is never handed out as a good backup.
+/// live write-ahead log). Refuses to export a database that fails `quick_check` so a corrupt
+/// file is never handed out as a good backup.
+///
+/// `VACUUM INTO` writes to a staging file next to the destination and is only promoted onto
+/// `dest_path` (via rename) once it succeeds, so a failed export (disk full, bad path) never
+/// destroys a pre-existing export at that path.
 pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> {
     if !db_path.exists() {
         return Err(AppError::from_code(
@@ -313,19 +317,32 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
         ));
     }
 
-    // VACUUM INTO fails if the target file already exists; the caller's save dialog has
-    // already confirmed any overwrite, so clear it first.
-    let _ = std::fs::remove_file(dest_path);
+    // VACUUM INTO fails if its target file already exists, so it always writes to a fresh
+    // staging path rather than dest_path directly.
+    let staging = sibling(dest_path, ".export-staging");
+    let _ = std::fs::remove_file(&staging);
 
     let vacuum_sql = format!(
         "VACUUM INTO '{}'",
-        escape_sql_literal(&dest_path.to_string_lossy())
+        escape_sql_literal(&staging.to_string_lossy())
     );
     let result = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
         .execute(&pool)
         .await;
     pool.close().await;
-    result.map_err(|error| backup_error("failed to export database", error))?;
+
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&staging);
+        return Err(backup_error("failed to export database", error));
+    }
+
+    // The snapshot is confirmed good; only now is any previous export at dest_path replaced.
+    // The caller's save dialog has already confirmed the overwrite.
+    let _ = std::fs::remove_file(dest_path);
+    std::fs::rename(&staging, dest_path).map_err(|error| {
+        let _ = std::fs::remove_file(&staging);
+        backup_error("failed to finalize database export", error)
+    })?;
 
     Ok(())
 }
@@ -709,6 +726,48 @@ mod tests {
 
         assert!(dest.exists());
         assert_eq!(read_video_title(&dest).await, "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn export_overwrites_an_existing_destination_via_the_staging_path() {
+        let dir = temp_dir("export_overwrite");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "fresh").await;
+
+        let dest = dir.join("exported.db");
+        std::fs::write(&dest, b"stale export contents").unwrap();
+
+        export_database(&db, &dest).await.unwrap();
+
+        assert_eq!(read_video_title(&dest).await, "fresh");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn export_preserves_existing_destination_when_vacuum_fails() {
+        let dir = temp_dir("export_fail");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "hello").await;
+
+        let dest = dir.join("exported.db");
+        std::fs::write(&dest, b"previous export contents").unwrap();
+
+        // The staging path (a sibling of dest_path) is a directory rather than a regular
+        // file, so `VACUUM INTO` cannot write to it and the export fails - without ever
+        // touching the pre-existing destination file.
+        let staging = sibling(&dest, ".export-staging");
+        std::fs::create_dir_all(&staging).unwrap();
+
+        let error = export_database(&db, &dest).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::AppError.as_str());
+
+        assert_eq!(
+            std::fs::read(&dest).unwrap(),
+            b"previous export contents"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
