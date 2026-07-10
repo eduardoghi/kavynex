@@ -60,4 +60,21 @@ describe("isFilesystemRootPath", () => {
         expect(isFilesystemRootPath("")).toBe(false);
         expect(isFilesystemRootPath("   ")).toBe(false);
     });
+
+    it("strips every trailing separator, not just the last one", () => {
+        expect(isFilesystemRootPath("C:\\\\")).toBe(true);
+        expect(isFilesystemRootPath("//")).toBe(true);
+    });
+
+    it("trims surrounding whitespace before deciding", () => {
+        expect(isFilesystemRootPath("  C:\\  ")).toBe(true);
+    });
+
+    it("only treats a drive root at the very start, not a segment ending in a colon", () => {
+        expect(isFilesystemRootPath("sub\\c:")).toBe(false);
+    });
+
+    it("only treats a UNC share root anchored at the start", () => {
+        expect(isFilesystemRootPath("x\\\\server\\share")).toBe(false);
+    });
 });
