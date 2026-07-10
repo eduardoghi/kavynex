@@ -8,6 +8,7 @@ pub mod filesystem;
 pub mod library;
 pub mod library_cleanup;
 pub mod library_guard;
+pub mod library_integrity;
 pub mod library_media;
 pub mod library_migration;
 pub mod library_paths;
