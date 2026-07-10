@@ -679,6 +679,10 @@ pub async fn download_media_from_url_async(
         let mut command = Command::new(&yt_dlp);
         configure_yt_dlp_command(&mut command);
         hide_console_async(&mut command);
+        // If stdout/stderr capture fails below and the `?` returns early, the Child must not
+        // be left running detached; mirrors the kill_on_drop used by every sibling yt-dlp
+        // spawn (yt_dlp_metadata.rs, thumbnail_download.rs).
+        command.kill_on_drop(true);
 
         let mut child = command
             .args(&args)
