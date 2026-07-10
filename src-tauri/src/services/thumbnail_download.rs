@@ -1,5 +1,6 @@
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::Uri;
@@ -24,6 +25,7 @@ use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::process::{hide_console_async, read_process_error};
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
@@ -300,6 +302,15 @@ fn unique_temp_suffix() -> String {
     format!("{}-{}", std::process::id(), nanos)
 }
 
+/// Runs `persist_thumbnail_from_source` (full-file SHA-256 hashing plus a copy) on the
+/// blocking thread pool, so this heavy I/O never runs directly on an async task.
+async fn persist_thumbnail_from_source_async(
+    source: PathBuf,
+    library_dir: PathBuf,
+) -> AppResult<String> {
+    run_blocking(move || persist_thumbnail_from_source(&source, &library_dir)).await
+}
+
 fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
     let normalized = youtube_handle.trim();
 
@@ -435,14 +446,19 @@ pub async fn download_thumbnail_from_url_async(
                 ));
             }
 
-            fs::write(&direct_file_path, &buffer).map_err(|e| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    format!("failed to write downloaded thumbnail: {e}"),
-                )
-            })?;
+            let write_destination = direct_file_path.clone();
 
-            return persist_thumbnail_from_source(&direct_file_path, &library_dir);
+            run_blocking(move || {
+                fs::write(&write_destination, &buffer).map_err(|e| {
+                    AppError::from_code(
+                        AppErrorCode::YtDlpThumbnailFailed,
+                        format!("failed to write downloaded thumbnail: {e}"),
+                    )
+                })
+            })
+            .await?;
+
+            return persist_thumbnail_from_source_async(direct_file_path, library_dir).await;
         }
 
         // The direct-image path above runs through http_get_image's SSRF guard. This yt-dlp
@@ -556,7 +572,7 @@ pub async fn download_thumbnail_from_url_async(
                 },
             )?;
 
-        persist_thumbnail_from_source(&downloaded_thumb, &library_dir)
+        persist_thumbnail_from_source_async(downloaded_thumb, library_dir).await
     }
     .await;
 
@@ -703,7 +719,9 @@ pub async fn download_thumbnail_for_media_async(
                 },
             )?;
 
-        persist_thumbnail_from_source(&downloaded_thumb, &library_dir).map(Some)
+        persist_thumbnail_from_source_async(downloaded_thumb, library_dir)
+            .await
+            .map(Some)
     }
     .await;
 
@@ -804,7 +822,7 @@ pub async fn download_channel_avatar_from_handle_async(
                 },
             )?;
 
-        persist_thumbnail_from_source(&downloaded_thumb, &library_dir)
+        persist_thumbnail_from_source_async(downloaded_thumb, library_dir).await
     }
     .await;
 

@@ -38,6 +38,7 @@ use crate::utils::format::codec_is_present;
 use crate::utils::io::read_lossy_line;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
 use crate::utils::process::hide_console_async;
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
@@ -147,6 +148,17 @@ fn place_downloaded_file(
     }
 
     Ok(final_destination)
+}
+
+/// Runs `place_downloaded_file` (a cross-device move can fall back to a full `fs::copy` of a
+/// multi-GB video) on the blocking thread pool, so this heavy I/O never runs directly on an
+/// async task.
+async fn place_downloaded_file_async(
+    downloaded_temp: PathBuf,
+    media_dir: PathBuf,
+    library_dir: PathBuf,
+) -> AppResult<PathBuf> {
+    run_blocking(move || place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)).await
 }
 
 fn infer_is_live(metadata_live_status: Option<&str>, was_live: Option<bool>) -> bool {
@@ -890,7 +902,8 @@ pub async fn download_media_from_url_async(
                     )
                 })?;
 
-        let final_destination = place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)?;
+        let final_destination =
+            place_downloaded_file_async(downloaded_temp, media_dir, library_dir.clone()).await?;
 
         let live_chat_file_path = if download_live_chat {
             if let Some(temp_live_chat_file) = find_live_chat_temp_file(&temp_dir, &file_prefix) {
