@@ -318,6 +318,7 @@ const mockViewState = {
     pageBackground: "#000",
     showLoading: false,
     showEmpty: false,
+    showSelectChannelPrompt: false,
     showLibrary: true,
     showPlayer: false,
 };

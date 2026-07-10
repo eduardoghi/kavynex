@@ -81,6 +81,7 @@ export function useHomeController(): HomeController {
 
     const viewState = useHomeViewState({
         selectedChannel: channelsState.selectedChannel,
+        hasChannels: channelsState.channels.length > 0,
         isLoadingChannels: channelsState.isLoadingChannels,
         isPreparingSettings: settingsState.isPreparingSettings,
         mediaPlayer: mediaLibrary.mediaPlayer,

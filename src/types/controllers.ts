@@ -222,6 +222,7 @@ export type HomeViewState = {
     pageBackground: string;
     showLoading: boolean;
     showEmpty: boolean;
+    showSelectChannelPrompt: boolean;
     showLibrary: boolean;
     showPlayer: boolean;
 };

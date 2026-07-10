@@ -4,6 +4,7 @@ export const UI_TEXT = {
         emptyDescription:
             "Create channels and add media manually. You can configure tools and diagnostics from settings.",
         loadingApp: "Loading application...",
+        selectChannelPrompt: "Select a channel from the sidebar to see its library.",
         addMedia: "Add media",
         back: "Back",
         itemCountSuffix: "item(s)",

@@ -25,6 +25,7 @@ describe("useHomeViewState", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
+                hasChannels: true,
                 isLoadingChannels: false,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -35,6 +36,7 @@ describe("useHomeViewState", () => {
 
         expect(result.current.showLoading).toBe(false);
         expect(result.current.showEmpty).toBe(false);
+        expect(result.current.showSelectChannelPrompt).toBe(false);
         expect(result.current.showLibrary).toBe(true);
         expect(result.current.showPlayer).toBe(false);
     });
@@ -43,6 +45,7 @@ describe("useHomeViewState", () => {
         const { result } = renderHook(() =>
             useHomeViewState({
                 selectedChannel: null,
+                hasChannels: false,
                 isLoadingChannels: false,
                 isPreparingSettings: true,
                 mediaPlayer: {
@@ -57,10 +60,11 @@ describe("useHomeViewState", () => {
         expect(result.current.showPlayer).toBe(false);
     });
 
-    it("shows empty state when there is no selected channel and nothing is loading", () => {
+    it("shows empty state when there are no channels and nothing is loading", () => {
         const { result } = renderHook(() =>
             useHomeViewState({
                 selectedChannel: null,
+                hasChannels: false,
                 isLoadingChannels: false,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -71,8 +75,45 @@ describe("useHomeViewState", () => {
 
         expect(result.current.showLoading).toBe(false);
         expect(result.current.showEmpty).toBe(true);
+        expect(result.current.showSelectChannelPrompt).toBe(false);
         expect(result.current.showLibrary).toBe(true);
         expect(result.current.showPlayer).toBe(false);
+    });
+
+    it("shows the select-channel prompt instead of the empty state when channels exist but none is selected", () => {
+        const { result } = renderHook(() =>
+            useHomeViewState({
+                selectedChannel: null,
+                hasChannels: true,
+                isLoadingChannels: false,
+                isPreparingSettings: false,
+                mediaPlayer: {
+                    viewMode: "library",
+                },
+            })
+        );
+
+        expect(result.current.showEmpty).toBe(false);
+        expect(result.current.showSelectChannelPrompt).toBe(true);
+        expect(result.current.showLibrary).toBe(true);
+        expect(result.current.showPlayer).toBe(false);
+    });
+
+    it("shows neither the empty state nor the select-channel prompt once a channel is selected", () => {
+        const { result } = renderHook(() =>
+            useHomeViewState({
+                selectedChannel: createChannel(),
+                hasChannels: true,
+                isLoadingChannels: false,
+                isPreparingSettings: false,
+                mediaPlayer: {
+                    viewMode: "library",
+                },
+            })
+        );
+
+        expect(result.current.showEmpty).toBe(false);
+        expect(result.current.showSelectChannelPrompt).toBe(false);
     });
 
     it("shows player when player mode is active", () => {
@@ -85,6 +126,7 @@ describe("useHomeViewState", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
+                hasChannels: true,
                 isLoadingChannels: false,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -109,6 +151,7 @@ describe("useHomeViewState", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
+                hasChannels: true,
                 isLoadingChannels: false,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -125,6 +168,7 @@ describe("useHomeViewState", () => {
         const { result } = renderHook(() =>
             useHomeViewState({
                 selectedChannel: createChannel(),
+                hasChannels: true,
                 isLoadingChannels: false,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -140,6 +184,7 @@ describe("useHomeViewState", () => {
         const { result } = renderHook(() =>
             useHomeViewState({
                 selectedChannel: null,
+                hasChannels: false,
                 isLoadingChannels: true,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -155,6 +200,7 @@ describe("useHomeViewState", () => {
         const { result } = renderHook(() =>
             useHomeViewState({
                 selectedChannel: createChannel(),
+                hasChannels: true,
                 isLoadingChannels: true,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -170,6 +216,7 @@ describe("useHomeViewState", () => {
         const { result } = renderHook(() =>
             useHomeViewState({
                 selectedChannel: null,
+                hasChannels: false,
                 isLoadingChannels: false,
                 isPreparingSettings: false,
                 mediaPlayer: {
@@ -184,6 +231,7 @@ describe("useHomeViewState", () => {
     it("recomputes the view state after a rerender when the view mode changes", () => {
         const initialProps: Parameters<typeof useHomeViewState>[0] = {
             selectedChannel: createChannel(),
+            hasChannels: true,
             isLoadingChannels: false,
             isPreparingSettings: false,
             mediaPlayer: {
@@ -201,6 +249,7 @@ describe("useHomeViewState", () => {
 
         rerender({
             selectedChannel: createChannel(),
+            hasChannels: true,
             isLoadingChannels: false,
             isPreparingSettings: false,
             mediaPlayer: {

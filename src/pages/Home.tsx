@@ -2,8 +2,10 @@ import { useCallback, useState } from "react";
 import {
     AppShell,
     Box,
+    Card,
     Container,
     Stack,
+    Text,
 } from "@mantine/core";
 import AppIcon from "../assets/app-icon.svg";
 import { EmptyStateCard } from "../components/common/empty-state-card";
@@ -24,6 +26,7 @@ export default function Home(): JSX.Element {
 
     const showLoading = viewState.showLoading;
     const showEmpty = viewState.showEmpty;
+    const showSelectChannelPrompt = viewState.showSelectChannelPrompt;
     const showPlayer = viewState.showPlayer;
     const showLibrary = viewState.showLibrary;
 
@@ -143,6 +146,21 @@ export default function Home(): JSX.Element {
                                         UI_TEXT.home.emptyCards.diagnostics,
                                     ]}
                                 />
+                            )}
+
+                            {showSelectChannelPrompt && (
+                                <Card
+                                    withBorder
+                                    radius="xl"
+                                    p="xl"
+                                    role="status"
+                                    style={{
+                                        background: viewState.shellSurface,
+                                        borderColor: viewState.shellBorder,
+                                    }}
+                                >
+                                    <Text c="dimmed">{UI_TEXT.home.selectChannelPrompt}</Text>
+                                </Card>
                             )}
 
                             {showPlayer && (

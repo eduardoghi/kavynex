@@ -5,6 +5,7 @@ import type { Channel } from "../types/media";
 
 type UseHomeViewStateOptions = {
     selectedChannel: Channel | null;
+    hasChannels: boolean;
     isLoadingChannels: boolean;
     isPreparingSettings: boolean;
     mediaPlayer: Pick<MediaPlayerController, "viewMode">;
@@ -12,6 +13,7 @@ type UseHomeViewStateOptions = {
 
 export function useHomeViewState({
     selectedChannel,
+    hasChannels,
     isLoadingChannels,
     isPreparingSettings,
     mediaPlayer,
@@ -24,11 +26,17 @@ export function useHomeViewState({
         const showLoading =
             (!selectedChannel && isLoadingChannels) || isPreparingSettings;
 
-        const showEmpty =
-            !selectedChannel &&
+        const isLibraryReady =
             !isLoadingChannels &&
             !isPreparingSettings &&
             mediaPlayer.viewMode === "library";
+
+        // Only the true "no channels at all" case is onboarding; a selected-channel-less
+        // state with channels already created gets the neutral prompt below instead.
+        const showEmpty = !hasChannels && isLibraryReady;
+
+        const showSelectChannelPrompt =
+            hasChannels && !selectedChannel && isLibraryReady;
 
         const showLibrary = mediaPlayer.viewMode === "library";
         const showPlayer = mediaPlayer.viewMode === "player";
@@ -39,10 +47,12 @@ export function useHomeViewState({
             pageBackground,
             showLoading,
             showEmpty,
+            showSelectChannelPrompt,
             showLibrary,
             showPlayer,
         };
     }, [
+        hasChannels,
         isLoadingChannels,
         isPreparingSettings,
         mediaPlayer.viewMode,
