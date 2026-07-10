@@ -1,12 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { MediaRow } from "../types/media";
-import { openFileLocation, refreshMediaComments } from "../services";
+import { openFileLocation } from "../services";
 import { useHomePlayerActions } from "./use-home-player-actions";
 
 vi.mock("../services", () => ({
     openFileLocation: vi.fn(),
-    refreshMediaComments: vi.fn(),
 }));
 
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
@@ -49,8 +48,8 @@ type MockOptions = {
     mediaPlayer: MockMediaPlayer;
     homeMediaActions: MockHomeMediaActions;
     onError: (message: string) => void;
-    onNotice: (message: string) => void;
-    onReloadMedia: (channelId?: number | null) => Promise<void>;
+    refreshComments: (media: MediaRow) => Promise<void>;
+    isRefreshingComments: boolean;
     libraryPath: string;
 };
 
@@ -69,8 +68,8 @@ function createDefaultOptions(overrides?: {
     mediaPlayer?: Partial<MockMediaPlayer>;
     homeMediaActions?: MockHomeMediaActions;
     onError?: (message: string) => void;
-    onNotice?: (message: string) => void;
-    onReloadMedia?: (channelId?: number | null) => Promise<void>;
+    refreshComments?: (media: MediaRow) => Promise<void>;
+    isRefreshingComments?: boolean;
     libraryPath?: string;
 }): MockOptions {
     const mediaPlayer: MockMediaPlayer = {
@@ -85,10 +84,10 @@ function createDefaultOptions(overrides?: {
         mediaPlayer,
         homeMediaActions: overrides?.homeMediaActions ?? createHomeMediaActions(),
         onError: overrides?.onError ?? vi.fn<(message: string) => void>(),
-        onNotice: overrides?.onNotice ?? vi.fn<(message: string) => void>(),
-        onReloadMedia:
-            overrides?.onReloadMedia ??
-            vi.fn<(channelId?: number | null) => Promise<void>>().mockResolvedValue(undefined),
+        refreshComments:
+            overrides?.refreshComments ??
+            vi.fn<(media: MediaRow) => Promise<void>>().mockResolvedValue(undefined),
+        isRefreshingComments: overrides?.isRefreshingComments ?? false,
         libraryPath: overrides?.libraryPath ?? "/library",
     };
 }
@@ -382,7 +381,6 @@ describe("useHomePlayerActions", () => {
                 libraryPath: "/library-second",
                 homeMediaActions: options.homeMediaActions,
                 onError: options.onError,
-                onReloadMedia: options.onReloadMedia,
             });
 
             rerender(nextOptions);
@@ -407,7 +405,7 @@ describe("useHomePlayerActions", () => {
                 await result.current.refreshComments();
             });
 
-            expect(refreshMediaComments).not.toHaveBeenCalled();
+            expect(options.refreshComments).not.toHaveBeenCalled();
         });
 
         it("shows an error when active media has no youtube video id", async () => {
@@ -428,7 +426,7 @@ describe("useHomePlayerActions", () => {
             expect(options.onError).toHaveBeenCalledWith(
                 "This media does not have a YouTube source for comment refresh."
             );
-            expect(refreshMediaComments).not.toHaveBeenCalled();
+            expect(options.refreshComments).not.toHaveBeenCalled();
         });
 
         it("shows an error when the youtube video id is blank after trimming", async () => {
@@ -449,181 +447,62 @@ describe("useHomePlayerActions", () => {
             expect(options.onError).toHaveBeenCalledWith(
                 "This media does not have a YouTube source for comment refresh."
             );
-            expect(refreshMediaComments).not.toHaveBeenCalled();
+            expect(options.refreshComments).not.toHaveBeenCalled();
         });
 
-        it("ignores concurrent refresh attempts while a refresh is pending", async () => {
-            const activeMedia = createMediaRow({
-                youtube_video_id: "yt-123",
-            });
+        it("delegates to the media-library refresh with the active media", async () => {
+            // The refresh rule itself - result handling, the neutral "kept your comments"
+            // notice, the concurrency flag, and the media-list/active-media updates - lives in
+            // and is tested through the media-library action. The player only adapts it to the
+            // active media, so there is a single implementation of that rule.
+            const activeMedia = createMediaRow({ youtube_video_id: "yt-123" });
 
-            const options = createDefaultOptions({
-                activeMedia,
-            });
-
-            let resolvePending: (value: { updated: boolean; totalComments: number }) => void = () => {};
-            const pending = new Promise<{ updated: boolean; totalComments: number }>((resolve) => {
-                resolvePending = resolve;
-            });
-
-            vi.mocked(refreshMediaComments).mockReturnValueOnce(pending);
+            const options = createDefaultOptions({ activeMedia });
 
             const { result } = renderHook(() => useHomePlayerActions(options));
 
-            let firstCall!: Promise<void>;
-
-            act(() => {
-                firstCall = result.current.refreshComments();
+            await act(async () => {
+                await result.current.refreshComments();
             });
+
+            expect(options.refreshComments).toHaveBeenCalledWith(activeMedia);
+        });
+
+        it("exposes the media-library refreshing flag", () => {
+            const options = createDefaultOptions({ isRefreshingComments: true });
+
+            const { result } = renderHook(() => useHomePlayerActions(options));
 
             expect(result.current.isRefreshingComments).toBe(true);
-
-            await act(async () => {
-                await result.current.refreshComments();
-            });
-
-            expect(refreshMediaComments).toHaveBeenCalledTimes(1);
-
-            await act(async () => {
-                resolvePending({ updated: true, totalComments: 2 });
-                await firstCall;
-            });
-
-            expect(result.current.isRefreshingComments).toBe(false);
         });
 
-        it("preserves the saved comment indicator and notifies when the refresh returns nothing", async () => {
-            const activeMedia = createMediaRow({
-                youtube_video_id: "yt-123",
-                has_comments: 1,
-                comments_count: 8,
-                channel_id: 42,
-            });
+        it("uses the refresh implementation from the latest render", async () => {
+            const activeMedia = createMediaRow({ youtube_video_id: "yt-123" });
 
-            const options = createDefaultOptions({
-                activeMedia,
-            });
-
-            vi.mocked(refreshMediaComments).mockResolvedValueOnce({ updated: false, totalComments: 0 });
-
-            const { result } = renderHook(() => useHomePlayerActions(options));
-
-            await act(async () => {
-                await result.current.refreshComments();
-            });
-
-            // The backend kept the saved comments, so the indicator must not be zeroed and the
-            // media must not be reloaded - only a neutral notice is shown.
-            expect(options.mediaPlayer.setActiveMedia).not.toHaveBeenCalled();
-            expect(options.onReloadMedia).not.toHaveBeenCalled();
-            expect(options.onNotice).toHaveBeenCalledWith(
-                "No comments were found for this media. Your saved comments were kept."
-            );
-        });
-
-        it("marks has_comments as 1 when the refreshed total is greater than 0", async () => {
-            const activeMedia = createMediaRow({
-                youtube_video_id: "yt-123",
-            });
-
-            const options = createDefaultOptions({
-                activeMedia,
-            });
-
-            vi.mocked(refreshMediaComments).mockResolvedValueOnce({ updated: true, totalComments: 3 });
-
-            const { result } = renderHook(() => useHomePlayerActions(options));
-
-            await act(async () => {
-                await result.current.refreshComments();
-            });
-
-            expect(options.mediaPlayer.setActiveMedia).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    has_comments: 1,
-                    comments_count: 3,
-                })
-            );
-        });
-
-        it("reloads media for the active channel after a successful refresh", async () => {
-            const activeMedia = createMediaRow({
-                youtube_video_id: "yt-123",
-                channel_id: 42,
-            });
-
-            const options = createDefaultOptions({
-                activeMedia,
-            });
-
-            vi.mocked(refreshMediaComments).mockResolvedValueOnce({ updated: true, totalComments: 1 });
-
-            const { result } = renderHook(() => useHomePlayerActions(options));
-
-            await act(async () => {
-                await result.current.refreshComments();
-            });
-
-            expect(options.onReloadMedia).toHaveBeenCalledWith(42);
-        });
-
-        it("shows a fallback error message and clears the loading flag when refresh fails", async () => {
-            const activeMedia = createMediaRow({
-                youtube_video_id: "yt-123",
-            });
-
-            const options = createDefaultOptions({
-                activeMedia,
-            });
-
-            vi.mocked(refreshMediaComments).mockRejectedValueOnce(new Error("boom"));
-
-            const { result } = renderHook(() => useHomePlayerActions(options));
-
-            await act(async () => {
-                await result.current.refreshComments();
-            });
-
-            expect(options.onError).toHaveBeenCalledWith(
-                "Failed to refresh comments. Existing saved comments were preserved."
-            );
-            expect(result.current.isRefreshingComments).toBe(false);
-        });
-
-        it("calls the onReloadMedia from the latest render, not a stale closure", async () => {
-            const activeMedia = createMediaRow({
-                youtube_video_id: "yt-123",
-                channel_id: 7,
-            });
-
-            const options = createDefaultOptions({
-                activeMedia,
-            });
+            const options = createDefaultOptions({ activeMedia });
 
             const { result, rerender } = renderHook(
                 (props: MockOptions) => useHomePlayerActions(props),
                 { initialProps: options }
             );
 
-            const newOnReloadMedia = vi
-                .fn<(channelId?: number | null) => Promise<void>>()
+            const newRefreshComments = vi
+                .fn<(media: MediaRow) => Promise<void>>()
                 .mockResolvedValue(undefined);
 
             const nextOptions: MockOptions = {
                 ...options,
-                onReloadMedia: newOnReloadMedia,
+                refreshComments: newRefreshComments,
             };
 
             rerender(nextOptions);
-
-            vi.mocked(refreshMediaComments).mockResolvedValueOnce({ updated: true, totalComments: 1 });
 
             await act(async () => {
                 await result.current.refreshComments();
             });
 
-            expect(newOnReloadMedia).toHaveBeenCalledWith(7);
-            expect(options.onReloadMedia).not.toHaveBeenCalled();
+            expect(newRefreshComments).toHaveBeenCalledWith(activeMedia);
+            expect(options.refreshComments).not.toHaveBeenCalled();
         });
     });
 

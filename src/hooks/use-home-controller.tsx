@@ -70,8 +70,8 @@ export function useHomeController(): HomeController {
         mediaPlayer: mediaLibrary.mediaPlayer,
         homeMediaActions,
         onError: errorState.showError,
-        onNotice: errorState.showNotice,
-        onReloadMedia: mediaLibrary.loadMedia,
+        refreshComments: mediaLibrary.refreshComments,
+        isRefreshingComments: mediaLibrary.isRefreshingComments,
         libraryPath,
     });
 

@@ -1,9 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
-import {
-    openFileLocation,
-    refreshMediaComments,
-} from "../services";
+import { useCallback, useMemo } from "react";
+import { openFileLocation } from "../services";
 import { resolveErrorMessage } from "../utils/error-message";
+import type { MediaRow } from "../types/media";
 import type {
     HomePlayerActionsController,
     HomeMediaActionsController,
@@ -20,8 +18,11 @@ type UseHomePlayerActionsOptions = {
         "markAsWatched" | "markAsUnwatched" | "saveMediaProgress"
     >;
     onError: (message: string) => void;
-    onNotice: (message: string) => void;
-    onReloadMedia: (channelId?: number | null) => Promise<void>;
+    // The single implementation of the comment-refresh rule (result handling, the neutral
+    // notice, and the media-list/active-media updates) lives in the media-library action;
+    // the player only adapts it to the active media, so both share one source of truth.
+    refreshComments: (media: MediaRow) => Promise<void>;
+    isRefreshingComments: boolean;
     libraryPath: string;
 };
 
@@ -29,12 +30,10 @@ export function useHomePlayerActions({
     mediaPlayer,
     homeMediaActions,
     onError,
-    onNotice,
-    onReloadMedia,
+    refreshComments,
+    isRefreshingComments,
     libraryPath,
 }: UseHomePlayerActionsOptions): HomePlayerActionsController {
-    const [isRefreshingComments, setIsRefreshingComments] = useState(false);
-
     const openInYoutube = useCallback(async (): Promise<void> => {
         await mediaPlayer.openInYoutube();
         // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaPlayer object
@@ -63,65 +62,18 @@ export function useHomePlayerActions({
             return;
         }
 
-        const youtubeVideoId = activeMedia.youtube_video_id?.trim() ?? "";
-
-        if (!youtubeVideoId) {
+        // The button is shown for every media, but only YouTube-sourced media can refresh
+        // comments; guard here with a clear message. Everything else - result handling, the
+        // neutral "kept your comments" notice, the concurrency flag, and the media-list and
+        // active-media updates - is delegated to the media-library action so that rule has a
+        // single implementation.
+        if (!activeMedia.youtube_video_id?.trim()) {
             onError("This media does not have a YouTube source for comment refresh.");
             return;
         }
 
-        if (isRefreshingComments) {
-            return;
-        }
-
-        setIsRefreshingComments(true);
-
-        try {
-            const result = await refreshMediaComments(
-                activeMedia.id,
-                youtubeVideoId,
-                null
-            );
-
-            // The refresh returned no comments, so the backend kept the saved comments
-            // untouched (a real extraction problem surfaces as a thrown error). This is not a
-            // failure: leave the stored counts alone - overwriting them with 0 would hide
-            // comments that are still on disk - and tell the user with a neutral notice.
-            if (!result.updated) {
-                onNotice(
-                    "No comments were found for this media. Your saved comments were kept."
-                );
-                return;
-            }
-
-            const nextCommentsCount = result.totalComments;
-
-            mediaPlayer.setActiveMedia({
-                ...activeMedia,
-                has_comments: nextCommentsCount > 0 ? 1 : 0,
-                comments_count: nextCommentsCount,
-            });
-
-            await onReloadMedia(activeMedia.channel_id);
-        } catch (error) {
-            onError(
-                resolveErrorMessage(
-                    error,
-                    "Failed to refresh comments. Existing saved comments were preserved."
-                )
-            );
-        } finally {
-            setIsRefreshingComments(false);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
-    }, [
-        isRefreshingComments,
-        mediaPlayer.activeMedia,
-        mediaPlayer.setActiveMedia,
-        onError,
-        onNotice,
-        onReloadMedia,
-    ]);
+        await refreshComments(activeMedia);
+    }, [mediaPlayer.activeMedia, onError, refreshComments]);
 
     const markActiveAsWatched = useCallback(async (): Promise<void> => {
         const activeMedia = mediaPlayer.activeMedia;
