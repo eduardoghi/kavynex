@@ -18,7 +18,16 @@ export type AppUpdateStatus =
     | "installed"
     | "error";
 
-export function useAppUpdate() {
+export type UseAppUpdateReturn = {
+    status: AppUpdateStatus;
+    updateInfo: AppUpdateInfo | null;
+    progress: AppUpdateProgress | null;
+    errorMessage: string;
+    checkForUpdate: () => Promise<void>;
+    installUpdate: () => Promise<void>;
+};
+
+export function useAppUpdate(): UseAppUpdateReturn {
     const [status, setStatus] = useState<AppUpdateStatus>("idle");
     const [update, setUpdate] = useState<Update | null>(null);
     const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
