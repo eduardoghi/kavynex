@@ -340,6 +340,17 @@ fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
         return Ok(format!("https://www.youtube.com/{normalized}"));
     }
 
+    // The frontend also accepts and stores the `channel/UC...`, `c/name` and `user/name` forms
+    // (see `normalizeYoutubeHandle` in src/utils/youtube.ts). These are path prefixes, not
+    // handles, so they must be appended as-is; prefixing them with `@` (the fallback below)
+    // would build a broken URL such as `https://www.youtube.com/@channel/UC...`.
+    if normalized.starts_with("channel/")
+        || normalized.starts_with("c/")
+        || normalized.starts_with("user/")
+    {
+        return Ok(format!("https://www.youtube.com/{normalized}"));
+    }
+
     Ok(format!("https://www.youtube.com/@{normalized}"))
 }
 
@@ -924,6 +935,25 @@ mod tests {
         assert_eq!(
             normalize_channel_handle_to_url("Hardwareunboxed").unwrap(),
             "https://www.youtube.com/@Hardwareunboxed"
+        );
+    }
+
+    #[test]
+    fn normalize_channel_handle_builds_url_from_channel_c_and_user_prefixes() {
+        // These prefixed forms are accepted and stored by the frontend
+        // (normalizeYoutubeHandle); the backend must turn them into the matching path URL
+        // instead of prefixing them with `@`.
+        assert_eq!(
+            normalize_channel_handle_to_url("channel/UCabcdEFGH1234567890xyzA").unwrap(),
+            "https://www.youtube.com/channel/UCabcdEFGH1234567890xyzA"
+        );
+        assert_eq!(
+            normalize_channel_handle_to_url("c/SomeChannel").unwrap(),
+            "https://www.youtube.com/c/SomeChannel"
+        );
+        assert_eq!(
+            normalize_channel_handle_to_url("user/LegacyName").unwrap(),
+            "https://www.youtube.com/user/LegacyName"
         );
     }
 
