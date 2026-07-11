@@ -141,15 +141,17 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
     hints
 }
 
-/// Redacts a cookies file path from a yt-dlp log line before it is returned to the frontend.
+/// Redacts a cookies file path from a yt-dlp log line before it can surface to the frontend.
 ///
-/// `list_yt_dlp_formats_async` runs yt-dlp with `-v` and returns the captured stdout/stderr
-/// as `terminal_logs`, unlike the other metadata functions which discard theirs. yt-dlp's
-/// verbose mode prints a `[debug] Command-line config: [...]` line that echoes the full argv
-/// verbatim, including the value passed to `--cookies`. That local filesystem path can reveal
-/// the user's OS username/profile layout, and this log line may end up pasted into a public
-/// bug report, so any occurrence of the path is replaced regardless of which line it shows up
-/// in (the `Command-line config` echo, or any other yt-dlp message that happens to mention it).
+/// yt-dlp is run with `-v`, and its captured stdout/stderr reaches the frontend on two paths:
+/// as the `terminal_logs` of `list_yt_dlp_formats_async` on success, and as the error
+/// `details` built from `select_best_error_detail` on failure (which is also written to the
+/// file log). yt-dlp's verbose mode prints a `[debug] Command-line config: [...]` line that
+/// echoes the full argv verbatim, including the value passed to `--cookies`. That local
+/// filesystem path can reveal the user's OS username/profile layout, and such a line may end
+/// up pasted into a public bug report, so any occurrence of the path is replaced regardless of
+/// which line it shows up in (the `Command-line config` echo, or any other yt-dlp message that
+/// happens to mention it).
 fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
     match cookies_path
         .map(str::trim)
@@ -158,6 +160,17 @@ fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> Stri
         Some(path) if line.contains(path) => line.replace(path, "<redacted>"),
         _ => line.to_string(),
     }
+}
+
+/// Extracts the value passed to `--cookies` in an argv, so a failure `detail` built from
+/// yt-dlp's verbose output can have that local path redacted even though the caller only hands
+/// this function the fully-built args. `--cookies-from-browser` is not returned: it carries a
+/// browser name, not a filesystem path.
+fn cookies_path_from_args(args: &[String]) -> Option<&str> {
+    args.iter()
+        .position(|arg| arg == "--cookies")
+        .and_then(|index| args.get(index + 1))
+        .map(String::as_str)
 }
 
 fn is_traceback_noise(line: &str) -> bool {
@@ -315,6 +328,10 @@ async fn run_yt_dlp_and_capture_json(
 
     if !status.success() {
         let detail = select_best_error_detail(&stdout_logs, &stderr_logs, failed_message);
+        // The detail is embedded in the returned AppError, which is serialized to the frontend
+        // and written to the file log; redact the cookies path so a cookie-related failure
+        // cannot leak it (the success path redacts the same way before returning terminal_logs).
+        let detail = redact_cookies_path_from_line(&detail, cookies_path_from_args(args));
 
         return Err(AppError::from_code_with_details(
             failed_code,
@@ -755,8 +772,9 @@ pub fn normalize_download_metadata(
 #[cfg(test)]
 mod tests {
     use super::{
-        comments_extraction_looks_incomplete, is_valid_youtube_video_id, read_capped_json_stdout,
-        redact_cookies_path_from_line, resolve_youtube_video_id, run_yt_dlp_and_capture_json,
+        comments_extraction_looks_incomplete, cookies_path_from_args, is_valid_youtube_video_id,
+        read_capped_json_stdout, redact_cookies_path_from_line, resolve_youtube_video_id,
+        run_yt_dlp_and_capture_json,
     };
     use crate::AppErrorCode;
 
@@ -875,6 +893,36 @@ mod tests {
         let line = "[debug] Command-line config: ['-v', '--cookies-from-browser', 'firefox']";
 
         assert_eq!(redact_cookies_path_from_line(line, None), line);
+    }
+
+    #[test]
+    fn cookies_path_from_args_finds_the_value_after_the_flag() {
+        let args = vec![
+            "-v".to_string(),
+            "--cookies".to_string(),
+            "/home/user/.config/cookies.txt".to_string(),
+            "--".to_string(),
+            "https://youtube.com/watch?v=x".to_string(),
+        ];
+
+        assert_eq!(
+            cookies_path_from_args(&args),
+            Some("/home/user/.config/cookies.txt")
+        );
+    }
+
+    #[test]
+    fn cookies_path_from_args_is_none_without_the_flag_or_a_trailing_value() {
+        // `--cookies-from-browser` carries a browser name, not a path, and must not match.
+        let browser = vec![
+            "--cookies-from-browser".to_string(),
+            "firefox".to_string(),
+        ];
+        assert_eq!(cookies_path_from_args(&browser), None);
+
+        // A dangling `--cookies` with no following value yields None rather than panicking.
+        let dangling = vec!["-v".to_string(), "--cookies".to_string()];
+        assert_eq!(cookies_path_from_args(&dangling), None);
     }
 
     #[test]
