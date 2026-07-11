@@ -2,8 +2,8 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use ts_rs::TS;
 
-use crate::services::database::db_error;
-use crate::AppResult;
+use crate::services::database::{db_error, is_unique_violation};
+use crate::{AppError, AppErrorCode, AppResult};
 
 // Exposed to the frontend as `Channel`; `id` is annotated as `number` (see MediaRow).
 #[derive(Debug, Serialize, sqlx::FromRow, TS)]
@@ -73,7 +73,19 @@ pub async fn insert_channel(
             .bind(avatar_path)
             .execute(pool)
             .await
-            .map_err(|error| db_error("failed to insert channel", error))?;
+            .map_err(|error| {
+                // youtube_handle is the only UNIQUE column, so a surfacing unique violation is a
+                // duplicate handle. Map it to the same friendly code the frontend pre-check
+                // raises, closing the check-then-act race with a consistent message.
+                if is_unique_violation(&error) {
+                    return AppError::from_code(
+                        AppErrorCode::ChannelAlreadyExists,
+                        "a channel with this YouTube handle already exists",
+                    );
+                }
+
+                db_error("failed to insert channel", error)
+            })?;
 
     let inserted_id = result.last_insert_rowid();
 
@@ -194,6 +206,24 @@ mod tests {
         assert_eq!(channel.name, "Alice");
         assert_eq!(channel.youtube_handle, "@alice");
         assert_eq!(channel.avatar_path.as_deref(), Some("thumbnails/a.jpg"));
+    }
+
+    #[tokio::test]
+    async fn insert_channel_maps_a_duplicate_handle_to_a_friendly_error() {
+        let pool = create_test_pool().await;
+
+        insert_channel(&pool, "Alice", "@alice", None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // A second channel with the same handle hits the UNIQUE constraint and must surface as
+        // the friendly domain error, not a raw SQLite message.
+        let error = insert_channel(&pool, "Also Alice", "@alice", None)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::ChannelAlreadyExists.as_str());
     }
 
     #[tokio::test]

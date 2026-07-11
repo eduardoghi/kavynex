@@ -52,6 +52,9 @@ pub enum AppErrorCode {
     DestinationBackupFailed,
     DestinationRestoreFailed,
 
+    ChannelAlreadyExists,
+    VideoAlreadyExistsForChannel,
+
     SourceMetadataFailed,
     DestinationMetadataFailed,
 
@@ -184,6 +187,9 @@ impl AppErrorCode {
             Self::DestinationAlreadyExists => "DESTINATION_ALREADY_EXISTS",
             Self::DestinationBackupFailed => "DESTINATION_BACKUP_FAILED",
             Self::DestinationRestoreFailed => "DESTINATION_RESTORE_FAILED",
+
+            Self::ChannelAlreadyExists => "CHANNEL_ALREADY_EXISTS",
+            Self::VideoAlreadyExistsForChannel => "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
 
             Self::SourceMetadataFailed => "SOURCE_METADATA_FAILED",
             Self::DestinationMetadataFailed => "DESTINATION_METADATA_FAILED",

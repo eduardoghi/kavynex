@@ -20,14 +20,15 @@ const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
 
 // Client-side-only codes: validated in the frontend before a backend call is made, so they
 // are never returned by src-tauri/src/error.rs and have no backend code to mirror.
+// CHANNEL_ALREADY_EXISTS and VIDEO_ALREADY_EXISTS_FOR_CHANNEL are NOT listed here: they are
+// raised by the frontend pre-check AND emitted by the backend on a constraint violation (the
+// duplicate-insert race), so they must mirror a real backend code.
 const FRONTEND_ONLY_ERROR_CODES = new Set([
-    "CHANNEL_ALREADY_EXISTS",
     "INVALID_YOUTUBE_HANDLE",
     "INVALID_CHANNEL_NAME",
     "INVALID_CHANNEL_ID",
     "INVALID_MEDIA_CREATION_ARGUMENTS",
     "MEDIA_IMPORT_FAILED",
-    "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
     "INVALID_MEDIA_TITLE",
     "MEDIA_WITHOUT_YOUTUBE_SOURCE",
     "INVALID_YOUTUBE_COMMENTS_PAYLOAD",

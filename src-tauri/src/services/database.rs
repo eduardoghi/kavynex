@@ -45,6 +45,20 @@ pub(crate) fn db_error(message: impl Into<String>, error: impl std::fmt::Display
     AppError::from_code_with_details(AppErrorCode::AppError, message, error.to_string())
 }
 
+/// True when a sqlx error is a SQLite UNIQUE (or PRIMARY KEY) constraint violation, so a
+/// duplicate-insert race can be mapped to a friendly domain error instead of surfacing the
+/// raw SQL message.
+pub(crate) fn is_unique_violation(error: &sqlx::Error) -> bool {
+    use sqlx::error::DatabaseError;
+
+    match error {
+        sqlx::Error::Database(database_error) => {
+            DatabaseError::is_unique_violation(database_error.as_ref())
+        }
+        _ => false,
+    }
+}
+
 pub fn database_path(app: &AppHandle) -> AppResult<PathBuf> {
     let config_dir = app
         .path()

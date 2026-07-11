@@ -2,8 +2,8 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use ts_rs::TS;
 
-use crate::services::database::db_error;
-use crate::AppResult;
+use crate::services::database::{db_error, is_unique_violation};
+use crate::{AppError, AppErrorCode, AppResult};
 
 // `id`/counts/flags are i64 in Rust but ts-rs would emit `bigint`; the Tauri IPC layer
 // serializes them as JSON numbers, so the runtime value is a JS `number`. `media_type` is
@@ -222,7 +222,21 @@ pub async fn insert_media(
     .bind(normalized_live_chat)
     .execute(pool)
     .await
-    .map_err(|error| db_error("failed to insert media", error))?;
+    .map_err(|error| {
+        // The (channel_id, file_path) conflict is absorbed by ON CONFLICT DO NOTHING above, so
+        // a surfacing unique violation can only be the (channel_id, youtube_video_id) index:
+        // the same YouTube video already registered for this channel under a different path.
+        // Map it to the same friendly code the frontend pre-check raises, closing the
+        // check-then-act race with a consistent message instead of a raw SQLite error.
+        if is_unique_violation(&error) {
+            return AppError::from_code(
+                AppErrorCode::VideoAlreadyExistsForChannel,
+                "this video is already saved for this channel",
+            );
+        }
+
+        db_error("failed to insert media", error)
+    })?;
 
     let row: Option<(i64,)> = sqlx::query_as(
         "SELECT id FROM videos WHERE channel_id = ? AND file_path = ? ORDER BY id DESC LIMIT 1",
@@ -419,6 +433,17 @@ mod tests {
         .await
         .expect("create videos table");
 
+        // Mirror the production partial unique index so the youtube_video_id conflict path is
+        // exercised by tests (the table-level UNIQUE above only covers file_path).
+        sqlx::query(
+            "CREATE UNIQUE INDEX idx_videos_channel_youtube_video_id_unique
+             ON videos(channel_id, youtube_video_id)
+             WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''",
+        )
+        .execute(&pool)
+        .await
+        .expect("create youtube_video_id unique index");
+
         pool
     }
 
@@ -534,6 +559,33 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(found.title, "A");
+    }
+
+    #[tokio::test]
+    async fn insert_media_maps_a_duplicate_youtube_id_to_a_friendly_error() {
+        let pool = create_test_pool().await;
+
+        insert_media(
+            &pool, 1, "A", "video/a.mp4", None, "video", Some("yt1"), None, None, false, None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        // Same channel + youtube_video_id but a different file_path: the file_path ON CONFLICT
+        // does not cover it, so it hits the youtube_video_id unique index and must surface as
+        // the friendly domain error rather than a raw SQLite message.
+        let error = insert_media(
+            &pool, 1, "A again", "video/b.mp4", None, "video", Some("yt1"), None, None, false,
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            error.code,
+            AppErrorCode::VideoAlreadyExistsForChannel.as_str()
+        );
     }
 
     #[tokio::test]
