@@ -28,6 +28,25 @@ pub struct LibraryIntegrityReport {
     #[ts(type = "number")]
     pub orphan_thumbnail_files: usize,
     pub orphan_thumbnail_examples: Vec<String>,
+    #[ts(type = "number")]
+    pub invalid_media_files: usize,
+    pub invalid_media_examples: Vec<String>,
+    #[ts(type = "number")]
+    pub invalid_thumbnail_files: usize,
+    pub invalid_thumbnail_examples: Vec<String>,
+}
+
+/// Outcome of checking one set of stored paths against the library on disk.
+struct PathCheckOutcome {
+    checked: usize,
+    missing: usize,
+    missing_examples: Vec<String>,
+    /// Stored paths that are neither checked nor missing because they are malformed for a
+    /// library-relative reference: absolute, or escaping via `..`, or resolving outside the
+    /// library. The database is supposed to only hold managed relative paths, so these are a
+    /// real anomaly (corruption, legacy data, tampering) and are surfaced rather than dropped.
+    invalid: usize,
+    invalid_examples: Vec<String>,
 }
 
 fn resolve_stored_path(library_path: &Path, stored_path: &str) -> PathBuf {
@@ -40,10 +59,7 @@ fn resolve_stored_path(library_path: &Path, stored_path: &str) -> PathBuf {
     library_path.join(candidate)
 }
 
-fn collect_missing_paths(
-    library_path: &Path,
-    stored_paths: Vec<String>,
-) -> (usize, usize, Vec<String>) {
+fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> PathCheckOutcome {
     let canonical_library = library_path
         .canonicalize()
         .unwrap_or_else(|_| library_path.to_path_buf());
@@ -60,26 +76,35 @@ fn collect_missing_paths(
         unique_paths.insert(trimmed.to_string());
     }
 
-    let mut checked_count = 0usize;
-    let mut missing_count = 0usize;
-    let mut missing_examples: Vec<String> = Vec::new();
+    let mut outcome = PathCheckOutcome {
+        checked: 0,
+        missing: 0,
+        missing_examples: Vec::new(),
+        invalid: 0,
+        invalid_examples: Vec::new(),
+    };
 
     for stored_path in unique_paths {
         let candidate = PathBuf::from(&stored_path);
 
-        // Skip paths that attempt to escape the library via parent traversal
-        if candidate.components().any(|c| c == Component::ParentDir) {
-            continue;
-        }
-
+        // A stored reference is expected to be a managed relative path. A `..` traversal or a
+        // path that resolves outside the library is malformed (corruption, legacy or tampered
+        // data): count it as an anomaly so the diagnostics surface it instead of hiding it.
+        let escapes_via_parent = candidate.components().any(|c| c == Component::ParentDir);
         let resolved_path = resolve_stored_path(&canonical_library, &stored_path);
+        let resolves_outside = !resolved_path.starts_with(&canonical_library);
 
-        // Skip paths that resolve outside the library (e.g. stale absolute paths in the DB).
-        if !resolved_path.starts_with(&canonical_library) {
+        if escapes_via_parent || resolves_outside {
+            outcome.invalid += 1;
+
+            if outcome.invalid_examples.len() < 5 {
+                outcome.invalid_examples.push(stored_path);
+            }
+
             continue;
         }
 
-        checked_count += 1;
+        outcome.checked += 1;
 
         // canonicalize resolves symlinks - re-check containment on the real path.
         // if the path doesn't exist, canonicalize fails and we treat it as missing.
@@ -89,15 +114,15 @@ fn collect_missing_paths(
             .unwrap_or(false);
 
         if !exists_within_library {
-            missing_count += 1;
+            outcome.missing += 1;
 
-            if missing_examples.len() < 5 {
-                missing_examples.push(stored_path);
+            if outcome.missing_examples.len() < 5 {
+                outcome.missing_examples.push(stored_path);
             }
         }
     }
 
-    (checked_count, missing_count, missing_examples)
+    outcome
 }
 
 /// Builds the set of paths the database expects to exist, normalized to forward slashes so it
@@ -188,11 +213,8 @@ pub fn check_library_integrity_sync(
     let media_expected = build_expected_set(&media_paths);
     let thumbnail_expected = build_expected_set(&thumbnail_paths);
 
-    let (checked_media_files, missing_media_files, missing_media_examples) =
-        collect_missing_paths(&library_root, media_paths);
-
-    let (checked_thumbnail_files, missing_thumbnail_files, missing_thumbnail_examples) =
-        collect_missing_paths(&library_root, thumbnail_paths);
+    let media = collect_missing_paths(&library_root, media_paths);
+    let thumbnail = collect_missing_paths(&library_root, thumbnail_paths);
 
     let (orphan_media_files, orphan_media_examples) =
         collect_orphan_paths(&library_root, &["video", "audio"], &media_expected);
@@ -201,16 +223,20 @@ pub fn check_library_integrity_sync(
         collect_orphan_paths(&library_root, &["thumbnails"], &thumbnail_expected);
 
     Ok(LibraryIntegrityReport {
-        checked_media_files,
-        missing_media_files,
-        missing_media_examples,
-        checked_thumbnail_files,
-        missing_thumbnail_files,
-        missing_thumbnail_examples,
+        checked_media_files: media.checked,
+        missing_media_files: media.missing,
+        missing_media_examples: media.missing_examples,
+        checked_thumbnail_files: thumbnail.checked,
+        missing_thumbnail_files: thumbnail.missing,
+        missing_thumbnail_examples: thumbnail.missing_examples,
         orphan_media_files,
         orphan_media_examples,
         orphan_thumbnail_files,
         orphan_thumbnail_examples,
+        invalid_media_files: media.invalid,
+        invalid_media_examples: media.invalid_examples,
+        invalid_thumbnail_files: thumbnail.invalid,
+        invalid_thumbnail_examples: thumbnail.invalid_examples,
     })
 }
 
@@ -263,11 +289,11 @@ mod tests {
         fs::create_dir_all(library.join("video")).unwrap();
         fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
 
-        let (checked, missing, _) =
-            collect_missing_paths(&library, vec!["video/a.mp4".to_string()]);
+        let outcome = collect_missing_paths(&library, vec!["video/a.mp4".to_string()]);
 
-        assert_eq!(checked, 1);
-        assert_eq!(missing, 0);
+        assert_eq!(outcome.checked, 1);
+        assert_eq!(outcome.missing, 0);
+        assert_eq!(outcome.invalid, 0);
 
         let _ = fs::remove_dir_all(&library);
     }
@@ -277,37 +303,41 @@ mod tests {
         let library = unique_test_dir("missing");
         fs::create_dir_all(&library).unwrap();
 
-        let (checked, missing, examples) =
-            collect_missing_paths(&library, vec!["video/missing.mp4".to_string()]);
+        let outcome = collect_missing_paths(&library, vec!["video/missing.mp4".to_string()]);
 
-        assert_eq!(checked, 1);
-        assert_eq!(missing, 1);
-        assert_eq!(examples, vec!["video/missing.mp4"]);
+        assert_eq!(outcome.checked, 1);
+        assert_eq!(outcome.missing, 1);
+        assert_eq!(outcome.missing_examples, vec!["video/missing.mp4"]);
+        assert_eq!(outcome.invalid, 0);
 
         let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
-    fn collect_missing_paths_skips_absolute_path_outside_library() {
+    fn collect_missing_paths_reports_absolute_path_outside_library_as_invalid() {
         let library = unique_test_dir("outside");
         fs::create_dir_all(&library).unwrap();
 
         let outside = std::env::temp_dir().to_string_lossy().to_string();
 
-        let (checked, missing, _) = collect_missing_paths(&library, vec![outside]);
+        let outcome = collect_missing_paths(&library, vec![outside]);
 
-        assert_eq!(checked, 0);
-        assert_eq!(missing, 0);
+        // A stale absolute path resolves outside the library: it is an anomaly, not something
+        // to silently drop.
+        assert_eq!(outcome.checked, 0);
+        assert_eq!(outcome.missing, 0);
+        assert_eq!(outcome.invalid, 1);
+        assert_eq!(outcome.invalid_examples.len(), 1);
 
         let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
-    fn collect_missing_paths_skips_relative_path_with_parent_traversal() {
+    fn collect_missing_paths_reports_relative_path_with_parent_traversal_as_invalid() {
         let library = unique_test_dir("traversal");
         fs::create_dir_all(&library).unwrap();
 
-        let (checked, missing, _) = collect_missing_paths(
+        let outcome = collect_missing_paths(
             &library,
             vec![
                 "../outside.txt".to_string(),
@@ -315,8 +345,9 @@ mod tests {
             ],
         );
 
-        assert_eq!(checked, 0);
-        assert_eq!(missing, 0);
+        assert_eq!(outcome.checked, 0);
+        assert_eq!(outcome.missing, 0);
+        assert_eq!(outcome.invalid, 2);
 
         let _ = fs::remove_dir_all(&library);
     }
@@ -336,13 +367,12 @@ mod tests {
         // Create a symlink inside the library that points outside
         symlink(&outside, library.join("link")).unwrap();
 
-        let (checked, missing, _) =
-            collect_missing_paths(&library, vec!["link/secret.mp4".to_string()]);
+        let outcome = collect_missing_paths(&library, vec!["link/secret.mp4".to_string()]);
 
         // The path appears to be inside the library via starts_with, but after
         // canonicalization it resolves outside - must be treated as missing
-        assert_eq!(checked, 1);
-        assert_eq!(missing, 1);
+        assert_eq!(outcome.checked, 1);
+        assert_eq!(outcome.missing, 1);
 
         let _ = fs::remove_dir_all(&library);
         let _ = fs::remove_dir_all(&outside);
@@ -353,7 +383,7 @@ mod tests {
         let library = unique_test_dir("dedup");
         fs::create_dir_all(&library).unwrap();
 
-        let (checked, missing, _) = collect_missing_paths(
+        let outcome = collect_missing_paths(
             &library,
             vec![
                 "video/a.mp4".to_string(),
@@ -362,8 +392,8 @@ mod tests {
             ],
         );
 
-        assert_eq!(checked, 1);
-        assert_eq!(missing, 1);
+        assert_eq!(outcome.checked, 1);
+        assert_eq!(outcome.missing, 1);
 
         let _ = fs::remove_dir_all(&library);
     }

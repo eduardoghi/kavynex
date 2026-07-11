@@ -174,6 +174,19 @@ export function buildDiagnosticsIssues(input: AppDiagnostics): DiagnosticsIssue[
         });
     }
 
+    const invalidPathCount =
+        input.libraryIntegrity.invalid_media_files +
+        input.libraryIntegrity.invalid_thumbnail_files;
+
+    if (invalidPathCount > 0) {
+        issues.push({
+            code: "INVALID_PATH_REFERENCES",
+            severity: "warning",
+            title: "Some database paths point outside the library",
+            description: `${invalidPathCount} database record(s) reference an absolute or out-of-library path instead of a managed library-relative one. This usually means corrupted or manually edited data.`,
+        });
+    }
+
     if (input.liveChatIntegrity.missing_live_chat_files > 0) {
         issues.push({
             code: "MISSING_LIVE_CHAT_FILES",

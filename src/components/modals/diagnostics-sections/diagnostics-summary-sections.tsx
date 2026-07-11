@@ -405,6 +405,14 @@ export function DiagnosticsSummarySections({
                             label="Orphan thumbnails"
                             value={diagnostics.libraryIntegrity.orphan_thumbnail_files}
                         />
+                        <DiagnosticsMetricCard
+                            label="Invalid media paths"
+                            value={diagnostics.libraryIntegrity.invalid_media_files}
+                        />
+                        <DiagnosticsMetricCard
+                            label="Invalid thumbnail paths"
+                            value={diagnostics.libraryIntegrity.invalid_thumbnail_files}
+                        />
                     </Group>
 
                     {diagnostics.libraryIntegrity.missing_media_examples.length > 0 && (
@@ -463,6 +471,26 @@ export function DiagnosticsSummarySections({
 
                             <Stack gap={4}>
                                 {diagnostics.libraryIntegrity.orphan_thumbnail_examples.map((item) => (
+                                    <Text key={item} size="sm" c="dimmed">
+                                        {item}
+                                    </Text>
+                                ))}
+                            </Stack>
+                        </Paper>
+                    )}
+
+                    {(diagnostics.libraryIntegrity.invalid_media_examples.length > 0 ||
+                        diagnostics.libraryIntegrity.invalid_thumbnail_examples.length > 0) && (
+                        <Paper withBorder radius="md" p="sm">
+                            <Text fw={700} size="sm" mb={6}>
+                                Invalid path examples
+                            </Text>
+
+                            <Stack gap={4}>
+                                {[
+                                    ...diagnostics.libraryIntegrity.invalid_media_examples,
+                                    ...diagnostics.libraryIntegrity.invalid_thumbnail_examples,
+                                ].map((item) => (
                                     <Text key={item} size="sm" c="dimmed">
                                         {item}
                                     </Text>
