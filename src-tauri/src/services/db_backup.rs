@@ -48,6 +48,12 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
     // `.foreign_keys(true)`. That is intentional, not an oversight: this pool is only ever
     // used read-only (quick_check, VACUUM INTO, import validation), so there are no
     // INSERT/UPDATE/DELETE statements here for FK enforcement to guard against.
+    //
+    // It is deliberately *not* opened with `query_only`/`read_only` even though it never
+    // mutates the source: SQLite requires a writable connection for `VACUUM INTO` (it fails
+    // with "attempt to write a readonly database" otherwise). Concurrency is still safe - the
+    // main pool runs in WAL mode, where the read snapshot `VACUUM INTO` holds does not block
+    // the writer, so the once-a-day background snapshot cannot starve a concurrent write.
 
     SqlitePoolOptions::new()
         .max_connections(1)
@@ -421,6 +427,20 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
         )
     })?;
     let validation = validate_import_source(&pool).await;
+
+    if validation.is_ok() {
+        // Fold any not-yet-checkpointed WAL frames of the source into its main database file
+        // before it is copied below. The staging copy takes only the `.db` file, never the
+        // source's `-wal`/`-shm` sidecars, so a source that is a raw copy of a *live* WAL-mode
+        // database (as opposed to a `VACUUM INTO` export, which has no WAL) would otherwise
+        // silently drop whatever committed writes still sat in its WAL. Best effort: a source
+        // on read-only media cannot be checkpointed, but such a source was not being written
+        // to either, so its `.db` is already self-contained.
+        let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&pool)
+            .await;
+    }
+
     pool.close().await;
     validation?;
 
