@@ -370,6 +370,62 @@ fn validate_download_inputs(
     })
 }
 
+/// Builds the yt-dlp argument vector for a media download.
+///
+/// Extracted as a pure function so the argv - the format selector after `-f`, the `--paths`
+/// sandboxing that confines yt-dlp's writes to the run's temp directory, and the `--`
+/// separator that keeps the URL from ever being reinterpreted as a flag - can be asserted in
+/// tests without spawning a process. The URL is always last and always preceded by `--`.
+#[allow(clippy::too_many_arguments)]
+fn build_download_command_args(
+    ffmpeg_location: &str,
+    format_id: &str,
+    download_live_chat: bool,
+    cookies_browser: Option<&str>,
+    cookies_path: Option<&str>,
+    temp_dir: &Path,
+    file_prefix: &str,
+    url: &str,
+) -> Vec<String> {
+    let mut args = vec![
+        "--ignore-config".to_string(),
+        "--no-playlist".to_string(),
+        "--restrict-filenames".to_string(),
+        "--windows-filenames".to_string(),
+        "--no-part".to_string(),
+        "--newline".to_string(),
+        "--progress".to_string(),
+        "--no-warnings".to_string(),
+        "--ffmpeg-location".to_string(),
+        ffmpeg_location.to_string(),
+        "-f".to_string(),
+        format_id.to_string(),
+    ];
+
+    if download_live_chat {
+        args.push("--write-subs".to_string());
+        args.push("--sub-langs".to_string());
+        args.push("live_chat".to_string());
+    }
+
+    append_auth_args(&mut args, cookies_browser, cookies_path);
+
+    args.extend_from_slice(&[
+        "--paths".to_string(),
+        format!("home:{}", temp_dir.to_string_lossy()),
+        "--paths".to_string(),
+        format!("temp:{}", temp_dir.to_string_lossy()),
+        "-o".to_string(),
+        format!("{}.%(ext)s", file_prefix),
+        // Separator so a URL can never be interpreted as a flag (defense in depth on
+        // top of the http(s) scheme check).
+        "--".to_string(),
+        url.to_string(),
+    ]);
+
+    args
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async(
     app: &AppHandle,
@@ -672,45 +728,16 @@ pub async fn download_media_from_url_async(
             "system",
         )?;
 
-        let mut args = vec![
-            "--ignore-config".to_string(),
-            "--no-playlist".to_string(),
-            "--restrict-filenames".to_string(),
-            "--windows-filenames".to_string(),
-            "--no-part".to_string(),
-            "--newline".to_string(),
-            "--progress".to_string(),
-            "--no-warnings".to_string(),
-            "--ffmpeg-location".to_string(),
-            ffmpeg_location.clone(),
-            "-f".to_string(),
-            normalized_format_id.clone(),
-        ];
-
-        if download_live_chat {
-            args.push("--write-subs".to_string());
-            args.push("--sub-langs".to_string());
-            args.push("live_chat".to_string());
-        }
-
-        append_auth_args(
-            &mut args,
+        let args = build_download_command_args(
+            &ffmpeg_location,
+            &normalized_format_id,
+            download_live_chat,
             normalized_cookies_browser.as_deref(),
             normalized_cookies_path.as_deref(),
+            &temp_dir,
+            &file_prefix,
+            &normalized_url,
         );
-
-        args.extend_from_slice(&[
-            "--paths".to_string(),
-            format!("home:{}", temp_dir.to_string_lossy()),
-            "--paths".to_string(),
-            format!("temp:{}", temp_dir.to_string_lossy()),
-            "-o".to_string(),
-            format!("{}.%(ext)s", file_prefix),
-            // Separator so a URL can never be interpreted as a flag (defense in depth on
-            // top of the http(s) scheme check).
-            "--".to_string(),
-            normalized_url.clone(),
-        ]);
 
         emit_download_log(
             app,
@@ -1047,6 +1074,89 @@ mod tests {
             nanos,
             suffix
         ))
+    }
+
+    #[test]
+    fn build_download_command_args_places_url_last_after_a_separator() {
+        let temp = PathBuf::from(if cfg!(windows) {
+            "C:\\tmp\\run"
+        } else {
+            "/tmp/run"
+        });
+
+        let args = build_download_command_args(
+            "/opt/ffmpeg",
+            "137+140",
+            false,
+            None,
+            None,
+            &temp,
+            "yt_abc_137",
+            "https://www.youtube.com/watch?v=abc",
+        );
+
+        // The URL is always the final argument and always immediately preceded by `--`, so
+        // yt-dlp can never reinterpret it as a flag.
+        assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=abc");
+        assert_eq!(args[args.len() - 2], "--");
+
+        // The chosen format follows `-f` verbatim.
+        let format_index = args.iter().position(|arg| arg == "-f").unwrap();
+        assert_eq!(args[format_index + 1], "137+140");
+
+        // ffmpeg is pinned to the resolved binary.
+        let ffmpeg_index = args.iter().position(|arg| arg == "--ffmpeg-location").unwrap();
+        assert_eq!(args[ffmpeg_index + 1], "/opt/ffmpeg");
+
+        // Output template and both `--paths` entries confine yt-dlp's writes to the run's dir.
+        assert!(args.iter().any(|arg| arg == "yt_abc_137.%(ext)s"));
+        assert!(args
+            .iter()
+            .any(|arg| arg == &format!("home:{}", temp.to_string_lossy())));
+        assert!(args
+            .iter()
+            .any(|arg| arg == &format!("temp:{}", temp.to_string_lossy())));
+
+        // Nothing live-chat or cookie related is added when not requested.
+        assert!(!args.iter().any(|arg| arg == "--write-subs"));
+        assert!(!args.iter().any(|arg| arg == "--cookies"));
+        assert!(!args.iter().any(|arg| arg == "--cookies-from-browser"));
+    }
+
+    #[test]
+    fn build_download_command_args_adds_live_chat_and_browser_cookies() {
+        let temp = PathBuf::from(if cfg!(windows) {
+            "C:\\tmp\\run"
+        } else {
+            "/tmp/run"
+        });
+
+        let args = build_download_command_args(
+            "ffmpeg",
+            "best",
+            true,
+            Some("firefox"),
+            None,
+            &temp,
+            "prefix",
+            "https://youtu.be/x",
+        );
+
+        // Live chat is requested as a subtitle track.
+        let subs_index = args.iter().position(|arg| arg == "--write-subs").unwrap();
+        assert_eq!(args[subs_index + 1], "--sub-langs");
+        assert_eq!(args[subs_index + 2], "live_chat");
+
+        // The browser cookie source is passed through.
+        let cookies_index = args
+            .iter()
+            .position(|arg| arg == "--cookies-from-browser")
+            .unwrap();
+        assert_eq!(args[cookies_index + 1], "firefox");
+
+        // The `--` separator + URL invariant still holds with the extra flags present.
+        assert_eq!(args.last().unwrap(), "https://youtu.be/x");
+        assert_eq!(args[args.len() - 2], "--");
     }
 
     #[test]
