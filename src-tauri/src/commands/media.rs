@@ -192,6 +192,40 @@ mod tests {
     }
 
     #[test]
+    fn import_media_file_sync_move_removes_source_when_destination_already_exists() {
+        let root = unique_test_dir("move-existing");
+        let library = root.join("library");
+
+        // First import establishes the content-addressed destination.
+        let first = write_temp_file(&root.join("source"), "first.mp4", b"same-bytes");
+        let relative = library_media::import_media_file_sync(
+            &first.to_string_lossy(),
+            ImportMode::Copy,
+            &library.to_string_lossy(),
+        )
+        .unwrap();
+        let destination = library.join(&relative);
+        assert!(destination.exists());
+
+        // A second, distinct file with identical content imported in Move mode: the destination
+        // already exists, but the redundant source must still be removed to complete the move.
+        let second = write_temp_file(&root.join("source"), "second.mp4", b"same-bytes");
+        let second_relative = library_media::import_media_file_sync(
+            &second.to_string_lossy(),
+            ImportMode::Move,
+            &library.to_string_lossy(),
+        )
+        .unwrap();
+
+        assert_eq!(second_relative, relative);
+        assert!(!second.exists(), "Move must remove the redundant source");
+        assert!(destination.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"same-bytes");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn import_media_file_sync_rejects_missing_source_file() {
         let root = unique_test_dir("missing-source");
         let library = root.join("library");

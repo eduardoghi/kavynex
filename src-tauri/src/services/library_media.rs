@@ -69,23 +69,29 @@ pub fn import_media_file_sync(
         ),
     );
 
-    if !destination.exists() {
-        match mode {
-            ImportMode::Copy => {
+    match mode {
+        ImportMode::Copy => {
+            if destination.exists() {
+                // The content-addressed destination already holds this exact content, so there
+                // is nothing to copy and the source is left untouched (Copy semantics).
+                logger::info(
+                    "library",
+                    format!(
+                        "media import skipped because destination already exists: '{}'",
+                        destination.to_string_lossy()
+                    ),
+                );
+            } else {
                 copy_file_atomic(&source, &destination)?;
             }
-            ImportMode::Move => {
-                move_or_copy_file(&source, &destination)?;
-            }
         }
-    } else {
-        logger::info(
-            "library",
-            format!(
-                "media import skipped because destination already exists: '{}'",
-                destination.to_string_lossy()
-            ),
-        );
+        ImportMode::Move => {
+            // Always go through move_or_copy_file, even when the destination already exists: it
+            // no-ops if the source already IS the destination, and otherwise removes the
+            // (identical-by-hash) redundant source. Skipping on "destination exists" would leave
+            // the source behind, so a Move would not actually free it.
+            move_or_copy_file(&source, &destination)?;
+        }
     }
 
     let relative_path = relative_path_from_base(&library_dir, &destination)?;
