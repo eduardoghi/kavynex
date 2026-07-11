@@ -11,6 +11,32 @@ pub fn extension_from_path(path: &Path) -> String {
         .unwrap_or_else(|| "bin".to_string())
 }
 
+/// True for a segment that names a Windows reserved device (CON, PRN, AUX, NUL, COM0-9,
+/// LPT0-9), with or without an extension - Windows treats `CON`, `CON.txt`, etc. as the device.
+/// Checked on every platform so a library synced from Windows behaves the same everywhere.
+fn is_windows_reserved_name(segment: &str) -> bool {
+    let stem = segment.split('.').next().unwrap_or(segment).trim();
+
+    if matches!(
+        stem.to_ascii_uppercase().as_str(),
+        "CON" | "PRN" | "AUX" | "NUL"
+    ) {
+        return true;
+    }
+
+    let chars: Vec<char> = stem.chars().collect();
+
+    if chars.len() == 4 {
+        let head: String = chars[..3].iter().collect::<String>().to_ascii_uppercase();
+
+        if (head == "COM" || head == "LPT") && chars[3].is_ascii_digit() {
+            return true;
+        }
+    }
+
+    false
+}
+
 pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
     let trimmed = value.trim();
 
@@ -46,6 +72,24 @@ pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
                     return Err(AppError::from_code(
                         AppErrorCode::InvalidRelativePath,
                         "relative path contains an empty segment",
+                    ));
+                }
+
+                // Reject NTFS alternate-data-stream syntax (`name:stream`) and Windows reserved
+                // device names. `Path::components` only flags a drive prefix at the very start,
+                // so a `:` or a `CON`/`NUL` segment in the middle otherwise slips through as a
+                // plain Normal component.
+                if part_str.contains(':') {
+                    return Err(AppError::from_code(
+                        AppErrorCode::InvalidRelativePath,
+                        "relative path segment contains a colon",
+                    ));
+                }
+
+                if is_windows_reserved_name(part_str) {
+                    return Err(AppError::from_code(
+                        AppErrorCode::InvalidRelativePath,
+                        "relative path segment is a reserved device name",
                     ));
                 }
 
@@ -314,6 +358,37 @@ mod tests {
     fn sanitize_relative_path_accepts_normal_relative_path() {
         let result = sanitize_relative_path_strict("video/file.mp4").unwrap();
         assert_eq!(result, PathBuf::from("video/file.mp4"));
+    }
+
+    #[test]
+    fn sanitize_relative_path_rejects_a_colon_segment() {
+        // NTFS alternate data stream syntax.
+        let error = sanitize_relative_path_strict("thumbnails/thumb.jpg:hidden").unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+    }
+
+    #[test]
+    fn sanitize_relative_path_rejects_windows_reserved_device_names() {
+        for path in [
+            "video/CON",
+            "video/con.mp4",
+            "video/NUL.txt",
+            "audio/COM1",
+            "thumbnails/LPT9.jpg",
+        ] {
+            let error = sanitize_relative_path_strict(path)
+                .expect_err(&format!("{path} should be rejected"));
+            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+        }
+    }
+
+    #[test]
+    fn sanitize_relative_path_allows_names_that_only_start_like_a_reserved_name() {
+        // "console" / "computer" are not reserved even though they start with CON/COM.
+        for path in ["video/console.mp4", "video/computer.mp4", "audio/lpt.m4a"] {
+            sanitize_relative_path_strict(path)
+                .unwrap_or_else(|error| panic!("{path} should be accepted: {error}"));
+        }
     }
 
     #[test]
