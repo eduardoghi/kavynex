@@ -1,8 +1,38 @@
+use std::path::Path;
+
 use tauri::AppHandle;
 
 use crate::services::database::{database_path, is_pool_initialized, shared_pool};
 use crate::services::db_backup::{self, DatabaseBackupStatus};
+use crate::utils::path::extension_from_path;
 use crate::{AppError, AppErrorCode, AppResult};
+
+/// Validates the caller-provided export destination. `export_database` unconditionally removes
+/// and replaces the file at this path, so accepting an arbitrary string would let a compromised
+/// frontend overwrite any writable file (a document, a key) with the exported database. The
+/// backend cannot see the save dialog, so it enforces a database file extension here; the export
+/// UI always targets a `.db` file, so this never rejects a legitimate export.
+fn validate_export_destination(destination_path: &str) -> AppResult<()> {
+    let trimmed = destination_path.trim();
+
+    if trimmed.is_empty() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "export destination path is empty",
+        ));
+    }
+
+    let extension = extension_from_path(Path::new(trimmed));
+
+    if !matches!(extension.as_str(), "db" | "sqlite" | "sqlite3") {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "database export must target a .db, .sqlite or .sqlite3 file",
+        ));
+    }
+
+    Ok(())
+}
 
 /// Initializes the shared database pool (creating and migrating the schema on first
 /// call) and confirms the database is reachable. Called by the frontend on startup so
@@ -42,8 +72,10 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
 /// backup, which lives next to the live database).
 #[tauri::command]
 pub async fn export_database(app: AppHandle, destination_path: String) -> AppResult<()> {
+    validate_export_destination(&destination_path)?;
+
     let path = database_path(&app)?;
-    db_backup::export_database(&path, std::path::Path::new(&destination_path)).await
+    db_backup::export_database(&path, Path::new(&destination_path)).await
 }
 
 /// Validates and stages a user-provided database file for import. The swap is applied on the
@@ -79,4 +111,41 @@ pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
 pub async fn check_database_integrity(app: AppHandle) -> AppResult<bool> {
     let pool = shared_pool(&app).await?;
     db_backup::run_full_integrity_check(pool).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_export_destination_accepts_database_extensions() {
+        for path in [
+            "kavynex-backup.db",
+            "C:/Users/me/Documents/backup.sqlite",
+            "/home/me/backup.sqlite3",
+            "BACKUP.DB",
+        ] {
+            validate_export_destination(path)
+                .unwrap_or_else(|error| panic!("{path} should be accepted: {error}"));
+        }
+    }
+
+    #[test]
+    fn validate_export_destination_rejects_empty_and_non_database_targets() {
+        let empty = validate_export_destination("   ").unwrap_err();
+        assert_eq!(empty.code, AppErrorCode::InvalidTargetPath.as_str());
+
+        // A document, an executable, and an extensionless path must all be rejected so the
+        // exported database cannot be written over an arbitrary file.
+        for path in [
+            "C:/Users/victim/Documents/contract.docx",
+            "important.exe",
+            "no-extension",
+            "id_rsa",
+        ] {
+            let error = validate_export_destination(path)
+                .expect_err(&format!("{path} should be rejected"));
+            assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+        }
+    }
 }
