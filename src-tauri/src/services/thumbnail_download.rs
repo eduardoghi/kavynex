@@ -2,6 +2,8 @@ use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::Uri;
@@ -40,6 +42,7 @@ async fn run_thumbnail_yt_dlp_with_timeout(
     mut command: Command,
     timeout_message: &str,
     exec_message: &str,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<std::process::Output> {
     // Any early return still reaps the direct child; the tree kill below covers the ffmpeg
     // grandchild that `kill_on_drop` does not reach.
@@ -56,26 +59,40 @@ async fn run_thumbnail_yt_dlp_with_timeout(
     })?;
     let child_pid = child.id();
 
-    match timeout(
-        Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-        child.wait_with_output(),
-    )
-    .await
-    {
-        Ok(result) => result.map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailExecFailed,
-                format!("{exec_message}: {e}"),
-            )
-        }),
-        Err(_) => {
+    tokio::select! {
+        output_result = timeout(
+            Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
+            child.wait_with_output(),
+        ) => match output_result {
+            Ok(result) => result.map_err(|e| {
+                AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailExecFailed,
+                    format!("{exec_message}: {e}"),
+                )
+            }),
+            Err(_) => {
+                if let Some(pid) = child_pid {
+                    crate::utils::process::kill_process_tree(pid).await;
+                }
+
+                Err(AppError::from_code(
+                    AppErrorCode::YtDlpThumbnailTimeout,
+                    timeout_message.to_string(),
+                ))
+            }
+        },
+        _ = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
+            // The download was cancelled while this bounded thumbnail phase was still running:
+            // kill the whole tree now rather than blocking cancellation until the timeout. Only
+            // reached for the media-thumbnail path (which passes the run's cancel flag); the
+            // standalone and avatar paths pass None, so this branch pends forever.
             if let Some(pid) = child_pid {
                 crate::utils::process::kill_process_tree(pid).await;
             }
 
             Err(AppError::from_code(
-                AppErrorCode::YtDlpThumbnailTimeout,
-                timeout_message.to_string(),
+                AppErrorCode::YtDlpDownloadCancelled,
+                "yt-dlp download cancelled",
             ))
         }
     }
@@ -598,7 +615,7 @@ pub async fn download_thumbnail_from_url_async(
         let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
         let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
-        let metadata = fetch_yt_dlp_metadata(&yt_dlp, &normalized_url, None, None).await?;
+        let metadata = fetch_yt_dlp_metadata(&yt_dlp, &normalized_url, None, None, None).await?;
 
         let id = metadata
             .id
@@ -647,6 +664,7 @@ pub async fn download_thumbnail_from_url_async(
             command,
             "yt-dlp thumbnail download timed out",
             "failed to execute yt-dlp for thumbnail download",
+            None,
         )
         .await?;
 
@@ -684,6 +702,7 @@ pub async fn download_thumbnail_for_media_async(
     metadata: &YtDlpMetadata,
     cookies_browser: Option<&str>,
     cookies_path: Option<&str>,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<Option<String>> {
     let normalized_url = media_url.trim();
 
@@ -778,6 +797,7 @@ pub async fn download_thumbnail_for_media_async(
             command,
             "yt-dlp thumbnail download timed out",
             "failed to execute yt-dlp for thumbnail download",
+            cancel.clone(),
         )
         .await?;
 
@@ -864,6 +884,7 @@ pub async fn download_channel_avatar_from_handle_async(
             command,
             "yt-dlp channel avatar download timed out",
             "failed to execute yt-dlp for channel avatar download",
+            None,
         )
         .await?;
 

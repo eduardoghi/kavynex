@@ -1,4 +1,6 @@
 use std::process::Stdio;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::AppHandle;
@@ -256,6 +258,7 @@ async fn run_yt_dlp_and_capture_json(
     timeout_message: &str,
     exec_message: &str,
     failed_message: &str,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<(String, Vec<String>, Vec<String>)> {
     let mut command = Command::new(yt_dlp);
     command
@@ -307,17 +310,34 @@ async fn run_yt_dlp_and_capture_json(
         log_lines
     });
 
-    let status = match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
-        Ok(wait_result) => wait_result
-            .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?,
-        Err(_) => {
-            // Kill the whole tree (yt-dlp and any ffmpeg grandchild), not just the direct
-            // child, so a hung conversion cannot outlive the timeout as an orphan.
+    let status = tokio::select! {
+        wait_result = timeout(Duration::from_secs(timeout_secs), child.wait()) => match wait_result {
+            Ok(status) => status
+                .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?,
+            Err(_) => {
+                // Kill the whole tree (yt-dlp and any ffmpeg grandchild), not just the direct
+                // child, so a hung conversion cannot outlive the timeout as an orphan.
+                if let Some(pid) = child_pid {
+                    crate::utils::process::kill_process_tree(pid).await;
+                }
+                let _ = child.kill().await;
+                return Err(AppError::from_code(timeout_code, timeout_message));
+            }
+        },
+        _ = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
+            // The caller signalled cancellation: kill the whole tree immediately instead of
+            // waiting out the remaining timeout (previously up to a minute of an unresponsive
+            // "cancel"), and report it as a cancellation. Only ever reached when a cancel flag
+            // is supplied (the download flow); other callers pass None, so this branch pends
+            // forever and the wait above drives the result.
             if let Some(pid) = child_pid {
                 crate::utils::process::kill_process_tree(pid).await;
             }
             let _ = child.kill().await;
-            return Err(AppError::from_code(timeout_code, timeout_message));
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadCancelled,
+                "yt-dlp download cancelled",
+            ));
         }
     };
 
@@ -373,6 +393,7 @@ pub async fn fetch_yt_dlp_metadata(
     url: &str,
     cookies_browser: Option<&str>,
     cookies_path: Option<&str>,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<YtDlpMetadata> {
     let mut args = vec![
         "-v".to_string(),
@@ -396,6 +417,7 @@ pub async fn fetch_yt_dlp_metadata(
         "yt-dlp metadata request timed out",
         "failed to execute yt-dlp metadata command",
         "yt-dlp could not load media information for this URL.",
+        cancel,
     )
     .await?;
 
@@ -440,6 +462,7 @@ async fn fetch_yt_dlp_metadata_with_comments(
         "yt-dlp comments request timed out",
         "failed to execute yt-dlp comments command",
         "yt-dlp could not load YouTube comments for this media.",
+        None,
     )
     .await?;
 
@@ -618,6 +641,7 @@ pub async fn list_yt_dlp_formats_async(
         "yt-dlp metadata request timed out",
         "failed to execute yt-dlp metadata command",
         "yt-dlp could not load media information for this URL.",
+        None,
     )
     .await?;
 
@@ -810,11 +834,48 @@ mod tests {
             "timed out",
             "exec failed",
             "failed",
+            None,
         )
         .await
         .unwrap_err();
 
         assert_eq!(error.code, AppErrorCode::YtDlpMetadataTimeout.as_str());
+    }
+
+    #[tokio::test]
+    async fn run_and_capture_kills_the_child_and_reports_cancellation_when_flagged() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+
+        let (binary, args) = if cfg!(windows) {
+            (
+                "cmd",
+                vec!["/C".to_string(), "ping -n 30 127.0.0.1 > NUL".to_string()],
+            )
+        } else {
+            ("sleep", vec!["30".to_string()])
+        };
+
+        // Flag already set: the cancel branch wins immediately and the long-running child is
+        // killed instead of the call blocking for the full timeout.
+        let cancel = Arc::new(AtomicBool::new(true));
+
+        let error = run_yt_dlp_and_capture_json(
+            binary,
+            &args,
+            30,
+            AppErrorCode::YtDlpMetadataTimeout,
+            AppErrorCode::YtDlpMetadataExecFailed,
+            AppErrorCode::YtDlpMetadataFailed,
+            "timed out",
+            "exec failed",
+            "failed",
+            Some(Arc::clone(&cancel)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::YtDlpDownloadCancelled.as_str());
     }
 
     #[tokio::test]

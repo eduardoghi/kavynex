@@ -491,11 +491,23 @@ pub async fn download_media_from_url_async(
             &normalized_url,
             normalized_cookies_browser.as_deref(),
             normalized_cookies_path.as_deref(),
+            Some(Arc::clone(&cancel_flag)),
         )
         .await
         {
             Ok(metadata) => metadata,
             Err(error) => {
+                // The metadata phase now honors cancellation itself (killing the tree
+                // promptly); surface that as a cancellation event rather than a generic error.
+                if cancel_flag.load(Ordering::SeqCst) {
+                    let message = "yt-dlp download cancelled";
+                    emit_download_cancelled(app, &normalized_run_id, message);
+                    return Err(AppError::from_code(
+                        AppErrorCode::YtDlpDownloadCancelled,
+                        message,
+                    ));
+                }
+
                 emit_download_error(app, &normalized_run_id, error.message.clone());
                 return Err(error);
             }
@@ -528,6 +540,7 @@ pub async fn download_media_from_url_async(
                 &metadata,
                 normalized_cookies_browser.as_deref(),
                 normalized_cookies_path.as_deref(),
+                Some(Arc::clone(&cancel_flag)),
             )
             .await
             {
@@ -551,6 +564,17 @@ pub async fn download_media_from_url_async(
                     path
                 }
                 Err(error) => {
+                    // The thumbnail phase now honors cancellation itself; report a cancel as a
+                    // cancellation event instead of a thumbnail failure.
+                    if cancel_flag.load(Ordering::SeqCst) {
+                        let message = "yt-dlp download cancelled";
+                        emit_download_cancelled(app, &normalized_run_id, message);
+                        return Err(AppError::from_code(
+                            AppErrorCode::YtDlpDownloadCancelled,
+                            message,
+                        ));
+                    }
+
                     emit_download_error(
                         app,
                         &normalized_run_id,

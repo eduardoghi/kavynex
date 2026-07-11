@@ -122,6 +122,21 @@ pub fn kill_process_tree_blocking(pid: u32) {
         .status();
 }
 
+/// Resolves as soon as `cancel` is observed set. When `cancel` is `None` it never resolves,
+/// so a `tokio::select!` against it is driven entirely by the other branch. Used to make the
+/// bounded metadata/thumbnail waits abort promptly on a user cancel instead of running to
+/// their timeout, killing the whole process tree at the call site.
+pub async fn wait_for_cancel(cancel: Option<&std::sync::atomic::AtomicBool>) {
+    match cancel {
+        None => std::future::pending::<()>().await,
+        Some(flag) => {
+            while !flag.load(std::sync::atomic::Ordering::SeqCst) {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        }
+    }
+}
+
 /// Builds an [`AppError`] from a failed child process's output, preferring stderr, then
 /// stdout, then falling back to `default_message` when both streams are empty.
 pub fn read_process_error(
