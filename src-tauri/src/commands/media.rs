@@ -2,9 +2,8 @@ use tauri::AppHandle;
 
 use crate::models::yt_dlp::ImportMode;
 use crate::services::library_cleanup::{self, ArtifactCleanupReport};
-use crate::services::library_guard::ensure_configured_library_path;
+use crate::services::library_guard::verify_library_path_then_blocking;
 use crate::services::library_media;
-use crate::utils::task::run_blocking;
 use crate::AppResult;
 
 #[tauri::command]
@@ -14,9 +13,10 @@ pub async fn import_media_file(
     mode: ImportMode,
     library_path: String,
 ) -> AppResult<String> {
-    ensure_configured_library_path(&app, &library_path).await?;
-
-    run_blocking(move || library_media::import_media_file_sync(&path, mode, &library_path)).await
+    verify_library_path_then_blocking(&app, library_path, move |library_path| {
+        library_media::import_media_file_sync(&path, mode, &library_path)
+    })
+    .await
 }
 
 /// Removes on-disk artifacts (media file, thumbnail, live chat replay) that were prepared for

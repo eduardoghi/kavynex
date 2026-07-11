@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 
 use crate::services::database::{get_app_settings_from_pool, shared_pool};
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Resolves the configured library directory from the persisted settings. Media,
@@ -94,6 +95,28 @@ pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) ->
     }
 
     Ok(())
+}
+
+/// Verifies that `library_path` matches the configured library directory, then runs `f` on a
+/// blocking thread with the verified path handed back to it.
+///
+/// This exists so a command that mutates the library through a caller-provided path cannot
+/// run its filesystem work without the guard passing first: coupling the check with execution
+/// here makes the check impossible to forget by construction, which is exactly the omission
+/// that would turn a "delete a file inside the library" command into an arbitrary-file
+/// primitive. `f` receives the same (verified) path so it does not need to capture a second
+/// copy of it.
+pub async fn verify_library_path_then_blocking<F, T>(
+    app: &AppHandle,
+    library_path: String,
+    f: F,
+) -> AppResult<T>
+where
+    F: FnOnce(String) -> AppResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    ensure_configured_library_path(app, &library_path).await?;
+    run_blocking(move || f(library_path)).await
 }
 
 #[cfg(test)]

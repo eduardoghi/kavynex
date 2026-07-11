@@ -1,6 +1,8 @@
 use tauri::AppHandle;
 
-use crate::services::library_guard::ensure_configured_library_path;
+use crate::services::library_guard::{
+    ensure_configured_library_path, verify_library_path_then_blocking,
+};
 use crate::services::thumbnail;
 use crate::utils::task::run_blocking;
 use crate::AppResult;
@@ -16,9 +18,10 @@ pub async fn persist_thumbnail_file(
     path: String,
     library_path: String,
 ) -> AppResult<String> {
-    ensure_configured_library_path(&app, &library_path).await?;
-
-    run_blocking(move || thumbnail::persist_thumbnail_file_sync(&path, &library_path)).await
+    verify_library_path_then_blocking(&app, library_path, move |library_path| {
+        thumbnail::persist_thumbnail_file_sync(&path, &library_path)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -54,8 +57,8 @@ pub async fn delete_thumbnail_file(
     thumbnail_path: String,
     library_path: String,
 ) -> AppResult<()> {
-    ensure_configured_library_path(&app, &library_path).await?;
-
-    run_blocking(move || thumbnail::delete_thumbnail_file_sync(&thumbnail_path, &library_path))
-        .await
+    verify_library_path_then_blocking(&app, library_path, move |library_path| {
+        thumbnail::delete_thumbnail_file_sync(&thumbnail_path, &library_path)
+    })
+    .await
 }

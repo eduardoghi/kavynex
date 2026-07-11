@@ -1,6 +1,6 @@
 use tauri::AppHandle;
 
-use crate::services::library_guard::ensure_configured_library_path;
+use crate::services::library_guard::verify_library_path_then_blocking;
 use crate::services::library_integrity::LibraryIntegrityReport;
 use crate::services::library_migration;
 use crate::services::library_paths;
@@ -36,12 +36,10 @@ pub async fn migrate_library_directory(
     new_library_path: String,
 ) -> AppResult<library_migration::MigrateLibraryDirectoryResult> {
     // The migration removes the managed subdirectories of `old_library_path` after
-    // copying, so the source must be the library the user actually configured. The
-    // settings still hold the old path at this point: the frontend only persists the
-    // new one after the migration succeeds.
-    ensure_configured_library_path(&app, &old_library_path).await?;
-
-    run_blocking(move || {
+    // copying, so the verified path is the old library (the one the user actually
+    // configured). The settings still hold the old path at this point: the frontend only
+    // persists the new one after the migration succeeds.
+    verify_library_path_then_blocking(&app, old_library_path, move |old_library_path| {
         library_migration::migrate_library_directory_sync(&old_library_path, &new_library_path)
     })
     .await
