@@ -152,7 +152,7 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
 /// up pasted into a public bug report, so any occurrence of the path is replaced regardless of
 /// which line it shows up in (the `Command-line config` echo, or any other yt-dlp message that
 /// happens to mention it).
-fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
+pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
     match cookies_path
         .map(str::trim)
         .filter(|value| !value.is_empty())

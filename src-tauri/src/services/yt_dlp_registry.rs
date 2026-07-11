@@ -65,6 +65,28 @@ pub fn unregister_download_run(run_id: &str) {
     guard.remove(run_id);
 }
 
+/// Removes a download run from the registry when dropped. Constructed right after
+/// `register_download_run` so any early return during download setup (missing yt-dlp/ffmpeg
+/// binary, unusable library dir, temp-dir creation failure) still releases the registry entry
+/// instead of leaking it for the lifetime of the process.
+pub struct DownloadRunReleaseGuard {
+    run_id: String,
+}
+
+impl DownloadRunReleaseGuard {
+    pub fn new(run_id: &str) -> Self {
+        Self {
+            run_id: run_id.to_string(),
+        }
+    }
+}
+
+impl Drop for DownloadRunReleaseGuard {
+    fn drop(&mut self) {
+        unregister_download_run(&self.run_id);
+    }
+}
+
 /// Marks every active download as cancelled and returns the process ids of those whose
 /// child has already been spawned. Used by the app-exit handler to terminate in-flight
 /// downloads.
@@ -139,6 +161,26 @@ mod tests {
         let duplicate = register_download_run(run_id);
 
         assert!(duplicate.is_err());
+
+        unregister_download_run(run_id);
+    }
+
+    #[test]
+    fn download_run_release_guard_unregisters_on_drop() {
+        let _serial = serial_guard();
+        let run_id = "test-run-guard";
+
+        let _ = register_download_run(run_id).unwrap();
+
+        {
+            let _guard = DownloadRunReleaseGuard::new(run_id);
+            // The run is still active while the guard is alive: re-registering must fail.
+            assert!(register_download_run(run_id).is_err());
+        }
+
+        // Dropping the guard released the entry, so the run_id can be registered again.
+        let flag = register_download_run(run_id).unwrap();
+        assert!(!flag.load(Ordering::SeqCst));
 
         unregister_download_run(run_id);
     }

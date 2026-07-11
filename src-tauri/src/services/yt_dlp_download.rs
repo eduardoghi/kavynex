@@ -27,10 +27,11 @@ use crate::services::yt_dlp_events::{
     emit_download_log_infallible,
 };
 use crate::services::yt_dlp_metadata::{
-    fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
+    fetch_yt_dlp_metadata, normalize_download_metadata, redact_cookies_path_from_line,
+    sanitize_filename_component,
 };
 use crate::services::yt_dlp_registry::{
-    register_download_run, set_download_pid, unregister_download_run,
+    register_download_run, set_download_pid, DownloadRunReleaseGuard,
 };
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::format::codec_is_present;
@@ -88,23 +89,54 @@ fn unique_temp_suffix() -> String {
     format!("{}-{}", std::process::id(), nanos)
 }
 
-/// Joins yt-dlp args for display, replacing the value after `--cookies` with a placeholder.
-/// The cookies file path can reveal the local username/profile layout, and this log line is
-/// shown in the app and may be pasted into a public bug report. `--cookies-from-browser`
-/// (a browser name, not a path) is left intact.
+/// How the value following a flag must be redacted when building the log line.
+enum PendingRedaction {
+    None,
+    /// Replace the whole value (used for `--cookies`).
+    FullValue,
+    /// Keep the `home:`/`temp:` scope prefix but drop the directory (used for `--paths`).
+    PathsValue,
+}
+
+/// Redacts a `--paths` value, keeping its `SCOPE:` prefix but dropping the directory. The
+/// directory sits under the per-user app cache (e.g. `C:\Users\<name>\AppData\...`), so it would
+/// otherwise leak the OS username. `split_once(':')` splits on the scope separator even though a
+/// Windows path also contains a drive colon, because the scope colon always comes first.
+fn redact_paths_value(value: &str) -> String {
+    match value.split_once(':') {
+        Some((scope, _)) => format!("{scope}:<redacted>"),
+        None => "<redacted>".to_string(),
+    }
+}
+
+/// Joins yt-dlp args for display, redacting values that can leak local filesystem paths. The
+/// value after `--cookies` reveals the cookies file location, and each `--paths` value carries
+/// the temp directory under the user's app cache; both would expose the username/profile layout
+/// in a log line that is shown in the app and may be pasted into a public bug report.
+/// `--cookies-from-browser` (a browser name, not a path) is left intact.
 fn redacted_args_for_log(args: &[String]) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(args.len());
-    let mut redact_next = false;
+    let mut pending = PendingRedaction::None;
 
     for arg in args {
-        if redact_next {
-            parts.push("<redacted>".to_string());
-            redact_next = false;
-            continue;
+        match pending {
+            PendingRedaction::FullValue => {
+                parts.push("<redacted>".to_string());
+                pending = PendingRedaction::None;
+                continue;
+            }
+            PendingRedaction::PathsValue => {
+                parts.push(redact_paths_value(arg));
+                pending = PendingRedaction::None;
+                continue;
+            }
+            PendingRedaction::None => {}
         }
 
         if arg == "--cookies" {
-            redact_next = true;
+            pending = PendingRedaction::FullValue;
+        } else if arg == "--paths" {
+            pending = PendingRedaction::PathsValue;
         }
 
         parts.push(arg.clone());
@@ -438,6 +470,11 @@ pub async fn download_media_from_url_async(
     let normalized_cookies_path = normalize_cookies_path(cookies_path);
 
     let cancel_flag = register_download_run(&normalized_run_id)?;
+    // Release the registry entry on every exit path. The `?` operators below (binary
+    // resolution, library dir, temp-dir creation) run before the main async block that used
+    // to be the only place `unregister_download_run` was reached, so without this guard an
+    // early failure there would leak the run_id in the process-global registry for good.
+    let _run_release_guard = DownloadRunReleaseGuard::new(&normalized_run_id);
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
@@ -791,6 +828,12 @@ pub async fn download_media_from_url_async(
         let app_stderr = app.clone();
         let run_id_stdout = normalized_run_id.clone();
         let run_id_stderr = normalized_run_id.clone();
+        // The cookies file path can appear in a yt-dlp message (e.g. a "could not read cookies"
+        // error) and would otherwise be streamed to the UI terminal and baked into the failure
+        // message below. Redact it on both streams, mirroring the metadata flow, since that path
+        // reveals the local username/profile and may be pasted into a public bug report.
+        let cookies_path_stdout = normalized_cookies_path.clone();
+        let cookies_path_stderr = normalized_cookies_path.clone();
 
         let stderr_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let stderr_buffer_reader = Arc::clone(&stderr_buffer);
@@ -805,6 +848,7 @@ pub async fn download_media_from_url_async(
                     Ordering::Relaxed,
                 );
 
+                let line = redact_cookies_path_from_line(&line, cookies_path_stdout.as_deref());
                 emit_download_log_infallible(&app_stdout, &run_id_stdout, line, "stdout");
             }
         });
@@ -818,6 +862,10 @@ pub async fn download_media_from_url_async(
                     download_start.elapsed().as_millis() as u64,
                     Ordering::Relaxed,
                 );
+
+                // Redact before buffering so the failure message built from this buffer below is
+                // redacted too, not just the live stream.
+                let line = redact_cookies_path_from_line(&line, cookies_path_stderr.as_deref());
 
                 let mut guard = stderr_buffer_reader.lock().await;
 
@@ -1024,7 +1072,7 @@ pub async fn download_media_from_url_async(
     .await;
 
     let _ = fs::remove_dir_all(&temp_dir);
-    unregister_download_run(&normalized_run_id);
+    // The registry entry is released by `_run_release_guard` when this function returns.
 
     if let Err(error) = &result {
         logger::error(
@@ -1263,6 +1311,10 @@ mod tests {
             "/home/user/.config/cookies.txt".to_string(),
             "--cookies-from-browser".to_string(),
             "firefox".to_string(),
+            "--paths".to_string(),
+            "home:C:\\Users\\alice\\AppData\\Local\\com.kavynex.app\\cache\\run".to_string(),
+            "--paths".to_string(),
+            "temp:C:\\Users\\alice\\AppData\\Local\\com.kavynex.app\\cache\\run".to_string(),
             "--".to_string(),
             "https://youtube.com/watch?v=x".to_string(),
         ];
@@ -1273,6 +1325,11 @@ mod tests {
         assert!(logged.contains("--cookies <redacted>"));
         // The browser name is not sensitive and stays intact.
         assert!(logged.contains("--cookies-from-browser firefox"));
+        // The temp directory (which embeds the OS username) is dropped, but the scope prefix is
+        // kept for readability.
+        assert!(!logged.contains("alice"));
+        assert!(logged.contains("--paths home:<redacted>"));
+        assert!(logged.contains("--paths temp:<redacted>"));
         assert!(logged.contains("-- https://youtube.com/watch?v=x"));
     }
 
