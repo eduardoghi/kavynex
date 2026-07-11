@@ -1,13 +1,31 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::services::library_guard::verify_library_path_then_blocking;
 use crate::services::library_integrity::LibraryIntegrityReport;
 use crate::services::library_migration;
 use crate::services::library_paths;
 use crate::services::library_summary::LibrarySummaryInfo;
+use crate::services::logger;
 use crate::services::{library, library_integrity};
 use crate::utils::task::run_blocking;
 use crate::AppResult;
+
+/// Withdraws the asset-protocol grant on a library directory the app no longer uses.
+///
+/// `register_library_asset_scope` only ever *adds* the configured library directory to the
+/// asset scope; nothing removed the old one after a migration. Since the scope is a set of
+/// glob patterns where a forbid always wins over an allow, forbidding the old directory here
+/// closes the window where any file that later lands in it would still be readable through
+/// `convertFileSrc` for the rest of the session. Best effort: a failure only leaves the stale
+/// grant in place (the pre-existing behavior) and must not fail the migration itself.
+fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
+    if let Err(error) = app.asset_protocol_scope().forbid_directory(dir, true) {
+        logger::warn(
+            "asset_scope",
+            format!("failed to revoke old library directory from asset scope: {error}"),
+        );
+    }
+}
 
 #[tauri::command]
 pub async fn resolve_default_library_directory(app: AppHandle) -> AppResult<String> {
@@ -35,14 +53,28 @@ pub async fn migrate_library_directory(
     old_library_path: String,
     new_library_path: String,
 ) -> AppResult<library_migration::MigrateLibraryDirectoryResult> {
+    // Keep the old path (already the canonical form register_library_asset_scope authorized)
+    // so its asset-scope grant can be withdrawn once the migration actually moves the library.
+    let old_dir_for_scope = old_library_path.trim().to_string();
+
     // The migration removes the managed subdirectories of `old_library_path` after
     // copying, so the verified path is the old library (the one the user actually
     // configured). The settings still hold the old path at this point: the frontend only
     // persists the new one after the migration succeeds.
-    verify_library_path_then_blocking(&app, old_library_path, move |old_library_path| {
-        library_migration::migrate_library_directory_sync(&old_library_path, &new_library_path)
-    })
-    .await
+    let result =
+        verify_library_path_then_blocking(&app, old_library_path, move |old_library_path| {
+            library_migration::migrate_library_directory_sync(&old_library_path, &new_library_path)
+        })
+        .await?;
+
+    // Only revoke when the library actually moved to a different directory. `changed` is also
+    // true for first-time setup (no prior library), where `old_dir_for_scope` is empty and
+    // there is nothing to forbid.
+    if result.changed && !old_dir_for_scope.is_empty() {
+        revoke_directory_from_asset_scope(&app, &old_dir_for_scope);
+    }
+
+    Ok(result)
 }
 
 /// Intentionally accepts a caller-provided `library_path` instead of the persisted setting:
