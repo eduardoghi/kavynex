@@ -561,6 +561,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_upgrade_and_fresh_create_agree_on_additive_column_definitions() {
+        // Guards the baseline/additive divergence footgun. `VIDEOS_ADDITIVE_COLUMNS` (the
+        // `ALTER TABLE ADD COLUMN` definitions an upgraded legacy database receives) and
+        // `VIDEOS_TABLE_DDL` (the `CREATE TABLE` definitions a fresh database receives) are
+        // maintained separately. If they ever drift, an upgraded database and a freshly
+        // created one would sit at the same user_version with a differently-typed column - the
+        // exact silent divergence the versioned-migration comment in `ensure_schema` warns
+        // against. This asserts both paths produce byte-identical definitions for every
+        // additive column (type, NOT NULL, default), so a mismatch fails CI instead of only
+        // surfacing on a user's machine.
+        async fn videos_column_defs(
+            pool: &SqlitePool,
+        ) -> std::collections::HashMap<String, (String, i64, Option<String>)> {
+            let rows: Vec<(String, String, i64, Option<String>)> = sqlx::query_as(
+                "SELECT name, type, \"notnull\", dflt_value FROM pragma_table_info('videos')",
+            )
+            .fetch_all(pool)
+            .await
+            .unwrap();
+
+            rows.into_iter()
+                .map(|(name, col_type, notnull, dflt)| (name, (col_type, notnull, dflt)))
+                .collect()
+        }
+
+        let fresh = memory_pool().await;
+        ensure_schema(&fresh).await.unwrap();
+
+        // A pre-additive-columns legacy `videos` table (same shape as the migration test above).
+        let legacy = memory_pool().await;
+        sqlx::query(
+            "CREATE TABLE videos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                thumbnail_path TEXT,
+                media_type TEXT NOT NULL DEFAULT 'video',
+                youtube_video_id TEXT,
+                watched_at TEXT,
+                published_at TEXT,
+                duration_seconds INTEGER,
+                progress_seconds INTEGER NOT NULL DEFAULT 0,
+                has_comments INTEGER NOT NULL DEFAULT 0,
+                comments_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE (channel_id, file_path)
+            );",
+        )
+        .execute(&legacy)
+        .await
+        .unwrap();
+        ensure_schema(&legacy).await.unwrap();
+
+        let fresh_defs = videos_column_defs(&fresh).await;
+        let legacy_defs = videos_column_defs(&legacy).await;
+
+        for (column, _definition) in VIDEOS_ADDITIVE_COLUMNS {
+            let fresh_def = fresh_defs
+                .get(*column)
+                .unwrap_or_else(|| panic!("a freshly created videos table is missing '{column}'"));
+            let legacy_def = legacy_defs
+                .get(*column)
+                .unwrap_or_else(|| panic!("an upgraded videos table is missing '{column}'"));
+
+            assert_eq!(
+                fresh_def, legacy_def,
+                "additive column '{column}' differs between a fresh create (VIDEOS_TABLE_DDL) and a legacy upgrade (VIDEOS_ADDITIVE_COLUMNS); route non-additive schema changes through a table rebuild",
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn ensure_schema_upgrades_database_stamped_by_older_version() {
         let pool = memory_pool().await;
 
