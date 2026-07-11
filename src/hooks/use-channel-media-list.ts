@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { MediaRow } from "../types/media";
 import { listChannelMedia } from "../services";
 import { resolveErrorMessage } from "../utils/error-message";
@@ -81,11 +81,19 @@ export function useChannelMediaList({
         [clearMedia, onError, selectedChannelId]
     );
 
-    return {
-        mediaItems,
-        isLoadingMedia,
-        setMediaItems,
-        loadMedia,
-        clearMedia,
-    };
+    // Memoized so the controller object keeps a stable identity across renders where its
+    // contents are unchanged, instead of being a fresh literal every render. Consumers that
+    // depend on the whole object (or derive callbacks from it) then stop being invalidated on
+    // unrelated re-renders. setMediaItems is a stable useState setter, so it is omitted from
+    // the dependency list on purpose.
+    return useMemo(
+        () => ({
+            mediaItems,
+            isLoadingMedia,
+            setMediaItems,
+            loadMedia,
+            clearMedia,
+        }),
+        [mediaItems, isLoadingMedia, loadMedia, clearMedia]
+    );
 }

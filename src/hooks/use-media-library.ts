@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { MediaLibraryController } from "../types/controllers";
 import type { MediaRow } from "../types/media";
 import type { ImportMode } from "../types/settings";
@@ -47,15 +47,28 @@ export function useMediaLibrary({
         onError,
     });
 
-    // Destructure the stable fields off the per-render mediaList controller object so the
-    // callback and effect below can depend on them directly. This keeps the dependency arrays
-    // honest (no eslint-disable) while still not depending on the whole object, whose identity
-    // changes every render.
-    const { clearMedia, loadMedia } = mediaList;
+    // Destructure the stable fields off the mediaList/mediaPlayer controller objects so the
+    // callbacks and effects below can depend on them directly rather than on the whole objects
+    // (whose identity changes when their contents do). setMediaItems (useState) and
+    // setActiveMedia (useCallback []) are stable, so a callback depending only on them is
+    // itself stable.
+    const { clearMedia, loadMedia, setMediaItems } = mediaList;
+    const { setActiveMedia } = mediaPlayer;
+
+    // Track the active media in a ref so saveMediaProgress can read the current value without
+    // listing mediaPlayer.activeMedia as a dependency. Depending on activeMedia would recreate
+    // saveMediaProgress on every progress update - and that cascade is what made the player
+    // re-attach its timeupdate listener and reset the 10s save throttle on every save, turning
+    // one write per 10s into several writes per second.
+    const activeMediaRef = useRef<MediaRow | null>(mediaPlayer.activeMedia);
+
+    useEffect(() => {
+        activeMediaRef.current = mediaPlayer.activeMedia;
+    }, [mediaPlayer.activeMedia]);
 
     const mediaActions = useMediaActions({
         libraryPath,
-        setMediaItems: mediaList.setMediaItems,
+        setMediaItems,
         mediaPlayer,
         onError,
         onNotice,
@@ -75,20 +88,22 @@ export function useMediaLibrary({
 
             const safeProgressSeconds = Math.max(0, Math.floor(progressSeconds));
 
-            mediaList.setMediaItems((currentItems) =>
+            setMediaItems((currentItems) =>
                 currentItems.map((item) =>
                     updateProgressInMemory(item, mediaId, safeProgressSeconds)
                 )
             );
 
-            if (mediaPlayer.activeMedia?.id === mediaId) {
-                mediaPlayer.setActiveMedia({
-                    ...mediaPlayer.activeMedia,
+            const active = activeMediaRef.current;
+
+            if (active?.id === mediaId) {
+                setActiveMedia({
+                    ...active,
                     progress_seconds: safeProgressSeconds,
                 });
             }
         },
-        [mediaList, mediaPlayer]
+        [setMediaItems, setActiveMedia]
     );
 
     const clearMediaAndPlayer = useCallback((): void => {

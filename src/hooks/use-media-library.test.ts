@@ -230,6 +230,29 @@ describe("useMediaLibrary", () => {
         expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(33);
     });
 
+    it("keeps saveMediaProgress stable across a save so the player throttle is not reset", async () => {
+        const { result } = renderMediaLibrary(null);
+
+        act(() => {
+            result.current.mediaPlayer.openPlayer(
+                createMediaRow({ id: 5, progress_seconds: 0 })
+            );
+        });
+
+        const before = result.current.saveMediaProgress;
+
+        await act(async () => {
+            await result.current.saveMediaProgress(5, 33);
+        });
+
+        // The save updates the active media's progress. Previously that recreated
+        // saveMediaProgress (it depended on the whole mediaPlayer object), which cascaded into
+        // the player's persistProgress and made its timeupdate effect re-run, resetting the 10s
+        // throttle clock on every save. The reference must now survive the save.
+        expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(33);
+        expect(result.current.saveMediaProgress).toBe(before);
+    });
+
     it("does not touch active media progress when the saved media id does not match", async () => {
         const { result } = renderMediaLibrary(null);
 
