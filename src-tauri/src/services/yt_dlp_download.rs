@@ -86,6 +86,23 @@ fn redacted_args_for_log(args: &[String]) -> String {
     parts.join(" ")
 }
 
+/// Accepts only format ids built from the characters yt-dlp uses for concrete format ids
+/// (ASCII alphanumerics plus `.`, `_`, `-`), optionally `+`-combined for a video+audio
+/// selection such as `137+140`. Every part must be non-empty and must not start with `-`, so
+/// the value placed after `-f` can never be parsed as a yt-dlp flag. This is defense in depth
+/// on top of `resolve_format_has_video`, which additionally requires the id to match a real
+/// format from the fetched metadata: since that metadata is attacker-influenced (it comes from
+/// the video being downloaded), the id is filtered by character class before it is trusted.
+fn is_valid_format_id(format_id: &str) -> bool {
+    format_id.split('+').all(|part| {
+        !part.is_empty()
+            && !part.starts_with('-')
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    })
+}
+
 /// Resolves a (possibly `+`-combined) yt-dlp format selector against the fetched metadata
 /// and returns whether the selection has a video track. Returns `None` if the selector - or
 /// any part of a combined selector - is not a real format id from the metadata, which
@@ -357,6 +374,13 @@ fn validate_download_inputs(
         return Err(AppError::from_code(
             AppErrorCode::InvalidFormatId,
             "format_id is empty",
+        ));
+    }
+
+    if !is_valid_format_id(&format_id) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidFormatId,
+            "format_id contains unexpected characters",
         ));
     }
 
@@ -1085,6 +1109,42 @@ mod tests {
                 .code,
             AppErrorCode::InvalidFormatId.as_str()
         );
+    }
+
+    #[test]
+    fn validate_download_inputs_rejects_format_id_with_unexpected_characters() {
+        // A leading `-` (would be read as a flag after `-f`), selector syntax and shell
+        // metacharacters must all be rejected before the request is dispatched.
+        for format_id in [
+            "-x",
+            "137+-140",
+            "bestvideo[height<=720]",
+            "137;rm -rf",
+            "137 140",
+            "13$7",
+        ] {
+            let error =
+                validate_download_inputs("https://youtube.com/watch?v=x", "/lib", "run", format_id)
+                    .unwrap_err();
+            assert_eq!(
+                error.code,
+                AppErrorCode::InvalidFormatId.as_str(),
+                "format_id: {format_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_valid_format_id_accepts_real_ids_and_rejects_selectors() {
+        // Concrete yt-dlp format ids, including hyphenated and `+`-combined ones.
+        for id in ["137", "140", "137+140", "233-drc", "sb0", "hls_1080"] {
+            assert!(is_valid_format_id(id), "should accept: {id}");
+        }
+
+        // Empty parts, a leading `-`, and anything outside the safe class are rejected.
+        for id in ["", "-x", "137+", "+140", "137++140", "137 140", "a|b", "$(x)"] {
+            assert!(!is_valid_format_id(id), "should reject: {id}");
+        }
     }
 
     #[test]
