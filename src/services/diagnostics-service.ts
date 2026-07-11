@@ -2,6 +2,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { getMediaRepositoryStats } from "../repositories/media-repository";
 import type {
     AppDiagnostics,
+    DiagnosticsIssue,
     DiagnosticsSummary,
     ExternalToolsStatus,
     LibraryIntegrityReport,
@@ -12,9 +13,11 @@ import type {
     RuntimeDiagnosticsInfo,
 } from "../types/diagnostics";
 import type { ImportMode } from "../types/settings";
+import { logError } from "../utils/app-logger";
 import {
     buildDiagnosticsIssues,
     buildDiagnosticsOverview,
+    sortDiagnosticsIssues,
 } from "./diagnostics-rules";
 import { getLibraryIntegrity } from "./diagnostics-library-integrity";
 import { getLibrarySummary } from "./diagnostics-library-summary";
@@ -111,10 +114,65 @@ function defaultLiveChatIntegrity(): LiveChatIntegrityReport {
     };
 }
 
+// Labels for each check, in the exact order of the Promise.allSettled array below. A rejected
+// check is reported to the user by index, so this must stay in sync with that array.
+const DIAGNOSTIC_CHECKS = [
+    { code: "APP_VERSION", label: "app version" },
+    { code: "RUNTIME_INFO", label: "runtime information" },
+    { code: "EXTERNAL_TOOLS", label: "external tools" },
+    { code: "LIBRARY_SUMMARY", label: "library summary" },
+    { code: "LIVE_CHAT_STORAGE", label: "live chat storage" },
+    { code: "MEDIA_STATS", label: "media statistics" },
+    { code: "LIBRARY_INTEGRITY", label: "library integrity" },
+    { code: "LIVE_CHAT_INTEGRITY", label: "live chat integrity" },
+] as const;
+
+// A rejected sub-check is replaced by its zeroed default so the rest of the report can still
+// render. On its own that would make the failed dimension read as "healthy" (0 missing, 0
+// orphan, ...). Turn each failure into a warning issue - and log the underlying reason - so the
+// overview stops showing a false all-clear and the user is told the report is incomplete.
+function collectCheckFailureIssues(
+    settled: readonly PromiseSettledResult<unknown>[]
+): DiagnosticsIssue[] {
+    const issues: DiagnosticsIssue[] = [];
+
+    settled.forEach((result, index) => {
+        if (result.status !== "rejected") {
+            return;
+        }
+
+        const check = DIAGNOSTIC_CHECKS[index];
+        const label = check?.label ?? "diagnostic";
+
+        logError("diagnostics", `The ${label} diagnostics check failed to run.`, result.reason);
+
+        issues.push({
+            code: `DIAGNOSTIC_CHECK_FAILED:${check?.code ?? index}`,
+            severity: "warning",
+            title: `Could not run the ${label} check`,
+            description:
+                "This check did not complete, so the values shown for it may be incomplete or missing. Check the logs and try again.",
+        });
+    });
+
+    return issues;
+}
+
 export async function getDiagnosticsSummary(
     input: GetDiagnosticsInput
 ): Promise<DiagnosticsSummary> {
     const normalizedLibraryPath = input.libraryPath.trim();
+
+    const settled = await Promise.allSettled([
+        getVersion(),
+        getRuntimeDiagnosticsInfo(),
+        getExternalToolsStatus(),
+        getLibrarySummary(normalizedLibraryPath),
+        getLiveChatStorageSummary(),
+        getMediaRepositoryStats(),
+        getLibraryIntegrity(normalizedLibraryPath),
+        getLiveChatIntegrity(),
+    ]);
 
     const [
         appVersion,
@@ -125,16 +183,7 @@ export async function getDiagnosticsSummary(
         mediaRepositoryStats,
         libraryIntegrity,
         liveChatIntegrity,
-    ] = await Promise.allSettled([
-        getVersion(),
-        getRuntimeDiagnosticsInfo(),
-        getExternalToolsStatus(),
-        getLibrarySummary(normalizedLibraryPath),
-        getLiveChatStorageSummary(),
-        getMediaRepositoryStats(),
-        getLibraryIntegrity(normalizedLibraryPath),
-        getLiveChatIntegrity(),
-    ]);
+    ] = settled;
 
     const diagnostics: AppDiagnostics = {
         appVersion: settledValue(appVersion, null),
@@ -150,7 +199,10 @@ export async function getDiagnosticsSummary(
         liveChatIntegrity: settledValue(liveChatIntegrity, defaultLiveChatIntegrity()),
     };
 
-    const issues = buildDiagnosticsIssues(diagnostics);
+    const issues = sortDiagnosticsIssues([
+        ...collectCheckFailureIssues(settled),
+        ...buildDiagnosticsIssues(diagnostics),
+    ]);
     const overview = buildDiagnosticsOverview(issues);
 
     return {

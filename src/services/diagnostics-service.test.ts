@@ -391,6 +391,54 @@ describe("diagnostics-service", () => {
         ]);
     });
 
+    it("surfaces a failed diagnostic check as a warning instead of a silent healthy default", async () => {
+        getVersionMock.mockResolvedValueOnce("0.1.0");
+
+        getRuntimeDiagnosticsInfoMock.mockResolvedValueOnce({
+            platform: "Windows",
+            arch: "x64",
+        });
+
+        getExternalToolsStatusMock.mockResolvedValueOnce({
+            yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true },
+            ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true },
+        });
+
+        getLibrarySummaryMock.mockResolvedValueOnce({
+            total_bytes: 1024,
+            formatted_size: "1 KB",
+            video_files: 1,
+            audio_files: 0,
+            thumbnail_files: 0,
+        });
+
+        getMediaRepositoryStatsMock.mockResolvedValueOnce(
+            createMediaRepositoryStats({ total_media: 1, total_video_media: 1 })
+        );
+
+        // The integrity check itself fails to run. Its zeroed default would otherwise read as
+        // "0 missing / 0 orphan / 0 invalid" - a false all-clear for that dimension.
+        getLibraryIntegrityMock.mockRejectedValueOnce(new Error("integrity scan crashed"));
+
+        mockHealthyLiveChatDiagnostics();
+
+        const result = await getDiagnosticsSummary({
+            libraryPath: "/library",
+            importMode: "copy",
+        });
+
+        // The overview must not read "healthy" when a check could not run.
+        expect(result.overview.status).toBe("warning");
+        expect(result.issues.map((item) => item.code)).toContain(
+            "DIAGNOSTIC_CHECK_FAILED:LIBRARY_INTEGRITY"
+        );
+        expect(
+            result.issues.find(
+                (item) => item.code === "DIAGNOSTIC_CHECK_FAILED:LIBRARY_INTEGRITY"
+            )?.severity
+        ).toBe("warning");
+    });
+
     it("returns a partial summary when one diagnostic check fails", async () => {
         getVersionMock.mockResolvedValueOnce("0.1.0");
 
