@@ -6,6 +6,7 @@ use crate::services::video_repository as repo;
 use crate::services::video_repository::{
     MediaCommentRow, MediaIntegrityReference, MediaRepositoryStats, MediaRow,
 };
+use crate::utils::path::ensure_managed_library_relative_path;
 use crate::AppResult;
 
 /// Deletes a media row and its now-unreferenced files (media file, thumbnail, live chat)
@@ -68,6 +69,20 @@ pub async fn insert_media(
     is_live: bool,
     live_chat_file_path: Option<String>,
 ) -> AppResult<Option<i64>> {
+    // Validate every stored path at this write boundary: each must be a managed,
+    // library-relative path (no traversal, rooted at video/audio/thumbnails/live_chat). The
+    // deletion path trusts these rows, so a bare or traversing path persisted here would let a
+    // later delete/move command act outside the app's own layout.
+    ensure_managed_library_relative_path(&file_path)?;
+
+    if let Some(path) = thumbnail_path.as_deref() {
+        ensure_managed_library_relative_path(path)?;
+    }
+
+    if let Some(path) = live_chat_file_path.as_deref() {
+        ensure_managed_library_relative_path(path)?;
+    }
+
     let pool = shared_pool(&app).await?;
     repo::insert_media(
         pool,

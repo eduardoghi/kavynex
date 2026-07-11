@@ -77,6 +77,38 @@ pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
     Ok(sanitized)
 }
 
+/// Validates a library-relative path received over IPC before it is stored on a row (media
+/// file, thumbnail, avatar, live chat). On top of `sanitize_relative_path_strict` (no `..`, no
+/// absolute/root/prefix component), it requires the path to be rooted at one of the app's
+/// managed subdirectories (video/audio/thumbnails/live_chat).
+///
+/// The managed-directory requirement is what keeps this from being a foothold for arbitrary
+/// file deletion: every path the app legitimately produces is content-addressed under one of
+/// those directories, so a bare name like `contract.docx` is rejected here. Without it, a
+/// compromised frontend could persist such a name and - combined with a redirected library
+/// directory - have a later delete/move command act on a file outside the app's own layout.
+pub fn ensure_managed_library_relative_path(value: &str) -> AppResult<()> {
+    let sanitized = sanitize_relative_path_strict(value)?;
+
+    let first_component = sanitized
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str());
+
+    let is_managed = first_component
+        .map(|dir| crate::constants::MANAGED_LIBRARY_DIRS.contains(&dir))
+        .unwrap_or(false);
+
+    if !is_managed {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidRelativePath,
+            "path must be inside a managed library directory",
+        ));
+    }
+
+    Ok(())
+}
+
 pub fn ensure_existing_path_inside_dir(path: &Path, base_dir: &Path) -> AppResult<()> {
     if !path.exists() {
         return Err(AppError::from_code(
@@ -282,6 +314,36 @@ mod tests {
     fn sanitize_relative_path_accepts_normal_relative_path() {
         let result = sanitize_relative_path_strict("video/file.mp4").unwrap();
         assert_eq!(result, PathBuf::from("video/file.mp4"));
+    }
+
+    #[test]
+    fn ensure_managed_library_relative_path_accepts_paths_under_managed_dirs() {
+        for path in [
+            "video/media_abc.mp4",
+            "audio/media_abc.m4a",
+            "thumbnails/thumb_abc.jpg",
+            "live_chat/clip.live_chat.json.gz",
+        ] {
+            ensure_managed_library_relative_path(path)
+                .unwrap_or_else(|error| panic!("{path} should be accepted: {error}"));
+        }
+    }
+
+    #[test]
+    fn ensure_managed_library_relative_path_rejects_bare_and_unmanaged_paths() {
+        // A bare filename at the (possibly redirected) library root, an unmanaged directory,
+        // a traversal attempt, and an absolute path must all be rejected.
+        for path in [
+            "contract.docx",
+            "Documents/secret.txt",
+            "video/../../secret.txt",
+            "../secret.txt",
+            "config/app.ini",
+        ] {
+            let error = ensure_managed_library_relative_path(path)
+                .expect_err(&format!("{path} should be rejected"));
+            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+        }
     }
 
     #[test]

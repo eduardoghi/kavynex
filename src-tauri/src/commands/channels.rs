@@ -4,6 +4,7 @@ use crate::services::channel_repository as repo;
 use crate::services::channel_repository::ChannelRow;
 use crate::services::database::shared_pool;
 use crate::services::library_cleanup::{self, ArtifactCleanupReport};
+use crate::utils::path::ensure_managed_library_relative_path;
 use crate::AppResult;
 
 /// Deletes a channel row (its media and comments cascade) and the now-unreferenced files
@@ -44,6 +45,10 @@ pub async fn insert_channel(
     youtube_handle: String,
     avatar_path: Option<String>,
 ) -> AppResult<Option<i64>> {
+    if let Some(path) = avatar_path.as_deref() {
+        ensure_managed_library_relative_path(path)?;
+    }
+
     let pool = shared_pool(&app).await?;
     repo::insert_channel(pool, &name, &youtube_handle, avatar_path.as_deref()).await
 }
@@ -68,5 +73,9 @@ pub async fn replace_channel_avatar(
     channel_id: i64,
     avatar_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
+    if let Some(path) = avatar_path.as_deref() {
+        ensure_managed_library_relative_path(path)?;
+    }
+
     library_cleanup::replace_channel_avatar(&app, channel_id, avatar_path).await
 }
