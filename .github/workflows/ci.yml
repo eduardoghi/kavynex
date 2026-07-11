@@ -46,8 +46,16 @@ jobs:
             # Fail only on high/critical advisories so a low-severity transitive
             # finding does not block all CI; RUSTSEC advisories are covered separately
             # by the cargo-audit job.
-            - name: Audit JS dependencies
+            - name: Audit production JS dependencies
               run: pnpm audit --prod --audit-level high
+
+            # `--prod` above skips devDependencies (the build/test toolchain, which still
+            # runs arbitrary code during install/build). Scan them too, but non-blocking:
+            # a dev-only advisory should surface in the logs without gating every PR, since
+            # it never ships in a release artifact.
+            - name: Audit dev JS dependencies (non-blocking)
+              continue-on-error: true
+              run: pnpm audit --dev --audit-level high
 
             - name: Lint
               run: pnpm lint
