@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveErrorMessage, toUserFriendlyError } from "./user-friendly-error";
 import {
     APP_ERROR_CODE,
+    DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_RUN_ID_ERROR_CODE,
@@ -43,8 +44,16 @@ import {
 // code is asserted against its exact message. The raw backend message is always
 // different from the friendly one so a broken mapping cannot hide behind the
 // message fallback.
+const GENERIC_BACKEND_MESSAGE = "The operation could not be completed. Check the logs for details.";
+
 const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [INVALID_INPUT_ERROR_CODE, "Invalid input."],
+
+    [
+        DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
+        "This database was created by a newer version of Kavynex. Update the app and try again.",
+    ],
+    ["DATABASE_IMPORT_INVALID", "The selected file is not a valid Kavynex database."],
 
     [INVALID_URL_ERROR_CODE, "Enter a valid media URL."],
     [INVALID_RUN_ID_ERROR_CODE, "The download session is invalid."],
@@ -179,22 +188,22 @@ describe("toUserFriendlyError", () => {
         ).toBe("Could not read the selected folder.");
     });
 
-    it("falls back to original message when code is unknown", () => {
+    it("degrades an uncatalogued backend code to a generic message with the raw text kept in details", () => {
         expect(
             toUserFriendlyError({
                 code: "SOMETHING_ELSE",
                 message: "Custom backend failure",
             })
-        ).toBe("Custom backend failure");
+        ).toBe(`${GENERIC_BACKEND_MESSAGE}\n\nDetails: Custom backend failure`);
     });
 
-    it("falls back to generic unknown error when message is empty", () => {
+    it("shows only the generic message for an uncatalogued backend code with no message", () => {
         expect(
             toUserFriendlyError({
                 code: "SOMETHING_ELSE",
                 message: "",
             })
-        ).toBe("Unknown error.");
+        ).toBe(GENERIC_BACKEND_MESSAGE);
     });
 
     it("appends details to a mapped friendly message", () => {
@@ -209,14 +218,27 @@ describe("toUserFriendlyError", () => {
         );
     });
 
-    it("appends details to the raw message when code is unknown", () => {
+    it("folds the raw message and details together for an uncatalogued backend code", () => {
         expect(
             toUserFriendlyError({
                 code: "SOMETHING_ELSE",
                 message: "Custom backend failure",
                 details: "socket closed unexpectedly",
             })
-        ).toBe("Custom backend failure\n\nDetails: socket closed unexpectedly");
+        ).toBe(
+            `${GENERIC_BACKEND_MESSAGE}\n\nDetails: Custom backend failure - socket closed unexpectedly`
+        );
+    });
+
+    it("still passes through the raw message for a non-backend-shaped code", () => {
+        // A lowercase / non-SCREAMING_SNAKE code is never produced by the backend, so the raw
+        // message is the best available human text and is shown as-is.
+        expect(
+            toUserFriendlyError({
+                code: "custom-thing",
+                message: "Custom backend failure",
+            })
+        ).toBe("Custom backend failure");
     });
 
     it("does not append details when the resolved message is the unknown default", () => {
@@ -313,7 +335,7 @@ describe("resolveErrorMessage", () => {
         expect(resolveErrorMessage(123, "   ")).toBe("Unknown error.");
     });
 
-    it("returns parsed raw message when code is unknown but message exists", () => {
+    it("returns the generic message (not the fallback) for an uncatalogued backend code", () => {
         expect(
             resolveErrorMessage(
                 {
@@ -322,10 +344,10 @@ describe("resolveErrorMessage", () => {
                 },
                 "Fallback message"
             )
-        ).toBe("Something custom happened");
+        ).toBe(`${GENERIC_BACKEND_MESSAGE}\n\nDetails: Something custom happened`);
     });
 
-    it("maps raw message text even without a raw code mapping", () => {
+    it("keeps the raw backend message in the details of the generic fallback", () => {
         expect(
             resolveErrorMessage(
                 {
@@ -334,6 +356,6 @@ describe("resolveErrorMessage", () => {
                 },
                 "Fallback message"
             )
-        ).toBe("failed to open directory");
+        ).toBe(`${GENERIC_BACKEND_MESSAGE}\n\nDetails: failed to open directory`);
     });
 });

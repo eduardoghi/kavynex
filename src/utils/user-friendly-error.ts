@@ -1,6 +1,7 @@
 import { parseAppError, type AppErrorShape } from "./app-error";
 import {
     APP_ERROR_CODE,
+    DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_RUN_ID_ERROR_CODE,
@@ -41,9 +42,20 @@ import {
 
 const DEFAULT_ERROR_MESSAGE = "Unknown error.";
 
+// Shown when the backend returns an error code the frontend has no specific message for. The
+// raw backend message can carry local file paths or internal (canonicalization, rename)
+// failures, so it is kept in the details block rather than shown as the primary line - a
+// newly added Rust error code therefore degrades to a controlled message instead of leaking
+// an internal string to the user.
+const GENERIC_BACKEND_ERROR_MESSAGE = "The operation could not be completed. Check the logs for details.";
+
 const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [APP_ERROR_CODE]: DEFAULT_ERROR_MESSAGE,
     [INVALID_INPUT_ERROR_CODE]: "Invalid input.",
+
+    [DATABASE_SCHEMA_TOO_NEW_ERROR_CODE]:
+        "This database was created by a newer version of Kavynex. Update the app and try again.",
+    DATABASE_IMPORT_INVALID: "The selected file is not a valid Kavynex database.",
 
     [INVALID_URL_ERROR_CODE]: "Enter a valid media URL.",
     [INVALID_RUN_ID_ERROR_CODE]: "The download session is invalid.",
@@ -103,11 +115,23 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     DELETE_FILE_FAILED: "Could not delete the file.",
 };
 
+// Backend AppError codes are SCREAMING_SNAKE_CASE tokens. `parseAppError` assigns a thrown JS
+// Error or a bare string the APP_ERROR code, so a code that reaches here matching this shape
+// but absent from the catalog above is always a real backend error code that simply has not
+// been catalogued yet - never an ad-hoc human message we would want to surface verbatim.
+function isUncataloguedBackendCode(code: string): boolean {
+    return !(code in FRIENDLY_ERROR_MESSAGES) && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code);
+}
+
 function resolveFriendlyMessage(parsed: AppErrorShape): string {
     const mappedMessage = FRIENDLY_ERROR_MESSAGES[parsed.code];
 
     if (mappedMessage) {
         return mappedMessage;
+    }
+
+    if (isUncataloguedBackendCode(parsed.code)) {
+        return GENERIC_BACKEND_ERROR_MESSAGE;
     }
 
     if (parsed.message?.trim()) {
@@ -117,10 +141,25 @@ function resolveFriendlyMessage(parsed: AppErrorShape): string {
     return DEFAULT_ERROR_MESSAGE;
 }
 
-function shouldAppendDetails(parsed: AppErrorShape, resolvedMessage: string): boolean {
-    const details = parsed.details?.trim();
+// The diagnostic text appended after "Details:". For a catalogued/known message that is the
+// backend `details` field; for the generic backend fallback the raw `message` is itself the
+// useful diagnostic, so it is folded in (with `details`) instead of being dropped.
+function technicalDetailFor(parsed: AppErrorShape, resolvedMessage: string): string {
+    const details = parsed.details?.trim() ?? "";
 
-    if (!details) {
+    if (resolvedMessage !== GENERIC_BACKEND_ERROR_MESSAGE) {
+        return details;
+    }
+
+    // `parseAppError` replaces an empty backend message with the "Unknown error." sentinel,
+    // which carries no diagnostic value, so it is not worth folding into the details line.
+    const message = parsed.message?.trim() ?? "";
+    const diagnosticMessage = message === DEFAULT_ERROR_MESSAGE ? "" : message;
+    return [diagnosticMessage, details].filter((value) => value.length > 0).join(" - ");
+}
+
+function shouldAppendDetails(resolvedMessage: string, technicalDetail: string): boolean {
+    if (!technicalDetail) {
         return false;
     }
 
@@ -129,7 +168,7 @@ function shouldAppendDetails(parsed: AppErrorShape, resolvedMessage: string): bo
     }
 
     const normalizedResolved = resolvedMessage.trim().toLowerCase();
-    const normalizedDetails = details.toLowerCase();
+    const normalizedDetails = technicalDetail.toLowerCase();
 
     if (normalizedResolved === normalizedDetails) {
         return false;
@@ -144,12 +183,13 @@ function shouldAppendDetails(parsed: AppErrorShape, resolvedMessage: string): bo
 
 function buildResolvedMessage(parsed: AppErrorShape): string {
     const resolvedMessage = resolveFriendlyMessage(parsed);
+    const technicalDetail = technicalDetailFor(parsed, resolvedMessage);
 
-    if (!shouldAppendDetails(parsed, resolvedMessage)) {
+    if (!shouldAppendDetails(resolvedMessage, technicalDetail)) {
         return resolvedMessage;
     }
 
-    return `${resolvedMessage}\n\nDetails: ${parsed.details?.trim()}`;
+    return `${resolvedMessage}\n\nDetails: ${technicalDetail}`;
 }
 
 export function toUserFriendlyError(error: unknown): string {

@@ -20,6 +20,8 @@ describe("error-message bridge", () => {
                 code: "CUSTOM_ERROR",
                 message: "Something custom happened",
             })
-        ).toBe("Something custom happened");
+        ).toBe(
+            "The operation could not be completed. Check the logs for details.\n\nDetails: Something custom happened"
+        );
     });
 });
