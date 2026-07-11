@@ -70,6 +70,29 @@ describe("useAppBootstrap", () => {
         );
     });
 
+    it("advises updating instead of offering recovery when the schema is too new", async () => {
+        // A database created by a newer build fails to open but is not corrupt: the recovery
+        // flow (which would restore an older backup) must be skipped in favor of a clear message.
+        vi.mocked(ensureDatabaseReady).mockRejectedValueOnce({
+            code: "DATABASE_SCHEMA_TOO_NEW",
+            message: "database was created by a newer version of the app",
+        });
+
+        const onError = vi.fn();
+
+        const { result } = renderHook(() => useAppBootstrap({ onError }));
+
+        await waitFor(() => {
+            expect(onError).toHaveBeenCalledWith(
+                "This library was created by a newer version of Kavynex. Update Kavynex to open it."
+            );
+        });
+
+        // No backup restore is offered for a version mismatch.
+        expect(getDatabaseBackupStatus).not.toHaveBeenCalled();
+        expect(result.current.open).toBe(false);
+    });
+
     it("logs and swallows the error when the backup status check itself fails", async () => {
         const readyError = new Error("boom");
         const statusError = new Error("status check failed");

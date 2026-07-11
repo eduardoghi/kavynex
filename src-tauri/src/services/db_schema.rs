@@ -1,7 +1,7 @@
 use sqlx::{Connection, SqliteConnection, SqlitePool};
 
 use crate::services::database::db_error;
-use crate::AppResult;
+use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
@@ -190,7 +190,11 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     let current_version = read_user_version(pool).await?;
 
     if current_version > SCHEMA_VERSION {
-        return Err(db_error(
+        // Distinct code (not the generic db_error): the frontend must tell "this build is too
+        // old to open a newer database" apart from real corruption, so it can advise updating
+        // instead of offering a destructive restore-from-backup.
+        return Err(AppError::from_code_with_details(
+            AppErrorCode::DatabaseSchemaTooNew,
             "database was created by a newer version of the app",
             format!(
                 "on-disk schema version {current_version} is newer than the supported version {SCHEMA_VERSION}; update Kavynex to open this library"

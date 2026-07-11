@@ -5,8 +5,13 @@ import {
     restoreDatabaseFromBackup,
 } from "../services/database-service";
 import type { DatabaseRecoveryController } from "../types/controllers";
+import { DATABASE_SCHEMA_TOO_NEW_ERROR_CODE } from "../constants/error-codes";
+import { parseAppError } from "../utils/app-error";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+
+const SCHEMA_TOO_NEW_MESSAGE =
+    "This library was created by a newer version of Kavynex. Update Kavynex to open it.";
 
 type UseAppBootstrapOptions = {
     onError: (message: string) => void;
@@ -33,6 +38,15 @@ export function useAppBootstrap({
                 logError("bootstrap", "Failed to initialize app.", error);
 
                 if (cancelled) {
+                    return;
+                }
+
+                // A database created by a newer build is valid, just unreadable by this
+                // version - not corruption. Offering a backup restore here would wrongly
+                // replace a good database with an older snapshot, so surface a clear "update
+                // the app" message and skip the recovery flow entirely.
+                if (parseAppError(error).code === DATABASE_SCHEMA_TOO_NEW_ERROR_CODE) {
+                    onError(SCHEMA_TOO_NEW_MESSAGE);
                     return;
                 }
 
