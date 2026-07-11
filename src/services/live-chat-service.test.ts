@@ -266,6 +266,24 @@ describe("readLiveChatMessagesFromFile", () => {
         });
     });
 
+    it("rejects a sticker image url that is not http(s)", async () => {
+        mockFile(
+            rawItemLine({
+                liveChatPaidStickerRenderer: {
+                    id: "st2",
+                    authorName: { simpleText: "@fan" },
+                    purchaseAmountText: { simpleText: "$1.00" },
+                    // A tampered replay file trying to smuggle a non-image scheme into <img src>.
+                    sticker: { thumbnails: [{ url: "javascript:alert(1)" }] },
+                },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.sticker_image_url).toBeNull();
+    });
+
     it("parses a custom emoji as an image part", async () => {
         mockFile(
             rawLine({

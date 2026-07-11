@@ -17,6 +17,11 @@ pub struct LiveChatCompressionSummary {
     pub failed: usize,
 }
 
+// Ceiling on the decompressed size of a live chat file. Generous enough for even a very dense
+// multi-hour stream, but bounded so a crafted tiny gzip (a decompression bomb dropped into the
+// library folder) cannot expand without limit and exhaust memory when the file is opened.
+const MAX_LIVE_CHAT_DECOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
+
 fn compress_error(context: &str, error: impl std::fmt::Display) -> AppError {
     AppError::from_code(
         AppErrorCode::LiveChatCompressFailed,
@@ -39,13 +44,27 @@ pub fn gzip_compress(data: &[u8]) -> AppResult<Vec<u8>> {
         .map_err(|e| compress_error("failed to finish gzip stream", e))
 }
 
-pub fn gzip_decompress(data: &[u8]) -> AppResult<Vec<u8>> {
-    let mut decoder = GzDecoder::new(data);
+fn gzip_decompress_with_limit(data: &[u8], max_bytes: u64) -> AppResult<Vec<u8>> {
+    // Read at most one byte past the limit so a file that lands exactly on the ceiling still
+    // decodes, while anything larger is caught below without materializing all of it.
+    let mut limited = GzDecoder::new(data).take(max_bytes.saturating_add(1));
     let mut out = Vec::new();
-    decoder
+    limited
         .read_to_end(&mut out)
         .map_err(|e| compress_error("failed to gunzip live chat data", e))?;
+
+    if out.len() as u64 > max_bytes {
+        return Err(compress_error(
+            "live chat file is too large when decompressed",
+            format!("decompressed size exceeds the {max_bytes}-byte limit"),
+        ));
+    }
+
     Ok(out)
+}
+
+pub fn gzip_decompress(data: &[u8]) -> AppResult<Vec<u8>> {
+    gzip_decompress_with_limit(data, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
 }
 
 /// Reads a stored live chat file and returns its JSON text, transparently gunzipping the
@@ -302,6 +321,22 @@ mod tests {
         assert!(is_gzip(&[0x1f, 0x8b, 0x08]));
         assert!(!is_gzip(b"{\"a\":1}"));
         assert!(!is_gzip(&[0x1f]));
+    }
+
+    #[test]
+    fn gzip_decompress_rejects_output_larger_than_the_limit() {
+        // Highly compressible payload: a few KB of zeros gzip to a tiny file but decompress
+        // well past a small limit - a stand-in for a decompression bomb.
+        let payload = vec![0u8; 8 * 1024];
+        let compressed = gzip_compress(&payload).unwrap();
+        assert!(compressed.len() < payload.len());
+
+        let error = gzip_decompress_with_limit(&compressed, 1024).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+
+        // A limit above the real size still decodes the whole payload.
+        let ok = gzip_decompress_with_limit(&compressed, 64 * 1024).unwrap();
+        assert_eq!(ok, payload);
     }
 
     #[test]

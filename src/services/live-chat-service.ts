@@ -69,6 +69,16 @@ function parseRendererMessage(renderer: Record<string, unknown>): string {
     return extractRunsText(message?.runs).trim();
 }
 
+// Live chat image URLs (custom emoji / sticker thumbnails) may be protocol-relative
+// ("//host/.."); upgrade those to https and reject anything that is not an http(s) URL, so a
+// tampered replay file cannot smuggle a data:/javascript:/file: value into an <img> src and
+// bypass the "load remote images" privacy toggle. Mirrors resolveAvatarSrc for avatars.
+function normalizeRemoteImageUrl(url: string): string | null {
+    const normalized = url.startsWith("//") ? `https:${url}` : url;
+
+    return /^https?:\/\//i.test(normalized) ? normalized : null;
+}
+
 function emojiImageUrl(emoji: Record<string, unknown>): string | null {
     const image = emoji.image as Record<string, unknown> | undefined;
     const thumbnails = Array.isArray(image?.thumbnails) ? image.thumbnails : [];
@@ -79,7 +89,7 @@ function emojiImageUrl(emoji: Record<string, unknown>): string | null {
         return null;
     }
 
-    return url.startsWith("//") ? `https:${url}` : url;
+    return normalizeRemoteImageUrl(url);
 }
 
 // Preserves message structure so custom channel emojis can render as inline images.
@@ -316,7 +326,7 @@ function parseStickerImageUrl(renderer: Record<string, unknown>): string | null 
         return null;
     }
 
-    return url.startsWith("//") ? `https:${url}` : url;
+    return normalizeRemoteImageUrl(url);
 }
 
 function parseRendererId(renderer: Record<string, unknown>): string | null {
