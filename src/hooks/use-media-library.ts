@@ -47,6 +47,12 @@ export function useMediaLibrary({
         onError,
     });
 
+    // Destructure the stable fields off the per-render mediaList controller object so the
+    // callback and effect below can depend on them directly. This keeps the dependency arrays
+    // honest (no eslint-disable) while still not depending on the whole object, whose identity
+    // changes every render.
+    const { clearMedia, loadMedia } = mediaList;
+
     const mediaActions = useMediaActions({
         libraryPath,
         setMediaItems: mediaList.setMediaItems,
@@ -86,20 +92,18 @@ export function useMediaLibrary({
     );
 
     const clearMediaAndPlayer = useCallback((): void => {
-        mediaList.clearMedia();
+        clearMedia();
         mediaPlayer.closePlayer();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render mediaList object
-    }, [mediaList.clearMedia, mediaPlayer]);
+    }, [clearMedia, mediaPlayer]);
 
     useEffect(() => {
         if (selectedChannelId === null) {
-            mediaList.clearMedia();
+            clearMedia();
             return;
         }
 
-        void mediaList.loadMedia(selectedChannelId);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the stable memoized callbacks, not the whole per-render mediaList object
-    }, [selectedChannelId, mediaList.clearMedia, mediaList.loadMedia]);
+        void loadMedia(selectedChannelId);
+    }, [selectedChannelId, clearMedia, loadMedia]);
 
     return {
         mediaItems: mediaList.mediaItems,

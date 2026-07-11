@@ -17,14 +17,27 @@ export function useHomeMediaActions({
     mediaLibrary,
     confirmDeleteChannelFlow,
 }: UseHomeMediaActionsOptions): HomeMediaActionsController {
+    // Destructure the stable fields off the per-render controller objects so the callbacks
+    // below can depend on them directly. This keeps the dependency arrays honest (no
+    // eslint-disable) while still not depending on the whole object, whose identity changes
+    // every render.
+    const { diagnosticsOpen, reloadDiagnostics } = diagnosticsState;
+    const {
+        addMedia: addMediaAction,
+        confirmDeleteMedia: confirmDeleteMediaAction,
+        markAsWatched: markAsWatchedAction,
+        markAsUnwatched: markAsUnwatchedAction,
+        editTitle,
+        saveMediaProgress: saveMediaProgressAction,
+    } = mediaLibrary;
+
     const refreshDiagnosticsIfOpen = useCallback(async (): Promise<void> => {
-        if (!diagnosticsState.diagnosticsOpen) {
+        if (!diagnosticsOpen) {
             return;
         }
 
-        await diagnosticsState.reloadDiagnostics();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render diagnosticsState object
-    }, [diagnosticsState.diagnosticsOpen, diagnosticsState.reloadDiagnostics]);
+        await reloadDiagnostics();
+    }, [diagnosticsOpen, reloadDiagnostics]);
 
     const runActionAndRefreshDiagnostics = useCallback(
         async (action: () => Promise<void>): Promise<void> => {
@@ -35,12 +48,12 @@ export function useHomeMediaActions({
     );
 
     const addMedia = useCallback(async (): Promise<void> => {
-        await runActionAndRefreshDiagnostics(mediaLibrary.addMedia);
-    }, [mediaLibrary.addMedia, runActionAndRefreshDiagnostics]);
+        await runActionAndRefreshDiagnostics(addMediaAction);
+    }, [addMediaAction, runActionAndRefreshDiagnostics]);
 
     const confirmDeleteMedia = useCallback(async (): Promise<void> => {
-        await runActionAndRefreshDiagnostics(mediaLibrary.confirmDeleteMedia);
-    }, [mediaLibrary.confirmDeleteMedia, runActionAndRefreshDiagnostics]);
+        await runActionAndRefreshDiagnostics(confirmDeleteMediaAction);
+    }, [confirmDeleteMediaAction, runActionAndRefreshDiagnostics]);
 
     const confirmDeleteChannel = useCallback(async (): Promise<void> => {
         await runActionAndRefreshDiagnostics(confirmDeleteChannelFlow);
@@ -48,26 +61,23 @@ export function useHomeMediaActions({
 
     const markAsWatched = useCallback(
         async (mediaId: number): Promise<void> => {
-            await runActionAndRefreshDiagnostics(() => mediaLibrary.markAsWatched(mediaId));
+            await runActionAndRefreshDiagnostics(() => markAsWatchedAction(mediaId));
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
-        [mediaLibrary.markAsWatched, runActionAndRefreshDiagnostics]
+        [markAsWatchedAction, runActionAndRefreshDiagnostics]
     );
 
     const markAsUnwatched = useCallback(
         async (mediaId: number): Promise<void> => {
-            await runActionAndRefreshDiagnostics(() => mediaLibrary.markAsUnwatched(mediaId));
+            await runActionAndRefreshDiagnostics(() => markAsUnwatchedAction(mediaId));
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
-        [mediaLibrary.markAsUnwatched, runActionAndRefreshDiagnostics]
+        [markAsUnwatchedAction, runActionAndRefreshDiagnostics]
     );
 
     const editMediaTitle = useCallback(
         async (media: MediaRow, title: string): Promise<void> => {
-            await runActionAndRefreshDiagnostics(() => mediaLibrary.editTitle(media, title));
+            await runActionAndRefreshDiagnostics(() => editTitle(media, title));
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
-        [mediaLibrary.editTitle, runActionAndRefreshDiagnostics]
+        [editTitle, runActionAndRefreshDiagnostics]
     );
 
     const saveMediaProgress = useCallback(
@@ -77,10 +87,9 @@ export function useHomeMediaActions({
             // the diagnostics refresh the other actions run - otherwise the periodic saves the
             // player makes during playback would reload an open diagnostics dialog every few
             // seconds.
-            await mediaLibrary.saveMediaProgress(mediaId, progressSeconds);
+            await saveMediaProgressAction(mediaId, progressSeconds);
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaLibrary object
-        [mediaLibrary.saveMediaProgress]
+        [saveMediaProgressAction]
     );
 
     return useMemo(

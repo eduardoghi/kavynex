@@ -34,6 +34,12 @@ export function useAppSettings({
         setSettings,
     });
 
+    // Destructure the stable field off the per-render settingsActions controller object so
+    // the effect below can depend on it directly. This keeps the dependency array honest (no
+    // eslint-disable) while still not depending on the whole object, whose identity changes
+    // every render.
+    const { prepareSettings } = settingsActions;
+
     const openSettings = useCallback((): void => {
         setSettingsOpen(true);
     }, []);
@@ -65,9 +71,8 @@ export function useAppSettings({
     }, [settings.libraryPath, settingsActions]);
 
     useEffect(() => {
-        void settingsActions.prepareSettings();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render controller object
-    }, [settingsActions.prepareSettings]);
+        void prepareSettings();
+    }, [prepareSettings]);
 
     // Authorize the asset protocol to read from the current library directory. Runs on
     // startup and whenever the library path changes. Failures are non-fatal: media may

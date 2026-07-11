@@ -102,6 +102,17 @@ export function useChannels({
         setConfirmDeleteChannelOpen,
     });
 
+    // Destructure the stable fields off the per-render channelActions controller object so
+    // the callbacks and effects below can depend on them directly. This keeps the dependency
+    // arrays honest (no eslint-disable) while still not depending on the whole object, whose
+    // identity changes every render.
+    const {
+        createChannelAction,
+        updateChannelIdentityAction,
+        updateChannelAvatarAction,
+        loadChannels,
+    } = channelActions;
+
     const selectedChannel = useMemo(() => {
         return findSelectedChannel(channels, selectedChannelId);
     }, [channels, selectedChannelId]);
@@ -176,7 +187,7 @@ export function useChannels({
     }, []);
 
     const createChannel = useCallback(async (): Promise<void> => {
-        const created = await channelActions.createChannelAction(
+        const created = await createChannelAction(
             newChannelName,
             newYoutubeHandle,
             newChannelAvatarMode,
@@ -186,9 +197,8 @@ export function useChannels({
         if (created) {
             setCreateChannelOpenState(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
     }, [
-        channelActions.createChannelAction,
+        createChannelAction,
         newChannelAvatarMode,
         newChannelAvatarPath,
         newChannelName,
@@ -207,7 +217,7 @@ export function useChannels({
             return;
         }
 
-        const saved = await channelActions.updateChannelIdentityAction(
+        const saved = await updateChannelIdentityAction(
             editingChannel.id,
             editChannelName,
             editYoutubeHandle
@@ -217,9 +227,8 @@ export function useChannels({
             setEditChannelOpenState(false);
             resetEditChannelForm();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
     }, [
-        channelActions.updateChannelIdentityAction,
+        updateChannelIdentityAction,
         editChannelName,
         editYoutubeHandle,
         editingChannel,
@@ -255,7 +264,7 @@ export function useChannels({
                     return;
                 }
 
-                await channelActions.updateChannelAvatarAction(
+                await updateChannelAvatarAction(
                     channel,
                     "manual",
                     normalizedPath
@@ -264,24 +273,21 @@ export function useChannels({
                 onError("Failed to select avatar file.");
             }
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
-        [channelActions.updateChannelAvatarAction, onError]
+        [updateChannelAvatarAction, onError]
     );
 
     const updateChannelAvatarFromYouTube = useCallback(
         async (channel: Channel): Promise<void> => {
-            await channelActions.updateChannelAvatarAction(channel, "youtube");
+            await updateChannelAvatarAction(channel, "youtube");
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
-        [channelActions.updateChannelAvatarAction]
+        [updateChannelAvatarAction]
     );
 
     const removeChannelAvatar = useCallback(
         async (channel: Channel): Promise<void> => {
-            await channelActions.updateChannelAvatarAction(channel, "none");
+            await updateChannelAvatarAction(channel, "none");
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render channelActions object
-        [channelActions.updateChannelAvatarAction]
+        [updateChannelAvatarAction]
     );
 
     const closeDeleteChannelModal = useCallback((): void => {
@@ -299,9 +305,8 @@ export function useChannels({
         }
 
         hasLoadedInitialRef.current = true;
-        void channelActions.loadChannels();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render controller object
-    }, [channelActions.loadChannels]);
+        void loadChannels();
+    }, [loadChannels]);
 
     useEffect(() => {
         if (previousLibraryPathRef.current === libraryPath) {
@@ -319,9 +324,8 @@ export function useChannels({
         setCreateChannelOpenState(false);
         setEditChannelOpenState(false);
 
-        void channelActions.loadChannels();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the stable memoized callback, not the whole per-render controller object
-    }, [channelActions.loadChannels, libraryPath, resetCreateChannelForm, resetEditChannelForm]);
+        void loadChannels();
+    }, [loadChannels, libraryPath, resetCreateChannelForm, resetEditChannelForm]);
 
     useEffect(() => {
         if (

@@ -4,7 +4,9 @@ import type {
     ChannelsController,
     HomeUiGuardsController,
     MediaLibraryController,
+    MediaPlayerController,
 } from "../types/controllers";
+import type { MediaPreparationState } from "../utils/media-operation-busy";
 import {
     isMediaOperationBusy,
     resolveMediaOperationBusyReason,
@@ -16,24 +18,24 @@ type UseHomeUiGuardsOptions = {
     channelsState: Pick<ChannelsController, "isUpdatingChannelAvatar">;
 };
 
-function buildMediaPreparationState(mediaLibrary: MediaLibraryController) {
-    return {
-        isAddingMedia: mediaLibrary.isAddingMedia,
-        isYtDlpRunning: mediaLibrary.isYtDlpRunning,
-        isCancellingYtDlp: mediaLibrary.isCancellingYtDlp,
-        isGeneratingThumb: mediaLibrary.addMediaForm.isGeneratingThumb,
-        isLoadingYtDlpFormats: mediaLibrary.addMediaForm.isLoadingYtDlpFormats,
-    };
-}
+type LibraryPathChangeGuardInput = {
+    libraryPath: string;
+    isMigratingLibraryPath: boolean;
+    isUpdatingChannelAvatar: boolean;
+    mediaPreparationState: MediaPreparationState;
+    playerViewMode: MediaPlayerController["viewMode"];
+};
 
-function resolveLibraryPathChangeDisabledReason(
-    settingsState: AppSettingsController,
-    mediaLibrary: MediaLibraryController,
-    isUpdatingChannelAvatar: boolean
-): string {
-    const hasExistingLibraryPath = settingsState.settings.libraryPath.trim() !== "";
+function resolveLibraryPathChangeDisabledReason({
+    libraryPath,
+    isMigratingLibraryPath,
+    isUpdatingChannelAvatar,
+    mediaPreparationState,
+    playerViewMode,
+}: LibraryPathChangeGuardInput): string {
+    const hasExistingLibraryPath = libraryPath.trim() !== "";
 
-    if (settingsState.isMigratingLibraryPath) {
+    if (isMigratingLibraryPath) {
         return hasExistingLibraryPath
             ? "Library migration is in progress."
             : "Library folder setup is in progress.";
@@ -43,14 +45,13 @@ function resolveLibraryPathChangeDisabledReason(
         return "Wait for the channel avatar update to finish before changing the library folder.";
     }
 
-    const mediaPreparationState = buildMediaPreparationState(mediaLibrary);
     const mediaOperationReason = resolveMediaOperationBusyReason(mediaPreparationState);
 
     if (mediaOperationReason) {
         return mediaOperationReason;
     }
 
-    if (mediaLibrary.mediaPlayer.viewMode === "player") {
+    if (playerViewMode === "player") {
         return "Close the player before changing the library folder.";
     }
 
@@ -62,44 +63,56 @@ export function useHomeUiGuards({
     mediaLibrary,
     channelsState,
 }: UseHomeUiGuardsOptions): HomeUiGuardsController {
+    // Destructure the stable fields off the per-render controller objects so the memos and
+    // callback below can depend on them directly, instead of passing the whole per-render
+    // objects into helper functions called from inside them. This keeps the dependency arrays
+    // honest (no eslint-disable) while the computed values stay identical.
+    const { isAddingMedia, isYtDlpRunning, isCancellingYtDlp, closeAddMediaModal } = mediaLibrary;
+    const { isGeneratingThumb, isLoadingYtDlpFormats } = mediaLibrary.addMediaForm;
+    const { viewMode: playerViewMode } = mediaLibrary.mediaPlayer;
+    const { settings, isMigratingLibraryPath } = settingsState;
+    const { libraryPath: settingsLibraryPath } = settings;
+    const { isUpdatingChannelAvatar } = channelsState;
+
+    const mediaPreparationState = useMemo<MediaPreparationState>(
+        () => ({
+            isAddingMedia,
+            isYtDlpRunning,
+            isCancellingYtDlp,
+            isGeneratingThumb,
+            isLoadingYtDlpFormats,
+        }),
+        [isAddingMedia, isYtDlpRunning, isCancellingYtDlp, isGeneratingThumb, isLoadingYtDlpFormats]
+    );
+
     // Deleting a channel while a download for it is in flight would make the pending
     // insert fail against a missing channel and waste the whole download.
     const channelDeletionDisabledReason = useMemo(() => {
-        if (isMediaOperationBusy(buildMediaPreparationState(mediaLibrary))) {
+        if (isMediaOperationBusy(mediaPreparationState)) {
             return "Wait for the media import or download to finish before deleting a channel.";
         }
 
         return "";
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives read inside, not the whole per-render mediaLibrary object
-    }, [
-        mediaLibrary.isAddingMedia,
-        mediaLibrary.isYtDlpRunning,
-        mediaLibrary.isCancellingYtDlp,
-        mediaLibrary.addMediaForm.isGeneratingThumb,
-        mediaLibrary.addMediaForm.isLoadingYtDlpFormats,
-    ]);
+    }, [mediaPreparationState]);
 
     const disableChannelDeletion = useMemo(() => {
         return !!channelDeletionDisabledReason;
     }, [channelDeletionDisabledReason]);
 
     const libraryPathChangeDisabledReason = useMemo(() => {
-        return resolveLibraryPathChangeDisabledReason(
-            settingsState,
-            mediaLibrary,
-            channelsState.isUpdatingChannelAvatar
-        );
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives read inside, not the whole per-render settingsState/mediaLibrary objects
+        return resolveLibraryPathChangeDisabledReason({
+            libraryPath: settingsLibraryPath,
+            isMigratingLibraryPath,
+            isUpdatingChannelAvatar,
+            mediaPreparationState,
+            playerViewMode,
+        });
     }, [
-        settingsState.settings.libraryPath,
-        settingsState.isMigratingLibraryPath,
-        mediaLibrary.isAddingMedia,
-        mediaLibrary.isYtDlpRunning,
-        mediaLibrary.isCancellingYtDlp,
-        mediaLibrary.addMediaForm.isGeneratingThumb,
-        mediaLibrary.addMediaForm.isLoadingYtDlpFormats,
-        mediaLibrary.mediaPlayer.viewMode,
-        channelsState.isUpdatingChannelAvatar,
+        settingsLibraryPath,
+        isMigratingLibraryPath,
+        isUpdatingChannelAvatar,
+        mediaPreparationState,
+        playerViewMode,
     ]);
 
     const disableLibraryPathChange = useMemo(() => {
@@ -107,20 +120,12 @@ export function useHomeUiGuards({
     }, [libraryPathChangeDisabledReason]);
 
     const closeAddMediaModalSafely = useCallback(async (): Promise<void> => {
-        if (isMediaOperationBusy(buildMediaPreparationState(mediaLibrary))) {
+        if (isMediaOperationBusy(mediaPreparationState)) {
             return;
         }
 
-        await mediaLibrary.closeAddMediaModal();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific primitives plus the stable memoized callback, not the whole per-render mediaLibrary object
-    }, [
-        mediaLibrary.isAddingMedia,
-        mediaLibrary.isYtDlpRunning,
-        mediaLibrary.isCancellingYtDlp,
-        mediaLibrary.addMediaForm.isGeneratingThumb,
-        mediaLibrary.addMediaForm.isLoadingYtDlpFormats,
-        mediaLibrary.closeAddMediaModal,
-    ]);
+        await closeAddMediaModal();
+    }, [mediaPreparationState, closeAddMediaModal]);
 
     return {
         disableLibraryPathChange,

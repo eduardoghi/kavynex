@@ -62,6 +62,17 @@ export function useAddMediaWorkflow({
         },
     });
 
+    // Destructure the stable fields off the per-render addMediaForm/ytDlpEvents controller
+    // objects so the callbacks and effects below can depend on them directly. This keeps the
+    // dependency arrays honest (no eslint-disable) while still not depending on the whole
+    // objects, whose identity changes every render. isGeneratingThumb, isLoadingYtDlpFormats,
+    // and isYtDlpRunning are deliberately NOT destructured here: closeAddMediaModal below must
+    // read them live off addMediaForm/ytDlpEvents at call time rather than from a snapshot
+    // captured at the last render (see the "does not close the modal while ..." tests, which
+    // flip these flags on the mocked controllers without triggering a re-render in between).
+    const { resetForm } = addMediaForm;
+    const { ytDlpLogs, isYtDlpRunning, resetYtDlpState } = ytDlpEvents;
+
     const addMedia = useCallback(async (): Promise<void> => {
         if (selectedChannelId === null) {
             onError("Select a channel before adding media.");
@@ -239,14 +250,17 @@ export function useAddMediaWorkflow({
             return;
         }
 
-        await addMediaForm.resetForm();
+        await resetForm();
 
         setAddMediaOpen(false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render addMediaForm/ytDlpEvents objects
+        // Note: isGeneratingThumb/isLoadingYtDlpFormats/isYtDlpRunning are deliberately read
+        // live off addMediaForm/ytDlpEvents below (not destructured) - this guard has to see a
+        // flag flip that can happen without a re-render in between; see the comment above the
+        // addMediaForm/ytDlpEvents destructuring further up.
     }, [
         addMediaForm.isGeneratingThumb,
         addMediaForm.isLoadingYtDlpFormats,
-        addMediaForm.resetForm,
+        resetForm,
         isAddingMedia,
         isCancellingYtDlp,
         ytDlpEvents.isYtDlpRunning,
@@ -259,39 +273,34 @@ export function useAddMediaWorkflow({
             previousSelectedChannelIdRef.current = selectedChannelId;
 
             if (addMediaOpen) {
-                void addMediaForm.resetForm();
+                void resetForm();
 
                 setAddMediaOpen(false);
             }
 
-            ytDlpEvents.resetYtDlpState(true);
+            resetYtDlpState(true);
             resetCancellingYtDlp();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render addMediaForm/ytDlpEvents objects
     }, [
-        addMediaForm.resetForm,
+        resetForm,
         addMediaOpen,
         resetCancellingYtDlp,
         selectedChannelId,
-        ytDlpEvents.resetYtDlpState,
+        resetYtDlpState,
     ]);
 
     useEffect(() => {
         if (addMediaOpen && !wasAddMediaOpenRef.current) {
-            void addMediaForm.resetForm();
+            void resetForm();
         }
 
         if (!addMediaOpen && wasAddMediaOpenRef.current) {
-            ytDlpEvents.resetYtDlpState(true);
+            resetYtDlpState(true);
             resetCancellingYtDlp();
         }
 
         wasAddMediaOpenRef.current = addMediaOpen;
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render addMediaForm/ytDlpEvents objects
-    }, [addMediaForm.resetForm, addMediaOpen, resetCancellingYtDlp, ytDlpEvents.resetYtDlpState]);
-
-    const ytDlpLogs = ytDlpEvents.ytDlpLogs;
-    const isYtDlpRunning = ytDlpEvents.isYtDlpRunning;
+    }, [resetForm, addMediaOpen, resetCancellingYtDlp, resetYtDlpState]);
 
     return useMemo(
         () => ({

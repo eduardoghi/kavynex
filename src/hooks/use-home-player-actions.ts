@@ -34,13 +34,27 @@ export function useHomePlayerActions({
     isRefreshingComments,
     libraryPath,
 }: UseHomePlayerActionsOptions): HomePlayerActionsController {
+    // Destructure the stable fields off the per-render mediaPlayer/homeMediaActions controller
+    // objects so the callbacks below can depend on them directly. This keeps the dependency
+    // arrays honest (no eslint-disable) while still not depending on the whole objects, whose
+    // identity changes every render.
+    const {
+        activeMedia,
+        openInYoutube: openInYoutubeAction,
+        closePlayer: closePlayerAction,
+        setActiveMedia,
+    } = mediaPlayer;
+    const {
+        markAsWatched: markAsWatchedAction,
+        markAsUnwatched: markAsUnwatchedAction,
+        saveMediaProgress,
+    } = homeMediaActions;
+
     const openInYoutube = useCallback(async (): Promise<void> => {
-        await mediaPlayer.openInYoutube();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render mediaPlayer object
-    }, [mediaPlayer.openInYoutube]);
+        await openInYoutubeAction();
+    }, [openInYoutubeAction]);
 
     const openCurrentFileLocation = useCallback(async (): Promise<void> => {
-        const activeMedia = mediaPlayer.activeMedia;
         const filePath = activeMedia?.file_path?.trim() ?? "";
 
         if (!filePath) {
@@ -53,11 +67,9 @@ export function useHomePlayerActions({
         } catch (error) {
             onError(resolveErrorMessage(error, "Failed to open file location."));
         }
-    }, [libraryPath, mediaPlayer.activeMedia, onError]);
+    }, [libraryPath, activeMedia, onError]);
 
     const refreshActiveComments = useCallback(async (): Promise<void> => {
-        const activeMedia = mediaPlayer.activeMedia;
-
         if (!activeMedia) {
             return;
         }
@@ -73,55 +85,48 @@ export function useHomePlayerActions({
         }
 
         await refreshComments(activeMedia);
-    }, [mediaPlayer.activeMedia, onError, refreshComments]);
+    }, [activeMedia, onError, refreshComments]);
 
     const markActiveAsWatched = useCallback(async (): Promise<void> => {
-        const activeMedia = mediaPlayer.activeMedia;
         const activeId = activeMedia?.id;
 
         if (!activeId || !activeMedia) {
             return;
         }
 
-        await homeMediaActions.markAsWatched(activeId);
+        await markAsWatchedAction(activeId);
 
-        mediaPlayer.setActiveMedia({
+        setActiveMedia({
             ...activeMedia,
             watched_at: new Date().toISOString(),
             progress_seconds: 0,
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render homeMediaActions/mediaPlayer objects
-    }, [homeMediaActions.markAsWatched, mediaPlayer.activeMedia, mediaPlayer.setActiveMedia]);
+    }, [markAsWatchedAction, activeMedia, setActiveMedia]);
 
     const markActiveAsUnwatched = useCallback(async (): Promise<void> => {
-        const activeMedia = mediaPlayer.activeMedia;
         const activeId = activeMedia?.id;
 
         if (!activeId || !activeMedia) {
             return;
         }
 
-        await homeMediaActions.markAsUnwatched(activeId);
+        await markAsUnwatchedAction(activeId);
 
-        mediaPlayer.setActiveMedia({
+        setActiveMedia({
             ...activeMedia,
             watched_at: null,
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render homeMediaActions/mediaPlayer objects
-    }, [homeMediaActions.markAsUnwatched, mediaPlayer.activeMedia, mediaPlayer.setActiveMedia]);
+    }, [markAsUnwatchedAction, activeMedia, setActiveMedia]);
 
     const saveProgress = useCallback(
         async (mediaId: number, progressSeconds: number): Promise<void> => {
-            await homeMediaActions.saveMediaProgress(mediaId, progressSeconds);
+            await saveMediaProgress(mediaId, progressSeconds);
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- dep is the specific stable callback read inside, not the whole per-render homeMediaActions object
-        [homeMediaActions.saveMediaProgress]
+        [saveMediaProgress]
     );
 
     const closePlayer = useCallback(
         async (progressSeconds?: number): Promise<void> => {
-            const activeMedia = mediaPlayer.activeMedia;
-
             // Only persist when a concrete position was supplied - the Back button reads it
             // from the media element and passes it here. Navigation-only closes (switching
             // channels from the sidebar, deleting the active media) call this with no argument
@@ -129,13 +134,12 @@ export function useHomePlayerActions({
             // progress on its own (periodically and on unmount), so those paths still keep the
             // latest position.
             if (progressSeconds !== undefined && activeMedia && !activeMedia.watched_at) {
-                await homeMediaActions.saveMediaProgress(activeMedia.id, progressSeconds);
+                await saveMediaProgress(activeMedia.id, progressSeconds);
             }
 
-            mediaPlayer.closePlayer();
+            closePlayerAction();
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render homeMediaActions/mediaPlayer objects
-        [homeMediaActions.saveMediaProgress, mediaPlayer.activeMedia, mediaPlayer.closePlayer]
+        [saveMediaProgress, activeMedia, closePlayerAction]
     );
 
     return useMemo(

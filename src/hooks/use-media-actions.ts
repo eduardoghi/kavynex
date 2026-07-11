@@ -78,9 +78,10 @@ export function useMediaActions({
         activeMediaRef.current = mediaPlayer.activeMedia;
     }, [mediaPlayer.activeMedia]);
 
-    // setActiveMedia is stable in useMediaPlayer (useCallback []); pull it out so the callbacks
-    // below can depend on it directly instead of on the per-render mediaPlayer object.
-    const { setActiveMedia } = mediaPlayer;
+    // activeMedia and closePlayer are plain/stable fields off useMediaPlayer; setActiveMedia is
+    // stable there too (useCallback []). Pull them out so the callbacks below can depend on
+    // them directly instead of on the per-render mediaPlayer object.
+    const { activeMedia, setActiveMedia, closePlayer } = mediaPlayer;
 
     const requestDeleteMedia = useCallback(
         (media: MediaRow): void => {
@@ -105,12 +106,11 @@ export function useMediaActions({
 
     const closePlayerIfActive = useCallback(
         (mediaId: number): void => {
-            if (mediaPlayer.activeMedia?.id === mediaId) {
-                mediaPlayer.closePlayer();
+            if (activeMedia?.id === mediaId) {
+                closePlayer();
             }
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render mediaPlayer object
-        [mediaPlayer.activeMedia?.id, mediaPlayer.closePlayer]
+        [activeMedia?.id, closePlayer]
     );
 
     const removeDeletedMediaFromMemory = useCallback(

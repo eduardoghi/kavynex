@@ -30,80 +30,95 @@ export function useHomeActions({
     mediaLibrary,
     uiGuards,
 }: UseHomeActionsOptions): UseHomeActionsReturn {
-    const closeSelectedChannelUiBeforeDelete = useCallback(async (): Promise<void> => {
-        channelsState.setSelectedChannelId(null);
-        mediaLibrary.clearMediaAndPlayer();
+    // Destructure the stable fields off the per-render controller objects so the callbacks
+    // below can depend on them directly. This keeps the dependency arrays honest (no
+    // eslint-disable) while still not depending on the whole objects, whose identity changes
+    // every render. Fields that collide with a name this hook exports get an "Action" suffix.
+    const { showError } = errorState;
+    const { chooseLibraryPath: chooseLibraryPathAction } = settingsState;
+    const {
+        setSelectedChannelId,
+        selectedChannelId,
+        channelToDelete,
+        confirmDeleteChannel: confirmDeleteChannelAction,
+    } = channelsState;
+    const { resetForm: resetAddMediaForm } = mediaLibrary.addMediaForm;
+    const { addMediaOpen, clearMediaAndPlayer, setAddMediaOpen } = mediaLibrary;
+    const {
+        disableChannelDeletion,
+        channelDeletionDisabledReason,
+        disableLibraryPathChange,
+        libraryPathChangeDisabledReason,
+    } = uiGuards;
 
-        if (mediaLibrary.addMediaOpen) {
-            await mediaLibrary.addMediaForm.resetForm();
-            mediaLibrary.setAddMediaOpen(false);
+    const closeSelectedChannelUiBeforeDelete = useCallback(async (): Promise<void> => {
+        setSelectedChannelId(null);
+        clearMediaAndPlayer();
+
+        if (addMediaOpen) {
+            await resetAddMediaForm();
+            setAddMediaOpen(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render channelsState/mediaLibrary objects
     }, [
-        channelsState.setSelectedChannelId,
-        mediaLibrary.addMediaForm.resetForm,
-        mediaLibrary.addMediaOpen,
-        mediaLibrary.clearMediaAndPlayer,
-        mediaLibrary.setAddMediaOpen,
+        setSelectedChannelId,
+        resetAddMediaForm,
+        addMediaOpen,
+        clearMediaAndPlayer,
+        setAddMediaOpen,
     ]);
 
     const confirmDeleteChannel = useCallback(async (): Promise<void> => {
-        if (uiGuards.disableChannelDeletion) {
-            errorState.showError(
-                uiGuards.channelDeletionDisabledReason ||
-                    "You cannot delete a channel right now."
-            );
+        if (disableChannelDeletion) {
+            showError(channelDeletionDisabledReason || "You cannot delete a channel right now.");
             return;
         }
 
         try {
-            const channelToDeleteId = channelsState.channelToDelete?.id ?? null;
+            const channelToDeleteId = channelToDelete?.id ?? null;
 
             await executeDeleteSelectedChannel({
-                selectedChannelId: channelsState.selectedChannelId,
+                selectedChannelId,
                 channelToDeleteId,
                 closeSelectedChannelUiBeforeDelete,
-                confirmDeleteChannel: channelsState.confirmDeleteChannel,
+                confirmDeleteChannel: confirmDeleteChannelAction,
             });
         } catch (error) {
             logError("home-actions", "Failed to confirm channel deletion.", error, {
-                selectedChannelId: channelsState.selectedChannelId,
-                channelToDeleteId: channelsState.channelToDelete?.id ?? null,
+                selectedChannelId,
+                channelToDeleteId: channelToDelete?.id ?? null,
             });
-            errorState.showError(resolveErrorMessage(error, "Failed to delete channel."));
+            showError(resolveErrorMessage(error, "Failed to delete channel."));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render errorState/uiGuards objects
     }, [
-        channelsState.selectedChannelId,
-        channelsState.channelToDelete,
-        channelsState.confirmDeleteChannel,
+        selectedChannelId,
+        channelToDelete,
+        confirmDeleteChannelAction,
         closeSelectedChannelUiBeforeDelete,
-        errorState.showError,
-        uiGuards.disableChannelDeletion,
-        uiGuards.channelDeletionDisabledReason,
+        showError,
+        disableChannelDeletion,
+        channelDeletionDisabledReason,
     ]);
 
     const chooseLibraryPath = useCallback(async (): Promise<void> => {
-        if (uiGuards.disableLibraryPathChange) {
-            errorState.showError(
-                uiGuards.libraryPathChangeDisabledReason ||
+        if (disableLibraryPathChange) {
+            showError(
+                libraryPathChangeDisabledReason ||
                     "You cannot change the library folder right now."
             );
             return;
         }
 
         try {
-            await settingsState.chooseLibraryPath();
+            await chooseLibraryPathAction();
         } catch (error) {
             logError("home-actions", "Failed to choose library path.", error);
-            errorState.showError(resolveErrorMessage(error, "Failed to choose library folder."));
+            showError(resolveErrorMessage(error, "Failed to choose library folder."));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are the specific fields read inside, not the whole per-render errorState/settingsState/uiGuards objects
     }, [
-        errorState.showError,
-        settingsState.chooseLibraryPath,
-        uiGuards.disableLibraryPathChange,
-        uiGuards.libraryPathChangeDisabledReason,
+        showError,
+        chooseLibraryPathAction,
+        disableLibraryPathChange,
+        libraryPathChangeDisabledReason,
     ]);
 
     return useMemo(
