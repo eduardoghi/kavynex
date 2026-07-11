@@ -1,6 +1,7 @@
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::Uri;
@@ -27,6 +28,58 @@ use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::process::{hide_console_async, read_process_error};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
+
+/// Runs a yt-dlp thumbnail/avatar command under the shared timeout, capturing its output.
+///
+/// These invocations pass `--convert-thumbnails png`, which makes yt-dlp spawn an `ffmpeg`
+/// child. Relying on `kill_on_drop` alone (as the previous `.output()` call did) only kills
+/// the direct yt-dlp child on timeout, leaving that ffmpeg grandchild running and holding the
+/// temp directory open. Spawning into its own process group and killing the whole tree on
+/// timeout - the same mechanism the main download path uses - prevents the orphan.
+async fn run_thumbnail_yt_dlp_with_timeout(
+    mut command: Command,
+    timeout_message: &str,
+    exec_message: &str,
+) -> AppResult<std::process::Output> {
+    // Any early return still reaps the direct child; the tree kill below covers the ffmpeg
+    // grandchild that `kill_on_drop` does not reach.
+    command.kill_on_drop(true);
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    hide_console_async(&mut command);
+    crate::utils::process::configure_process_group(&mut command);
+
+    let child = command.spawn().map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::YtDlpThumbnailExecFailed,
+            format!("{exec_message}: {e}"),
+        )
+    })?;
+    let child_pid = child.id();
+
+    match timeout(
+        Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
+        child.wait_with_output(),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailExecFailed,
+                format!("{exec_message}: {e}"),
+            )
+        }),
+        Err(_) => {
+            if let Some(pid) = child_pid {
+                crate::utils::process::kill_process_tree(pid).await;
+            }
+
+            Err(AppError::from_code(
+                AppErrorCode::YtDlpThumbnailTimeout,
+                timeout_message.to_string(),
+            ))
+        }
+    }
+}
 
 const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
 const DIRECT_THUMBNAIL_MAX_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
@@ -590,29 +643,12 @@ pub async fn download_thumbnail_from_url_async(
             "--",
             normalized_url.as_str(),
         ]);
-        // yt-dlp spawns an ffmpeg child for this call (--convert-thumbnails png). `.output()`
-        // is awaited under the timeout below; if it times out, that future is dropped and,
-        // without kill_on_drop, both yt-dlp and its ffmpeg child would keep running detached.
-        command.kill_on_drop(true);
-        hide_console_async(&mut command);
-
-        let output = timeout(
-            Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            command.output(),
+        let output = run_thumbnail_yt_dlp_with_timeout(
+            command,
+            "yt-dlp thumbnail download timed out",
+            "failed to execute yt-dlp for thumbnail download",
         )
-        .await
-        .map_err(|_| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailTimeout,
-                "yt-dlp thumbnail download timed out",
-            )
-        })?
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailExecFailed,
-                format!("failed to execute yt-dlp for thumbnail download: {e}"),
-            )
-        })?;
+        .await?;
 
         if !output.status.success() {
             return Err(read_process_error(
@@ -737,29 +773,13 @@ pub async fn download_thumbnail_for_media_async(
 
         let mut command = Command::new(&yt_dlp);
         command.args(&args);
-        // yt-dlp spawns an ffmpeg child for this call (--convert-thumbnails png). `.output()`
-        // is awaited under the timeout below; if it times out, that future is dropped and,
-        // without kill_on_drop, both yt-dlp and its ffmpeg child would keep running detached.
-        command.kill_on_drop(true);
-        hide_console_async(&mut command);
 
-        let output = timeout(
-            Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            command.output(),
+        let output = run_thumbnail_yt_dlp_with_timeout(
+            command,
+            "yt-dlp thumbnail download timed out",
+            "failed to execute yt-dlp for thumbnail download",
         )
-        .await
-        .map_err(|_| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailTimeout,
-                "yt-dlp thumbnail download timed out",
-            )
-        })?
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailExecFailed,
-                format!("failed to execute yt-dlp for thumbnail download: {e}"),
-            )
-        })?;
+        .await?;
 
         if !output.status.success() {
             return Err(read_process_error(
@@ -840,29 +860,12 @@ pub async fn download_channel_avatar_from_handle_async(
             "--",
             normalized_url.as_str(),
         ]);
-        // yt-dlp spawns an ffmpeg child for this call (--convert-thumbnails png). `.output()`
-        // is awaited under the timeout below; if it times out, that future is dropped and,
-        // without kill_on_drop, both yt-dlp and its ffmpeg child would keep running detached.
-        command.kill_on_drop(true);
-        hide_console_async(&mut command);
-
-        let output = timeout(
-            Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            command.output(),
+        let output = run_thumbnail_yt_dlp_with_timeout(
+            command,
+            "yt-dlp channel avatar download timed out",
+            "failed to execute yt-dlp for channel avatar download",
         )
-        .await
-        .map_err(|_| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailTimeout,
-                "yt-dlp channel avatar download timed out",
-            )
-        })?
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailExecFailed,
-                format!("failed to execute yt-dlp for channel avatar download: {e}"),
-            )
-        })?;
+        .await?;
 
         if !output.status.success() {
             return Err(read_process_error(

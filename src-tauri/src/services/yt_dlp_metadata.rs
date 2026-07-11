@@ -266,10 +266,14 @@ async fn run_yt_dlp_and_capture_json(
         // running unsupervised in the background.
         .kill_on_drop(true);
     hide_console_async(&mut command);
+    // yt-dlp can spawn an ffmpeg child (e.g. `-x`/`--convert-*`); put it in its own process
+    // group so a timeout can terminate the whole tree, not just the direct child.
+    crate::utils::process::configure_process_group(&mut command);
 
     let mut child = command
         .spawn()
         .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?;
+    let child_pid = child.id();
 
     let stdout = child.stdout.take().ok_or_else(|| {
         AppError::from_code(
@@ -307,6 +311,11 @@ async fn run_yt_dlp_and_capture_json(
         Ok(wait_result) => wait_result
             .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?,
         Err(_) => {
+            // Kill the whole tree (yt-dlp and any ffmpeg grandchild), not just the direct
+            // child, so a hung conversion cannot outlive the timeout as an orphan.
+            if let Some(pid) = child_pid {
+                crate::utils::process::kill_process_tree(pid).await;
+            }
             let _ = child.kill().await;
             return Err(AppError::from_code(timeout_code, timeout_message));
         }

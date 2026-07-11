@@ -289,78 +289,6 @@ fn build_live_chat_relative_path(file_name: &Path) -> String {
         .replace('\\', "/")
 }
 
-#[cfg(target_os = "windows")]
-async fn kill_process_tree(pid: u32) {
-    let mut command = Command::new("taskkill");
-    command
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    hide_console_async(&mut command);
-
-    if let Ok(mut child) = command.spawn() {
-        let _ = child.wait().await;
-    }
-}
-
-#[cfg(unix)]
-async fn kill_process_tree(pid: u32) {
-    let process_group = format!("-{pid}");
-
-    if let Ok(mut child) = Command::new("kill")
-        .args(["-9", process_group.as_str()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        let _ = child.wait().await;
-    }
-}
-
-#[cfg(not(any(target_os = "windows", unix)))]
-async fn kill_process_tree(pid: u32) {
-    if let Ok(mut child) = Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        let _ = child.wait().await;
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn kill_process_tree_blocking(pid: u32) {
-    let mut command = std::process::Command::new("taskkill");
-    command
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    crate::utils::process::hide_console(&mut command);
-
-    let _ = command.status();
-}
-
-#[cfg(unix)]
-fn kill_process_tree_blocking(pid: u32) {
-    let process_group = format!("-{pid}");
-
-    let _ = std::process::Command::new("kill")
-        .args(["-9", process_group.as_str()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-}
-
-#[cfg(not(any(target_os = "windows", unix)))]
-fn kill_process_tree_blocking(pid: u32) {
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-}
-
 /// Cancels every active download and synchronously kills the process tree of each one
 /// whose child has been spawned. Intended to run on app exit: it does not touch the async
 /// runtime, so in-flight yt-dlp/ffmpeg children are terminated instead of being orphaned
@@ -369,17 +297,9 @@ pub fn cancel_all_active_downloads_blocking() {
     let pids = crate::services::yt_dlp_registry::signal_cancel_all_and_collect_pids();
 
     for pid in pids {
-        kill_process_tree_blocking(pid);
+        crate::utils::process::kill_process_tree_blocking(pid);
     }
 }
-
-#[cfg(unix)]
-fn configure_yt_dlp_command(command: &mut Command) {
-    command.process_group(0);
-}
-
-#[cfg(not(unix))]
-fn configure_yt_dlp_command(_: &mut Command) {}
 
 #[derive(Debug)]
 struct ValidatedDownloadInputs {
@@ -776,7 +696,7 @@ pub async fn download_media_from_url_async(
         )?;
 
         let mut command = Command::new(&yt_dlp);
-        configure_yt_dlp_command(&mut command);
+        crate::utils::process::configure_process_group(&mut command);
         hide_console_async(&mut command);
         // If stdout/stderr capture fails below and the `?` returns early, the Child must not
         // be left running detached; mirrors the kill_on_drop used by every sibling yt-dlp
@@ -917,7 +837,7 @@ pub async fn download_media_from_url_async(
                 cancel_requested = true;
 
                 if let Some(pid) = child_pid {
-                    kill_process_tree(pid).await;
+                    crate::utils::process::kill_process_tree(pid).await;
                 } else {
                     let _ = child.kill().await;
                 }

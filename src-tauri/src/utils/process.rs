@@ -5,6 +5,8 @@
 //! and briefly show a console window. Passing `CREATE_NO_WINDOW` suppresses it. Both
 //! `hide_console*` helpers are no-ops on non-Windows platforms.
 
+use std::process::Stdio;
+
 use crate::{AppError, AppErrorCode};
 
 #[cfg(windows)]
@@ -28,6 +30,97 @@ pub fn hide_console_async(command: &mut tokio::process::Command) {
 
 #[cfg(not(windows))]
 pub fn hide_console_async(_command: &mut tokio::process::Command) {}
+
+/// Puts an async child into its own process group (Unix) so the whole tree it spawns
+/// (e.g. `yt-dlp` launching `ffmpeg` for a merge or thumbnail conversion) can be signalled
+/// at once by sending the signal to the negative process-group id. No-op on non-Unix, where
+/// process-tree termination is done with `taskkill /T` instead (see [`kill_process_tree`]).
+#[cfg(unix)]
+pub fn configure_process_group(command: &mut tokio::process::Command) {
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+pub fn configure_process_group(_command: &mut tokio::process::Command) {}
+
+/// Kills a spawned child *and* every descendant it created, asynchronously. `yt-dlp` routinely
+/// spawns an `ffmpeg` child (merges, `--convert-thumbnails`), and killing only the direct
+/// child (`Child::kill`/`kill_on_drop`) leaves that grandchild running. On Windows this uses
+/// `taskkill /T` to walk the tree; on Unix it signals the whole process group set up by
+/// [`configure_process_group`] via the negative pid.
+#[cfg(target_os = "windows")]
+pub async fn kill_process_tree(pid: u32) {
+    let mut command = tokio::process::Command::new("taskkill");
+    command
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    hide_console_async(&mut command);
+
+    if let Ok(mut child) = command.spawn() {
+        let _ = child.wait().await;
+    }
+}
+
+#[cfg(unix)]
+pub async fn kill_process_tree(pid: u32) {
+    let process_group = format!("-{pid}");
+
+    if let Ok(mut child) = tokio::process::Command::new("kill")
+        .args(["-9", process_group.as_str()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        let _ = child.wait().await;
+    }
+}
+
+#[cfg(not(any(target_os = "windows", unix)))]
+pub async fn kill_process_tree(pid: u32) {
+    if let Ok(mut child) = tokio::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        let _ = child.wait().await;
+    }
+}
+
+/// Synchronous counterpart to [`kill_process_tree`], for the app-exit path which must not
+/// touch the async runtime.
+#[cfg(target_os = "windows")]
+pub fn kill_process_tree_blocking(pid: u32) {
+    let mut command = std::process::Command::new("taskkill");
+    command
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    hide_console(&mut command);
+
+    let _ = command.status();
+}
+
+#[cfg(unix)]
+pub fn kill_process_tree_blocking(pid: u32) {
+    let process_group = format!("-{pid}");
+
+    let _ = std::process::Command::new("kill")
+        .args(["-9", process_group.as_str()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(any(target_os = "windows", unix)))]
+pub fn kill_process_tree_blocking(pid: u32) {
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
 
 /// Builds an [`AppError`] from a failed child process's output, preferring stderr, then
 /// stdout, then falling back to `default_message` when both streams are empty.
