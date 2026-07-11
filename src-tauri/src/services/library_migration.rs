@@ -22,19 +22,39 @@ fn library_migration_lock() -> &'static Mutex<()> {
     LIBRARY_MIGRATION_LOCK.get_or_init(|| Mutex::new(()))
 }
 
-fn ensure_directory_is_empty(path: &Path) -> AppResult<()> {
-    let mut entries = fs::read_dir(path).map_err(|e| {
+/// The destination must be empty, or contain only the app's managed subdirectories
+/// (video/audio/thumbnails/live_chat) and nothing else. Empty is the normal case; a destination
+/// that holds only managed folders is treated as a previously interrupted migration and allowed
+/// to resume - the copy phase is idempotent (identical files are skipped, differing ones error
+/// without overwriting), so re-running safely completes the copy. Any top-level entry that is
+/// not a managed directory means the folder holds unrelated user content and is rejected, so a
+/// crash mid-migration no longer wedges the retry with an opaque "not empty" error.
+fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
+    let entries = fs::read_dir(path).map_err(|e| {
         AppError::from_code(
             AppErrorCode::InvalidLibraryMigration,
             format!("failed to inspect destination library directory: {e}"),
         )
     })?;
 
-    if entries.next().is_some() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidLibraryMigration,
-            "the selected library folder is not empty; choose an empty folder to continue",
-        ));
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::InvalidLibraryMigration,
+                format!("failed to inspect destination library directory: {e}"),
+            )
+        })?;
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_managed_dir =
+            entry.path().is_dir() && MANAGED_LIBRARY_DIRS.contains(&name.as_str());
+
+        if !is_managed_dir {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidLibraryMigration,
+                "the selected library folder must be empty (or contain only a previous, interrupted Kavynex migration); choose an empty folder to continue",
+            ));
+        }
     }
 
     Ok(())
@@ -160,7 +180,7 @@ pub fn migrate_library_directory_sync(
     );
 
     if old_library_dir.as_os_str().is_empty() {
-        ensure_directory_is_empty(&canonical_new)?;
+        ensure_destination_is_migratable(&canonical_new)?;
 
         drop(migration_guard);
         return Ok(MigrateLibraryDirectoryResult {
@@ -170,7 +190,7 @@ pub fn migrate_library_directory_sync(
     }
 
     if !old_library_dir.exists() {
-        ensure_directory_is_empty(&canonical_new)?;
+        ensure_destination_is_migratable(&canonical_new)?;
 
         drop(migration_guard);
         return Ok(MigrateLibraryDirectoryResult {
@@ -217,7 +237,7 @@ pub fn migrate_library_directory_sync(
         ));
     }
 
-    ensure_directory_is_empty(&canonical_new)?;
+    ensure_destination_is_migratable(&canonical_new)?;
 
     let migration_result = migrate_library_contents(&canonical_old, &canonical_new);
 
@@ -500,6 +520,38 @@ mod tests {
 
         let _ = fs::remove_dir_all(&old_root);
         let _ = fs::remove_dir_all(&new_root);
+    }
+
+    #[test]
+    fn migrate_library_directory_sync_resumes_an_interrupted_migration() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let old_root = unique_test_dir("resume-old");
+        let new_root = unique_test_dir("resume-new");
+
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video-data").unwrap();
+        fs::write(old_root.join("video").join("b.mp4"), b"video-b").unwrap();
+
+        // Simulate a prior migration interrupted mid-copy: the destination already holds the
+        // managed "video" dir with one file (identical content) and nothing unrelated.
+        fs::create_dir_all(new_root.join("video")).unwrap();
+        fs::write(new_root.join("video").join("a.mp4"), b"video-data").unwrap();
+
+        let result = migrate_library_directory_sync(
+            old_root.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        assert!(result.changed);
+        // The remaining file is copied and the migration completes instead of failing with a
+        // "not empty" error.
+        assert!(new_root.join("video").join("a.mp4").exists());
+        assert!(new_root.join("video").join("b.mp4").exists());
+
+        let _ = fs::remove_dir_all(old_root);
+        let _ = fs::remove_dir_all(new_root);
     }
 
     #[test]
