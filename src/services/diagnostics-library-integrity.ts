@@ -1,5 +1,6 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeTauri } from "../lib/tauri-client";
+import { listChannels } from "../repositories/channel-repository";
 import { listMediaIntegrityReferences } from "../repositories/media-repository";
 import type { LibraryIntegrityReport, MediaIntegrityReference } from "../types/diagnostics";
 import { normalizeNonEmptyUniquePaths } from "../utils/paths";
@@ -23,7 +24,10 @@ function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
     };
 }
 
-function buildIntegrityPayload(mediaReferences: MediaIntegrityReference[]): {
+function buildIntegrityPayload(
+    mediaReferences: MediaIntegrityReference[],
+    channelAvatarPaths: (string | null)[]
+): {
     mediaPaths: string[];
     thumbnailPaths: string[];
 } {
@@ -31,9 +35,14 @@ function buildIntegrityPayload(mediaReferences: MediaIntegrityReference[]): {
         mediaPaths: normalizeNonEmptyUniquePaths(
             mediaReferences.map((item) => item.file_path)
         ),
-        thumbnailPaths: normalizeNonEmptyUniquePaths(
-            mediaReferences.map((item) => item.thumbnail_path)
-        ),
+        // Channel avatars live under thumbnails/ but are referenced by the channels table, not
+        // by any media row. Without them here, an avatar that is not also a video thumbnail
+        // would be reported as an orphan even though it is in use (and the real cleanup counts
+        // it as referenced), misleading the user into deleting a file that is still needed.
+        thumbnailPaths: normalizeNonEmptyUniquePaths([
+            ...mediaReferences.map((item) => item.thumbnail_path),
+            ...channelAvatarPaths,
+        ]),
     };
 }
 
@@ -46,8 +55,14 @@ export async function getLibraryIntegrity(
         return createEmptyLibraryIntegrityReport();
     }
 
-    const mediaReferences = await listMediaIntegrityReferences();
-    const payload = buildIntegrityPayload(mediaReferences);
+    const [mediaReferences, channels] = await Promise.all([
+        listMediaIntegrityReferences(),
+        listChannels(),
+    ]);
+    const payload = buildIntegrityPayload(
+        mediaReferences,
+        channels.map((channel) => channel.avatar_path)
+    );
 
     // Always call through, even with no references: the library folder may still hold orphan
     // files the database no longer knows about.
