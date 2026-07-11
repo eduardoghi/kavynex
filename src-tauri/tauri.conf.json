@@ -19,7 +19,7 @@
             }
         ],
         "security": {
-            "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: data: blob: https://*.ggpht.com https://*.googleusercontent.com https://*.ytimg.com https://*.youtube.com; media-src 'self' asset: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+            "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: data: blob: https://*.ggpht.com https://*.googleusercontent.com https://*.ytimg.com https://*.youtube.com; media-src 'self' asset: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
             "devCsp": "default-src 'self' ipc: http://ipc.localhost http://localhost:1420; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; img-src 'self' asset: data: blob: https://*.ggpht.com https://*.googleusercontent.com https://*.ytimg.com https://*.youtube.com; media-src 'self' asset: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
             "assetProtocol": {
                 "enable": true,

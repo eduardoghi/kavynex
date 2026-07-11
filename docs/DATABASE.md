@@ -247,11 +247,11 @@ Importing a user-selected `.db` file is a two-step, startup-deferred process, be
 live connection pool is a singleton that cannot be reopened mid-session:
 
 1. `stage_database_import` validates the selected file - it must open as a healthy SQLite
-   database (`quick_check`), contain a `videos` table (a cheap "is this actually a kavynex
-   database" check), and have a `user_version` no higher than this build's
-   `SCHEMA_VERSION` (`DatabaseSchemaTooNew` otherwise) - then copies it to a
-   `.import-staged.tmp` file and renames it to `.import-staged` (atomic staging, so a
-   partial copy is never picked up).
+   database (`quick_check`), contain the four core tables (`channels`, `videos`,
+   `video_comments`, `app_settings` - a cheap "is this actually a kavynex database" check),
+   and have a `user_version` no higher than this build's `SCHEMA_VERSION`
+   (`DatabaseSchemaTooNew` otherwise) - then copies it to a `.import-staged.tmp` file and
+   renames it to `.import-staged` (atomic staging, so a partial copy is never picked up).
 2. On the *next* app startup, before the pool opens, `lib.rs`'s `setup()` calls
    `apply_pending_database_import`. If a staged file exists, the current database is
    moved aside to `.pre-import` (a safety net, not deleted), the staged file's `-wal`/

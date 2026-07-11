@@ -5,7 +5,7 @@ pub use crate::services::yt_dlp_metadata::{
     fetch_youtube_comments_async, fetch_yt_dlp_metadata, list_yt_dlp_formats_async,
     sanitize_filename_component,
 };
-pub use crate::services::yt_dlp_registry::cancel_media_download_async;
+pub use crate::services::yt_dlp_registry::cancel_media_download;
 
 #[cfg(test)]
 mod tests {

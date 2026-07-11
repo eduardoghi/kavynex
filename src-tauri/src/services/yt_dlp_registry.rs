@@ -80,7 +80,7 @@ pub fn signal_cancel_all_and_collect_pids() -> Vec<u32> {
         .collect()
 }
 
-pub fn cancel_media_download_async(run_id: &str) -> AppResult<()> {
+pub fn cancel_media_download(run_id: &str) -> AppResult<()> {
     let normalized_run_id = run_id.trim();
 
     if normalized_run_id.is_empty() {
@@ -144,12 +144,12 @@ mod tests {
     }
 
     #[test]
-    fn cancel_media_download_async_marks_existing_flag() {
+    fn cancel_media_download_marks_existing_flag() {
         let _serial = serial_guard();
         let run_id = "test-run-3";
 
         let flag = register_download_run(run_id).unwrap();
-        cancel_media_download_async(run_id).unwrap();
+        cancel_media_download(run_id).unwrap();
 
         assert!(flag.load(Ordering::SeqCst));
 
@@ -157,16 +157,16 @@ mod tests {
     }
 
     #[test]
-    fn cancel_media_download_async_rejects_unknown_run_id() {
+    fn cancel_media_download_rejects_unknown_run_id() {
         let _serial = serial_guard();
-        let result = cancel_media_download_async("unknown-run");
+        let result = cancel_media_download("unknown-run");
         assert!(result.is_err());
     }
 
     #[test]
-    fn cancel_media_download_async_rejects_empty_run_id() {
+    fn cancel_media_download_rejects_empty_run_id() {
         let _serial = serial_guard();
-        let result = cancel_media_download_async("   ");
+        let result = cancel_media_download("   ");
         assert!(result.is_err());
     }
 

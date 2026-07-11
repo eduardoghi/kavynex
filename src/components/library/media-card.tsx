@@ -57,10 +57,7 @@ function MediaCardComponent({
     const thumbSrc = fileSrcFromStoredPath(media.thumbnail_path, libraryPath);
     const publishedLabel = formatPublishedDate(media.published_at);
     const durationLabel = formatDuration(media.duration_seconds);
-    const commentsCount =
-        "comments_count" in media && typeof media.comments_count === "number"
-            ? media.comments_count
-            : 0;
+    const commentsCount = media.comments_count;
     const hasYoutubeSource = Boolean(media.youtube_video_id?.trim());
 
     const handleOpen = (): void => {
