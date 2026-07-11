@@ -9,7 +9,11 @@
     "core:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "http://*" }, { "url": "https://*" }]
+      "allow": [
+        { "url": "https://www.youtube.com/*" },
+        { "url": "https://youtube.com/*" },
+        { "url": "https://youtu.be/*" }
+      ]
     },
     "dialog:default",
     "dialog:allow-open",
