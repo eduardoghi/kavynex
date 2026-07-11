@@ -70,6 +70,24 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
     Ok(canonical_path)
 }
 
+// `std::fs::canonicalize` on Windows returns an extended-length (`\\?\`) path. That form is
+// correct for the containment check above, but `explorer /select,` does not reliably highlight
+// a file when given a verbatim path, so strip the prefix before handing the path to explorer.
+#[cfg(target_os = "windows")]
+fn strip_windows_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
+    let text = path.to_string_lossy();
+
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return std::path::PathBuf::from(format!(r"\\{rest}"));
+    }
+
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        return std::path::PathBuf::from(rest);
+    }
+
+    path.to_path_buf()
+}
+
 // Each platform block ends with an explicit `return` because the sibling `#[cfg]` blocks
 // are stripped per-target, so the active block is a statement, not the function tail.
 #[allow(clippy::needless_return)]
@@ -79,11 +97,12 @@ pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppRe
     #[cfg(target_os = "windows")]
     {
         let mut command = std::process::Command::new("explorer");
+        let explorer_path = strip_windows_verbatim_prefix(&canonical_path);
 
         if canonical_path.is_file() {
-            command.arg("/select,").arg(&canonical_path);
+            command.arg("/select,").arg(&explorer_path);
         } else {
-            command.arg(&canonical_path);
+            command.arg(&explorer_path);
         }
 
         command.spawn().map_err(|error| {
@@ -204,6 +223,26 @@ mod tests {
             "unexpected error: {msg}"
         );
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn strip_windows_verbatim_prefix_removes_extended_length_prefixes() {
+        use std::path::{Path, PathBuf};
+
+        assert_eq!(
+            strip_windows_verbatim_prefix(Path::new(r"\\?\C:\Users\me\video.mp4")),
+            PathBuf::from(r"C:\Users\me\video.mp4")
+        );
+        assert_eq!(
+            strip_windows_verbatim_prefix(Path::new(r"\\?\UNC\server\share\clip.mp4")),
+            PathBuf::from(r"\\server\share\clip.mp4")
+        );
+        // A path without the prefix is returned unchanged.
+        assert_eq!(
+            strip_windows_verbatim_prefix(Path::new(r"C:\Users\me\video.mp4")),
+            PathBuf::from(r"C:\Users\me\video.mp4")
+        );
     }
 
     #[test]
