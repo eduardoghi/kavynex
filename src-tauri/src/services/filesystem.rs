@@ -47,6 +47,26 @@ fn build_temp_destination_path(destination: &Path) -> AppResult<PathBuf> {
     Ok(parent.join(format!(".{}.tmp-{}", file_name, unique_replace_suffix())))
 }
 
+/// Flushes a freshly written file's data and metadata to disk. Called before the rename in
+/// `copy_file_atomic` so a power loss cannot leave a truncated or zero-length file at the
+/// destination once the rename has been journalled. The file is opened for writing because
+/// Windows' `FlushFileBuffers` (what `sync_all` maps to) requires a writable handle.
+fn fsync_file(path: &Path) -> AppResult<()> {
+    let file = fs::OpenOptions::new().write(true).open(path).map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::FileCopyFailed,
+            format!("failed to open copied file to flush it: {e}"),
+        )
+    })?;
+
+    file.sync_all().map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::FileCopyFailed,
+            format!("failed to flush copied file to disk: {e}"),
+        )
+    })
+}
+
 fn file_paths_have_same_content(left: &Path, right: &Path) -> AppResult<bool> {
     if !left.exists() || !right.exists() {
         return Ok(false);
@@ -132,6 +152,14 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
             format!("failed to copy file: {e}"),
         )
     })?;
+
+    // Flush the copied bytes to disk before the rename. The rename is atomic against a
+    // process crash, but without this a power loss could leave a truncated or zero-length
+    // file at the destination even after the rename itself was journalled.
+    if let Err(error) = fsync_file(&temp_destination) {
+        let _ = fs::remove_file(&temp_destination);
+        return Err(error);
+    }
 
     match fs::rename(&temp_destination, destination) {
         Ok(_) => Ok(()),
@@ -740,6 +768,38 @@ mod tests {
 
         let result = find_best_matching_file(&dir, "missing_prefix.", Some("png"));
         assert!(result.is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn copy_file_atomic_writes_destination_with_source_content() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source.bin");
+        // A nested destination whose parent does not exist yet, to also cover create_dir_all.
+        let destination = dir.join("nested").join("copied.bin");
+
+        fs::write(&source, b"durable-bytes").unwrap();
+
+        copy_file_atomic(&source, &destination).unwrap();
+
+        assert!(destination.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"durable-bytes");
+        // The source must remain in place (copy, not move).
+        assert!(source.exists());
+        // No leftover temp file next to the destination.
+        let leftover_temp = fs::read_dir(destination.parent().unwrap())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .any(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".copied.bin.tmp-")
+            });
+        assert!(!leftover_temp, "temp file should have been renamed away");
 
         let _ = fs::remove_dir_all(dir);
     }
