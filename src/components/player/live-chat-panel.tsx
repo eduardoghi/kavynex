@@ -14,6 +14,7 @@ import {
 import { Check, MessageCircle, Pin, Wrench } from "lucide-react";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
+import { activateOnEnterOrSpace } from "../../utils/keyboard";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { SafeAvatar } from "./safe-avatar";
 import { useRemoteImagesEnabled } from "./remote-images-context";
@@ -138,9 +139,14 @@ const LiveChatItem = memo(function LiveChatItem({
         <Anchor
             fw={700}
             size="sm"
+            role="button"
+            tabIndex={0}
             title="Open channel on YouTube"
             style={{ cursor: "pointer", color: "inherit", minWidth: 0 }}
             onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
+            onKeyDown={activateOnEnterOrSpace(() =>
+                void openAuthorYoutubeChannel(authorChannelId)
+            )}
         >
             {message.author_name}
         </Anchor>
@@ -295,11 +301,16 @@ const LiveChatItem = memo(function LiveChatItem({
                                     <Anchor
                                         fw={600}
                                         size="sm"
+                                        role="button"
+                                        tabIndex={0}
                                         title="Open channel on YouTube"
                                         style={{ cursor: "pointer", ...nameStyle }}
                                         onClick={() =>
                                             void openAuthorYoutubeChannel(authorChannelId)
                                         }
+                                        onKeyDown={activateOnEnterOrSpace(() =>
+                                            void openAuthorYoutubeChannel(authorChannelId)
+                                        )}
                                     >
                                         {nameContent}
                                     </Anchor>

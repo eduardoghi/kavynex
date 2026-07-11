@@ -21,6 +21,7 @@ import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
+import { activateOnEnterOrSpace } from "../../utils/keyboard";
 import { SafeAvatar } from "./safe-avatar";
 import { useRemoteImagesEnabled } from "./remote-images-context";
 import {
@@ -96,9 +97,14 @@ function CommentItem({
                                 fw={800}
                                 size="sm"
                                 c="blue.4"
+                                role="button"
+                                tabIndex={0}
                                 title="Open channel on YouTube"
                                 style={{ cursor: "pointer" }}
                                 onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
+                                onKeyDown={activateOnEnterOrSpace(() =>
+                                    void openAuthorYoutubeChannel(authorChannelId)
+                                )}
                             >
                                 {comment.author_handle?.trim() || comment.author_name}
                             </Anchor>
