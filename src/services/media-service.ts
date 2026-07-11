@@ -384,9 +384,9 @@ export async function deleteMediaWithFileCleanup(mediaId: number): Promise<void>
     }
 }
 
-export async function setMediaWatched(mediaId: number): Promise<void> {
+export async function setMediaWatched(mediaId: number): Promise<string> {
     validateMediaId(mediaId);
-    await markMediaAsWatched(mediaId);
+    return markMediaAsWatched(mediaId);
 }
 
 export async function setMediaUnwatched(mediaId: number): Promise<void> {

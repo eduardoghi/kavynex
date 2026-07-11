@@ -269,16 +269,21 @@ pub async fn list_media_comments_by_media_id(
     .map_err(|error| db_error("failed to list media comments", error))
 }
 
-pub async fn mark_media_as_watched(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
-    sqlx::query(
-        "UPDATE videos SET watched_at = CURRENT_TIMESTAMP, progress_seconds = 0 WHERE id = ?",
+/// Marks a media as watched and returns the timestamp actually persisted by the database, so
+/// the frontend can reflect the same value the next reload would show instead of fabricating its
+/// own client clock value (which could drift from the stored one).
+pub async fn mark_media_as_watched(pool: &SqlitePool, media_id: i64) -> AppResult<String> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "UPDATE videos SET watched_at = CURRENT_TIMESTAMP, progress_seconds = 0 \
+         WHERE id = ? RETURNING watched_at",
     )
     .bind(media_id)
-    .execute(pool)
+    .fetch_optional(pool)
     .await
     .map_err(|error| db_error("failed to mark media as watched", error))?;
 
-    Ok(())
+    row.map(|(watched_at,)| watched_at)
+        .ok_or_else(|| AppError::invalid_input("media not found"))
 }
 
 pub async fn mark_media_as_unwatched(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
@@ -680,12 +685,18 @@ mod tests {
         assert_eq!(media.progress_seconds, 42);
         assert!(media.watched_at.is_none());
 
-        mark_media_as_watched(&pool, id).await.unwrap();
+        let returned_watched_at = mark_media_as_watched(&pool, id).await.unwrap();
         let watched = find_media_by_channel_and_file_path(&pool, 1, "video/a.mp4")
             .await
             .unwrap()
             .unwrap();
         assert!(watched.watched_at.is_some());
+        // The command returns the exact timestamp the database stored, so the UI never diverges
+        // from what a reload would show.
+        assert_eq!(
+            watched.watched_at.as_deref(),
+            Some(returned_watched_at.as_str())
+        );
         assert_eq!(watched.progress_seconds, 0);
 
         // progress is not updated while watched
@@ -703,6 +714,15 @@ mod tests {
             .unwrap()
             .watched_at
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn mark_media_as_watched_errors_when_media_does_not_exist() {
+        let pool = create_test_pool().await;
+
+        let result = mark_media_as_watched(&pool, 9999).await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]

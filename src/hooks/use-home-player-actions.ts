@@ -11,7 +11,7 @@ import type {
 type UseHomePlayerActionsOptions = {
     mediaPlayer: Pick<
         MediaPlayerController,
-        "activeMedia" | "openInYoutube" | "closePlayer" | "setActiveMedia"
+        "activeMedia" | "openInYoutube" | "closePlayer"
     >;
     homeMediaActions: Pick<
         HomeMediaActionsController,
@@ -42,7 +42,6 @@ export function useHomePlayerActions({
         activeMedia,
         openInYoutube: openInYoutubeAction,
         closePlayer: closePlayerAction,
-        setActiveMedia,
     } = mediaPlayer;
     const {
         markAsWatched: markAsWatchedAction,
@@ -90,33 +89,28 @@ export function useHomePlayerActions({
     const markActiveAsWatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        if (!activeId || !activeMedia) {
+        if (!activeId) {
             return;
         }
 
+        // markAsWatchedAction already updates the media list and the active media with the
+        // timestamp the database persisted. Doing a second setActiveMedia here (from the
+        // activeMedia captured before the await, with a freshly fabricated timestamp) both
+        // raced with concurrent updates and diverged from the stored value, so it is gone.
         await markAsWatchedAction(activeId);
-
-        setActiveMedia({
-            ...activeMedia,
-            watched_at: new Date().toISOString(),
-            progress_seconds: 0,
-        });
-    }, [markAsWatchedAction, activeMedia, setActiveMedia]);
+    }, [markAsWatchedAction, activeMedia?.id]);
 
     const markActiveAsUnwatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        if (!activeId || !activeMedia) {
+        if (!activeId) {
             return;
         }
 
+        // markAsUnwatchedAction already clears watched_at on the media list and the active
+        // media; no second, stale-closure update is needed here.
         await markAsUnwatchedAction(activeId);
-
-        setActiveMedia({
-            ...activeMedia,
-            watched_at: null,
-        });
-    }, [markAsUnwatchedAction, activeMedia, setActiveMedia]);
+    }, [markAsUnwatchedAction, activeMedia?.id]);
 
     const saveProgress = useCallback(
         async (mediaId: number, progressSeconds: number): Promise<void> => {

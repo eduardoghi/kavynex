@@ -122,11 +122,15 @@ describe("media-repository command wiring", () => {
         });
     });
 
-    it("markMediaAsWatched passes the media id", async () => {
-        await markMediaAsWatched(9);
-        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.MARK_MEDIA_AS_WATCHED, {
+    it("markMediaAsWatched passes the media id and returns the persisted timestamp", async () => {
+        invokeCommandMock.mockResolvedValueOnce("2026-07-11 12:00:00" as never);
+
+        const watchedAt = await markMediaAsWatched(9);
+
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.MARK_MEDIA_AS_WATCHED, {
             mediaId: 9,
         });
+        expect(watchedAt).toBe("2026-07-11 12:00:00");
     });
 
     it("markMediaAsUnwatched passes the media id", async () => {

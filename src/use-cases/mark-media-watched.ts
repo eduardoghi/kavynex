@@ -10,9 +10,9 @@ export async function executeMarkMediaWatched({
     mediaId,
     updateMediaItems,
 }: ExecuteMarkMediaWatchedOptions): Promise<string> {
-    await setMediaWatched(mediaId);
-
-    const watchedAt = new Date().toISOString();
+    // Use the timestamp the database actually persisted (returned by the command) instead of a
+    // client clock value, so the list and the active media match exactly what a reload shows.
+    const watchedAt = await setMediaWatched(mediaId);
 
     updateMediaItems((currentItems) =>
         currentItems.map((item) =>

@@ -126,16 +126,11 @@ describe("useHomePlayerActions", () => {
             await result.current.markActiveAsWatched();
         });
 
+        // The active-media update (with the timestamp the database persisted) is owned by
+        // markAsWatched. This hook only delegates, so it must not run its own setActiveMedia
+        // with a client-fabricated timestamp.
         expect(options.homeMediaActions.markAsWatched).toHaveBeenCalledWith(55);
-        expect(options.mediaPlayer.setActiveMedia).toHaveBeenCalledTimes(1);
-
-        const updatedMedia = vi.mocked(options.mediaPlayer.setActiveMedia).mock.calls[0][0];
-
-        expect(updatedMedia).toMatchObject({
-            id: 55,
-            watched_at: expect.any(String),
-            progress_seconds: 0,
-        });
+        expect(options.mediaPlayer.setActiveMedia).not.toHaveBeenCalled();
     });
 
     it("does nothing when marking watched without active media", async () => {
@@ -173,11 +168,9 @@ describe("useHomePlayerActions", () => {
             await result.current.markActiveAsUnwatched();
         });
 
+        // markAsUnwatched owns the active-media update; this hook only delegates to it.
         expect(options.homeMediaActions.markAsUnwatched).toHaveBeenCalledWith(77);
-        expect(options.mediaPlayer.setActiveMedia).toHaveBeenCalledWith({
-            ...activeMedia,
-            watched_at: null,
-        });
+        expect(options.mediaPlayer.setActiveMedia).not.toHaveBeenCalled();
     });
 
     it("closes player without saving progress when there is no active media", async () => {

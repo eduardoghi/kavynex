@@ -70,8 +70,8 @@ export async function deleteMediaWithArtifacts(mediaId: number): Promise<Artifac
     });
 }
 
-export async function markMediaAsWatched(mediaId: number): Promise<void> {
-    await invokeVoid(TAURI_COMMANDS.MARK_MEDIA_AS_WATCHED, { mediaId });
+export async function markMediaAsWatched(mediaId: number): Promise<string> {
+    return invokeCommand<string>(TAURI_COMMANDS.MARK_MEDIA_AS_WATCHED, { mediaId });
 }
 
 export async function markMediaAsUnwatched(mediaId: number): Promise<void> {

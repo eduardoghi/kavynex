@@ -103,7 +103,7 @@ describe("useMediaActions", () => {
     });
 
     it("marks media as watched and updates active player state", async () => {
-        const mediaPlayer = createMediaPlayer();
+        const mediaPlayer = createMediaPlayer(createMediaRow({ progress_seconds: 42 }));
 
         vi.mocked(executeMarkMediaWatched).mockResolvedValue(
             "2026-03-31T20:00:00.000Z"
@@ -128,9 +128,11 @@ describe("useMediaActions", () => {
             updateMediaItems: setMediaItems,
         });
 
+        // Progress is reset to 0 alongside watched_at, matching the backend and the media list.
         expect(mediaPlayer.setActiveMedia).toHaveBeenCalledWith({
             ...mediaPlayer.activeMedia,
             watched_at: "2026-03-31T20:00:00.000Z",
+            progress_seconds: 0,
         });
     });
 
@@ -855,6 +857,7 @@ describe("useMediaActions", () => {
                 id: 1,
                 title: "New",
                 watched_at: "2026-03-31T20:00:00.000Z",
+                progress_seconds: 0,
             })
         );
     });

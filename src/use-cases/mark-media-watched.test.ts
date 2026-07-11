@@ -15,6 +15,8 @@ describe("executeMarkMediaWatched", () => {
     });
 
     it("updates watched_at only for the target media", async () => {
+        setMediaWatchedMock.mockResolvedValueOnce("2026-07-11 12:00:00");
+
         const initialItems = [
             {
                 id: 1,
@@ -48,13 +50,15 @@ describe("executeMarkMediaWatched", () => {
             currentItems = updater(currentItems);
         });
 
-        await executeMarkMediaWatched({
+        const watchedAt = await executeMarkMediaWatched({
             mediaId: 2,
             updateMediaItems,
         });
 
         expect(setMediaWatchedMock).toHaveBeenCalledWith(2);
         expect(currentItems[0].watched_at).toBeNull();
-        expect(currentItems[1].watched_at).toBeTruthy();
+        // The database timestamp returned by the command is what gets written, not a client clock.
+        expect(watchedAt).toBe("2026-07-11 12:00:00");
+        expect(currentItems[1].watched_at).toBe("2026-07-11 12:00:00");
     });
 });

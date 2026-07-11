@@ -172,9 +172,12 @@ export function useMediaActions({
                     const active = activeMediaRef.current;
 
                     if (active?.id === mediaId) {
+                        // Reset progress together with watched_at, matching the media-list update
+                        // and the backend (which zeroes progress_seconds when marking watched).
                         setActiveMedia({
                             ...active,
                             watched_at: watchedAt,
+                            progress_seconds: 0,
                         });
                     }
                 } catch (error) {

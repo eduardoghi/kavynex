@@ -109,8 +109,10 @@ pub async fn list_media_comments_by_media_id(
     repo::list_media_comments_by_media_id(pool, media_id).await
 }
 
+/// Returns the `watched_at` timestamp the database stored, so the frontend can show the exact
+/// persisted value rather than a client-generated one.
 #[tauri::command]
-pub async fn mark_media_as_watched(app: AppHandle, media_id: i64) -> AppResult<()> {
+pub async fn mark_media_as_watched(app: AppHandle, media_id: i64) -> AppResult<String> {
     let pool = shared_pool(&app).await?;
     repo::mark_media_as_watched(pool, media_id).await
 }

@@ -668,14 +668,15 @@ describe("media-service", () => {
         expect(deleteMediaWithArtifacts).not.toHaveBeenCalled();
     });
 
-    it("marks media as watched", async () => {
+    it("marks media as watched and returns the persisted timestamp", async () => {
         vi.mocked(validateMediaId).mockImplementationOnce(() => {});
-        vi.mocked(markMediaAsWatched).mockResolvedValueOnce(undefined);
+        vi.mocked(markMediaAsWatched).mockResolvedValueOnce("2026-07-11 12:00:00");
 
-        await setMediaWatched(10);
+        const watchedAt = await setMediaWatched(10);
 
         expect(validateMediaId).toHaveBeenCalledWith(10);
         expect(markMediaAsWatched).toHaveBeenCalledWith(10);
+        expect(watchedAt).toBe("2026-07-11 12:00:00");
     });
 
     it("refreshes comments through the backend", async () => {
