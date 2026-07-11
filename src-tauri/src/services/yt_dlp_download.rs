@@ -42,14 +42,41 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
-// A download that produces no output for this long is treated as hung (dead network,
-// stuck ffmpeg merge) and killed. Generous so a slow-but-progressing download or a long
-// remux is never killed by mistake.
+// A download that produces no output AND whose temp files stop growing for this long is
+// treated as hung (dead network, deadlocked ffmpeg) and killed. Output alone is not a
+// sufficient liveness signal: a large ffmpeg merge/remux can run for minutes writing to the
+// output file without printing a line, so file growth counts as activity too (see the stall
+// check in the wait loop). This stays generous so a slow-but-progressing download or merge
+// is never killed by mistake.
 const YT_DLP_STALL_TIMEOUT_SECS: u64 = 300;
 
 /// True when the child has produced no output for longer than the stall threshold.
 fn download_is_stalled(now_ms: u64, last_activity_ms: u64, threshold_ms: u64) -> bool {
     now_ms.saturating_sub(last_activity_ms) > threshold_ms
+}
+
+/// Sums the byte sizes of the files in `dir` whose name starts with `prefix`. The stall
+/// watchdog uses this to tell a silent-but-progressing ffmpeg merge (the output file keeps
+/// growing) apart from a genuinely hung download. Best-effort: unreadable entries are skipped
+/// and a missing/unreadable directory yields 0.
+fn total_matching_file_size(dir: &Path, prefix: &str) -> u64 {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+
+    entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .map(|name| name.starts_with(prefix))
+                .unwrap_or(false)
+        })
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .sum()
 }
 
 fn unique_temp_suffix() -> String {
@@ -807,6 +834,7 @@ pub async fn download_media_from_url_async(
 
         let mut cancel_requested = false;
         let mut stalled = false;
+        let mut last_observed_temp_size: u64 = 0;
 
         let status = loop {
             let user_cancelled = cancel_flag.load(Ordering::SeqCst);
@@ -819,7 +847,22 @@ pub async fn download_media_from_url_async(
                     YT_DLP_STALL_TIMEOUT_SECS * 1000,
                 )
             {
-                stalled = true;
+                // The child has gone silent past the threshold, but a large ffmpeg merge/remux
+                // can run for minutes writing to the output file without printing a line. Before
+                // killing it, check whether the temp files are still growing: if so it is
+                // progressing, so record the growth as activity and keep waiting. Only a stretch
+                // with neither output nor file growth is treated as a real stall.
+                let current_temp_size = total_matching_file_size(&temp_dir, &file_prefix);
+
+                if current_temp_size > last_observed_temp_size {
+                    last_observed_temp_size = current_temp_size;
+                    last_activity_ms.store(
+                        download_start.elapsed().as_millis() as u64,
+                        Ordering::Relaxed,
+                    );
+                } else {
+                    stalled = true;
+                }
             }
 
             if (user_cancelled || stalled) && !cancel_requested {
@@ -1190,6 +1233,27 @@ mod tests {
         assert!(!download_is_stalled(threshold + 1, threshold, threshold));
         // Exactly at the threshold -> not yet stalled.
         assert!(!download_is_stalled(threshold, 0, threshold));
+    }
+
+    #[test]
+    fn total_matching_file_size_sums_only_prefixed_files() {
+        let dir = unique_temp_dir("stall-size");
+        fs::create_dir_all(&dir).unwrap();
+
+        // Two downloaded streams sharing the prefix, plus the merge output growing.
+        fs::write(dir.join("clip.f137.mp4"), b"aaaa").unwrap(); // 4 bytes
+        fs::write(dir.join("clip.f140.m4a"), b"bb").unwrap(); // 2 bytes
+        // Unrelated file and a directory named with the prefix must both be ignored.
+        fs::write(dir.join("other.txt"), b"zzzzzzzz").unwrap();
+        fs::create_dir_all(dir.join("clip.subdir")).unwrap();
+
+        assert_eq!(total_matching_file_size(&dir, "clip."), 6);
+        // A prefix that matches nothing is zero, not an error.
+        assert_eq!(total_matching_file_size(&dir, "nomatch"), 0);
+        // A missing directory is zero, not an error.
+        assert_eq!(total_matching_file_size(&dir.join("missing"), "clip."), 0);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
