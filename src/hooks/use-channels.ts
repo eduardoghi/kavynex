@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Channel, ChannelAvatarMode } from "../types/media";
 import { findSelectedChannel } from "../utils/controller-helpers";
 import { useChannelActions } from "./use-channel-actions";
+import { useMemoObject } from "./use-memo-object";
 
 type UseChannelsOptions = {
     libraryPath: string;
@@ -353,100 +354,51 @@ export function useChannels({
     const isUpdatingChannelAvatar = channelActions.isUpdatingChannelAvatar;
     const confirmDeleteChannel = channelActions.confirmDeleteChannelAction;
 
-    return useMemo(
-        () => ({
-            channels,
-            selectedChannelId,
-            selectedChannel,
+    return useMemoObject({
+        channels,
+        selectedChannelId,
+        selectedChannel,
 
-            createChannelOpen,
-            setCreateChannelOpen,
-            newChannelName,
-            setNewChannelName,
-            newYoutubeHandle,
-            setNewYoutubeHandle,
-            newChannelAvatarMode,
-            setNewChannelAvatarMode,
-            newChannelAvatarPath,
-            setNewChannelAvatarPath,
-            pickChannelAvatarViaDialog,
-            clearNewChannelAvatarPath,
+        createChannelOpen,
+        setCreateChannelOpen,
+        newChannelName,
+        setNewChannelName,
+        newYoutubeHandle,
+        setNewYoutubeHandle,
+        newChannelAvatarMode,
+        setNewChannelAvatarMode,
+        newChannelAvatarPath,
+        setNewChannelAvatarPath,
+        pickChannelAvatarViaDialog,
+        clearNewChannelAvatarPath,
 
-            editChannelOpen,
-            setEditChannelOpen,
-            editingChannel,
-            editChannelName,
-            setEditChannelName,
-            editYoutubeHandle,
-            setEditYoutubeHandle,
-            requestEditChannel,
-            saveEditedChannel,
-            isEditingChannel,
+        editChannelOpen,
+        setEditChannelOpen,
+        editingChannel,
+        editChannelName,
+        setEditChannelName,
+        editYoutubeHandle,
+        setEditYoutubeHandle,
+        requestEditChannel,
+        saveEditedChannel,
+        isEditingChannel,
 
-            confirmDeleteChannelOpen,
-            channelToDelete,
+        confirmDeleteChannelOpen,
+        channelToDelete,
 
-            isLoadingChannels,
-            isCreatingChannel,
-            isDeletingChannel,
-            isUpdatingChannelAvatar,
-            updatingChannelAvatarId,
+        isLoadingChannels,
+        isCreatingChannel,
+        isDeletingChannel,
+        isUpdatingChannelAvatar,
+        updatingChannelAvatarId,
 
-            setSelectedChannelId,
-            createChannel,
-            requestDeleteChannel,
-            updateChannelAvatarFromFile,
-            updateChannelAvatarFromYouTube,
-            removeChannelAvatar,
-            confirmDeleteChannel,
-            closeDeleteChannelModal,
-        }),
-        [
-            channels,
-            selectedChannelId,
-            selectedChannel,
-
-            createChannelOpen,
-            setCreateChannelOpen,
-            newChannelName,
-            setNewChannelName,
-            newYoutubeHandle,
-            setNewYoutubeHandle,
-            newChannelAvatarMode,
-            setNewChannelAvatarMode,
-            newChannelAvatarPath,
-            setNewChannelAvatarPath,
-            pickChannelAvatarViaDialog,
-            clearNewChannelAvatarPath,
-
-            editChannelOpen,
-            setEditChannelOpen,
-            editingChannel,
-            editChannelName,
-            setEditChannelName,
-            editYoutubeHandle,
-            setEditYoutubeHandle,
-            requestEditChannel,
-            saveEditedChannel,
-            isEditingChannel,
-
-            confirmDeleteChannelOpen,
-            channelToDelete,
-
-            isLoadingChannels,
-            isCreatingChannel,
-            isDeletingChannel,
-            isUpdatingChannelAvatar,
-            updatingChannelAvatarId,
-
-            setSelectedChannelId,
-            createChannel,
-            requestDeleteChannel,
-            updateChannelAvatarFromFile,
-            updateChannelAvatarFromYouTube,
-            removeChannelAvatar,
-            confirmDeleteChannel,
-            closeDeleteChannelModal,
-        ]
-    );
+        setSelectedChannelId,
+        createChannel,
+        requestDeleteChannel,
+        updateChannelAvatarFromFile,
+        updateChannelAvatarFromYouTube,
+        removeChannelAvatar,
+        confirmDeleteChannel,
+        closeDeleteChannelModal,
+    });
 }

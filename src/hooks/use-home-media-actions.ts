@@ -1,10 +1,11 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import type {
     DiagnosticsController,
     HomeMediaActionsController,
     MediaLibraryController,
 } from "../types/controllers";
 import type { MediaRow } from "../types/media";
+import { useMemoObject } from "./use-memo-object";
 
 type UseHomeMediaActionsOptions = {
     diagnosticsState: DiagnosticsController;
@@ -92,24 +93,13 @@ export function useHomeMediaActions({
         [saveMediaProgressAction]
     );
 
-    return useMemo(
-        () => ({
-            addMedia,
-            confirmDeleteMedia,
-            confirmDeleteChannel,
-            markAsWatched,
-            markAsUnwatched,
-            editMediaTitle,
-            saveMediaProgress,
-        }),
-        [
-            addMedia,
-            confirmDeleteMedia,
-            confirmDeleteChannel,
-            markAsWatched,
-            markAsUnwatched,
-            editMediaTitle,
-            saveMediaProgress,
-        ]
-    );
+    return useMemoObject({
+        addMedia,
+        confirmDeleteMedia,
+        confirmDeleteChannel,
+        markAsWatched,
+        markAsUnwatched,
+        editMediaTitle,
+        saveMediaProgress,
+    });
 }

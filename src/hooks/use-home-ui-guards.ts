@@ -11,6 +11,7 @@ import {
     isMediaOperationBusy,
     resolveMediaOperationBusyReason,
 } from "../utils/media-operation-busy";
+import { useMemoObject } from "./use-memo-object";
 
 type UseHomeUiGuardsOptions = {
     settingsState: AppSettingsController;
@@ -129,20 +130,11 @@ export function useHomeUiGuards({
 
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
     // depend on the whole object stop being invalidated on unrelated re-renders.
-    return useMemo(
-        () => ({
-            disableLibraryPathChange,
-            libraryPathChangeDisabledReason,
-            disableChannelDeletion,
-            channelDeletionDisabledReason,
-            closeAddMediaModalSafely,
-        }),
-        [
-            disableLibraryPathChange,
-            libraryPathChangeDisabledReason,
-            disableChannelDeletion,
-            channelDeletionDisabledReason,
-            closeAddMediaModalSafely,
-        ]
-    );
+    return useMemoObject({
+        disableLibraryPathChange,
+        libraryPathChangeDisabledReason,
+        disableChannelDeletion,
+        channelDeletionDisabledReason,
+        closeAddMediaModalSafely,
+    });
 }

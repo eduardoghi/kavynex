@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import type {
     AppSettingsController,
     ChannelsController,
@@ -9,6 +9,7 @@ import type {
 import { executeDeleteSelectedChannel } from "../use-cases/delete-selected-channel";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { useMemoObject } from "./use-memo-object";
 
 type UseHomeActionsOptions = {
     errorState: ErrorModalController;
@@ -121,11 +122,8 @@ export function useHomeActions({
         libraryPathChangeDisabledReason,
     ]);
 
-    return useMemo(
-        () => ({
-            chooseLibraryPath,
-            confirmDeleteChannel,
-        }),
-        [chooseLibraryPath, confirmDeleteChannel]
-    );
+    return useMemoObject({
+        chooseLibraryPath,
+        confirmDeleteChannel,
+    });
 }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { openFileLocation } from "../services";
 import { resolveErrorMessage } from "../utils/error-message";
 import type { MediaRow } from "../types/media";
@@ -7,6 +7,7 @@ import type {
     HomeMediaActionsController,
     MediaPlayerController,
 } from "../types/controllers";
+import { useMemoObject } from "./use-memo-object";
 
 type UseHomePlayerActionsOptions = {
     mediaPlayer: Pick<
@@ -140,26 +141,14 @@ export function useHomePlayerActions({
         [saveMediaProgress, activeMedia, closePlayerAction]
     );
 
-    return useMemo(
-        () => ({
-            openInYoutube,
-            openFileLocation: openCurrentFileLocation,
-            refreshComments: refreshActiveComments,
-            isRefreshingComments,
-            markActiveAsWatched,
-            markActiveAsUnwatched,
-            saveProgress,
-            closePlayer,
-        }),
-        [
-            openInYoutube,
-            openCurrentFileLocation,
-            refreshActiveComments,
-            isRefreshingComments,
-            markActiveAsWatched,
-            markActiveAsUnwatched,
-            saveProgress,
-            closePlayer,
-        ]
-    );
+    return useMemoObject({
+        openInYoutube,
+        openFileLocation: openCurrentFileLocation,
+        refreshComments: refreshActiveComments,
+        isRefreshingComments,
+        markActiveAsWatched,
+        markActiveAsUnwatched,
+        saveProgress,
+        closePlayer,
+    });
 }

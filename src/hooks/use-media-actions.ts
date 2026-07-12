@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaRow } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { executeDeleteMedia } from "../use-cases/delete-media";
@@ -9,6 +9,7 @@ import { logError } from "../utils/app-logger";
 import { openExternalUrl, openFileLocation } from "../services/library-service";
 import { refreshMediaComments, updateMediaTitle } from "../services/media-service";
 import { buildYoutubeWatchUrl } from "../utils/youtube";
+import { useMemoObject } from "./use-memo-object";
 
 type UseMediaActionsOptions = {
     libraryPath: string;
@@ -360,40 +361,21 @@ export function useMediaActions({
         [onError]
     );
 
-    return useMemo(
-        () => ({
-            confirmDeleteMediaOpen,
-            mediaToDelete,
-            isDeletingMedia,
-            isUpdatingWatched,
-            isRefreshingComments,
-            isUpdatingTitle,
-            requestDeleteMedia,
-            confirmDeleteMedia,
-            closeDeleteMediaModal,
-            markAsWatched,
-            markAsUnwatched,
-            refreshComments,
-            editTitle,
-            openMediaFileLocation,
-            openMediaSourceInYoutube,
-        }),
-        [
-            confirmDeleteMediaOpen,
-            mediaToDelete,
-            isDeletingMedia,
-            isUpdatingWatched,
-            isRefreshingComments,
-            isUpdatingTitle,
-            requestDeleteMedia,
-            confirmDeleteMedia,
-            closeDeleteMediaModal,
-            markAsWatched,
-            markAsUnwatched,
-            refreshComments,
-            editTitle,
-            openMediaFileLocation,
-            openMediaSourceInYoutube,
-        ]
-    );
+    return useMemoObject({
+        confirmDeleteMediaOpen,
+        mediaToDelete,
+        isDeletingMedia,
+        isUpdatingWatched,
+        isRefreshingComments,
+        isUpdatingTitle,
+        requestDeleteMedia,
+        confirmDeleteMedia,
+        closeDeleteMediaModal,
+        markAsWatched,
+        markAsUnwatched,
+        refreshComments,
+        editTitle,
+        openMediaFileLocation,
+        openMediaSourceInYoutube,
+    });
 }

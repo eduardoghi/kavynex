@@ -1,9 +1,9 @@
-import { useMemo } from "react";
 import type { Channel, MediaRow, ViewMode } from "../types/media";
 import {
     buildItemCountLabel,
     hasSelectedChannel,
 } from "../utils/controller-helpers";
+import { useMemoObject } from "./use-memo-object";
 
 type UseHomeLibraryPanelOptions = {
     selectedChannel: Channel | null;
@@ -30,28 +30,21 @@ export function useHomeLibraryPanel({
     isMigratingLibraryPath = false,
     libraryPath = "",
 }: UseHomeLibraryPanelOptions): HomeLibraryPanelState {
-    return useMemo(() => {
-        const showSelectedChannelPanel = hasSelectedChannel(selectedChannel);
+    const showSelectedChannelPanel = hasSelectedChannel(selectedChannel);
 
-        const disableAddMedia =
-            viewMode !== "library" ||
-            isLoadingMedia ||
-            isAddingMedia ||
-            isMigratingLibraryPath ||
-            !libraryPath.trim();
+    const disableAddMedia =
+        viewMode !== "library" ||
+        isLoadingMedia ||
+        isAddingMedia ||
+        isMigratingLibraryPath ||
+        !libraryPath.trim();
 
-        return {
-            showSelectedChannelPanel,
-            itemCountLabel: buildItemCountLabel(mediaItems),
-            disableAddMedia,
-        };
-    }, [
-        selectedChannel,
-        mediaItems,
-        viewMode,
-        isLoadingMedia,
-        isAddingMedia,
-        isMigratingLibraryPath,
-        libraryPath,
-    ]);
+    // All three fields below are primitives (booleans/a string) recomputed fresh every render,
+    // so useMemoObject's shallow compare still keeps the returned object's identity stable
+    // whenever the computed values are unchanged, exactly like the useMemo this replaced.
+    return useMemoObject({
+        showSelectedChannelPanel,
+        itemCountLabel: buildItemCountLabel(mediaItems),
+        disableAddMedia,
+    });
 }

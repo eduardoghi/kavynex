@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiagnosticsController } from "../types/controllers";
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
 import type { DiagnosticsSummary } from "../types/diagnostics";
 import type { ImportMode } from "../types/settings";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { useMemoObject } from "./use-memo-object";
 
 type UseDiagnosticsOptions = {
     libraryPath: string;
@@ -108,24 +109,13 @@ export function useDiagnostics({
 
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
     // depend on the whole object stop being invalidated on unrelated re-renders.
-    return useMemo(
-        () => ({
-            diagnosticsOpen,
-            setDiagnosticsOpen,
-            diagnosticsSummary,
-            isLoadingDiagnostics,
-            openDiagnostics,
-            closeDiagnostics,
-            reloadDiagnostics,
-        }),
-        [
-            diagnosticsOpen,
-            setDiagnosticsOpen,
-            diagnosticsSummary,
-            isLoadingDiagnostics,
-            openDiagnostics,
-            closeDiagnostics,
-            reloadDiagnostics,
-        ]
-    );
+    return useMemoObject({
+        diagnosticsOpen,
+        setDiagnosticsOpen,
+        diagnosticsSummary,
+        isLoadingDiagnostics,
+        openDiagnostics,
+        closeDiagnostics,
+        reloadDiagnostics,
+    });
 }

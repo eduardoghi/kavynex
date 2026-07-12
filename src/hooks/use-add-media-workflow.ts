@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ImportMode } from "../types/settings";
 import { cancelMediaDownload, createMedia } from "../services";
 import { useAddMediaForm } from "./use-add-media-form";
@@ -6,6 +6,7 @@ import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents } from "./use-yt-dlp-events";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { useMemoObject } from "./use-memo-object";
 
 type UseAddMediaWorkflowOptions = {
     selectedChannelId: number | null;
@@ -302,30 +303,16 @@ export function useAddMediaWorkflow({
         wasAddMediaOpenRef.current = addMediaOpen;
     }, [resetForm, addMediaOpen, resetCancellingYtDlp, resetYtDlpState]);
 
-    return useMemo(
-        () => ({
-            addMediaOpen,
-            setAddMediaOpen,
-            isAddingMedia,
-            isCancellingYtDlp,
-            ytDlpLogs,
-            isYtDlpRunning,
-            addMediaForm,
-            addMedia,
-            cancelYtDlpDownload,
-            closeAddMediaModal,
-        }),
-        [
-            addMediaOpen,
-            setAddMediaOpen,
-            isAddingMedia,
-            isCancellingYtDlp,
-            ytDlpLogs,
-            isYtDlpRunning,
-            addMediaForm,
-            addMedia,
-            cancelYtDlpDownload,
-            closeAddMediaModal,
-        ]
-    );
+    return useMemoObject({
+        addMediaOpen,
+        setAddMediaOpen,
+        isAddingMedia,
+        isCancellingYtDlp,
+        ytDlpLogs,
+        isYtDlpRunning,
+        addMediaForm,
+        addMedia,
+        cancelYtDlpDownload,
+        closeAddMediaModal,
+    });
 }

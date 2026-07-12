@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useRef } from "react";
+import { useMemoObject } from "./use-memo-object";
 
 // A monotonically increasing request-id guard for "latest wins" async flows. Each `begin`
 // supersedes any older in-flight request, so a slow or earlier response can check `isCurrent`
@@ -33,5 +34,5 @@ export function useRequestGuard(): RequestGuard {
 
     // Stable identity (all three callbacks are stable) so a consumer can list the guard in a
     // dependency array without invalidating its own memoized callbacks every render.
-    return useMemo(() => ({ begin, isCurrent, invalidate }), [begin, isCurrent, invalidate]);
+    return useMemoObject({ begin, isCurrent, invalidate });
 }

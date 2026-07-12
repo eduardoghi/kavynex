@@ -5,6 +5,7 @@ import { resolveStoredPath, fileSrcFromAbsolutePath } from "../utils/media-utils
 import { buildYoutubeWatchUrl } from "../utils/youtube";
 import { openExternalUrl } from "../services/library-service";
 import { logError } from "../utils/app-logger";
+import { useMemoObject } from "./use-memo-object";
 
 type UseMediaPlayerOptions = {
     libraryPath: string;
@@ -71,34 +72,18 @@ export function useMediaPlayer({
         }
     }, [activeMedia?.id, activeYoutubeUrl]);
 
-    return useMemo(
-        () => ({
-            viewMode,
-            activeMedia,
-            activeIsAudio,
-            activeSrc,
-            activeThumbSrc,
-            activeYoutubeUrl,
-            canOpenInYoutube,
-            activeIsWatched,
-            openPlayer,
-            setActiveMedia,
-            closePlayer,
-            openInYoutube,
-        }),
-        [
-            viewMode,
-            activeMedia,
-            activeIsAudio,
-            activeSrc,
-            activeThumbSrc,
-            activeYoutubeUrl,
-            canOpenInYoutube,
-            activeIsWatched,
-            openPlayer,
-            setActiveMedia,
-            closePlayer,
-            openInYoutube,
-        ]
-    );
+    return useMemoObject({
+        viewMode,
+        activeMedia,
+        activeIsAudio,
+        activeSrc,
+        activeThumbSrc,
+        activeYoutubeUrl,
+        canOpenInYoutube,
+        activeIsWatched,
+        openPlayer,
+        setActiveMedia,
+        closePlayer,
+        openInYoutube,
+    });
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
     EVENT_YT_DLP_CANCELLED,
@@ -15,6 +15,7 @@ import type {
     YtDlpLogEvent,
     YtDlpTerminalEvent,
 } from "../types/media";
+import { useMemoObject } from "./use-memo-object";
 
 // The error and cancelled events carry the same payload shape.
 type YtDlpErrorEvent = YtDlpFailedEvent;
@@ -293,26 +294,14 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
     // depend on the whole object stop being invalidated on unrelated re-renders.
-    return useMemo(
-        () => ({
-            ytDlpLogs,
-            isYtDlpRunning,
-            currentRunIdRef,
-            startRun,
-            startManualSession,
-            appendManualLog,
-            markStopped,
-            resetYtDlpState,
-        }),
-        [
-            ytDlpLogs,
-            isYtDlpRunning,
-            currentRunIdRef,
-            startRun,
-            startManualSession,
-            appendManualLog,
-            markStopped,
-            resetYtDlpState,
-        ]
-    );
+    return useMemoObject({
+        ytDlpLogs,
+        isYtDlpRunning,
+        currentRunIdRef,
+        startRun,
+        startManualSession,
+        appendManualLog,
+        markStopped,
+        resetYtDlpState,
+    });
 }

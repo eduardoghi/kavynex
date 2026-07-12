@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { MediaSourceMode, MediaType, YtDlpFormat } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
@@ -9,6 +9,7 @@ import { useAddMediaFormState } from "./use-add-media-form-state";
 import { useTempThumbnail } from "./use-temp-thumbnail";
 import { useYtDlpFormatLoader } from "./use-yt-dlp-format-loader";
 import { COOKIES_BROWSER_VALUES } from "../constants/cookies-browsers";
+import { useMemoObject } from "./use-memo-object";
 
 type UseAddMediaFormOptions = {
     onError?: (message: string) => void;
@@ -357,77 +358,41 @@ export function useAddMediaForm({
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
     // depend on the whole object (e.g. use-add-media-workflow) stop being invalidated - and
     // recreating their own callbacks - on every keystroke in an unrelated field.
-    return useMemo(
-        () => ({
-            sourceMode,
-            mediaUrl,
-            title,
-            mediaPath,
-            mediaType,
-            thumbPath,
-            publishedAt,
-            downloadComments,
-            downloadLiveChat,
-            cookiesBrowser,
-            cookiesPath,
-            isGeneratingThumb,
+    return useMemoObject({
+        sourceMode,
+        mediaUrl,
+        title,
+        mediaPath,
+        mediaType,
+        thumbPath,
+        publishedAt,
+        downloadComments,
+        downloadLiveChat,
+        cookiesBrowser,
+        cookiesPath,
+        isGeneratingThumb,
 
-            ytDlpFormats,
-            selectedYtDlpFormatId,
-            isLoadingYtDlpFormats,
-            selectedYtDlpMediaType,
-            resolvedYoutubeVideoId,
+        ytDlpFormats,
+        selectedYtDlpFormatId,
+        isLoadingYtDlpFormats,
+        selectedYtDlpMediaType,
+        resolvedYoutubeVideoId,
 
-            setSourceMode,
-            setMediaUrl,
-            setTitle,
-            setPublishedAt,
-            setDownloadComments,
-            setDownloadLiveChat,
-            setCookiesBrowser,
-            setCookiesPath,
-            pickCookiesFileViaDialog,
-            clearCookiesPath,
-            setSelectedYtDlpFormatId,
-            loadYtDlpFormats,
+        setSourceMode,
+        setMediaUrl,
+        setTitle,
+        setPublishedAt,
+        setDownloadComments,
+        setDownloadLiveChat,
+        setCookiesBrowser,
+        setCookiesPath,
+        pickCookiesFileViaDialog,
+        clearCookiesPath,
+        setSelectedYtDlpFormatId,
+        loadYtDlpFormats,
 
-            pickMediaViaDialog,
-            pickThumbViaDialog,
-            resetForm,
-        }),
-        [
-            sourceMode,
-            mediaUrl,
-            title,
-            mediaPath,
-            mediaType,
-            thumbPath,
-            publishedAt,
-            downloadComments,
-            downloadLiveChat,
-            cookiesBrowser,
-            cookiesPath,
-            isGeneratingThumb,
-            ytDlpFormats,
-            selectedYtDlpFormatId,
-            isLoadingYtDlpFormats,
-            selectedYtDlpMediaType,
-            resolvedYoutubeVideoId,
-            setSourceMode,
-            setMediaUrl,
-            setTitle,
-            setPublishedAt,
-            setDownloadComments,
-            setDownloadLiveChat,
-            setCookiesBrowser,
-            setCookiesPath,
-            pickCookiesFileViaDialog,
-            clearCookiesPath,
-            setSelectedYtDlpFormatId,
-            loadYtDlpFormats,
-            pickMediaViaDialog,
-            pickThumbViaDialog,
-            resetForm,
-        ]
-    );
+        pickMediaViaDialog,
+        pickThumbViaDialog,
+        resetForm,
+    });
 }

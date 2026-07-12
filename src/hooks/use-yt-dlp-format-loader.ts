@@ -9,6 +9,7 @@ import {
     inferPreferredFormatId,
     inferSelectedMediaType,
 } from "../services/yt-dlp-format-rules";
+import { useMemoObject } from "./use-memo-object";
 
 type UseYtDlpFormatLoaderOptions = {
     getUrl: () => string;
@@ -226,26 +227,14 @@ export function useYtDlpFormatLoader({
 
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
     // depend on the whole object stop being invalidated on unrelated re-renders.
-    return useMemo(
-        () => ({
-            ytDlpFormats,
-            selectedYtDlpFormatId,
-            isLoadingYtDlpFormats,
-            selectedYtDlpMediaType,
-            resolvedYoutubeVideoId,
-            setSelectedYtDlpFormatId,
-            resetYtDlpFormats,
-            loadYtDlpFormats,
-        }),
-        [
-            ytDlpFormats,
-            selectedYtDlpFormatId,
-            isLoadingYtDlpFormats,
-            selectedYtDlpMediaType,
-            resolvedYoutubeVideoId,
-            setSelectedYtDlpFormatId,
-            resetYtDlpFormats,
-            loadYtDlpFormats,
-        ]
-    );
+    return useMemoObject({
+        ytDlpFormats,
+        selectedYtDlpFormatId,
+        isLoadingYtDlpFormats,
+        selectedYtDlpMediaType,
+        resolvedYoutubeVideoId,
+        setSelectedYtDlpFormatId,
+        resetYtDlpFormats,
+        loadYtDlpFormats,
+    });
 }
