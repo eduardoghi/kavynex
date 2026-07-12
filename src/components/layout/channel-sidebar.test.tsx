@@ -154,7 +154,7 @@ describe("ChannelSidebar", () => {
             { withAppShell: true }
         );
 
-        fireEvent.click(screen.getByText("Canal A"));
+        fireEvent.click(screen.getByRole("button", { name: /open channel canal a/i }));
         expect(onSelectChannel).toHaveBeenCalledWith(10);
     });
 
@@ -192,7 +192,7 @@ describe("ChannelSidebar", () => {
             { withAppShell: true }
         );
 
-        fireEvent.click(screen.getByText("Canal A"));
+        fireEvent.click(screen.getByRole("button", { name: /open channel canal a/i }));
 
         expect(onSelectChannel).toHaveBeenCalledWith(10);
         expect(onClosePlayer).toHaveBeenCalled();

@@ -12,6 +12,7 @@ import {
     ScrollArea,
     Stack,
     Text,
+    UnstyledButton,
 } from "@mantine/core";
 import {
     ImagePlus,
@@ -77,27 +78,8 @@ const ChannelListItem = memo(function ChannelListItem({
             withBorder
             radius="xl"
             p="sm"
-            role="button"
-            tabIndex={isDeleting || isUpdatingAvatar ? -1 : 0}
-            aria-label={`Open channel ${channel.name}`}
-            aria-pressed={selected}
-            aria-current={selected ? "true" : undefined}
-            onClick={() => {
-                if (!isDeleting && !isUpdatingAvatar) {
-                    handleSelect();
-                }
-            }}
-            onKeyDown={(event) => {
-                if (isDeleting || isUpdatingAvatar) {
-                    return;
-                }
-
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    handleSelect();
-                }
-            }}
             style={{
+                position: "relative",
                 cursor: isDeleting || isUpdatingAvatar ? "default" : "pointer",
                 borderColor: selected ? "rgba(139,92,246,0.45)" : shellBorder,
                 background: selected
@@ -105,9 +87,27 @@ const ChannelListItem = memo(function ChannelListItem({
                     : "rgba(255,255,255,0.025)",
                 opacity: isDeleting || isUpdatingAvatar ? 0.6 : 1,
                 transition: "background 160ms ease, border-color 160ms ease",
-                outline: "none",
             }}
         >
+            {/* Stretched button so the whole row selects the channel with one focusable, native
+                control - no interactive role on the row itself, so the menu button below is not a
+                control nested inside another control. It sits above the content but below the menu
+                button (z-index), which stays clickable. Selection is conveyed with aria-current
+                (the current item in the channel list), not aria-pressed. */}
+            <UnstyledButton
+                aria-label={`Open channel ${channel.name}`}
+                aria-current={selected ? "true" : undefined}
+                disabled={isDeleting || isUpdatingAvatar}
+                onClick={handleSelect}
+                style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 1,
+                    borderRadius: "inherit",
+                    cursor: isDeleting || isUpdatingAvatar ? "default" : "pointer",
+                }}
+            />
+
             <Group wrap="nowrap" gap="sm">
                 <Avatar
                     radius="xl"
@@ -165,9 +165,13 @@ const ChannelListItem = memo(function ChannelListItem({
                             <ActionIcon
                                 variant="subtle"
                                 radius="xl"
-                                onClick={(event) => event.stopPropagation()}
-                                onKeyDown={(event) => event.stopPropagation()}
                                 aria-label={`Actions for ${channel.name}`}
+                                style={{
+                                    // Above the stretched select overlay so the menu stays
+                                    // clickable while the rest of the row selects the channel.
+                                    position: "relative",
+                                    zIndex: 2,
+                                }}
                             >
                                 <MoreVertical size={18} />
                             </ActionIcon>
