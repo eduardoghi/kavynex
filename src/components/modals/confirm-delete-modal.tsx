@@ -1,6 +1,7 @@
 import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { NOOP } from "../../utils/noop";
 
 type ConfirmDeleteModalProps = {
     opened: boolean;
@@ -34,7 +35,7 @@ export function ConfirmDeleteModal({
     return (
         <Modal
             opened={opened}
-            onClose={loading ? () => {} : onClose}
+            onClose={loading ? NOOP : onClose}
             title={title}
             centered
             radius="lg"

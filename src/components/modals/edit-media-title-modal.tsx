@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import type { MediaRow } from "../../types/media";
+import { NOOP } from "../../utils/noop";
 
 type EditMediaTitleModalProps = {
     media: MediaRow | null;
@@ -37,7 +38,7 @@ export function EditMediaTitleModal({
     return (
         <Modal
             opened={media !== null}
-            onClose={loading ? () => {} : onClose}
+            onClose={loading ? NOOP : onClose}
             title={<Text fw={900}>Edit title</Text>}
             centered
             radius="lg"

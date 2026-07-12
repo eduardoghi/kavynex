@@ -8,6 +8,7 @@ import {
     TextInput,
 } from "@mantine/core";
 import type { ChannelAvatarMode } from "../../types/media";
+import { NOOP } from "../../utils/noop";
 
 type CreateChannelModalProps = {
     opened: boolean;
@@ -64,7 +65,7 @@ export function CreateChannelModal({
     return (
         <Modal
             opened={opened}
-            onClose={loading ? () => {} : onClose}
+            onClose={loading ? NOOP : onClose}
             title={<Text fw={900}>{title}</Text>}
             centered
             radius="lg"
