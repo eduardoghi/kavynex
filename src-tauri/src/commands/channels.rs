@@ -5,6 +5,7 @@ use crate::services::channel_repository::ChannelRow;
 use crate::services::database::Db;
 use crate::services::library_cleanup::{self, ArtifactCleanupReport};
 use crate::utils::path::ensure_managed_library_relative_path;
+use crate::utils::validation::{ensure_valid_channel_name, ensure_valid_youtube_handle};
 use crate::AppResult;
 
 /// Deletes a channel row (its media and comments cascade) and the now-unreferenced files
@@ -48,6 +49,12 @@ pub async fn insert_channel(
     youtube_handle: String,
     avatar_path: Option<String>,
 ) -> AppResult<Option<i64>> {
+    // Validate the text fields at this write boundary, not just in the frontend: the backend is
+    // the only durable trust boundary, so a malformed name/handle from any other call path is
+    // rejected here with a catalogued error before it reaches the row.
+    ensure_valid_channel_name(&name)?;
+    ensure_valid_youtube_handle(&youtube_handle)?;
+
     if let Some(path) = avatar_path.as_deref() {
         ensure_managed_library_relative_path(path)?;
     }
@@ -63,6 +70,9 @@ pub async fn update_channel_name_and_handle(
     name: String,
     youtube_handle: String,
 ) -> AppResult<()> {
+    ensure_valid_channel_name(&name)?;
+    ensure_valid_youtube_handle(&youtube_handle)?;
+
     let pool = db.pool().await?;
     repo::update_channel_name_and_handle(&pool, channel_id, &name, &youtube_handle).await
 }
@@ -188,6 +198,36 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error["code"], AppErrorCode::ChannelAlreadyExists.as_str());
+    }
+
+    #[test]
+    fn insert_channel_rejects_an_empty_name_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        let error = invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({ "name": "   ", "youtubeHandle": "@chan", "avatarPath": null }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidChannelName.as_str());
+    }
+
+    #[test]
+    fn insert_channel_rejects_a_malformed_handle_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        // A non-normalized handle (no `@`, no known prefix) is rejected at the write boundary,
+        // not only by the frontend.
+        let error = invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({ "name": "Chan", "youtubeHandle": "plainname", "avatarPath": null }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidYoutubeHandle.as_str());
     }
 
     #[test]

@@ -55,6 +55,11 @@ pub enum AppErrorCode {
     ChannelAlreadyExists,
     VideoAlreadyExistsForChannel,
 
+    InvalidChannelName,
+    InvalidYoutubeHandle,
+    InvalidMediaTitle,
+    InvalidMediaCreationArguments,
+
     SourceMetadataFailed,
     DestinationMetadataFailed,
 
@@ -190,6 +195,11 @@ impl AppErrorCode {
 
             Self::ChannelAlreadyExists => "CHANNEL_ALREADY_EXISTS",
             Self::VideoAlreadyExistsForChannel => "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
+
+            Self::InvalidChannelName => "INVALID_CHANNEL_NAME",
+            Self::InvalidYoutubeHandle => "INVALID_YOUTUBE_HANDLE",
+            Self::InvalidMediaTitle => "INVALID_MEDIA_TITLE",
+            Self::InvalidMediaCreationArguments => "INVALID_MEDIA_CREATION_ARGUMENTS",
 
             Self::SourceMetadataFailed => "SOURCE_METADATA_FAILED",
             Self::DestinationMetadataFailed => "DESTINATION_METADATA_FAILED",

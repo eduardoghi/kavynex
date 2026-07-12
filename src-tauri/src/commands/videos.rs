@@ -7,6 +7,7 @@ use crate::services::video_repository::{
     MediaCommentRow, MediaIntegrityReference, MediaRepositoryStats, MediaRow,
 };
 use crate::utils::path::ensure_managed_library_relative_path;
+use crate::utils::validation::{ensure_valid_media_title, ensure_valid_media_type};
 use crate::AppResult;
 
 /// Deletes a media row and its now-unreferenced files (media file, thumbnail, live chat)
@@ -21,6 +22,8 @@ pub async fn delete_media_with_artifacts(
 
 #[tauri::command]
 pub async fn update_media_title(db: State<'_, Db>, media_id: i64, title: String) -> AppResult<()> {
+    ensure_valid_media_title(&title)?;
+
     let pool = db.pool().await?;
     repo::update_media_title(&pool, media_id, &title).await
 }
@@ -69,6 +72,11 @@ pub async fn insert_media(
     is_live: bool,
     live_chat_file_path: Option<String>,
 ) -> AppResult<Option<i64>> {
+    // Validate the text fields at this write boundary too, mirroring the frontend's checks so
+    // the backend (the only durable trust boundary) does not depend on them.
+    ensure_valid_media_title(&title)?;
+    ensure_valid_media_type(&media_type)?;
+
     // Validate every stored path at this write boundary: each must be a managed,
     // library-relative path (no traversal, rooted at video/audio/thumbnails/live_chat). The
     // deletion path trusts these rows, so a bare or traversing path persisted here would let a
@@ -163,6 +171,7 @@ mod tests {
             .invoke_handler(tauri::generate_handler![
                 crate::commands::channels::insert_channel,
                 insert_media,
+                update_media_title,
                 list_media_by_channel,
                 mark_media_as_watched
             ])
@@ -247,6 +256,60 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
+    }
+
+    #[test]
+    fn insert_media_rejects_an_empty_title_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
+        body["title"] = serde_json::json!("   ");
+
+        let error = invoke(&webview, "insert_media", body).unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidMediaTitle.as_str());
+    }
+
+    #[test]
+    fn insert_media_rejects_an_invalid_media_type_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
+        body["mediaType"] = serde_json::json!("image");
+
+        let error = invoke(&webview, "insert_media", body).unwrap_err();
+
+        assert_eq!(
+            error["code"],
+            AppErrorCode::InvalidMediaCreationArguments.as_str()
+        );
+    }
+
+    #[test]
+    fn update_media_title_rejects_an_empty_title_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        let media_id = invoke(
+            &webview,
+            "insert_media",
+            insert_media_body(channel_id, "video/media_x.mp4"),
+        )
+        .unwrap()
+        .deserialize::<Option<i64>>()
+        .unwrap()
+        .expect("media id");
+
+        let error = invoke(
+            &webview,
+            "update_media_title",
+            serde_json::json!({ "mediaId": media_id, "title": "   " }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidMediaTitle.as_str());
     }
 
     #[test]
