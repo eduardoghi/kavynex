@@ -4,6 +4,7 @@ import { useElementSize, useWindowEvent } from "@mantine/hooks";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
+import { useGridScrollRestoration } from "../../hooks/use-grid-scroll-restoration";
 import { LoadingStateCard } from "../common/loading-state-card";
 import { MediaCard, MEDIA_CARD_HEIGHT } from "./media-card";
 
@@ -73,12 +74,7 @@ export function MediaGrid({
     onEditTitle,
 }: MediaGridProps): JSX.Element {
     const hasItems = items.length > 0;
-    const scrollParentRef = useRef<HTMLDivElement | null>(null);
-    const savedScrollTopRef = useRef(0);
-    const wasVisibleRef = useRef(isVisible);
-    const isRestoringScrollRef = useRef(false);
-    const restoreFrameRef = useRef<number | null>(null);
-    const restoreSecondFrameRef = useRef<number | null>(null);
+    const { scrollParentRef, onScroll } = useGridScrollRestoration(isVisible);
     const { ref: measureRef, width } = useElementSize();
     const [rowHeight, setRowHeight] = useState(MEDIA_CARD_HEIGHT);
     const [highlightedMediaId, setHighlightedMediaId] = useState<number | null>(null);
@@ -147,65 +143,6 @@ export function MediaGrid({
     }, []);
 
     useEffect(() => {
-        const scrollElement = scrollParentRef.current;
-
-        if (!scrollElement) {
-            wasVisibleRef.current = isVisible;
-            return;
-        }
-
-        const wasVisible = wasVisibleRef.current;
-
-        if (wasVisible && !isVisible) {
-            savedScrollTopRef.current = scrollElement.scrollTop;
-        }
-
-        if (!wasVisible && isVisible) {
-            const savedScrollTop = savedScrollTopRef.current;
-
-            isRestoringScrollRef.current = true;
-
-            if (restoreFrameRef.current !== null) {
-                window.cancelAnimationFrame(restoreFrameRef.current);
-                restoreFrameRef.current = null;
-            }
-
-            if (restoreSecondFrameRef.current !== null) {
-                window.cancelAnimationFrame(restoreSecondFrameRef.current);
-                restoreSecondFrameRef.current = null;
-            }
-
-            restoreFrameRef.current = window.requestAnimationFrame(() => {
-                scrollElement.scrollTop = savedScrollTop;
-
-                restoreSecondFrameRef.current = window.requestAnimationFrame(() => {
-                    scrollElement.scrollTop = savedScrollTop;
-                    isRestoringScrollRef.current = false;
-                    restoreSecondFrameRef.current = null;
-                });
-
-                restoreFrameRef.current = null;
-            });
-        }
-
-        wasVisibleRef.current = isVisible;
-
-        return () => {
-            if (restoreFrameRef.current !== null) {
-                window.cancelAnimationFrame(restoreFrameRef.current);
-                restoreFrameRef.current = null;
-            }
-
-            if (restoreSecondFrameRef.current !== null) {
-                window.cancelAnimationFrame(restoreSecondFrameRef.current);
-                restoreSecondFrameRef.current = null;
-            }
-
-            isRestoringScrollRef.current = false;
-        };
-    }, [isVisible]);
-
-    useEffect(() => {
         if (!isVisible) {
             return;
         }
@@ -257,13 +194,7 @@ export function MediaGrid({
                 <Box ref={measureRef}>
                     <Box
                         ref={scrollParentRef}
-                        onScroll={(event) => {
-                            if (isRestoringScrollRef.current || !isVisible) {
-                                return;
-                            }
-
-                            savedScrollTopRef.current = event.currentTarget.scrollTop;
-                        }}
+                        onScroll={onScroll}
                         style={{
                             height: GRID_HEIGHT,
                             overflowY: "auto",
