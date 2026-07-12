@@ -39,6 +39,12 @@ import {
 const INITIAL_VISIBLE_THREADS = 30;
 const LOAD_MORE_STEP = 30;
 
+// A single comment can have hundreds of replies; cap how many are mounted at once, mirroring the
+// top-level thread cap, so expanding one thread does not build an unbounded DOM. More replies are
+// revealed on demand.
+const INITIAL_VISIBLE_REPLIES = 10;
+const REPLIES_LOAD_MORE_STEP = 10;
+
 // Debounce the search before it drives the (whole-tree) filter, so typing in media with
 // thousands of comments does not re-walk the tree on every keystroke. The input itself stays
 // controlled and responsive.
@@ -73,6 +79,7 @@ function CommentItem({
     forceExpandReplies = false,
 }: CommentItemProps): JSX.Element {
     const [expandedReplies, setExpandedReplies] = useState(level === 0);
+    const [visibleReplyCount, setVisibleReplyCount] = useState(INITIAL_VISIBLE_REPLIES);
     const hasReplies = comment.replies.length > 0;
     const publishedLabel = formatCommentPublishedAt(comment.published_at, comment.time_text);
     const replyCount = Math.max(comment.reply_count || comment.replies.length, comment.replies.length);
@@ -201,7 +208,10 @@ function CommentItem({
                         paddingLeft: rem(14),
                     }}
                 >
-                    {comment.replies.map((reply) => (
+                    {(forceExpandReplies
+                        ? comment.replies
+                        : comment.replies.slice(0, visibleReplyCount)
+                    ).map((reply) => (
                         <CommentItem
                             key={`${reply.id}-${reply.comment_id ?? "reply"}`}
                             comment={reply}
@@ -210,6 +220,29 @@ function CommentItem({
                             forceExpandReplies={forceExpandReplies}
                         />
                     ))}
+
+                    {!forceExpandReplies && comment.replies.length > visibleReplyCount && (
+                        <Button
+                            variant="subtle"
+                            size="compact-sm"
+                            px={0}
+                            onClick={() =>
+                                setVisibleReplyCount(
+                                    (current) => current + REPLIES_LOAD_MORE_STEP
+                                )
+                            }
+                            styles={{
+                                root: {
+                                    color: "var(--mantine-color-blue-4)",
+                                    fontWeight: 700,
+                                    alignSelf: "flex-start",
+                                },
+                            }}
+                        >
+                            {UI_TEXT.comments.loadMore} (
+                            {comment.replies.length - visibleReplyCount})
+                        </Button>
+                    )}
                 </Stack>
             )}
         </Stack>
