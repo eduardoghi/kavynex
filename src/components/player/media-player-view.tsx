@@ -582,6 +582,9 @@ export function MediaPlayerView({
                     commentsCount={media?.comments_count ?? comments.length}
                     isLoadingComments={isLoadingComments}
                     shellBorder={shellBorder}
+                    canFetchComments={Boolean(media?.youtube_video_id?.trim())}
+                    isFetchingComments={isRefreshingComments}
+                    onFetchComments={onRefreshComments}
                 />
             </Stack>
         </RemoteImagesProvider>

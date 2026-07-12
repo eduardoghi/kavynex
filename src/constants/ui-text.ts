@@ -79,6 +79,9 @@ export const UI_TEXT = {
             "This media was saved without comments, or no public comments were available at the time of import.",
         missingFromDatabase:
             "The media indicates saved comments, but none were found in the local database.",
+        fetchComments: "Fetch comments",
+        fetchCommentsHint:
+            "If this media was added but its comment backup was interrupted, you can fetch them now.",
         creator: "Creator",
         pinned: "Pinned",
         edited: "edited",

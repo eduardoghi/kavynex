@@ -16,7 +16,7 @@ import {
     rem,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { ChevronDown, ChevronUp, MessageCircle, Search, ThumbsUp, X } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageCircle, RefreshCw, Search, ThumbsUp, X } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
@@ -50,6 +50,13 @@ type CommentsPanelProps = {
     commentsCount?: number | null;
     isLoadingComments: boolean;
     shellBorder: string;
+    // Whether this media can (re)fetch comments from YouTube - true for a media with a YouTube
+    // source. Offered in the empty state so a media whose comment backup was interrupted (a crash
+    // between registering the media and saving its comments) can be recovered where the absence is
+    // noticed, rather than only from the header's "Refresh comments" button.
+    canFetchComments?: boolean;
+    isFetchingComments?: boolean;
+    onFetchComments?: () => void | Promise<void>;
 };
 
 type CommentItemProps = {
@@ -215,6 +222,9 @@ export function CommentsPanel({
     commentsCount,
     isLoadingComments,
     shellBorder,
+    canFetchComments = false,
+    isFetchingComments = false,
+    onFetchComments,
 }: CommentsPanelProps): JSX.Element {
     const [commentSortMode, setCommentSortMode] = useState<CommentSortMode>("likes");
     const [commentSearchValue, setCommentSearchValue] = useState("");
@@ -366,6 +376,27 @@ export function CommentsPanel({
                             {UI_TEXT.comments.missingFromDatabase}
                         </Text>
                     )}
+
+                    {!isLoadingComments &&
+                        comments.length === 0 &&
+                        canFetchComments &&
+                        onFetchComments && (
+                            <Stack gap="xs" mt="sm">
+                                <Text size="xs" c="dimmed">
+                                    {UI_TEXT.comments.fetchCommentsHint}
+                                </Text>
+                                <Button
+                                    variant="light"
+                                    color="violet"
+                                    leftSection={<RefreshCw size={16} />}
+                                    loading={isFetchingComments}
+                                    onClick={() => void onFetchComments()}
+                                    style={{ alignSelf: "flex-start" }}
+                                >
+                                    {UI_TEXT.comments.fetchComments}
+                                </Button>
+                            </Stack>
+                        )}
 
                     {!isLoadingComments &&
                         comments.length > 0 &&

@@ -125,4 +125,62 @@ describe("CommentsPanel", () => {
         expect(screen.queryByText("banana bread")).not.toBeInTheDocument();
         expect(screen.getByText("apple pie")).toBeInTheDocument();
     });
+
+    it("offers to fetch comments in the empty state for a YouTube-sourced media", () => {
+        const onFetchComments = vi.fn();
+
+        renderWithMantine(
+            <CommentsPanel
+                comments={[]}
+                hasComments={false}
+                isLoadingComments={false}
+                shellBorder="rgba(255,255,255,0.1)"
+                canFetchComments
+                onFetchComments={onFetchComments}
+            />
+        );
+
+        const button = screen.getByRole("button", { name: UI_TEXT.comments.fetchComments });
+
+        act(() => {
+            fireEvent.click(button);
+        });
+
+        expect(onFetchComments).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not offer to fetch comments when the media has no YouTube source", () => {
+        renderWithMantine(
+            <CommentsPanel
+                comments={[]}
+                hasComments={false}
+                isLoadingComments={false}
+                shellBorder="rgba(255,255,255,0.1)"
+                canFetchComments={false}
+                onFetchComments={vi.fn()}
+            />
+        );
+
+        expect(
+            screen.queryByRole("button", { name: UI_TEXT.comments.fetchComments })
+        ).not.toBeInTheDocument();
+    });
+
+    it("does not offer to fetch comments when comments are already present", () => {
+        renderWithMantine(
+            <CommentsPanel
+                comments={[comment({ id: 1, comment_id: "c1", text: "hello" })]}
+                hasComments
+                commentsCount={1}
+                isLoadingComments={false}
+                shellBorder="rgba(255,255,255,0.1)"
+                canFetchComments
+                onFetchComments={vi.fn()}
+            />
+        );
+
+        expect(
+            screen.queryByRole("button", { name: UI_TEXT.comments.fetchComments })
+        ).not.toBeInTheDocument();
+    });
 });
