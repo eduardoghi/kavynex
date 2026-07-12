@@ -96,6 +96,12 @@ jobs:
             - name: Install frontend dependencies
               run: pnpm install --frozen-lockfile
 
+            # The release is dispatched manually, so an advisory published after the last CI
+            # run on the chosen ref would otherwise ship unaudited. Re-run the same production
+            # JS audit CI gates on, before building the binaries.
+            - name: Audit production JS dependencies
+              run: pnpm audit --prod --audit-level high
+
             - name: Run tests
               run: pnpm test -- --run
 
@@ -109,6 +115,15 @@ jobs:
 
             - name: Run Rust tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+            # RUSTSEC advisories are not covered by pnpm audit; mirror ci.yml's cargo-audit
+            # gate here so a manually dispatched release cannot ship a Rust dependency with a
+            # known advisory published since the last CI run.
+            - name: Install cargo-audit
+              run: cargo install cargo-audit --locked
+
+            - name: Audit Rust dependencies
+              run: cargo audit --file src-tauri/Cargo.lock
 
             - name: Build frontend
               run: pnpm build
