@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 9;
+pub(crate) const SCHEMA_VERSION: i64 = 10;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -114,6 +114,11 @@ const INDEX_DDLS: &[(&str, &str)] = &[
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)"),
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)"),
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)"),
+    // Moves the "no duplicate (video_id, comment_id)" invariant out of application code
+    // (media_comments::dedupe_comments_by_id) and into the schema. Partial so the many replies
+    // yt-dlp leaves without an id (comment_id NULL/blank) stay legitimately distinct rows,
+    // mirroring idx_videos_channel_youtube_video_id_unique.
+    ("video_comments", "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''"),
 ];
 
 /// Additive columns for the videos table. Fresh databases already get these from the
@@ -225,6 +230,13 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_migration_9(pool).await?;
     }
 
+    // v10: adds the partial unique index on (video_id, comment_id). A pre-v10 database could in
+    // principle already hold a duplicate the index would reject, so this migration first collapses
+    // any duplicate comment rows and only then builds the index (see apply_migration_10).
+    if current_version < 10 {
+        apply_migration_10(pool).await?;
+    }
+
     // Each migration is guarded by version and transactional (it stamps the new
     // user_version inside its own transaction, so a crash leaves the database fully at the
     // old or the new version). An additive migration (a new column or index) runs the
@@ -274,6 +286,52 @@ async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
 /// reaches databases created before v9 by re-running the guarded index DDLs.
 async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 9).await
+}
+
+/// v10: creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
+/// (video_id, comment_id)" invariant out of application code (media_comments::
+/// dedupe_comments_by_id) and into the schema. Unlike the index-only migrations above it cannot
+/// blindly run the DDLs: a database created before this index could in principle hold a duplicate
+/// that would fail the unique build. So it first collapses any duplicate rows to the lowest id,
+/// then runs the guarded index DDLs, both in one transaction so a crash leaves the database fully
+/// at the old or the new version. The single write path (replace_media_comments) already dedups
+/// per payload, so the cleanup is a safety net, not an expected case.
+async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM video_comments
+        WHERE comment_id IS NOT NULL
+          AND TRIM(comment_id) <> ''
+          AND id NOT IN (
+              SELECT MIN(id) FROM video_comments
+              WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''
+              GROUP BY video_id, comment_id
+          )
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| db_error("failed to collapse duplicate comments", error))?;
+
+    for &(_, ddl) in INDEX_DDLS {
+        sqlx::query(ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to create index", error))?;
+    }
+
+    set_user_version(&mut tx, 10).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
 }
 
 /// Creates every table, additive column and index if missing, then stamps
@@ -384,39 +442,76 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
 /// is always restored before that connection returns to the pool. The rebuilt tables' indexes
 /// are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`); other tables' indexes
 /// are left in place since their tables were never dropped.
+/// Owns the pooled connection a table rebuild runs on so that foreign-key enforcement can never
+/// leak back into the pool in the OFF state. The rebuild runs with `PRAGMA foreign_keys = OFF`;
+/// on the normal path enforcement is restored and `restored` is set, so `Drop` hands the
+/// connection back to the pool as usual. If the restore fails - or the rebuild panics and unwinds
+/// before the restore runs - `restored` stays false and `Drop` detaches (discards) the connection
+/// instead, so the next consumer gets a fresh connection with foreign keys ON (from the pool's
+/// connect options) rather than a reused one with enforcement silently off. `detach()` is
+/// synchronous, so it is safe to call from `Drop` even though re-running the PRAGMA would not be.
+#[allow(dead_code)]
+struct RebuildConnection {
+    conn: Option<sqlx::pool::PoolConnection<sqlx::Sqlite>>,
+    restored: bool,
+}
+
+impl RebuildConnection {
+    fn conn(&mut self) -> &mut SqliteConnection {
+        self.conn
+            .as_deref_mut()
+            .expect("rebuild connection is present until the guard is dropped")
+    }
+}
+
+impl Drop for RebuildConnection {
+    fn drop(&mut self) {
+        if let Some(conn) = self.conn.take() {
+            if self.restored {
+                // Enforcement restored: hand the connection back to the pool normally.
+                drop(conn);
+            } else {
+                // The restore never ran (a panic unwound through the rebuild) or failed: discard
+                // the connection so a foreign_keys = OFF one is never reused.
+                conn.detach();
+            }
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) async fn apply_table_rebuilds(
     pool: &SqlitePool,
     rebuilds: &[TableRebuild],
     target_version: i64,
 ) -> AppResult<()> {
-    let mut conn = pool
+    let conn = pool
         .acquire()
         .await
         .map_err(|error| db_error("failed to acquire a connection for schema migration", error))?;
+    // Guard the connection from here on: any early return, error, or panic below must not return
+    // a foreign_keys = OFF connection to the pool (see RebuildConnection).
+    let mut guard = RebuildConnection {
+        conn: Some(conn),
+        restored: false,
+    };
 
     sqlx::query("PRAGMA foreign_keys = OFF")
-        .execute(&mut *conn)
+        .execute(guard.conn())
         .await
         .map_err(|error| db_error("failed to disable foreign keys for migration", error))?;
 
-    let outcome = apply_table_rebuilds_in_transaction(&mut conn, rebuilds, target_version).await;
+    let outcome = apply_table_rebuilds_in_transaction(guard.conn(), rebuilds, target_version).await;
 
-    // Restore enforcement before the connection returns to the pool, regardless of the
-    // outcome, so a later consumer never gets a connection with foreign keys silently off.
-    if let Err(error) = sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&mut *conn)
+    // Restore enforcement before the connection can return to the pool, regardless of the
+    // rebuild outcome. On success this lets the guard hand the connection back normally; if the
+    // restore itself fails (or the rebuild above panicked), the guard detaches it instead.
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(guard.conn())
         .await
-    {
-        // The connection's enforcement state is unknown; drop it out of the pool rather than
-        // hand it back for reuse.
-        conn.detach();
-        return Err(db_error(
-            "failed to re-enable foreign keys after migration",
-            error,
-        ));
-    }
+        .map_err(|error| db_error("failed to re-enable foreign keys after migration", error))?;
 
+    guard.restored = true;
     outcome
 }
 
@@ -819,9 +914,10 @@ mod tests {
 
         // The indexes the later migrations add exist.
         for index in [
-            "idx_videos_channel_created_id",  // v8
-            "idx_videos_file_path",           // v9
-            "idx_videos_live_chat_file_path", // v9
+            "idx_videos_channel_created_id",           // v8
+            "idx_videos_file_path",                    // v9
+            "idx_videos_live_chat_file_path",          // v9
+            "idx_video_comments_video_comment_unique", // v10
         ] {
             assert!(
                 object_exists(&pool, "index", index).await,
@@ -1133,6 +1229,162 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[tokio::test]
+    async fn migration_10_adds_the_comment_unique_index_to_a_pre_v10_database() {
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        // A fresh database already has the index from the baseline.
+        let (fresh,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_video_comments_video_comment_unique'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(fresh, 1);
+
+        // Simulate a database left by v9: drop the v10 index and roll the marker back.
+        sqlx::query("DROP INDEX idx_video_comments_video_comment_unique")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA user_version = 9")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        ensure_schema(&pool).await.unwrap();
+
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_video_comments_video_comment_unique'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            count, 1,
+            "migration 10 must add the unique index to a pre-v10 database"
+        );
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[tokio::test]
+    async fn migration_10_collapses_pre_existing_duplicate_comments_before_indexing() {
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        // Roll back to v9 and drop the unique index so a duplicate the current schema forbids can
+        // be seeded, reproducing a database written before the invariant lived in the schema.
+        sqlx::query("DROP INDEX idx_video_comments_video_comment_unique")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA user_version = 9")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'Chan', '@chan')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, file_path, media_type)
+             VALUES (1, 1, 'V', 'video/v.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // Two rows sharing (video_id, comment_id) - exactly what the new index forbids.
+        sqlx::query(
+            "INSERT INTO video_comments (id, video_id, comment_id, author_name, text)
+             VALUES (1, 1, 'c1', 'A', 'first'), (2, 1, 'c1', 'A', 'dup')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // The migration must collapse the duplicate and then build the unique index.
+        ensure_schema(&pool).await.unwrap();
+
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM video_comments WHERE video_id = 1 AND comment_id = 'c1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(count, 1, "the duplicate must be collapsed to a single row");
+
+        let (kept_text,): (String,) = sqlx::query_as(
+            "SELECT text FROM video_comments WHERE video_id = 1 AND comment_id = 'c1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(kept_text, "first", "the lowest-id row must be the one kept");
+
+        // The unique index now rejects a fresh duplicate.
+        let dup = sqlx::query(
+            "INSERT INTO video_comments (id, video_id, comment_id, author_name, text)
+             VALUES (3, 1, 'c1', 'A', 'again')",
+        )
+        .execute(&pool)
+        .await;
+        assert!(
+            dup.is_err(),
+            "the unique index must reject a duplicate (video_id, comment_id)"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_table_rebuilds_restores_foreign_keys_after_a_failed_rebuild() {
+        let pool = memory_pool_with_foreign_keys().await;
+
+        sqlx::query("CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        // A row the new CHECK will reject, so the copy step (and the whole rebuild) fails.
+        sqlx::query("INSERT INTO widget (id, name) VALUES (1, '   ')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let rebuild = TableRebuild {
+            table: "widget",
+            staging_table: "widget_rebuilt",
+            new_ddl: "CREATE TABLE widget_rebuilt (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL CHECK (TRIM(name) <> '')
+            )",
+            carried_columns: "id, name",
+        };
+
+        assert!(
+            apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), 8)
+                .await
+                .is_err()
+        );
+
+        // Even though the rebuild failed, foreign-key enforcement must be back on for the next
+        // pool consumer - never left in the OFF state the rebuild toggled it into.
+        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            foreign_keys, 1,
+            "foreign keys must be re-enabled even when the rebuild fails"
+        );
     }
 
     async fn memory_pool_with_foreign_keys() -> SqlitePool {
