@@ -16,6 +16,15 @@ const AUDIO_EXTENSIONS = new Set([
 
 const THUMBNAIL_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "bmp", "avif"]);
 
+// Hoisted module-level so formatDateValue/formatCreatedAt do not rebuild an Intl.DateTimeFormat
+// on every call - construction is comparatively expensive and these formatters have no per-call
+// state, so a single shared instance is safe to reuse across renders.
+const MEDIUM_DATE_FORMAT = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
+const MEDIUM_DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+});
+
 export function normalizePathSeparators(value: string): string {
     return value.replace(/\\/g, "/");
 }
@@ -231,9 +240,7 @@ function formatDateValue(value: string | null | undefined): string {
     const localDate = parseDateOnly(normalized);
 
     if (localDate) {
-        return new Intl.DateTimeFormat("en-US", {
-            dateStyle: "medium",
-        }).format(localDate);
+        return MEDIUM_DATE_FORMAT.format(localDate);
     }
 
     const date = new Date(normalized);
@@ -242,9 +249,7 @@ function formatDateValue(value: string | null | undefined): string {
         return normalized;
     }
 
-    return new Intl.DateTimeFormat("en-US", {
-        dateStyle: "medium",
-    }).format(date);
+    return MEDIUM_DATE_FORMAT.format(date);
 }
 
 export function formatPublishedDate(value: string | null | undefined): string {
@@ -264,10 +269,7 @@ export function formatCreatedAt(value: string | null | undefined): string {
         return normalized;
     }
 
-    return new Intl.DateTimeFormat("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-    }).format(date);
+    return MEDIUM_DATE_TIME_FORMAT.format(date);
 }
 
 export function shortPath(value: string, maxLength = 60): string {

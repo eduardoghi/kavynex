@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Card, Group, Stack, Text, Title } from "@mantine/core";
 import { useElementSize, useWindowEvent } from "@mantine/hooks";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -79,6 +79,30 @@ export function MediaGrid({
     const [rowHeight, setRowHeight] = useState(MEDIA_CARD_HEIGHT);
     const [highlightedMediaId, setHighlightedMediaId] = useState<number | null>(null);
     const highlightTimerRef = useRef<number | null>(null);
+
+    // Measures the first row's actual height so the virtualizer's row estimate can be corrected
+    // once real cards are on screen. Memoized so the ref callback keeps a stable identity across
+    // renders - an inline arrow function here would be reassigned on every scroll-driven
+    // re-render, forcing React to call it again and re-run getBoundingClientRect (a synchronous
+    // layout reflow) even though the measured node has not changed.
+    const measureFirstRow = useCallback(
+        (node: HTMLDivElement | null) => {
+            if (!node) {
+                return;
+            }
+
+            const nextHeight = node.getBoundingClientRect().height;
+
+            if (
+                Number.isFinite(nextHeight) &&
+                nextHeight > 0 &&
+                Math.abs(nextHeight - rowHeight) > 2
+            ) {
+                setRowHeight(nextHeight);
+            }
+        },
+        [rowHeight]
+    );
 
     const columnCount = useMemo(() => getColumnCount(width), [width]);
 
@@ -246,22 +270,7 @@ export function MediaGrid({
                                                     key={media.id}
                                                     ref={
                                                         virtualRow.index === 0 && itemIndex === 0
-                                                            ? (node) => {
-                                                                  if (!node) {
-                                                                      return;
-                                                                  }
-
-                                                                  const nextHeight =
-                                                                      node.getBoundingClientRect().height;
-
-                                                                  if (
-                                                                      Number.isFinite(nextHeight) &&
-                                                                      nextHeight > 0 &&
-                                                                      Math.abs(nextHeight - rowHeight) > 2
-                                                                  ) {
-                                                                      setRowHeight(nextHeight);
-                                                                  }
-                                                              }
+                                                            ? measureFirstRow
                                                             : undefined
                                                     }
                                                     style={{
