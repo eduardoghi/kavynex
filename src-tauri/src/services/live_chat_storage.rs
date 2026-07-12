@@ -289,7 +289,11 @@ pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompre
                 summary.failed += 1;
                 crate::services::logger::warn(
                     "live_chat_compress",
-                    format!("failed to compress {}: {}", path.display(), error),
+                    format!(
+                        "failed to compress {}: {}",
+                        crate::services::logger::redact_path(&path),
+                        error
+                    ),
                 );
             }
         }

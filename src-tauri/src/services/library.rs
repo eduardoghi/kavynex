@@ -91,7 +91,10 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
     let canonical_path = std::fs::canonicalize(&resolved_path).map_err(|_| {
         AppError::from_code(
             AppErrorCode::InvalidMediaPath,
-            format!("path does not exist: {}", resolved_path.to_string_lossy()),
+            format!(
+                "path does not exist: {}",
+                crate::services::logger::redact_path(&resolved_path)
+            ),
         )
     })?;
 
