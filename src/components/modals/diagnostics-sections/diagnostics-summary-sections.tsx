@@ -14,6 +14,36 @@ type DiagnosticsSummarySectionsProps = {
     summary: DiagnosticsSummary;
 };
 
+type DiagnosticsExamplesListProps = {
+    label: string;
+    items: string[];
+};
+
+function DiagnosticsExamplesList({
+    label,
+    items,
+}: DiagnosticsExamplesListProps): JSX.Element | null {
+    if (items.length === 0) {
+        return null;
+    }
+
+    return (
+        <Paper withBorder radius="md" p="sm">
+            <Text fw={700} size="sm" mb={6}>
+                {label}
+            </Text>
+
+            <Stack gap={4}>
+                {items.map((item) => (
+                    <Text key={item} size="sm" c="dimmed">
+                        {item}
+                    </Text>
+                ))}
+            </Stack>
+        </Paper>
+    );
+}
+
 export function DiagnosticsSummarySections({
     summary,
 }: DiagnosticsSummarySectionsProps): JSX.Element {
@@ -311,89 +341,33 @@ export function DiagnosticsSummarySections({
                         />
                     </Group>
 
-                    {diagnostics.libraryIntegrity.missing_media_examples.length > 0 && (
-                        <Paper withBorder radius="md" p="sm">
-                            <Text fw={700} size="sm" mb={6}>
-                                Missing media examples
-                            </Text>
+                    <DiagnosticsExamplesList
+                        label="Missing media examples"
+                        items={diagnostics.libraryIntegrity.missing_media_examples}
+                    />
 
-                            <Stack gap={4}>
-                                {diagnostics.libraryIntegrity.missing_media_examples.map((item) => (
-                                    <Text key={item} size="sm" c="dimmed">
-                                        {item}
-                                    </Text>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )}
+                    <DiagnosticsExamplesList
+                        label="Missing thumbnail examples"
+                        items={diagnostics.libraryIntegrity.missing_thumbnail_examples}
+                    />
 
-                    {diagnostics.libraryIntegrity.missing_thumbnail_examples.length > 0 && (
-                        <Paper withBorder radius="md" p="sm">
-                            <Text fw={700} size="sm" mb={6}>
-                                Missing thumbnail examples
-                            </Text>
+                    <DiagnosticsExamplesList
+                        label="Orphan media examples"
+                        items={diagnostics.libraryIntegrity.orphan_media_examples}
+                    />
 
-                            <Stack gap={4}>
-                                {diagnostics.libraryIntegrity.missing_thumbnail_examples.map((item) => (
-                                    <Text key={item} size="sm" c="dimmed">
-                                        {item}
-                                    </Text>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )}
+                    <DiagnosticsExamplesList
+                        label="Orphan thumbnail examples"
+                        items={diagnostics.libraryIntegrity.orphan_thumbnail_examples}
+                    />
 
-                    {diagnostics.libraryIntegrity.orphan_media_examples.length > 0 && (
-                        <Paper withBorder radius="md" p="sm">
-                            <Text fw={700} size="sm" mb={6}>
-                                Orphan media examples
-                            </Text>
-
-                            <Stack gap={4}>
-                                {diagnostics.libraryIntegrity.orphan_media_examples.map((item) => (
-                                    <Text key={item} size="sm" c="dimmed">
-                                        {item}
-                                    </Text>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )}
-
-                    {diagnostics.libraryIntegrity.orphan_thumbnail_examples.length > 0 && (
-                        <Paper withBorder radius="md" p="sm">
-                            <Text fw={700} size="sm" mb={6}>
-                                Orphan thumbnail examples
-                            </Text>
-
-                            <Stack gap={4}>
-                                {diagnostics.libraryIntegrity.orphan_thumbnail_examples.map((item) => (
-                                    <Text key={item} size="sm" c="dimmed">
-                                        {item}
-                                    </Text>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )}
-
-                    {(diagnostics.libraryIntegrity.invalid_media_examples.length > 0 ||
-                        diagnostics.libraryIntegrity.invalid_thumbnail_examples.length > 0) && (
-                        <Paper withBorder radius="md" p="sm">
-                            <Text fw={700} size="sm" mb={6}>
-                                Invalid path examples
-                            </Text>
-
-                            <Stack gap={4}>
-                                {[
-                                    ...diagnostics.libraryIntegrity.invalid_media_examples,
-                                    ...diagnostics.libraryIntegrity.invalid_thumbnail_examples,
-                                ].map((item) => (
-                                    <Text key={item} size="sm" c="dimmed">
-                                        {item}
-                                    </Text>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )}
+                    <DiagnosticsExamplesList
+                        label="Invalid path examples"
+                        items={[
+                            ...diagnostics.libraryIntegrity.invalid_media_examples,
+                            ...diagnostics.libraryIntegrity.invalid_thumbnail_examples,
+                        ]}
+                    />
                 </Stack>
             </Paper>
 
@@ -422,37 +396,15 @@ export function DiagnosticsSummarySections({
                         />
                     </Group>
 
-                    {diagnostics.liveChatIntegrity.missing_live_chat_examples.length > 0 && (
-                        <Paper withBorder radius="md" p="sm">
-                            <Text fw={700} size="sm" mb={6}>
-                                Missing live chat examples
-                            </Text>
+                    <DiagnosticsExamplesList
+                        label="Missing live chat examples"
+                        items={diagnostics.liveChatIntegrity.missing_live_chat_examples}
+                    />
 
-                            <Stack gap={4}>
-                                {diagnostics.liveChatIntegrity.missing_live_chat_examples.map((item) => (
-                                    <Text key={item} size="sm" c="dimmed">
-                                        {item}
-                                    </Text>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )}
-
-                    {diagnostics.liveChatIntegrity.orphan_live_chat_examples.length > 0 && (
-                        <Paper withBorder radius="md" p="sm">
-                            <Text fw={700} size="sm" mb={6}>
-                                Orphan live chat examples
-                            </Text>
-
-                            <Stack gap={4}>
-                                {diagnostics.liveChatIntegrity.orphan_live_chat_examples.map((item) => (
-                                    <Text key={item} size="sm" c="dimmed">
-                                        {item}
-                                    </Text>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )}
+                    <DiagnosticsExamplesList
+                        label="Orphan live chat examples"
+                        items={diagnostics.liveChatIntegrity.orphan_live_chat_examples}
+                    />
                 </Stack>
             </Paper>
         </>
