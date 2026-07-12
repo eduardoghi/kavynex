@@ -12,6 +12,12 @@ use crate::{AppError, AppErrorCode, AppResult};
 // backup within this window already predates the current launch's migrations.
 const BACKUP_MIN_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
+// Keep several rotated generations of the snapshot (`.bak`, `.bak.1`, ...), not just one, so a
+// corruption that goes unnoticed for a few days cannot overwrite every good snapshot with a
+// degraded one before it is caught. This many *rotated* generations are kept in addition to the
+// current `.bak`.
+const BACKUP_ROTATED_GENERATIONS: usize = 6;
+
 fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
     let name = db_path
         .file_name()
@@ -25,8 +31,29 @@ fn backup_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".bak")
 }
 
-fn rotated_backup_path(db_path: &Path) -> PathBuf {
-    sibling(db_path, ".bak.1")
+/// The current snapshot is `.bak` (generation 0); older generations are `.bak.1` (newest
+/// rotated) through `.bak.{BACKUP_ROTATED_GENERATIONS}` (oldest kept).
+fn generation_backup_path(db_path: &Path, generation: usize) -> PathBuf {
+    if generation == 0 {
+        backup_path(db_path)
+    } else {
+        sibling(db_path, &format!(".bak.{generation}"))
+    }
+}
+
+/// Shifts the rotated generations up by one, dropping the oldest, so a fresh snapshot can be
+/// promoted into `.bak` without discarding the previous ones: `.bak.{N}` is overwritten by
+/// `.bak.{N-1}`, and so on down to `.bak` becoming `.bak.1`.
+fn rotate_backups(db_path: &Path) {
+    for generation in (1..=BACKUP_ROTATED_GENERATIONS).rev() {
+        let source = generation_backup_path(db_path, generation - 1);
+        let target = generation_backup_path(db_path, generation);
+
+        if source.exists() {
+            let _ = std::fs::remove_file(&target);
+            let _ = std::fs::rename(&source, &target);
+        }
+    }
 }
 
 fn temp_backup_path(db_path: &Path) -> PathBuf {
@@ -34,7 +61,9 @@ fn temp_backup_path(db_path: &Path) -> PathBuf {
 }
 
 fn backup_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
-    AppError::from_code_with_details(AppErrorCode::AppError, message.into(), error.to_string())
+    // Same shape as services::media_comments and the rest of the app: reuse the single
+    // db_error constructor rather than re-deriving the AppError here.
+    crate::services::database::db_error(message, error)
 }
 
 async fn open(db_path: &Path) -> AppResult<SqlitePool> {
@@ -101,8 +130,8 @@ fn escape_sql_literal(value: &str) -> String {
 /// Creates a consistent snapshot of the database (via `VACUUM INTO`) before migrations run,
 /// so a bad migration or corruption can be rolled back. Best effort and throttled to once a
 /// day; a source database that fails `quick_check` is skipped so a corrupt DB never
-/// overwrites a good backup. Keeps one rotated generation (`.bak` and `.bak.1`). Returns
-/// true when a new snapshot was written.
+/// overwrites a good backup. Keeps several rotated generations (`.bak` plus `.bak.1`..
+/// `.bak.{BACKUP_ROTATED_GENERATIONS}`). Returns true when a new snapshot was written.
 pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     if !db_path.exists() {
         return Ok(false);
@@ -138,12 +167,8 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     pool.close().await;
     vacuum_result.map_err(|error| backup_error("failed to snapshot database", error))?;
 
-    // Rotate the previous backup, then promote the fresh snapshot.
-    if backup.exists() {
-        let rotated = rotated_backup_path(db_path);
-        let _ = std::fs::remove_file(&rotated);
-        let _ = std::fs::rename(&backup, &rotated);
-    }
+    // Shift the existing generations up, then promote the fresh snapshot into `.bak`.
+    rotate_backups(db_path);
 
     std::fs::rename(&temp, &backup)
         .map_err(|error| backup_error("failed to store database backup", error))?;
@@ -200,11 +225,11 @@ fn modified_ms(path: &Path) -> Option<u64> {
         .map(|age| age.as_millis() as u64)
 }
 
-/// The existing backup files, most recent first. Rotation always writes the freshest
-/// snapshot to `.bak`, so it precedes the rotated `.bak.1` generation.
+/// The existing backup files, most recent first. Rotation always writes the freshest snapshot
+/// to `.bak` (generation 0), so it precedes the rotated `.bak.1`.. `.bak.N` generations.
 fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
-    [backup_path(db_path), rotated_backup_path(db_path)]
-        .into_iter()
+    (0..=BACKUP_ROTATED_GENERATIONS)
+        .map(|generation| generation_backup_path(db_path, generation))
         .filter(|path| path.exists())
         .collect()
 }
