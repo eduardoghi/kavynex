@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Card, Group, Loader, Stack, Text, Title } from "@mantine/core";
+import { Box, Card, Group, Stack, Text, Title } from "@mantine/core";
 import { useElementSize, useWindowEvent } from "@mantine/hooks";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
+import { LoadingStateCard } from "../common/loading-state-card";
 import { MediaCard, MEDIA_CARD_HEIGHT } from "./media-card";
 
 type MediaGridProps = {
@@ -175,17 +176,10 @@ export function MediaGrid({
             </Group>
 
             {loading && (
-                <Card
-                    withBorder
-                    radius="xl"
-                    p="xl"
-                    style={{ background: shellSurface, borderColor: shellBorder }}
-                >
-                    <Stack align="center" gap="sm">
-                        <Loader size="sm" />
-                        <Text c="dimmed">{UI_TEXT.library.loading}</Text>
-                    </Stack>
-                </Card>
+                <LoadingStateCard
+                    message={UI_TEXT.library.loading}
+                    shellBorder={shellBorder}
+                />
             )}
 
             {!loading && !hasItems && (
