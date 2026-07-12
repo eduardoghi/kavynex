@@ -131,14 +131,17 @@ belonged to those rows (media, thumbnails, avatar, live chat), not for the rows.
 `avatar_path`, `thumbnail_path`, `youtube_video_id`, `watched_at`, `published_at`,
 `has_comments`, `is_live`, `has_live_chat`, a unique index backing
 `(channel_id, file_path)`, a partial unique index backing
-`(channel_id, youtube_video_id)`, and comment lookups by `video_id`,
+`(channel_id, youtube_video_id)`, single-column indexes on `file_path` and
+`live_chat_file_path` (which keep the per-artifact reference-count lookups run on every
+media/channel delete off a full table scan - the composite `(channel_id, file_path)`
+index cannot serve a bare `file_path =` predicate), and comment lookups by `video_id`,
 `parent_comment_id`, and `comment_id`. All index DDL uses
 `CREATE INDEX IF NOT EXISTS`, so it is safe to re-run on every migration.
 
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `8`), in `db_schema.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `9`), in `db_schema.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool`), before any other query executes.
 
@@ -153,6 +156,10 @@ pool (`database.rs::build_pool`), before any other query executes.
   already-current database is a no-op.
 - **v8** adds the `idx_videos_channel_created_id` index. Being purely additive, its
   migration just re-runs the index DDL list and stamps `user_version = 8`.
+- **v9** adds the `idx_videos_file_path` and `idx_videos_live_chat_file_path` indexes,
+  which keep the per-artifact reference-count lookups run on delete off a full table scan.
+  Also purely additive, so its migration re-runs the index DDL list and stamps
+  `user_version = 9`.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
@@ -164,7 +171,7 @@ pool (`database.rs::build_pool`), before any other query executes.
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
   any dangling reference the rebuild introduced. This path is implemented and tested but
-  unused as of `SCHEMA_VERSION 8` - no migration has needed it yet - kept ready so the
+  unused as of `SCHEMA_VERSION 9` - no migration has needed it yet - kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
   transaction that also stamps the new `user_version`, so a crash mid-migration leaves the
