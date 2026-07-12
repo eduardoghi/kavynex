@@ -116,6 +116,7 @@ pub async fn check_library_integrity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AppErrorCode;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -140,6 +141,9 @@ mod tests {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![
                 ensure_directory_exists,
+                resolve_existing_directory,
+                is_directory_empty,
+                get_library_summary,
                 check_library_integrity
             ])
             .build(mock_context(noop_assets()))
@@ -223,6 +227,89 @@ mod tests {
         assert_eq!(response["missing_thumbnail_files"], 1);
         assert_eq!(response["orphan_media_files"], 1);
         assert_eq!(response["orphan_media_examples"][0], "video/orphan.mp4");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn is_directory_empty_command_round_trips_a_bool_over_ipc() {
+        let dir = unique_test_dir("command-empty");
+        fs::create_dir_all(&dir).unwrap();
+
+        let webview = test_webview();
+
+        let empty = invoke_command(
+            &webview,
+            "is_directory_empty",
+            serde_json::json!({ "path": dir.to_string_lossy() }),
+        )
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap();
+        assert!(
+            empty,
+            "a freshly created directory should be reported empty"
+        );
+
+        fs::write(dir.join("a.txt"), b"data").unwrap();
+
+        let empty = invoke_command(
+            &webview,
+            "is_directory_empty",
+            serde_json::json!({ "path": dir.to_string_lossy() }),
+        )
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap();
+        assert!(
+            !empty,
+            "a directory with a file should be reported non-empty"
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolve_existing_directory_command_maps_a_missing_dir_to_an_error_over_ipc() {
+        let missing = unique_test_dir("command-missing");
+        let webview = test_webview();
+
+        // A non-existent path must come back as a structured AppError (code preserved across
+        // the IPC boundary), not a success.
+        let error = invoke_command(
+            &webview,
+            "resolve_existing_directory",
+            serde_json::json!({ "path": missing.to_string_lossy() }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidDirectoryPath.as_str());
+    }
+
+    #[test]
+    fn get_library_summary_command_accepts_camel_case_and_counts_files_over_ipc() {
+        let library = unique_test_dir("command-summary");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
+
+        let webview = test_webview();
+
+        // The command takes `libraryPath` (camelCase over IPC) and returns a struct; both the
+        // argument mapping and the response serialization are exercised here.
+        let response = invoke_command(
+            &webview,
+            "get_library_summary",
+            serde_json::json!({ "libraryPath": library.to_string_lossy() }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        assert_eq!(response["video_files"], 1);
+        assert!(
+            response["formatted_size"].is_string(),
+            "formatted_size should serialize as a string"
+        );
 
         let _ = fs::remove_dir_all(&library);
     }
