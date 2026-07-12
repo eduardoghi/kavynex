@@ -106,6 +106,22 @@ export function DiagnosticsIssuesSection({
                                     <Text size="sm" c="dimmed">
                                         {issue.description}
                                     </Text>
+
+                                    {issue.examples && issue.examples.length > 0 && (
+                                        <Stack gap={2} mt={6}>
+                                            {issue.examples.map((path) => (
+                                                <Text
+                                                    key={path}
+                                                    size="xs"
+                                                    c="dimmed"
+                                                    ff="monospace"
+                                                    style={{ overflowWrap: "anywhere" }}
+                                                >
+                                                    {path}
+                                                </Text>
+                                            ))}
+                                        </Stack>
+                                    )}
                                 </Box>
                             </Group>
 

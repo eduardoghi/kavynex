@@ -56,6 +56,10 @@ export type DiagnosticsIssue = {
     severity: DiagnosticsIssueSeverity;
     title: string;
     description: string;
+    // A few concrete example paths for issues that reference specific files (missing/orphan/
+    // invalid), so the user can see and act on them manually. Capped by the backend/service
+    // that produced them; omitted when there are none to show.
+    examples?: string[];
 };
 
 export type DiagnosticsOverviewStatus = "healthy" | "warning" | "error";

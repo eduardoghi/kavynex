@@ -388,6 +388,51 @@ describe("buildDiagnosticsIssues", () => {
         ]);
     });
 
+    it("attaches example paths to ORPHAN_MEDIA_FILES so the user can act on them manually", () => {
+        const input = baseDiagnostics();
+        input.libraryIntegrity.orphan_media_files = 2;
+        input.libraryIntegrity.orphan_media_examples = ["video/orphan.mp4", "audio/stray.m4a"];
+
+        const [issue] = buildDiagnosticsIssues(input);
+
+        expect(issue.code).toBe("ORPHAN_MEDIA_FILES");
+        expect(issue.examples).toEqual(["video/orphan.mp4", "audio/stray.m4a"]);
+    });
+
+    it("omits the examples key entirely when the count is set but no example paths are provided", () => {
+        const input = baseDiagnostics();
+        input.libraryIntegrity.orphan_media_files = 4;
+        // orphan_media_examples stays [] from the base fixture.
+
+        const [issue] = buildDiagnosticsIssues(input);
+
+        expect(issue.code).toBe("ORPHAN_MEDIA_FILES");
+        expect(issue).not.toHaveProperty("examples");
+    });
+
+    it("drops blank example entries before attaching them", () => {
+        const input = baseDiagnostics();
+        input.libraryIntegrity.orphan_thumbnail_files = 1;
+        input.libraryIntegrity.orphan_thumbnail_examples = ["  ", "thumbnails/x.jpg", ""];
+
+        const [issue] = buildDiagnosticsIssues(input);
+
+        expect(issue.examples).toEqual(["thumbnails/x.jpg"]);
+    });
+
+    it("concatenates media and thumbnail example paths for INVALID_PATH_REFERENCES", () => {
+        const input = baseDiagnostics();
+        input.libraryIntegrity.invalid_media_files = 1;
+        input.libraryIntegrity.invalid_media_examples = ["/etc/passwd"];
+        input.libraryIntegrity.invalid_thumbnail_files = 1;
+        input.libraryIntegrity.invalid_thumbnail_examples = ["../secret.jpg"];
+
+        const [issue] = buildDiagnosticsIssues(input);
+
+        expect(issue.code).toBe("INVALID_PATH_REFERENCES");
+        expect(issue.examples).toEqual(["/etc/passwd", "../secret.jpg"]);
+    });
+
     it("returns issues sorted by severity (errors, then warnings, then infos)", () => {
         const input = baseDiagnostics();
         input.libraryPath = "";

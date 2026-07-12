@@ -19,6 +19,16 @@ export function sortDiagnosticsIssues(issues: DiagnosticsIssue[]): DiagnosticsIs
     return [...issues].sort(compareIssueSeverity);
 }
 
+// Attaches concrete example paths to an issue so the user can see and act on the specific files
+// manually (the diagnostics only report - they never delete). Blank entries are dropped and the
+// `examples` key is omitted entirely when nothing remains, so an issue with no examples stays a
+// plain { code, severity, title, description } object.
+function withExamples(issue: DiagnosticsIssue, examples: string[]): DiagnosticsIssue {
+    const paths = examples.map((path) => path.trim()).filter((path) => path.length > 0);
+
+    return paths.length > 0 ? { ...issue, examples: paths } : issue;
+}
+
 export function buildDiagnosticsIssues(input: AppDiagnostics): DiagnosticsIssue[] {
     const issues: DiagnosticsIssue[] = [];
 
@@ -139,39 +149,59 @@ export function buildDiagnosticsIssues(input: AppDiagnostics): DiagnosticsIssue[
     }
 
     if (input.libraryIntegrity.missing_media_files > 0) {
-        issues.push({
-            code: "MISSING_MEDIA_FILES_ON_DISK",
-            severity: "warning",
-            title: "Some media files are missing on disk",
-            description: `${input.libraryIntegrity.missing_media_files} media file(s) referenced by the database were not found in the library folder.`,
-        });
+        issues.push(
+            withExamples(
+                {
+                    code: "MISSING_MEDIA_FILES_ON_DISK",
+                    severity: "warning",
+                    title: "Some media files are missing on disk",
+                    description: `${input.libraryIntegrity.missing_media_files} media file(s) referenced by the database were not found in the library folder.`,
+                },
+                input.libraryIntegrity.missing_media_examples
+            )
+        );
     }
 
     if (input.libraryIntegrity.missing_thumbnail_files > 0) {
-        issues.push({
-            code: "MISSING_THUMBNAIL_FILES_ON_DISK",
-            severity: "info",
-            title: "Some thumbnail files are missing on disk",
-            description: `${input.libraryIntegrity.missing_thumbnail_files} thumbnail file(s) referenced by the database were not found in the library folder.`,
-        });
+        issues.push(
+            withExamples(
+                {
+                    code: "MISSING_THUMBNAIL_FILES_ON_DISK",
+                    severity: "info",
+                    title: "Some thumbnail files are missing on disk",
+                    description: `${input.libraryIntegrity.missing_thumbnail_files} thumbnail file(s) referenced by the database were not found in the library folder.`,
+                },
+                input.libraryIntegrity.missing_thumbnail_examples
+            )
+        );
     }
 
     if (input.libraryIntegrity.orphan_media_files > 0) {
-        issues.push({
-            code: "ORPHAN_MEDIA_FILES",
-            severity: "info",
-            title: "Orphan media files were found",
-            description: `${input.libraryIntegrity.orphan_media_files} media file(s) exist in the library folder without a linked database record.`,
-        });
+        issues.push(
+            withExamples(
+                {
+                    code: "ORPHAN_MEDIA_FILES",
+                    severity: "info",
+                    title: "Orphan media files were found",
+                    description: `${input.libraryIntegrity.orphan_media_files} media file(s) exist in the library folder without a linked database record.`,
+                },
+                input.libraryIntegrity.orphan_media_examples
+            )
+        );
     }
 
     if (input.libraryIntegrity.orphan_thumbnail_files > 0) {
-        issues.push({
-            code: "ORPHAN_THUMBNAIL_FILES",
-            severity: "info",
-            title: "Orphan thumbnail files were found",
-            description: `${input.libraryIntegrity.orphan_thumbnail_files} thumbnail file(s) exist in the library folder without a linked database record.`,
-        });
+        issues.push(
+            withExamples(
+                {
+                    code: "ORPHAN_THUMBNAIL_FILES",
+                    severity: "info",
+                    title: "Orphan thumbnail files were found",
+                    description: `${input.libraryIntegrity.orphan_thumbnail_files} thumbnail file(s) exist in the library folder without a linked database record.`,
+                },
+                input.libraryIntegrity.orphan_thumbnail_examples
+            )
+        );
     }
 
     const invalidPathCount =
@@ -179,30 +209,48 @@ export function buildDiagnosticsIssues(input: AppDiagnostics): DiagnosticsIssue[
         input.libraryIntegrity.invalid_thumbnail_files;
 
     if (invalidPathCount > 0) {
-        issues.push({
-            code: "INVALID_PATH_REFERENCES",
-            severity: "warning",
-            title: "Some database paths point outside the library",
-            description: `${invalidPathCount} database record(s) reference an absolute or out-of-library path instead of a managed library-relative one. This usually means corrupted or manually edited data.`,
-        });
+        issues.push(
+            withExamples(
+                {
+                    code: "INVALID_PATH_REFERENCES",
+                    severity: "warning",
+                    title: "Some database paths point outside the library",
+                    description: `${invalidPathCount} database record(s) reference an absolute or out-of-library path instead of a managed library-relative one. This usually means corrupted or manually edited data.`,
+                },
+                [
+                    ...input.libraryIntegrity.invalid_media_examples,
+                    ...input.libraryIntegrity.invalid_thumbnail_examples,
+                ]
+            )
+        );
     }
 
     if (input.liveChatIntegrity.missing_live_chat_files > 0) {
-        issues.push({
-            code: "MISSING_LIVE_CHAT_FILES",
-            severity: "warning",
-            title: "Some live chat replay files are missing",
-            description: `${input.liveChatIntegrity.missing_live_chat_files} live chat file(s) referenced by the database were not found in app storage.`,
-        });
+        issues.push(
+            withExamples(
+                {
+                    code: "MISSING_LIVE_CHAT_FILES",
+                    severity: "warning",
+                    title: "Some live chat replay files are missing",
+                    description: `${input.liveChatIntegrity.missing_live_chat_files} live chat file(s) referenced by the database were not found in app storage.`,
+                },
+                input.liveChatIntegrity.missing_live_chat_examples
+            )
+        );
     }
 
     if (input.liveChatIntegrity.orphan_live_chat_files > 0) {
-        issues.push({
-            code: "ORPHAN_LIVE_CHAT_FILES",
-            severity: "info",
-            title: "Orphan live chat replay files were found",
-            description: `${input.liveChatIntegrity.orphan_live_chat_files} live chat file(s) exist in app storage without a linked media record.`,
-        });
+        issues.push(
+            withExamples(
+                {
+                    code: "ORPHAN_LIVE_CHAT_FILES",
+                    severity: "info",
+                    title: "Orphan live chat replay files were found",
+                    description: `${input.liveChatIntegrity.orphan_live_chat_files} live chat file(s) exist in app storage without a linked media record.`,
+                },
+                input.liveChatIntegrity.orphan_live_chat_examples
+            )
+        );
     }
 
     if (input.mediaRepositoryStats.total_media_with_live_chat_flag_but_no_path > 0) {
