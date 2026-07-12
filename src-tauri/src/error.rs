@@ -1,7 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Exported to the frontend as a string-literal union via ts-rs. `rename_all` makes ts-rs emit
+// the same SCREAMING_SNAKE_CASE strings `as_str` below produces (the values that actually cross
+// the IPC boundary on `AppError.code`), so `src/constants/error-codes.ts` can be type-checked
+// against this generated union: renaming or removing a variant here then breaks the frontend
+// build instead of silently leaving a dead `error.code === X` comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ts_rs::TS)]
+#[ts(
+    export,
+    rename_all = "SCREAMING_SNAKE_CASE",
+    export_to = "../../src/types/generated/"
+)]
 pub enum AppErrorCode {
     AppError,
     InvalidInput,

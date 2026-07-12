@@ -1,3 +1,5 @@
+import type { AppErrorCode } from "../types/generated/AppErrorCode";
+
 export const APP_ERROR_CODE = "APP_ERROR" as const;
 export const INVALID_INPUT_ERROR_CODE = "INVALID_INPUT" as const;
 export const DATABASE_SCHEMA_TOO_NEW_ERROR_CODE = "DATABASE_SCHEMA_TOO_NEW" as const;
@@ -55,6 +57,19 @@ export const INVALID_YOUTUBE_COMMENTS_PAYLOAD_ERROR_CODE =
 export const YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE =
     "YOUTUBE_COMMENTS_EMPTY_REFRESH" as const;
 
+// Error codes raised only by the frontend (never emitted by the Rust backend), so they are not
+// part of the ts-rs-generated AppErrorCode union and are exempt from the check below.
+type FrontendOnlyErrorCode =
+    | typeof INVALID_CHANNEL_ID_ERROR_CODE
+    | typeof MEDIA_IMPORT_FAILED_ERROR_CODE
+    | typeof MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE
+    | typeof INVALID_YOUTUBE_COMMENTS_PAYLOAD_ERROR_CODE
+    | typeof YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE;
+
+// Compile-time link to the Rust AppErrorCode enum (the ts-rs-generated union): every known code
+// must be either a member of that union or an explicitly-declared frontend-only code. Renaming or
+// removing a Rust variant the frontend still lists here then fails `tsc` instead of silently
+// leaving a dead `error.code === X` comparison.
 export const KNOWN_ERROR_CODES = [
     APP_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
@@ -101,6 +116,6 @@ export const KNOWN_ERROR_CODES = [
     MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE,
     INVALID_YOUTUBE_COMMENTS_PAYLOAD_ERROR_CODE,
     YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE,
-] as const;
+] as const satisfies readonly (AppErrorCode | FrontendOnlyErrorCode)[];
 
 export type KnownErrorCode = typeof KNOWN_ERROR_CODES[number];
