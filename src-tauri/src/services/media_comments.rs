@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, SqlitePool};
 
 use crate::models::yt_dlp::YtDlpComment;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -38,6 +38,77 @@ fn dedupe_comments_by_id(comments: Vec<YtDlpComment>) -> Vec<YtDlpComment> {
         .collect()
 }
 
+// Comments are written in multi-row batches instead of one INSERT per row. Each row binds 16
+// columns, so 50 rows is 800 bound parameters - comfortably under SQLite's default variable
+// limit (999 on older builds) - while collapsing the thousands of round-trips a heavily
+// commented video used to hold the transaction open for into a handful.
+const COMMENT_INSERT_CHUNK_SIZE: usize = 50;
+
+/// One comment row, already normalized into the exact column order the INSERT below binds.
+/// Preparing the rows up front (deduped, blank text dropped, counts saturated) lets them be
+/// inserted in batches rather than one statement per comment.
+struct PreparedComment {
+    comment_id: Option<String>,
+    parent_comment_id: Option<String>,
+    author_name: String,
+    author_handle: Option<String>,
+    author_channel_id: Option<String>,
+    author_thumbnail: Option<String>,
+    text: String,
+    like_count: i64,
+    reply_count: i64,
+    is_author_uploader: i64,
+    is_favorited: i64,
+    is_pinned: i64,
+    is_edited: i64,
+    time_text: Option<String>,
+    published_at: Option<String>,
+}
+
+/// Dedupes the payload, drops comments whose text is blank, and normalizes every field into the
+/// row shape persisted below, preserving insertion order.
+fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
+    dedupe_comments_by_id(comments)
+        .into_iter()
+        .filter_map(|comment| {
+            let text = comment.text.trim().to_owned();
+
+            if text.is_empty() {
+                return None;
+            }
+
+            let author_name = {
+                let trimmed = comment.author_name.trim();
+                if trimmed.is_empty() {
+                    "Unknown author".to_owned()
+                } else {
+                    trimmed.to_owned()
+                }
+            };
+
+            Some(PreparedComment {
+                comment_id: normalize_optional_text(&comment.comment_id),
+                parent_comment_id: normalize_optional_text(&comment.parent_comment_id),
+                author_name,
+                author_handle: normalize_optional_text(&comment.author_handle),
+                author_channel_id: normalize_optional_text(&comment.author_channel_id),
+                author_thumbnail: normalize_optional_text(&comment.author_thumbnail),
+                text,
+                // like_count/reply_count are u64 from yt-dlp; saturate to i64::MAX on the
+                // (practically impossible) overflow rather than dropping the whole batch over a count.
+                like_count: i64::try_from(comment.like_count).unwrap_or(i64::MAX),
+                reply_count: i64::try_from(comment.reply_count).unwrap_or(i64::MAX),
+                is_author_uploader: i64::from(comment.is_author_uploader),
+                is_favorited: i64::from(comment.is_favorited),
+                is_pinned: i64::from(comment.is_pinned),
+                is_edited: i64::from(comment.is_edited),
+                time_text: normalize_optional_text(&comment.time_text),
+                published_at: normalize_optional_text(&comment.published_at),
+            })
+        })
+        .collect()
+}
+
 pub async fn replace_media_comments(
     pool: &SqlitePool,
     media_id: i64,
@@ -69,70 +140,39 @@ async fn replace_media_comments_in_pool(
             .execute(&mut *tx)
             .await?;
 
-        let mut inserted_count = 0_u64;
+        let rows = prepare_comment_rows(comments);
+        let inserted_count = rows.len() as u64;
 
-        for comment in dedupe_comments_by_id(comments) {
-            let normalized_text = comment.text.trim().to_owned();
+        // Insert in multi-row batches so a video with thousands of comments no longer holds the
+        // transaction open across thousands of individual round-trips (see COMMENT_INSERT_CHUNK_SIZE).
+        for chunk in rows.chunks(COMMENT_INSERT_CHUNK_SIZE) {
+            let mut query_builder = QueryBuilder::new(
+                "INSERT INTO video_comments (\
+                 video_id, comment_id, parent_comment_id, author_name, author_handle, \
+                 author_channel_id, author_thumbnail, text, like_count, reply_count, \
+                 is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at) ",
+            );
 
-            if normalized_text.is_empty() {
-                continue;
-            }
+            query_builder.push_values(chunk, |mut row, comment| {
+                row.push_bind(media_id)
+                    .push_bind(comment.comment_id.as_deref())
+                    .push_bind(comment.parent_comment_id.as_deref())
+                    .push_bind(comment.author_name.as_str())
+                    .push_bind(comment.author_handle.as_deref())
+                    .push_bind(comment.author_channel_id.as_deref())
+                    .push_bind(comment.author_thumbnail.as_deref())
+                    .push_bind(comment.text.as_str())
+                    .push_bind(comment.like_count)
+                    .push_bind(comment.reply_count)
+                    .push_bind(comment.is_author_uploader)
+                    .push_bind(comment.is_favorited)
+                    .push_bind(comment.is_pinned)
+                    .push_bind(comment.is_edited)
+                    .push_bind(comment.time_text.as_deref())
+                    .push_bind(comment.published_at.as_deref());
+            });
 
-            sqlx::query(
-                r#"
-                INSERT INTO video_comments (
-                    video_id,
-                    comment_id,
-                    parent_comment_id,
-                    author_name,
-                    author_handle,
-                    author_channel_id,
-                    author_thumbnail,
-                    text,
-                    like_count,
-                    reply_count,
-                    is_author_uploader,
-                    is_favorited,
-                    is_pinned,
-                    is_edited,
-                    time_text,
-                    published_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
-            )
-            .bind(media_id)
-            .bind(normalize_optional_text(&comment.comment_id))
-            .bind(normalize_optional_text(&comment.parent_comment_id))
-            .bind({
-                let author_name = comment.author_name.trim();
-                if author_name.is_empty() {
-                    "Unknown author"
-                } else {
-                    author_name
-                }
-            })
-            .bind(normalize_optional_text(&comment.author_handle))
-            .bind(normalize_optional_text(&comment.author_channel_id))
-            .bind(normalize_optional_text(&comment.author_thumbnail))
-            .bind(normalized_text)
-            // like_count/reply_count are u64 from yt-dlp; saturate to i64::MAX on the
-            // (practically impossible) overflow rather than failing the whole insert over a count.
-            .bind(i64::try_from(comment.like_count).unwrap_or(i64::MAX))
-            .bind(i64::try_from(comment.reply_count).unwrap_or(i64::MAX))
-            .bind(if comment.is_author_uploader {
-                1_i64
-            } else {
-                0_i64
-            })
-            .bind(if comment.is_favorited { 1_i64 } else { 0_i64 })
-            .bind(if comment.is_pinned { 1_i64 } else { 0_i64 })
-            .bind(if comment.is_edited { 1_i64 } else { 0_i64 })
-            .bind(normalize_optional_text(&comment.time_text))
-            .bind(normalize_optional_text(&comment.published_at))
-            .execute(&mut *tx)
-            .await?;
-
-            inserted_count += 1;
+            query_builder.build().execute(&mut *tx).await?;
         }
 
         sqlx::query(
