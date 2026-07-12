@@ -21,8 +21,210 @@ import {
     Trash2,
     UserX,
 } from "lucide-react";
+import { memo } from "react";
 import type { Channel, ViewMode } from "../../types/media";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
+
+type ChannelListItemProps = {
+    channel: Channel;
+    selected: boolean;
+    isDeleting: boolean;
+    isUpdatingAvatar: boolean;
+    viewMode: ViewMode;
+    shellBorder: string;
+    libraryPath: string;
+    onSelectChannel: (channelId: number) => void;
+    onRequestEditChannel: (channel: Channel) => void;
+    onRequestDeleteChannel: (channel: Channel) => void;
+    onUpdateChannelAvatarFromFile: (channel: Channel) => void | Promise<void>;
+    onUpdateChannelAvatarFromYouTube: (channel: Channel) => void | Promise<void>;
+    onRemoveChannelAvatar: (channel: Channel) => void | Promise<void>;
+    onClosePlayer: () => void;
+};
+
+// Memoized so a single channel row only re-renders when its own props change. Without this,
+// every re-render of the parent (e.g. player state churn during playback) re-diffs every row's
+// Paper/Avatar/Menu. All props are primitives or references expected to be stable across
+// renders, so an unrelated re-render skips untouched rows entirely.
+const ChannelListItem = memo(function ChannelListItem({
+    channel,
+    selected,
+    isDeleting,
+    isUpdatingAvatar,
+    viewMode,
+    shellBorder,
+    libraryPath,
+    onSelectChannel,
+    onRequestEditChannel,
+    onRequestDeleteChannel,
+    onUpdateChannelAvatarFromFile,
+    onUpdateChannelAvatarFromYouTube,
+    onRemoveChannelAvatar,
+    onClosePlayer,
+}: ChannelListItemProps): JSX.Element {
+    const avatarSrc = fileSrcFromStoredPath(channel.avatar_path, libraryPath);
+
+    const handleSelect = (): void => {
+        onSelectChannel(channel.id);
+
+        if (viewMode === "player") {
+            onClosePlayer();
+        }
+    };
+
+    return (
+        <Paper
+            withBorder
+            radius="xl"
+            p="sm"
+            role="button"
+            tabIndex={isDeleting || isUpdatingAvatar ? -1 : 0}
+            aria-label={`Open channel ${channel.name}`}
+            aria-pressed={selected}
+            aria-current={selected ? "true" : undefined}
+            onClick={() => {
+                if (!isDeleting && !isUpdatingAvatar) {
+                    handleSelect();
+                }
+            }}
+            onKeyDown={(event) => {
+                if (isDeleting || isUpdatingAvatar) {
+                    return;
+                }
+
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleSelect();
+                }
+            }}
+            style={{
+                cursor: isDeleting || isUpdatingAvatar ? "default" : "pointer",
+                borderColor: selected ? "rgba(139,92,246,0.45)" : shellBorder,
+                background: selected
+                    ? "rgba(124,92,255,0.10)"
+                    : "rgba(255,255,255,0.025)",
+                opacity: isDeleting || isUpdatingAvatar ? 0.6 : 1,
+                transition: "background 160ms ease, border-color 160ms ease",
+                outline: "none",
+            }}
+        >
+            <Group wrap="nowrap" gap="sm">
+                <Avatar
+                    radius="xl"
+                    size={44}
+                    src={avatarSrc || undefined}
+                    styles={{
+                        root: {
+                            background:
+                                "linear-gradient(135deg, rgba(168,85,247,0.32), rgba(59,130,246,0.20))",
+                            border: `1px solid ${shellBorder}`,
+                        },
+                    }}
+                >
+                    {!avatarSrc ? initials(channel.name) : null}
+                </Avatar>
+
+                <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>
+                    <Text fw={900} truncate>
+                        {channel.name}
+                    </Text>
+
+                    <Text size="xs" c="dimmed" truncate>
+                        {channel.youtube_handle}
+                    </Text>
+                </Stack>
+
+                {isDeleting || isUpdatingAvatar ? (
+                    <Loader size="xs" />
+                ) : (
+                    <Menu
+                        withinPortal
+                        position="bottom-end"
+                        shadow="lg"
+                        width={220}
+                        offset={8}
+                        styles={{
+                            dropdown: {
+                                borderRadius: 14,
+                                padding: 6,
+                                background: "rgba(36, 36, 40, 0.98)",
+                                border: "1px solid rgba(255,255,255,0.08)",
+                                backdropFilter: "blur(12px)",
+                            },
+                            item: {
+                                borderRadius: 10,
+                                paddingBlock: 10,
+                                paddingInline: 12,
+                            },
+                            divider: {
+                                marginBlock: 6,
+                            },
+                        }}
+                    >
+                        <Menu.Target>
+                            <ActionIcon
+                                variant="subtle"
+                                radius="xl"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                                aria-label={`Actions for ${channel.name}`}
+                            >
+                                <MoreVertical size={18} />
+                            </ActionIcon>
+                        </Menu.Target>
+
+                        <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                            <Menu.Item
+                                leftSection={<Pencil size={16} />}
+                                onClick={() => onRequestEditChannel(channel)}
+                            >
+                                Edit name / handle
+                            </Menu.Item>
+
+                            <Menu.Item
+                                leftSection={<ImagePlus size={16} />}
+                                onClick={() => {
+                                    void onUpdateChannelAvatarFromFile(channel);
+                                }}
+                            >
+                                Choose avatar file
+                            </Menu.Item>
+
+                            <Menu.Item
+                                leftSection={<RefreshCw size={16} />}
+                                onClick={() => {
+                                    void onUpdateChannelAvatarFromYouTube(channel);
+                                }}
+                            >
+                                Load avatar from YouTube
+                            </Menu.Item>
+
+                            <Menu.Item
+                                leftSection={<UserX size={16} />}
+                                onClick={() => {
+                                    void onRemoveChannelAvatar(channel);
+                                }}
+                                disabled={!channel.avatar_path}
+                            >
+                                Remove avatar
+                            </Menu.Item>
+
+                            <Menu.Divider />
+
+                            <Menu.Item
+                                color="red"
+                                leftSection={<Trash2 size={16} />}
+                                onClick={() => onRequestDeleteChannel(channel)}
+                            >
+                                Delete channel
+                            </Menu.Item>
+                        </Menu.Dropdown>
+                    </Menu>
+                )}
+            </Group>
+        </Paper>
+    );
+});
 
 type ChannelSidebarProps = {
     channels: Channel[];
@@ -141,184 +343,27 @@ export function ChannelSidebar({
                         )}
 
                         {!loading &&
-                            channels.map((channel) => {
-                                const selected = channel.id === selectedChannelId;
-                                const isDeleting = channel.id === deletingChannelId;
-                                const isUpdatingAvatar =
-                                    channel.id === updatingChannelAvatarId;
-                                const avatarSrc = fileSrcFromStoredPath(
-                                    channel.avatar_path,
-                                    libraryPath
-                                );
-
-                                const handleSelect = (): void => {
-                                    onSelectChannel(channel.id);
-
-                                    if (viewMode === "player") {
-                                        onClosePlayer();
+                            channels.map((channel) => (
+                                <ChannelListItem
+                                    key={channel.id}
+                                    channel={channel}
+                                    selected={channel.id === selectedChannelId}
+                                    isDeleting={channel.id === deletingChannelId}
+                                    isUpdatingAvatar={channel.id === updatingChannelAvatarId}
+                                    viewMode={viewMode}
+                                    shellBorder={shellBorder}
+                                    libraryPath={libraryPath}
+                                    onSelectChannel={onSelectChannel}
+                                    onRequestEditChannel={onRequestEditChannel}
+                                    onRequestDeleteChannel={onRequestDeleteChannel}
+                                    onUpdateChannelAvatarFromFile={onUpdateChannelAvatarFromFile}
+                                    onUpdateChannelAvatarFromYouTube={
+                                        onUpdateChannelAvatarFromYouTube
                                     }
-                                };
-
-                                return (
-                                    <Paper
-                                        key={channel.id}
-                                        withBorder
-                                        radius="xl"
-                                        p="sm"
-                                        role="button"
-                                        tabIndex={isDeleting || isUpdatingAvatar ? -1 : 0}
-                                        aria-label={`Open channel ${channel.name}`}
-                                        aria-pressed={selected}
-                                        aria-current={selected ? "true" : undefined}
-                                        onClick={() => {
-                                            if (!isDeleting && !isUpdatingAvatar) {
-                                                handleSelect();
-                                            }
-                                        }}
-                                        onKeyDown={(event) => {
-                                            if (isDeleting || isUpdatingAvatar) {
-                                                return;
-                                            }
-
-                                            if (event.key === "Enter" || event.key === " ") {
-                                                event.preventDefault();
-                                                handleSelect();
-                                            }
-                                        }}
-                                        style={{
-                                            cursor:
-                                                isDeleting || isUpdatingAvatar
-                                                    ? "default"
-                                                    : "pointer",
-                                            borderColor: selected
-                                                ? "rgba(139,92,246,0.45)"
-                                                : shellBorder,
-                                            background: selected
-                                                ? "rgba(124,92,255,0.10)"
-                                                : "rgba(255,255,255,0.025)",
-                                            opacity: isDeleting || isUpdatingAvatar ? 0.6 : 1,
-                                            transition:
-                                                "background 160ms ease, border-color 160ms ease",
-                                            outline: "none",
-                                        }}
-                                    >
-                                        <Group wrap="nowrap" gap="sm">
-                                            <Avatar
-                                                radius="xl"
-                                                size={44}
-                                                src={avatarSrc || undefined}
-                                                styles={{
-                                                    root: {
-                                                        background:
-                                                            "linear-gradient(135deg, rgba(168,85,247,0.32), rgba(59,130,246,0.20))",
-                                                        border: `1px solid ${shellBorder}`,
-                                                    },
-                                                }}
-                                            >
-                                                {!avatarSrc ? initials(channel.name) : null}
-                                            </Avatar>
-
-                                            <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>
-                                                <Text fw={900} truncate>
-                                                    {channel.name}
-                                                </Text>
-
-                                                <Text size="xs" c="dimmed" truncate>
-                                                    {channel.youtube_handle}
-                                                </Text>
-                                            </Stack>
-
-                                            {isDeleting || isUpdatingAvatar ? (
-                                                <Loader size="xs" />
-                                            ) : (
-                                                <Menu
-                                                    withinPortal
-                                                    position="bottom-end"
-                                                    shadow="lg"
-                                                    width={220}
-                                                    offset={8}
-                                                    styles={{
-                                                        dropdown: {
-                                                            borderRadius: 14,
-                                                            padding: 6,
-                                                            background: "rgba(36, 36, 40, 0.98)",
-                                                            border: "1px solid rgba(255,255,255,0.08)",
-                                                            backdropFilter: "blur(12px)",
-                                                        },
-                                                        item: {
-                                                            borderRadius: 10,
-                                                            paddingBlock: 10,
-                                                            paddingInline: 12,
-                                                        },
-                                                        divider: {
-                                                            marginBlock: 6,
-                                                        },
-                                                    }}
-                                                >
-                                                    <Menu.Target>
-                                                        <ActionIcon
-                                                            variant="subtle"
-                                                            radius="xl"
-                                                            onClick={(event) => event.stopPropagation()}
-                                                            onKeyDown={(event) => event.stopPropagation()}
-                                                            aria-label={`Actions for ${channel.name}`}
-                                                        >
-                                                            <MoreVertical size={18} />
-                                                        </ActionIcon>
-                                                    </Menu.Target>
-
-                                                    <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
-                                                        <Menu.Item
-                                                            leftSection={<Pencil size={16} />}
-                                                            onClick={() => onRequestEditChannel(channel)}
-                                                        >
-                                                            Edit name / handle
-                                                        </Menu.Item>
-
-                                                        <Menu.Item
-                                                            leftSection={<ImagePlus size={16} />}
-                                                            onClick={() => {
-                                                                void onUpdateChannelAvatarFromFile(channel);
-                                                            }}
-                                                        >
-                                                            Choose avatar file
-                                                        </Menu.Item>
-
-                                                        <Menu.Item
-                                                            leftSection={<RefreshCw size={16} />}
-                                                            onClick={() => {
-                                                                void onUpdateChannelAvatarFromYouTube(channel);
-                                                            }}
-                                                        >
-                                                            Load avatar from YouTube
-                                                        </Menu.Item>
-
-                                                        <Menu.Item
-                                                            leftSection={<UserX size={16} />}
-                                                            onClick={() => {
-                                                                void onRemoveChannelAvatar(channel);
-                                                            }}
-                                                            disabled={!channel.avatar_path}
-                                                        >
-                                                            Remove avatar
-                                                        </Menu.Item>
-
-                                                        <Menu.Divider />
-
-                                                        <Menu.Item
-                                                            color="red"
-                                                            leftSection={<Trash2 size={16} />}
-                                                            onClick={() => onRequestDeleteChannel(channel)}
-                                                        >
-                                                            Delete channel
-                                                        </Menu.Item>
-                                                    </Menu.Dropdown>
-                                                </Menu>
-                                            )}
-                                        </Group>
-                                    </Paper>
-                                );
-                            })}
+                                    onRemoveChannelAvatar={onRemoveChannelAvatar}
+                                    onClosePlayer={onClosePlayer}
+                                />
+                            ))}
                     </Stack>
                 </ScrollArea>
             </Stack>
