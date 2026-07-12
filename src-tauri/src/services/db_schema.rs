@@ -479,7 +479,8 @@ async fn apply_table_rebuilds_in_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+    use std::path::{Path, PathBuf};
 
     async fn memory_pool() -> SqlitePool {
         SqlitePoolOptions::new()
@@ -530,6 +531,323 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(count, 0, "legacy live chat table should have been dropped");
+    }
+
+    // ---- Real old-database migration fixture ----
+    //
+    // The test above builds a synthetic legacy table in memory. This pair goes further: it
+    // migrates a committed, opaque `.sqlite` file produced from the exact schema and data a
+    // real v1.0.0 / v1.1.0 install has on disk (both shipped `user_version = 5`, with the
+    // now-legacy `video_live_chat_messages` table). Because the migration test never restates
+    // that schema, it genuinely covers "open a real old user's database and migrate it" - the
+    // path whose blast radius is silent data loss on upgrade - instead of a hand-built
+    // approximation the test could get wrong in the same way the migration does.
+
+    const V1_FIXTURE_RELATIVE: &str = "tests/fixtures/kavynex_v1_user_version_5.sqlite";
+
+    fn manifest_relative_path(relative: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
+    }
+
+    fn unique_temp_db(tag: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+
+        std::env::temp_dir().join(format!(
+            "kavynex-migration-{tag}-{}-{}.sqlite",
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    async fn open_file_pool(path: &Path, create: bool) -> SqlitePool {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(create)
+            // A plain rollback journal keeps the fixture a single self-contained file (no -wal
+            // sidecar) so it can be committed and loaded as one blob.
+            .journal_mode(SqliteJournalMode::Delete)
+            .foreign_keys(true);
+
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("open sqlite file pool")
+    }
+
+    async fn object_exists(pool: &SqlitePool, kind: &str, name: &str) -> bool {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type = ? AND name = ?")
+                .bind(kind)
+                .bind(name)
+                .fetch_one(pool)
+                .await
+                .unwrap();
+        count > 0
+    }
+
+    /// Regenerates the committed v1 fixture. Ignored so it never runs in CI or overwrites the
+    /// fixture during a normal test run; regenerate deliberately with:
+    ///   cargo test --manifest-path src-tauri/Cargo.toml --lib regenerate_v1_migration_fixture -- --ignored
+    ///
+    /// The DDL and indexes below are copied verbatim from v1.0.0's `src/lib/schema.ts` (the
+    /// sql-plugin schema real v1.0.0 / v1.1.0 users have on disk), stamped `user_version = 5`
+    /// and seeded with representative rows, including two `video_live_chat_messages` rows that
+    /// the current baseline must drop.
+    #[tokio::test]
+    #[ignore = "manual fixture generator; run explicitly with --ignored"]
+    async fn regenerate_v1_migration_fixture() {
+        let path = manifest_relative_path(V1_FIXTURE_RELATIVE);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        let pool = open_file_pool(&path, true).await;
+
+        for ddl in [
+            "CREATE TABLE channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL CHECK (TRIM(name) <> ''),
+                youtube_handle TEXT NOT NULL UNIQUE CHECK (TRIM(youtube_handle) <> ''),
+                avatar_path TEXT CHECK (avatar_path IS NULL OR TRIM(avatar_path) <> ''),
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+            "CREATE TABLE videos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER NOT NULL,
+                title TEXT NOT NULL CHECK (TRIM(title) <> ''),
+                file_path TEXT NOT NULL CHECK (TRIM(file_path) <> ''),
+                thumbnail_path TEXT CHECK (thumbnail_path IS NULL OR TRIM(thumbnail_path) <> ''),
+                media_type TEXT NOT NULL CHECK (media_type IN ('video', 'audio')),
+                youtube_video_id TEXT,
+                watched_at TEXT,
+                published_at TEXT,
+                duration_seconds INTEGER,
+                progress_seconds INTEGER NOT NULL DEFAULT 0,
+                has_comments INTEGER NOT NULL DEFAULT 0,
+                comments_count INTEGER NOT NULL DEFAULT 0,
+                is_live INTEGER NOT NULL DEFAULT 0,
+                has_live_chat INTEGER NOT NULL DEFAULT 0,
+                live_chat_file_path TEXT CHECK (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) <> ''),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+                UNIQUE (channel_id, file_path)
+            );",
+            "CREATE TABLE video_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL,
+                comment_id TEXT,
+                parent_comment_id TEXT,
+                author_name TEXT NOT NULL,
+                author_handle TEXT,
+                author_channel_id TEXT,
+                author_thumbnail TEXT,
+                text TEXT NOT NULL,
+                like_count INTEGER NOT NULL DEFAULT 0,
+                reply_count INTEGER NOT NULL DEFAULT 0,
+                is_author_uploader INTEGER NOT NULL DEFAULT 0,
+                is_favorited INTEGER NOT NULL DEFAULT 0,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                is_edited INTEGER NOT NULL DEFAULT 0,
+                time_text TEXT,
+                published_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+            );",
+            "CREATE TABLE video_live_chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL,
+                message_id TEXT,
+                message_offset_ms INTEGER NOT NULL DEFAULT 0,
+                author_name TEXT NOT NULL,
+                author_thumbnail TEXT,
+                author_badges TEXT,
+                message_text TEXT NOT NULL,
+                timestamp_text TEXT,
+                amount_text TEXT,
+                header_primary_text TEXT,
+                header_secondary_text TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+            );",
+            "CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+            "CREATE INDEX idx_videos_channel_id ON videos(channel_id);",
+            "CREATE INDEX idx_channels_youtube_handle ON channels(youtube_handle);",
+            "CREATE INDEX idx_channels_avatar_path ON channels(avatar_path);",
+            "CREATE INDEX idx_videos_thumbnail_path ON videos(thumbnail_path);",
+            "CREATE INDEX idx_videos_channel_thumb ON videos(channel_id, thumbnail_path);",
+            "CREATE INDEX idx_videos_youtube_video_id ON videos(youtube_video_id);",
+            "CREATE INDEX idx_videos_watched_at ON videos(watched_at);",
+            "CREATE INDEX idx_videos_published_at ON videos(published_at);",
+            "CREATE INDEX idx_videos_has_comments ON videos(has_comments);",
+            "CREATE INDEX idx_videos_is_live ON videos(is_live);",
+            "CREATE INDEX idx_videos_has_live_chat ON videos(has_live_chat);",
+            "CREATE UNIQUE INDEX idx_videos_channel_youtube_video_id_unique
+                ON videos(channel_id, youtube_video_id)
+                WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> '';",
+            "CREATE INDEX idx_video_comments_video_id ON video_comments(video_id);",
+            "CREATE INDEX idx_video_comments_parent_comment_id ON video_comments(parent_comment_id);",
+            "CREATE INDEX idx_video_comments_comment_id ON video_comments(comment_id);",
+            "CREATE INDEX idx_video_live_chat_messages_video_id ON video_live_chat_messages(video_id);",
+            "CREATE INDEX idx_video_live_chat_messages_video_time ON video_live_chat_messages(video_id, message_offset_ms);",
+            // Two channels, one with an avatar.
+            "INSERT INTO channels (id, name, youtube_handle, avatar_path, created_at) VALUES
+                (1, 'Kept Channel', '@keptchannel', 'thumbnails/avatar_1.jpg', '2026-01-01 00:00:00'),
+                (2, 'Second Channel', '@second', NULL, '2026-01-02 00:00:00');",
+            // A watched video with comments, an audio, and a live video with a live chat replay.
+            "INSERT INTO videos
+                (id, channel_id, title, file_path, thumbnail_path, media_type, youtube_video_id,
+                 watched_at, published_at, duration_seconds, progress_seconds, has_comments,
+                 comments_count, is_live, has_live_chat, live_chat_file_path, created_at)
+             VALUES
+                (1, 1, 'Watched Video', 'video/watched.mp4', 'thumbnails/w.jpg', 'video', 'vid_watched',
+                 '2026-02-01 10:00:00', '2026-01-10', 600, 0, 1, 2, 0, 0, NULL, '2026-02-01 09:00:00'),
+                (2, 1, 'An Audio', 'audio/song.m4a', NULL, 'audio', NULL,
+                 NULL, NULL, 180, 42, 0, 0, 0, 0, NULL, '2026-02-02 09:00:00'),
+                (3, 2, 'Live Stream', 'video/live.mp4', NULL, 'video', 'vid_live',
+                 NULL, '2026-01-20', 3600, 0, 0, 0, 1, 1, 'live_chat/vid_live.live_chat.json.gz', '2026-02-03 09:00:00');",
+            "INSERT INTO video_comments
+                (id, video_id, comment_id, parent_comment_id, author_name, text, like_count,
+                 reply_count, is_pinned, created_at)
+             VALUES
+                (1, 1, 'c1', NULL, 'Alice', 'Top comment', 10, 1, 1, '2026-02-01 09:30:00'),
+                (2, 1, 'c2', 'c1', 'Bob', 'A reply', 2, 0, 0, '2026-02-01 09:31:00'),
+                (3, 1, 'c3', NULL, 'Carol', 'Another top comment', 0, 0, 0, '2026-02-01 09:32:00');",
+            // Legacy live chat rows: the current baseline drops this whole table.
+            "INSERT INTO video_live_chat_messages
+                (id, video_id, message_id, message_offset_ms, author_name, message_text, created_at)
+             VALUES
+                (1, 3, 'm1', 1000, 'Viewer One', 'hello', '2026-02-03 09:00:01'),
+                (2, 3, 'm2', 2000, 'Viewer Two', 'nice stream', '2026-02-03 09:00:02');",
+            "INSERT INTO app_settings (key, value, created_at, updated_at) VALUES
+                ('import_mode', 'copy', '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+                ('library_path', '/library', '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+                ('load_remote_images', 'true', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+            // Compact the file so the committed fixture stays small.
+            "VACUUM;",
+            "PRAGMA user_version = 5;",
+        ] {
+            sqlx::query(sqlx::AssertSqlSafe(ddl))
+                .execute(&pool)
+                .await
+                .unwrap_or_else(|error| panic!("fixture statement failed: {error}\n{ddl}"));
+        }
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn migrates_a_real_v1_database_to_the_current_schema() {
+        let source = manifest_relative_path(V1_FIXTURE_RELATIVE);
+        assert!(
+            source.exists(),
+            "missing fixture {}; regenerate it with the ignored regenerate_v1_migration_fixture test",
+            source.display()
+        );
+
+        // Work on a copy so the committed fixture is never mutated by the migration.
+        let working = unique_temp_db("v1");
+        std::fs::copy(&source, &working).unwrap();
+
+        let pool = open_file_pool(&working, false).await;
+
+        // Precondition: this really is an old (v5) database with the legacy table and its data.
+        assert_eq!(read_user_version(&pool).await.unwrap(), 5);
+        assert!(object_exists(&pool, "table", "video_live_chat_messages").await);
+
+        // Run the real migration entry point used at pool init.
+        ensure_schema(&pool).await.unwrap();
+
+        // It reaches the current schema version.
+        assert_eq!(read_user_version(&pool).await.unwrap(), SCHEMA_VERSION);
+
+        // The legacy table (and its rows) are gone.
+        assert!(!object_exists(&pool, "table", "video_live_chat_messages").await);
+
+        // All user data survived the migration intact.
+        let (channels,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM channels")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(channels, 2);
+
+        let (videos,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(videos, 3);
+
+        let (comments,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM video_comments")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(comments, 3);
+
+        // Spot-check specific values, including the live chat path and watched state.
+        let (title, watched): (String, Option<String>) =
+            sqlx::query_as("SELECT title, watched_at FROM videos WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(title, "Watched Video");
+        assert_eq!(watched.as_deref(), Some("2026-02-01 10:00:00"));
+
+        let (has_live_chat, live_chat_path): (i64, Option<String>) =
+            sqlx::query_as("SELECT has_live_chat, live_chat_file_path FROM videos WHERE id = 3")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(has_live_chat, 1);
+        assert_eq!(
+            live_chat_path.as_deref(),
+            Some("live_chat/vid_live.live_chat.json.gz")
+        );
+
+        let (progress,): (i64,) =
+            sqlx::query_as("SELECT progress_seconds FROM videos WHERE id = 2")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(progress, 42);
+
+        // The indexes the later migrations add exist.
+        for index in [
+            "idx_videos_channel_created_id",  // v8
+            "idx_videos_file_path",           // v9
+            "idx_videos_live_chat_file_path", // v9
+        ] {
+            assert!(
+                object_exists(&pool, "index", index).await,
+                "migration must create {index}"
+            );
+        }
+
+        // The migrated database is structurally sound.
+        let (integrity,): (String,) = sqlx::query_as("PRAGMA integrity_check")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(integrity, "ok");
+
+        let fk_violations: Vec<(String, i64, String, i64)> =
+            sqlx::query_as("PRAGMA foreign_key_check")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(
+            fk_violations.is_empty(),
+            "foreign key violations after migration: {fk_violations:?}"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&working);
     }
 
     #[tokio::test]
