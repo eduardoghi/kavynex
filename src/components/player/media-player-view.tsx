@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, Group, Paper, Stack, Text, rem } from "@mantine/core";
 import { AlertTriangle, ArrowLeft, FolderOpen, PlayCircle } from "lucide-react";
-import type { MediaCommentRow, MediaRow } from "../../types/media";
-import { listMediaComments } from "../../services/media-service";
-import {
-    readLiveChatMessagesFromFile,
-    type LiveChatMessageItem,
-} from "../../services/live-chat-service";
+import type { MediaRow } from "../../types/media";
 import { logError } from "../../utils/app-logger";
 import { formatCreatedAt, formatPublishedDate, shortPath } from "../../utils/media-utils";
+import { useMediaProgressPersistence } from "../../hooks/use-media-progress-persistence";
+import { useMediaComments } from "../../hooks/use-media-comments";
+import { useMediaLiveChat } from "../../hooks/use-media-live-chat";
+import { usePlayerKeyboardShortcuts } from "../../hooks/use-player-keyboard-shortcuts";
 import { CommentsPanel } from "./comments-panel";
 import { LiveChatReplay } from "./live-chat-replay";
 import { PlayerAudioSurface } from "./player-audio-surface";
@@ -16,11 +15,6 @@ import { PlayerMediaHeader } from "./player-media-header";
 import { PlayerVideoSurface } from "./player-video-surface";
 import { RemoteImagesProvider } from "./remote-images-context";
 import styles from "./media-player-view.module.css";
-
-// timeupdate fires ~4x/second; persist at most this often so a crash, a force-close, or the
-// updater relaunch never loses more than a few seconds of watch position. The exact position
-// is also flushed on pause/seek/ended, when the window is hidden, and when the player closes.
-const PROGRESS_SAVE_THROTTLE_MS = 10_000;
 
 type MediaPlayerViewProps = {
     media: MediaRow | null;
@@ -62,122 +56,16 @@ export function MediaPlayerView({
     onBack,
 }: MediaPlayerViewProps): JSX.Element {
     const playerElementRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
-
-    const [comments, setComments] = useState<MediaCommentRow[]>([]);
-    const [isLoadingComments, setIsLoadingComments] = useState(false);
-
-    const [liveChatMessages, setLiveChatMessages] = useState<LiveChatMessageItem[]>([]);
-    const [isLoadingLiveChat, setIsLoadingLiveChat] = useState(false);
     const [playerElement, setPlayerElement] = useState<HTMLMediaElement | null>(null);
     const [hasPlaybackError, setHasPlaybackError] = useState(false);
 
-    // Latest media, so the event listeners below (which are wired once per element) always
-    // persist against the media that is actually playing without re-subscribing on every
-    // re-render.
-    const mediaRef = useRef<MediaRow | null>(media);
-    useEffect(() => {
-        mediaRef.current = media;
-    }, [media]);
-
-    // Last position observed from the media element, kept outside React state so the
-    // high-frequency timeupdate stream never triggers a re-render.
-    const lastProgressRef = useRef(0);
-
-    const persistProgress = useCallback((): void => {
-        const currentMedia = mediaRef.current;
-
-        // Watched media intentionally resets to 0 and must not be rewound by a late save.
-        if (!currentMedia || currentMedia.watched_at) {
-            return;
-        }
-
-        void onSaveProgress(currentMedia.id, lastProgressRef.current);
-    }, [onSaveProgress]);
-
-    // Seed the last-known position from the stored progress so an early close (before the
-    // first timeupdate) re-saves the same value instead of overwriting it with 0.
-    useEffect(() => {
-        lastProgressRef.current = media?.watched_at ? 0 : (media?.progress_seconds ?? 0);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- seeded once per media; progress/watched are read intentionally at seed time
-    }, [media?.id]);
-
-    useEffect(() => {
-        const element = playerElement;
-
-        if (!element) {
-            return;
-        }
-
-        // Negative infinity so the first timeupdate persists right away; later ones are
-        // throttled relative to it.
-        let lastSavedAt = Number.NEGATIVE_INFINITY;
-
-        const remember = (): void => {
-            lastProgressRef.current = element.currentTime || 0;
-        };
-
-        const handleTimeUpdate = (): void => {
-            remember();
-
-            const now = performance.now();
-
-            if (now - lastSavedAt < PROGRESS_SAVE_THROTTLE_MS) {
-                return;
-            }
-
-            lastSavedAt = now;
-            persistProgress();
-        };
-
-        // Flush the exact position immediately on the discrete events, where a few seconds of
-        // throttled drift would be noticeable.
-        const handleFlush = (): void => {
-            remember();
-            persistProgress();
-        };
-
-        element.addEventListener("timeupdate", handleTimeUpdate);
-        element.addEventListener("pause", handleFlush);
-        element.addEventListener("ended", handleFlush);
-        element.addEventListener("seeked", handleFlush);
-
-        return () => {
-            element.removeEventListener("timeupdate", handleTimeUpdate);
-            element.removeEventListener("pause", handleFlush);
-            element.removeEventListener("ended", handleFlush);
-            element.removeEventListener("seeked", handleFlush);
-        };
-    }, [playerElement, persistProgress]);
-
-    // Best-effort save when the window is hidden or the app is quitting/relaunching (e.g. the
-    // updater's relaunch), neither of which runs the unmount cleanup below.
-    useEffect(() => {
-        const handleHide = (): void => {
-            persistProgress();
-        };
-
-        const handleVisibilityChange = (): void => {
-            if (document.visibilityState === "hidden") {
-                persistProgress();
-            }
-        };
-
-        window.addEventListener("pagehide", handleHide);
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-
-        return () => {
-            window.removeEventListener("pagehide", handleHide);
-            document.removeEventListener("visibilitychange", handleVisibilityChange);
-        };
-    }, [persistProgress]);
-
-    // Persist the final position when the player unmounts - the Back button, switching
-    // channels from the sidebar, or the active media being deleted all land here.
-    useEffect(() => {
-        return () => {
-            persistProgress();
-        };
-    }, [persistProgress]);
+    // Each concern the player owns lives in its own hook: watch-position persistence, loading the
+    // saved comments and live chat replay, and the global keyboard shortcuts. This component is
+    // left to compose them and render.
+    useMediaProgressPersistence(media, playerElement, onSaveProgress);
+    const { comments, isLoadingComments } = useMediaComments(media, isRefreshingComments);
+    const { liveChatMessages, isLoadingLiveChat } = useMediaLiveChat(media, libraryPath);
+    usePlayerKeyboardShortcuts(playerElementRef);
 
     // Clear the "can't play" banner whenever the media (or its resolved source) changes, so a
     // playable file never inherits the previous file's error.
@@ -212,184 +100,6 @@ export function MediaPlayerView({
     const filePathLabel = shortPath(media?.file_path ?? "");
     const hasComments = Boolean(media?.has_comments);
     const hasLiveChat = Boolean(media?.has_live_chat && media?.live_chat_file_path?.trim());
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function loadComments(): Promise<void> {
-            if (!media?.id || !media.has_comments) {
-                setComments([]);
-                setIsLoadingComments(false);
-                return;
-            }
-
-            setIsLoadingComments(true);
-
-            try {
-                const rows = await listMediaComments(media.id);
-
-                if (!cancelled) {
-                    setComments(rows);
-                }
-            } catch (error) {
-                if (!cancelled) {
-                    setComments([]);
-                }
-
-                logError("media-player", "Failed to load saved comments.", error, {
-                    mediaId: media.id,
-                });
-            } finally {
-                if (!cancelled) {
-                    setIsLoadingComments(false);
-                }
-            }
-        }
-
-        void loadComments();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [media?.has_comments, media?.id, isRefreshingComments]);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function loadLiveChat(): Promise<void> {
-            if (!media?.id || !media.live_chat_file_path?.trim() || !media.has_live_chat) {
-                setLiveChatMessages([]);
-                setIsLoadingLiveChat(false);
-                return;
-            }
-
-            setIsLoadingLiveChat(true);
-
-            try {
-                const rows = await readLiveChatMessagesFromFile(media.live_chat_file_path);
-
-                if (!cancelled) {
-                    setLiveChatMessages(rows);
-                }
-            } catch (error) {
-                if (!cancelled) {
-                    setLiveChatMessages([]);
-                }
-
-                logError("media-player", "Failed to load live chat replay from file.", error, {
-                    mediaId: media.id,
-                    liveChatFilePath: media.live_chat_file_path,
-                    libraryPath,
-                });
-            } finally {
-                if (!cancelled) {
-                    setIsLoadingLiveChat(false);
-                }
-            }
-        }
-
-        void loadLiveChat();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [libraryPath, media?.has_live_chat, media?.id, media?.live_chat_file_path]);
-
-    useEffect(() => {
-        const isTypingTarget = (target: EventTarget | null): boolean => {
-            if (!(target instanceof HTMLElement)) {
-                return false;
-            }
-
-            const tagName = target.tagName.toLowerCase();
-
-            return (
-                tagName === "input" ||
-                tagName === "textarea" ||
-                tagName === "select" ||
-                tagName === "button" ||
-                target.isContentEditable
-            );
-        };
-
-        const togglePlayback = async (): Promise<void> => {
-            const element = playerElementRef.current;
-
-            if (!element) {
-                return;
-            }
-
-            if (element.paused) {
-                await element.play();
-                return;
-            }
-
-            element.pause();
-        };
-
-        const handleKeyDown = (event: KeyboardEvent): void => {
-            if (event.repeat) {
-                return;
-            }
-
-            if (event.ctrlKey || event.metaKey || event.altKey) {
-                return;
-            }
-
-            // A modal is open on top of the player (Mantine marks it aria-modal). Don't let
-            // these shortcuts drive the video hidden behind it.
-            if (document.querySelector('[aria-modal="true"]')) {
-                return;
-            }
-
-            if (isTypingTarget(event.target)) {
-                return;
-            }
-
-            const element = playerElementRef.current;
-
-            if (!element) {
-                return;
-            }
-
-            switch (event.code) {
-                case "Space":
-                    event.preventDefault();
-                    void togglePlayback();
-                    break;
-                case "ArrowLeft":
-                    event.preventDefault();
-                    element.currentTime = Math.max(0, element.currentTime - 5);
-                    break;
-                case "ArrowRight":
-                    event.preventDefault();
-                    if (Number.isFinite(element.duration)) {
-                        element.currentTime = Math.min(element.duration, element.currentTime + 5);
-                    }
-                    break;
-                case "KeyM":
-                    event.preventDefault();
-                    element.muted = !element.muted;
-                    break;
-                case "KeyF":
-                    if (element instanceof HTMLVideoElement) {
-                        event.preventDefault();
-                        if (document.fullscreenElement) {
-                            void document.exitFullscreen();
-                        } else {
-                            void element.requestFullscreen();
-                        }
-                    }
-                    break;
-            }
-        };
-
-        document.addEventListener("keydown", handleKeyDown);
-
-        return () => {
-            document.removeEventListener("keydown", handleKeyDown);
-        };
-    }, [media?.id, mediaSrc]);
 
     const setVideoElement = useCallback((element: HTMLVideoElement | null): void => {
         playerElementRef.current = element;
