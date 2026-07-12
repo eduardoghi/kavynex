@@ -46,7 +46,7 @@ export function MediaPlayerView({
     isWatched,
     libraryPath,
     isRefreshingComments = false,
-    loadRemoteImages = true,
+    loadRemoteImages = false,
     onOpenInYoutube,
     onOpenFileLocation,
     onRefreshComments,

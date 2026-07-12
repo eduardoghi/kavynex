@@ -7,7 +7,7 @@ import {
 const DEFAULT_SETTINGS: AppSettings = {
     importMode: "copy",
     libraryPath: "",
-    loadRemoteImages: true,
+    loadRemoteImages: false,
 };
 
 function cloneDefaultSettings(): AppSettings {
@@ -26,10 +26,12 @@ function normalizeLibraryPath(value: string | null | undefined): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
-// Only an explicit "false" disables remote images; an absent key (older databases) or any
-// other value keeps the default-on behavior.
+// Remote images are opt-in: only an explicit "true" enables them. An absent key (older
+// databases that predate the setting, or a fresh install) or any other value keeps them off,
+// so opening comments/live chat makes no network request to Google's CDNs until the user turns
+// it on in Settings > Privacy.
 function normalizeLoadRemoteImages(value: string | null | undefined): boolean {
-    return value !== "false";
+    return value === "true";
 }
 
 export function getDefaultAppSettings(): AppSettings {

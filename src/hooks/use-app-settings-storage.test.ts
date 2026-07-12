@@ -33,7 +33,7 @@ describe("use-app-settings-storage", () => {
         expect(getDefaultAppSettings()).toEqual({
             importMode: "copy",
             libraryPath: "",
-            loadRemoteImages: true,
+            loadRemoteImages: false,
         });
     });
 
@@ -47,7 +47,7 @@ describe("use-app-settings-storage", () => {
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "copy",
             libraryPath: "",
-            loadRemoteImages: true,
+            loadRemoteImages: false,
         });
 
         expect(getStoredAppSettings).toHaveBeenCalledTimes(1);
@@ -77,11 +77,11 @@ describe("use-app-settings-storage", () => {
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "copy",
             libraryPath: "/library",
-            loadRemoteImages: true,
+            loadRemoteImages: false,
         });
     });
 
-    it("only treats an explicit \"false\" as remote images disabled", async () => {
+    it("only treats an explicit \"true\" as remote images enabled", async () => {
         vi.mocked(getStoredAppSettings).mockResolvedValue({
             importMode: null,
             libraryPath: null,
@@ -91,6 +91,20 @@ describe("use-app-settings-storage", () => {
         await expect(loadStoredSettings()).resolves.toMatchObject({
             loadRemoteImages: true,
         });
+    });
+
+    it("keeps remote images off for any non-\"true\" stored value", async () => {
+        for (const stored of ["false", "1", "yes", ""]) {
+            vi.mocked(getStoredAppSettings).mockResolvedValue({
+                importMode: null,
+                libraryPath: null,
+                loadRemoteImages: stored,
+            });
+
+            await expect(loadStoredSettings()).resolves.toMatchObject({
+                loadRemoteImages: false,
+            });
+        }
     });
 
     it("persists settings through the backend command", async () => {
@@ -143,10 +157,10 @@ describe("use-app-settings-storage", () => {
         expect(result).toEqual({
             importMode: "move",
             libraryPath: "/new-library",
-            loadRemoteImages: true,
+            loadRemoteImages: false,
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/new-library", true);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/new-library", false);
     });
 
     it("updates only the remote images preference preserving the other settings", async () => {
