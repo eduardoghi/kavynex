@@ -1088,7 +1088,14 @@ pub async fn download_media_from_url_async(
     }
     .await;
 
-    let _ = fs::remove_dir_all(&temp_dir);
+    // A download temp dir can hold multi-GB leftovers (a partial video, an ffmpeg merge output),
+    // so this recursive removal is offloaded to the blocking pool rather than run directly on the
+    // async task.
+    let _ = run_blocking(move || {
+        let _ = fs::remove_dir_all(&temp_dir);
+        Ok::<(), AppError>(())
+    })
+    .await;
     // The registry entry is released by `_run_release_guard` when this function returns.
 
     if let Err(error) = &result {

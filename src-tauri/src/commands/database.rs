@@ -5,6 +5,7 @@ use tauri::{AppHandle, State};
 use crate::services::database::{database_path, is_pool_initialized, Db};
 use crate::services::db_backup::{self, DatabaseBackupStatus};
 use crate::utils::path::extension_from_path;
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Validates the caller-provided export destination. `export_database` unconditionally removes
@@ -47,8 +48,14 @@ pub async fn ensure_database_ready(db: State<'_, Db>) -> AppResult<()> {
 /// Used to offer recovery when `ensure_database_ready` fails.
 #[tauri::command]
 pub async fn get_database_backup_status(app: AppHandle) -> AppResult<DatabaseBackupStatus> {
-    let path = database_path(&app)?;
-    Ok(db_backup::database_backup_status(&path))
+    // database_path (create_dir_all) and database_backup_status (read_dir + stat of each backup
+    // generation) are blocking filesystem calls; run them off the async runtime's worker threads,
+    // consistent with the other filesystem commands.
+    run_blocking(move || {
+        let path = database_path(&app)?;
+        Ok(db_backup::database_backup_status(&path))
+    })
+    .await
 }
 
 /// Restores the database from the most recent healthy backup, moving the corrupt database
@@ -91,8 +98,13 @@ pub async fn import_database(app: AppHandle, source_path: String) -> AppResult<(
 /// the wrong or an incompatible database was imported.
 #[tauri::command]
 pub async fn get_database_import_undo_status(app: AppHandle) -> AppResult<bool> {
-    let path = database_path(&app)?;
-    Ok(db_backup::database_import_undo_available(&path))
+    // database_path (create_dir_all) and database_import_undo_available (a stat) are blocking
+    // filesystem calls; run them off the async runtime's worker threads.
+    run_blocking(move || {
+        let path = database_path(&app)?;
+        Ok(db_backup::database_import_undo_available(&path))
+    })
+    .await
 }
 
 /// Reverts the last applied database import by staging the pre-import snapshot as a pending
