@@ -96,13 +96,16 @@ Inside the library directory, media services create these subfolders on demand:
 - `live_chat/` - gzip-compressed live chat replay JSON (`.json.gz`), one file per video
   that has live chat backed up.
 
-### Content-addressed filenames
+### Filenames
 
-Media and thumbnail files are named after the SHA-256 hash of their own content
-(`utils/hash.rs::file_hash`, computed by streaming the file rather than loading it whole):
+Two different naming schemes are used, depending on how a file enters the library.
 
-- `video/media_<sha256>.<ext>` or `audio/media_<sha256>.<ext>` - written by
-  `services/library_media.rs::import_media_file_sync` (and the yt-dlp download path).
+**Content-addressed (local imports and thumbnails).** These files are named after the
+SHA-256 hash of their own content (`utils/hash.rs::file_hash`, computed by streaming the
+file rather than loading it whole):
+
+- `video/media_<sha256>.<ext>` or `audio/media_<sha256>.<ext>` - a **locally imported**
+  file, written by `services/library_media.rs::import_media_file_sync`.
 - `thumbnails/thumb_<sha256>.<ext>` - written by `services/thumbnail_persist.rs`.
 
 This makes storage naturally deduplicated (two imports of byte-identical content produce
@@ -112,8 +115,22 @@ expected filename - this is exactly what the library-integrity diagnostics
 (`services/library_cleanup.rs`, `services/library_summary.rs`, surfaced by the
 Diagnostics dialog) check for.
 
-Live chat files are named from the video/run rather than content-hashed (they are written
-once by a yt-dlp run and not re-derived); see `services/yt_dlp_download.rs` and
+**Identifier-based (yt-dlp downloads).** A file downloaded via yt-dlp is *not*
+content-hashed (hashing a multi-GB download would be wasteful and pointless, since the
+video id already identifies it). It is named from the source metadata as
+`<extractor>_<id>_<format_id>.<ext>` (e.g. `youtube_dQw4w9WgXcQ_137.mp4`), where each
+component is passed through `services/yt_dlp_metadata.rs::sanitize_filename_component`;
+see `build_download_command_args`/`place_downloaded_file` in
+`services/yt_dlp_download.rs`. This name is deterministic for a given video+format, and
+the download path never overwrites an existing destination, so re-downloading the same
+video+format keeps the already-catalogued bytes rather than replacing them with a
+re-encode. One consequence worth knowing: because the two schemes differ, downloading a
+video via yt-dlp and *separately* importing the same file locally produces two distinct
+on-disk copies (there is no cross-scheme deduplication) - within a single scheme, dedup
+still holds.
+
+Live chat files are likewise named from the video/run rather than content-hashed (they are
+written once by a yt-dlp run and not re-derived); see `services/yt_dlp_download.rs` and
 `services/live_chat_storage.rs` for the exact naming if you need to trace a specific file.
 
 All paths stored in the database (`videos.file_path`, `videos.thumbnail_path`,
