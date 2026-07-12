@@ -102,6 +102,13 @@ jobs:
             - name: Audit production JS dependencies
               run: pnpm audit --prod --audit-level high
 
+            # Mirror ci.yml's lint gate so a manually dispatched release cannot ship on a
+            # commit with an ESLint violation that never went through CI. Platform-independent,
+            # so it runs once on Ubuntu rather than on every matrix target.
+            - name: Lint
+              if: matrix.platform == 'ubuntu-22.04'
+              run: pnpm lint
+
             - name: Run tests
               run: pnpm test -- --run
 
@@ -115,6 +122,15 @@ jobs:
 
             - name: Run Rust tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+            # Mirror ci.yml's bindings-freshness gate so a release cannot ship with the
+            # checked-in TypeScript bindings out of sync with the Rust types they are generated
+            # from. Ubuntu only, matching ci.yml; the check is platform-independent.
+            - name: Verify generated TS bindings are up to date
+              if: matrix.platform == 'ubuntu-22.04'
+              run: |
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings
+                  git diff --exit-code -- src/types/generated
 
             # RUSTSEC advisories are not covered by pnpm audit; mirror ci.yml's cargo-audit
             # gate here so a manually dispatched release cannot ship a Rust dependency with a

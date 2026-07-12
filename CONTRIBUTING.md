@@ -88,8 +88,9 @@ to fail the build if the checked-in bindings are stale. Never hand-edit a file u
    (`.github/workflows/release.yml`, `workflow_dispatch` - there is no automatic release
    on tag or merge). It builds installers for Windows, Linux, and both macOS
    architectures (`aarch64-apple-darwin`, `x86_64-apple-darwin`), runs the same
-   fmt/clippy/test/build checks CI does (the release is manually dispatched, so nothing
-   guarantees the chosen commit already passed CI), and refuses to run if a tag named
+   lint/test/build and fmt/clippy/Rust-test/TS-bindings-freshness/dependency-audit checks CI
+   does (the release is manually dispatched, so nothing guarantees the chosen commit already
+   passed CI), and refuses to run if a tag named
    `v<version>` (matching `package.json`'s version, e.g. `v1.2.0`) already exists on the
    remote - bump the version again before re-releasing.
 4. The workflow creates a **draft** GitHub release tagged `v<version>` with auto-generated
