@@ -1,6 +1,6 @@
-import { useCallback } from "react";
 import { Box, Group, Stack, Text, rem } from "@mantine/core";
 import { Music } from "lucide-react";
+import { useMediaPlaybackHandlers } from "../../hooks/use-media-playback-handlers";
 
 type PlayerAudioSurfaceProps = {
     title: string;
@@ -29,28 +29,12 @@ export function PlayerAudioSurface({
     onPlaybackError,
     onPlaybackRecovered,
 }: PlayerAudioSurfaceProps): JSX.Element {
-    const handleLoadedMetadata = useCallback(
-        (event: React.SyntheticEvent<HTMLAudioElement>): void => {
-            const element = event.currentTarget;
-
-            if (progressSeconds > 0 && Number.isFinite(element.duration)) {
-                const safeProgress = Math.min(progressSeconds, Math.max(0, element.duration - 1));
-                element.currentTime = Math.max(0, safeProgress);
-            }
-        },
-        [progressSeconds]
-    );
-
-    const handleError = useCallback(
-        (event: React.SyntheticEvent<HTMLAudioElement>): void => {
-            onPlaybackError?.(event.currentTarget.error);
-        },
-        [onPlaybackError]
-    );
-
-    const handleCanPlay = useCallback((): void => {
-        onPlaybackRecovered?.();
-    }, [onPlaybackRecovered]);
+    const { handleLoadedMetadata, handleError, handleCanPlay } =
+        useMediaPlaybackHandlers<HTMLAudioElement>({
+            progressSeconds,
+            onPlaybackError,
+            onPlaybackRecovered,
+        });
 
     return (
         <Box

@@ -1,5 +1,5 @@
-import { useCallback } from "react";
 import { Box, rem } from "@mantine/core";
+import { useMediaPlaybackHandlers } from "../../hooks/use-media-playback-handlers";
 
 type PlayerVideoSurfaceProps = {
     title: string;
@@ -22,28 +22,12 @@ export function PlayerVideoSurface({
     onPlaybackError,
     onPlaybackRecovered,
 }: PlayerVideoSurfaceProps): JSX.Element {
-    const handleLoadedMetadata = useCallback(
-        (event: React.SyntheticEvent<HTMLVideoElement>): void => {
-            const element = event.currentTarget;
-
-            if (progressSeconds > 0 && Number.isFinite(element.duration)) {
-                const safeProgress = Math.min(progressSeconds, Math.max(0, element.duration - 1));
-                element.currentTime = Math.max(0, safeProgress);
-            }
-        },
-        [progressSeconds]
-    );
-
-    const handleError = useCallback(
-        (event: React.SyntheticEvent<HTMLVideoElement>): void => {
-            onPlaybackError?.(event.currentTarget.error);
-        },
-        [onPlaybackError]
-    );
-
-    const handleCanPlay = useCallback((): void => {
-        onPlaybackRecovered?.();
-    }, [onPlaybackRecovered]);
+    const { handleLoadedMetadata, handleError, handleCanPlay } =
+        useMediaPlaybackHandlers<HTMLVideoElement>({
+            progressSeconds,
+            onPlaybackError,
+            onPlaybackRecovered,
+        });
 
     return (
         <Box
