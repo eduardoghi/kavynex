@@ -4,7 +4,9 @@ use std::time::{Duration, SystemTime};
 
 use tauri::{AppHandle, Manager};
 
-use crate::constants::{TEMP_DIR_THUMBS, TEMP_DIR_YT_DLP, TEMP_DIR_YT_DLP_THUMB};
+use crate::constants::{
+    MANAGED_LIBRARY_DIRS, TEMP_DIR_THUMBS, TEMP_DIR_YT_DLP, TEMP_DIR_YT_DLP_THUMB,
+};
 use crate::{AppError, AppErrorCode, AppResult};
 
 const TEMP_ENTRY_MAX_AGE_HOURS: u64 = 24 * 7;
@@ -126,6 +128,107 @@ pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummar
     summary.merge(cleanup_dir_children(&thumbs_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_thumb_temp_dir, max_age)?);
+
+    Ok(summary)
+}
+
+/// True for a filename produced by the atomic-write helpers in `filesystem.rs` as scratch and
+/// left behind if the process died mid-operation: the copy temp (`.<name>.tmp-<suffix>`), the
+/// replace backup (`.<name>.backup-<suffix>`), and the migration staging name
+/// (`<stem>.migrated-<suffix>[.<ext>]`). None of these infixes ever appears in a committed
+/// library file (`media_<hash>`, `thumb_<hash>`, `*.live_chat.json.gz`), so matching them cannot
+/// touch a real media/thumbnail/live-chat file.
+fn is_atomic_write_leftover(file_name: &str) -> bool {
+    file_name.contains(".tmp-")
+        || file_name.contains(".backup-")
+        || file_name.contains(".migrated-")
+}
+
+/// Removes atomic-write leftovers from a single managed library subdirectory. Unlike
+/// `cleanup_dir_children` (which removes *any* stale entry and is only ever pointed at a
+/// disposable cache dir), this only ever removes files whose name matches
+/// `is_atomic_write_leftover`, so it is safe to run against the library, which also holds the
+/// user's real media. The age gate still applies, so a leftover from an operation currently in
+/// flight (its temp file is recent) is never removed out from under it.
+fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupSummary> {
+    let mut summary = CleanupSummary::default();
+
+    if !dir.exists() {
+        return Ok(summary);
+    }
+
+    if !dir.is_dir() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTempDirectory,
+            "library leftover cleanup target is not a directory",
+        ));
+    }
+
+    for entry in fs::read_dir(dir).map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::TempDirectoryReadFailed,
+            format!("failed to read library directory: {e}"),
+        )
+    })? {
+        let entry = entry.map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::TempDirectoryEntryReadFailed,
+                format!("failed to read library directory entry: {e}"),
+            )
+        })?;
+
+        let path = entry.path();
+
+        if !path.is_file() {
+            continue;
+        }
+
+        let matches_leftover = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(is_atomic_write_leftover)
+            .unwrap_or(false);
+
+        if !matches_leftover {
+            continue;
+        }
+
+        summary.scanned_entries += 1;
+
+        let (removed, failed) = remove_path_if_old(&path, max_age);
+
+        if removed {
+            summary.removed_entries += 1;
+        }
+
+        if failed {
+            summary.failed_removals += 1;
+        }
+    }
+
+    Ok(summary)
+}
+
+/// Sweeps the library's managed subdirectories (video/audio/thumbnails/live_chat) for
+/// atomic-write leftovers a crashed copy/replace/migrate left behind. The startup cache sweep
+/// (`cleanup_stale_temp_files_sync`) never reaches these, because they live inside the library
+/// tree next to the real files rather than in the disposable cache directories. Reported by
+/// `library_integrity` as orphans until now, but nothing removed them.
+pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSummary> {
+    let mut summary = CleanupSummary::default();
+
+    if !library_dir.exists() {
+        return Ok(summary);
+    }
+
+    let max_age = Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60);
+
+    for dir_name in MANAGED_LIBRARY_DIRS {
+        summary.merge(cleanup_leftovers_in_dir(
+            &library_dir.join(dir_name),
+            max_age,
+        )?);
+    }
 
     Ok(summary)
 }
@@ -271,6 +374,74 @@ mod tests {
         assert!(recent.exists());
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn is_atomic_write_leftover_matches_only_scratch_names() {
+        for name in [
+            ".media_abc.mp4.tmp-123-456",
+            ".thumb_abc.jpg.backup-123-456",
+            "clip.migrated-123-456.mp4",
+            "clip.migrated-123-456",
+        ] {
+            assert!(is_atomic_write_leftover(name), "{name} should match");
+        }
+
+        for name in [
+            "media_abcdef.mp4",
+            "thumb_abcdef.jpg",
+            "video.live_chat.json.gz",
+            "notes.txt",
+        ] {
+            assert!(!is_atomic_write_leftover(name), "{name} should not match");
+        }
+    }
+
+    #[test]
+    fn cleanup_library_leftovers_removes_only_stale_scratch_files() {
+        let library = unique_test_dir("library-leftovers");
+        let video_dir = library.join("video");
+        let thumbs_dir = library.join("thumbnails");
+        fs::create_dir_all(&video_dir).unwrap();
+        fs::create_dir_all(&thumbs_dir).unwrap();
+
+        let max_age = Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60);
+
+        // A real media file (old) must never be removed, even though it is past the age gate.
+        let real_media = video_dir.join("media_abcdef.mp4");
+        make_old_file(&real_media, max_age);
+
+        // A stale copy-temp and a stale replace-backup leftover must be removed.
+        let stale_temp = video_dir.join(".media_abcdef.mp4.tmp-1-2");
+        let stale_backup = thumbs_dir.join(".thumb_abcdef.jpg.backup-1-2");
+        make_old_file(&stale_temp, max_age);
+        make_old_file(&stale_backup, max_age);
+
+        // A leftover from an operation still in flight (recent) must be preserved.
+        let recent_temp = video_dir.join(".media_ghijkl.mp4.tmp-3-4");
+        make_recent_file(&recent_temp);
+
+        let summary = cleanup_library_leftovers_sync(&library).unwrap();
+
+        assert_eq!(summary.removed_entries, 2);
+        assert_eq!(summary.failed_removals, 0);
+        assert!(real_media.exists(), "a real media file must be kept");
+        assert!(!stale_temp.exists());
+        assert!(!stale_backup.exists());
+        assert!(recent_temp.exists(), "an in-flight leftover must be kept");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn cleanup_library_leftovers_is_a_noop_for_a_missing_library() {
+        let library = unique_test_dir("missing-library");
+
+        let summary = cleanup_library_leftovers_sync(&library).unwrap();
+
+        assert_eq!(summary.scanned_entries, 0);
+        assert_eq!(summary.removed_entries, 0);
+        assert_eq!(summary.failed_removals, 0);
     }
 
     #[test]

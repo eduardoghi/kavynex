@@ -38,6 +38,47 @@ fn spawn_startup_cleanup(app_handle: AppHandle) {
     });
 }
 
+/// Sweeps the configured library directory for atomic-write leftovers (`.tmp-`/`.backup-`/
+/// `.migrated-` scratch files a crashed copy/replace/migrate left behind). Kept separate from
+/// `spawn_startup_cleanup`, which only reaches the disposable cache directories: the library path
+/// lives in the settings row, so it must be read from the pool first. A missing/unconfigured
+/// library (first run) is not an error - there is simply nothing to sweep yet. Failures are
+/// logged and never affect startup.
+fn spawn_startup_library_cleanup(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let library_dir = match services::library_guard::configured_library_dir(&app_handle).await {
+            Ok(library_dir) => library_dir,
+            // No library configured yet, or the settings could not be read: nothing to sweep.
+            Err(_) => return,
+        };
+
+        let sweep = utils::task::run_blocking(move || {
+            services::cleanup::cleanup_library_leftovers_sync(&library_dir)
+        })
+        .await;
+
+        match sweep {
+            Ok(summary) => {
+                if summary.removed_entries > 0 || summary.failed_removals > 0 {
+                    services::logger::info(
+                        "startup_cleanup",
+                        format!(
+                            "library leftover sweep finished: scanned={}, removed={}, failed_removals={}",
+                            summary.scanned_entries,
+                            summary.removed_entries,
+                            summary.failed_removals
+                        ),
+                    );
+                }
+            }
+            Err(error) => services::logger::warn(
+                "startup_cleanup",
+                format!("library leftover sweep failed: {error}"),
+            ),
+        }
+    });
+}
+
 /// The pre-migration/post-open backup in `services::database` only runs once, at pool init,
 /// so an app left running for several days never gets a fresh daily snapshot mid-session.
 /// This periodically re-invokes the (internally throttled) `backup_database` so a long
@@ -205,6 +246,7 @@ pub fn run() {
             }
 
             spawn_startup_cleanup(app_handle.clone());
+            spawn_startup_library_cleanup(app_handle.clone());
             spawn_periodic_backup(app_handle);
             services::logger::info("app", "application setup finished");
 
