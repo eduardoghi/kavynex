@@ -95,7 +95,7 @@ pub struct DownloadTerminalEvent {
     pub suggested_title: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone, Debug)]
 pub struct YtDlpMetadata {
     pub id: Option<String>,
     pub title: Option<String>,
@@ -116,7 +116,7 @@ pub struct YtDlpMetadata {
     pub comment_count: Option<i64>,
 }
 
-#[derive(Deserialize, Default, Clone)]
+#[derive(Deserialize, Default, Clone, Debug)]
 pub struct YtDlpFormatMetadata {
     pub format_id: Option<String>,
     pub ext: Option<String>,
