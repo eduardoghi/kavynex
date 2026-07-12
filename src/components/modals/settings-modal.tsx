@@ -1,6 +1,7 @@
 import { Modal, Stack } from "@mantine/core";
 import { useSettingsController } from "../../hooks/use-settings-controller";
 import type { ImportMode } from "../../types/settings";
+import { NOOP } from "../../utils/noop";
 import { AppUpdateSection } from "./settings-sections/app-update-section";
 import { DatabaseSection } from "./settings-sections/database-section";
 import { ImportBehaviorSection } from "./settings-sections/import-behavior-section";
@@ -40,8 +41,22 @@ export function SettingsModal({
 }: SettingsModalProps): JSX.Element {
     const controller = useSettingsController({ opened, libraryPath });
 
+    // Locks the modal (no Esc, click-outside or close button) while a destructive database
+    // operation or a library migration is in progress, so the user cannot dismiss it mid-flight
+    // and lose visibility into an error, or trigger an app relaunch behind a closed modal.
+    const isModalLocked = controller.databaseBusy !== "idle" || isMigratingLibraryPath;
+
     return (
-        <Modal opened={opened} onClose={onClose} title="Settings" size="lg" centered>
+        <Modal
+            opened={opened}
+            onClose={isModalLocked ? NOOP : onClose}
+            title="Settings"
+            size="lg"
+            centered
+            closeOnClickOutside={!isModalLocked}
+            closeOnEscape={!isModalLocked}
+            withCloseButton={!isModalLocked}
+        >
             <Stack gap="lg">
                 <ImportBehaviorSection
                     importMode={importMode}
