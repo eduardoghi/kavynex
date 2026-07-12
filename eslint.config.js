@@ -22,6 +22,13 @@ export default tseslint.config(
             globals: {
                 ...globals.browser,
             },
+            // Type-aware linting for the app sources (all covered by tsconfig.json), so the
+            // async-safety rules below can see promise types. Scoped to src/ only - the plain-JS
+            // scripts and ignored config files are not part of a tsconfig project.
+            parserOptions: {
+                projectService: true,
+                tsconfigRootDir: import.meta.dirname,
+            },
         },
         plugins: {
             "react-hooks": reactHooks,
@@ -36,6 +43,18 @@ export default tseslint.config(
             // The point of adding ESLint: enforce React's hook rules that tsc cannot see.
             "react-hooks/rules-of-hooks": "error",
             "react-hooks/exhaustive-deps": "error",
+
+            // Catch unhandled async work. The codebase already marks fire-and-forget with a
+            // `void` prefix and try/catch; these lock that discipline in so a future unawaited
+            // promise (a lost error, an out-of-order write) fails lint instead of slipping by.
+            // `checksVoidReturn.attributes` is off: an async React event handler (e.g.
+            // `onClick={doAsync}`) is a deliberate, safe pattern here (rejections are caught by
+            // the global handler), not the misuse this rule targets.
+            "@typescript-eslint/no-floating-promises": "error",
+            "@typescript-eslint/no-misused-promises": [
+                "error",
+                { checksVoidReturn: { attributes: false } },
+            ],
         },
     },
     {

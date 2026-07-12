@@ -321,7 +321,7 @@ describe("useAddMediaWorkflow", () => {
 
     it("forwards onProgress log lines to the yt-dlp terminal", async () => {
         vi.mocked(createMedia).mockImplementation(async (_payload, callbacks) => {
-            callbacks?.onProgress?.("50% downloaded");
+            void callbacks?.onProgress?.("50% downloaded");
             return { id: 1 };
         });
 
