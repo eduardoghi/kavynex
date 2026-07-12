@@ -443,4 +443,23 @@ mod tests {
         let settings = get_app_settings_from_pool(&pool).await.unwrap();
         assert_eq!(settings.import_mode.as_deref(), Some("move"));
     }
+
+    #[test]
+    fn db_error_uses_the_app_error_code_so_the_ui_suppresses_raw_details() {
+        // db_error attaches the raw driver text as `details` for diagnostics, but under the
+        // APP_ERROR code the frontend resolves the message to a generic string and never surfaces
+        // `details` (see src/utils/user-friendly-error.ts, which has tests pinning that). This
+        // pins the backend half of that contract: db_error must keep emitting APP_ERROR, so a raw
+        // SQLite message can never reach the user verbatim as the primary error text.
+        let error = db_error(
+            "failed to insert media",
+            "UNIQUE constraint failed: videos.file_path",
+        );
+
+        assert_eq!(error.code, AppErrorCode::AppError.as_str());
+        assert_eq!(
+            error.details.as_deref(),
+            Some("UNIQUE constraint failed: videos.file_path")
+        );
+    }
 }
