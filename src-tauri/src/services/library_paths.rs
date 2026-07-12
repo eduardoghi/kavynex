@@ -5,6 +5,58 @@ use tauri::{AppHandle, Manager};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// Windows: rewrite a path to its extended-length (`\\?\`) form so filesystem calls made
+/// *before* `canonicalize` (create_dir_all, exists, is_dir) are not capped at the 260-char
+/// MAX_PATH limit - matching every post-canonicalize operation, which already builds off the
+/// `\\?\` form `canonicalize` returns. Only a clean, absolute drive path (`C:\...`) is
+/// rewritten: verbatim, UNC and device paths, and any path still carrying `.`/`..` (which are
+/// literal under `\\?\`), are left untouched, so this never changes how an already-working
+/// path resolves. `canonicalize` still returns the same value it did before, so nothing the
+/// callers hand back to the frontend changes.
+#[cfg(windows)]
+fn to_extended_length_path(path: PathBuf) -> PathBuf {
+    use std::path::{Component, Prefix};
+
+    // `\\?\` requires an absolute, normalized path (no `.`/`..`, backslash separators). absolute()
+    // produces that without requiring the path to exist, unlike canonicalize. On error (e.g. an
+    // empty path) fall back to the input so the callers' own empty-path check still fires.
+    let absolute = match std::path::absolute(&path) {
+        Ok(absolute) => absolute,
+        Err(_) => return path,
+    };
+
+    let is_disk = matches!(
+        absolute.components().next(),
+        Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_))
+    );
+
+    let has_dot_components = absolute
+        .components()
+        .any(|component| matches!(component, Component::CurDir | Component::ParentDir));
+
+    if !is_disk || has_dot_components {
+        return absolute;
+    }
+
+    match absolute.to_str() {
+        Some(text) if !text.starts_with(r"\\?\") => PathBuf::from(format!(r"\\?\{text}")),
+        _ => absolute,
+    }
+}
+
+#[cfg(not(windows))]
+fn to_extended_length_path(path: PathBuf) -> PathBuf {
+    path
+}
+
+/// Trims a user-provided library/directory path string and, on Windows, rewrites it to its
+/// extended-length form (see [`to_extended_length_path`]). Shared by the helpers below so every
+/// filesystem call they make on a caller-supplied path is long-path-safe. A no-op beyond the
+/// trim on other platforms.
+fn library_input_path(path: &str) -> PathBuf {
+    to_extended_length_path(PathBuf::from(path.trim()))
+}
+
 /// Rejects a canonicalized path that has no parent, i.e. a filesystem/volume root (`C:\`,
 /// `/`, a UNC share root, ...). Choosing a root as the library folder would make the asset://
 /// scope recursive over the whole drive, so this is checked defense-in-depth even though the
@@ -21,7 +73,7 @@ fn reject_filesystem_root(library_dir: &std::path::Path) -> AppResult<()> {
 }
 
 pub fn ensure_library_dir(path: &str) -> AppResult<PathBuf> {
-    let library_dir = PathBuf::from(path.trim());
+    let library_dir = library_input_path(path);
 
     if library_dir.as_os_str().is_empty() {
         return Err(AppError::from_code(
@@ -50,7 +102,7 @@ pub fn ensure_library_dir(path: &str) -> AppResult<PathBuf> {
 }
 
 pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
-    let library_dir = PathBuf::from(path.trim());
+    let library_dir = library_input_path(path);
 
     if library_dir.as_os_str().is_empty() {
         return Err(AppError::from_code(
@@ -112,7 +164,7 @@ pub fn resolve_default_library_directory_sync(app: &AppHandle) -> AppResult<Stri
 }
 
 pub fn ensure_directory_exists_sync(path: &str) -> AppResult<String> {
-    let dir = PathBuf::from(path.trim());
+    let dir = library_input_path(path);
 
     if dir.as_os_str().is_empty() {
         return Err(AppError::from_code(
@@ -139,7 +191,7 @@ pub fn ensure_directory_exists_sync(path: &str) -> AppResult<String> {
 }
 
 pub fn resolve_existing_directory_sync(path: &str) -> AppResult<String> {
-    let dir = PathBuf::from(path.trim());
+    let dir = library_input_path(path);
 
     if dir.as_os_str().is_empty() {
         return Err(AppError::from_code(
@@ -173,7 +225,7 @@ pub fn resolve_existing_directory_sync(path: &str) -> AppResult<String> {
 }
 
 pub fn is_directory_empty_sync(path: &str) -> AppResult<bool> {
-    let dir = PathBuf::from(path.trim());
+    let dir = library_input_path(path);
 
     if dir.as_os_str().is_empty() {
         return Err(AppError::from_code(
@@ -348,5 +400,73 @@ mod tests {
         assert!(!result);
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn to_extended_length_path_prefixes_a_plain_drive_path() {
+        // A normal absolute drive path gets the verbatim prefix so it is not capped at MAX_PATH.
+        let prefixed = to_extended_length_path(PathBuf::from(r"C:\Users\me\Kavynex Library"));
+        assert_eq!(
+            prefixed.to_string_lossy(),
+            r"\\?\C:\Users\me\Kavynex Library"
+        );
+
+        // A forward-slash / dotted path is normalized to backslashes and prefixed (absolute()
+        // resolves the `.` before the prefix is applied, so `\\?\` never sees a literal dot).
+        let normalized = to_extended_length_path(PathBuf::from(r"C:\Users\me\.\Library"));
+        assert_eq!(normalized.to_string_lossy(), r"\\?\C:\Users\me\Library");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn to_extended_length_path_leaves_verbatim_and_unc_paths_untouched() {
+        // Already verbatim: must not be double-prefixed.
+        let verbatim = PathBuf::from(r"\\?\C:\Users\me\Library");
+        assert_eq!(
+            to_extended_length_path(verbatim.clone()).to_string_lossy(),
+            verbatim.to_string_lossy()
+        );
+
+        // A UNC share is not a drive path, so it is left as-is (the `\\?\UNC\` form is not built
+        // here); open_path_in_system rejects network paths separately.
+        let unc = PathBuf::from(r"\\server\share\Library");
+        assert_eq!(
+            to_extended_length_path(unc.clone()).to_string_lossy(),
+            unc.to_string_lossy()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ensure_library_dir_creates_a_path_longer_than_max_path() {
+        // Build a library path whose full length exceeds the 260-char MAX_PATH limit. Without
+        // the `\\?\` rewrite in ensure_library_dir, create_dir_all/canonicalize here would fail
+        // on a machine that has not enabled long paths in the registry; with it, this succeeds
+        // everywhere.
+        let base = unique_test_dir("longpath");
+        // Each segment is 40 chars; several of them push the total well past 260.
+        let segment = "seg_".to_string() + &"a".repeat(36);
+        let mut deep = base.clone();
+        for _ in 0..8 {
+            deep = deep.join(&segment);
+        }
+        assert!(
+            deep.to_string_lossy().len() > 260,
+            "test path should exceed MAX_PATH, was {}",
+            deep.to_string_lossy().len()
+        );
+
+        let canonical = ensure_library_dir(deep.to_string_lossy().as_ref())
+            .expect("a >260-char library path should be created via the \\\\?\\ form");
+
+        assert!(canonical.exists());
+        assert!(canonical.is_dir());
+        // canonicalize on Windows returns the verbatim form, which the callers already relied on.
+        assert!(canonical.to_string_lossy().starts_with(r"\\?\"));
+
+        // Clean up via the verbatim path so removal is also not capped at MAX_PATH.
+        let _ = fs::remove_dir_all(&canonical);
+        let _ = fs::remove_dir_all(to_extended_length_path(base));
     }
 }
