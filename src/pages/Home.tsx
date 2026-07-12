@@ -10,6 +10,7 @@ import {
 import AppIcon from "../assets/app-icon.svg";
 import { EmptyStateCard } from "../components/common/empty-state-card";
 import { LoadingStateCard } from "../components/common/loading-state-card";
+import { SectionErrorBoundary } from "../components/common/section-error-boundary";
 import { SelectedChannelLibrarySection } from "../components/home/selected-channel-library-section";
 import { HomeModals } from "../components/home/home-modals";
 import { EditMediaTitleModal } from "../components/modals/edit-media-title-modal";
@@ -187,25 +188,41 @@ export default function Home(): JSX.Element {
                             )}
 
                             {showPlayer && (
-                                <MediaPlayerView
-                                    media={controller.playerPanelState.media}
-                                    mediaSrc={controller.playerPanelState.mediaSrc}
-                                    thumbnailSrc={controller.playerPanelState.thumbnailSrc}
-                                    isAudio={controller.playerPanelState.isAudio}
+                                // Isolate the player subtree: it renders the most complex,
+                                // least-controllable data (parsed comment trees, live-chat
+                                // replay timing, arbitrary downloaded media), so a render crash
+                                // here degrades to an inline card and closes the player instead
+                                // of taking the whole app down to the root boundary. Re-arms when
+                                // the active media changes.
+                                <SectionErrorBoundary
+                                    scope="media-player"
+                                    title={UI_TEXT.player.errorBoundaryTitle}
+                                    description={UI_TEXT.player.errorBoundaryDescription}
+                                    resetKeys={[controller.playerPanelState.media?.id ?? null]}
+                                    actionLabel={UI_TEXT.player.errorBoundaryClose}
+                                    onAction={() => void playerActions.closePlayer()}
                                     shellBorder={viewState.shellBorder}
-                                    canOpenInYoutube={controller.playerPanelState.canOpenInYoutube}
-                                    isWatched={controller.playerPanelState.isWatched}
-                                    libraryPath={controller.libraryPath}
-                                    isRefreshingComments={playerActions.isRefreshingComments}
-                                    loadRemoteImages={settings.settings.loadRemoteImages}
-                                    onOpenInYoutube={playerActions.openInYoutube}
-                                    onOpenFileLocation={playerActions.openFileLocation}
-                                    onRefreshComments={playerActions.refreshComments}
-                                    onMarkWatched={playerActions.markActiveAsWatched}
-                                    onMarkUnwatched={playerActions.markActiveAsUnwatched}
-                                    onSaveProgress={playerActions.saveProgress}
-                                    onBack={playerActions.closePlayer}
-                                />
+                                >
+                                    <MediaPlayerView
+                                        media={controller.playerPanelState.media}
+                                        mediaSrc={controller.playerPanelState.mediaSrc}
+                                        thumbnailSrc={controller.playerPanelState.thumbnailSrc}
+                                        isAudio={controller.playerPanelState.isAudio}
+                                        shellBorder={viewState.shellBorder}
+                                        canOpenInYoutube={controller.playerPanelState.canOpenInYoutube}
+                                        isWatched={controller.playerPanelState.isWatched}
+                                        libraryPath={controller.libraryPath}
+                                        isRefreshingComments={playerActions.isRefreshingComments}
+                                        loadRemoteImages={settings.settings.loadRemoteImages}
+                                        onOpenInYoutube={playerActions.openInYoutube}
+                                        onOpenFileLocation={playerActions.openFileLocation}
+                                        onRefreshComments={playerActions.refreshComments}
+                                        onMarkWatched={playerActions.markActiveAsWatched}
+                                        onMarkUnwatched={playerActions.markActiveAsUnwatched}
+                                        onSaveProgress={playerActions.saveProgress}
+                                        onBack={playerActions.closePlayer}
+                                    />
+                                </SectionErrorBoundary>
                             )}
 
                             {showLibrarySection && channels.selectedChannel && (
