@@ -82,29 +82,81 @@ export function useMediaLibrary({
         onReloadMedia: mediaList.loadMedia,
     });
 
-    const saveMediaProgress = useCallback(
-        async (mediaId: number, progressSeconds: number): Promise<void> => {
-            await persistMediaProgress(mediaId, progressSeconds);
+    // Latest progress saved for the media currently playing, reconciled into the in-memory list
+    // in one pass when the player closes rather than on every periodic save (see below).
+    const pendingProgressRef = useRef<Map<number, number>>(new Map());
 
-            const safeProgressSeconds = Math.max(0, Math.floor(progressSeconds));
-
+    const applyProgressToList = useCallback(
+        (mediaId: number, safeProgressSeconds: number): void => {
             setMediaItems((currentItems) =>
                 currentItems.map((item) =>
                     updateProgressInMemory(item, mediaId, safeProgressSeconds)
                 )
             );
+        },
+        [setMediaItems]
+    );
 
+    const saveMediaProgress = useCallback(
+        async (mediaId: number, progressSeconds: number): Promise<void> => {
+            await persistMediaProgress(mediaId, progressSeconds);
+
+            const safeProgressSeconds = Math.max(0, Math.floor(progressSeconds));
             const active = activeMediaRef.current;
 
             if (active?.id === mediaId) {
+                // The player is watching this media. Keep the active media in sync (its progress
+                // is read when the player reopens), but do not rebuild the media-list array on
+                // every ~10s save - that changed its identity and re-ran the (hidden) library
+                // grid's O(n log n) filter+sort every few seconds during playback. The latest
+                // position is stashed and reconciled into the list once the player closes (the
+                // effect below); the database is written on every save above, so nothing is lost
+                // if the app quits mid-playback.
                 setActiveMedia({
                     ...active,
                     progress_seconds: safeProgressSeconds,
                 });
+                pendingProgressRef.current.set(mediaId, safeProgressSeconds);
+                return;
             }
+
+            // A save for media that is not the one playing (e.g. no player open) carries no
+            // hidden hot-path cost, so it updates the list immediately.
+            applyProgressToList(mediaId, safeProgressSeconds);
         },
-        [setMediaItems, setActiveMedia]
+        [applyProgressToList, setActiveMedia]
     );
+
+    // Reconcile the progress stashed during playback into the media list once the player closes
+    // (activeMedia clears): one array rebuild on close instead of one per periodic save. A
+    // watched item is skipped so a late flush never undoes the zeroed position marking-watched
+    // applied.
+    useEffect(() => {
+        if (mediaPlayer.activeMedia !== null) {
+            return;
+        }
+
+        const pending = pendingProgressRef.current;
+
+        if (pending.size === 0) {
+            return;
+        }
+
+        const overrides = new Map(pending);
+        pending.clear();
+
+        setMediaItems((currentItems) =>
+            currentItems.map((item) => {
+                const nextProgress = overrides.get(item.id);
+
+                if (nextProgress === undefined || item.watched_at) {
+                    return item;
+                }
+
+                return updateProgressInMemory(item, item.id, nextProgress);
+            })
+        );
+    }, [mediaPlayer.activeMedia, setMediaItems]);
 
     const clearMediaAndPlayer = useCallback((): void => {
         clearMedia();

@@ -269,6 +269,76 @@ describe("useMediaLibrary", () => {
         expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(0);
     });
 
+    it("defers the playing media's list update until the player closes, then reconciles it", async () => {
+        listChannelMediaMock.mockResolvedValueOnce([
+            createMediaRow({ id: 5, progress_seconds: 0 }),
+            createMediaRow({ id: 6, progress_seconds: 12 }),
+        ]);
+
+        const { result } = renderMediaLibrary(7);
+
+        await waitFor(() => {
+            expect(result.current.mediaItems).toHaveLength(2);
+        });
+
+        act(() => {
+            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]);
+        });
+
+        const listBeforeSave = result.current.mediaItems;
+
+        await act(async () => {
+            await result.current.saveMediaProgress(5, 90);
+        });
+
+        // The active media reflects the save immediately (its progress is read on reopen)...
+        expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(90);
+        // ...but the media-list array keeps its identity during playback, so the hidden library
+        // grid's O(n log n) filter/sort memo is not retriggered on every periodic save.
+        expect(result.current.mediaItems).toBe(listBeforeSave);
+        expect(result.current.mediaItems[0].progress_seconds).toBe(0);
+
+        // Closing the player reconciles the stashed progress into the list in one pass.
+        act(() => {
+            result.current.mediaPlayer.closePlayer();
+        });
+
+        expect(result.current.mediaItems[0].progress_seconds).toBe(90);
+        // The media that was not playing is untouched.
+        expect(result.current.mediaItems[1].progress_seconds).toBe(12);
+    });
+
+    it("does not resurrect progress on a watched item when flushing on close", async () => {
+        listChannelMediaMock.mockResolvedValueOnce([
+            createMediaRow({
+                id: 5,
+                progress_seconds: 0,
+                watched_at: "2026-01-01T00:00:00.000Z",
+            }),
+        ]);
+
+        const { result } = renderMediaLibrary(7);
+
+        await waitFor(() => {
+            expect(result.current.mediaItems).toHaveLength(1);
+        });
+
+        act(() => {
+            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]);
+        });
+
+        await act(async () => {
+            await result.current.saveMediaProgress(5, 90);
+        });
+
+        act(() => {
+            result.current.mediaPlayer.closePlayer();
+        });
+
+        // A watched media stays at 0; the deferred 90s position is discarded on flush.
+        expect(result.current.mediaItems[0].progress_seconds).toBe(0);
+    });
+
     it("clears the media list and closes the player", () => {
         const { result } = renderMediaLibrary(null);
 
