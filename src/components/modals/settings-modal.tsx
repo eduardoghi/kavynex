@@ -245,7 +245,7 @@ export function SettingsModal({
                     </SimpleGrid>
 
                     {!!librarySummaryError && (
-                        <Alert color="yellow" variant="light">
+                        <Alert color="yellow" variant="light" role="status" aria-live="polite">
                             <Text size="sm">{librarySummaryError}</Text>
                         </Alert>
                     )}
@@ -412,6 +412,10 @@ export function SettingsModal({
                                 <Alert
                                     color={databaseMessage.tone === "success" ? "green" : "red"}
                                     variant="light"
+                                    role={databaseMessage.tone === "success" ? "status" : "alert"}
+                                    aria-live={
+                                        databaseMessage.tone === "success" ? "polite" : "assertive"
+                                    }
                                 >
                                     <Text size="sm">{databaseMessage.text}</Text>
                                 </Alert>
@@ -451,13 +455,13 @@ export function SettingsModal({
                             </Group>
 
                             {appUpdateStatus === "not-available" && (
-                                <Alert color="green" variant="light">
+                                <Alert color="green" variant="light" role="status" aria-live="polite">
                                     <Text size="sm">Kavynex is already up to date.</Text>
                                 </Alert>
                             )}
 
                             {updateInfo && (
-                                <Alert color="blue" variant="light">
+                                <Alert color="blue" variant="light" role="status" aria-live="polite">
                                     <Stack gap="xs">
                                         <Text fw={600}>
                                             Version {updateInfo.version} is available.
@@ -500,7 +504,7 @@ export function SettingsModal({
                             )}
 
                             {!!appUpdateErrorMessage && (
-                                <Alert color="red" variant="light">
+                                <Alert color="red" variant="light" role="alert" aria-live="assertive">
                                     <Text size="sm">{appUpdateErrorMessage}</Text>
                                 </Alert>
                             )}

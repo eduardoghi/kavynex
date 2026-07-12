@@ -19,6 +19,11 @@ describe("DiagnosticsDatabaseIntegrityCheck", () => {
         await waitFor(() => {
             expect(screen.getByText("No problems found")).toBeInTheDocument();
         });
+
+        // The outcome lives in a polite live region so screen readers announce it.
+        const liveRegion = screen.getByRole("status");
+        expect(liveRegion).toHaveAttribute("aria-live", "polite");
+        expect(liveRegion).toHaveTextContent("No problems found");
     });
 
     it("shows a problem result when the integrity check reports an issue", async () => {
