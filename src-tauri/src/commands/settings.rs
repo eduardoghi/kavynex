@@ -1,15 +1,10 @@
-use std::path::Path;
-
-use sqlx::SqlitePool;
 use tauri::State;
 
 use crate::services::database::{
-    get_app_settings_from_pool, set_app_settings_in_pool, set_library_path_in_pool, Db,
-    StoredAppSettings,
+    get_app_settings_from_pool, set_app_settings_in_pool, Db, StoredAppSettings,
 };
 use crate::services::library_paths::resolve_existing_library_dir;
-use crate::services::library_recovery::{self, MarkerOutcome};
-use crate::services::logger;
+use crate::services::library_recovery;
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
@@ -23,59 +18,10 @@ pub async fn get_app_settings(db: State<'_, Db>) -> AppResult<StoredAppSettings>
     // "disappeared". Best effort and cheap in the common case (a single stat of a missing
     // marker); see services::library_recovery.
     if let Some(config_dir) = db.path().parent() {
-        recover_interrupted_library_migration(&pool, config_dir).await;
+        library_recovery::reconcile_interrupted_migration(&pool, config_dir).await;
     }
 
     get_app_settings_from_pool(&pool).await
-}
-
-/// Reconciles the stored library path with the migration commit marker (see
-/// `services::library_recovery`). Every failure is logged and swallowed: recovery must never
-/// keep the settings from being read.
-async fn recover_interrupted_library_migration(pool: &SqlitePool, config_dir: &Path) {
-    let marker = library_recovery::commit_marker_path(config_dir);
-
-    // Common case: no interrupted migration, so a single stat and we are done.
-    if !marker.exists() {
-        return;
-    }
-
-    let stored_library_path = match get_app_settings_from_pool(pool).await {
-        Ok(settings) => settings.library_path.unwrap_or_default(),
-        Err(_) => return,
-    };
-
-    // evaluate_recovery only reads the filesystem; keep those stats off the async worker threads.
-    let marker_for_eval = marker.clone();
-    let outcome = run_blocking(move || {
-        Ok(library_recovery::evaluate_recovery(
-            &stored_library_path,
-            &marker_for_eval,
-        ))
-    })
-    .await;
-
-    match outcome {
-        Ok(MarkerOutcome::Recover(new_path)) => {
-            match set_library_path_in_pool(pool, &new_path).await {
-                Ok(()) => {
-                    library_recovery::clear_commit_marker(&marker);
-                    logger::info(
-                        "library",
-                        format!(
-                        "recovered the library path from an interrupted migration: '{new_path}'"
-                    ),
-                    );
-                }
-                Err(error) => logger::warn(
-                    "library",
-                    format!("failed to persist the recovered library path: {error}"),
-                ),
-            }
-        }
-        Ok(MarkerOutcome::ClearStale) => library_recovery::clear_commit_marker(&marker),
-        Ok(MarkerOutcome::None) | Err(_) => {}
-    }
 }
 
 /// Rejects a non-empty `library_path` that is not an existing directory (or is a filesystem

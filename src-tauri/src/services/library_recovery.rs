@@ -14,7 +14,12 @@
 
 use std::path::{Path, PathBuf};
 
+use sqlx::SqlitePool;
+
 use crate::constants::MANAGED_LIBRARY_DIRS;
+use crate::services::database::{get_app_settings_from_pool, set_library_path_in_pool};
+use crate::services::logger;
+use crate::utils::task::run_blocking;
 
 const COMMIT_MARKER_FILE_NAME: &str = "library-migration-commit";
 
@@ -92,6 +97,53 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
         // Neither the stored path nor the marker target holds library content; there is nothing
         // to recover, so drop the marker rather than keep re-checking it.
         MarkerOutcome::ClearStale
+    }
+}
+
+/// Reconciles the stored library path with the migration commit marker: if the configured
+/// library lost its content but the marker points at a populated directory, the marker path is
+/// adopted so an interrupted migration does not look like a lost library. Every failure is logged
+/// and swallowed - recovery must never keep the settings from being read. Runs on each settings
+/// read (see `commands::settings::get_app_settings`); cheap in the common case (a single stat of a
+/// missing marker).
+pub async fn reconcile_interrupted_migration(pool: &SqlitePool, config_dir: &Path) {
+    let marker = commit_marker_path(config_dir);
+
+    // Common case: no interrupted migration, so a single stat and we are done.
+    if !marker.exists() {
+        return;
+    }
+
+    let stored_library_path = match get_app_settings_from_pool(pool).await {
+        Ok(settings) => settings.library_path.unwrap_or_default(),
+        Err(_) => return,
+    };
+
+    // evaluate_recovery only reads the filesystem; keep those stats off the async worker threads.
+    let marker_for_eval = marker.clone();
+    let outcome =
+        run_blocking(move || Ok(evaluate_recovery(&stored_library_path, &marker_for_eval))).await;
+
+    match outcome {
+        Ok(MarkerOutcome::Recover(new_path)) => {
+            match set_library_path_in_pool(pool, &new_path).await {
+                Ok(()) => {
+                    clear_commit_marker(&marker);
+                    logger::info(
+                        "library",
+                        format!(
+                        "recovered the library path from an interrupted migration: '{new_path}'"
+                    ),
+                    );
+                }
+                Err(error) => logger::warn(
+                    "library",
+                    format!("failed to persist the recovered library path: {error}"),
+                ),
+            }
+        }
+        Ok(MarkerOutcome::ClearStale) => clear_commit_marker(&marker),
+        Ok(MarkerOutcome::None) | Err(_) => {}
     }
 }
 
@@ -204,6 +256,97 @@ mod tests {
             evaluate_recovery(&old.to_string_lossy(), &marker),
             MarkerOutcome::ClearStale
         );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    async fn memory_settings_pool(library_path: &str) -> sqlx::SqlitePool {
+        use sqlx::sqlite::SqlitePoolOptions;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("create sqlite memory pool");
+
+        sqlx::query(
+            "CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("create app_settings table");
+
+        sqlx::query("INSERT INTO app_settings (key, value) VALUES ('library_path', ?)")
+            .bind(library_path)
+            .execute(&pool)
+            .await
+            .expect("seed library_path");
+
+        pool
+    }
+
+    #[tokio::test]
+    async fn reconcile_adopts_the_marker_path_when_the_stored_library_lost_its_content() {
+        let base = unique_dir("reconcile-recover");
+        let config_dir = base.join("config");
+        let old = base.join("old"); // survives the migration as an empty shell
+        let new = base.join("new");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::create_dir_all(&old).unwrap();
+        make_populated_library(&new);
+
+        let marker = commit_marker_path(&config_dir);
+        write_commit_marker(&marker, &new.to_string_lossy()).unwrap();
+
+        let pool = memory_settings_pool(&old.to_string_lossy()).await;
+
+        reconcile_interrupted_migration(&pool, &config_dir).await;
+
+        // The stored library path was adopted from the marker, and the marker was cleared.
+        let (stored,): (String,) =
+            sqlx::query_as("SELECT value FROM app_settings WHERE key = 'library_path'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(stored, new.to_string_lossy());
+        assert!(
+            !marker.exists(),
+            "the commit marker must be cleared after recovery"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn reconcile_clears_a_stale_marker_when_the_stored_library_is_intact() {
+        let base = unique_dir("reconcile-stale");
+        let config_dir = base.join("config");
+        let old = base.join("old");
+        let new = base.join("new");
+        fs::create_dir_all(&config_dir).unwrap();
+        make_populated_library(&old); // the configured library still has its content
+        make_populated_library(&new);
+
+        let marker = commit_marker_path(&config_dir);
+        write_commit_marker(&marker, &new.to_string_lossy()).unwrap();
+
+        let pool = memory_settings_pool(&old.to_string_lossy()).await;
+
+        reconcile_interrupted_migration(&pool, &config_dir).await;
+
+        // The stored path is untouched (still `old`) and the stale marker is dropped.
+        let (stored,): (String,) =
+            sqlx::query_as("SELECT value FROM app_settings WHERE key = 'library_path'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(stored, old.to_string_lossy());
+        assert!(!marker.exists(), "a stale marker must be cleared");
 
         let _ = fs::remove_dir_all(&base);
     }
