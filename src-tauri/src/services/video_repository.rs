@@ -108,6 +108,8 @@ pub struct MediaRepositoryStats {
 pub struct MediaIntegrityReference {
     #[ts(type = "number")]
     pub id: i64,
+    #[ts(type = "number")]
+    pub channel_id: i64,
     pub title: String,
     pub file_path: String,
     pub thumbnail_path: Option<String>,
@@ -386,7 +388,7 @@ pub async fn list_media_integrity_references(
     pool: &SqlitePool,
 ) -> AppResult<Vec<MediaIntegrityReference>> {
     sqlx::query_as::<_, MediaIntegrityReference>(
-        "SELECT id, title, file_path, thumbnail_path, live_chat_file_path
+        "SELECT id, channel_id, title, file_path, thumbnail_path, live_chat_file_path
          FROM videos
          ORDER BY id ASC",
     )

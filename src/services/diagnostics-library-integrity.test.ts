@@ -32,6 +32,7 @@ describe("getLibraryIntegrity", () => {
         listMediaIntegrityReferencesMock.mockResolvedValueOnce([
             {
                 id: 1,
+                channel_id: 10,
                 title: "Video A",
                 file_path: "video/a.mp4",
                 thumbnail_path: "thumbnails/a.jpg",
