@@ -18,6 +18,9 @@ import {
     formatPublishedAtForDisplay,
 } from "../../utils/published-date";
 
+// Stable no-op for the locked modal's onClose, so it is not a fresh function every render.
+const NOOP = (): void => {};
+
 type AddMediaModalProps = {
     opened: boolean;
     onClose: () => void;
@@ -142,7 +145,7 @@ export function AddMediaModal({
     return (
         <Modal
             opened={opened}
-            onClose={isModalLocked ? () => {} : onClose}
+            onClose={isModalLocked ? NOOP : onClose}
             title={<Text fw={900}>Import media</Text>}
             centered
             radius="lg"
