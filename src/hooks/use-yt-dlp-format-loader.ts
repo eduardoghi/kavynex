@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { listYtDlpFormats } from "../services/media-download-service";
 import type { MediaType, YtDlpFormat } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
+import { useRequestGuard } from "./use-request-guard";
 import {
     buildMergedFormats,
     inferPreferredFormatId,
@@ -56,7 +57,7 @@ export function useYtDlpFormatLoader({
     // Guards against a stale format response overwriting state after the URL changed (or was
     // reset) while yt-dlp was running - otherwise the formats/selection for an old URL could
     // repopulate over the current one, and that selection feeds the real download command.
-    const latestRequestIdRef = useRef(0);
+    const requestGuard = useRequestGuard();
 
     const selectedYtDlpMediaType = useMemo<MediaType>(() => {
         return inferSelectedMediaType(ytDlpFormats, selectedYtDlpFormatId);
@@ -64,12 +65,12 @@ export function useYtDlpFormatLoader({
 
     const resetYtDlpFormats = useCallback((): void => {
         // Invalidate any in-flight load so its response cannot repopulate the cleared state.
-        latestRequestIdRef.current += 1;
+        requestGuard.invalidate();
         setYtDlpFormats([]);
         setSelectedYtDlpFormatIdState("");
         setResolvedYoutubeVideoId(null);
         onMediaTypeResolved("video");
-    }, [onMediaTypeResolved]);
+    }, [onMediaTypeResolved, requestGuard]);
 
     const setSelectedYtDlpFormatId = useCallback(
         (value: string): void => {
@@ -101,7 +102,7 @@ export function useYtDlpFormatLoader({
             return;
         }
 
-        const requestId = ++latestRequestIdRef.current;
+        const requestId = requestGuard.begin();
 
         setIsLoadingYtDlpFormats(true);
 
@@ -138,7 +139,7 @@ export function useYtDlpFormatLoader({
 
             // A newer request (or a reset from a URL change) superseded this one; discard the
             // stale response instead of overwriting the current formats/selection.
-            if (requestId !== latestRequestIdRef.current) {
+            if (!requestGuard.isCurrent(requestId)) {
                 return;
             }
 
@@ -177,7 +178,7 @@ export function useYtDlpFormatLoader({
         } catch (error) {
             // A stale request's failure must not clear the current state or surface an error
             // for a URL the user already moved away from.
-            if (requestId !== latestRequestIdRef.current) {
+            if (!requestGuard.isCurrent(requestId)) {
                 return;
             }
 
@@ -219,6 +220,7 @@ export function useYtDlpFormatLoader({
         onTerminalLog,
         onTerminalStart,
         onTerminalStop,
+        requestGuard,
         resetYtDlpFormats,
     ]);
 

@@ -3,6 +3,7 @@ import type { MediaRow } from "../types/media";
 import { listChannelMedia } from "../services";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { useRequestGuard } from "./use-request-guard";
 
 type UseChannelMediaListOptions = {
     selectedChannelId: number | null;
@@ -24,15 +25,15 @@ export function useChannelMediaList({
     const [mediaItems, setMediaItems] = useState<MediaRow[]>([]);
     const [isLoadingMedia, setIsLoadingMedia] = useState(false);
 
-    const latestRequestIdRef = useRef(0);
+    const requestGuard = useRequestGuard();
     const loadedChannelIdRef = useRef<number | null>(null);
 
     const clearMedia = useCallback((): void => {
-        latestRequestIdRef.current += 1;
+        requestGuard.invalidate();
         loadedChannelIdRef.current = null;
         setIsLoadingMedia(false);
         setMediaItems([]);
-    }, []);
+    }, [requestGuard]);
 
     const loadMedia = useCallback(
         async (channelId?: number | null): Promise<void> => {
@@ -44,7 +45,7 @@ export function useChannelMediaList({
                 return;
             }
 
-            const requestId = ++latestRequestIdRef.current;
+            const requestId = requestGuard.begin();
             setIsLoadingMedia(true);
 
             if (loadedChannelIdRef.current !== targetChannelId) {
@@ -54,14 +55,14 @@ export function useChannelMediaList({
             try {
                 const items = await listChannelMedia(targetChannelId);
 
-                if (requestId !== latestRequestIdRef.current) {
+                if (!requestGuard.isCurrent(requestId)) {
                     return;
                 }
 
                 loadedChannelIdRef.current = targetChannelId;
                 setMediaItems(items);
             } catch (error) {
-                if (requestId !== latestRequestIdRef.current) {
+                if (!requestGuard.isCurrent(requestId)) {
                     return;
                 }
 
@@ -73,12 +74,12 @@ export function useChannelMediaList({
                 });
                 onError(resolveErrorMessage(error, "Failed to load channel media."));
             } finally {
-                if (requestId === latestRequestIdRef.current) {
+                if (requestGuard.isCurrent(requestId)) {
                     setIsLoadingMedia(false);
                 }
             }
         },
-        [clearMedia, onError, selectedChannelId]
+        [clearMedia, onError, requestGuard, selectedChannelId]
     );
 
     // Memoized so the controller object keeps a stable identity across renders where its
