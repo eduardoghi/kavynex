@@ -25,6 +25,7 @@ import {
     INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE,
     MEDIA_IMPORT_FAILED_ERROR_CODE,
     VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE,
+    CHANNEL_NOT_FOUND_ERROR_CODE,
     YT_DLP_NOT_FOUND_ERROR_CODE,
     YT_DLP_METADATA_TIMEOUT_ERROR_CODE,
     YT_DLP_DOWNLOAD_TIMEOUT_ERROR_CODE,
@@ -84,6 +85,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [MEDIA_IMPORT_FAILED_ERROR_CODE]: "The media import failed.",
     [VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE]:
         "This media is already registered for the selected channel.",
+    [CHANNEL_NOT_FOUND_ERROR_CODE]:
+        "The channel no longer exists. It may have been removed while the media was being added.",
 
     [YT_DLP_NOT_FOUND_ERROR_CODE]:
         "yt-dlp was not found. Install yt-dlp or place the binary in the app tools folder.",

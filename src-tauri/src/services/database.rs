@@ -113,6 +113,20 @@ pub(crate) fn is_unique_violation(error: &sqlx::Error) -> bool {
     }
 }
 
+/// True when a sqlx error is a SQLite FOREIGN KEY constraint violation, so an insert against a
+/// no-longer-existing parent row (e.g. a channel deleted concurrently) can be mapped to a
+/// friendly domain error instead of surfacing the raw SQL message.
+pub(crate) fn is_foreign_key_violation(error: &sqlx::Error) -> bool {
+    use sqlx::error::DatabaseError;
+
+    match error {
+        sqlx::Error::Database(database_error) => {
+            DatabaseError::is_foreign_key_violation(database_error.as_ref())
+        }
+        _ => false,
+    }
+}
+
 pub fn database_path(app: &AppHandle) -> AppResult<PathBuf> {
     let config_dir = app
         .path()

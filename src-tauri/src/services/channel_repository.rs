@@ -102,13 +102,17 @@ pub async fn update_channel_name_and_handle(
     name: &str,
     youtube_handle: &str,
 ) -> AppResult<()> {
-    sqlx::query("UPDATE channels SET name = ?, youtube_handle = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE channels SET name = ?, youtube_handle = ? WHERE id = ?")
         .bind(name)
         .bind(youtube_handle)
         .bind(channel_id)
         .execute(pool)
         .await
         .map_err(|error| db_error("failed to update channel name and handle", error))?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::invalid_input("channel not found"));
+    }
 
     Ok(())
 }
@@ -118,12 +122,16 @@ pub async fn update_channel_avatar_path(
     channel_id: i64,
     avatar_path: Option<&str>,
 ) -> AppResult<()> {
-    sqlx::query("UPDATE channels SET avatar_path = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE channels SET avatar_path = ? WHERE id = ?")
         .bind(avatar_path)
         .bind(channel_id)
         .execute(pool)
         .await
         .map_err(|error| db_error("failed to update channel avatar path", error))?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::invalid_input("channel not found"));
+    }
 
     Ok(())
 }

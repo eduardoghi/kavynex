@@ -54,6 +54,7 @@ pub enum AppErrorCode {
 
     ChannelAlreadyExists,
     VideoAlreadyExistsForChannel,
+    ChannelNotFound,
 
     InvalidChannelName,
     InvalidYoutubeHandle,
@@ -195,6 +196,7 @@ impl AppErrorCode {
 
             Self::ChannelAlreadyExists => "CHANNEL_ALREADY_EXISTS",
             Self::VideoAlreadyExistsForChannel => "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
+            Self::ChannelNotFound => "CHANNEL_NOT_FOUND",
 
             Self::InvalidChannelName => "INVALID_CHANNEL_NAME",
             Self::InvalidYoutubeHandle => "INVALID_YOUTUBE_HANDLE",

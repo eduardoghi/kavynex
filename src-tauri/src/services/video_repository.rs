@@ -2,7 +2,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use ts_rs::TS;
 
-use crate::services::database::{db_error, is_unique_violation};
+use crate::services::database::{db_error, is_foreign_key_violation, is_unique_violation};
 use crate::{AppError, AppErrorCode, AppResult};
 
 // `id`/counts/flags are i64 in Rust but ts-rs would emit `bigint`; the Tauri IPC layer
@@ -121,12 +121,16 @@ const MEDIA_COLUMNS: &str = "id, channel_id, title, file_path, thumbnail_path, m
     comments_count, is_live, has_live_chat, live_chat_file_path, created_at";
 
 pub async fn update_media_title(pool: &SqlitePool, media_id: i64, title: &str) -> AppResult<()> {
-    sqlx::query("UPDATE videos SET title = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE videos SET title = ? WHERE id = ?")
         .bind(title)
         .bind(media_id)
         .execute(pool)
         .await
         .map_err(|error| db_error("failed to update media title", error))?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::invalid_input("media not found"));
+    }
 
     Ok(())
 }
@@ -242,6 +246,16 @@ pub async fn insert_media(
             );
         }
 
+        // The channel_id foreign key no longer resolves: the channel was removed (e.g. deleted
+        // concurrently while this download was finishing). Map it to a friendly code instead of
+        // a raw SQLite foreign-key constraint error.
+        if is_foreign_key_violation(&error) {
+            return AppError::from_code(
+                AppErrorCode::ChannelNotFound,
+                "the channel no longer exists",
+            );
+        }
+
         db_error("failed to insert media", error)
     })?;
 
@@ -294,11 +308,15 @@ pub async fn mark_media_as_watched(pool: &SqlitePool, media_id: i64) -> AppResul
 }
 
 pub async fn mark_media_as_unwatched(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
-    sqlx::query("UPDATE videos SET watched_at = NULL WHERE id = ?")
+    let result = sqlx::query("UPDATE videos SET watched_at = NULL WHERE id = ?")
         .bind(media_id)
         .execute(pool)
         .await
         .map_err(|error| db_error("failed to mark media as unwatched", error))?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::invalid_input("media not found"));
+    }
 
     Ok(())
 }
@@ -308,6 +326,10 @@ pub async fn update_media_progress(
     media_id: i64,
     progress_seconds: i64,
 ) -> AppResult<()> {
+    // Deliberately idempotent - a zero-row result is expected here, not an error: the
+    // `watched_at IS NULL` guard means a watched media matches no row (progress is not tracked
+    // once watched), and saving progress for a since-deleted media is a harmless no-op. This is
+    // unlike the title/unwatched updates above, where zero rows means the media id is unknown.
     sqlx::query("UPDATE videos SET progress_seconds = ? WHERE id = ? AND watched_at IS NULL")
         .bind(progress_seconds)
         .bind(media_id)
@@ -491,6 +513,128 @@ mod tests {
 
         let list = list_media_by_channel(&pool, 1).await.unwrap();
         assert_eq!(list.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn update_media_title_errors_when_the_media_is_missing() {
+        let pool = create_test_pool().await;
+
+        let error = update_media_title(&pool, 999, "New title")
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+    }
+
+    #[tokio::test]
+    async fn mark_media_as_unwatched_errors_when_the_media_is_missing() {
+        let pool = create_test_pool().await;
+
+        let error = mark_media_as_unwatched(&pool, 999).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+    }
+
+    /// A pool whose `videos.channel_id` actually references a `channels` table, so the
+    /// foreign-key violation path in `insert_media` can be exercised (the main test pool has no
+    /// FK, since most tests do not need one).
+    async fn create_test_pool_with_channel_fk() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("create sqlite memory pool");
+
+        sqlx::query("PRAGMA foreign_keys = ON;")
+            .execute(&pool)
+            .await
+            .expect("enable foreign keys");
+
+        sqlx::query(
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);",
+        )
+        .execute(&pool)
+        .await
+        .expect("create channels table");
+
+        sqlx::query(
+            "CREATE TABLE videos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                thumbnail_path TEXT,
+                media_type TEXT NOT NULL DEFAULT 'video',
+                youtube_video_id TEXT,
+                watched_at TEXT,
+                published_at TEXT,
+                duration_seconds INTEGER,
+                progress_seconds INTEGER NOT NULL DEFAULT 0,
+                has_comments INTEGER NOT NULL DEFAULT 0,
+                comments_count INTEGER NOT NULL DEFAULT 0,
+                is_live INTEGER NOT NULL DEFAULT 0,
+                has_live_chat INTEGER NOT NULL DEFAULT 0,
+                live_chat_file_path TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+                UNIQUE (channel_id, file_path)
+            );",
+        )
+        .execute(&pool)
+        .await
+        .expect("create videos table with a channel foreign key");
+
+        pool
+    }
+
+    #[tokio::test]
+    async fn insert_media_maps_a_missing_channel_to_channel_not_found() {
+        let pool = create_test_pool_with_channel_fk().await;
+
+        // No channel row exists, so the channel_id foreign key does not resolve.
+        let error = insert_media(
+            &pool,
+            999,
+            "Orphan",
+            "video/orphan.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::ChannelNotFound.as_str());
+    }
+
+    #[tokio::test]
+    async fn insert_media_succeeds_for_an_existing_channel_with_fk_enforced() {
+        let pool = create_test_pool_with_channel_fk().await;
+
+        sqlx::query("INSERT INTO channels (id, name) VALUES (1, 'Chan')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let id = insert_media(
+            &pool,
+            1,
+            "Video",
+            "video/a.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(id > 0);
     }
 
     #[tokio::test]
