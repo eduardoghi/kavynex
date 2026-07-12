@@ -16,6 +16,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
     "version:bump": "node scripts/bump-version.js"
   },

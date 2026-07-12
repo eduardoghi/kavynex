@@ -60,8 +60,11 @@ jobs:
             - name: Lint
               run: pnpm lint
 
+            # Runs the full suite with coverage so the thresholds in vitest.config.ts are
+            # enforced here (a large coverage regression fails CI). Mutation testing
+            # (pnpm test:mutation) stays the higher-signal, manually-run quality gate.
             - name: Run tests
-              run: pnpm test:run
+              run: pnpm test:coverage
 
             - name: Build frontend
               run: pnpm build
