@@ -16,6 +16,27 @@ pub fn get_library_summary_sync(library_path: &str) -> AppResult<LibrarySummaryI
     summarize_library(&library_dir)
 }
 
+/// True for a UNC / network location (`\\host\share` or `//host/share`). Merely
+/// canonicalizing or opening one of these on Windows makes the OS reach out to `host` over
+/// SMB and authenticate, which leaks the user's NTLM hash to whoever controls that host - so
+/// a network path must be rejected *before* any filesystem call touches it, not after.
+fn is_network_path(value: &str) -> bool {
+    let value = value.trim_start();
+
+    // Windows verbatim prefix: `\\?\UNC\...` is a network share, but `\\?\C:\...` (and the
+    // `\\.\` device namespace) are local, so those must not be treated as network even though
+    // they start with two backslashes.
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        return rest.starts_with("UNC\\") || rest.starts_with("unc\\");
+    }
+
+    if value.starts_with(r"\\.\") {
+        return false;
+    }
+
+    value.starts_with(r"\\") || value.starts_with("//")
+}
+
 /// Resolves `path` relative to `library_path` (or as-is if absolute), verifies that
 /// the result exists and is contained within the library, and returns the canonical path.
 pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> AppResult<PathBuf> {
@@ -45,6 +66,20 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
     } else {
         PathBuf::from(base_library).join(candidate)
     };
+
+    // Refuse UNC / network locations before any filesystem call. Both `path` and
+    // `library_path` arrive over IPC, and the containment check below cannot be trusted to
+    // catch this because `library_path` is caller-supplied too: an attacker who drives IPC can
+    // pass a `\\host\share` as both, making `starts_with` trivially true. Rejecting here - and
+    // before the `canonicalize` calls, which is what would trigger the SMB/NTLM handshake -
+    // closes that. The cost is that a library kept on a network share loses only the "reveal in
+    // file manager" convenience; playback, import and download are unaffected.
+    if is_network_path(base_library) || is_network_path(&resolved_path.to_string_lossy()) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidMediaPath,
+            "network paths are not allowed",
+        ));
+    }
 
     let canonical_library = std::fs::canonicalize(base_library).map_err(|_| {
         AppError::from_code(
@@ -255,5 +290,44 @@ mod tests {
         assert!(result.is_ok(), "expected Ok but got: {:?}", result.err());
         assert_eq!(result.unwrap(), file_path.canonicalize().unwrap());
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn is_network_path_flags_unc_and_forward_slash_shares() {
+        for value in [
+            r"\\server\share",
+            r"\\server\share\clip.mp4",
+            "//server/share",
+            r"\\?\UNC\server\share", // verbatim UNC is still a network share
+        ] {
+            assert!(is_network_path(value), "should flag: {value}");
+        }
+
+        for value in [
+            r"C:\Users\me\video.mp4",
+            "/home/me/video.mp4",
+            "video/clip.mp4",
+            r"\\?\C:\Users\me\video.mp4", // extended-length local path, not a network share
+        ] {
+            assert!(!is_network_path(value), "should not flag: {value}");
+        }
+    }
+
+    #[test]
+    fn rejects_network_path_as_the_target() {
+        // A caller that drives IPC could pass a UNC path as both `path` and `library_path`,
+        // making the containment check self-referential; it must be rejected before any
+        // filesystem call (canonicalize) can trigger an SMB/NTLM handshake.
+        let error = resolve_path_inside_library(r"\\attacker\share", Some(r"\\attacker\share"))
+            .unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidMediaPath.as_str());
+    }
+
+    #[test]
+    fn rejects_network_path_built_from_a_network_library_base() {
+        // A relative `path` joined onto a UNC `library_path` still resolves to a network
+        // location, so it must be rejected too (the join, not just the raw argument).
+        let error = resolve_path_inside_library("clip.mp4", Some(r"\\attacker\share")).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidMediaPath.as_str());
     }
 }

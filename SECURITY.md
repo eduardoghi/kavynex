@@ -36,6 +36,41 @@ prefixes) so a sibling directory like `library-evil` next to `library` can never
 mistaken for it. This is what stops a compromised frontend from redirecting a delete/move
 operation at an arbitrary directory by simply passing a different `library_path`.
 
+#### Commands that intentionally take a caller-supplied path
+
+A handful of commands deliberately do *not* go through `library_guard`, because they are
+used by the onboarding/settings UI to preview or act on a *candidate* library folder
+before it is persisted (at which point there is no configured library to re-derive from).
+These are a conscious exception, not an oversight, and each is constrained so the "the
+renderer is compromised and sends a hostile path" case has limited blast radius:
+
+- `get_library_summary`, `check_library_integrity` - **read-only**: they only read
+  directory metadata / compare it against caller-supplied path lists. Worst case is
+  narrow information disclosure (filenames under the four managed subfolders of the given
+  directory), never a write or a file-content read.
+- `import_media_file`, `generate_temporary_thumbnail` - **writes are content-addressed
+  and extension-gated**: the destination filename is derived from the file's own SHA-256
+  and an allowed media/image extension, so a hostile source path cannot choose where the
+  output lands inside the managed tree.
+- `export_database` - the destination is **extension-gated** to `.db`/`.sqlite`/
+  `.sqlite3` (`commands/database.rs::validate_export_destination`) so the exported
+  database cannot be written over an arbitrary file such as a document or a key. It is
+  otherwise caller-chosen (the backend cannot see the save dialog); this is an accepted,
+  documented tradeoff.
+- `open_path_in_system` - spawns the OS file manager on the resolved path. Because it
+  takes both `path` and `library_path` from the caller, its containment check alone cannot
+  be trusted (a caller can pass the same value as both). The real risk there is a UNC /
+  network path (`\\host\share`): merely resolving one on Windows triggers an SMB/NTLM
+  authentication handshake, leaking the user's NTLM hash to `host`. `services/library.rs::
+  resolve_path_inside_library` therefore rejects network paths outright, *before* any
+  `canonicalize` call can reach out over SMB. A library kept on a network share loses only
+  the "reveal in file manager" convenience as a result.
+
+The security boundary these share is the same one this whole document is about: the Rust
+command layer holds regardless of what the frontend sends. React's default escaping (see
+above) is what keeps the renderer from being compromised in the first place; these
+constraints are the defense-in-depth for if it ever were.
+
 ### The yt-dlp host allow-list and argument separator
 
 `src-tauri/src/services/yt_dlp_url.rs` restricts every URL handed to yt-dlp to an
