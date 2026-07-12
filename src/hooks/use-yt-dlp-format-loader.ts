@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { listYtDlpFormats } from "../services/media-download-service";
 import type { MediaType, YtDlpFormat } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
+import { parseAppError } from "../utils/app-error";
 import {
     buildMergedFormats,
     inferPreferredFormatId,
@@ -190,14 +191,15 @@ export function useYtDlpFormatLoader({
                 "Failed to load yt-dlp formats."
             );
 
-            if (
-                typeof error === "object" &&
-                error !== null &&
-                "details" in error &&
-                typeof (error as { details?: unknown }).details === "string" &&
-                (error as { details?: string }).details?.trim()
-            ) {
-                message = `${message}\n${(error as { details: string }).details.trim()}`;
+            // resolveErrorMessage already folds the structured `details` into the message for a
+            // catalogued/known backend code, but drops them when the message degrades to the
+            // generic fallback above. Surface the details in that fallback case only - the
+            // `includes` guard keeps them from being appended a second time when the pipeline
+            // already added them (which previously duplicated the details block in the terminal).
+            const { details } = parseAppError(error);
+
+            if (details && !message.includes(details)) {
+                message = `${message}\n${details}`;
             }
 
             onTerminalLog?.(`ERROR: ${message}`);

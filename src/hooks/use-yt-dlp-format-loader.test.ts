@@ -1441,6 +1441,34 @@ describe("useYtDlpFormatLoader - error handling", () => {
         expect(onTerminalLog).toHaveBeenCalledWith("ERROR: Failed to load yt-dlp formats.");
     });
 
+    it("surfaces a catalogued backend error's details exactly once, not duplicated", async () => {
+        const { result, onTerminalLog } = renderLoader();
+
+        // A real backend AppError arrives as a structured object. resolveErrorMessage already
+        // folds its `details` into the message via the "Details:" block; the loader must not
+        // append them a second time (the regression this guards).
+        vi.mocked(listYtDlpFormats).mockRejectedValueOnce({
+            code: "YT_DLP_METADATA_FAILED",
+            message: "yt-dlp: unable to extract",
+            details: "traceback-info-xyz",
+        });
+
+        await expect(
+            act(async () => {
+                await result.current.loadYtDlpFormats();
+            })
+        ).rejects.toBeDefined();
+
+        const errorLine = onTerminalLog.mock.calls
+            .map((call) => String(call[0]))
+            .find((line) => line.startsWith("ERROR:"));
+
+        expect(errorLine).toBe(
+            "ERROR: yt-dlp could not load media information for this URL.\n\nDetails: traceback-info-xyz"
+        );
+        expect(errorLine?.split("traceback-info-xyz")).toHaveLength(2);
+    });
+
     it("does not append a details line when details is not a string", async () => {
         const { result, onTerminalLog } = renderLoader();
 
