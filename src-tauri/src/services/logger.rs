@@ -60,6 +60,15 @@ fn append_line(path: &Path, line: &str) {
     }
 }
 
+/// Acquires the file lock and appends a single line. Split out from [`write`] so the same
+/// body can run either inline (synchronous callers) or on the blocking pool (async callers).
+fn append_line_locked(path: &Path, line: &str) {
+    let _guard = LOG_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    append_line(path, line);
+}
+
 fn write(level: &str, scope: &str, message: &str) {
     let line = format!(
         "[{}] [{}] [{}] {}",
@@ -71,11 +80,27 @@ fn write(level: &str, scope: &str, message: &str) {
 
     eprintln!("{line}");
 
-    if let Some(path) = LOG_PATH.get() {
-        let _guard = LOG_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        append_line(path, &line);
+    let Some(path) = LOG_PATH.get() else {
+        return;
+    };
+
+    // The file write (rotation check + append under a mutex) is blocking disk I/O. When this
+    // runs inside the async runtime - which is most log calls, since services log from async
+    // commands and background tasks - hand it to the blocking pool so a log line never stalls
+    // a Tokio worker thread on a slow disk. Fire-and-forget is acceptable: logging is
+    // best-effort and every line carries its own timestamp, so a slight reordering between
+    // concurrent writers is harmless. Outside the runtime (Tauri's synchronous setup hook, the
+    // app-exit sweep, tests) there is nothing to offload to, so write inline.
+    match tokio::runtime::Handle::try_current() {
+        Ok(_) => {
+            let path = path.clone();
+            // Detach the handle: this is fire-and-forget, and dropping a spawn_blocking handle
+            // does not cancel the already-running write.
+            drop(tauri::async_runtime::spawn_blocking(move || {
+                append_line_locked(&path, &line)
+            }));
+        }
+        Err(_) => append_line_locked(path, &line),
     }
 }
 
