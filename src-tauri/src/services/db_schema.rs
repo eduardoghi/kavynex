@@ -133,11 +133,19 @@ const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     ),
 ];
 
-async fn table_has_column<'e, E>(executor: E, table: &str, column: &str) -> AppResult<bool>
+async fn table_has_column<'e, E>(
+    executor: E,
+    table: &'static str,
+    column: &'static str,
+) -> AppResult<bool>
 where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
-    // table is an internal constant, not user input, so interpolation is safe here.
+    // `table` is interpolated into raw SQL (pragma_table_info cannot be parameterized). The
+    // `&'static str` bound is what keeps that safe: a runtime-built String (e.g. anything derived
+    // from user input) cannot be passed here without leaking it, so by construction only internal
+    // schema constants ever reach this interpolation - the invariant is enforced by the type, not
+    // by a comment.
     let rows: Vec<(String,)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT name FROM pragma_table_info('{table}')"
     )))
@@ -302,6 +310,20 @@ async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
         .await
         .map_err(|error| db_error("failed to begin schema migration", error))?;
 
+    // Back the duplicate-detection GROUP BY (below) with a temporary index covering
+    // (video_id, comment_id, id) so the one-time cleanup answers MIN(id) per group from the index
+    // instead of full-scanning and sorting video_comments - which, on a user with a large comment
+    // history, would otherwise make this startup migration noticeably slow. The real partial unique
+    // index cannot stand in for it here: it is created by the INDEX_DDLS loop only after the
+    // duplicates it would reject are gone. The temp index is dropped again before the loop runs.
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_video_comments_dedup_tmp \
+         ON video_comments (video_id, comment_id, id)",
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| db_error("failed to create temporary dedup index", error))?;
+
     sqlx::query(
         r#"
         DELETE FROM video_comments
@@ -317,6 +339,11 @@ async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
     .execute(&mut *tx)
     .await
     .map_err(|error| db_error("failed to collapse duplicate comments", error))?;
+
+    sqlx::query("DROP INDEX IF EXISTS idx_video_comments_dedup_tmp")
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to drop temporary dedup index", error))?;
 
     for &(_, ddl) in INDEX_DDLS {
         sqlx::query(ddl)
