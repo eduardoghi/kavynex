@@ -15,6 +15,12 @@ import type { ReactNode } from "react";
 import type { YtDlpFormat } from "../../../types/media";
 import { COOKIES_BROWSER_SELECT_OPTIONS } from "../../../constants/cookies-browsers";
 import { formatBytes } from "../../../utils/media-utils";
+import {
+    type BadgeTone,
+    buildFormatBadgeLabel,
+    buildFormatBadgeTone,
+    getBadgeStyle,
+} from "../../../utils/yt-dlp-format-badge";
 import { AppButton } from "../../ui/app-button";
 
 type YtDlpSectionProps = {
@@ -37,136 +43,6 @@ type YtDlpSectionProps = {
     onChangeDownloadLiveChat: (value: boolean) => void;
     onLoadYtDlpFormats: () => void | Promise<void>;
 };
-
-type BadgeTone = "neutral" | "violet" | "blue" | "green" | "orange" | "red" | "yellow";
-
-function buildFormatBadgeLabel(format: YtDlpFormat | null): string {
-    if (!format) {
-        return "NO FORMAT SELECTED";
-    }
-
-    const displayName = format.display_name.trim().toUpperCase();
-
-    if (displayName.startsWith("MERGED")) {
-        return "MERGED";
-    }
-
-    if (displayName.startsWith("NATIVE")) {
-        return "NATIVE";
-    }
-
-    if (displayName.startsWith("VIDEO ONLY")) {
-        return "VIDEO ONLY";
-    }
-
-    if (displayName.startsWith("AUDIO ONLY")) {
-        return "AUDIO ONLY";
-    }
-
-    if (format.has_video && format.has_audio) {
-        return "VIDEO + AUDIO";
-    }
-
-    if (format.has_video) {
-        return "VIDEO ONLY";
-    }
-
-    return "AUDIO ONLY";
-}
-
-function buildFormatBadgeTone(format: YtDlpFormat | null): BadgeTone {
-    if (!format) {
-        return "neutral";
-    }
-
-    const displayName = format.display_name.trim().toUpperCase();
-
-    if (displayName.startsWith("MERGED")) {
-        return "violet";
-    }
-
-    if (displayName.startsWith("NATIVE")) {
-        return "green";
-    }
-
-    if (displayName.startsWith("VIDEO ONLY")) {
-        return "blue";
-    }
-
-    if (displayName.startsWith("AUDIO ONLY")) {
-        return "orange";
-    }
-
-    if (format.has_video && format.has_audio) {
-        return "green";
-    }
-
-    if (format.has_video) {
-        return "blue";
-    }
-
-    return "orange";
-}
-
-function getBadgeStyle(tone: BadgeTone): {
-    background: string;
-    borderColor: string;
-    color: string;
-} {
-    if (tone === "violet") {
-        return {
-            background: "rgba(124,92,255,0.13)",
-            borderColor: "rgba(139,92,246,0.34)",
-            color: "rgb(221,214,254)",
-        };
-    }
-
-    if (tone === "blue") {
-        return {
-            background: "rgba(59,130,246,0.13)",
-            borderColor: "rgba(59,130,246,0.34)",
-            color: "rgb(147,197,253)",
-        };
-    }
-
-    if (tone === "green") {
-        return {
-            background: "rgba(34,197,94,0.13)",
-            borderColor: "rgba(34,197,94,0.34)",
-            color: "rgb(134,239,172)",
-        };
-    }
-
-    if (tone === "orange") {
-        return {
-            background: "rgba(249,115,22,0.13)",
-            borderColor: "rgba(249,115,22,0.34)",
-            color: "rgb(253,186,116)",
-        };
-    }
-
-    if (tone === "red") {
-        return {
-            background: "rgba(239,68,68,0.13)",
-            borderColor: "rgba(239,68,68,0.34)",
-            color: "rgb(252,165,165)",
-        };
-    }
-
-    if (tone === "yellow") {
-        return {
-            background: "rgba(234,179,8,0.13)",
-            borderColor: "rgba(234,179,8,0.34)",
-            color: "rgb(253,224,71)",
-        };
-    }
-
-    return {
-        background: "rgba(255,255,255,0.055)",
-        borderColor: "rgba(255,255,255,0.14)",
-        color: "rgba(255,255,255,0.66)",
-    };
-}
 
 function StatusBadge({
     children,
