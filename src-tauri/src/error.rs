@@ -316,7 +316,7 @@ pub struct AppError {
 }
 
 impl AppError {
-    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -324,7 +324,7 @@ impl AppError {
         }
     }
 
-    pub fn with_details(
+    pub(crate) fn with_details(
         code: impl Into<String>,
         message: impl Into<String>,
         details: impl Into<String>,
