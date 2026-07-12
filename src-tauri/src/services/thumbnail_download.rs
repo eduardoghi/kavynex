@@ -58,6 +58,11 @@ async fn run_thumbnail_yt_dlp_with_timeout(
         )
     })?;
     let child_pid = child.id();
+    // Track this yt-dlp thumbnail/avatar child (and its ffmpeg grandchild via the tree kill)
+    // globally so the app-exit handler terminates it too; these run outside the per-download
+    // registry (the standalone thumbnail/avatar paths) or before its child pid is recorded
+    // (the pre-download media thumbnail). Unregisters when this function returns.
+    let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
 
     tokio::select! {
         output_result = timeout(

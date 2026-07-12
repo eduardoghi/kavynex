@@ -277,6 +277,10 @@ async fn run_yt_dlp_and_capture_json(
         .spawn()
         .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?;
     let child_pid = child.id();
+    // Track this yt-dlp child (metadata/comments/format listing) globally so the app-exit
+    // handler tree-kills it too; the per-download registry only knows the main download child,
+    // which spawns after this phase. Unregisters when this function returns.
+    let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
 
     let stdout = child.stdout.take().ok_or_else(|| {
         AppError::from_code(

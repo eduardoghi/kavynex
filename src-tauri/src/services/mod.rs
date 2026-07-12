@@ -16,6 +16,7 @@ pub mod library_summary;
 pub mod live_chat_storage;
 pub mod logger;
 pub mod media_comments;
+pub mod process_registry;
 pub mod temp_paths;
 pub mod thumbnail;
 pub mod thumbnail_download;

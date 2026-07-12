@@ -273,10 +273,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .unwrap_or_else(|error| fail_startup(&format!("failed to build the application: {error}")))
         .run(|_app_handle, event| {
-            // Terminate any in-flight yt-dlp/ffmpeg downloads when the app is exiting so
-            // they are not left running as orphaned processes after the window closes.
+            // Terminate any in-flight yt-dlp/ffmpeg work when the app is exiting so it is not
+            // left running as orphaned processes after the window closes. The download sweep
+            // signals cancellation and kills the main download trees; the process-registry
+            // sweep additionally covers the metadata, thumbnail and standalone (comment/format/
+            // avatar) children, which the download registry never tracked.
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 services::yt_dlp::cancel_all_active_downloads_blocking();
+                services::process_registry::kill_all_tracked_blocking();
             }
         });
 }

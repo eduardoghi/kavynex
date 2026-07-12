@@ -773,6 +773,12 @@ pub async fn download_media_from_url_async(
         if let Some(pid) = child_pid {
             set_download_pid(&normalized_run_id, pid);
         }
+        // Also track it in the process-wide registry so the exit handler's global sweep covers
+        // it uniformly with the metadata/thumbnail children; killing a pid twice on exit (once
+        // via the download registry, once via the global one) is harmless. Unregisters when
+        // this download future completes.
+        let _tracked_child =
+            crate::services::process_registry::TrackedChildGuard::register(child_pid);
 
         // Stall detection: the reader tasks record the elapsed millis of the last line the
         // child produced; the wait loop kills the download if it goes silent for too long.
