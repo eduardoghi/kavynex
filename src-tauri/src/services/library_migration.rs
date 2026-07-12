@@ -60,6 +60,15 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
 }
 
 pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
+    copy_library_contents(old_library_dir, new_library_dir)?;
+    remove_old_library_contents(old_library_dir);
+    Ok(())
+}
+
+/// Phase 1: copy all managed directories to the new location without touching the originals.
+/// If any copy fails here, the old library is still fully intact and the app continues working
+/// normally against the old path.
+fn copy_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
     fs::create_dir_all(new_library_dir).map_err(|e| {
         AppError::from_code(
             AppErrorCode::CreateNewLibraryDirFailed,
@@ -67,9 +76,6 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
         )
     })?;
 
-    // Phase 1: copy all files to the new location without touching the originals.
-    // If any copy fails here, the old library is still fully intact and the app
-    // continues working normally against the old path.
     for dir_name in MANAGED_LIBRARY_DIRS {
         let source_dir = old_library_dir.join(dir_name);
         let destination_dir = new_library_dir.join(dir_name);
@@ -87,7 +93,13 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
         copy_directory_contents(&source_dir, &destination_dir)?;
     }
 
-    // Phase 2: all copies confirmed — remove old directories.
+    Ok(())
+}
+
+/// Phase 2: all copies confirmed - remove the old managed directories, then the old library
+/// directory itself if nothing unrelated is left in it. Best effort: a removal failure only
+/// leaves reclaimable disk behind, never lost data (the new location already holds a full copy).
+fn remove_old_library_contents(old_library_dir: &Path) {
     for dir_name in MANAGED_LIBRARY_DIRS {
         let source_dir = old_library_dir.join(dir_name);
 
@@ -119,7 +131,37 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
     }
 
     let _ = fs::remove_dir(old_library_dir);
+}
 
+/// Runs the copy/remove phases with a durable commit marker written between them, so an
+/// interrupted migration (a crash after the copy but before the frontend persists the new
+/// library path) can be recovered on the next launch. When `commit_marker` is `Some` and the
+/// marker cannot be written, the old directory is deliberately left intact: reclaiming its disk
+/// is not worth removing the only path back to the library when recovery would be impossible.
+/// `None` (used by tests) keeps the plain copy-then-remove behavior.
+fn migrate_library_contents_with_marker(
+    old_library_dir: &Path,
+    new_library_dir: &Path,
+    commit_marker: Option<&Path>,
+) -> AppResult<()> {
+    copy_library_contents(old_library_dir, new_library_dir)?;
+
+    if let Some(marker) = commit_marker {
+        if let Err(error) = crate::services::library_recovery::write_commit_marker(
+            marker,
+            &new_library_dir.to_string_lossy(),
+        ) {
+            logger::warn(
+                "library",
+                format!(
+                    "keeping the old library directory: failed to write the migration commit marker: {error}"
+                ),
+            );
+            return Ok(());
+        }
+    }
+
+    remove_old_library_contents(old_library_dir);
     Ok(())
 }
 
@@ -150,6 +192,7 @@ fn list_leftover_entries(old_library_dir: &Path) -> Vec<String> {
 pub fn migrate_library_directory_sync(
     old_library_path: &str,
     new_library_path: &str,
+    commit_marker: Option<&Path>,
 ) -> AppResult<MigrateLibraryDirectoryResult> {
     let migration_guard = match library_migration_lock().try_lock() {
         Ok(guard) => guard,
@@ -244,7 +287,7 @@ pub fn migrate_library_directory_sync(
     // destructive phase needs it; the validation above is read-only. See services/library_lock.
     let migration_result = {
         let _library_write_guard = crate::services::library_lock::library_write_guard();
-        migrate_library_contents(&canonical_old, &canonical_new)
+        migrate_library_contents_with_marker(&canonical_old, &canonical_new, commit_marker)
     };
 
     match &migration_result {
@@ -388,7 +431,8 @@ mod tests {
 
         let new_root = unique_test_dir("empty-old");
         let result =
-            migrate_library_directory_sync("   ", new_root.to_string_lossy().as_ref()).unwrap();
+            migrate_library_directory_sync("   ", new_root.to_string_lossy().as_ref(), None)
+                .unwrap();
 
         let canonical_new = new_root
             .canonicalize()
@@ -412,6 +456,7 @@ mod tests {
         let result = migrate_library_directory_sync(
             old_root.to_string_lossy().as_ref(),
             new_root.to_string_lossy().as_ref(),
+            None,
         )
         .unwrap();
 
@@ -437,6 +482,7 @@ mod tests {
         let result = migrate_library_directory_sync(
             root.to_string_lossy().as_ref(),
             root.to_string_lossy().as_ref(),
+            None,
         )
         .unwrap();
 
@@ -459,6 +505,7 @@ mod tests {
         let result = migrate_library_directory_sync(
             old_root.to_string_lossy().as_ref(),
             new_root.to_string_lossy().as_ref(),
+            None,
         );
 
         assert!(result.is_err());
@@ -482,6 +529,7 @@ mod tests {
         let result = migrate_library_directory_sync(
             old_root.to_string_lossy().as_ref(),
             parent_root.to_string_lossy().as_ref(),
+            None,
         );
 
         assert!(result.is_err());
@@ -547,6 +595,7 @@ mod tests {
         let result = migrate_library_directory_sync(
             old_root.to_string_lossy().as_ref(),
             new_root.to_string_lossy().as_ref(),
+            None,
         )
         .unwrap();
 
@@ -558,6 +607,39 @@ mod tests {
 
         let _ = fs::remove_dir_all(old_root);
         let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
+    fn migrate_library_directory_sync_writes_the_commit_marker_when_it_removes_the_old_library() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let old_root = unique_test_dir("marker-old");
+        let new_root = unique_test_dir("marker-new");
+        let marker = unique_test_dir("marker-file");
+        fs::create_dir_all(marker.parent().unwrap()).unwrap();
+
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video-data").unwrap();
+
+        let result = migrate_library_directory_sync(
+            old_root.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+            Some(&marker),
+        )
+        .unwrap();
+
+        assert!(result.changed);
+        assert!(new_root.join("video").join("a.mp4").exists());
+        // The old managed directory is removed (phase 2 ran)...
+        assert!(!old_root.join("video").exists());
+        // ...and only because the durable commit marker recording the new path was written
+        // first, so a crash before the frontend persisted the new path stays recoverable.
+        let recorded = fs::read_to_string(&marker).unwrap();
+        assert_eq!(recorded.trim(), result.final_library_path);
+
+        let _ = fs::remove_dir_all(&old_root);
+        let _ = fs::remove_dir_all(&new_root);
+        let _ = fs::remove_file(&marker);
     }
 
     #[test]
@@ -574,6 +656,7 @@ mod tests {
         let result = migrate_library_directory_sync(
             old_root.to_string_lossy().as_ref(),
             new_root.to_string_lossy().as_ref(),
+            None,
         );
 
         assert!(result.is_err());
@@ -604,7 +687,8 @@ mod tests {
         // wedge every future migration until the app restarts.
         let new_root = unique_test_dir("poison-recover");
         let result =
-            migrate_library_directory_sync("   ", new_root.to_string_lossy().as_ref()).unwrap();
+            migrate_library_directory_sync("   ", new_root.to_string_lossy().as_ref(), None)
+                .unwrap();
         assert!(result.changed);
 
         // Leave the shared lock clean for any test that runs after this one.

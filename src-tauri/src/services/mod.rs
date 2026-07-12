@@ -13,6 +13,7 @@ pub mod library_lock;
 pub mod library_media;
 pub mod library_migration;
 pub mod library_paths;
+pub mod library_recovery;
 pub mod library_summary;
 pub mod live_chat_storage;
 pub mod logger;

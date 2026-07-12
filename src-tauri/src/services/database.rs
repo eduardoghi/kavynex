@@ -50,6 +50,13 @@ impl Db {
         Ok(pool.clone())
     }
 
+    /// The resolved on-disk path of the database file. Its parent is the app config directory,
+    /// which also holds sibling artifacts (backups, the migration commit marker), so callers
+    /// that only hold the managed `Db` can locate those without a separate `AppHandle`.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     /// Whether the pool has already been opened. Guards the restore-from-backup flow, which
     /// must only run while the database is closed (i.e. after a failed open) - a failed
     /// `get_or_try_init` above does not cache, so the cell stays empty until an open succeeds.
@@ -257,6 +264,18 @@ fn validate_import_mode(value: &str) -> AppResult<&str> {
             format!("unsupported import mode '{other}'; expected 'copy' or 'move'"),
         )),
     }
+}
+
+/// Upserts only the library path setting. Used by the interrupted-migration recovery, which
+/// adopts a new library directory recorded by a migration that crashed before the frontend
+/// could persist it (see `services::library_recovery`). The other settings are left untouched.
+pub(crate) async fn set_library_path_in_pool(
+    pool: &SqlitePool,
+    library_path: &str,
+) -> AppResult<()> {
+    upsert_setting(pool, LIBRARY_PATH_KEY, library_path)
+        .await
+        .map_err(|error| db_error("failed to persist the recovered library path", error))
 }
 
 pub async fn set_app_settings_in_pool(

@@ -60,10 +60,23 @@ pub async fn migrate_library_directory(
     // The migration removes the managed subdirectories of `old_library_path` after
     // copying, so the verified path is the old library (the one the user actually
     // configured). The settings still hold the old path at this point: the frontend only
-    // persists the new one after the migration succeeds.
+    // persists the new one after the migration succeeds. To survive a crash in that window,
+    // the migration records the new path in a commit marker next to the database just before
+    // it removes the old directory; get_app_settings adopts it if the app restarts still
+    // pointing at the emptied old library (see services::library_recovery).
+    let commit_marker = app
+        .path()
+        .app_config_dir()
+        .ok()
+        .map(|config_dir| crate::services::library_recovery::commit_marker_path(&config_dir));
+
     let result =
         verify_library_path_then_blocking(&app, old_library_path, move |old_library_path| {
-            library_migration::migrate_library_directory_sync(&old_library_path, &new_library_path)
+            library_migration::migrate_library_directory_sync(
+                &old_library_path,
+                &new_library_path,
+                commit_marker.as_deref(),
+            )
         })
         .await?;
 
