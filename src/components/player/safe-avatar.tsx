@@ -31,6 +31,9 @@ export function SafeAvatar({
             imageProps={{
                 referrerPolicy: "no-referrer",
                 onError: () => setImageFailed(true),
+                // Decorative: the author name is always shown next to the avatar, so an empty
+                // alt keeps screen readers from announcing the image URL/filename as content.
+                alt: "",
             }}
             styles={{
                 root: {
