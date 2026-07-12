@@ -89,7 +89,9 @@ export function useHomePlayerActions({
     const markActiveAsWatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        if (!activeId) {
+        // Explicit undefined check, not truthiness: a media id of 0 is a valid row id and must
+        // not be treated as "no active media".
+        if (activeId === undefined) {
             return;
         }
 
@@ -103,7 +105,9 @@ export function useHomePlayerActions({
     const markActiveAsUnwatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        if (!activeId) {
+        // Explicit undefined check, not truthiness: a media id of 0 is a valid row id and must
+        // not be treated as "no active media".
+        if (activeId === undefined) {
             return;
         }
 
