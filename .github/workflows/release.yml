@@ -145,6 +145,17 @@ jobs:
             - name: Audit Rust dependencies
               run: cargo audit --file src-tauri/Cargo.lock
 
+            # Mirror ci.yml's cargo-deny gate (license/source/ban checks) so a manually
+            # dispatched release cannot ship a dependency with a disallowed license or an
+            # untrusted source. Ubuntu only; the check is platform-independent.
+            - name: Install cargo-deny
+              if: matrix.platform == 'ubuntu-22.04'
+              run: cargo install cargo-deny --locked
+
+            - name: Check licenses, sources and bans
+              if: matrix.platform == 'ubuntu-22.04'
+              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
+
             - name: Build frontend
               run: pnpm build
 

@@ -1,0 +1,48 @@
+# cargo-deny configuration.
+#
+# Complements `cargo audit` (RUSTSEC vulnerability advisories) with the checks it does not do:
+# license compliance, dependency source trust, and duplicate/wildcard dependencies. CI runs
+# `cargo deny check licenses bans sources` (advisories stay with cargo-audit to avoid
+# duplicating the same gate). See .github/workflows/ci.yml.
+
+[graph]
+# No `targets` filter: evaluate every crate in Cargo.lock across all platforms the app ships
+# on, so a bad license in a platform-specific dependency is caught even on a different runner.
+
+[licenses]
+# Allowlist of the permissive licenses actually present in the tree (verified with
+# `cargo deny check licenses`). No copyleft (GPL/AGPL) is allowed, so a future dependency that
+# pulls one in fails CI instead of silently shipping inside an MIT-licensed app. The underlying
+# GTK/WebKit system libraries on Linux are (L)GPL C libraries linked dynamically - they are not
+# Rust crates and never appear here; the Rust GTK bindings themselves are MIT.
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Duplicate versions of a crate are common in a large transitive tree and not worth failing a
+# release over, but surface them so the bloat/audit surface stays visible.
+multiple-versions = "warn"
+# A wildcard ("*") version requirement in our own manifest would let an unreviewed major land
+# silently; the app pins real ranges, so forbid it.
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+# Every dependency must come from crates.io; one pulled from an arbitrary git host or a private
+# registry fails, closing that supply-chain vector.
+unknown-registry = "deny"
+unknown-git = "deny"

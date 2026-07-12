@@ -120,7 +120,7 @@ jobs:
                   git diff --exit-code -- src/types/generated
 
     audit:
-        name: Cargo audit
+        name: Cargo audit and deny
         runs-on: ubuntu-latest
         steps:
             - name: Checkout repository
@@ -140,3 +140,13 @@ jobs:
             # Rust dependency tree.
             - name: Audit Rust dependencies
               run: cargo audit --file src-tauri/Cargo.lock
+
+            - name: Install cargo-deny
+              run: cargo install cargo-deny --locked
+
+            # cargo-audit covers advisories; cargo-deny adds the checks it does not: license
+            # compliance (no copyleft license in an MIT-licensed app), dependency source trust
+            # (crates.io only), and wildcard version requirements. Advisories are left to
+            # cargo-audit above so the same gate is not run twice. Config: src-tauri/deny.toml.
+            - name: Check licenses, sources and bans
+              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
