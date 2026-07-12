@@ -84,8 +84,13 @@ jobs:
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
             - name: Install Rust toolchain
+              # Pin the exact toolchain (keep in sync with rust-toolchain.toml) instead of pulling
+              # whatever "stable" is at build time. rust-toolchain.toml already forces this version
+              # at cargo time; pinning the action too keeps the pre-installed compiler deterministic
+              # and avoids downloading a moving "stable" toolchain the build never uses.
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
+                  toolchain: 1.96.0
                   components: rustfmt, clippy
 
             - name: Install Linux dependencies
@@ -122,7 +127,11 @@ jobs:
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
             - name: Install Rust toolchain
+              # Pin the exact toolchain (keep in sync with rust-toolchain.toml) instead of a
+              # moving "stable".
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.96.0
 
             - name: Install cargo-audit
               run: cargo install cargo-audit --locked
