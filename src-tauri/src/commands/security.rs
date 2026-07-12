@@ -3,6 +3,7 @@ use std::path::Path;
 use tauri::{AppHandle, Manager};
 
 use crate::services::library_guard::ensure_configured_library_path;
+use crate::services::logger;
 use crate::utils::format::is_allowed_thumbnail_extension;
 use crate::utils::path::extension_from_path;
 use crate::utils::task::run_blocking;
@@ -52,7 +53,17 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
 
         if let Ok(canonical) = std::fs::canonicalize(path) {
             if canonical != path {
-                let _ = allow_directory_in_asset_scope(&app, &canonical);
+                // Best effort: the primary grant above already succeeded; this only covers the
+                // extended-length (`\\?\`) variant the frontend may request. Log a failure
+                // instead of dropping it silently, mirroring the other best-effort scope paths.
+                if let Err(error) = allow_directory_in_asset_scope(&app, &canonical) {
+                    logger::warn(
+                        "asset_scope",
+                        format!(
+                            "failed to authorize canonical library path in asset scope: {error}"
+                        ),
+                    );
+                }
             }
         }
 
@@ -120,7 +131,14 @@ pub async fn allow_asset_file(app: AppHandle, path: String) -> AppResult<()> {
             })?;
 
         if let Ok(canonical) = std::fs::canonicalize(&trimmed) {
-            let _ = app.asset_protocol_scope().allow_file(&canonical);
+            // Best effort: the exact path was authorized above; this only covers its canonical
+            // (`\\?\`) form. Log a failure instead of dropping it silently, like the other paths.
+            if let Err(error) = app.asset_protocol_scope().allow_file(&canonical) {
+                logger::warn(
+                    "asset_scope",
+                    format!("failed to authorize canonical asset file in asset scope: {error}"),
+                );
+            }
         }
 
         Ok(())

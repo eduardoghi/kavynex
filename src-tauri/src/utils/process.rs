@@ -12,6 +12,10 @@ use crate::{AppError, AppErrorCode};
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// How often [`wait_for_cancel`] re-checks the cancel flag. Short enough that a user cancel
+/// aborts a bounded wait promptly, long enough not to busy-spin.
+const CANCEL_POLL_INTERVAL_MS: u64 = 200;
+
 /// Suppresses the console window for a synchronous [`std::process::Command`].
 #[cfg(windows)]
 pub fn hide_console(command: &mut std::process::Command) {
@@ -131,7 +135,7 @@ pub async fn wait_for_cancel(cancel: Option<&std::sync::atomic::AtomicBool>) {
         None => std::future::pending::<()>().await,
         Some(flag) => {
             while !flag.load(std::sync::atomic::Ordering::SeqCst) {
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(CANCEL_POLL_INTERVAL_MS)).await;
             }
         }
     }

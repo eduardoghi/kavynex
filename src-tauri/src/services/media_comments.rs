@@ -113,6 +113,8 @@ async fn replace_media_comments_in_pool(
             .bind(normalize_optional_text(&comment.author_channel_id))
             .bind(normalize_optional_text(&comment.author_thumbnail))
             .bind(normalized_text)
+            // like_count/reply_count are u64 from yt-dlp; saturate to i64::MAX on the
+            // (practically impossible) overflow rather than failing the whole insert over a count.
             .bind(i64::try_from(comment.like_count).unwrap_or(i64::MAX))
             .bind(i64::try_from(comment.reply_count).unwrap_or(i64::MAX))
             .bind(if comment.is_author_uploader {
