@@ -325,6 +325,17 @@ async fn assert_url_host_is_public(uri: &Uri) -> AppResult<()> {
 /// Downloads `url` over HTTPS (or HTTP), follows up to DIRECT_THUMBNAIL_MAX_REDIRECTS
 /// redirects, streams the body with a hard cap of DIRECT_THUMBNAIL_MAX_BYTES, and
 /// validates Content-Type when present. Returns (status, headers, body).
+///
+/// This uses a hand-rolled hyper client on purpose, rather than `reqwest` (which is already in
+/// the tree transitively via the updater plugin). The reason is the redirect loop below: it
+/// follows redirects *manually* so it can re-run the SSRF guard - `assert_url_host_is_public`,
+/// which rejects a host resolving to a private/loopback/link-local/reserved address - on the
+/// initial URL **and on every redirect target**. A client that follows redirects automatically
+/// (reqwest's default) would only let us vet the first hop, so a public thumbnail URL that
+/// 302-redirects to, say, `http://169.254.169.254/...` or an internal host would slip past the
+/// check. The thumbnail URL comes from yt-dlp metadata (attacker-influenced), so that per-hop
+/// revalidation is the whole point; keeping this on a minimal hyper stack also avoids pulling
+/// reqwest's cookie jar and automatic-redirect behavior into a request that must stay dumb.
 async fn http_get_image(
     url: &str,
     timeout_secs: u64,

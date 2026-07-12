@@ -42,6 +42,11 @@ tauri-plugin-os = "2.3.2"
 chrono = "0.4.44"
 tauri-plugin-process = "2"
 tauri-plugin-window-state = "2"
+# Minimal hand-rolled HTTP client (hyper) for the direct thumbnail/avatar download in
+# services/thumbnail_download.rs. Deliberately kept separate from `reqwest` (pulled in
+# transitively by tauri-plugin-updater): that download follows redirects manually so it can
+# re-run its SSRF guard on every hop, which reqwest's automatic redirect following would bypass.
+# See http_get_image in services/thumbnail_download.rs for the full rationale.
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "rustls-platform-verifier"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "http1", "tokio"] }
 http-body-util = { version = "0.1", default-features = false }
