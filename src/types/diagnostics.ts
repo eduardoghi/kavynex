@@ -51,6 +51,20 @@ export type AppDiagnostics = {
 
 export type DiagnosticsIssueSeverity = "info" | "warning" | "error";
 
+// Where a diagnostics example path maps to a media row the user can navigate to (a media whose
+// file is missing on disk still has its row, so it can be opened in the library).
+export type DiagnosticsMediaTarget = {
+    channelId: number;
+    mediaId: number;
+};
+
+export type DiagnosticsIssueExample = {
+    path: string;
+    // Present only when the path corresponds to an existing media row, so the UI can offer to
+    // jump to it in the library. Orphan files (no row) have no target.
+    media?: DiagnosticsMediaTarget;
+};
+
 export type DiagnosticsIssue = {
     code: string;
     severity: DiagnosticsIssueSeverity;
@@ -59,7 +73,7 @@ export type DiagnosticsIssue = {
     // A few concrete example paths for issues that reference specific files (missing/orphan/
     // invalid), so the user can see and act on them manually. Capped by the backend/service
     // that produced them; omitted when there are none to show.
-    examples?: string[];
+    examples?: DiagnosticsIssueExample[];
 };
 
 export type DiagnosticsOverviewStatus = "healthy" | "warning" | "error";

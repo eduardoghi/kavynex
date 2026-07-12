@@ -2,8 +2,44 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeTauri } from "../lib/tauri-client";
 import { listChannels } from "../repositories/channel-repository";
 import { listMediaIntegrityReferences } from "../repositories/media-repository";
-import type { LibraryIntegrityReport, MediaIntegrityReference } from "../types/diagnostics";
+import type {
+    DiagnosticsMediaTarget,
+    LibraryIntegrityReport,
+    MediaIntegrityReference,
+} from "../types/diagnostics";
 import { normalizeNonEmptyUniquePaths } from "../utils/paths";
+
+// Result of the library-integrity check: the raw report plus a lookup from a stored media
+// file path to the media row it belongs to, so the diagnostics UI can turn a "missing media"
+// path into a jump-to-the-media action. Keyed by the same normalization the backend uses for
+// the example paths it echoes back (trimmed, forward slashes).
+export type LibraryIntegrityResult = {
+    report: LibraryIntegrityReport;
+    mediaByPath: Record<string, DiagnosticsMediaTarget>;
+};
+
+function normalizePathKey(path: string): string {
+    return path.trim().replace(/\\/g, "/");
+}
+
+function buildMediaByPath(
+    mediaReferences: MediaIntegrityReference[]
+): Record<string, DiagnosticsMediaTarget> {
+    const mediaByPath: Record<string, DiagnosticsMediaTarget> = {};
+
+    for (const reference of mediaReferences) {
+        const key = normalizePathKey(reference.file_path);
+
+        if (key) {
+            mediaByPath[key] = {
+                channelId: reference.channel_id,
+                mediaId: reference.id,
+            };
+        }
+    }
+
+    return mediaByPath;
+}
 
 function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
     return {
@@ -48,11 +84,11 @@ function buildIntegrityPayload(
 
 export async function getLibraryIntegrity(
     libraryPath: string
-): Promise<LibraryIntegrityReport> {
+): Promise<LibraryIntegrityResult> {
     const normalizedLibraryPath = libraryPath.trim();
 
     if (!normalizedLibraryPath) {
-        return createEmptyLibraryIntegrityReport();
+        return { report: createEmptyLibraryIntegrityReport(), mediaByPath: {} };
     }
 
     const [mediaReferences, channels] = await Promise.all([
@@ -66,9 +102,14 @@ export async function getLibraryIntegrity(
 
     // Always call through, even with no references: the library folder may still hold orphan
     // files the database no longer knows about.
-    return invokeTauri<LibraryIntegrityReport>(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY, {
-        libraryPath: normalizedLibraryPath,
-        mediaPaths: payload.mediaPaths,
-        thumbnailPaths: payload.thumbnailPaths,
-    });
+    const report = await invokeTauri<LibraryIntegrityReport>(
+        TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY,
+        {
+            libraryPath: normalizedLibraryPath,
+            mediaPaths: payload.mediaPaths,
+            thumbnailPaths: payload.thumbnailPaths,
+        }
+    );
+
+    return { report, mediaByPath: buildMediaByPath(mediaReferences) };
 }

@@ -18,6 +18,7 @@ import { ChannelSidebar } from "../components/layout/channel-sidebar";
 import { MediaPlayerView } from "../components/player/media-player-view";
 import { UI_TEXT } from "../constants/ui-text";
 import { useHomeController } from "../hooks/use-home-controller";
+import type { DiagnosticsMediaTarget } from "../types/diagnostics";
 import type { MediaRow } from "../types/media";
 
 export default function Home(): JSX.Element {
@@ -41,6 +42,28 @@ export default function Home(): JSX.Element {
 
     const [editTitleMedia, setEditTitleMedia] = useState<MediaRow | null>(null);
     const [isSavingTitle, setIsSavingTitle] = useState(false);
+
+    // Set when the user clicks a "missing media" path in Diagnostics: the target channel is
+    // selected and the grid, once that channel's media has loaded, scrolls to and highlights the
+    // card, then clears this. A media whose file is missing still has its row, so it is listed in
+    // the grid (just not playable).
+    const [focusMediaId, setFocusMediaId] = useState<number | null>(null);
+
+    const { closeDiagnostics } = controller.diagnostics;
+    const { setSelectedChannelId } = channels;
+
+    const handleOpenDiagnosticsMedia = useCallback(
+        (target: DiagnosticsMediaTarget): void => {
+            closeDiagnostics();
+            setSelectedChannelId(target.channelId);
+            setFocusMediaId(target.mediaId);
+        },
+        [closeDiagnostics, setSelectedChannelId]
+    );
+
+    const handleFocusMediaHandled = useCallback((): void => {
+        setFocusMediaId(null);
+    }, []);
 
     const handleSaveMediaTitle = useCallback(
         async (item: MediaRow, title: string): Promise<void> => {
@@ -210,6 +233,8 @@ export default function Home(): JSX.Element {
                                         isVisible={showLibrary}
                                         mediaItems={media.mediaItems}
                                         activeMediaId={media.mediaPlayer.activeMedia?.id ?? null}
+                                        focusMediaId={focusMediaId}
+                                        onFocusMediaHandled={handleFocusMediaHandled}
                                         libraryPath={controller.libraryPath}
                                         shellBorder={viewState.shellBorder}
                                         shellSurface={viewState.shellSurface}
@@ -237,6 +262,7 @@ export default function Home(): JSX.Element {
                         error={controller.error}
                         databaseRecovery={controller.databaseRecovery}
                         uiGuards={controller.uiGuards}
+                        onOpenDiagnosticsMedia={handleOpenDiagnosticsMedia}
                     />
 
                     <EditMediaTitleModal

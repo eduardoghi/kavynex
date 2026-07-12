@@ -134,7 +134,7 @@ describe("diagnostics-service", () => {
             })
         );
 
-        getLibraryIntegrityMock.mockResolvedValueOnce({
+        getLibraryIntegrityMock.mockResolvedValueOnce({ report: {
             checked_media_files: 1,
             missing_media_files: 0,
             missing_media_examples: [],
@@ -149,7 +149,7 @@ describe("diagnostics-service", () => {
             invalid_media_examples: [],
             invalid_thumbnail_files: 0,
             invalid_thumbnail_examples: [],
-        });
+        }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -206,7 +206,7 @@ describe("diagnostics-service", () => {
 
         getMediaRepositoryStatsMock.mockResolvedValueOnce(createMediaRepositoryStats());
 
-        getLibraryIntegrityMock.mockResolvedValueOnce({
+        getLibraryIntegrityMock.mockResolvedValueOnce({ report: {
             checked_media_files: 0,
             missing_media_files: 0,
             missing_media_examples: [],
@@ -221,7 +221,7 @@ describe("diagnostics-service", () => {
             invalid_media_examples: [],
             invalid_thumbnail_files: 0,
             invalid_thumbnail_examples: [],
-        });
+        }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -282,7 +282,7 @@ describe("diagnostics-service", () => {
             })
         );
 
-        getLibraryIntegrityMock.mockResolvedValueOnce({
+        getLibraryIntegrityMock.mockResolvedValueOnce({ report: {
             checked_media_files: 1,
             missing_media_files: 0,
             missing_media_examples: [],
@@ -297,7 +297,7 @@ describe("diagnostics-service", () => {
             invalid_media_examples: [],
             invalid_thumbnail_files: 0,
             invalid_thumbnail_examples: [],
-        });
+        }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -358,7 +358,7 @@ describe("diagnostics-service", () => {
             })
         );
 
-        getLibraryIntegrityMock.mockResolvedValueOnce({
+        getLibraryIntegrityMock.mockResolvedValueOnce({ report: {
             checked_media_files: 3,
             missing_media_files: 1,
             missing_media_examples: ["video/a.mp4"],
@@ -373,7 +373,7 @@ describe("diagnostics-service", () => {
             invalid_media_examples: [],
             invalid_thumbnail_files: 0,
             invalid_thumbnail_examples: [],
-        });
+        }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -463,7 +463,7 @@ describe("diagnostics-service", () => {
         getLibrarySummaryMock.mockRejectedValueOnce(new Error("library scan failed"));
         getMediaRepositoryStatsMock.mockResolvedValueOnce(createMediaRepositoryStats());
 
-        getLibraryIntegrityMock.mockResolvedValueOnce({
+        getLibraryIntegrityMock.mockResolvedValueOnce({ report: {
             checked_media_files: 0,
             missing_media_files: 0,
             missing_media_examples: [],
@@ -478,7 +478,7 @@ describe("diagnostics-service", () => {
             invalid_media_examples: [],
             invalid_thumbnail_files: 0,
             invalid_thumbnail_examples: [],
-        });
+        }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
 

@@ -396,7 +396,36 @@ describe("buildDiagnosticsIssues", () => {
         const [issue] = buildDiagnosticsIssues(input);
 
         expect(issue.code).toBe("ORPHAN_MEDIA_FILES");
-        expect(issue.examples).toEqual(["video/orphan.mp4", "audio/stray.m4a"]);
+        // Orphans have no database row, so their examples carry no navigation target.
+        expect(issue.examples).toEqual([
+            { path: "video/orphan.mp4" },
+            { path: "audio/stray.m4a" },
+        ]);
+    });
+
+    it("resolves a MISSING_MEDIA example path to its media so it can be opened in the library", () => {
+        const input = baseDiagnostics();
+        input.libraryIntegrity.missing_media_files = 1;
+        input.libraryIntegrity.missing_media_examples = ["audio/youtube_abc_140.m4a"];
+
+        const [issue] = buildDiagnosticsIssues(input, {
+            "audio/youtube_abc_140.m4a": { channelId: 7, mediaId: 42 },
+        });
+
+        expect(issue.code).toBe("MISSING_MEDIA_FILES_ON_DISK");
+        expect(issue.examples).toEqual([
+            { path: "audio/youtube_abc_140.m4a", media: { channelId: 7, mediaId: 42 } },
+        ]);
+    });
+
+    it("leaves a MISSING_MEDIA example without a target when the path is not in the media map", () => {
+        const input = baseDiagnostics();
+        input.libraryIntegrity.missing_media_files = 1;
+        input.libraryIntegrity.missing_media_examples = ["audio/unknown.m4a"];
+
+        const [issue] = buildDiagnosticsIssues(input, {});
+
+        expect(issue.examples).toEqual([{ path: "audio/unknown.m4a" }]);
     });
 
     it("omits the examples key entirely when the count is set but no example paths are provided", () => {
@@ -417,7 +446,7 @@ describe("buildDiagnosticsIssues", () => {
 
         const [issue] = buildDiagnosticsIssues(input);
 
-        expect(issue.examples).toEqual(["thumbnails/x.jpg"]);
+        expect(issue.examples).toEqual([{ path: "thumbnails/x.jpg" }]);
     });
 
     it("concatenates media and thumbnail example paths for INVALID_PATH_REFERENCES", () => {
@@ -430,7 +459,7 @@ describe("buildDiagnosticsIssues", () => {
         const [issue] = buildDiagnosticsIssues(input);
 
         expect(issue.code).toBe("INVALID_PATH_REFERENCES");
-        expect(issue.examples).toEqual(["/etc/passwd", "../secret.jpg"]);
+        expect(issue.examples).toEqual([{ path: "/etc/passwd" }, { path: "../secret.jpg" }]);
     });
 
     it("returns issues sorted by severity (errors, then warnings, then infos)", () => {

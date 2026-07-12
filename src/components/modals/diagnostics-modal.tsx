@@ -1,6 +1,6 @@
 import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mantine/core";
 import { RefreshCcw } from "lucide-react";
-import type { DiagnosticsSummary } from "../../types/diagnostics";
+import type { DiagnosticsMediaTarget, DiagnosticsSummary } from "../../types/diagnostics";
 import { AppButton } from "../ui/app-button";
 import { DiagnosticsIssuesSection } from "./diagnostics-sections/diagnostics-issues-section";
 import { DiagnosticsSummarySections } from "./diagnostics-sections/diagnostics-summary-sections";
@@ -11,6 +11,7 @@ type DiagnosticsModalProps = {
     onReload: () => void;
     loading: boolean;
     summary: DiagnosticsSummary | null;
+    onOpenMedia?: (target: DiagnosticsMediaTarget) => void;
 };
 
 export function DiagnosticsModal({
@@ -19,6 +20,7 @@ export function DiagnosticsModal({
     onReload,
     loading,
     summary,
+    onOpenMedia,
 }: DiagnosticsModalProps): JSX.Element {
     const showInitialLoading = loading && !summary;
     const showRefreshingState = loading && !!summary;
@@ -115,7 +117,10 @@ export function DiagnosticsModal({
                             {summary && (
                                 <>
                                     <DiagnosticsSummarySections summary={summary} />
-                                    <DiagnosticsIssuesSection issues={summary.issues} />
+                                    <DiagnosticsIssuesSection
+                                        issues={summary.issues}
+                                        onOpenMedia={onOpenMedia}
+                                    />
                                 </>
                             )}
                         </Stack>

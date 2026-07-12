@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MediaGrid } from "./media-grid";
 import { createMedia } from "../../test/factories/media";
 import { renderWithMantine } from "../../test/test-utils";
+
+const { scrollToIndexMock } = vi.hoisted(() => ({ scrollToIndexMock: vi.fn() }));
 
 vi.mock("@tanstack/react-virtual", () => ({
     useVirtualizer: vi.fn(({ count }: { count: number }) => ({
@@ -15,6 +18,7 @@ vi.mock("@tanstack/react-virtual", () => ({
             })),
         measureElement: vi.fn(),
         measure: vi.fn(),
+        scrollToIndex: scrollToIndexMock,
     })),
 }));
 
@@ -91,5 +95,62 @@ describe("MediaGrid", () => {
 
         expect(screen.getByText("Video A")).toBeInTheDocument();
         expect(screen.getByText("Audio B")).toBeInTheDocument();
+    });
+
+    it("scrolls to a focused media once and clears the request", () => {
+        scrollToIndexMock.mockClear();
+
+        // Mirror the real caller (Home): clearing focus on onFocusHandled is what stops the
+        // effect from acting again. Without it the mocked virtualizer's fresh-per-render identity
+        // would make the effect re-run.
+        function Harness(): JSX.Element {
+            const [focus, setFocus] = useState<number | null>(2);
+
+            return (
+                <MediaGrid
+                    items={[
+                        createMedia({ id: 1, title: "First" }),
+                        createMedia({ id: 2, title: "Second" }),
+                    ]}
+                    libraryPath="/library"
+                    shellBorder="rgba(255,255,255,0.1)"
+                    shellSurface="rgba(255,255,255,0.03)"
+                    loading={false}
+                    focusMediaId={focus}
+                    onFocusHandled={() => setFocus(null)}
+                    onOpen={vi.fn()}
+                    onRequestDelete={vi.fn()}
+                />
+            );
+        }
+
+        renderWithMantine(<Harness />);
+
+        // jsdom reports width 0, so the grid is a single column: the second item is row index 1.
+        expect(scrollToIndexMock).toHaveBeenCalledTimes(1);
+        expect(scrollToIndexMock).toHaveBeenCalledWith(1, { align: "center" });
+    });
+
+    it("does not scroll when the focused media is not in the list", () => {
+        const onFocusHandled = vi.fn();
+        scrollToIndexMock.mockClear();
+
+        renderWithMantine(
+            <MediaGrid
+                items={[createMedia({ id: 1, title: "First" })]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                focusMediaId={999}
+                onFocusHandled={onFocusHandled}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        // The target has not loaded yet: no scroll and the request is kept (not cleared).
+        expect(scrollToIndexMock).not.toHaveBeenCalled();
+        expect(onFocusHandled).not.toHaveBeenCalled();
     });
 });

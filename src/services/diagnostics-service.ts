@@ -185,6 +185,11 @@ export async function getDiagnosticsSummary(
         liveChatIntegrity,
     ] = settled;
 
+    const libraryIntegrityResult = settledValue(libraryIntegrity, {
+        report: defaultLibraryIntegrity(),
+        mediaByPath: {},
+    });
+
     const diagnostics: AppDiagnostics = {
         appVersion: settledValue(appVersion, null),
         platform: settledValue(runtimeInfo, defaultRuntimeInfo()).platform,
@@ -195,13 +200,13 @@ export async function getDiagnosticsSummary(
         librarySummary: settledValue(librarySummary, defaultLibrarySummary()),
         liveChatStorage: settledValue(liveChatStorage, defaultLiveChatStorageSummary()),
         mediaRepositoryStats: settledValue(mediaRepositoryStats, defaultMediaRepositoryStats()),
-        libraryIntegrity: settledValue(libraryIntegrity, defaultLibraryIntegrity()),
+        libraryIntegrity: libraryIntegrityResult.report,
         liveChatIntegrity: settledValue(liveChatIntegrity, defaultLiveChatIntegrity()),
     };
 
     const issues = sortDiagnosticsIssues([
         ...collectCheckFailureIssues(settled),
-        ...buildDiagnosticsIssues(diagnostics),
+        ...buildDiagnosticsIssues(diagnostics, libraryIntegrityResult.mediaByPath),
     ]);
     const overview = buildDiagnosticsOverview(issues);
 

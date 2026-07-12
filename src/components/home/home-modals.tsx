@@ -16,6 +16,7 @@ import type {
     HomeUiGuardsController,
     MediaLibraryController,
 } from "../../types/controllers";
+import type { DiagnosticsMediaTarget } from "../../types/diagnostics";
 
 type HomeModalsProps = {
     channels: ChannelsController;
@@ -26,6 +27,8 @@ type HomeModalsProps = {
     error: ErrorModalController;
     databaseRecovery: DatabaseRecoveryController;
     uiGuards: HomeUiGuardsController;
+    // Jumps from a diagnostics "missing media" path to that media in the library.
+    onOpenDiagnosticsMedia: (target: DiagnosticsMediaTarget) => void;
 };
 
 function formatBackupTimestamp(backedUpAtMs: number | null): string {
@@ -45,6 +48,7 @@ export function HomeModals({
     error,
     databaseRecovery,
     uiGuards,
+    onOpenDiagnosticsMedia,
 }: HomeModalsProps): JSX.Element {
     const addMediaForm = media.addMediaForm;
 
@@ -178,6 +182,7 @@ export function HomeModals({
                 onReload={() => void diagnostics.reloadDiagnostics()}
                 loading={diagnostics.isLoadingDiagnostics}
                 summary={diagnostics.diagnosticsSummary}
+                onOpenMedia={onOpenDiagnosticsMedia}
             />
 
             <ConfirmDeleteModal

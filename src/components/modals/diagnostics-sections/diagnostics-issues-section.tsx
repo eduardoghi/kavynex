@@ -1,9 +1,12 @@
-import { Box, Divider, Group, Paper, Stack, Text, ThemeIcon, Title, Badge } from "@mantine/core";
+import { Anchor, Box, Divider, Group, Paper, Stack, Text, ThemeIcon, Title, Badge } from "@mantine/core";
 import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
-import type { DiagnosticsIssue } from "../../../types/diagnostics";
+import type { DiagnosticsIssue, DiagnosticsMediaTarget } from "../../../types/diagnostics";
 
 type DiagnosticsIssuesSectionProps = {
     issues: DiagnosticsIssue[];
+    // When given, example paths that map to an existing media row become clickable and jump to
+    // that media in the library (used for "missing media": the file is gone but the row remains).
+    onOpenMedia?: (target: DiagnosticsMediaTarget) => void;
 };
 
 function IssueSeverityBadge({
@@ -64,6 +67,7 @@ function IssueSeverityIcon({
 
 export function DiagnosticsIssuesSection({
     issues,
+    onOpenMedia,
 }: DiagnosticsIssuesSectionProps): JSX.Element {
     return (
         <Paper
@@ -109,17 +113,39 @@ export function DiagnosticsIssuesSection({
 
                                     {issue.examples && issue.examples.length > 0 && (
                                         <Stack gap={2} mt={6}>
-                                            {issue.examples.map((path) => (
-                                                <Text
-                                                    key={path}
-                                                    size="xs"
-                                                    c="dimmed"
-                                                    ff="monospace"
-                                                    style={{ overflowWrap: "anywhere" }}
-                                                >
-                                                    {path}
-                                                </Text>
-                                            ))}
+                                            {issue.examples.map((example) => {
+                                                const target = example.media;
+
+                                                if (target && onOpenMedia) {
+                                                    return (
+                                                        <Anchor
+                                                            key={example.path}
+                                                            component="button"
+                                                            type="button"
+                                                            size="xs"
+                                                            ff="monospace"
+                                                            ta="left"
+                                                            style={{ overflowWrap: "anywhere" }}
+                                                            title="Open this media in the library"
+                                                            onClick={() => onOpenMedia(target)}
+                                                        >
+                                                            {example.path}
+                                                        </Anchor>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <Text
+                                                        key={example.path}
+                                                        size="xs"
+                                                        c="dimmed"
+                                                        ff="monospace"
+                                                        style={{ overflowWrap: "anywhere" }}
+                                                    >
+                                                        {example.path}
+                                                    </Text>
+                                                );
+                                            })}
                                         </Stack>
                                     )}
                                 </Box>

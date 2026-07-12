@@ -13,6 +13,10 @@ type MediaGridProps = {
     shellBorder: string;
     shellSurface: string;
     activeMediaId?: number | null;
+    // When set to a media id present in `items`, the grid scrolls to that card and briefly
+    // highlights it, then calls onFocusHandled. Used to jump to a media from Diagnostics.
+    focusMediaId?: number | null;
+    onFocusHandled?: () => void;
     loading?: boolean;
     isVisible?: boolean;
     emptyTitle?: string;
@@ -51,6 +55,8 @@ export function MediaGrid({
     shellBorder,
     shellSurface,
     activeMediaId = null,
+    focusMediaId = null,
+    onFocusHandled,
     loading = false,
     isVisible = true,
     emptyTitle = UI_TEXT.library.emptyTitle,
@@ -72,6 +78,8 @@ export function MediaGrid({
     const restoreSecondFrameRef = useRef<number | null>(null);
     const { ref: measureRef, width } = useElementSize();
     const [rowHeight, setRowHeight] = useState(MEDIA_CARD_HEIGHT);
+    const [highlightedMediaId, setHighlightedMediaId] = useState<number | null>(null);
+    const highlightTimerRef = useRef<number | null>(null);
 
     const columnCount = useMemo(() => getColumnCount(width), [width]);
 
@@ -91,6 +99,49 @@ export function MediaGrid({
         estimateSize: () => rowHeight + GRID_GAP,
         overscan: 4,
     });
+
+    // Jump to (and briefly highlight) a media requested from elsewhere - e.g. a "missing media"
+    // path clicked in Diagnostics. The target channel's media loads asynchronously, so this runs
+    // again as `items` fills in; it acts only once the target is present, then clears the request.
+    // onFocusHandled clears `focusMediaId` upstream, which re-runs this with a null id (a no-op);
+    // the scroll and the highlight timer are intentionally not tied to this effect's cleanup so
+    // that clear cannot cancel them.
+    useEffect(() => {
+        if (focusMediaId === null || !isVisible) {
+            return;
+        }
+
+        const index = items.findIndex((item) => item.id === focusMediaId);
+
+        if (index < 0) {
+            // Not loaded yet (or filtered out): wait for a later `items` change.
+            return;
+        }
+
+        const rowIndex = Math.floor(index / columnCount);
+        rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
+
+        setHighlightedMediaId(focusMediaId);
+
+        if (highlightTimerRef.current !== null) {
+            window.clearTimeout(highlightTimerRef.current);
+        }
+
+        highlightTimerRef.current = window.setTimeout(() => {
+            setHighlightedMediaId(null);
+            highlightTimerRef.current = null;
+        }, 2600);
+
+        onFocusHandled?.();
+    }, [focusMediaId, items, columnCount, isVisible, rowVirtualizer, onFocusHandled]);
+
+    useEffect(() => {
+        return () => {
+            if (highlightTimerRef.current !== null) {
+                window.clearTimeout(highlightTimerRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         const scrollElement = scrollParentRef.current;
@@ -272,6 +323,15 @@ export function MediaGrid({
                                                               }
                                                             : undefined
                                                     }
+                                                    style={{
+                                                        borderRadius: 18,
+                                                        outline:
+                                                            media.id === highlightedMediaId
+                                                                ? "2px solid var(--mantine-color-violet-5)"
+                                                                : "2px solid transparent",
+                                                        outlineOffset: 2,
+                                                        transition: "outline-color 220ms ease",
+                                                    }}
                                                 >
                                                     <MediaCard
                                                         media={media}

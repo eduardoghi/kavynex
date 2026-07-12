@@ -229,6 +229,7 @@ function createProps() {
         error: createError(),
         databaseRecovery: createDatabaseRecovery(),
         uiGuards: createUiGuards(),
+        onOpenDiagnosticsMedia: vi.fn(),
     };
 }
 

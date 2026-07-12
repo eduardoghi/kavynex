@@ -67,9 +67,10 @@ describe("getLibraryIntegrity", () => {
     });
 
     it("skips the backend call and both queries when the library path is blank", async () => {
-        const report = await getLibraryIntegrity("   ");
+        const result = await getLibraryIntegrity("   ");
 
-        expect(report.checked_media_files).toBe(0);
+        expect(result.report.checked_media_files).toBe(0);
+        expect(result.mediaByPath).toEqual({});
         expect(invokeTauriMock).not.toHaveBeenCalled();
         expect(listChannelsMock).not.toHaveBeenCalled();
         expect(listMediaIntegrityReferencesMock).not.toHaveBeenCalled();

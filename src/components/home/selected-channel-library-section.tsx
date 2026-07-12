@@ -40,6 +40,8 @@ type SelectedChannelLibrarySectionProps = {
     isVisible?: boolean;
     mediaItems: MediaRow[];
     activeMediaId?: number | null;
+    focusMediaId?: number | null;
+    onFocusMediaHandled?: () => void;
     libraryPath: string;
     shellBorder: string;
     shellSurface: string;
@@ -62,6 +64,8 @@ export function SelectedChannelLibrarySection({
     isVisible = true,
     mediaItems,
     activeMediaId = null,
+    focusMediaId = null,
+    onFocusMediaHandled,
     libraryPath,
     shellBorder,
     shellSurface,
@@ -270,6 +274,8 @@ export function SelectedChannelLibrarySection({
             <MediaGrid
                 items={filteredItems}
                 activeMediaId={activeMediaId}
+                focusMediaId={focusMediaId}
+                onFocusHandled={onFocusMediaHandled}
                 libraryPath={libraryPath}
                 shellBorder={shellBorder}
                 shellSurface={shellSurface}

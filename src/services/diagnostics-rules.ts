@@ -1,6 +1,8 @@
 import type {
     AppDiagnostics,
     DiagnosticsIssue,
+    DiagnosticsIssueExample,
+    DiagnosticsMediaTarget,
     DiagnosticsOverview,
     DiagnosticsOverviewStatus,
 } from "../types/diagnostics";
@@ -22,15 +24,36 @@ export function sortDiagnosticsIssues(issues: DiagnosticsIssue[]): DiagnosticsIs
 // Attaches concrete example paths to an issue so the user can see and act on the specific files
 // manually (the diagnostics only report - they never delete). Blank entries are dropped and the
 // `examples` key is omitted entirely when nothing remains, so an issue with no examples stays a
-// plain { code, severity, title, description } object.
-function withExamples(issue: DiagnosticsIssue, examples: string[]): DiagnosticsIssue {
-    const paths = examples.map((path) => path.trim()).filter((path) => path.length > 0);
+// plain { code, severity, title, description } object. `resolveMedia`, when given, turns a path
+// into a jump-to-the-media target (used for missing media, whose row still exists).
+function withExamples(
+    issue: DiagnosticsIssue,
+    paths: string[],
+    resolveMedia?: (path: string) => DiagnosticsMediaTarget | undefined
+): DiagnosticsIssue {
+    const examples: DiagnosticsIssueExample[] = paths
+        .map((path) => path.trim())
+        .filter((path) => path.length > 0)
+        .map((path) => {
+            const media = resolveMedia?.(path);
 
-    return paths.length > 0 ? { ...issue, examples: paths } : issue;
+            return media ? { path, media } : { path };
+        });
+
+    return examples.length > 0 ? { ...issue, examples } : issue;
 }
 
-export function buildDiagnosticsIssues(input: AppDiagnostics): DiagnosticsIssue[] {
+export function buildDiagnosticsIssues(
+    input: AppDiagnostics,
+    mediaByPath: Record<string, DiagnosticsMediaTarget> = {}
+): DiagnosticsIssue[] {
     const issues: DiagnosticsIssue[] = [];
+
+    // A "missing media" path is a media row whose file vanished on disk - the row still exists,
+    // so it can be opened in the library. Resolve each such path to its media so the UI can jump
+    // to it (keyed like the integrity service builds the map: trimmed, forward slashes).
+    const resolveMissingMedia = (path: string): DiagnosticsMediaTarget | undefined =>
+        mediaByPath[path.trim().replace(/\\/g, "/")];
 
     const totalLibraryMediaFiles =
         input.librarySummary.video_files + input.librarySummary.audio_files;
@@ -157,7 +180,8 @@ export function buildDiagnosticsIssues(input: AppDiagnostics): DiagnosticsIssue[
                     title: "Some media files are missing on disk",
                     description: `${input.libraryIntegrity.missing_media_files} media file(s) referenced by the database were not found in the library folder.`,
                 },
-                input.libraryIntegrity.missing_media_examples
+                input.libraryIntegrity.missing_media_examples,
+                resolveMissingMedia
             )
         );
     }
