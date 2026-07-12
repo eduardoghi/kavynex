@@ -1,0 +1,44 @@
+name: mutation
+
+on:
+    # Mutation testing is the higher-signal quality gate but too slow to run on every PR, so it
+    # runs on a weekly schedule (Mondays 06:00 UTC) and on demand instead of gating each push.
+    schedule:
+        - cron: "0 6 * * 1"
+    workflow_dispatch:
+
+# The run only needs to read the repository.
+permissions:
+    contents: read
+
+concurrency:
+    group: mutation-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    mutation:
+        name: Mutation testing
+        runs-on: ubuntu-latest
+        timeout-minutes: 60
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            # No version input: the pnpm version comes from package.json's packageManager
+            # field, so CI and local Corepack install the same pinned pnpm.
+            - name: Setup pnpm
+              uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+            - name: Setup Node.js
+              uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+              with:
+                  node-version: 26
+                  cache: pnpm
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            # Stryker exits non-zero when the mutation score falls below thresholds.break in
+            # stryker.config.json, so a real regression in test strength fails this scheduled run.
+            - name: Run mutation testing
+              run: pnpm test:mutation

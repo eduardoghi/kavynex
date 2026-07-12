@@ -18,5 +18,10 @@
         "!src/**/*.d.ts"
     ],
     "reporters": ["html", "clear-text", "progress"],
-    "coverageAnalysis": "off"
+    "coverageAnalysis": "off",
+    "thresholds": {
+        "high": 80,
+        "low": 60,
+        "break": 50
+    }
 }
