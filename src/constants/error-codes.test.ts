@@ -20,16 +20,20 @@ const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
 
 // Client-side-only codes: validated in the frontend before a backend call is made, so they
 // are never returned by src-tauri/src/error.rs and have no backend code to mirror.
-// CHANNEL_ALREADY_EXISTS and VIDEO_ALREADY_EXISTS_FOR_CHANNEL are NOT listed here: they are
-// raised by the frontend pre-check AND emitted by the backend on a constraint violation (the
-// duplicate-insert race), so they must mirror a real backend code.
+//
+// Several codes that used to be frontend-only are NOT listed here because the backend now
+// emits them too, so they must mirror a real backend code (validated by the check below):
+// - CHANNEL_ALREADY_EXISTS / VIDEO_ALREADY_EXISTS_FOR_CHANNEL: frontend pre-check AND a
+//   backend constraint violation (the duplicate-insert race).
+// - INVALID_CHANNEL_NAME / INVALID_YOUTUBE_HANDLE / INVALID_MEDIA_TITLE /
+//   INVALID_MEDIA_CREATION_ARGUMENTS: frontend validation for fast UX AND backend validation
+//   at the command boundary (utils::validation), since the backend is the durable trust
+//   boundary.
+// INVALID_CHANNEL_ID stays frontend-only: channel ids reach the backend as a typed i64, so
+// there is no backend code that rejects an invalid one.
 const FRONTEND_ONLY_ERROR_CODES = new Set([
-    "INVALID_YOUTUBE_HANDLE",
-    "INVALID_CHANNEL_NAME",
     "INVALID_CHANNEL_ID",
-    "INVALID_MEDIA_CREATION_ARGUMENTS",
     "MEDIA_IMPORT_FAILED",
-    "INVALID_MEDIA_TITLE",
     "MEDIA_WITHOUT_YOUTUBE_SOURCE",
     "INVALID_YOUTUBE_COMMENTS_PAYLOAD",
     "YOUTUBE_COMMENTS_EMPTY_REFRESH",
