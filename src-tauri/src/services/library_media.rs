@@ -43,6 +43,10 @@ pub fn import_media_file_sync(
         ));
     }
 
+    // Serialize this write against a concurrent library migration so the imported file cannot be
+    // dropped in the window between the migration copying and removing the old directory.
+    let _library_guard = crate::services::library_lock::library_read_guard();
+
     let library_dir = ensure_library_dir(library_path)?;
     let media_subdir = media_subdir_from_extension(&ext);
     let media_dir = library_dir.join(media_subdir);
@@ -105,6 +109,12 @@ pub fn import_media_file_sync(
 }
 
 pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<()> {
+    // Serialize against a concurrent library migration (see library_lock). Acquired once per
+    // call, so the per-artifact loop in library_cleanup releases between files rather than
+    // nesting - the migration can interleave harmlessly, since a file it removed just makes the
+    // next delete a no-op.
+    let _library_guard = crate::services::library_lock::library_read_guard();
+
     let library_dir = resolve_existing_library_dir(library_path)?;
     let target_path = absolute_path_from_relative(&library_dir, file_path)?;
 

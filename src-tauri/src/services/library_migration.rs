@@ -238,7 +238,14 @@ pub fn migrate_library_directory_sync(
 
     ensure_destination_is_migratable(&canonical_new)?;
 
-    let migration_result = migrate_library_contents(&canonical_old, &canonical_new);
+    // Hold the exclusive library gate across the copy/remove phase: it drains any in-flight
+    // import/download/delete and blocks new ones, so a file can never be written into the old
+    // directory in the window between it being copied to the new location and removed. Only the
+    // destructive phase needs it; the validation above is read-only. See services/library_lock.
+    let migration_result = {
+        let _library_write_guard = crate::services::library_lock::library_write_guard();
+        migrate_library_contents(&canonical_old, &canonical_new)
+    };
 
     match &migration_result {
         Ok(_) => logger::info(

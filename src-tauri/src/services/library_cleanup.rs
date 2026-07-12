@@ -269,6 +269,10 @@ pub async fn delete_channel_row_and_plan_cleanup(
 }
 
 fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResult<()> {
+    // Serialize against a concurrent library migration (see library_lock). Acquired once per
+    // call, so the per-artifact loop in remove_planned_artifacts_sync releases between files.
+    let _library_guard = crate::services::library_lock::library_read_guard();
+
     let absolute = absolute_path_from_relative(library_dir, relative_path)?;
 
     if absolute.exists() {

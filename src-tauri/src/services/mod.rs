@@ -9,6 +9,7 @@ pub mod library;
 pub mod library_cleanup;
 pub mod library_guard;
 pub mod library_integrity;
+pub mod library_lock;
 pub mod library_media;
 pub mod library_migration;
 pub mod library_paths;

@@ -27,6 +27,9 @@ pub async fn delete_live_chat_file(app: AppHandle, relative_path: String) -> App
     let library_dir = configured_library_dir(&app).await?;
 
     run_blocking(move || {
+        // Serialize against a concurrent library migration (see services::library_lock).
+        let _library_guard = crate::services::library_lock::library_read_guard();
+
         let absolute = absolute_path_from_relative(&library_dir, &relative_path)?;
 
         if absolute.exists() {
@@ -65,6 +68,10 @@ pub async fn migrate_live_chat_to_library(app: AppHandle) -> AppResult<()> {
     })?;
 
     run_blocking(move || {
+        // Serialize this library write against a concurrent migration (see
+        // services::library_lock). Held across both steps; neither reacquires the guard.
+        let _library_guard = crate::services::library_lock::library_read_guard();
+
         migrate_live_chat_files(&app_data_dir, &library_dir)?;
         compress_existing_live_chat_files(&library_dir.join("live_chat"))?;
         Ok(())

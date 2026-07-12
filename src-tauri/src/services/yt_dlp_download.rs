@@ -207,6 +207,11 @@ fn place_downloaded_file(
         )
     })?;
 
+    // Serialize the placement into the library against a concurrent migration (see library_lock)
+    // so a just-finished download cannot land in the old directory while the migration is
+    // copying/removing it.
+    let _library_guard = crate::services::library_lock::library_read_guard();
+
     let final_destination = media_dir.join(file_name);
     ensure_path_parent_inside_dir(&final_destination, library_dir)?;
 
@@ -991,11 +996,16 @@ pub async fn download_media_from_url_async(
                 let final_live_chat_destination = live_chat_dir.join(live_chat_file_name);
 
                 // Store live chat replays gzip-compressed to save disk; the frontend reader
-                // transparently decompresses them.
-                crate::services::live_chat_storage::compress_file_to(
-                    &temp_live_chat_file,
-                    &final_live_chat_destination,
-                )?;
+                // transparently decompresses them. Serialize this library write against a
+                // concurrent migration (see library_lock); the guard is dropped as soon as the
+                // synchronous compress returns, never held across an await.
+                {
+                    let _library_guard = crate::services::library_lock::library_read_guard();
+                    crate::services::live_chat_storage::compress_file_to(
+                        &temp_live_chat_file,
+                        &final_live_chat_destination,
+                    )?;
+                }
 
                 Some(build_live_chat_relative_path(Path::new(
                     live_chat_file_name,
