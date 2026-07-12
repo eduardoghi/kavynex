@@ -145,7 +145,7 @@ describe("YtDlpSection", () => {
             hidden: true,
         });
 
-        fireEvent.click(options[options.length - 1]);
+        fireEvent.click(options[options.length - 1]!);
 
         expect(onChangeSelectedYtDlpFormatId).toHaveBeenCalledWith("best");
     });

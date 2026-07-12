@@ -281,6 +281,13 @@ export function MediaGrid({
                             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                                 const rowItems = rows[virtualRow.index];
 
+                                // The virtualizer only yields in-range row indices, so this is
+                                // never null in practice; the guard satisfies the checked-index
+                                // type and renders nothing rather than crashing if it ever were.
+                                if (!rowItems) {
+                                    return null;
+                                }
+
                                 return (
                                     <Box
                                         key={virtualRow.key}

@@ -63,7 +63,7 @@ const mockUseYtDlpFormatLoader = vi.fn((_options: YtDlpFormatLoaderOptions) => (
 
 function latestYtDlpFormatLoaderOptions(): YtDlpFormatLoaderOptions {
     const calls = mockUseYtDlpFormatLoader.mock.calls;
-    return calls[calls.length - 1][0];
+    return calls[calls.length - 1]![0];
 }
 
 vi.mock("./use-yt-dlp-format-loader", () => ({

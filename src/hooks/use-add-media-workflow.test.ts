@@ -156,7 +156,7 @@ const mockUseAddMediaForm = vi.fn((_options: UseAddMediaFormOptionsArg) => mockA
 
 function latestUseAddMediaFormOptions(): UseAddMediaFormOptionsArg {
     const calls = mockUseAddMediaForm.mock.calls;
-    return calls[calls.length - 1][0];
+    return calls[calls.length - 1]![0];
 }
 
 vi.mock("./use-add-media-form", () => ({

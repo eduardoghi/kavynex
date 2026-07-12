@@ -54,7 +54,7 @@ describe("executeMarkMediaUnwatched", () => {
         });
 
         expect(setMediaUnwatchedMock).toHaveBeenCalledWith(1);
-        expect(currentItems[0].watched_at).toBeNull();
-        expect(currentItems[1].watched_at).toBe("2026-03-30T12:00:00Z");
+        expect(currentItems[0]!.watched_at).toBeNull();
+        expect(currentItems[1]!.watched_at).toBe("2026-03-30T12:00:00Z");
     });
 });

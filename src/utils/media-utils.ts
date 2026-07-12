@@ -33,7 +33,7 @@ export function stripWindowsExtendedPrefix(value: string): string {
     const match = value.match(/^[\\/]{2}\?[\\/](.*)$/);
 
     if (match) {
-        return match[1];
+        return match[1] ?? value;
     }
 
     return value;

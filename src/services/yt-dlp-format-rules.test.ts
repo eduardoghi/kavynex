@@ -61,9 +61,9 @@ describe("buildMergedFormats", () => {
         ]);
 
         // The first entry is the synthesized merged selector (rank 0), combining both ids.
-        expect(merged[0].format_id).toBe("137+140");
-        expect(merged[0].has_video).toBe(true);
-        expect(merged[0].has_audio).toBe(true);
+        expect(merged[0]!.format_id).toBe("137+140");
+        expect(merged[0]!.has_video).toBe(true);
+        expect(merged[0]!.has_audio).toBe(true);
     });
 
     it("prefers m4a and higher bitrate audio as the merge partner", () => {
@@ -74,7 +74,7 @@ describe("buildMergedFormats", () => {
         ]);
 
         // m4a wins the boost over the higher-bitrate webm, so the merge uses 140.
-        expect(merged[0].format_id).toBe("137+140");
+        expect(merged[0]!.format_id).toBe("137+140");
     });
 
     it("orders video-only options by descending resolution", () => {

@@ -388,7 +388,7 @@ describe("useMediaActions", () => {
             await result.current.refreshComments(targetMedia);
         });
 
-        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+        const updater = vi.mocked(setMediaItems).mock.calls[0]![0] as (
             items: MediaRow[]
         ) => MediaRow[];
 
@@ -436,7 +436,7 @@ describe("useMediaActions", () => {
             comments_count: 0,
         });
 
-        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+        const updater = vi.mocked(setMediaItems).mock.calls[0]![0] as (
             items: MediaRow[]
         ) => MediaRow[];
 
@@ -522,7 +522,7 @@ describe("useMediaActions", () => {
             await result.current.editTitle(targetMedia, "New title");
         });
 
-        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+        const updater = vi.mocked(setMediaItems).mock.calls[0]![0] as (
             items: MediaRow[]
         ) => MediaRow[];
 
@@ -676,7 +676,7 @@ describe("useMediaActions", () => {
             await result.current.confirmDeleteMedia();
         });
 
-        const updater = vi.mocked(setMediaItems).mock.calls[0][0] as (
+        const updater = vi.mocked(setMediaItems).mock.calls[0]![0] as (
             items: MediaRow[]
         ) => MediaRow[];
 

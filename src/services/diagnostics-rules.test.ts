@@ -95,7 +95,7 @@ describe("buildDiagnosticsIssues", () => {
         const issues = buildDiagnosticsIssues(input);
 
         expect(issues).toHaveLength(1);
-        expect(issues[0].code).toBe("LIBRARY_PATH_NOT_CONFIGURED");
+        expect(issues[0]!.code).toBe("LIBRARY_PATH_NOT_CONFIGURED");
     });
 
     it("does not flag LIBRARY_EMPTY when the library path is not configured", () => {
@@ -393,7 +393,7 @@ describe("buildDiagnosticsIssues", () => {
         input.libraryIntegrity.orphan_media_files = 2;
         input.libraryIntegrity.orphan_media_examples = ["video/orphan.mp4", "audio/stray.m4a"];
 
-        const [issue] = buildDiagnosticsIssues(input);
+        const issue = buildDiagnosticsIssues(input)[0]!;
 
         expect(issue.code).toBe("ORPHAN_MEDIA_FILES");
         // Orphans have no database row, so their examples carry no navigation target.
@@ -408,9 +408,9 @@ describe("buildDiagnosticsIssues", () => {
         input.libraryIntegrity.missing_media_files = 1;
         input.libraryIntegrity.missing_media_examples = ["audio/youtube_abc_140.m4a"];
 
-        const [issue] = buildDiagnosticsIssues(input, {
+        const issue = buildDiagnosticsIssues(input, {
             "audio/youtube_abc_140.m4a": { channelId: 7, mediaId: 42 },
-        });
+        })[0]!;
 
         expect(issue.code).toBe("MISSING_MEDIA_FILES_ON_DISK");
         expect(issue.examples).toEqual([
@@ -423,7 +423,7 @@ describe("buildDiagnosticsIssues", () => {
         input.libraryIntegrity.missing_media_files = 1;
         input.libraryIntegrity.missing_media_examples = ["audio/unknown.m4a"];
 
-        const [issue] = buildDiagnosticsIssues(input, {});
+        const issue = buildDiagnosticsIssues(input, {})[0]!;
 
         expect(issue.examples).toEqual([{ path: "audio/unknown.m4a" }]);
     });
@@ -433,7 +433,7 @@ describe("buildDiagnosticsIssues", () => {
         input.libraryIntegrity.orphan_media_files = 4;
         // orphan_media_examples stays [] from the base fixture.
 
-        const [issue] = buildDiagnosticsIssues(input);
+        const issue = buildDiagnosticsIssues(input)[0]!;
 
         expect(issue.code).toBe("ORPHAN_MEDIA_FILES");
         expect(issue).not.toHaveProperty("examples");
@@ -444,7 +444,7 @@ describe("buildDiagnosticsIssues", () => {
         input.libraryIntegrity.orphan_thumbnail_files = 1;
         input.libraryIntegrity.orphan_thumbnail_examples = ["  ", "thumbnails/x.jpg", ""];
 
-        const [issue] = buildDiagnosticsIssues(input);
+        const issue = buildDiagnosticsIssues(input)[0]!;
 
         expect(issue.examples).toEqual([{ path: "thumbnails/x.jpg" }]);
     });
@@ -456,7 +456,7 @@ describe("buildDiagnosticsIssues", () => {
         input.libraryIntegrity.invalid_thumbnail_files = 1;
         input.libraryIntegrity.invalid_thumbnail_examples = ["../secret.jpg"];
 
-        const [issue] = buildDiagnosticsIssues(input);
+        const issue = buildDiagnosticsIssues(input)[0]!;
 
         expect(issue.code).toBe("INVALID_PATH_REFERENCES");
         expect(issue.examples).toEqual([{ path: "/etc/passwd" }, { path: "../secret.jpg" }]);

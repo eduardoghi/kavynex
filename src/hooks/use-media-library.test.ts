@@ -211,7 +211,7 @@ describe("useMediaLibrary", () => {
             await result.current.saveMediaProgress(1, -5);
         });
 
-        expect(result.current.mediaItems[0].progress_seconds).toBe(0);
+        expect(result.current.mediaItems[0]!.progress_seconds).toBe(0);
     });
 
     it("updates the active media's progress when it matches the saved media id", async () => {
@@ -282,7 +282,7 @@ describe("useMediaLibrary", () => {
         });
 
         act(() => {
-            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]);
+            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]!);
         });
 
         const listBeforeSave = result.current.mediaItems;
@@ -296,16 +296,16 @@ describe("useMediaLibrary", () => {
         // ...but the media-list array keeps its identity during playback, so the hidden library
         // grid's O(n log n) filter/sort memo is not retriggered on every periodic save.
         expect(result.current.mediaItems).toBe(listBeforeSave);
-        expect(result.current.mediaItems[0].progress_seconds).toBe(0);
+        expect(result.current.mediaItems[0]!.progress_seconds).toBe(0);
 
         // Closing the player reconciles the stashed progress into the list in one pass.
         act(() => {
             result.current.mediaPlayer.closePlayer();
         });
 
-        expect(result.current.mediaItems[0].progress_seconds).toBe(90);
+        expect(result.current.mediaItems[0]!.progress_seconds).toBe(90);
         // The media that was not playing is untouched.
-        expect(result.current.mediaItems[1].progress_seconds).toBe(12);
+        expect(result.current.mediaItems[1]!.progress_seconds).toBe(12);
     });
 
     it("does not resurrect progress on a watched item when flushing on close", async () => {
@@ -324,7 +324,7 @@ describe("useMediaLibrary", () => {
         });
 
         act(() => {
-            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]);
+            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]!);
         });
 
         await act(async () => {
@@ -336,7 +336,7 @@ describe("useMediaLibrary", () => {
         });
 
         // A watched media stays at 0; the deferred 90s position is discarded on flush.
-        expect(result.current.mediaItems[0].progress_seconds).toBe(0);
+        expect(result.current.mediaItems[0]!.progress_seconds).toBe(0);
     });
 
     it("clears the media list and closes the player", () => {

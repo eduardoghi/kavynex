@@ -44,12 +44,12 @@ function extractRustErrorCodes(source: string): Set<string> {
         throw new Error("Could not locate the `as_str` match block in error.rs");
     }
 
-    const matchBody = asStrMatch[1];
+    const matchBody = asStrMatch[1]!;
     const codePattern = /Self::\w+\s*=>\s*"([A-Z0-9_]+)"/g;
     const codes = new Set<string>();
 
     for (const match of matchBody.matchAll(codePattern)) {
-        codes.add(match[1]);
+        codes.add(match[1]!);
     }
 
     return codes;

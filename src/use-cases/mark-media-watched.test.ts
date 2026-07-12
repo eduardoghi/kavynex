@@ -56,9 +56,9 @@ describe("executeMarkMediaWatched", () => {
         });
 
         expect(setMediaWatchedMock).toHaveBeenCalledWith(2);
-        expect(currentItems[0].watched_at).toBeNull();
+        expect(currentItems[0]!.watched_at).toBeNull();
         // The database timestamp returned by the command is what gets written, not a client clock.
         expect(watchedAt).toBe("2026-07-11 12:00:00");
-        expect(currentItems[1].watched_at).toBe("2026-07-11 12:00:00");
+        expect(currentItems[1]!.watched_at).toBe("2026-07-11 12:00:00");
     });
 });

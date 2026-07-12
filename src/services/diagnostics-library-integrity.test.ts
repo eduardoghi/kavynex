@@ -52,13 +52,13 @@ describe("getLibraryIntegrity", () => {
         await getLibraryIntegrity("/library");
 
         expect(invokeTauriMock).toHaveBeenCalledTimes(1);
-        const payload = invokeTauriMock.mock.calls[0][1] as {
+        const payload = invokeTauriMock.mock.calls[0]![1] as {
             libraryPath: string;
             mediaPaths: string[];
             thumbnailPaths: string[];
         };
 
-        expect(invokeTauriMock.mock.calls[0][0]).toBe(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY);
+        expect(invokeTauriMock.mock.calls[0]![0]).toBe(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY);
         // The avatar is referenced by the channels table, not by any media row: without it the
         // integrity check would wrongly report it as an orphan thumbnail.
         expect(payload.thumbnailPaths).toContain("thumbnails/avatar.jpg");

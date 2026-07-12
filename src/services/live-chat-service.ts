@@ -616,8 +616,9 @@ function countMessagesUpToOffset(messages: LiveChatMessageItem[], playbackMs: nu
 
     while (low < high) {
         const mid = (low + high) >>> 1;
+        const midMessage = messages[mid];
 
-        if (messages[mid].message_offset_ms <= playbackMs) {
+        if (midMessage !== undefined && midMessage.message_offset_ms <= playbackMs) {
             low = mid + 1;
         } else {
             high = mid;

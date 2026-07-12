@@ -451,8 +451,8 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
         ]);
 
         expect(result.current.ytDlpFormats).toHaveLength(1);
-        expect(result.current.ytDlpFormats[0].format_id).toBe("137-DRC");
-        expect(result.current.ytDlpFormats[0].display_name).toBe(
+        expect(result.current.ytDlpFormats[0]!.format_id).toBe("137-DRC");
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe(
             "Native · 720p · MP4 · AVC (H.264) · 1500 kbps · DRC · M3U8"
         );
     });
@@ -488,7 +488,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             "140",
         ]);
 
-        const merged = result.current.ytDlpFormats[0];
+        const merged = result.current.ytDlpFormats[0]!;
         expect(merged.display_name).toBe("Merged · 480p · WEBM · AV1 · 750.5 kbps · DASH");
         expect(merged.ext).toBe("webm");
         expect(merged.media_type).toBe("video");
@@ -501,10 +501,10 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
         expect(merged.vcodec).toBe("av01.0.05M.08");
         expect(merged.protocol).toBe("dash-multi");
 
-        expect(result.current.ytDlpFormats[1].display_name).toBe(
+        expect(result.current.ytDlpFormats[1]!.display_name).toBe(
             "Video only · 480p · WEBM · AV1 · 750.5 kbps · DASH"
         );
-        expect(result.current.ytDlpFormats[2].display_name).toBe(
+        expect(result.current.ytDlpFormats[2]!.display_name).toBe(
             "Audio only · M4A · 128 kbps"
         );
     });
@@ -523,7 +523,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe("Audio only · OPUS · 64.5 kbps");
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe("Audio only · OPUS · 64.5 kbps");
     });
 
     it("omits the abr segment for an audio-only format with zero bitrate", async () => {
@@ -539,7 +539,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe("Audio only · WAV");
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe("Audio only · WAV");
     });
 
     it.each([
@@ -555,7 +555,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             makeFormat({ format_id: "x", has_video: true, has_audio: true, vcodec }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe(
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe(
             `Native · Unknown · MP4 · ${expectedLabel}`
         );
     });
@@ -569,7 +569,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
                 makeFormat({ format_id: "x", has_video: true, has_audio: true, vcodec }),
             ]);
 
-            expect(result.current.ytDlpFormats[0].display_name).toBe("Native · Unknown · MP4");
+            expect(result.current.ytDlpFormats[0]!.display_name).toBe("Native · Unknown · MP4");
         }
     );
 
@@ -585,7 +585,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe(
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe(
             "Native · Unknown · MP4 · MP4A.40.2"
         );
     });
@@ -604,7 +604,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             makeFormat({ format_id: "x", has_video: true, has_audio: true, protocol }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe(
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe(
             `Native · Unknown · MP4 · ${expectedLabel}`
         );
     });
@@ -618,7 +618,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
                 makeFormat({ format_id: "x", has_video: true, has_audio: true, protocol }),
             ]);
 
-            expect(result.current.ytDlpFormats[0].display_name).toBe("Native · Unknown · MP4");
+            expect(result.current.ytDlpFormats[0]!.display_name).toBe("Native · Unknown · MP4");
         }
     );
 
@@ -631,7 +631,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
                 makeFormat({ format_id: formatId, has_video: true, has_audio: true }),
             ]);
 
-            expect(result.current.ytDlpFormats[0].display_name).toBe("Native · Unknown · MP4 · DRC");
+            expect(result.current.ytDlpFormats[0]!.display_name).toBe("Native · Unknown · MP4 · DRC");
         }
     );
 
@@ -644,7 +644,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
                 makeFormat({ format_id: formatId, has_video: true, has_audio: true }),
             ]);
 
-            expect(result.current.ytDlpFormats[0].display_name).toBe("Native · Unknown · MP4");
+            expect(result.current.ytDlpFormats[0]!.display_name).toBe("Native · Unknown · MP4");
         }
     );
 
@@ -655,8 +655,8 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             makeFormat({ format_id: "x", has_video: true, has_audio: true, height: 0 }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toContain("Unknown");
-        expect(result.current.ytDlpFormats[0].display_name).not.toContain("0p");
+        expect(result.current.ytDlpFormats[0]!.display_name).toContain("Unknown");
+        expect(result.current.ytDlpFormats[0]!.display_name).not.toContain("0p");
     });
 
     it("renders the smallest positive resolution as 1p", async () => {
@@ -666,7 +666,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             makeFormat({ format_id: "x", has_video: true, has_audio: true, height: 1 }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe("Native · 1p · MP4");
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe("Native · 1p · MP4");
     });
 
     it.each([[""], ["   "]])("falls back to BIN for ext %s", async (ext) => {
@@ -676,7 +676,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             makeFormat({ format_id: "x", has_video: true, has_audio: true, ext }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe("Native · Unknown · BIN");
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe("Native · Unknown · BIN");
     });
 
     it("uppercases a mixed-case ext", async () => {
@@ -686,7 +686,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
             makeFormat({ format_id: "x", has_video: true, has_audio: true, ext: "Mp4" }),
         ]);
 
-        expect(result.current.ytDlpFormats[0].display_name).toBe("Native · Unknown · MP4");
+        expect(result.current.ytDlpFormats[0]!.display_name).toBe("Native · Unknown · MP4");
     });
 });
 
@@ -710,7 +710,7 @@ describe("useYtDlpFormatLoader - merge eligibility and duplicate removal", () =>
         ]);
 
         expect(result.current.ytDlpFormats).toHaveLength(1);
-        expect(result.current.ytDlpFormats[0].format_id).toBe("v1");
+        expect(result.current.ytDlpFormats[0]!.format_id).toBe("v1");
         expect(
             result.current.ytDlpFormats.some((format) => format.format_id.includes("+"))
         ).toBe(false);
@@ -791,7 +791,7 @@ describe("useYtDlpFormatLoader - merge eligibility and duplicate removal", () =>
 
         const dupEntries = result.current.ytDlpFormats.filter((f) => f.format_id === "dup1");
         expect(dupEntries).toHaveLength(1);
-        expect(dupEntries[0].display_name).toContain("100 kbps");
+        expect(dupEntries[0]!.display_name).toContain("100 kbps");
     });
 
     it("keeps the higher-resolution duplicate video-only format id (compareVideoPreference ordering)", async () => {
@@ -816,7 +816,7 @@ describe("useYtDlpFormatLoader - merge eligibility and duplicate removal", () =>
             (f) => f.format_id === "dup-video"
         );
         expect(dupEntries).toHaveLength(1);
-        expect(dupEntries[0].height).toBe(1080);
+        expect(dupEntries[0]!.height).toBe(1080);
     });
 
     it("keeps the higher-tbr duplicate video-only format id when resolution ties", async () => {
@@ -843,7 +843,7 @@ describe("useYtDlpFormatLoader - merge eligibility and duplicate removal", () =>
             (f) => f.format_id === "dup-video-tbr"
         );
         expect(dupEntries).toHaveLength(1);
-        expect(dupEntries[0].tbr).toBe(5000);
+        expect(dupEntries[0]!.tbr).toBe(5000);
     });
 
     it("keeps the larger duplicate video-only format id when resolution and tbr tie", async () => {
@@ -872,7 +872,7 @@ describe("useYtDlpFormatLoader - merge eligibility and duplicate removal", () =>
             (f) => f.format_id === "dup-video-size"
         );
         expect(dupEntries).toHaveLength(1);
-        expect(dupEntries[0].filesize_bytes).toBe(90000);
+        expect(dupEntries[0]!.filesize_bytes).toBe(90000);
     });
 });
 

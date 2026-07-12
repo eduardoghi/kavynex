@@ -352,7 +352,7 @@ describe("useAppSettings", () => {
         expect(mockedRegisterLibraryAssetScope).toHaveBeenCalledWith("/library");
         expect(mockedMigrateLiveChatToLibrary).toHaveBeenCalledTimes(1);
 
-        const { setSettings } = mockedUseAppSettingsActions.mock.calls[0][0];
+        const { setSettings } = mockedUseAppSettingsActions.mock.calls[0]![0];
 
         act(() => {
             setSettings((previous) => ({ ...previous, libraryPath: "/new-library" }));

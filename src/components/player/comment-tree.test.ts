@@ -45,9 +45,9 @@ describe("buildCommentTree", () => {
         );
 
         expect(tree).toHaveLength(1);
-        expect(tree[0].comment_id).toBe("c1");
-        expect(tree[0].replies).toHaveLength(1);
-        expect(tree[0].replies[0].comment_id).toBe("c2");
+        expect(tree[0]!.comment_id).toBe("c1");
+        expect(tree[0]!.replies).toHaveLength(1);
+        expect(tree[0]!.replies[0]!.comment_id).toBe("c2");
     });
 
     it("treats a reply with an unknown parent as a root instead of dropping it", () => {
@@ -66,7 +66,7 @@ describe("buildCommentTree", () => {
         );
 
         expect(tree).toHaveLength(1);
-        expect(tree[0].replies).toHaveLength(0);
+        expect(tree[0]!.replies).toHaveLength(0);
     });
 
     it("sorts by likes desc then id, and preserves order in replies", () => {
@@ -110,14 +110,14 @@ describe("filterCommentTree", () => {
         const filtered = filterCommentTree(tree, "reply");
 
         expect(filtered.map((node) => node.comment_id)).toEqual(["c1"]);
-        expect(filtered[0].replies.map((node) => node.comment_id)).toEqual(["c2"]);
+        expect(filtered[0]!.replies.map((node) => node.comment_id)).toEqual(["c2"]);
     });
 
     it("keeps a matching root and prunes its non-matching replies", () => {
         const filtered = filterCommentTree(tree, "hello");
 
         expect(filtered.map((node) => node.comment_id)).toEqual(["c1"]);
-        expect(filtered[0].replies).toHaveLength(0);
+        expect(filtered[0]!.replies).toHaveLength(0);
     });
 });
 

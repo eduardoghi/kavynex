@@ -88,5 +88,5 @@ export function isValidNormalizedYoutubeHandle(value: string): boolean {
         return false;
     }
 
-    return channelMatch[2].trim().length > 0;
+    return (channelMatch[2] ?? "").trim().length > 0;
 }

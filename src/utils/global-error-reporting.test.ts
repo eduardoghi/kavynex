@@ -124,7 +124,7 @@ describe("installGlobalErrorHandlers", () => {
         expect(errorRegistrations).toHaveLength(1);
         expect(rejectionRegistrations).toHaveLength(1);
 
-        const errorHandler = errorRegistrations[0][1] as (event: ErrorEvent) => void;
+        const errorHandler = errorRegistrations[0]![1] as (event: ErrorEvent) => void;
         errorHandler(new ErrorEvent("error", { error: new Error("uncaught") }));
 
         expect(logError).toHaveBeenCalledWith(
@@ -133,7 +133,7 @@ describe("installGlobalErrorHandlers", () => {
             expect.objectContaining({ message: "uncaught" })
         );
 
-        const rejectionHandler = rejectionRegistrations[0][1] as unknown as (event: {
+        const rejectionHandler = rejectionRegistrations[0]![1] as unknown as (event: {
             reason: unknown;
         }) => void;
         rejectionHandler({ reason: "denied" });
