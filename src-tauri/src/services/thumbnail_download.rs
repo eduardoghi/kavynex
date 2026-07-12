@@ -449,6 +449,37 @@ async fn persist_thumbnail_from_source_async(
     run_blocking(move || persist_thumbnail_from_source(&source, &library_dir)).await
 }
 
+/// Shared tail for the yt-dlp thumbnail flows (generic fallback, pre-download media thumbnail,
+/// channel avatar): fails on a non-zero exit, locates the PNG yt-dlp wrote under
+/// `file_name_prefix`, and persists it into the library (content-addressed). `subject`
+/// distinguishes a `"thumbnail"` from a `"channel avatar"` in the error text, keeping the exact
+/// messages the three call sites used before they were unified.
+async fn finalize_thumbnail_download(
+    output: &std::process::Output,
+    thumb_temp_dir: &Path,
+    file_name_prefix: &str,
+    library_dir: PathBuf,
+    subject: &str,
+) -> AppResult<String> {
+    if !output.status.success() {
+        return Err(read_process_error(
+            output,
+            AppErrorCode::YtDlpThumbnailFailed,
+            &format!("yt-dlp {subject} download failed"),
+        ));
+    }
+
+    let downloaded_thumb = find_best_matching_file(thumb_temp_dir, file_name_prefix, Some("png"))
+        .map_err(|_| {
+        AppError::from_code(
+            AppErrorCode::YtDlpThumbnailNotFound,
+            format!("yt-dlp did not produce a {subject} file"),
+        )
+    })?;
+
+    persist_thumbnail_from_source_async(downloaded_thumb, library_dir).await
+}
+
 fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
     let normalized = youtube_handle.trim();
 
@@ -728,25 +759,14 @@ pub async fn download_thumbnail_from_url_async(
         )
         .await?;
 
-        if !output.status.success() {
-            return Err(read_process_error(
-                &output,
-                AppErrorCode::YtDlpThumbnailFailed,
-                "yt-dlp thumbnail download failed",
-            ));
-        }
-
-        let downloaded_thumb =
-            find_best_matching_file(&thumb_temp_dir, &file_name_prefix, Some("png")).map_err(
-                |_| {
-                    AppError::from_code(
-                        AppErrorCode::YtDlpThumbnailNotFound,
-                        "yt-dlp did not produce a thumbnail file",
-                    )
-                },
-            )?;
-
-        persist_thumbnail_from_source_async(downloaded_thumb, library_dir).await
+        finalize_thumbnail_download(
+            &output,
+            &thumb_temp_dir,
+            &file_name_prefix,
+            library_dir,
+            "thumbnail",
+        )
+        .await
     }
     .await;
 
@@ -849,27 +869,15 @@ pub async fn download_thumbnail_for_media_async(
         )
         .await?;
 
-        if !output.status.success() {
-            return Err(read_process_error(
-                &output,
-                AppErrorCode::YtDlpThumbnailFailed,
-                "yt-dlp thumbnail download failed",
-            ));
-        }
-
-        let downloaded_thumb =
-            find_best_matching_file(&thumb_temp_dir, &file_name_prefix, Some("png")).map_err(
-                |_| {
-                    AppError::from_code(
-                        AppErrorCode::YtDlpThumbnailNotFound,
-                        "yt-dlp did not produce a thumbnail file",
-                    )
-                },
-            )?;
-
-        persist_thumbnail_from_source_async(downloaded_thumb, library_dir)
-            .await
-            .map(Some)
+        finalize_thumbnail_download(
+            &output,
+            &thumb_temp_dir,
+            &file_name_prefix,
+            library_dir,
+            "thumbnail",
+        )
+        .await
+        .map(Some)
     }
     .await;
 
@@ -927,25 +935,14 @@ pub async fn download_channel_avatar_from_handle_async(
         )
         .await?;
 
-        if !output.status.success() {
-            return Err(read_process_error(
-                &output,
-                AppErrorCode::YtDlpThumbnailFailed,
-                "yt-dlp channel avatar download failed",
-            ));
-        }
-
-        let downloaded_thumb =
-            find_best_matching_file(&thumb_temp_dir, file_name_prefix, Some("png")).map_err(
-                |_| {
-                    AppError::from_code(
-                        AppErrorCode::YtDlpThumbnailNotFound,
-                        "yt-dlp did not produce a channel avatar file",
-                    )
-                },
-            )?;
-
-        persist_thumbnail_from_source_async(downloaded_thumb, library_dir).await
+        finalize_thumbnail_download(
+            &output,
+            &thumb_temp_dir,
+            file_name_prefix,
+            library_dir,
+            "channel avatar",
+        )
+        .await
     }
     .await;
 

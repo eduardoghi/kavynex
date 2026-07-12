@@ -14,7 +14,9 @@ fn normalize_optional_text(value: &Option<String>) -> Option<String> {
 }
 
 fn sqlite_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
-    AppError::from_code_with_details(AppErrorCode::AppError, message, error.to_string())
+    // Reuse the single db_error constructor (services::database) rather than re-deriving the
+    // same AppError::from_code_with_details(AppErrorCode::AppError, ...) shape here.
+    crate::services::database::db_error(message, error)
 }
 
 /// Drops comments that share a non-null `comment_id` with an earlier one in the same payload,
