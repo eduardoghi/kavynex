@@ -71,7 +71,7 @@ pub async fn insert_media(
     duration_seconds: Option<i64>,
     is_live: bool,
     live_chat_file_path: Option<String>,
-) -> AppResult<Option<i64>> {
+) -> AppResult<i64> {
     // Validate the text fields at this write boundary too, mirroring the frontend's checks so
     // the backend (the only durable trust boundary) does not depend on them.
     ensure_valid_media_title(&title)?;

@@ -48,7 +48,7 @@ pub async fn insert_channel(
     name: String,
     youtube_handle: String,
     avatar_path: Option<String>,
-) -> AppResult<Option<i64>> {
+) -> AppResult<i64> {
     // Validate the text fields at this write boundary, not just in the frontend: the backend is
     // the only durable trust boundary, so a malformed name/handle from any other call path is
     // rejected here with a catalogued error before it reaches the row.

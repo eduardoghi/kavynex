@@ -65,7 +65,7 @@ pub async fn insert_channel(
     name: &str,
     youtube_handle: &str,
     avatar_path: Option<&str>,
-) -> AppResult<Option<i64>> {
+) -> AppResult<i64> {
     let result =
         sqlx::query("INSERT INTO channels (name, youtube_handle, avatar_path) VALUES (?, ?, ?)")
             .bind(name)
@@ -89,11 +89,13 @@ pub async fn insert_channel(
 
     let inserted_id = result.last_insert_rowid();
 
-    Ok(if inserted_id > 0 {
-        Some(inserted_id)
+    // A successful INSERT always yields a positive rowid, so the non-positive case is a
+    // should-never-happen guard, not a real null the caller must handle.
+    if inserted_id > 0 {
+        Ok(inserted_id)
     } else {
-        None
-    })
+        Err(AppError::internal("channel insert produced no row id"))
+    }
 }
 
 pub async fn update_channel_name_and_handle(
@@ -206,7 +208,6 @@ mod tests {
 
         let id = insert_channel(&pool, "Alice", "@alice", Some("thumbnails/a.jpg"))
             .await
-            .unwrap()
             .unwrap();
         assert!(id > 0);
 
@@ -222,7 +223,6 @@ mod tests {
 
         insert_channel(&pool, "Alice", "@alice", None)
             .await
-            .unwrap()
             .unwrap();
 
         // A second channel with the same handle hits the UNIQUE constraint and must surface as
@@ -280,10 +280,7 @@ mod tests {
     #[tokio::test]
     async fn update_name_handle_and_avatar() {
         let pool = create_test_pool().await;
-        let id = insert_channel(&pool, "Old", "@old", None)
-            .await
-            .unwrap()
-            .unwrap();
+        let id = insert_channel(&pool, "Old", "@old", None).await.unwrap();
 
         update_channel_name_and_handle(&pool, id, "New", "@new")
             .await
@@ -311,11 +308,9 @@ mod tests {
         let pool = create_test_pool().await;
         let a = insert_channel(&pool, "A", "@a", Some("shared.jpg"))
             .await
-            .unwrap()
             .unwrap();
         insert_channel(&pool, "B", "@b", Some("shared.jpg"))
             .await
-            .unwrap()
             .unwrap();
 
         assert_eq!(

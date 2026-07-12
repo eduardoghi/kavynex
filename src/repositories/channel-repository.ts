@@ -25,8 +25,8 @@ export async function insertChannel(
     name: string,
     youtubeHandle: string,
     avatarPath: string | null
-): Promise<number | null> {
-    return invokeCommand<number | null>(TAURI_COMMANDS.INSERT_CHANNEL, {
+): Promise<number> {
+    return invokeCommand<number>(TAURI_COMMANDS.INSERT_CHANNEL, {
         name,
         youtubeHandle,
         avatarPath,

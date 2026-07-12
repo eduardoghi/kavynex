@@ -206,7 +206,7 @@ pub async fn insert_media(
     duration_seconds: Option<i64>,
     is_live: bool,
     live_chat_file_path: Option<&str>,
-) -> AppResult<Option<i64>> {
+) -> AppResult<i64> {
     let normalized_live_chat = live_chat_file_path
         .map(str::trim)
         .filter(|value| !value.is_empty());
@@ -266,7 +266,10 @@ pub async fn insert_media(
         db_error("failed to insert media", error)
     })?;
 
-    Ok(row.map(|(id,)| id))
+    // The upsert's RETURNING clause always yields the row (freshly inserted or already existing),
+    // so a missing id is a should-never-happen guard rather than a real null case.
+    row.map(|(id,)| id)
+        .ok_or_else(|| AppError::internal("media insert produced no row id"))
 }
 
 pub async fn list_media_comments_by_media_id(
@@ -497,7 +500,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
         assert!(id > 0);
 
@@ -630,7 +632,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
         assert!(id > 0);
     }
@@ -653,7 +654,6 @@ mod tests {
             Some("live_chat/live.json"),
         )
         .await
-        .unwrap()
         .unwrap();
 
         let found = find_media_by_channel_and_file_path(&pool, 1, "video/live.mp4")
@@ -687,7 +687,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
 
         let second = insert_media(
@@ -704,7 +703,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
 
         assert_eq!(first, second);
@@ -733,7 +731,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
 
         // Same channel + youtube_video_id but a different file_path: the file_path ON CONFLICT
@@ -839,7 +836,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
 
         update_media_title(&pool, id, "Renamed").await.unwrap();
@@ -910,7 +906,6 @@ mod tests {
             Some("live_chat/shared.json"),
         )
         .await
-        .unwrap()
         .unwrap();
         insert_media(
             &pool,
@@ -926,7 +921,6 @@ mod tests {
             Some("live_chat/shared.json"),
         )
         .await
-        .unwrap()
         .unwrap();
 
         // Two rows share the live chat file; excluding `a` leaves exactly one other user.
@@ -963,7 +957,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
         insert_media(
             &pool,
@@ -979,7 +972,6 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
         .unwrap();
 
         assert_eq!(

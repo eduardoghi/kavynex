@@ -43,8 +43,8 @@ export async function insertMedia(
     durationSeconds: number | null,
     isLive: boolean,
     liveChatFilePath: string | null
-): Promise<number | null> {
-    return invokeCommand<number | null>(TAURI_COMMANDS.INSERT_MEDIA, {
+): Promise<number> {
+    return invokeCommand<number>(TAURI_COMMANDS.INSERT_MEDIA, {
         channelId,
         title,
         filePath,
