@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
-use crate::services::database::{database_path, is_pool_initialized, shared_pool};
+use crate::services::database::{database_path, is_pool_initialized, Db};
 use crate::services::db_backup::{self, DatabaseBackupStatus};
 use crate::utils::path::extension_from_path;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -38,8 +38,8 @@ fn validate_export_destination(destination_path: &str) -> AppResult<()> {
 /// call) and confirms the database is reachable. Called by the frontend on startup so
 /// database initialization errors surface to the user before any feature runs.
 #[tauri::command]
-pub async fn ensure_database_ready(app: AppHandle) -> AppResult<()> {
-    shared_pool(&app).await?;
+pub async fn ensure_database_ready(db: State<'_, Db>) -> AppResult<()> {
+    db.pool().await?;
     Ok(())
 }
 
@@ -108,14 +108,56 @@ pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
 /// slower) check than the `quick_check` used by the automatic health paths. User-triggered
 /// from the Diagnostics dialog.
 #[tauri::command]
-pub async fn check_database_integrity(app: AppHandle) -> AppResult<bool> {
-    let pool = shared_pool(&app).await?;
+pub async fn check_database_integrity(db: State<'_, Db>) -> AppResult<bool> {
+    let pool = db.pool().await?;
     db_backup::run_full_integrity_check(&pool).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::test_ipc::{invoke, memory_db};
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
+
+    fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![
+                ensure_database_ready,
+                check_database_integrity
+            ])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        app.manage(db);
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn ensure_database_ready_command_succeeds_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        // A managed, openable database resolves the command to a unit success across IPC.
+        invoke(&webview, "ensure_database_ready", serde_json::json!({})).unwrap();
+    }
+
+    #[test]
+    fn check_database_integrity_command_reports_ok_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        let healthy = invoke(&webview, "check_database_integrity", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<bool>()
+            .unwrap();
+
+        assert!(
+            healthy,
+            "a freshly migrated database should pass integrity_check"
+        );
+    }
 
     #[test]
     fn validate_export_destination_accepts_database_extensions() {

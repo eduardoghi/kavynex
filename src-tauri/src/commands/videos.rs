@@ -1,6 +1,6 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
-use crate::services::database::shared_pool;
+use crate::services::database::Db;
 use crate::services::library_cleanup::{self, ArtifactCleanupReport};
 use crate::services::video_repository as repo;
 use crate::services::video_repository::{
@@ -20,24 +20,24 @@ pub async fn delete_media_with_artifacts(
 }
 
 #[tauri::command]
-pub async fn update_media_title(app: AppHandle, media_id: i64, title: String) -> AppResult<()> {
-    let pool = shared_pool(&app).await?;
+pub async fn update_media_title(db: State<'_, Db>, media_id: i64, title: String) -> AppResult<()> {
+    let pool = db.pool().await?;
     repo::update_media_title(&pool, media_id, &title).await
 }
 
 #[tauri::command]
-pub async fn list_media_by_channel(app: AppHandle, channel_id: i64) -> AppResult<Vec<MediaRow>> {
-    let pool = shared_pool(&app).await?;
+pub async fn list_media_by_channel(db: State<'_, Db>, channel_id: i64) -> AppResult<Vec<MediaRow>> {
+    let pool = db.pool().await?;
     repo::list_media_by_channel(&pool, channel_id).await
 }
 
 #[tauri::command]
 pub async fn find_media_by_channel_and_file_path(
-    app: AppHandle,
+    db: State<'_, Db>,
     channel_id: i64,
     file_path: String,
 ) -> AppResult<Option<MediaRow>> {
-    let pool = shared_pool(&app).await?;
+    let pool = db.pool().await?;
     repo::find_media_by_channel_and_file_path(&pool, channel_id, &file_path).await
 }
 
@@ -46,18 +46,18 @@ pub async fn find_media_by_channel_and_file_path(
 /// whole file only to hit the unique index in `insert_media` afterwards.
 #[tauri::command]
 pub async fn media_exists_for_channel_and_youtube_id(
-    app: AppHandle,
+    db: State<'_, Db>,
     channel_id: i64,
     youtube_video_id: String,
 ) -> AppResult<bool> {
-    let pool = shared_pool(&app).await?;
+    let pool = db.pool().await?;
     repo::media_exists_for_channel_and_youtube_id(&pool, channel_id, &youtube_video_id).await
 }
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_media(
-    app: AppHandle,
+    db: State<'_, Db>,
     channel_id: i64,
     title: String,
     file_path: String,
@@ -83,7 +83,7 @@ pub async fn insert_media(
         ensure_managed_library_relative_path(path)?;
     }
 
-    let pool = shared_pool(&app).await?;
+    let pool = db.pool().await?;
     repo::insert_media(
         &pool,
         channel_id,
@@ -102,47 +102,180 @@ pub async fn insert_media(
 
 #[tauri::command]
 pub async fn list_media_comments_by_media_id(
-    app: AppHandle,
+    db: State<'_, Db>,
     media_id: i64,
 ) -> AppResult<Vec<MediaCommentRow>> {
-    let pool = shared_pool(&app).await?;
+    let pool = db.pool().await?;
     repo::list_media_comments_by_media_id(&pool, media_id).await
 }
 
 /// Returns the `watched_at` timestamp the database stored, so the frontend can show the exact
 /// persisted value rather than a client-generated one.
 #[tauri::command]
-pub async fn mark_media_as_watched(app: AppHandle, media_id: i64) -> AppResult<String> {
-    let pool = shared_pool(&app).await?;
+pub async fn mark_media_as_watched(db: State<'_, Db>, media_id: i64) -> AppResult<String> {
+    let pool = db.pool().await?;
     repo::mark_media_as_watched(&pool, media_id).await
 }
 
 #[tauri::command]
-pub async fn mark_media_as_unwatched(app: AppHandle, media_id: i64) -> AppResult<()> {
-    let pool = shared_pool(&app).await?;
+pub async fn mark_media_as_unwatched(db: State<'_, Db>, media_id: i64) -> AppResult<()> {
+    let pool = db.pool().await?;
     repo::mark_media_as_unwatched(&pool, media_id).await
 }
 
 #[tauri::command]
 pub async fn update_media_progress(
-    app: AppHandle,
+    db: State<'_, Db>,
     media_id: i64,
     progress_seconds: i64,
 ) -> AppResult<()> {
-    let pool = shared_pool(&app).await?;
+    let pool = db.pool().await?;
     repo::update_media_progress(&pool, media_id, progress_seconds).await
 }
 
 #[tauri::command]
-pub async fn get_media_repository_stats(app: AppHandle) -> AppResult<MediaRepositoryStats> {
-    let pool = shared_pool(&app).await?;
+pub async fn get_media_repository_stats(db: State<'_, Db>) -> AppResult<MediaRepositoryStats> {
+    let pool = db.pool().await?;
     repo::get_media_repository_stats(&pool).await
 }
 
 #[tauri::command]
 pub async fn list_media_integrity_references(
-    app: AppHandle,
+    db: State<'_, Db>,
 ) -> AppResult<Vec<MediaIntegrityReference>> {
-    let pool = shared_pool(&app).await?;
+    let pool = db.pool().await?;
     repo::list_media_integrity_references(&pool).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::test_ipc::{invoke, memory_db};
+    use crate::AppErrorCode;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
+
+    // The pool-only media commands take `State<Db>`, so they can be driven through a real IPC
+    // round trip. insert_channel is registered too (from the channels module) to satisfy the
+    // channel_id foreign key before media rows are inserted.
+    fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![
+                crate::commands::channels::insert_channel,
+                insert_media,
+                list_media_by_channel,
+                mark_media_as_watched
+            ])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        app.manage(db);
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    fn seed_channel(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> i64 {
+        invoke(
+            webview,
+            "insert_channel",
+            serde_json::json!({ "name": "Chan", "youtubeHandle": "@chan", "avatarPath": null }),
+        )
+        .unwrap()
+        .deserialize::<Option<i64>>()
+        .unwrap()
+        .expect("channel id")
+    }
+
+    fn insert_media_body(channel_id: i64, file_path: &str) -> serde_json::Value {
+        serde_json::json!({
+            "channelId": channel_id,
+            "title": "Video",
+            "filePath": file_path,
+            "thumbnailPath": null,
+            "mediaType": "video",
+            "youtubeVideoId": null,
+            "publishedAt": null,
+            "durationSeconds": null,
+            "isLive": false,
+            "liveChatFilePath": null
+        })
+    }
+
+    #[test]
+    fn insert_and_list_media_round_trips_through_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        let media_id = invoke(
+            &webview,
+            "insert_media",
+            insert_media_body(channel_id, "video/media_x.mp4"),
+        )
+        .unwrap()
+        .deserialize::<Option<i64>>()
+        .unwrap();
+        assert!(media_id.is_some(), "insert should return the new row id");
+
+        let list = invoke(
+            &webview,
+            "list_media_by_channel",
+            serde_json::json!({ "channelId": channel_id }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        let list = list.as_array().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["file_path"], "video/media_x.mp4");
+        assert_eq!(list[0]["title"], "Video");
+    }
+
+    #[test]
+    fn insert_media_rejects_an_unmanaged_file_path_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        // The managed-path guard runs at the IPC boundary before the row is written.
+        let error = invoke(
+            &webview,
+            "insert_media",
+            insert_media_body(channel_id, "../escape.mp4"),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
+    }
+
+    #[test]
+    fn mark_media_as_watched_returns_a_persisted_timestamp_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        let media_id = invoke(
+            &webview,
+            "insert_media",
+            insert_media_body(channel_id, "video/media_x.mp4"),
+        )
+        .unwrap()
+        .deserialize::<Option<i64>>()
+        .unwrap()
+        .expect("media id");
+
+        let watched_at = invoke(
+            &webview,
+            "mark_media_as_watched",
+            serde_json::json!({ "mediaId": media_id }),
+        )
+        .unwrap()
+        .deserialize::<String>()
+        .unwrap();
+
+        assert!(
+            !watched_at.trim().is_empty(),
+            "a watched timestamp should be returned"
+        );
+    }
 }
