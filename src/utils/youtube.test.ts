@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isValidNormalizedYoutubeHandle, normalizeYoutubeHandle } from "./youtube";
+import {
+    buildYoutubeWatchUrl,
+    isValidNormalizedYoutubeHandle,
+    normalizeYoutubeHandle,
+} from "./youtube";
 
 describe("youtube utils", () => {
     it("normalizes plain handle to @handle", () => {
@@ -107,5 +111,25 @@ describe("youtube utils", () => {
     it("requires the path prefix to span the whole value", () => {
         expect(isValidNormalizedYoutubeHandle("xchannel/abc")).toBe(false);
         expect(isValidNormalizedYoutubeHandle("channel/abc\nmore")).toBe(false);
+    });
+
+    it("builds the watch url for a video id", () => {
+        expect(buildYoutubeWatchUrl("dQw4w9WgXcQ")).toBe(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        );
+        expect(buildYoutubeWatchUrl("  dQw4w9WgXcQ  ")).toBe(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        );
+    });
+
+    it("returns an empty string for a blank video id", () => {
+        expect(buildYoutubeWatchUrl("")).toBe("");
+        expect(buildYoutubeWatchUrl("   ")).toBe("");
+    });
+
+    it("percent-encodes the video id so it cannot break out of the query value", () => {
+        expect(buildYoutubeWatchUrl("a b&list=x")).toBe(
+            "https://www.youtube.com/watch?v=a%20b%26list%3Dx"
+        );
     });
 });

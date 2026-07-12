@@ -8,6 +8,7 @@ import { useAsyncFlag } from "./use-async-flag";
 import { logError } from "../utils/app-logger";
 import { openExternalUrl, openFileLocation } from "../services/library-service";
 import { refreshMediaComments, updateMediaTitle } from "../services/media-service";
+import { buildYoutubeWatchUrl } from "../utils/youtube";
 
 type UseMediaActionsOptions = {
     libraryPath: string;
@@ -347,9 +348,7 @@ export function useMediaActions({
             }
 
             try {
-                await openExternalUrl(
-                    `https://www.youtube.com/watch?v=${encodeURIComponent(youtubeVideoId)}`
-                );
+                await openExternalUrl(buildYoutubeWatchUrl(youtubeVideoId));
             } catch (error) {
                 logError("media-actions", "Failed to open media source on YouTube.", error, {
                     mediaId: media.id,

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { MediaPlayerController } from "../types/controllers";
 import type { MediaRow } from "../types/media";
 import { resolveStoredPath, fileSrcFromAbsolutePath } from "../utils/media-utils";
+import { buildYoutubeWatchUrl } from "../utils/youtube";
 import { openExternalUrl } from "../services/library-service";
 import { logError } from "../utils/app-logger";
 
@@ -33,15 +34,10 @@ export function useMediaPlayer({
         return fileSrcFromAbsolutePath(absolutePath);
     }, [activeMedia, libraryPath]);
 
-    const activeYoutubeUrl = useMemo(() => {
-        const youtubeVideoId = activeMedia?.youtube_video_id?.trim() ?? "";
-
-        if (!youtubeVideoId) {
-            return "";
-        }
-
-        return `https://www.youtube.com/watch?v=${encodeURIComponent(youtubeVideoId)}`;
-    }, [activeMedia]);
+    const activeYoutubeUrl = useMemo(
+        () => buildYoutubeWatchUrl(activeMedia?.youtube_video_id ?? ""),
+        [activeMedia]
+    );
 
     const canOpenInYoutube = activeYoutubeUrl !== "";
     const activeIsWatched = Boolean(activeMedia?.watched_at?.trim());

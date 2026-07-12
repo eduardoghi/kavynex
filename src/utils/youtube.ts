@@ -54,6 +54,22 @@ export function normalizeYoutubeHandle(value: string): string {
     return `@${baseHandle}`;
 }
 
+/**
+ * Builds the YouTube watch URL for a video id, or "" when the id is blank. The id is
+ * percent-encoded so it can never break out of the query value. Shared by the player (which
+ * derives the "open in YouTube" link) and the media-list "open source" action so both build
+ * the URL the same way.
+ */
+export function buildYoutubeWatchUrl(videoId: string): string {
+    const trimmed = videoId.trim();
+
+    if (!trimmed) {
+        return "";
+    }
+
+    return `https://www.youtube.com/watch?v=${encodeURIComponent(trimmed)}`;
+}
+
 export function isValidNormalizedYoutubeHandle(value: string): boolean {
     const normalized = value.trim();
 
