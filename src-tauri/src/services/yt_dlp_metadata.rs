@@ -110,13 +110,25 @@ fn should_keep_terminal_line(line: &str) -> bool {
     true
 }
 
+/// Substrings yt-dlp emits when a video requires age verification. Shared by the friendly-hint
+/// detection and the error-detail preference so both recognize the same signal from one list.
+const AGE_RESTRICTION_MARKERS: [&str; 4] = [
+    "sign in to confirm your age",
+    "this video is age-restricted",
+    "age-restricted",
+    "login_required",
+];
+
+fn contains_age_restriction_marker(normalized_line: &str) -> bool {
+    AGE_RESTRICTION_MARKERS
+        .iter()
+        .any(|marker| normalized_line.contains(marker))
+}
+
 fn is_age_restriction_error_line(line: &str) -> bool {
     let normalized = line.trim().to_lowercase();
 
-    normalized.contains("sign in to confirm your age")
-        || normalized.contains("this video is age-restricted")
-        || normalized.contains("age-restricted")
-        || normalized.contains("login_required")
+    contains_age_restriction_marker(&normalized)
         || normalized.contains("may be inappropriate for some users")
 }
 
@@ -188,11 +200,7 @@ fn is_traceback_noise(line: &str) -> bool {
 fn is_preferred_error_detail(line: &str) -> bool {
     let normalized = line.trim().to_lowercase();
 
-    normalized.contains("sign in to confirm your age")
-        || normalized.contains("this video is age-restricted")
-        || normalized.contains("age-restricted")
-        || normalized.contains("login_required")
-        || normalized.starts_with("error:")
+    contains_age_restriction_marker(&normalized) || normalized.starts_with("error:")
 }
 
 fn select_best_error_detail(
