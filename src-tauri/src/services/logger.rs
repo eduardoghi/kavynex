@@ -52,6 +52,18 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
     let _ = fs::rename(path, &backup);
 }
 
+/// Reduz um caminho ao seu componente final para uso em log. Uma linha de log pode ser
+/// colada num bug report publico, e um caminho absoluto no Windows embute
+/// `C:\Users\<nome>\...`, revelando o usuario/perfil do SO. Espelha a redacao que os
+/// caminhos do yt-dlp ja recebem (services::yt_dlp_download::redact_paths_value). Cai para
+/// `<path>` quando o caminho nao tem componente final (ex.: uma raiz).
+pub fn redact_path(path: impl AsRef<Path>) -> String {
+    path.as_ref()
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "<path>".to_string())
+}
+
 fn append_line(path: &Path, line: &str) {
     rotate_if_needed(path, MAX_LOG_BYTES);
 
@@ -184,5 +196,14 @@ mod tests {
         assert!(!backup_path(&path).exists());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn redact_path_keeps_only_the_final_component() {
+        assert_eq!(
+            redact_path(Path::new("/home/alice/library/video/clip.mp4")),
+            "clip.mp4"
+        );
+        assert_eq!(redact_path("C:\\Users\\alice\\library"), "library");
     }
 }

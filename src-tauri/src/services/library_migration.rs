@@ -85,8 +85,8 @@ fn copy_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppR
             format!(
                 "copying managed directory '{}' from '{}' to '{}'",
                 dir_name,
-                source_dir.to_string_lossy(),
-                destination_dir.to_string_lossy()
+                logger::redact_path(&source_dir),
+                logger::redact_path(&destination_dir)
             ),
         );
 
@@ -124,7 +124,7 @@ fn remove_old_library_contents(old_library_dir: &Path) {
                 "library migration left {} entr{} behind in the old library directory '{}' that were not part of the managed folders: {}",
                 leftovers.len(),
                 if leftovers.len() == 1 { "y" } else { "ies" },
-                old_library_dir.to_string_lossy(),
+                logger::redact_path(old_library_dir),
                 examples
             ),
         );
@@ -216,8 +216,8 @@ pub fn migrate_library_directory_sync(
         "library",
         format!(
             "requested library migration from '{}' to '{}'",
-            old_library_path.trim(),
-            canonical_new.to_string_lossy()
+            logger::redact_path(old_library_path.trim()),
+            logger::redact_path(&canonical_new)
         ),
     );
 
@@ -253,7 +253,7 @@ pub fn migrate_library_directory_sync(
             "library",
             format!(
                 "library migration skipped because paths are identical: '{}'",
-                canonical_new.to_string_lossy()
+                logger::redact_path(&canonical_new)
             ),
         );
         drop(migration_guard);
@@ -295,16 +295,16 @@ pub fn migrate_library_directory_sync(
             "library",
             format!(
                 "library migration finished successfully from '{}' to '{}'",
-                canonical_old.to_string_lossy(),
-                canonical_new.to_string_lossy()
+                logger::redact_path(&canonical_old),
+                logger::redact_path(&canonical_new)
             ),
         ),
         Err(error) => logger::error(
             "library",
             format!(
                 "library migration failed from '{}' to '{}': {}",
-                canonical_old.to_string_lossy(),
-                canonical_new.to_string_lossy(),
+                logger::redact_path(&canonical_old),
+                logger::redact_path(&canonical_new),
                 error
             ),
         ),

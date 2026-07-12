@@ -204,7 +204,7 @@ pub fn check_library_integrity_sync(
         "library_integrity",
         format!(
             "checking integrity for library='{}', media_paths={}, thumbnail_paths={}",
-            library_root.to_string_lossy(),
+            logger::redact_path(&library_root),
             media_paths.len(),
             thumbnail_paths.len()
         ),

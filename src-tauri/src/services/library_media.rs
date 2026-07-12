@@ -67,9 +67,9 @@ pub fn import_media_file_sync(
         "library",
         format!(
             "importing media: source='{}', mode='{:?}', destination='{}'",
-            source.to_string_lossy(),
+            logger::redact_path(&source),
             mode,
-            destination.to_string_lossy()
+            logger::redact_path(&destination)
         ),
     );
 
@@ -82,7 +82,7 @@ pub fn import_media_file_sync(
                     "library",
                     format!(
                         "media import skipped because destination already exists: '{}'",
-                        destination.to_string_lossy()
+                        crate::services::logger::redact_path(&destination)
                     ),
                 );
             } else {
@@ -123,7 +123,7 @@ pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<
             "library",
             format!(
                 "media delete skipped because file does not exist: '{}'",
-                target_path.to_string_lossy()
+                crate::services::logger::redact_path(&target_path)
             ),
         );
         return Ok(());
@@ -140,7 +140,10 @@ pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<
 
     logger::info(
         "library",
-        format!("deleting media file '{}'", target_path.to_string_lossy()),
+        format!(
+            "deleting media file '{}'",
+            logger::redact_path(&target_path)
+        ),
     );
 
     fs::remove_file(&target_path).map_err(|e| {
@@ -152,7 +155,7 @@ pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<
 
     logger::info(
         "library",
-        format!("media file deleted '{}'", target_path.to_string_lossy()),
+        format!("media file deleted '{}'", logger::redact_path(&target_path)),
     );
 
     Ok(())
