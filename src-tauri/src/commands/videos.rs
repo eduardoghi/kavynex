@@ -22,13 +22,13 @@ pub async fn delete_media_with_artifacts(
 #[tauri::command]
 pub async fn update_media_title(app: AppHandle, media_id: i64, title: String) -> AppResult<()> {
     let pool = shared_pool(&app).await?;
-    repo::update_media_title(pool, media_id, &title).await
+    repo::update_media_title(&pool, media_id, &title).await
 }
 
 #[tauri::command]
 pub async fn list_media_by_channel(app: AppHandle, channel_id: i64) -> AppResult<Vec<MediaRow>> {
     let pool = shared_pool(&app).await?;
-    repo::list_media_by_channel(pool, channel_id).await
+    repo::list_media_by_channel(&pool, channel_id).await
 }
 
 #[tauri::command]
@@ -38,7 +38,7 @@ pub async fn find_media_by_channel_and_file_path(
     file_path: String,
 ) -> AppResult<Option<MediaRow>> {
     let pool = shared_pool(&app).await?;
-    repo::find_media_by_channel_and_file_path(pool, channel_id, &file_path).await
+    repo::find_media_by_channel_and_file_path(&pool, channel_id, &file_path).await
 }
 
 /// Pre-check used by the yt-dlp (URL) add flow before the video is downloaded: lets the
@@ -51,7 +51,7 @@ pub async fn media_exists_for_channel_and_youtube_id(
     youtube_video_id: String,
 ) -> AppResult<bool> {
     let pool = shared_pool(&app).await?;
-    repo::media_exists_for_channel_and_youtube_id(pool, channel_id, &youtube_video_id).await
+    repo::media_exists_for_channel_and_youtube_id(&pool, channel_id, &youtube_video_id).await
 }
 
 #[tauri::command]
@@ -85,7 +85,7 @@ pub async fn insert_media(
 
     let pool = shared_pool(&app).await?;
     repo::insert_media(
-        pool,
+        &pool,
         channel_id,
         &title,
         &file_path,
@@ -106,7 +106,7 @@ pub async fn list_media_comments_by_media_id(
     media_id: i64,
 ) -> AppResult<Vec<MediaCommentRow>> {
     let pool = shared_pool(&app).await?;
-    repo::list_media_comments_by_media_id(pool, media_id).await
+    repo::list_media_comments_by_media_id(&pool, media_id).await
 }
 
 /// Returns the `watched_at` timestamp the database stored, so the frontend can show the exact
@@ -114,13 +114,13 @@ pub async fn list_media_comments_by_media_id(
 #[tauri::command]
 pub async fn mark_media_as_watched(app: AppHandle, media_id: i64) -> AppResult<String> {
     let pool = shared_pool(&app).await?;
-    repo::mark_media_as_watched(pool, media_id).await
+    repo::mark_media_as_watched(&pool, media_id).await
 }
 
 #[tauri::command]
 pub async fn mark_media_as_unwatched(app: AppHandle, media_id: i64) -> AppResult<()> {
     let pool = shared_pool(&app).await?;
-    repo::mark_media_as_unwatched(pool, media_id).await
+    repo::mark_media_as_unwatched(&pool, media_id).await
 }
 
 #[tauri::command]
@@ -130,13 +130,13 @@ pub async fn update_media_progress(
     progress_seconds: i64,
 ) -> AppResult<()> {
     let pool = shared_pool(&app).await?;
-    repo::update_media_progress(pool, media_id, progress_seconds).await
+    repo::update_media_progress(&pool, media_id, progress_seconds).await
 }
 
 #[tauri::command]
 pub async fn get_media_repository_stats(app: AppHandle) -> AppResult<MediaRepositoryStats> {
     let pool = shared_pool(&app).await?;
-    repo::get_media_repository_stats(pool).await
+    repo::get_media_repository_stats(&pool).await
 }
 
 #[tauri::command]
@@ -144,5 +144,5 @@ pub async fn list_media_integrity_references(
     app: AppHandle,
 ) -> AppResult<Vec<MediaIntegrityReference>> {
     let pool = shared_pool(&app).await?;
-    repo::list_media_integrity_references(pool).await
+    repo::list_media_integrity_references(&pool).await
 }

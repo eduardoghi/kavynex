@@ -159,14 +159,23 @@ pub fn run() {
             // in-process, so the actual file swap is deferred to this pre-open point. A
             // failure is logged but must not stop the app from starting.
             match services::database::database_path(&app_handle) {
-                Ok(db_path) => match services::db_backup::apply_pending_database_import(&db_path) {
-                    Ok(true) => services::logger::info("app", "applied a pending database import"),
-                    Ok(false) => {}
-                    Err(error) => services::logger::error(
-                        "app",
-                        format!("failed to apply pending database import: {error}"),
-                    ),
-                },
+                Ok(db_path) => {
+                    // Register the database in managed state before any command can run, so pool
+                    // access (and the restore-from-backup guard) go through it rather than a
+                    // process-wide static. The pool itself still opens lazily on first use.
+                    app.manage(services::database::Db::new(db_path.clone()));
+
+                    match services::db_backup::apply_pending_database_import(&db_path) {
+                        Ok(true) => {
+                            services::logger::info("app", "applied a pending database import")
+                        }
+                        Ok(false) => {}
+                        Err(error) => services::logger::error(
+                            "app",
+                            format!("failed to apply pending database import: {error}"),
+                        ),
+                    }
+                }
                 Err(error) => services::logger::warn(
                     "app",
                     format!("failed to resolve database path for import check: {error}"),

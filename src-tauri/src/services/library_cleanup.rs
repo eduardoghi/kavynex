@@ -367,7 +367,7 @@ pub async fn delete_media_with_artifacts(
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
 
-    match delete_media_row_and_plan_cleanup(pool, media_id).await? {
+    match delete_media_row_and_plan_cleanup(&pool, media_id).await? {
         Some(plan) => execute_plan(app, plan).await,
         None => Ok(ArtifactCleanupReport::default()),
     }
@@ -381,7 +381,7 @@ pub async fn delete_channel_with_artifacts(
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
 
-    match delete_channel_row_and_plan_cleanup(pool, channel_id).await? {
+    match delete_channel_row_and_plan_cleanup(&pool, channel_id).await? {
         Some(plan) => execute_plan(app, plan).await,
         None => Ok(ArtifactCleanupReport::default()),
     }
@@ -513,7 +513,7 @@ pub async fn replace_channel_avatar(
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
 
-    match replace_channel_avatar_and_plan_cleanup(pool, channel_id, avatar_path).await? {
+    match replace_channel_avatar_and_plan_cleanup(&pool, channel_id, avatar_path).await? {
         Some(plan) => execute_plan(app, plan).await,
         None => Ok(ArtifactCleanupReport::default()),
     }

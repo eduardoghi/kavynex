@@ -56,7 +56,7 @@ pub async fn get_database_backup_status(app: AppHandle) -> AppResult<DatabaseBac
 /// run once the pool is already initialized.
 #[tauri::command]
 pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
-    if is_pool_initialized() {
+    if is_pool_initialized(&app) {
         return Err(AppError::from_code(
             AppErrorCode::DatabaseAlreadyOpen,
             "the database is already open; restart the app before restoring from backup",
@@ -110,7 +110,7 @@ pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
 #[tauri::command]
 pub async fn check_database_integrity(app: AppHandle) -> AppResult<bool> {
     let pool = shared_pool(&app).await?;
-    db_backup::run_full_integrity_check(pool).await
+    db_backup::run_full_integrity_check(&pool).await
 }
 
 #[cfg(test)]

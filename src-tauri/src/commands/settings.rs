@@ -10,7 +10,7 @@ use crate::AppResult;
 #[tauri::command]
 pub async fn get_app_settings(app: AppHandle) -> AppResult<StoredAppSettings> {
     let pool = shared_pool(&app).await?;
-    get_app_settings_from_pool(pool).await
+    get_app_settings_from_pool(&pool).await
 }
 
 /// Rejects a non-empty `library_path` that is not an existing directory (or is a filesystem
@@ -43,7 +43,7 @@ pub async fn set_app_settings(
 
     let pool = shared_pool(&app).await?;
     set_app_settings_in_pool(
-        pool,
+        &pool,
         import_mode.trim(),
         &trimmed_library_path,
         load_remote_images,

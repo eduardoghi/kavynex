@@ -51,7 +51,7 @@ pub async fn replace_media_comments(
     }
 
     let pool = shared_pool(app).await?;
-    replace_media_comments_in_pool(pool, media_id, comments).await
+    replace_media_comments_in_pool(&pool, media_id, comments).await
 }
 
 async fn replace_media_comments_in_pool(

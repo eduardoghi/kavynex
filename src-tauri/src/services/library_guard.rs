@@ -23,7 +23,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// arbitrary location.
 pub async fn configured_library_dir(app: &AppHandle) -> AppResult<PathBuf> {
     let pool = shared_pool(app).await?;
-    let settings = get_app_settings_from_pool(pool).await?;
+    let settings = get_app_settings_from_pool(&pool).await?;
 
     let library_path = settings
         .library_path
@@ -82,7 +82,7 @@ pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) ->
     }
 
     let pool = shared_pool(app).await?;
-    let configured_library_path = get_app_settings_from_pool(pool)
+    let configured_library_path = get_app_settings_from_pool(&pool)
         .await?
         .library_path
         .unwrap_or_default();

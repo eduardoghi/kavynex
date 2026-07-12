@@ -20,7 +20,7 @@ pub async fn delete_channel_with_artifacts(
 #[tauri::command]
 pub async fn list_channels(app: AppHandle) -> AppResult<Vec<ChannelRow>> {
     let pool = shared_pool(&app).await?;
-    repo::list_channels(pool).await
+    repo::list_channels(&pool).await
 }
 
 #[tauri::command]
@@ -29,13 +29,13 @@ pub async fn find_channel_by_youtube_handle(
     youtube_handle: String,
 ) -> AppResult<Option<ChannelRow>> {
     let pool = shared_pool(&app).await?;
-    repo::find_channel_by_youtube_handle(pool, &youtube_handle).await
+    repo::find_channel_by_youtube_handle(&pool, &youtube_handle).await
 }
 
 #[tauri::command]
 pub async fn get_channel_by_id(app: AppHandle, channel_id: i64) -> AppResult<Option<ChannelRow>> {
     let pool = shared_pool(&app).await?;
-    repo::get_channel_by_id(pool, channel_id).await
+    repo::get_channel_by_id(&pool, channel_id).await
 }
 
 #[tauri::command]
@@ -50,7 +50,7 @@ pub async fn insert_channel(
     }
 
     let pool = shared_pool(&app).await?;
-    repo::insert_channel(pool, &name, &youtube_handle, avatar_path.as_deref()).await
+    repo::insert_channel(&pool, &name, &youtube_handle, avatar_path.as_deref()).await
 }
 
 #[tauri::command]
@@ -61,7 +61,7 @@ pub async fn update_channel_name_and_handle(
     youtube_handle: String,
 ) -> AppResult<()> {
     let pool = shared_pool(&app).await?;
-    repo::update_channel_name_and_handle(pool, channel_id, &name, &youtube_handle).await
+    repo::update_channel_name_and_handle(&pool, channel_id, &name, &youtube_handle).await
 }
 
 /// Updates a channel's avatar and removes the previous avatar file when nothing else (a

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -18,11 +18,58 @@ const IMPORT_MODE_KEY: &str = "import_mode";
 const LIBRARY_PATH_KEY: &str = "library_path";
 const LOAD_REMOTE_IMAGES_KEY: &str = "load_remote_images";
 
-/// Process-wide shared connection pool to the application database. The pool is created
-/// once, lazily, on first access and reused for the lifetime of the app. Connection
-/// options (WAL, busy timeout, foreign keys) are applied per connection so every pooled
-/// connection is configured consistently.
-static POOL: OnceCell<SqlitePool> = OnceCell::const_new();
+/// The application database, held in Tauri-managed state (`app.manage`) rather than a
+/// process-wide static. The pool is created once, lazily, on first access and reused for the
+/// lifetime of the app; connection options (WAL, busy timeout, foreign keys) are applied per
+/// connection so every pooled connection is configured consistently. Keeping it in managed
+/// state (keyed to the resolved database path captured at startup) takes the database out of a
+/// global mutable static and lets tests inject an in-memory pool via [`Db::from_pool`].
+pub struct Db {
+    path: PathBuf,
+    pool: OnceCell<SqlitePool>,
+}
+
+impl Db {
+    /// Creates the managed handle for the database at `path`. The pool is not opened here; it
+    /// opens lazily on the first [`Db::pool`] call.
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            pool: OnceCell::new(),
+        }
+    }
+
+    /// Returns the shared pool, opening (and migrating) it on first use. The returned
+    /// `SqlitePool` is a cheap `Arc` clone, so callers hold it by value.
+    pub async fn pool(&self) -> AppResult<SqlitePool> {
+        let pool = self
+            .pool
+            .get_or_try_init(|| build_pool_at(&self.path))
+            .await?;
+
+        Ok(pool.clone())
+    }
+
+    /// Whether the pool has already been opened. Guards the restore-from-backup flow, which
+    /// must only run while the database is closed (i.e. after a failed open) - a failed
+    /// `get_or_try_init` above does not cache, so the cell stays empty until an open succeeds.
+    pub fn is_initialized(&self) -> bool {
+        self.pool.get().is_some()
+    }
+
+    /// Builds a handle whose pool is already open, for tests that manage a `Db` onto a mock
+    /// app so pool-only commands can be driven through the real IPC boundary.
+    #[cfg(test)]
+    pub fn from_pool(pool: SqlitePool) -> Self {
+        let cell = OnceCell::new();
+        let _ = cell.set(pool);
+
+        Self {
+            path: PathBuf::new(),
+            pool: cell,
+        }
+    }
+}
 
 // Exposed to the frontend as `StoredAppSettingsPayload`; serde camelCase is honored by
 // ts-rs so the generated keys are importMode/libraryPath.
@@ -71,24 +118,22 @@ pub fn database_path(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(config_dir.join(DATABASE_FILE_NAME))
 }
 
-async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
-    let path = database_path(app)?;
-
+async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
     // The pre-migration snapshot only matters when a migration will actually run (so a bad
     // migration or corruption can be rolled back). When one is pending, snapshot
     // synchronously before opening the pool; otherwise defer the daily snapshot to a
     // background task so a normal launch is never blocked by a VACUUM of a large database.
     // Best effort either way: a backup failure must not stop the app from opening.
-    let migration_pending = crate::services::db_backup::is_schema_migration_pending(&path).await;
+    let migration_pending = crate::services::db_backup::is_schema_migration_pending(path).await;
 
     if migration_pending {
-        if let Err(error) = crate::services::db_backup::backup_database(&path).await {
+        if let Err(error) = crate::services::db_backup::backup_database(path).await {
             crate::services::logger::warn("db_backup", format!("database backup failed: {error}"));
         }
     }
 
     let options = SqliteConnectOptions::new()
-        .filename(&path)
+        .filename(path)
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         // WAL + NORMAL is durable across app crashes and only risks the last few
@@ -111,7 +156,7 @@ async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
     if !migration_pending {
         // No migration ran, so the snapshot was skipped above; take the (throttled) daily
         // one off the critical path.
-        let background_path = path.clone();
+        let background_path = path.to_path_buf();
         tauri::async_runtime::spawn(async move {
             if let Err(error) = crate::services::db_backup::backup_database(&background_path).await
             {
@@ -126,15 +171,31 @@ async fn build_pool(app: &AppHandle) -> AppResult<SqlitePool> {
     Ok(pool)
 }
 
-/// Returns the shared database pool, initializing it on first use.
-pub async fn shared_pool(app: &AppHandle) -> AppResult<&'static SqlitePool> {
-    POOL.get_or_try_init(|| build_pool(app)).await
+/// Returns the shared database pool, initializing it on first use. Resolves the managed [`Db`]
+/// handle from the app and delegates to it; kept as a free function so the many call sites that
+/// only hold an `AppHandle` do not each need to reach into managed state. The returned pool is a
+/// cheap `Arc` clone.
+pub async fn shared_pool(app: &AppHandle) -> AppResult<SqlitePool> {
+    // `try_state` (not `state`) so a missing handle surfaces as a normal error instead of a
+    // panic. It is only ever absent when the database path could not be resolved at startup
+    // (see the setup in lib.rs), which is the same catastrophic case the old code degraded to
+    // an error for rather than crashing.
+    let db = app.try_state::<Db>().ok_or_else(|| {
+        db_error(
+            "the database is not initialized",
+            "no managed database handle",
+        )
+    })?;
+
+    db.pool().await
 }
 
 /// Whether the shared pool has already been opened. Used to guard the restore-from-backup
 /// flow, which must only run while the database is closed (i.e. after a failed open).
-pub fn is_pool_initialized() -> bool {
-    POOL.get().is_some()
+pub fn is_pool_initialized(app: &AppHandle) -> bool {
+    app.try_state::<Db>()
+        .map(|db| db.is_initialized())
+        .unwrap_or(false)
 }
 
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
