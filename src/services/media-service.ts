@@ -42,11 +42,6 @@ type RefreshMediaCommentsResult = {
     totalComments: number;
 };
 
-type PreparedMediaArtifactsExtended = PreparedMediaArtifacts & {
-    isLive?: boolean;
-    liveChatFilePath?: string | null;
-};
-
 async function emitProgress(
     onProgress: CreateMediaOptions["onProgress"],
     message: string
@@ -99,9 +94,9 @@ function normalizeFetchedComments(comments: YtDlpComment[]): YtDlpComment[] {
 
 async function prepareMediaArtifacts(
     input: CreateMediaInput
-): Promise<PreparedMediaArtifactsExtended> {
+): Promise<PreparedMediaArtifacts> {
     if (input.sourceMode === "yt-dlp") {
-        return (await prepareYtDlpArtifacts({
+        return prepareYtDlpArtifacts({
             sourceValue: input.sourceValue,
             thumbnailSourcePath: input.thumbnailSourcePath,
             libraryPath: input.libraryPath,
@@ -110,17 +105,17 @@ async function prepareMediaArtifacts(
             cookiesBrowser: input.cookiesBrowser,
             cookiesPath: input.cookiesPath,
             downloadLiveChat: input.downloadLiveChat,
-        })) as PreparedMediaArtifactsExtended;
+        });
     }
 
-    return (await prepareLocalArtifacts({
+    return prepareLocalArtifacts({
         sourceValue: input.sourceValue,
         thumbnailSourcePath: input.thumbnailSourcePath,
         mediaType: input.mediaType,
         importMode: input.importMode,
         libraryPath: input.libraryPath,
         publishedAt: input.publishedAt,
-    })) as PreparedMediaArtifactsExtended;
+    });
 }
 
 async function ensureMediaDoesNotAlreadyExist(
