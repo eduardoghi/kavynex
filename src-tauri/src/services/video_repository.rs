@@ -212,13 +212,20 @@ pub async fn insert_media(
         .filter(|value| !value.is_empty());
     let has_live_chat = normalized_live_chat.is_some();
 
-    sqlx::query(
+    // `RETURNING id` on the insert yields the row id atomically, whether the row was freshly
+    // inserted or already existed. The conflict target uses a no-op `DO UPDATE` (rather than
+    // `DO NOTHING`) precisely so `RETURNING` still fires on an existing (channel_id, file_path):
+    // `DO NOTHING` suppresses `RETURNING`, which would otherwise force a separate `SELECT` and
+    // reopen a TOCTOU window (a concurrent delete between the insert and the lookup would make
+    // the row vanish and the function wrongly report "nothing inserted").
+    let row: Option<(i64,)> = sqlx::query_as(
         "INSERT INTO videos (
             channel_id, title, file_path, thumbnail_path, media_type, youtube_video_id,
             published_at, duration_seconds, progress_seconds, has_comments, comments_count,
             is_live, has_live_chat, live_chat_file_path
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)
-         ON CONFLICT(channel_id, file_path) DO NOTHING",
+         ON CONFLICT(channel_id, file_path) DO UPDATE SET file_path = excluded.file_path
+         RETURNING id",
     )
     .bind(channel_id)
     .bind(title)
@@ -231,13 +238,13 @@ pub async fn insert_media(
     .bind(if is_live { 1_i64 } else { 0_i64 })
     .bind(if has_live_chat { 1_i64 } else { 0_i64 })
     .bind(normalized_live_chat)
-    .execute(pool)
+    .fetch_optional(pool)
     .await
     .map_err(|error| {
-        // The (channel_id, file_path) conflict is absorbed by ON CONFLICT DO NOTHING above, so
-        // a surfacing unique violation can only be the (channel_id, youtube_video_id) index:
-        // the same YouTube video already registered for this channel under a different path.
-        // Map it to the same friendly code the frontend pre-check raises, closing the
+        // The (channel_id, file_path) conflict is absorbed by the no-op ON CONFLICT DO UPDATE
+        // above, so a surfacing unique violation can only be the (channel_id, youtube_video_id)
+        // index: the same YouTube video already registered for this channel under a different
+        // path. Map it to the same friendly code the frontend pre-check raises, closing the
         // check-then-act race with a consistent message instead of a raw SQLite error.
         if is_unique_violation(&error) {
             return AppError::from_code(
@@ -258,15 +265,6 @@ pub async fn insert_media(
 
         db_error("failed to insert media", error)
     })?;
-
-    let row: Option<(i64,)> = sqlx::query_as(
-        "SELECT id FROM videos WHERE channel_id = ? AND file_path = ? ORDER BY id DESC LIMIT 1",
-    )
-    .bind(channel_id)
-    .bind(file_path)
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| db_error("failed to resolve inserted media id", error))?;
 
     Ok(row.map(|(id,)| id))
 }
