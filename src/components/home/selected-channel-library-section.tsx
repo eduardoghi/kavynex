@@ -266,7 +266,7 @@ export function SelectedChannelLibrarySection({
                     </Tooltip>
                 </Group>
 
-                <Text size="sm" c="dimmed">
+                <Text size="sm" c="dimmed" aria-live="polite">
                     {filteredCountLabel}
                 </Text>
             </Stack>
