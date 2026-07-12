@@ -7,6 +7,11 @@ jobs:
     publish-tauri:
         permissions:
             contents: write
+            # Build provenance attestation (actions/attest-build-provenance): id-token mints
+            # the short-lived Sigstore OIDC identity for the keyless signature, attestations
+            # uploads the resulting statement to the repository.
+            id-token: write
+            attestations: write
 
         strategy:
             fail-fast: false
@@ -121,6 +126,23 @@ jobs:
                   releaseDraft: true
                   prerelease: false
                   args: ${{ matrix.args }}
+
+            # Records a signed, keyless (Sigstore) statement that these exact installer bytes
+            # were built by this workflow, from this commit. Independent of the minisign updater
+            # signature: users can run `gh attestation verify <file> --repo eduardoghi/kavynex`
+            # to confirm a downloaded installer's provenance. The `**` before `release` matches
+            # both the plain (windows/linux) and target-triple (macOS) bundle layouts; only the
+            # extensions produced on each runner match, which is enough for at least one subject.
+            - name: Attest build provenance
+              uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+              with:
+                  subject-path: |
+                      src-tauri/target/**/release/bundle/**/*.exe
+                      src-tauri/target/**/release/bundle/**/*.msi
+                      src-tauri/target/**/release/bundle/**/*.dmg
+                      src-tauri/target/**/release/bundle/**/*.AppImage
+                      src-tauri/target/**/release/bundle/**/*.deb
+                      src-tauri/target/**/release/bundle/**/*.rpm
 
     checksums:
         name: Publish checksums
