@@ -3,12 +3,10 @@ import {
     ActionIcon,
     Badge,
     Box,
-    Card,
     Group,
     Menu,
     Stack,
     Text,
-    UnstyledButton,
     rem,
 } from "@mantine/core";
 import {
@@ -25,6 +23,7 @@ import {
     Pencil,
     Radio,
 } from "lucide-react";
+import { StretchedButtonCard } from "../common/stretched-button-card";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
 import { fileSrcFromStoredPath, formatDuration, formatPublishedDate } from "../../utils/media-utils";
@@ -76,12 +75,12 @@ function MediaCardComponent({
     };
 
     return (
-        <Card
-            withBorder
+        <StretchedButtonCard
+            ariaLabel={`Open ${media.title}`}
+            onClick={handleOpen}
             radius="xl"
             p="sm"
             style={{
-                position: "relative",
                 height: rem(MEDIA_CARD_HEIGHT),
                 cursor: "pointer",
                 background: isActive
@@ -106,28 +105,6 @@ function MediaCardComponent({
                 overflow: "hidden",
             }}
         >
-            {/* Stretched button so the whole card opens the media with one focusable, native
-                control - no interactive role on the card itself, so the menu button below is not
-                a control nested inside another control. It sits above the visual content but
-                below the menu button (z-index), which stays clickable. */}
-            <UnstyledButton
-                aria-label={`Open ${media.title}`}
-                onClick={handleOpen}
-                onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        handleOpen();
-                    }
-                }}
-                style={{
-                    position: "absolute",
-                    inset: 0,
-                    zIndex: 1,
-                    borderRadius: "inherit",
-                    cursor: "pointer",
-                }}
-            />
-
             <Box
                 style={{
                     height: rem(MEDIA_THUMBNAIL_HEIGHT),
@@ -411,7 +388,7 @@ function MediaCardComponent({
                     </Group>
                 </Group>
             </Stack>
-        </Card>
+        </StretchedButtonCard>
     );
 }
 

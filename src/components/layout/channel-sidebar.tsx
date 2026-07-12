@@ -8,11 +8,9 @@ import {
     Group,
     Loader,
     Menu,
-    Paper,
     ScrollArea,
     Stack,
     Text,
-    UnstyledButton,
 } from "@mantine/core";
 import {
     ImagePlus,
@@ -23,6 +21,7 @@ import {
     UserX,
 } from "lucide-react";
 import { memo } from "react";
+import { StretchedButtonCard } from "../common/stretched-button-card";
 import type { Channel, ViewMode } from "../../types/media";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
 
@@ -73,41 +72,29 @@ const ChannelListItem = memo(function ChannelListItem({
         }
     };
 
+    // Busy while an avatar update or delete is in flight, so assistive tech is told the row's
+    // content (loader shown in place of the menu) is transiently changing.
+    const isBusy = isDeleting || isUpdatingAvatar;
+
     return (
-        <Paper
-            withBorder
+        <StretchedButtonCard
+            ariaLabel={`Open channel ${channel.name}`}
+            ariaCurrent={selected}
+            ariaBusy={isBusy}
+            disabled={isBusy}
+            onClick={handleSelect}
             radius="xl"
             p="sm"
             style={{
-                position: "relative",
-                cursor: isDeleting || isUpdatingAvatar ? "default" : "pointer",
+                cursor: isBusy ? "default" : "pointer",
                 borderColor: selected ? "rgba(139,92,246,0.45)" : shellBorder,
                 background: selected
                     ? "rgba(124,92,255,0.10)"
                     : "rgba(255,255,255,0.025)",
-                opacity: isDeleting || isUpdatingAvatar ? 0.6 : 1,
+                opacity: isBusy ? 0.6 : 1,
                 transition: "background 160ms ease, border-color 160ms ease",
             }}
         >
-            {/* Stretched button so the whole row selects the channel with one focusable, native
-                control - no interactive role on the row itself, so the menu button below is not a
-                control nested inside another control. It sits above the content but below the menu
-                button (z-index), which stays clickable. Selection is conveyed with aria-current
-                (the current item in the channel list), not aria-pressed. */}
-            <UnstyledButton
-                aria-label={`Open channel ${channel.name}`}
-                aria-current={selected ? "true" : undefined}
-                disabled={isDeleting || isUpdatingAvatar}
-                onClick={handleSelect}
-                style={{
-                    position: "absolute",
-                    inset: 0,
-                    zIndex: 1,
-                    borderRadius: "inherit",
-                    cursor: isDeleting || isUpdatingAvatar ? "default" : "pointer",
-                }}
-            />
-
             <Group wrap="nowrap" gap="sm">
                 <Avatar
                     radius="xl"
@@ -134,7 +121,7 @@ const ChannelListItem = memo(function ChannelListItem({
                     </Text>
                 </Stack>
 
-                {isDeleting || isUpdatingAvatar ? (
+                {isBusy ? (
                     <Loader size="xs" />
                 ) : (
                     <Menu
@@ -226,7 +213,7 @@ const ChannelListItem = memo(function ChannelListItem({
                     </Menu>
                 )}
             </Group>
-        </Paper>
+        </StretchedButtonCard>
     );
 });
 
