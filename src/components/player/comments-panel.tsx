@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
     ActionIcon,
     Anchor,
@@ -72,7 +72,12 @@ type CommentItemProps = {
     forceExpandReplies?: boolean;
 };
 
-function CommentItem({
+// Memoized so toggling sort/search in CommentsPanel does not re-render every mounted comment
+// subtree - without this, a state change in the parent re-diffs every CommentItem (and its
+// nested replies) even though most of their props are unchanged. Named as a separate function
+// (rather than a named function expression inside memo()) so the recursive self-reference below
+// resolves to this memoized binding instead of shadowing it with the raw, unmemoized function.
+function CommentItemComponent({
     comment,
     shellBorder,
     level = 0,
@@ -249,6 +254,8 @@ function CommentItem({
     );
 }
 
+const CommentItem = memo(CommentItemComponent);
+
 export function CommentsPanel({
     comments,
     hasComments,
@@ -378,7 +385,7 @@ export function CommentsPanel({
                         />
 
                         {normalizedCommentSearch && (
-                            <Text size="sm" c="dimmed">
+                            <Text size="sm" c="dimmed" role="status" aria-live="polite">
                                 {UI_TEXT.comments.resultsShowing} {filteredCommentsCount}{" "}
                                 {UI_TEXT.comments.resultsFor} “{commentSearchValue.trim()}”
                             </Text>
