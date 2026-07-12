@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 8;
+pub(crate) const SCHEMA_VERSION: i64 = 9;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -97,6 +97,12 @@ const INDEX_DDLS: &[(&str, &str)] = &[
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)"),
     ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_file_path_unique ON videos(channel_id, file_path)"),
+    // Serves the artifact reference-count lookups run on every media/channel delete
+    // (WHERE file_path = ? / WHERE live_chat_file_path = ?). The composite unique index above
+    // cannot serve a bare `file_path =` predicate without the leading `channel_id`, so a
+    // dedicated single-column index is needed to keep deletes off a full table scan.
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_file_path ON videos(file_path)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_live_chat_file_path ON videos(live_chat_file_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)"),
@@ -213,6 +219,12 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_migration_8(pool).await?;
     }
 
+    // v9: adds idx_videos_file_path and idx_videos_live_chat_file_path. Additive, so it just
+    // runs the index DDLs.
+    if current_version < 9 {
+        apply_migration_9(pool).await?;
+    }
+
     // Each migration is guarded by version and transactional (it stamps the new
     // user_version inside its own transaction, so a crash leaves the database fully at the
     // old or the new version). An additive migration (a new column or index) runs the
@@ -225,10 +237,11 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// v8: creates `idx_videos_channel_created_id`. Re-runs every index DDL (all guarded with
-/// `IF NOT EXISTS`) so the new index reaches databases created before v8 without disturbing
-/// the others, then stamps `user_version = 8` in the same transaction.
-async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
+/// Applies an additive, index-only migration: re-runs every index DDL (all guarded with
+/// `IF NOT EXISTS`, so pre-existing indexes are untouched and only the ones this version adds
+/// are created) and stamps `target_version`, both in the same transaction so a crash leaves
+/// the database fully at the old or the new version.
+async fn apply_index_only_migration(pool: &SqlitePool, target_version: i64) -> AppResult<()> {
     let mut tx = pool
         .begin()
         .await
@@ -241,13 +254,26 @@ async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
             .map_err(|error| db_error("failed to create index", error))?;
     }
 
-    set_user_version(&mut tx, 8).await?;
+    set_user_version(&mut tx, target_version).await?;
 
     tx.commit()
         .await
         .map_err(|error| db_error("failed to commit schema migration", error))?;
 
     Ok(())
+}
+
+/// v8: creates `idx_videos_channel_created_id`. Additive, so it reaches databases created
+/// before v8 by re-running the guarded index DDLs.
+async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
+    apply_index_only_migration(pool, 8).await
+}
+
+/// v9: creates `idx_videos_file_path` and `idx_videos_live_chat_file_path`, which keep the
+/// per-artifact reference-count lookups run on delete off a full table scan. Additive, so it
+/// reaches databases created before v9 by re-running the guarded index DDLs.
+async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
+    apply_index_only_migration(pool, 9).await
 }
 
 /// Creates every table, additive column and index if missing, then stamps
@@ -729,6 +755,60 @@ mod tests {
             index_count, 1,
             "migration 8 must add the index to a pre-v8 database"
         );
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[tokio::test]
+    async fn migration_9_adds_the_delete_path_indexes_to_a_pre_v9_database() {
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        // A fresh database already has both indexes from the baseline.
+        for index in ["idx_videos_file_path", "idx_videos_live_chat_file_path"] {
+            let (count,): (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?",
+            )
+            .bind(index)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(count, 1, "fresh database should already have {index}");
+        }
+
+        // Simulate a database left by v8: drop the v9 indexes and roll the marker back.
+        sqlx::query("DROP INDEX idx_videos_file_path")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DROP INDEX idx_videos_live_chat_file_path")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA user_version = 8")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        ensure_schema(&pool).await.unwrap();
+
+        for index in ["idx_videos_file_path", "idx_videos_live_chat_file_path"] {
+            let (count,): (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?",
+            )
+            .bind(index)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(
+                count, 1,
+                "migration 9 must add {index} to a pre-v9 database"
+            );
+        }
 
         let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
             .fetch_one(&pool)
