@@ -23,6 +23,9 @@ import { useRemoteImagesEnabled } from "./remote-images-context";
 const OWNER_HIGHLIGHT_COLOR = "#ffd600";
 const MODERATOR_NAME_COLOR = "#5e84f1";
 const MEMBER_NAME_COLOR = "#2ba640";
+// Distance (px) from the bottom within which the replay is considered "stuck to bottom" and
+// keeps auto-scrolling as new messages arrive; past it, the user has scrolled up to read.
+const STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 
 // Inline custom-emoji image, falling back to the emoji shortcut text if it fails to load
 // (the image URLs can expire).
@@ -369,7 +372,7 @@ export function LiveChatPanel({
             return;
         }
 
-        const threshold = 24;
+        const threshold = STICK_TO_BOTTOM_THRESHOLD_PX;
 
         const updateStickiness = (): void => {
             const distanceFromBottom =

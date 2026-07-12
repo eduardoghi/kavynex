@@ -32,6 +32,9 @@ type MediaGridProps = {
 
 const GRID_GAP = 16;
 const GRID_HEIGHT = "70vh";
+// How long a card stays highlighted after the grid scrolls to it (e.g. from a diagnostics
+// "jump to media" action) before the highlight fades.
+const MEDIA_HIGHLIGHT_DURATION_MS = 2600;
 
 function getColumnCount(width: number): number {
     if (width >= 1200) {
@@ -130,7 +133,7 @@ export function MediaGrid({
         highlightTimerRef.current = window.setTimeout(() => {
             setHighlightedMediaId(null);
             highlightTimerRef.current = null;
-        }, 2600);
+        }, MEDIA_HIGHLIGHT_DURATION_MS);
 
         onFocusHandled?.();
     }, [focusMediaId, items, columnCount, isVisible, rowVirtualizer, onFocusHandled]);
