@@ -143,7 +143,7 @@ index cannot serve a bare `file_path =` predicate), and comment lookups by `vide
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
 against a Rust constant, `SCHEMA_VERSION` (currently `9`), in `db_schema.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
-pool (`database.rs::build_pool`), before any other query executes.
+pool (`database.rs::build_pool_at`), before any other query executes.
 
 - **Baseline (versions 0..=6 -> 7).** Every database that predates versioned migrations -
   including a brand-new, empty database - is below `BASELINE_SCHEMA_VERSION` (7) and goes
@@ -186,7 +186,7 @@ pool (`database.rs::build_pool`), before any other query executes.
 
 ## Connection settings
 
-Every pooled connection (`database.rs::build_pool`) is configured identically via
+Every pooled connection (`database.rs::build_pool_at`) is configured identically via
 `SqliteConnectOptions`:
 
 - `journal_mode(Wal)` - write-ahead logging, so readers are never blocked by a writer.
