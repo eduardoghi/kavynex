@@ -55,7 +55,9 @@ describe("AppErrorBoundary", () => {
 
         expect(screen.getByRole("alert")).toBeInTheDocument();
         expect(screen.getByText("Something went wrong")).toBeInTheDocument();
-        expect(screen.getByText("render exploded")).toBeInTheDocument();
+        // The raw crash message is preserved but labelled as diagnostic text rather than
+        // shown as a bare, instruction-like line.
+        expect(screen.getByText("Technical details: render exploded")).toBeInTheDocument();
         expect(reportFatalError).toHaveBeenCalledWith(
             "error-boundary",
             expect.stringContaining("A render error crashed the app."),
