@@ -1,9 +1,10 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use crate::utils::hash::file_hash;
+use crate::utils::naming::unique_temp_suffix;
 use crate::{AppError, AppErrorCode, AppResult};
 
 #[cfg(unix)]
@@ -21,15 +22,6 @@ fn is_cross_device_error(_: &std::io::Error) -> bool {
     false
 }
 
-fn unique_replace_suffix() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|value| value.as_nanos())
-        .unwrap_or(0);
-
-    format!("{}-{}", std::process::id(), nanos)
-}
-
 fn build_temp_destination_path(destination: &Path) -> AppResult<PathBuf> {
     let parent = destination.parent().ok_or_else(|| {
         AppError::from_code(
@@ -44,7 +36,7 @@ fn build_temp_destination_path(destination: &Path) -> AppResult<PathBuf> {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or("file");
 
-    Ok(parent.join(format!(".{}.tmp-{}", file_name, unique_replace_suffix())))
+    Ok(parent.join(format!(".{}.tmp-{}", file_name, unique_temp_suffix())))
 }
 
 /// Flushes a freshly written file's data and metadata to disk. Called before the rename in
@@ -313,7 +305,7 @@ pub fn replace_file_safely(source: &Path, destination: &Path) -> AppResult<()> {
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or("file"),
-        unique_replace_suffix()
+        unique_temp_suffix()
     );
 
     let backup_path = parent.join(backup_name);
@@ -417,7 +409,7 @@ fn alternative_destination_path(path: &Path) -> AppResult<PathBuf> {
 
     let extension = path.extension().and_then(|value| value.to_str());
 
-    let suffix = unique_replace_suffix();
+    let suffix = unique_temp_suffix();
 
     let file_name = match extension {
         Some(ext) if !ext.trim().is_empty() => format!("{stem}.migrated-{suffix}.{ext}"),
@@ -704,7 +696,7 @@ pub fn migrate_directory_contents(source_dir: &Path, destination_dir: &Path) -> 
 mod tests {
     use super::*;
     use std::thread::sleep;
-    use std::time::Duration;
+    use std::time::{Duration, UNIX_EPOCH};
 
     fn unique_test_dir() -> PathBuf {
         let nanos = SystemTime::now()

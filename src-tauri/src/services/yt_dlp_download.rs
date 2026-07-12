@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
@@ -36,6 +36,7 @@ use crate::services::yt_dlp_registry::{
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::format::codec_is_present;
 use crate::utils::io::read_lossy_line;
+use crate::utils::naming::unique_temp_suffix;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
 use crate::utils::process::hide_console_async;
 use crate::utils::task::run_blocking;
@@ -78,15 +79,6 @@ fn total_matching_file_size(dir: &Path, prefix: &str) -> u64 {
         .filter(|metadata| metadata.is_file())
         .map(|metadata| metadata.len())
         .sum()
-}
-
-fn unique_temp_suffix() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|value| value.as_nanos())
-        .unwrap_or(0);
-
-    format!("{}-{}", std::process::id(), nanos)
 }
 
 /// How the value following a flag must be redacted when building the log line.
@@ -1067,6 +1059,7 @@ pub async fn download_media_from_url_async(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(suffix: &str) -> PathBuf {
         let nanos = SystemTime::now()

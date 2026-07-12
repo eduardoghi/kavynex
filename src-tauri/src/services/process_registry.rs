@@ -127,17 +127,11 @@ mod tests {
         let second = TrackedChildGuard::register(Some(999));
 
         // Two children sharing a pid are tracked under distinct tokens...
-        assert_eq!(
-            tracked_pids().iter().filter(|pid| **pid == 999).count(),
-            2
-        );
+        assert_eq!(tracked_pids().iter().filter(|pid| **pid == 999).count(), 2);
 
         // ...so dropping one still leaves the other tracked.
         drop(first);
-        assert_eq!(
-            tracked_pids().iter().filter(|pid| **pid == 999).count(),
-            1
-        );
+        assert_eq!(tracked_pids().iter().filter(|pid| **pid == 999).count(), 1);
 
         drop(second);
         assert!(!tracked_pids().contains(&999));

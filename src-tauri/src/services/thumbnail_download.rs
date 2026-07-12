@@ -1,10 +1,10 @@
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use http::Uri;
 use http_body_util::{BodyExt, Empty};
@@ -27,6 +27,7 @@ use crate::services::thumbnail_persist::persist_thumbnail_from_source;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
+use crate::utils::naming::unique_temp_suffix;
 use crate::utils::process::{hide_console_async, read_process_error};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -114,6 +115,66 @@ const ALLOWED_THUMBNAIL_CONTENT_TYPES: &[&str] = &[
     "image/bmp",
     "image/avif",
 ];
+
+/// What a thumbnail fetch is pointed at, which decides how yt-dlp treats playlists.
+#[derive(Clone, Copy)]
+enum ThumbnailTarget {
+    /// A single video or direct media URL: `--no-playlist`, so only that entry is considered.
+    SingleMedia,
+    /// A channel URL: `--playlist-items 0`, so no video is enumerated and only the
+    /// channel-level thumbnail (the avatar) is written.
+    ChannelAvatar,
+}
+
+/// Builds the yt-dlp argument vector for writing a thumbnail (converted to PNG) into
+/// `temp_dir` under `file_prefix`.
+///
+/// Extracted as a pure function so the three thumbnail flows (direct-URL fallback,
+/// pre-download media thumbnail, channel avatar) share one definition instead of three
+/// near-identical inline vectors, and so the argv can be asserted in tests without spawning a
+/// process. The URL is always last and always immediately preceded by `--`, so it can never be
+/// reinterpreted as a flag.
+fn build_thumbnail_command_args(
+    ffmpeg_location: &str,
+    temp_dir: &Path,
+    file_prefix: &str,
+    url: &str,
+    target: ThumbnailTarget,
+    cookies_browser: Option<&str>,
+    cookies_path: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec!["--ignore-config".to_string()];
+
+    match target {
+        ThumbnailTarget::SingleMedia => args.push("--no-playlist".to_string()),
+        ThumbnailTarget::ChannelAvatar => {
+            args.push("--playlist-items".to_string());
+            args.push("0".to_string());
+        }
+    }
+
+    args.extend([
+        "--skip-download".to_string(),
+        "--write-thumbnail".to_string(),
+        "--convert-thumbnails".to_string(),
+        "png".to_string(),
+        "--restrict-filenames".to_string(),
+        "--windows-filenames".to_string(),
+        "--no-warnings".to_string(),
+        "--ffmpeg-location".to_string(),
+        ffmpeg_location.to_string(),
+        "--paths".to_string(),
+        format!("home:{}", temp_dir.to_string_lossy()),
+        "-o".to_string(),
+        format!("{}.%(ext)s", file_prefix),
+    ]);
+
+    append_auth_args(&mut args, cookies_browser, cookies_path);
+    args.push("--".to_string());
+    args.push(url.to_string());
+
+    args
+}
 
 /// Resolves a redirect `location` header value against the `current` URI.
 ///
@@ -366,15 +427,6 @@ async fn http_get_image(
         AppErrorCode::YtDlpThumbnailFailed,
         "too many redirects downloading thumbnail",
     ))
-}
-
-fn unique_temp_suffix() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|value| value.as_nanos())
-        .unwrap_or(0);
-
-    format!("{}-{}", std::process::id(), nanos)
 }
 
 /// Runs `persist_thumbnail_from_source` (full-file SHA-256 hashing plus a copy) on the
@@ -645,26 +697,18 @@ pub async fn download_thumbnail_from_url_async(
 
         clean_matching_files_in_dir(&thumb_temp_dir, &file_name_prefix)?;
 
-        let mut command = Command::new(&yt_dlp);
-        command.args([
-            "--ignore-config",
-            "--no-playlist",
-            "--skip-download",
-            "--write-thumbnail",
-            "--convert-thumbnails",
-            "png",
-            "--restrict-filenames",
-            "--windows-filenames",
-            "--no-warnings",
-            "--ffmpeg-location",
-            ffmpeg_location.as_str(),
-            "--paths",
-            &format!("home:{}", thumb_temp_dir.to_string_lossy()),
-            "-o",
-            &format!("{}.%(ext)s", file_prefix),
-            "--",
+        let args = build_thumbnail_command_args(
+            &ffmpeg_location,
+            &thumb_temp_dir,
+            &file_prefix,
             normalized_url.as_str(),
-        ]);
+            ThumbnailTarget::SingleMedia,
+            None,
+            None,
+        );
+
+        let mut command = Command::new(&yt_dlp);
+        command.args(&args);
         let output = run_thumbnail_yt_dlp_with_timeout(
             command,
             "yt-dlp thumbnail download timed out",
@@ -773,27 +817,15 @@ pub async fn download_thumbnail_for_media_async(
 
         clean_matching_files_in_dir(&thumb_temp_dir, &file_name_prefix)?;
 
-        let mut args = vec![
-            "--ignore-config".to_string(),
-            "--no-playlist".to_string(),
-            "--skip-download".to_string(),
-            "--write-thumbnail".to_string(),
-            "--convert-thumbnails".to_string(),
-            "png".to_string(),
-            "--restrict-filenames".to_string(),
-            "--windows-filenames".to_string(),
-            "--no-warnings".to_string(),
-            "--ffmpeg-location".to_string(),
-            ffmpeg_location,
-            "--paths".to_string(),
-            format!("home:{}", thumb_temp_dir.to_string_lossy()),
-            "-o".to_string(),
-            format!("{}.%(ext)s", file_prefix),
-        ];
-
-        append_auth_args(&mut args, cookies_browser, cookies_path);
-        args.push("--".to_string());
-        args.push(normalized_url.to_string());
+        let args = build_thumbnail_command_args(
+            &ffmpeg_location,
+            &thumb_temp_dir,
+            &file_prefix,
+            normalized_url,
+            ThumbnailTarget::SingleMedia,
+            cookies_browser,
+            cookies_path,
+        );
 
         let mut command = Command::new(&yt_dlp);
         command.args(&args);
@@ -864,27 +896,18 @@ pub async fn download_channel_avatar_from_handle_async(
 
         clean_matching_files_in_dir(&thumb_temp_dir, file_name_prefix)?;
 
-        let mut command = Command::new(&yt_dlp);
-        command.args([
-            "--ignore-config",
-            "--skip-download",
-            "--write-thumbnail",
-            "--convert-thumbnails",
-            "png",
-            "--playlist-items",
-            "0",
-            "--restrict-filenames",
-            "--windows-filenames",
-            "--no-warnings",
-            "--ffmpeg-location",
-            ffmpeg_location.as_str(),
-            "--paths",
-            &format!("home:{}", thumb_temp_dir.to_string_lossy()),
-            "-o",
-            &format!("{}.%(ext)s", file_prefix),
-            "--",
+        let args = build_thumbnail_command_args(
+            &ffmpeg_location,
+            &thumb_temp_dir,
+            file_prefix,
             normalized_url.as_str(),
-        ]);
+            ThumbnailTarget::ChannelAvatar,
+            None,
+            None,
+        );
+
+        let mut command = Command::new(&yt_dlp);
+        command.args(&args);
         let output = run_thumbnail_yt_dlp_with_timeout(
             command,
             "yt-dlp channel avatar download timed out",
@@ -1150,5 +1173,110 @@ mod tests {
             "HTTPS://cdn.example.com/new.jpg",
         );
         assert_eq!(result.unwrap(), uri("HTTPS://cdn.example.com/new.jpg"));
+    }
+
+    fn sample_temp_dir() -> PathBuf {
+        PathBuf::from(if cfg!(windows) {
+            "C:\\tmp\\thumb"
+        } else {
+            "/tmp/thumb"
+        })
+    }
+
+    #[test]
+    fn build_thumbnail_command_args_single_media_uses_no_playlist_and_no_cookies() {
+        let temp = sample_temp_dir();
+
+        let args = build_thumbnail_command_args(
+            "/opt/ffmpeg",
+            &temp,
+            "thumb_youtube_abc",
+            "https://www.youtube.com/watch?v=abc",
+            ThumbnailTarget::SingleMedia,
+            None,
+            None,
+        );
+
+        // Single media constrains yt-dlp to the one entry and never enumerates a playlist.
+        assert!(args.iter().any(|arg| arg == "--no-playlist"));
+        assert!(!args.iter().any(|arg| arg == "--playlist-items"));
+
+        // The shared skeleton is present: skip download, write and convert the thumbnail to png,
+        // pin ffmpeg, sandbox writes to the temp dir, and template the output name.
+        assert!(args.iter().any(|arg| arg == "--skip-download"));
+        assert!(args.iter().any(|arg| arg == "--write-thumbnail"));
+        let convert = args
+            .iter()
+            .position(|arg| arg == "--convert-thumbnails")
+            .unwrap();
+        assert_eq!(args[convert + 1], "png");
+        let ffmpeg = args
+            .iter()
+            .position(|arg| arg == "--ffmpeg-location")
+            .unwrap();
+        assert_eq!(args[ffmpeg + 1], "/opt/ffmpeg");
+        assert!(args.iter().any(|arg| arg == "thumb_youtube_abc.%(ext)s"));
+        assert!(args
+            .iter()
+            .any(|arg| arg == &format!("home:{}", temp.to_string_lossy())));
+
+        // No auth flags are added without cookies.
+        assert!(!args.iter().any(|arg| arg == "--cookies"));
+        assert!(!args.iter().any(|arg| arg == "--cookies-from-browser"));
+
+        // The URL is last and immediately preceded by `--`.
+        assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=abc");
+        assert_eq!(args[args.len() - 2], "--");
+    }
+
+    #[test]
+    fn build_thumbnail_command_args_channel_avatar_uses_playlist_items_zero() {
+        let temp = sample_temp_dir();
+
+        let args = build_thumbnail_command_args(
+            "ffmpeg",
+            &temp,
+            "channel_avatar",
+            "https://www.youtube.com/@handle",
+            ThumbnailTarget::ChannelAvatar,
+            None,
+            None,
+        );
+
+        // A channel page enumerates zero videos, so only the avatar thumbnail is written.
+        let items = args
+            .iter()
+            .position(|arg| arg == "--playlist-items")
+            .unwrap();
+        assert_eq!(args[items + 1], "0");
+        assert!(!args.iter().any(|arg| arg == "--no-playlist"));
+
+        assert_eq!(args.last().unwrap(), "https://www.youtube.com/@handle");
+        assert_eq!(args[args.len() - 2], "--");
+    }
+
+    #[test]
+    fn build_thumbnail_command_args_passes_browser_cookies_through() {
+        let temp = sample_temp_dir();
+
+        let args = build_thumbnail_command_args(
+            "ffmpeg",
+            &temp,
+            "thumb_youtube_abc",
+            "https://youtu.be/abc",
+            ThumbnailTarget::SingleMedia,
+            Some("firefox"),
+            None,
+        );
+
+        let cookies = args
+            .iter()
+            .position(|arg| arg == "--cookies-from-browser")
+            .unwrap();
+        assert_eq!(args[cookies + 1], "firefox");
+
+        // The `--` + URL invariant still holds with the cookie flags present.
+        assert_eq!(args.last().unwrap(), "https://youtu.be/abc");
+        assert_eq!(args[args.len() - 2], "--");
     }
 }
