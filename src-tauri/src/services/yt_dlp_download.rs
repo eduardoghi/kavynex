@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -28,7 +29,7 @@ use crate::services::yt_dlp_events::{
 };
 use crate::services::yt_dlp_metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, redact_cookies_path_from_line,
-    sanitize_filename_component,
+    sanitize_filename_component, sanitize_identifier_component,
 };
 use crate::services::yt_dlp_registry::{
     register_download_run, set_download_pid, DownloadRunReleaseGuard,
@@ -195,6 +196,32 @@ fn resolve_format_has_video(format_id: &str, formats: &[YtDlpFormatMetadata]) ->
 /// channel). It is never overwritten: re-downloading could replace the stored bytes with a
 /// re-encoded variant, silently changing media already in the library. The existing file is
 /// kept, and the caller's duplicate check decides what to do.
+/// Returns the process-wide lock guarding a specific destination path, creating it on first use.
+/// Two concurrent downloads that resolve to the same final file (the same video+format added to
+/// two channels at once) then serialize their check-then-place instead of both writing it. The
+/// registry drops entries whose lock is no longer held by any download, so it stays bounded
+/// across a long session.
+fn destination_placement_lock(path: &Path) -> Arc<std::sync::Mutex<()>> {
+    static LOCKS: std::sync::OnceLock<
+        std::sync::Mutex<HashMap<PathBuf, std::sync::Weak<std::sync::Mutex<()>>>>,
+    > = std::sync::OnceLock::new();
+
+    let registry = LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut map = registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    if let Some(existing) = map.get(path).and_then(std::sync::Weak::upgrade) {
+        return existing;
+    }
+
+    let lock = Arc::new(std::sync::Mutex::new(()));
+    map.insert(path.to_path_buf(), Arc::downgrade(&lock));
+    // Drop dead entries so the registry does not grow unbounded as files are downloaded.
+    map.retain(|_, weak| weak.strong_count() > 0);
+    lock
+}
+
 fn place_downloaded_file(
     downloaded_temp: &Path,
     media_dir: &Path,
@@ -214,6 +241,14 @@ fn place_downloaded_file(
 
     let final_destination = media_dir.join(file_name);
     ensure_path_parent_inside_dir(&final_destination, library_dir)?;
+
+    // Serialize concurrent placements of this exact destination (the same video+format finishing
+    // for two channels at once) so they cannot both pass the existence check and write the file.
+    // Distinct from the library guard above, which only serializes against a migration.
+    let placement_lock = destination_placement_lock(&final_destination);
+    let _placement_guard = placement_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     if !final_destination.exists() {
         replace_file_safely(downloaded_temp, &final_destination)?;
@@ -701,7 +736,10 @@ pub async fn download_media_from_url_async(
             .filter(|value| !value.is_empty());
 
         let safe_extractor = sanitize_filename_component(&extractor);
-        let safe_id = sanitize_filename_component(&id);
+        // The id disambiguates collisions (two distinct ids that sanitize to the same string),
+        // so a download can never silently overwrite a different video's file. See
+        // sanitize_identifier_component.
+        let safe_id = sanitize_identifier_component(&id);
         let safe_format_id = sanitize_filename_component(&normalized_format_id);
 
         let expected_ext = selected_format

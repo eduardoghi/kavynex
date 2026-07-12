@@ -91,6 +91,40 @@ pub fn sanitize_filename_component(value: &str) -> String {
     }
 }
 
+/// Sanitizes the value that identifies the downloaded media (the video id) for use in a
+/// filename, disambiguating collisions. `sanitize_filename_component` maps every character
+/// outside `[A-Za-z0-9._-]` to `_` and collapses runs of `_`, so two distinct ids can map to the
+/// same string (e.g. `a__b` and `a_b` both become `a_b`, or a future non-YouTube id containing
+/// `:`/`/`). The download filename is derived from this and `place_downloaded_file` never
+/// overwrites an existing destination, so a collision would silently discard the second video.
+///
+/// When sanitization actually changes the value, a short hash of the ORIGINAL is appended so
+/// distinct ids get distinct filenames. A value that survives sanitization unchanged - the
+/// overwhelming majority of YouTube ids - keeps its exact name, so filenames of already
+/// downloaded media are unaffected.
+pub fn sanitize_identifier_component(value: &str) -> String {
+    let trimmed = value.trim();
+    let sanitized = sanitize_filename_component(trimmed);
+
+    if trimmed.is_empty() || sanitized == trimmed {
+        return sanitized;
+    }
+
+    format!("{sanitized}_{}", short_identifier_hash(trimmed))
+}
+
+/// First 10 lowercase-hex chars (40 bits) of the SHA-256 of `value` - enough to disambiguate the
+/// handful of ids that could share a sanitized form, without bloating the filename.
+fn short_identifier_hash(value: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    Sha256::digest(value.as_bytes())
+        .iter()
+        .take(5)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 fn is_json_payload_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     trimmed.starts_with('{') || trimmed.starts_with('[')
@@ -819,9 +853,39 @@ mod tests {
     use super::{
         comments_extraction_looks_incomplete, cookies_path_from_args, is_valid_youtube_video_id,
         read_capped_json_stdout, redact_cookies_path_from_line, resolve_youtube_video_id,
-        run_yt_dlp_and_capture_json,
+        run_yt_dlp_and_capture_json, sanitize_filename_component, sanitize_identifier_component,
     };
     use crate::AppErrorCode;
+
+    #[test]
+    fn sanitize_identifier_component_keeps_unaltered_ids_unchanged() {
+        // A normal YouTube id survives sanitization untouched, so its filename stays byte-for-byte
+        // what earlier versions produced (no churn for already-downloaded media).
+        for id in ["dQw4w9WgXcQ", "abc-123_XYZ", "a.b_c"] {
+            assert_eq!(sanitize_identifier_component(id), id);
+            assert_eq!(
+                sanitize_identifier_component(id),
+                sanitize_filename_component(id)
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_identifier_component_disambiguates_ids_that_share_a_sanitized_form() {
+        // `a__b` and `a_b` both sanitize to `a_b`; the colliding one must get a distinct suffix so
+        // one download can never silently overwrite the other, while the canonical `a_b` is kept.
+        let canonical = sanitize_identifier_component("a_b");
+        let collider = sanitize_identifier_component("a__b");
+        let other_collider = sanitize_identifier_component("a:b");
+
+        assert_eq!(canonical, "a_b");
+        assert_ne!(collider, canonical);
+        assert_ne!(other_collider, canonical);
+        assert_ne!(collider, other_collider);
+        // The disambiguated names still start with the sanitized form.
+        assert!(collider.starts_with("a_b_"));
+        assert!(other_collider.starts_with("a_b_"));
+    }
 
     #[tokio::test]
     async fn run_and_capture_kills_the_child_and_reports_timeout_when_it_expires() {
