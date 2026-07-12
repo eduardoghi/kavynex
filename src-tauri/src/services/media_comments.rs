@@ -1,10 +1,8 @@
 use std::collections::HashSet;
 
 use sqlx::SqlitePool;
-use tauri::AppHandle;
 
 use crate::models::yt_dlp::YtDlpComment;
-use crate::services::database::shared_pool;
 use crate::{AppError, AppErrorCode, AppResult};
 
 fn normalize_optional_text(value: &Option<String>) -> Option<String> {
@@ -39,7 +37,7 @@ fn dedupe_comments_by_id(comments: Vec<YtDlpComment>) -> Vec<YtDlpComment> {
 }
 
 pub async fn replace_media_comments(
-    app: &AppHandle,
+    pool: &SqlitePool,
     media_id: i64,
     comments: Vec<YtDlpComment>,
 ) -> AppResult<u64> {
@@ -50,8 +48,7 @@ pub async fn replace_media_comments(
         ));
     }
 
-    let pool = shared_pool(app).await?;
-    replace_media_comments_in_pool(&pool, media_id, comments).await
+    replace_media_comments_in_pool(pool, media_id, comments).await
 }
 
 async fn replace_media_comments_in_pool(
