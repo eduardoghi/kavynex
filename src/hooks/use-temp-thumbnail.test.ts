@@ -7,10 +7,15 @@ vi.mock("../services/thumbnail-service", () => ({
     generateTemporaryThumbnail: vi.fn(),
 }));
 
+vi.mock("../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
+
 import {
     deleteTemporaryThumbnail,
     generateTemporaryThumbnail,
 } from "../services/thumbnail-service";
+import { logError } from "../utils/app-logger";
 
 describe("useTempThumbnail", () => {
     beforeEach(() => {
@@ -64,7 +69,6 @@ describe("useTempThumbnail", () => {
 
     it("clears thumbnail when audio thumbnail generation fails", async () => {
         vi.mocked(generateTemporaryThumbnail).mockRejectedValueOnce(new Error("no embedded cover"));
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
         const { result } = renderHook(() => useTempThumbnail());
 
@@ -76,8 +80,6 @@ describe("useTempThumbnail", () => {
         expect(generateTemporaryThumbnail).toHaveBeenCalledWith("/tmp/audio.mp3");
         expect(result.current.thumbPath).toBe("");
         expect(result.current.isGeneratingThumb).toBe(false);
-
-        consoleErrorSpy.mockRestore();
     });
 
     it("resets thumbnail state", async () => {
@@ -144,7 +146,6 @@ describe("useTempThumbnail", () => {
 
     it("clears state when thumbnail generation fails", async () => {
         vi.mocked(generateTemporaryThumbnail).mockRejectedValueOnce(new Error("boom"));
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
         const { result } = renderHook(() => useTempThumbnail());
 
@@ -154,8 +155,6 @@ describe("useTempThumbnail", () => {
 
         expect(result.current.thumbPath).toBe("");
         expect(result.current.isGeneratingThumb).toBe(false);
-
-        consoleErrorSpy.mockRestore();
     });
 
     it("does not generate a thumbnail for a blank media path", async () => {
@@ -269,7 +268,6 @@ describe("useTempThumbnail", () => {
             .mockResolvedValueOnce("/tmp/one.jpg")
             .mockResolvedValueOnce("/tmp/two.jpg");
         vi.mocked(deleteTemporaryThumbnail).mockRejectedValueOnce(new Error("busy"));
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
         const { result } = renderHook(() => useTempThumbnail());
 
@@ -278,13 +276,12 @@ describe("useTempThumbnail", () => {
             await result.current.generateThumbForMedia("/tmp/video2.mp4");
         });
 
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
-            "Failed to cleanup temporary thumbnail:",
+        expect(logError).toHaveBeenCalledWith(
+            "temp-thumbnail",
+            "Failed to clean up the temporary thumbnail.",
             expect.any(Error)
         );
         // The failed cleanup must not block adopting the new thumbnail.
         expect(result.current.thumbPath).toBe("/tmp/two.jpg");
-
-        consoleErrorSpy.mockRestore();
     });
 });

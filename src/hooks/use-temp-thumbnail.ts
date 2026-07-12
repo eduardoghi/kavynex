@@ -3,6 +3,7 @@ import {
     deleteTemporaryThumbnail,
     generateTemporaryThumbnail,
 } from "../services/thumbnail-service";
+import { logError } from "../utils/app-logger";
 
 type UseTempThumbnailReturn = {
     thumbPath: string;
@@ -54,7 +55,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
         try {
             await deleteTemporaryThumbnail(normalizedPath);
         } catch (error) {
-            console.error("Failed to cleanup temporary thumbnail:", error);
+            logError("temp-thumbnail", "Failed to clean up the temporary thumbnail.", error);
         }
 
         if (currentTempThumbRef.current === normalizedPath) {
@@ -126,7 +127,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
 
                 await replaceGeneratedTempThumb(generatedPath);
             } catch (error) {
-                console.error("Failed to generate temporary thumbnail:", error);
+                logError("temp-thumbnail", "Failed to generate the temporary thumbnail.", error);
 
                 if (requestId === thumbGenerationIdRef.current) {
                     const currentTempThumb = currentTempThumbRef.current.trim();
