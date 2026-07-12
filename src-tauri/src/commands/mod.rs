@@ -10,3 +10,6 @@ pub mod settings;
 pub mod thumbnail;
 pub mod videos;
 pub mod yt_dlp;
+
+#[cfg(test)]
+pub(crate) mod test_ipc;

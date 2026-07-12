@@ -54,14 +54,12 @@ pub async fn set_app_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::test_ipc::{invoke, memory_db};
     use crate::AppErrorCode;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-    use tauri::webview::InvokeRequest;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
     use tauri::Manager;
 
     fn unique_test_dir(suffix: &str) -> PathBuf {
@@ -119,23 +117,6 @@ mod tests {
     // wiring (arg deserialization, State injection, response serialization) that could not be
     // exercised while the pool lived in a process-wide static.
 
-    /// Builds a `Db` over a fresh in-memory database with the schema applied, on Tauri's async
-    /// runtime so the pool's background tasks share the runtime `get_ipc_response` drives the
-    /// command on.
-    fn memory_db() -> Db {
-        tauri::async_runtime::block_on(async {
-            let pool = SqlitePoolOptions::new()
-                .max_connections(1)
-                .connect("sqlite::memory:")
-                .await
-                .expect("open in-memory database");
-            crate::services::db_schema::ensure_schema(&pool)
-                .await
-                .expect("apply schema");
-            Db::from_pool(pool)
-        })
-    }
-
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![get_app_settings, set_app_settings])
@@ -149,36 +130,11 @@ mod tests {
             .unwrap()
     }
 
-    fn invoke_command(
-        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
-        cmd: &str,
-        body: serde_json::Value,
-    ) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
-        get_ipc_response(
-            webview,
-            InvokeRequest {
-                cmd: cmd.into(),
-                callback: CallbackFn(0),
-                error: CallbackFn(1),
-                url: if cfg!(any(windows, target_os = "android")) {
-                    "http://tauri.localhost"
-                } else {
-                    "tauri://localhost"
-                }
-                .parse()
-                .unwrap(),
-                body: InvokeBody::Json(body),
-                headers: Default::default(),
-                invoke_key: INVOKE_KEY.to_string(),
-            },
-        )
-    }
-
     #[test]
     fn get_app_settings_command_returns_defaults_on_an_empty_database_over_ipc() {
         let webview = test_webview(memory_db());
 
-        let response = invoke_command(&webview, "get_app_settings", serde_json::json!({}))
+        let response = invoke(&webview, "get_app_settings", serde_json::json!({}))
             .unwrap()
             .deserialize::<serde_json::Value>()
             .unwrap();
@@ -195,7 +151,7 @@ mod tests {
 
         // An empty library path is the valid "not configured yet" state, so this avoids needing
         // a real directory on disk while still exercising the write path and the transaction.
-        invoke_command(
+        invoke(
             &webview,
             "set_app_settings",
             serde_json::json!({
@@ -206,7 +162,7 @@ mod tests {
         )
         .unwrap();
 
-        let response = invoke_command(&webview, "get_app_settings", serde_json::json!({}))
+        let response = invoke(&webview, "get_app_settings", serde_json::json!({}))
             .unwrap()
             .deserialize::<serde_json::Value>()
             .unwrap();
@@ -219,7 +175,7 @@ mod tests {
     fn set_app_settings_command_rejects_an_unknown_import_mode_over_ipc() {
         let webview = test_webview(memory_db());
 
-        let error = invoke_command(
+        let error = invoke(
             &webview,
             "set_app_settings",
             serde_json::json!({

@@ -116,13 +116,12 @@ pub async fn check_library_integrity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::test_ipc::invoke;
     use crate::AppErrorCode;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-    use tauri::webview::InvokeRequest;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -154,37 +153,12 @@ mod tests {
             .unwrap()
     }
 
-    fn invoke_command(
-        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
-        cmd: &str,
-        body: serde_json::Value,
-    ) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
-        get_ipc_response(
-            webview,
-            InvokeRequest {
-                cmd: cmd.into(),
-                callback: CallbackFn(0),
-                error: CallbackFn(1),
-                url: if cfg!(any(windows, target_os = "android")) {
-                    "http://tauri.localhost"
-                } else {
-                    "tauri://localhost"
-                }
-                .parse()
-                .unwrap(),
-                body: InvokeBody::Json(body),
-                headers: Default::default(),
-                invoke_key: INVOKE_KEY.to_string(),
-            },
-        )
-    }
-
     #[test]
     fn ensure_directory_exists_command_accepts_ipc_payload() {
         let dir = unique_test_dir("command-ensure");
         let webview = test_webview();
 
-        let response = invoke_command(
+        let response = invoke(
             &webview,
             "ensure_directory_exists",
             serde_json::json!({ "path": dir.to_string_lossy() }),
@@ -208,7 +182,7 @@ mod tests {
 
         let webview = test_webview();
 
-        let response = invoke_command(
+        let response = invoke(
             &webview,
             "check_library_integrity",
             serde_json::json!({
@@ -238,7 +212,7 @@ mod tests {
 
         let webview = test_webview();
 
-        let empty = invoke_command(
+        let empty = invoke(
             &webview,
             "is_directory_empty",
             serde_json::json!({ "path": dir.to_string_lossy() }),
@@ -253,7 +227,7 @@ mod tests {
 
         fs::write(dir.join("a.txt"), b"data").unwrap();
 
-        let empty = invoke_command(
+        let empty = invoke(
             &webview,
             "is_directory_empty",
             serde_json::json!({ "path": dir.to_string_lossy() }),
@@ -276,7 +250,7 @@ mod tests {
 
         // A non-existent path must come back as a structured AppError (code preserved across
         // the IPC boundary), not a success.
-        let error = invoke_command(
+        let error = invoke(
             &webview,
             "resolve_existing_directory",
             serde_json::json!({ "path": missing.to_string_lossy() }),
@@ -296,7 +270,7 @@ mod tests {
 
         // The command takes `libraryPath` (camelCase over IPC) and returns a struct; both the
         // argument mapping and the response serialization are exercised here.
-        let response = invoke_command(
+        let response = invoke(
             &webview,
             "get_library_summary",
             serde_json::json!({ "libraryPath": library.to_string_lossy() }),

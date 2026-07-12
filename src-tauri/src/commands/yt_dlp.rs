@@ -99,9 +99,8 @@ pub async fn check_external_tools(app: AppHandle) -> AppResult<ExternalToolsStat
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-    use tauri::webview::InvokeRequest;
+    use crate::commands::test_ipc::invoke;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
 
     fn test_webview() -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
@@ -114,36 +113,11 @@ mod tests {
             .unwrap()
     }
 
-    fn invoke_command(
-        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
-        cmd: &str,
-        body: serde_json::Value,
-    ) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
-        get_ipc_response(
-            webview,
-            InvokeRequest {
-                cmd: cmd.into(),
-                callback: CallbackFn(0),
-                error: CallbackFn(1),
-                url: if cfg!(any(windows, target_os = "android")) {
-                    "http://tauri.localhost"
-                } else {
-                    "tauri://localhost"
-                }
-                .parse()
-                .unwrap(),
-                body: InvokeBody::Json(body),
-                headers: Default::default(),
-                invoke_key: INVOKE_KEY.to_string(),
-            },
-        )
-    }
-
     #[test]
     fn cancel_media_download_command_rejects_unknown_run_id_over_ipc() {
         let webview = test_webview();
 
-        let error = invoke_command(
+        let error = invoke(
             &webview,
             "cancel_media_download",
             serde_json::json!({ "runId": "kavynex-test-unknown-run-id" }),
@@ -157,7 +131,7 @@ mod tests {
     fn cancel_media_download_command_rejects_empty_run_id_over_ipc() {
         let webview = test_webview();
 
-        let error = invoke_command(
+        let error = invoke(
             &webview,
             "cancel_media_download",
             serde_json::json!({ "runId": "   " }),
