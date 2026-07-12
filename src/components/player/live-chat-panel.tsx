@@ -1,73 +1,17 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import {
-    Anchor,
-    Badge,
-    Box,
-    Divider,
-    Group,
-    Loader,
-    Paper,
-    Stack,
-    Text,
-    rem,
-} from "@mantine/core";
-import { Check, MessageCircle, Pin, Wrench } from "lucide-react";
+import { memo, useEffect, useMemo, useRef } from "react";
+import { Badge, Box, Divider, Group, Loader, Paper, Stack, Text, rem } from "@mantine/core";
+import { MessageCircle } from "lucide-react";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
-import { openAuthorYoutubeChannel } from "../../services/author-navigation";
-import { activateOnEnterOrSpace } from "../../utils/keyboard";
-import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
-import { SafeAvatar } from "./safe-avatar";
+import { resolveAvatarSrc } from "../../utils/avatar";
 import { useRemoteImagesEnabled } from "./remote-images-context";
+import { MembershipChatMessage } from "./live-chat-sections/membership-chat-message";
+import { PinnedChatMessage } from "./live-chat-sections/pinned-chat-message";
+import { RegularChatMessage } from "./live-chat-sections/regular-chat-message";
+import { SuperChatMessage } from "./live-chat-sections/super-chat-message";
 
-// YouTube colors the whole author name by role instead of using separate badge chips.
-const OWNER_HIGHLIGHT_COLOR = "#ffd600";
-const MODERATOR_NAME_COLOR = "#5e84f1";
-const MEMBER_NAME_COLOR = "#2ba640";
 // Distance (px) from the bottom within which the replay is considered "stuck to bottom" and
 // keeps auto-scrolling as new messages arrive; past it, the user has scrolled up to read.
 const STICK_TO_BOTTOM_THRESHOLD_PX = 24;
-
-// Inline custom-emoji image, falling back to the emoji shortcut text if it fails to load
-// (the image URLs can expire).
-function EmojiImage({ url, label }: { url: string; label: string }): JSX.Element {
-    const [failed, setFailed] = useState(false);
-    const remoteImagesEnabled = useRemoteImagesEnabled();
-
-    // With remote images off, fall back to the emoji's shortcut text instead of loading it
-    // from Google.
-    if (failed || !remoteImagesEnabled) {
-        return <>{label}</>;
-    }
-
-    return (
-        <img
-            src={url}
-            alt={label}
-            title={label}
-            loading="lazy"
-            onError={() => setFailed(true)}
-            style={{ height: "1.25em", verticalAlign: "-0.25em", margin: "0 1px" }}
-        />
-    );
-}
-
-function renderMessageContent(message: LiveChatMessageItem): JSX.Element | string {
-    if (message.message_parts.length === 0) {
-        return message.message_text;
-    }
-
-    return (
-        <>
-            {message.message_parts.map((part, index) =>
-                part.type === "emoji" ? (
-                    <EmojiImage key={index} url={part.url} label={part.label} />
-                ) : (
-                    <span key={index}>{part.text}</span>
-                )
-            )}
-        </>
-    );
-}
 
 type LiveChatPanelProps = {
     liveChatMessages: LiveChatMessageItem[];
@@ -81,8 +25,9 @@ type LiveChatItemProps = {
     shellBorder: string;
 };
 
-// Memoized so a sliding visible window only renders the newly added rows: existing rows
-// keep the same `message` reference and are skipped by the shallow prop comparison.
+// Dispatches a live chat message to the component for its kind. Memoized so a sliding visible
+// window only renders the newly added rows: existing rows keep the same `message` reference and
+// are skipped by the shallow prop comparison.
 const LiveChatItem = memo(function LiveChatItem({
     message,
     shellBorder,
@@ -91,268 +36,36 @@ const LiveChatItem = memo(function LiveChatItem({
     const avatarSrc = remoteImagesEnabled
         ? resolveAvatarSrc(message.author_thumbnail)
         : undefined;
-    const authorChannelId = message.author_channel_id;
-    const isOwner = message.author_badges.some((badge) => badge.type === "owner");
-    const isModerator = message.author_badges.some((badge) => badge.type === "moderator");
-    const isMember = message.author_badges.some((badge) => badge.type === "member");
-    const isVerified = message.author_badges.some((badge) => badge.type === "verified");
 
-    // YouTube colors the whole name by role: owner gets a highlight box, moderator blue,
-    // member green, everyone else the default text color.
-    const roleColor = isModerator
-        ? MODERATOR_NAME_COLOR
-        : isMember
-        ? MEMBER_NAME_COLOR
-        : undefined;
-    const ownerBoxStyle = isOwner
-        ? {
-              background: OWNER_HIGHLIGHT_COLOR,
-              borderRadius: "4px",
-              padding: "1px 6px",
-          }
-        : undefined;
-    const nameStyle = { color: isOwner ? "#0f0f0f" : roleColor ?? "inherit", ...ownerBoxStyle };
+    if (message.kind === "pinned") {
+        return (
+            <PinnedChatMessage message={message} shellBorder={shellBorder} avatarSrc={avatarSrc} />
+        );
+    }
 
-    const nameContent = (
-        <>
-            {message.author_name}
-            {isModerator && (
-                <Wrench
-                    size={12}
-                    aria-label="Moderator"
-                    style={{ marginLeft: 4, verticalAlign: "middle" }}
-                />
-            )}
-            {isOwner && isVerified && (
-                <Check
-                    size={12}
-                    aria-label="Verified"
-                    style={{ marginLeft: 4, verticalAlign: "middle" }}
-                />
-            )}
-        </>
-    );
+    if (message.kind === "membership") {
+        return (
+            <MembershipChatMessage
+                message={message}
+                shellBorder={shellBorder}
+                avatarSrc={avatarSrc}
+            />
+        );
+    }
 
-    const isSuperChat = Boolean(message.amount_text);
-    const isMembership = message.kind === "membership";
-    const isPinned = message.kind === "pinned";
-
-    // Inside a super chat card the author name inherits the card's text color.
-    const superChatAuthor = authorChannelId ? (
-        <Anchor
-            fw={700}
-            size="sm"
-            role="button"
-            tabIndex={0}
-            title="Open channel on YouTube"
-            style={{ cursor: "pointer", color: "inherit", minWidth: 0 }}
-            onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
-            onKeyDown={activateOnEnterOrSpace(() =>
-                void openAuthorYoutubeChannel(authorChannelId)
-            )}
-        >
-            {message.author_name}
-        </Anchor>
-    ) : (
-        <Text component="span" fw={700} size="sm" style={{ color: "inherit", minWidth: 0 }}>
-            {message.author_name}
-        </Text>
-    );
+    if (message.amount_text) {
+        return (
+            <SuperChatMessage
+                message={message}
+                shellBorder={shellBorder}
+                avatarSrc={avatarSrc}
+                remoteImagesEnabled={remoteImagesEnabled}
+            />
+        );
+    }
 
     return (
-        <Group align="flex-start" gap="sm" wrap="nowrap">
-            {!isSuperChat && !isMembership && !isPinned && (
-                <SafeAvatar
-                    src={avatarSrc}
-                    initials={avatarInitials(message.author_name)}
-                    shellBorder={shellBorder}
-                    size={32}
-                />
-            )}
-
-            <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
-                {isPinned ? (
-                    <Box
-                        style={{
-                            background: "rgba(255,255,255,0.04)",
-                            border: `1px solid ${shellBorder}`,
-                            borderRadius: rem(8),
-                            padding: rem(8),
-                        }}
-                    >
-                        <Group gap={6} wrap="nowrap" align="center" mb={4}>
-                            <Pin size={13} style={{ opacity: 0.7, flexShrink: 0 }} />
-                            <Text size="xs" c="dimmed">
-                                {message.pinned_header}
-                            </Text>
-                        </Group>
-
-                        <Group gap="xs" wrap="nowrap" align="flex-start">
-                            <SafeAvatar
-                                src={avatarSrc}
-                                initials={avatarInitials(message.author_name)}
-                                shellBorder={shellBorder}
-                                size={28}
-                            />
-
-                            <Text size="sm" style={{ minWidth: 0, wordBreak: "break-word" }}>
-                                <Text component="span" fw={700}>
-                                    {message.author_name}
-                                </Text>{" "}
-                                {renderMessageContent(message)}
-                            </Text>
-                        </Group>
-                    </Box>
-                ) : isMembership ? (
-                    <Box
-                        style={{
-                            background: "rgba(15,157,88,0.14)",
-                            border: "1px solid rgba(15,157,88,0.4)",
-                            borderRadius: rem(8),
-                            padding: rem(8),
-                        }}
-                    >
-                        <Group gap="xs" wrap="nowrap" align="flex-start">
-                            <SafeAvatar
-                                src={avatarSrc}
-                                initials={avatarInitials(message.author_name)}
-                                shellBorder={shellBorder}
-                                size={28}
-                            />
-
-                            <Text size="sm" style={{ minWidth: 0, wordBreak: "break-word" }}>
-                                <Text component="span" fw={800} c="teal.4">
-                                    {message.author_name}
-                                </Text>{" "}
-                                {message.message_text}
-                                {message.timestamp_text ? (
-                                    <Text component="span" size="xs" c="dimmed">
-                                        {"  "}
-                                        {message.timestamp_text}
-                                    </Text>
-                                ) : null}
-                            </Text>
-                        </Group>
-                    </Box>
-                ) : isSuperChat ? (
-                    <Box
-                        style={{
-                            background: message.superchat_body_color ?? "#1565c0",
-                            color: message.superchat_text_color ?? "#ffffff",
-                            borderRadius: rem(8),
-                            padding: rem(8),
-                        }}
-                    >
-                        <Group justify="space-between" gap="xs" wrap="nowrap" align="center">
-                            <Group gap="xs" wrap="nowrap" align="center" style={{ minWidth: 0 }}>
-                                <SafeAvatar
-                                    src={avatarSrc}
-                                    initials={avatarInitials(message.author_name)}
-                                    shellBorder={shellBorder}
-                                    size={38}
-                                />
-                                {superChatAuthor}
-                                <Text fw={800} size="sm" style={{ color: "inherit", flexShrink: 0 }}>
-                                    {message.amount_text}
-                                </Text>
-                            </Group>
-
-                            {message.timestamp_text && (
-                                <Text
-                                    size="xs"
-                                    style={{ color: "inherit", opacity: 0.7, flexShrink: 0 }}
-                                >
-                                    {message.timestamp_text}
-                                </Text>
-                            )}
-                        </Group>
-
-                        {message.message_text && (
-                            <Text
-                                size="sm"
-                                mt={6}
-                                style={{
-                                    color: "inherit",
-                                    whiteSpace: "pre-wrap",
-                                    wordBreak: "break-word",
-                                    lineHeight: 1.45,
-                                }}
-                            >
-                                {renderMessageContent(message)}
-                            </Text>
-                        )}
-
-                        {remoteImagesEnabled && message.sticker_image_url && (
-                            <img
-                                src={message.sticker_image_url}
-                                alt="Super Sticker"
-                                loading="lazy"
-                                style={{
-                                    width: rem(72),
-                                    height: rem(72),
-                                    marginTop: rem(6),
-                                    display: "block",
-                                }}
-                            />
-                        )}
-                    </Box>
-                ) : (
-                    <>
-                        <Group gap={8} wrap="wrap" align="center">
-                            <Group gap={5} wrap="nowrap" align="center">
-                                {authorChannelId ? (
-                                    <Anchor
-                                        fw={600}
-                                        size="sm"
-                                        role="button"
-                                        tabIndex={0}
-                                        title="Open channel on YouTube"
-                                        style={{ cursor: "pointer", ...nameStyle }}
-                                        onClick={() =>
-                                            void openAuthorYoutubeChannel(authorChannelId)
-                                        }
-                                        onKeyDown={activateOnEnterOrSpace(() =>
-                                            void openAuthorYoutubeChannel(authorChannelId)
-                                        )}
-                                    >
-                                        {nameContent}
-                                    </Anchor>
-                                ) : (
-                                    <Text component="span" fw={600} size="sm" style={nameStyle}>
-                                        {nameContent}
-                                    </Text>
-                                )}
-
-                                {isVerified && !isOwner && (
-                                    <Check
-                                        size={13}
-                                        aria-label="Verified"
-                                        style={{ opacity: 0.7, flexShrink: 0 }}
-                                    />
-                                )}
-                            </Group>
-
-                            {message.timestamp_text && (
-                                <Text size="xs" c="dimmed">
-                                    {message.timestamp_text}
-                                </Text>
-                            )}
-                        </Group>
-
-                        <Text
-                            size="sm"
-                            style={{
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-word",
-                                lineHeight: 1.45,
-                            }}
-                        >
-                            {renderMessageContent(message)}
-                        </Text>
-                    </>
-                )}
-            </Stack>
-        </Group>
+        <RegularChatMessage message={message} shellBorder={shellBorder} avatarSrc={avatarSrc} />
     );
 });
 
