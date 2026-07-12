@@ -338,9 +338,10 @@ async fn run_yt_dlp_and_capture_json(
         )
     })?;
 
-    let stdout_task = tokio::spawn(read_capped_json_stdout(stdout, MAX_YT_DLP_JSON_BYTES));
+    let stdout_task =
+        tauri::async_runtime::spawn(read_capped_json_stdout(stdout, MAX_YT_DLP_JSON_BYTES));
 
-    let stderr_task = tokio::spawn(async move {
+    let stderr_task = tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stderr);
         let mut line_buf: Vec<u8> = Vec::new();
         let mut log_lines: Vec<String> = Vec::new();
