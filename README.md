@@ -55,6 +55,20 @@ Choose the package according to your distribution:
 - Debian/Ubuntu: `kavynex_*_amd64.deb`
 - Fedora/RHEL/openSUSE: `kavynex-*.x86_64.rpm`
 
+### Verifying a download
+
+The installers are not code-signed (a deliberate tradeoff - see `SECURITY.md`), so
+SmartScreen/Gatekeeper will warn on first run. To confirm a download is authentic:
+
+- Compare its hash against `SHA256SUMS.txt`, published with every release.
+- Or, with the [GitHub CLI](https://cli.github.com/), verify its build provenance:
+
+  ```
+  gh attestation verify <installer-file> --repo eduardoghi/kavynex
+  ```
+
+  A successful check confirms the file was built by this repository's release workflow.
+
 ## Screenshots
 
 ### Channel library

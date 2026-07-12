@@ -115,6 +115,25 @@ certificate is a recurring cost that is hard to justify here. In practice this m
   all; it relies on the minisign signature described above, which is independent of OS
   code-signing.
 
+### Build provenance
+
+Every released installer also carries a build provenance attestation
+(`.github/workflows/release.yml`, `actions/attest-build-provenance`): a signed, keyless
+(Sigstore) statement that those exact bytes were built by this repository's release workflow,
+from a specific commit. It complements the other two controls rather than replacing them -
+`SHA256SUMS.txt` only proves a download was not corrupted, and the minisign signature proves
+the *update* artifact was signed by the key holder, whereas provenance ties an *installer* back
+to the source and CI run that produced it. It is independent of OS code-signing and needs no
+certificate.
+
+To verify a downloaded installer, with the [GitHub CLI](https://cli.github.com/) installed:
+
+```
+gh attestation verify <installer-file> --repo eduardoghi/kavynex
+```
+
+A successful check confirms the file was built by this repository's release workflow.
+
 ## Reporting a vulnerability
 
 If you find a security issue, please open a
