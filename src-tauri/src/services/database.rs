@@ -148,6 +148,23 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
     let migration_pending = crate::services::db_backup::is_schema_migration_pending(path).await;
 
     if migration_pending {
+        // Refuse to migrate a database that is already damaged. A migration can rebuild tables, so
+        // running one over a corrupt file risks amplifying the damage - and the pre-migration
+        // snapshot below is skipped precisely when the source is unhealthy (backup_database bails on
+        // a failed quick_check), so it cannot be relied on to roll the migration back afterwards.
+        // When the file exists but fails quick_check, stop here: the frontend's startup recovery
+        // then offers to restore from the last healthy backup (see use-app-bootstrap.ts) instead of
+        // migrating over a bad file. A missing file (first run) is not a database yet, so it is
+        // exempt; a subtly damaged file that still passes the fast quick_check is not caught here
+        // (that would need a full integrity_check on every launch), which is an accepted limit.
+        if path.exists() && !crate::services::db_backup::database_quick_check_ok(path).await {
+            return Err(AppError::from_code_with_details(
+                AppErrorCode::AppError,
+                "the database failed an integrity check and a schema migration is pending; restore from a backup before continuing",
+                "quick_check failed on the existing database before a pending migration; refused to migrate to avoid amplifying corruption",
+            ));
+        }
+
         if let Err(error) = crate::services::db_backup::backup_database(path).await {
             crate::services::logger::warn("db_backup", format!("database backup failed: {error}"));
         }

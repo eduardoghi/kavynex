@@ -123,6 +123,14 @@ pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<bool> {
     Ok(result == "ok")
 }
 
+/// Escapes a value for embedding as a single-quoted SQLite string literal by doubling every
+/// `'`. This is the ONE place in the whole database layer where non-constant, externally
+/// influenced data (the `VACUUM INTO` destination - a user-chosen export path, or the internal
+/// temp/backup path) is assembled into raw SQL text rather than bound as a `?` parameter, and it
+/// only exists because `VACUUM INTO` is a statement SQLite does not let you parameterize. Every
+/// other query in the codebase uses `.bind(...)`. If this function is ever changed, the doubling
+/// of every single quote must be preserved: it is the sole guard keeping a path from breaking out
+/// of the literal. Covered by the adversarial-path export tests below.
 fn escape_sql_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
@@ -249,8 +257,12 @@ pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {
     }
 }
 
-async fn backup_is_healthy(path: &Path) -> bool {
-    match open(path).await {
+/// Opens `db_path` and runs `quick_check`, returning whether it passes. A file that cannot even
+/// be opened as a database (or fails the check) returns false. Used both to pick a healthy backup
+/// to restore and, in the pool builder, to refuse migrating a database that is already damaged
+/// (see `services::database::build_pool_at`).
+pub async fn database_quick_check_ok(db_path: &Path) -> bool {
+    match open(db_path).await {
         Ok(pool) => {
             let healthy = is_healthy(&pool).await;
             pool.close().await;
@@ -272,7 +284,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     let mut chosen: Option<PathBuf> = None;
 
     for candidate in backup_candidates(db_path) {
-        if backup_is_healthy(&candidate).await {
+        if database_quick_check_ok(&candidate).await {
             chosen = Some(candidate);
             break;
         }
@@ -830,6 +842,20 @@ mod tests {
         assert_eq!(escape_sql_literal("O'Brien"), "O''Brien");
         assert_eq!(escape_sql_literal("a'b'c"), "a''b''c");
         assert_eq!(escape_sql_literal("no quotes"), "no quotes");
+
+        // Adversarial paths: a classic break-out attempt and an already-doubled quote must both
+        // be neutralized to an even number of quotes, so the value can only ever be data inside
+        // the literal, never the start of a new clause. Backslashes are not SQL-significant in
+        // SQLite string literals and are left untouched.
+        assert_eq!(
+            escape_sql_literal("'; DROP TABLE videos; --"),
+            "''; DROP TABLE videos; --"
+        );
+        assert_eq!(escape_sql_literal("a'' b"), "a'''' b");
+        assert_eq!(
+            escape_sql_literal(r"C:\Users\O'Neil\db"),
+            r"C:\Users\O''Neil\db"
+        );
     }
 
     #[tokio::test]
@@ -849,6 +875,27 @@ mod tests {
 
         assert!(dest.exists());
         assert_eq!(read_video_title(&dest).await, "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn database_quick_check_ok_reports_health() {
+        let dir = temp_dir("quick_check");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "hello").await;
+
+        // A freshly seeded database passes.
+        assert!(database_quick_check_ok(&db).await);
+
+        // A file that is not a database at all is reported unhealthy, so the pool builder's
+        // pre-migration gate refuses to migrate over it instead of amplifying the damage.
+        let garbage = dir.join("garbage.db");
+        std::fs::write(&garbage, b"this is not a sqlite database").unwrap();
+        assert!(!database_quick_check_ok(&garbage).await);
+
+        // A missing file is likewise not openable (open uses create_if_missing(false)).
+        assert!(!database_quick_check_ok(&dir.join("missing.db")).await);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
