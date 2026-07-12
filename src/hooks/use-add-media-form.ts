@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { MediaSourceMode, MediaType, YtDlpFormat } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
@@ -342,41 +342,92 @@ export function useAddMediaForm({
         await thumbnailState.resetThumbState();
     }, [formState, thumbnailState, ytDlpState, ytDlpTerminal]);
 
-    return {
-        sourceMode,
-        mediaUrl,
-        title,
-        mediaPath,
-        mediaType,
-        thumbPath: thumbnailState.thumbPath,
-        publishedAt,
-        downloadComments,
-        downloadLiveChat,
-        cookiesBrowser,
-        cookiesPath,
-        isGeneratingThumb: thumbnailState.isGeneratingThumb,
+    // Destructure the sub-state fields the returned object exposes so the memo below can depend
+    // on them directly (honest dependency array, no eslint-disable).
+    const { thumbPath, isGeneratingThumb } = thumbnailState;
+    const {
+        ytDlpFormats,
+        selectedYtDlpFormatId,
+        isLoadingYtDlpFormats,
+        selectedYtDlpMediaType,
+        resolvedYoutubeVideoId,
+        setSelectedYtDlpFormatId,
+    } = ytDlpState;
 
-        ytDlpFormats: ytDlpState.ytDlpFormats,
-        selectedYtDlpFormatId: ytDlpState.selectedYtDlpFormatId,
-        isLoadingYtDlpFormats: ytDlpState.isLoadingYtDlpFormats,
-        selectedYtDlpMediaType: ytDlpState.selectedYtDlpMediaType,
-        resolvedYoutubeVideoId: ytDlpState.resolvedYoutubeVideoId,
+    // Memoized so the controller object keeps a stable identity across renders. Consumers that
+    // depend on the whole object (e.g. use-add-media-workflow) stop being invalidated - and
+    // recreating their own callbacks - on every keystroke in an unrelated field.
+    return useMemo(
+        () => ({
+            sourceMode,
+            mediaUrl,
+            title,
+            mediaPath,
+            mediaType,
+            thumbPath,
+            publishedAt,
+            downloadComments,
+            downloadLiveChat,
+            cookiesBrowser,
+            cookiesPath,
+            isGeneratingThumb,
 
-        setSourceMode,
-        setMediaUrl,
-        setTitle,
-        setPublishedAt,
-        setDownloadComments,
-        setDownloadLiveChat,
-        setCookiesBrowser,
-        setCookiesPath,
-        pickCookiesFileViaDialog,
-        clearCookiesPath,
-        setSelectedYtDlpFormatId: ytDlpState.setSelectedYtDlpFormatId,
-        loadYtDlpFormats,
+            ytDlpFormats,
+            selectedYtDlpFormatId,
+            isLoadingYtDlpFormats,
+            selectedYtDlpMediaType,
+            resolvedYoutubeVideoId,
 
-        pickMediaViaDialog,
-        pickThumbViaDialog,
-        resetForm,
-    };
+            setSourceMode,
+            setMediaUrl,
+            setTitle,
+            setPublishedAt,
+            setDownloadComments,
+            setDownloadLiveChat,
+            setCookiesBrowser,
+            setCookiesPath,
+            pickCookiesFileViaDialog,
+            clearCookiesPath,
+            setSelectedYtDlpFormatId,
+            loadYtDlpFormats,
+
+            pickMediaViaDialog,
+            pickThumbViaDialog,
+            resetForm,
+        }),
+        [
+            sourceMode,
+            mediaUrl,
+            title,
+            mediaPath,
+            mediaType,
+            thumbPath,
+            publishedAt,
+            downloadComments,
+            downloadLiveChat,
+            cookiesBrowser,
+            cookiesPath,
+            isGeneratingThumb,
+            ytDlpFormats,
+            selectedYtDlpFormatId,
+            isLoadingYtDlpFormats,
+            selectedYtDlpMediaType,
+            resolvedYoutubeVideoId,
+            setSourceMode,
+            setMediaUrl,
+            setTitle,
+            setPublishedAt,
+            setDownloadComments,
+            setDownloadLiveChat,
+            setCookiesBrowser,
+            setCookiesPath,
+            pickCookiesFileViaDialog,
+            clearCookiesPath,
+            setSelectedYtDlpFormatId,
+            loadYtDlpFormats,
+            pickMediaViaDialog,
+            pickThumbViaDialog,
+            resetForm,
+        ]
+    );
 }

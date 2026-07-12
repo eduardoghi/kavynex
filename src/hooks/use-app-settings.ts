@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppSettings, ImportMode } from "../types/settings";
 import { useAppSettingsActions } from "./use-app-settings-actions";
 import { getDefaultAppSettings } from "./use-app-settings-storage";
@@ -99,16 +99,34 @@ export function useAppSettings({
         });
     }, [settings.libraryPath]);
 
-    return {
-        settingsOpen,
-        settings,
-        isPreparingSettings: settingsActions.isPreparingSettings,
-        isMigratingLibraryPath: settingsActions.isMigratingLibraryPath,
-        openSettings,
-        closeSettings,
-        setImportMode,
-        setLoadRemoteImages,
-        chooseLibraryPath,
-        openCurrentLibraryPath,
-    };
+    // Memoized so the controller object keeps a stable identity across renders. Consumers that
+    // depend on the whole object stop being invalidated on unrelated re-renders.
+    const { isPreparingSettings, isMigratingLibraryPath } = settingsActions;
+
+    return useMemo(
+        () => ({
+            settingsOpen,
+            settings,
+            isPreparingSettings,
+            isMigratingLibraryPath,
+            openSettings,
+            closeSettings,
+            setImportMode,
+            setLoadRemoteImages,
+            chooseLibraryPath,
+            openCurrentLibraryPath,
+        }),
+        [
+            settingsOpen,
+            settings,
+            isPreparingSettings,
+            isMigratingLibraryPath,
+            openSettings,
+            closeSettings,
+            setImportMode,
+            setLoadRemoteImages,
+            chooseLibraryPath,
+            openCurrentLibraryPath,
+        ]
+    );
 }

@@ -224,14 +224,28 @@ export function useYtDlpFormatLoader({
         resetYtDlpFormats,
     ]);
 
-    return {
-        ytDlpFormats,
-        selectedYtDlpFormatId,
-        isLoadingYtDlpFormats,
-        selectedYtDlpMediaType,
-        resolvedYoutubeVideoId,
-        setSelectedYtDlpFormatId,
-        resetYtDlpFormats,
-        loadYtDlpFormats,
-    };
+    // Memoized so the controller object keeps a stable identity across renders. Consumers that
+    // depend on the whole object stop being invalidated on unrelated re-renders.
+    return useMemo(
+        () => ({
+            ytDlpFormats,
+            selectedYtDlpFormatId,
+            isLoadingYtDlpFormats,
+            selectedYtDlpMediaType,
+            resolvedYoutubeVideoId,
+            setSelectedYtDlpFormatId,
+            resetYtDlpFormats,
+            loadYtDlpFormats,
+        }),
+        [
+            ytDlpFormats,
+            selectedYtDlpFormatId,
+            isLoadingYtDlpFormats,
+            selectedYtDlpMediaType,
+            resolvedYoutubeVideoId,
+            setSelectedYtDlpFormatId,
+            resetYtDlpFormats,
+            loadYtDlpFormats,
+        ]
+    );
 }

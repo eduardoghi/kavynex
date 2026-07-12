@@ -127,11 +127,22 @@ export function useHomeUiGuards({
         await closeAddMediaModal();
     }, [mediaPreparationState, closeAddMediaModal]);
 
-    return {
-        disableLibraryPathChange,
-        libraryPathChangeDisabledReason,
-        disableChannelDeletion,
-        channelDeletionDisabledReason,
-        closeAddMediaModalSafely,
-    };
+    // Memoized so the controller object keeps a stable identity across renders. Consumers that
+    // depend on the whole object stop being invalidated on unrelated re-renders.
+    return useMemo(
+        () => ({
+            disableLibraryPathChange,
+            libraryPathChangeDisabledReason,
+            disableChannelDeletion,
+            channelDeletionDisabledReason,
+            closeAddMediaModalSafely,
+        }),
+        [
+            disableLibraryPathChange,
+            libraryPathChangeDisabledReason,
+            disableChannelDeletion,
+            channelDeletionDisabledReason,
+            closeAddMediaModalSafely,
+        ]
+    );
 }
