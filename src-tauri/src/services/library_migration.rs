@@ -46,8 +46,7 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
         })?;
 
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_managed_dir =
-            entry.path().is_dir() && MANAGED_LIBRARY_DIRS.contains(&name.as_str());
+        let is_managed_dir = entry.path().is_dir() && MANAGED_LIBRARY_DIRS.contains(&name.as_str());
 
         if !is_managed_dir {
             return Err(AppError::from_code(

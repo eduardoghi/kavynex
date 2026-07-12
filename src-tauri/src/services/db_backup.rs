@@ -795,10 +795,7 @@ mod tests {
         let error = export_database(&db, &dest).await.unwrap_err();
         assert_eq!(error.code, AppErrorCode::AppError.as_str());
 
-        assert_eq!(
-            std::fs::read(&dest).unwrap(),
-            b"previous export contents"
-        );
+        assert_eq!(std::fs::read(&dest).unwrap(), b"previous export contents");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -995,7 +992,9 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        crate::services::db_schema::ensure_schema(&pool).await.unwrap();
+        crate::services::db_schema::ensure_schema(&pool)
+            .await
+            .unwrap();
 
         assert!(run_full_integrity_check(&pool).await.unwrap());
 

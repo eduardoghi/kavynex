@@ -1104,7 +1104,10 @@ mod tests {
         assert_eq!(args[format_index + 1], "137+140");
 
         // ffmpeg is pinned to the resolved binary.
-        let ffmpeg_index = args.iter().position(|arg| arg == "--ffmpeg-location").unwrap();
+        let ffmpeg_index = args
+            .iter()
+            .position(|arg| arg == "--ffmpeg-location")
+            .unwrap();
         assert_eq!(args[ffmpeg_index + 1], "/opt/ffmpeg");
 
         // Output template and both `--paths` entries confine yt-dlp's writes to the run's dir.
@@ -1286,7 +1289,9 @@ mod tests {
         }
 
         // Empty parts, a leading `-`, and anything outside the safe class are rejected.
-        for id in ["", "-x", "137+", "+140", "137++140", "137 140", "a|b", "$(x)"] {
+        for id in [
+            "", "-x", "137+", "+140", "137++140", "137 140", "a|b", "$(x)",
+        ] {
             assert!(!is_valid_format_id(id), "should reject: {id}");
         }
     }
@@ -1344,7 +1349,7 @@ mod tests {
         // Two downloaded streams sharing the prefix, plus the merge output growing.
         fs::write(dir.join("clip.f137.mp4"), b"aaaa").unwrap(); // 4 bytes
         fs::write(dir.join("clip.f140.m4a"), b"bb").unwrap(); // 2 bytes
-        // Unrelated file and a directory named with the prefix must both be ignored.
+                                                              // Unrelated file and a directory named with the prefix must both be ignored.
         fs::write(dir.join("other.txt"), b"zzzzzzzz").unwrap();
         fs::create_dir_all(dir.join("clip.subdir")).unwrap();
 

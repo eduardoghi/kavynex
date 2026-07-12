@@ -246,7 +246,11 @@ mod tests {
     /// The topmost ancestor of any path is the filesystem/volume root (`C:\` on Windows,
     /// `/` on Unix). It always exists, so this needs no directory setup or cleanup.
     fn drive_root() -> PathBuf {
-        std::env::temp_dir().ancestors().last().unwrap().to_path_buf()
+        std::env::temp_dir()
+            .ancestors()
+            .last()
+            .unwrap()
+            .to_path_buf()
     }
 
     #[test]

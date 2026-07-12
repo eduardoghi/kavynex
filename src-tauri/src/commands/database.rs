@@ -185,8 +185,8 @@ mod tests {
             "no-extension",
             "id_rsa",
         ] {
-            let error = validate_export_destination(path)
-                .expect_err(&format!("{path} should be rejected"));
+            let error =
+                validate_export_destination(path).expect_err(&format!("{path} should be rejected"));
             assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
         }
     }

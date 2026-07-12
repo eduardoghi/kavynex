@@ -179,7 +179,12 @@ pub async fn media_exists_for_channel_and_youtube_id(
     .bind(normalized_id)
     .fetch_one(pool)
     .await
-    .map_err(|error| db_error("failed to check media existence for youtube video id", error))?;
+    .map_err(|error| {
+        db_error(
+            "failed to check media existence for youtube video id",
+            error,
+        )
+    })?;
 
     Ok(exists != 0)
 }
@@ -573,7 +578,17 @@ mod tests {
         let pool = create_test_pool().await;
 
         insert_media(
-            &pool, 1, "A", "video/a.mp4", None, "video", Some("yt1"), None, None, false, None,
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            None,
+            "video",
+            Some("yt1"),
+            None,
+            None,
+            false,
+            None,
         )
         .await
         .unwrap()
@@ -583,7 +598,16 @@ mod tests {
         // does not cover it, so it hits the youtube_video_id unique index and must surface as
         // the friendly domain error rather than a raw SQLite message.
         let error = insert_media(
-            &pool, 1, "A again", "video/b.mp4", None, "video", Some("yt1"), None, None, false,
+            &pool,
+            1,
+            "A again",
+            "video/b.mp4",
+            None,
+            "video",
+            Some("yt1"),
+            None,
+            None,
+            false,
             None,
         )
         .await

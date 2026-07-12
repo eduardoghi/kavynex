@@ -996,10 +996,7 @@ mod tests {
     #[test]
     fn cookies_path_from_args_is_none_without_the_flag_or_a_trailing_value() {
         // `--cookies-from-browser` carries a browser name, not a path, and must not match.
-        let browser = vec![
-            "--cookies-from-browser".to_string(),
-            "firefox".to_string(),
-        ];
+        let browser = vec!["--cookies-from-browser".to_string(), "firefox".to_string()];
         assert_eq!(cookies_path_from_args(&browser), None);
 
         // A dangling `--cookies` with no following value yields None rather than panicking.
@@ -1021,7 +1018,10 @@ mod tests {
 
     #[test]
     fn resolve_youtube_video_id_rejects_a_non_youtube_extractor() {
-        assert_eq!(resolve_youtube_video_id(Some("abc123"), Some("vimeo")), None);
+        assert_eq!(
+            resolve_youtube_video_id(Some("abc123"), Some("vimeo")),
+            None
+        );
         assert_eq!(resolve_youtube_video_id(Some("abc123"), None), None);
     }
 
