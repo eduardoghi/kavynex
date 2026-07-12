@@ -55,6 +55,40 @@ export default tseslint.config(
                 "error",
                 { checksVoidReturn: { attributes: false } },
             ],
+
+            // Keep the IPC boundary a single choke point (docs/ARCHITECTURE.md): the raw Tauri
+            // command/event primitives may only be imported by src/lib/tauri-client.ts, which
+            // wraps them (invokeCommand/invokeVoid/listenTauri) with consistent error
+            // normalization. Everything else goes through those wrappers, so a stray invoke()/
+            // listen() that bypasses the boundary fails lint instead of relying on code review.
+            // Only these named IPC primitives are restricted - convertFileSrc, getVersion and
+            // type-only imports (e.g. UnlistenFn) from @tauri-apps/api are legitimate elsewhere.
+            "no-restricted-imports": [
+                "error",
+                {
+                    paths: [
+                        {
+                            name: "@tauri-apps/api/core",
+                            importNames: ["invoke"],
+                            message:
+                                "Call Tauri commands through src/lib/tauri-client.ts (invokeCommand/invokeVoid), not invoke() directly.",
+                        },
+                        {
+                            name: "@tauri-apps/api/event",
+                            importNames: ["listen", "emit"],
+                            message:
+                                "Subscribe to Tauri events through src/lib/tauri-client.ts (listenTauri), not listen()/emit() directly.",
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
+        // The single IPC choke point is allowed to import the raw primitives it wraps.
+        files: ["src/lib/tauri-client.ts"],
+        rules: {
+            "no-restricted-imports": "off",
         },
     },
     {
