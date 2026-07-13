@@ -562,7 +562,7 @@ mod tests {
         let result = migrate_library_contents(&old_root, &new_root);
         assert!(result.is_err());
 
-        // Both source files must still exist — no data was lost despite partial progress
+        // Both source files must still exist - no data was lost despite partial progress
         assert!(
             old_root.join("video").join("a.mp4").exists(),
             "video file must remain in source after failed migration"
