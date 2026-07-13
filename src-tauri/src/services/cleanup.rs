@@ -132,16 +132,54 @@ pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummar
     Ok(summary)
 }
 
-/// True for a filename produced by the atomic-write helpers in `filesystem.rs` as scratch and
-/// left behind if the process died mid-operation: the copy temp (`.<name>.tmp-<suffix>`), the
-/// replace backup (`.<name>.backup-<suffix>`), and the migration staging name
-/// (`<stem>.migrated-<suffix>[.<ext>]`). None of these infixes ever appears in a committed
-/// library file (`media_<hash>`, `thumb_<hash>`, `*.live_chat.json.gz`), so matching them cannot
-/// touch a real media/thumbnail/live-chat file.
+/// True for a filename produced by the atomic-write helpers as scratch and left behind if the
+/// process died mid-operation: the copy temp (`.<name>.tmp-<suffix>`, `filesystem.rs`), the
+/// replace backup (`.<name>.backup-<suffix>`, `filesystem.rs`), the migration staging name
+/// (`<stem>.migrated-<suffix>[.<ext>]`, `filesystem.rs`), and the live-chat gzip temp
+/// (`<name>.gztmp`, `live_chat_storage.rs`). None of these infixes/suffixes ever appears in a
+/// committed library file (`media_<hash>`, `thumb_<hash>`, `*.live_chat.json.gz`), so matching
+/// them cannot touch a real media/thumbnail/live-chat file.
 fn is_atomic_write_leftover(file_name: &str) -> bool {
     file_name.contains(".tmp-")
         || file_name.contains(".backup-")
         || file_name.contains(".migrated-")
+        || file_name.ends_with(".gztmp")
+}
+
+/// True for a replace-backup leftover (`.<name>.backup-<suffix>`, `filesystem.rs::
+/// replace_file_safely`). Split out because a backup is the ONLY leftover kind that can hold the
+/// sole copy of a live file (see [`replace_backup_target_present`]); the `.tmp-`/`.migrated-`/
+/// `.gztmp` kinds are always redundant scratch and safe to reclaim once old.
+fn is_replace_backup_leftover(file_name: &str) -> bool {
+    file_name.contains(".backup-")
+}
+
+/// Whether the live destination a replace-backup was made from still exists next to it.
+///
+/// `replace_file_safely` renames an existing destination to `.<name>.backup-<suffix>` before
+/// writing the replacement, then removes the backup on success. If it crashes (or a double-fault
+/// leaves the replacement un-restored), the backup can be the only surviving copy of that file
+/// while the live destination is missing. Reconstructs the live name (`.video.mp4.backup-1-2`
+/// -> `video.mp4`) and reports whether it is present, so the sweep can keep a backup whose live
+/// file is gone instead of deleting the last copy.
+fn replace_backup_target_present(backup_path: &Path) -> bool {
+    let Some(file_name) = backup_path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+
+    let Some(without_dot) = file_name.strip_prefix('.') else {
+        return false;
+    };
+
+    let Some((live_name, _)) = without_dot.rsplit_once(".backup-") else {
+        return false;
+    };
+
+    if live_name.is_empty() {
+        return false;
+    }
+
+    backup_path.with_file_name(live_name).exists()
 }
 
 /// Removes atomic-write leftovers from a single managed library subdirectory. Unlike
@@ -190,6 +228,21 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
             .unwrap_or(false);
 
         if !matches_leftover {
+            continue;
+        }
+
+        // A replace-backup whose live destination is missing is not reclaimable scratch: it can
+        // be the sole surviving copy of that file after a failed replace/restore (see
+        // filesystem.rs::replace_file_safely). Keep it so the file can still be recovered by
+        // hand, rather than turning a transient replace failure into permanent data loss a week
+        // later. A backup whose live file is present is genuinely redundant and still reclaimed.
+        let name_is_replace_backup = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(is_replace_backup_leftover)
+            .unwrap_or(false);
+
+        if name_is_replace_backup && !replace_backup_target_present(&path) {
             continue;
         }
 
@@ -383,6 +436,7 @@ mod tests {
             ".thumb_abc.jpg.backup-123-456",
             "clip.migrated-123-456.mp4",
             "clip.migrated-123-456",
+            "video.live_chat.json.gz.gztmp",
         ] {
             assert!(is_atomic_write_leftover(name), "{name} should match");
         }
@@ -395,6 +449,24 @@ mod tests {
         ] {
             assert!(!is_atomic_write_leftover(name), "{name} should not match");
         }
+    }
+
+    #[test]
+    fn replace_backup_target_present_reflects_the_live_file() {
+        let dir = unique_test_dir("backup-target");
+        fs::create_dir_all(&dir).unwrap();
+
+        let backup = dir.join(".video.mp4.backup-1-2");
+        fs::write(&backup, b"original bytes").unwrap();
+
+        // No live `video.mp4` next to it: the backup may be the only surviving copy.
+        assert!(!replace_backup_target_present(&backup));
+
+        // Once the live file exists, the backup is genuinely redundant.
+        fs::write(dir.join("video.mp4"), b"live bytes").unwrap();
+        assert!(replace_backup_target_present(&backup));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -411,7 +483,10 @@ mod tests {
         let real_media = video_dir.join("media_abcdef.mp4");
         make_old_file(&real_media, max_age);
 
-        // A stale copy-temp and a stale replace-backup leftover must be removed.
+        // A stale copy-temp and a stale replace-backup whose live file is present are redundant
+        // scratch and must be removed. The live thumbnail makes the backup genuinely redundant.
+        let live_thumb = thumbs_dir.join("thumb_abcdef.jpg");
+        make_old_file(&live_thumb, max_age);
         let stale_temp = video_dir.join(".media_abcdef.mp4.tmp-1-2");
         let stale_backup = thumbs_dir.join(".thumb_abcdef.jpg.backup-1-2");
         make_old_file(&stale_temp, max_age);
@@ -426,9 +501,39 @@ mod tests {
         assert_eq!(summary.removed_entries, 2);
         assert_eq!(summary.failed_removals, 0);
         assert!(real_media.exists(), "a real media file must be kept");
+        assert!(live_thumb.exists(), "a real thumbnail must be kept");
         assert!(!stale_temp.exists());
         assert!(!stale_backup.exists());
         assert!(recent_temp.exists(), "an in-flight leftover must be kept");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn cleanup_library_leftovers_keeps_a_backup_whose_live_file_is_missing() {
+        // A double-fault in replace_file_safely can leave the original bytes only in the
+        // `.backup-` file while the live destination is gone. The sweep must not delete such a
+        // backup, or a transient replace failure becomes permanent data loss a week later.
+        let library = unique_test_dir("library-backup-missing");
+        let live_chat_dir = library.join("live_chat");
+        fs::create_dir_all(&live_chat_dir).unwrap();
+
+        let max_age = Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60);
+
+        // A stale backup with NO live `clip.live_chat.json.gz` next to it (the only surviving copy).
+        let orphaned_backup = live_chat_dir.join(".clip.live_chat.json.gz.backup-1-2");
+        make_old_file(&orphaned_backup, max_age);
+
+        let summary = cleanup_library_leftovers_sync(&library).unwrap();
+
+        assert_eq!(
+            summary.removed_entries, 0,
+            "the sole-copy backup must be kept"
+        );
+        assert!(
+            orphaned_backup.exists(),
+            "a backup whose live file is missing must not be deleted"
+        );
 
         let _ = fs::remove_dir_all(&library);
     }
