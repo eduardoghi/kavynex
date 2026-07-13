@@ -4,6 +4,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { normalizeString } from "../utils/guards";
 import { logError } from "../utils/app-logger";
+import { ClientError } from "../utils/app-error";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 
@@ -42,7 +43,7 @@ export async function ensureDirectoryExists(path: string): Promise<string> {
     const normalizedPath = normalizeString(path);
 
     if (!normalizedPath) {
-        throw new Error("Directory path is required.");
+        throw new ClientError("Directory path is required.");
     }
 
     const result = await invokeCommand<string>(TAURI_COMMANDS.ENSURE_DIRECTORY_EXISTS, {
@@ -56,7 +57,7 @@ export async function resolveExistingDirectory(path: string): Promise<string> {
     const normalizedPath = normalizeString(path);
 
     if (!normalizedPath) {
-        throw new Error("Directory path is required.");
+        throw new ClientError("Directory path is required.");
     }
 
     const result = await invokeCommand<string>(TAURI_COMMANDS.RESOLVE_EXISTING_DIRECTORY, {
@@ -70,7 +71,7 @@ export async function isDirectoryEmpty(path: string): Promise<boolean> {
     const normalizedPath = normalizeString(path);
 
     if (!normalizedPath) {
-        throw new Error("Directory path is required.");
+        throw new ClientError("Directory path is required.");
     }
 
     return invokeCommand<boolean>(TAURI_COMMANDS.IS_DIRECTORY_EMPTY, {
@@ -86,11 +87,11 @@ export async function migrateLibraryDirectory(
     const normalizedNewLibraryPath = normalizeString(newLibraryPath);
 
     if (!normalizedCurrentLibraryPath) {
-        throw new Error("Current library path is required.");
+        throw new ClientError("Current library path is required.");
     }
 
     if (!normalizedNewLibraryPath) {
-        throw new Error("New library path is required.");
+        throw new ClientError("New library path is required.");
     }
 
     const finalLibraryPath = await invokeCommand<string>(
@@ -138,7 +139,7 @@ export async function openLibraryDirectory(path: string): Promise<void> {
     const normalizedPath = normalizeString(path);
 
     if (!normalizedPath) {
-        throw new Error("Library path is required.");
+        throw new ClientError("Library path is required.");
     }
 
     await resolveExistingDirectory(normalizedPath);
@@ -153,11 +154,11 @@ export async function openFileLocation(path: string, libraryPath: string): Promi
     const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedPath) {
-        throw new Error("Path is required.");
+        throw new ClientError("Path is required.");
     }
 
     if (!normalizedLibraryPath) {
-        throw new Error("Library path is required.");
+        throw new ClientError("Library path is required.");
     }
 
     await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, {
@@ -170,7 +171,7 @@ export async function openExternalUrl(url: string): Promise<void> {
     const normalizedUrl = normalizeString(url);
 
     if (!normalizedUrl) {
-        throw new Error("URL is required.");
+        throw new ClientError("URL is required.");
     }
 
     // Only allow http(s) links to reach the system opener. Blocks file:, javascript:
@@ -180,11 +181,11 @@ export async function openExternalUrl(url: string): Promise<void> {
     try {
         parsedUrl = new URL(normalizedUrl);
     } catch {
-        throw new Error("Invalid URL.");
+        throw new ClientError("Invalid URL.");
     }
 
     if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-        throw new Error("Only http and https URLs can be opened.");
+        throw new ClientError("Only http and https URLs can be opened.");
     }
 
     await openUrl(normalizedUrl);

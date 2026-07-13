@@ -1,6 +1,8 @@
 import { parseAppError, type AppErrorShape } from "./app-error";
 import {
     APP_ERROR_CODE,
+    CLIENT_ERROR_CODE,
+    MEDIA_NOT_FOUND_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
@@ -87,6 +89,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "This media is already registered for the selected channel.",
     [CHANNEL_NOT_FOUND_ERROR_CODE]:
         "The channel no longer exists. It may have been removed while the media was being added.",
+    [MEDIA_NOT_FOUND_ERROR_CODE]:
+        "This media no longer exists. It may have been removed while the operation was running.",
 
     [YT_DLP_NOT_FOUND_ERROR_CODE]:
         "yt-dlp was not found. Install yt-dlp or place the binary in the app tools folder.",
@@ -131,6 +135,13 @@ function resolveFriendlyMessage(parsed: AppErrorShape): string {
 
     if (mappedMessage) {
         return mappedMessage;
+    }
+
+    // A ClientError (utils/app-error.ts) is a user-facing message authored on the frontend. It
+    // carries CLIENT_ERROR_CODE precisely so it never collides with the backend's suppressed
+    // APP_ERROR, so its message is shown verbatim rather than degraded to the generic fallback.
+    if (parsed.code === CLIENT_ERROR_CODE) {
+        return parsed.message?.trim() || DEFAULT_ERROR_MESSAGE;
     }
 
     if (isUncataloguedBackendCode(parsed.code)) {

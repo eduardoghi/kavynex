@@ -4,6 +4,7 @@ import type { MediaSourceMode, MediaType, YtDlpFormat } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { ClientError } from "../utils/app-error";
 import { allowAssetFile } from "../services/asset-scope-service";
 import { useAddMediaFormState } from "./use-add-media-form-state";
 import { useTempThumbnail } from "./use-temp-thumbnail";
@@ -203,7 +204,7 @@ export function useAddMediaForm({
             }
 
             if (!isCookiesTextFile(selectedPath)) {
-                throw new Error("Please choose a valid .txt cookies file.");
+                throw new ClientError("Please choose a valid .txt cookies file.");
             }
 
             setCookiesBrowserState("manual");

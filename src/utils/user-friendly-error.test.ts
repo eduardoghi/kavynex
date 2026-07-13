@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { resolveErrorMessage, toUserFriendlyError } from "./user-friendly-error";
+import { ClientError } from "./app-error";
 import {
     APP_ERROR_CODE,
+    CLIENT_ERROR_CODE,
+    MEDIA_NOT_FOUND_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
@@ -139,6 +142,42 @@ describe("toUserFriendlyError", () => {
                 message: "raw backend failure",
             })
         ).toBe("Unknown error.");
+    });
+
+    it("shows a CLIENT_ERROR message verbatim (a frontend-authored user-facing error)", () => {
+        expect(
+            toUserFriendlyError({
+                code: CLIENT_ERROR_CODE,
+                message: "The selected folder must be empty before it can be used as the library folder.",
+            })
+        ).toBe("The selected folder must be empty before it can be used as the library folder.");
+    });
+
+    it("falls back to the unknown message for a CLIENT_ERROR with a blank message", () => {
+        expect(
+            toUserFriendlyError({
+                code: CLIENT_ERROR_CODE,
+                message: "   ",
+            })
+        ).toBe("Unknown error.");
+    });
+
+    it("maps MEDIA_NOT_FOUND to its friendly message", () => {
+        expect(
+            toUserFriendlyError({
+                code: MEDIA_NOT_FOUND_ERROR_CODE,
+                message: "the media no longer exists",
+            })
+        ).toBe("This media no longer exists. It may have been removed while the operation was running.");
+    });
+
+    it("returns a thrown ClientError's message rather than the caller fallback", () => {
+        expect(
+            resolveErrorMessage(
+                new ClientError("Please choose a valid .txt cookies file."),
+                "Failed to select cookies file."
+            )
+        ).toBe("Please choose a valid .txt cookies file.");
     });
 
     it("maps YT_DLP_NOT_FOUND correctly", () => {

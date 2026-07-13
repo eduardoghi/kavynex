@@ -1,12 +1,13 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeTauri } from "../lib/tauri-client";
 import { normalizeString } from "../utils/guards";
+import { ClientError } from "../utils/app-error";
 
 export async function generateTemporaryThumbnail(mediaPath: string): Promise<string> {
     const normalizedMediaPath = normalizeString(mediaPath);
 
     if (!normalizedMediaPath) {
-        throw new Error("Media path is required.");
+        throw new ClientError("Media path is required.");
     }
 
     return normalizeString(
@@ -24,11 +25,11 @@ export async function persistThumbnailFile(
     const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedSourcePath) {
-        throw new Error("Thumbnail source path is required.");
+        throw new ClientError("Thumbnail source path is required.");
     }
 
     if (!normalizedLibraryPath) {
-        throw new Error("Library path is required.");
+        throw new ClientError("Library path is required.");
     }
 
     return normalizeString(
@@ -47,11 +48,11 @@ export async function downloadThumbnailFromUrl(
     const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedUrl) {
-        throw new Error("Thumbnail URL is required.");
+        throw new ClientError("Thumbnail URL is required.");
     }
 
     if (!normalizedLibraryPath) {
-        throw new Error("Library path is required.");
+        throw new ClientError("Library path is required.");
     }
 
     return normalizeString(
@@ -70,11 +71,11 @@ export async function downloadChannelAvatarFromHandle(
     const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedYoutubeHandle) {
-        throw new Error("YouTube handle is required.");
+        throw new ClientError("YouTube handle is required.");
     }
 
     if (!normalizedLibraryPath) {
-        throw new Error("Library path is required.");
+        throw new ClientError("Library path is required.");
     }
 
     return normalizeString(

@@ -5,6 +5,7 @@ import {
     migrateLibraryDirectory,
 } from "../services/library-service";
 import { isFilesystemRootPath } from "../utils/paths";
+import { ClientError } from "../utils/app-error";
 
 type ExecuteChangeLibraryPathInput = {
     currentLibraryPath: string;
@@ -15,14 +16,14 @@ export type ExecuteChangeLibraryPathResult = {
     finalLibraryPath: string;
 };
 
-function createNonEmptyFolderError(): Error {
-    return new Error(
+function createNonEmptyFolderError(): ClientError {
+    return new ClientError(
         "The selected folder must be empty before it can be used as the library folder."
     );
 }
 
-function createDriveRootError(): Error {
-    return new Error(
+function createDriveRootError(): ClientError {
+    return new ClientError(
         "A drive or volume root cannot be used as the library folder. Choose a regular folder instead."
     );
 }

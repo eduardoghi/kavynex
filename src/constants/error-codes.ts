@@ -2,6 +2,11 @@ import type { AppErrorCode } from "../types/generated/AppErrorCode";
 
 export const APP_ERROR_CODE = "APP_ERROR" as const;
 export const INVALID_INPUT_ERROR_CODE = "INVALID_INPUT" as const;
+// Tags an error authored on the frontend whose message is meant to be shown to the user verbatim
+// (see `ClientError` in utils/app-error.ts). Kept distinct from APP_ERROR - which the backend
+// uses deliberately to *suppress* raw internal messages - so a user-facing client message is
+// never mistaken for a backend one and hidden behind the generic fallback.
+export const CLIENT_ERROR_CODE = "CLIENT_ERROR" as const;
 export const DATABASE_SCHEMA_TOO_NEW_ERROR_CODE = "DATABASE_SCHEMA_TOO_NEW" as const;
 
 export const INVALID_URL_ERROR_CODE = "INVALID_URL" as const;
@@ -49,6 +54,7 @@ export const MEDIA_IMPORT_FAILED_ERROR_CODE = "MEDIA_IMPORT_FAILED" as const;
 export const VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE =
     "VIDEO_ALREADY_EXISTS_FOR_CHANNEL" as const;
 export const CHANNEL_NOT_FOUND_ERROR_CODE = "CHANNEL_NOT_FOUND" as const;
+export const MEDIA_NOT_FOUND_ERROR_CODE = "MEDIA_NOT_FOUND" as const;
 export const INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE = "INVALID_YOUTUBE_VIDEO_ID" as const;
 export const INVALID_MEDIA_TITLE_ERROR_CODE = "INVALID_MEDIA_TITLE" as const;
 export const MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE = "MEDIA_WITHOUT_YOUTUBE_SOURCE" as const;
@@ -60,6 +66,7 @@ export const YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE =
 // Error codes raised only by the frontend (never emitted by the Rust backend), so they are not
 // part of the ts-rs-generated AppErrorCode union and are exempt from the check below.
 type FrontendOnlyErrorCode =
+    | typeof CLIENT_ERROR_CODE
     | typeof INVALID_CHANNEL_ID_ERROR_CODE
     | typeof MEDIA_IMPORT_FAILED_ERROR_CODE
     | typeof MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE
@@ -72,6 +79,7 @@ type FrontendOnlyErrorCode =
 // leaving a dead `error.code === X` comparison.
 export const KNOWN_ERROR_CODES = [
     APP_ERROR_CODE,
+    CLIENT_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
@@ -111,6 +119,7 @@ export const KNOWN_ERROR_CODES = [
     MEDIA_IMPORT_FAILED_ERROR_CODE,
     VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE,
     CHANNEL_NOT_FOUND_ERROR_CODE,
+    MEDIA_NOT_FOUND_ERROR_CODE,
     INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE,
     INVALID_MEDIA_TITLE_ERROR_CODE,
     MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE,

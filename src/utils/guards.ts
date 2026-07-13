@@ -1,3 +1,5 @@
+import { ClientError } from "./app-error";
+
 export function normalizeString(value: string | null | undefined): string {
     return value?.trim() ?? "";
 }
@@ -13,7 +15,7 @@ export function assertNonEmptyString(
     const normalized = normalizeString(value);
 
     if (!normalized) {
-        throw new Error(fallbackMessage);
+        throw new ClientError(fallbackMessage);
     }
 
     return normalized;

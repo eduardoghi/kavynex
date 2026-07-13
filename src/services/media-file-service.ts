@@ -2,6 +2,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeTauri } from "../lib/tauri-client";
 import type { ImportMode } from "../types/settings";
 import { normalizeString } from "../utils/guards";
+import { ClientError } from "../utils/app-error";
 
 export async function importMediaFile(
     sourcePath: string,
@@ -12,11 +13,11 @@ export async function importMediaFile(
     const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedSourcePath) {
-        throw new Error("Source media path is required.");
+        throw new ClientError("Source media path is required.");
     }
 
     if (!normalizedLibraryPath) {
-        throw new Error("Library path is required.");
+        throw new ClientError("Library path is required.");
     }
 
     const result = await invokeTauri<string>(TAURI_COMMANDS.IMPORT_MEDIA_FILE, {

@@ -31,7 +31,10 @@ const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
 //   boundary.
 // INVALID_CHANNEL_ID stays frontend-only: channel ids reach the backend as a typed i64, so
 // there is no backend code that rejects an invalid one.
+// CLIENT_ERROR tags a user-facing error authored purely on the frontend (utils/app-error.ts's
+// ClientError), so it has no backend counterpart in error.rs.
 const FRONTEND_ONLY_ERROR_CODES = new Set([
+    "CLIENT_ERROR",
     "INVALID_CHANNEL_ID",
     "MEDIA_IMPORT_FAILED",
     "MEDIA_WITHOUT_YOUTUBE_SOURCE",
