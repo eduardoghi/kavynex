@@ -4,6 +4,7 @@ import {
     generateTemporaryThumbnail,
 } from "../services/thumbnail-service";
 import { logError } from "../utils/app-logger";
+import { useMemoObject } from "./use-memo-object";
 
 type UseTempThumbnailReturn = {
     thumbPath: string;
@@ -166,11 +167,15 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
         }
     }, [cleanupTempThumb, safeSetIsGeneratingThumb, safeSetThumbPath]);
 
-    return {
+    // Memoized so this hook's return keeps a stable identity across renders. Its consumer
+    // (use-add-media-form) lists the whole object as a useCallback dependency, so an unstable
+    // identity here would recreate those callbacks - and the memoized form controller built from
+    // them - on every render (e.g. every streamed yt-dlp log line), defeating the memoization.
+    return useMemoObject({
         thumbPath,
         isGeneratingThumb,
         setManualThumbPath,
         generateThumbForMedia,
         resetThumbState,
-    };
+    });
 }

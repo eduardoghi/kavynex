@@ -1,5 +1,6 @@
 import { useCallback, useReducer } from "react";
 import type { MediaSourceMode, MediaType } from "../types/media";
+import { useMemoObject } from "./use-memo-object";
 
 type AddMediaFormState = {
     sourceMode: MediaSourceMode;
@@ -179,7 +180,11 @@ export function useAddMediaFormState(): UseAddMediaFormStateReturn {
         });
     }, []);
 
-    return {
+    // Memoized so this hook's return keeps a stable identity across renders (only changing when
+    // `state` does). Its consumer (use-add-media-form) lists the whole object as a useCallback
+    // dependency, so an unstable identity would recreate those callbacks - and the memoized form
+    // controller built from them - on every render, defeating the memoization.
+    return useMemoObject({
         state,
         setSourceModeState,
         setMediaUrlState,
@@ -188,5 +193,5 @@ export function useAddMediaFormState(): UseAddMediaFormStateReturn {
         setMediaTypeState,
         applyLocalMediaSelectionState,
         resetFormState,
-    };
+    });
 }
