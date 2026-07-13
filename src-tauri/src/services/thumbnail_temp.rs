@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use tauri::AppHandle;
 
@@ -82,6 +83,35 @@ fn ensure_generated_thumbnail_exists(
     Ok(())
 }
 
+/// Runs a prepared ffmpeg command to completion, registering its pid in the process registry
+/// for the child's lifetime so the app-exit handler (`lib.rs`) tree-kills it instead of leaving
+/// an orphan. These local-media thumbnail generations run synchronously via `std::process`,
+/// outside the per-download and yt-dlp registries, so they would otherwise be untracked on exit.
+fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::process::Output> {
+    hide_console(&mut command);
+
+    let child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::FfmpegExecFailed,
+                format!("failed to execute ffmpeg: {e}"),
+            )
+        })?;
+
+    // Tracked for the child's lifetime; the guard unregisters the pid when this function returns.
+    let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(child.id()));
+
+    child.wait_with_output().map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::FfmpegExecFailed,
+            format!("failed to execute ffmpeg: {e}"),
+        )
+    })
+}
+
 fn generate_video_temporary_thumbnail(
     ffmpeg: &str,
     source_path: &Path,
@@ -100,14 +130,8 @@ fn generate_video_temporary_thumbnail(
         "scale='min(640,iw)':-1",
         out_png.to_string_lossy().as_ref(),
     ]);
-    hide_console(&mut command);
 
-    let output = command.output().map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::FfmpegExecFailed,
-            format!("failed to execute ffmpeg: {e}"),
-        )
-    })?;
+    let output = run_tracked_ffmpeg(command)?;
 
     if !output.status.success() {
         return Err(read_process_error(
@@ -142,14 +166,8 @@ fn generate_audio_embedded_temporary_thumbnail(
         "scale='min(640,iw)':-1",
         out_png.to_string_lossy().as_ref(),
     ]);
-    hide_console(&mut command);
 
-    let output = command.output().map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::FfmpegExecFailed,
-            format!("failed to execute ffmpeg: {e}"),
-        )
-    })?;
+    let output = run_tracked_ffmpeg(command)?;
 
     if !output.status.success() {
         return Err(read_process_error(
