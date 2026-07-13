@@ -193,6 +193,15 @@ pub async fn media_exists_for_channel_and_youtube_id(
     Ok(exists != 0)
 }
 
+/// Inserts a media row and returns its id, or returns the id of the existing row when the same
+/// `(channel_id, file_path)` is already registered.
+///
+/// This is an idempotent "add", NOT an upsert of the row's contents: on an existing
+/// `(channel_id, file_path)` the `ON CONFLICT DO UPDATE` is a deliberate no-op (see the comment
+/// on the statement below), so re-adding the same file keeps the previously stored `title`,
+/// `thumbnail_path`, `duration_seconds`, etc. untouched. A caller that needs to change an
+/// existing row's metadata must use the dedicated update path (e.g. `update_media_title`), not
+/// re-`insert_media`, which will silently leave every field but the id as it was.
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_media(
     pool: &SqlitePool,

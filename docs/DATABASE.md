@@ -141,7 +141,7 @@ index cannot serve a bare `file_path =` predicate), and comment lookups by `vide
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `9`), in `db_schema.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `10`), in `db_schema.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -160,6 +160,15 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   which keep the per-artifact reference-count lookups run on delete off a full table scan.
   Also purely additive, so its migration re-runs the index DDL list and stamps
   `user_version = 9`.
+- **v10** adds the partial unique index `idx_video_comments_video_comment_unique` on
+  `video_comments(video_id, comment_id)` (where `comment_id` is non-null and non-blank),
+  moving the "no duplicate `(video_id, comment_id)`" invariant out of application code
+  (`media_comments::dedupe_comments_by_id`) and into the schema. Unlike v8/v9 it cannot
+  blindly create the index: a pre-v10 database could already hold a duplicate the unique
+  build would reject, so the migration first collapses any duplicate comment rows to the
+  lowest `id` (backed by a temporary `(video_id, comment_id, id)` index it drops again) and
+  only then creates the real index, all in one transaction before stamping
+  `user_version = 10`.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
