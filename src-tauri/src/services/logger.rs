@@ -64,7 +64,7 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
 pub fn redact_path(path: impl AsRef<Path>) -> String {
     let raw = path.as_ref().to_string_lossy();
 
-    raw.rsplit(|c| c == '/' || c == '\\')
+    raw.rsplit(['/', '\\'])
         .find(|segment| !segment.trim().is_empty())
         .unwrap_or("<path>")
         .to_string()
