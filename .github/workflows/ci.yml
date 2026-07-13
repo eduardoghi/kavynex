@@ -79,6 +79,16 @@ jobs:
                 # surface at release time.
                 platform: [ubuntu-22.04, windows-latest, macos-latest]
         runs-on: ${{ matrix.platform }}
+        # Never let a job run toward the 6h default: a slow cold compile (or a real hang) fails
+        # here with a readable log instead of appearing stuck for hours.
+        timeout-minutes: 30
+        # Trim debuginfo in CI. `cargo test` recompiles the whole dependency tree with codegen
+        # (clippy before it only checks, producing no reusable codegen), and the default full
+        # debuginfo dominates the test-binary link - most of all on Linux's slow ld.bfd. CI never
+        # needs it: a panic still prints file:line. Applied on every OS; harmless where fast.
+        env:
+            CARGO_PROFILE_DEV_DEBUG: "0"
+            CARGO_PROFILE_TEST_DEBUG: "0"
         steps:
             - name: Checkout repository
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -97,12 +107,21 @@ jobs:
               if: matrix.platform == 'ubuntu-22.04'
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf lld
+                  # Link the large test binary with lld instead of the default ld.bfd, which is
+                  # very slow on Linux for a tauri+sqlx+hyper+rustls tree (this is what made the
+                  # ubuntu "Run tests" step drag). macOS/Windows already use fast linkers, so this
+                  # is scoped to the Linux job via $GITHUB_ENV (also folded into the cache key).
+                  echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
 
             - name: Cache Rust build
               uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
               with:
                   workspaces: src-tauri
+                  # Persist the cache even when the job fails/times out, so the cold compile only
+                  # happens once. The ubuntu job kept running without finishing, so the cache never
+                  # saved and each run recompiled the whole tree from scratch.
+                  cache-on-failure: "true"
 
             - name: Check formatting
               run: cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
