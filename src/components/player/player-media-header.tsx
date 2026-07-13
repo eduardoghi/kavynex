@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { ActionIcon, Badge, Box, Button, Group, Kbd, Popover, Stack, Text } from "@mantine/core";
 import {
     ArrowLeft,
@@ -29,6 +30,9 @@ type PlayerMediaHeaderProps = {
     onMarkWatched: () => void | Promise<void>;
     onMarkUnwatched: () => void | Promise<void>;
     onBack: () => void;
+    // Focused when the player opens so keyboard/screen-reader users land on the player instead of
+    // being dropped on <body> (the library section stays mounted but hidden behind it).
+    backButtonRef?: Ref<HTMLButtonElement>;
 };
 
 type KeyboardShortcut = {
@@ -62,11 +66,13 @@ export function PlayerMediaHeader({
     onMarkWatched,
     onMarkUnwatched,
     onBack,
+    backButtonRef,
 }: PlayerMediaHeaderProps): JSX.Element {
     return (
         <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
             <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
                 <ActionIcon
+                    ref={backButtonRef}
                     variant="subtle"
                     size="lg"
                     aria-label="Back to library"

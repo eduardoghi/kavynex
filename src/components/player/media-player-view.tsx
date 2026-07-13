@@ -56,8 +56,24 @@ export function MediaPlayerView({
     onBack,
 }: MediaPlayerViewProps): JSX.Element {
     const playerElementRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
+    const backButtonRef = useRef<HTMLButtonElement>(null);
     const [playerElement, setPlayerElement] = useState<HTMLMediaElement | null>(null);
     const [hasPlaybackError, setHasPlaybackError] = useState(false);
+
+    // Move focus into the player when it opens - the library grid stays mounted but hidden behind
+    // it, so focus would otherwise be dropped on <body> - and restore it to whatever opened the
+    // player (the originating card) when it closes, if that element is still around. Runs once for
+    // the player's lifetime; the back control is the natural landing spot.
+    useEffect(() => {
+        const previouslyFocused = document.activeElement as HTMLElement | null;
+        backButtonRef.current?.focus();
+
+        return () => {
+            if (previouslyFocused?.isConnected) {
+                previouslyFocused.focus();
+            }
+        };
+    }, []);
 
     // Each concern the player owns lives in its own hook: watch-position persistence, loading the
     // saved comments and live chat replay, and the global keyboard shortcuts. This component is
@@ -218,6 +234,7 @@ export function MediaPlayerView({
         <RemoteImagesProvider value={loadRemoteImages}>
             <Stack gap="md">
                 <PlayerMediaHeader
+                    backButtonRef={backButtonRef}
                     title={media?.title ?? ""}
                     publishedLabel={publishedLabel}
                     createdLabel={kavynexCreatedLabel}
