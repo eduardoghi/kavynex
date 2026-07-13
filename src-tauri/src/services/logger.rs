@@ -52,16 +52,22 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
     let _ = fs::rename(path, &backup);
 }
 
-/// Reduz um caminho ao seu componente final para uso em log. Uma linha de log pode ser
-/// colada num bug report publico, e um caminho absoluto no Windows embute
-/// `C:\Users\<nome>\...`, revelando o usuario/perfil do SO. Espelha a redacao que os
-/// caminhos do yt-dlp ja recebem (services::yt_dlp_download::redact_paths_value). Cai para
-/// `<path>` quando o caminho nao tem componente final (ex.: uma raiz).
+/// Reduces a path to its final component for use in a log line. A log line can be pasted into
+/// a public bug report, and an absolute Windows path embeds `C:\Users\<name>\...`, revealing
+/// the OS username/profile. Mirrors the redaction the yt-dlp paths already receive
+/// (services::yt_dlp_download::redact_paths_value).
+///
+/// Splits on both `/` and `\` on every platform: a path can come from a library synced from
+/// Windows even when running on Unix, where `\` is not a separator and `Path::file_name` would
+/// otherwise return the whole string unredacted. Falls back to `<path>` when no final
+/// component remains (e.g. a root).
 pub fn redact_path(path: impl AsRef<Path>) -> String {
-    path.as_ref()
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "<path>".to_string())
+    let raw = path.as_ref().to_string_lossy();
+
+    raw.rsplit(|c| c == '/' || c == '\\')
+        .find(|segment| !segment.trim().is_empty())
+        .unwrap_or("<path>")
+        .to_string()
 }
 
 fn append_line(path: &Path, line: &str) {
