@@ -211,6 +211,17 @@ async fn replace_media_comments_in_pool(
                 ));
             }
 
+            // The video_comments.video_id foreign key no longer resolves: the media row was
+            // removed (e.g. deleted concurrently while a yt-dlp comment fetch was finishing).
+            // Map it to a friendly code instead of a raw SQLite foreign-key constraint error,
+            // mirroring insert_media's channel_id handling (video_repository.rs).
+            if crate::services::database::is_foreign_key_violation(&error) {
+                return Err(AppError::from_code(
+                    AppErrorCode::MediaNotFound,
+                    "the media no longer exists",
+                ));
+            }
+
             Err(sqlite_error("failed to persist comments", error))
         }
     }
@@ -391,6 +402,25 @@ mod tests {
         assert_eq!(total_comments, 3);
         assert_eq!(c1_count, 1);
         assert_eq!(kept_text, "first");
+    }
+
+    #[tokio::test]
+    async fn replace_media_comments_maps_foreign_key_violation_to_media_not_found() {
+        let pool = create_test_pool().await;
+        // The real pool opens with foreign_keys ON (services::database); the in-memory test pool
+        // must enable it explicitly to exercise the mapping. max_connections(1) keeps this PRAGMA
+        // on the same connection the transaction below reuses.
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .expect("enable foreign keys");
+
+        // media id 999 has no `videos` row, so the comment insert violates the video_id FK.
+        let error = replace_media_comments_in_pool(&pool, 999, vec![sample_comment("orphan")])
+            .await
+            .expect_err("insert against a missing media must fail");
+
+        assert_eq!(error.code, AppErrorCode::MediaNotFound.as_str());
     }
 
     #[tokio::test]
