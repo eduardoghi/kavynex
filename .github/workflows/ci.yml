@@ -79,9 +79,10 @@ jobs:
                 # surface at release time.
                 platform: [ubuntu-22.04, windows-latest, macos-latest]
         runs-on: ${{ matrix.platform }}
-        # Never let a job run toward the 6h default: a slow cold compile (or a real hang) fails
-        # here with a readable log instead of appearing stuck for hours.
-        timeout-minutes: 30
+        # Never let a job run toward the 6h default. Temporarily 60 while diagnosing the ubuntu
+        # "Run tests" step: enough headroom for a first cold codegen build to finish (which also
+        # warms the cache) or for the bounded diagnostic below to fail with a persisted log.
+        timeout-minutes: 60
         # Trim debuginfo in CI. `cargo test` recompiles the whole dependency tree with codegen
         # (clippy before it only checks, producing no reusable codegen), and the default full
         # debuginfo dominates the test-binary link - most of all on Linux's slow ld.bfd. CI never
@@ -130,7 +131,26 @@ jobs:
               run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
             - name: Run tests
+              if: matrix.platform != 'ubuntu-22.04'
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+            # TEMPORARY diagnostic: the ubuntu "Run tests" step never finishes and a job-level
+            # timeout/cancel leaves no log. Split the build and run phases, each bounded by a shell
+            # `timeout` so the step FAILS with a persisted log instead of hanging. The build phase
+            # is given generous room so a genuinely-slow first cold codegen build can still finish
+            # (which also warms the cache); if it is a runtime hang instead, `--test-threads=1`
+            # makes the last printed "test NAME ..." line the culprit. Timestamps in the log show
+            # exactly where the wall-clock goes. To be reverted to the plain command once diagnosed.
+            - name: Run tests (ubuntu diagnostic)
+              if: matrix.platform == 'ubuntu-22.04'
+              run: |
+                  set -x
+                  echo "::group::build test binaries (bounded 2700s)"
+                  timeout --preserve-status 2700 cargo test --manifest-path src-tauri/Cargo.toml --locked --no-run
+                  echo "::endgroup::"
+                  echo "::group::run tests serially (bounded 300s)"
+                  timeout --preserve-status 300 cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1 --nocapture
+                  echo "::endgroup::"
 
             - name: Verify generated TS bindings are up to date
               if: matrix.platform == 'ubuntu-22.04'
