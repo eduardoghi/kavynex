@@ -81,9 +81,9 @@ jobs:
         runs-on: ${{ matrix.platform }}
         # Never let a job run toward the 6h default: a hang fails in bounded time.
         timeout-minutes: 30
-        # Trim debuginfo (and, on ubuntu below, link with lld) so the cold ubuntu compile is fast
-        # and the bounded test step reaches the tests quickly - a hang then shows up in a persisted
-        # log instead of the compile time masking it. TEMP diagnostic env; trimmed once green.
+        # Trim debuginfo (and, on ubuntu below, link with lld): CI never needs full debuginfo, and
+        # this keeps the cold ubuntu compile/link on the slow 2-vCPU runner fast. A panic still
+        # prints file:line, so failures stay diagnosable.
         env:
             CARGO_PROFILE_DEV_DEBUG: "0"
             CARGO_PROFILE_TEST_DEBUG: "0"
@@ -106,6 +106,8 @@ jobs:
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf lld
+                  # Link with lld instead of the slow default ld.bfd (Linux only; macOS/Windows
+                  # already use fast linkers). Scoped to this job via $GITHUB_ENV.
                   echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
 
             - name: Cache Rust build
@@ -123,22 +125,7 @@ jobs:
               run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
             - name: Run tests
-              if: matrix.platform != 'ubuntu-22.04'
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-
-            # TEMP diagnostic: a test still hangs the ubuntu "Run tests" step. Build then run
-            # serially, each bounded by a shell `timeout` so the step FAILS with a persisted log
-            # (a job timeout/cancel leaves none). --test-threads=1 makes the last printed
-            # "test NAME ..." line the culprit. Reverted to the plain command once green.
-            - name: Run tests (ubuntu diagnostic)
-              if: matrix.platform == 'ubuntu-22.04'
-              run: |
-                  echo "::group::build test binaries (bounded 1200s)"
-                  timeout --preserve-status 1200 cargo test --manifest-path src-tauri/Cargo.toml --locked --no-run
-                  echo "::endgroup::"
-                  echo "::group::run tests serially (bounded 240s)"
-                  timeout --preserve-status 240 cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1 --nocapture
-                  echo "::endgroup::"
 
             - name: Verify generated TS bindings are up to date
               if: matrix.platform == 'ubuntu-22.04'
