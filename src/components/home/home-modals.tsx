@@ -163,8 +163,10 @@ export function HomeModals({
                 importMode={settings.settings.importMode}
                 libraryPath={settings.settings.libraryPath}
                 loadRemoteImages={settings.settings.loadRemoteImages}
+                checkUpdatesOnStartup={settings.settings.checkUpdatesOnStartup}
                 onChangeImportMode={settings.setImportMode}
                 onChangeLoadRemoteImages={settings.setLoadRemoteImages}
+                onChangeCheckUpdatesOnStartup={settings.setCheckUpdatesOnStartup}
                 onChooseLibraryPath={() => void settings.chooseLibraryPath()}
                 onOpenLibraryPath={() => void settings.openCurrentLibraryPath()}
                 onOpenDiagnostics={() => {

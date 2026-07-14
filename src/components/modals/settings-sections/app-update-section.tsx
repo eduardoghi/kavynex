@@ -1,4 +1,4 @@
-import { Alert, Group, Paper, Progress, Stack, Text, Title } from "@mantine/core";
+import { Alert, Divider, Group, Paper, Progress, Stack, Switch, Text, Title } from "@mantine/core";
 import { Download, RefreshCcw } from "lucide-react";
 import type { SettingsController } from "../../../hooks/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
@@ -11,7 +11,10 @@ type AppUpdateSectionProps = Pick<
     | "appUpdateErrorMessage"
     | "checkForUpdate"
     | "installUpdate"
->;
+> & {
+    checkUpdatesOnStartup: boolean;
+    onChangeCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
+};
 
 export function AppUpdateSection({
     appUpdateStatus,
@@ -20,6 +23,8 @@ export function AppUpdateSection({
     appUpdateErrorMessage,
     checkForUpdate,
     installUpdate,
+    checkUpdatesOnStartup,
+    onChangeCheckUpdatesOnStartup,
 }: AppUpdateSectionProps): JSX.Element {
     return (
         <Stack gap="xs">
@@ -104,6 +109,27 @@ export function AppUpdateSection({
                             <Text size="sm">{appUpdateErrorMessage}</Text>
                         </Alert>
                     )}
+
+                    <Divider />
+
+                    <Group justify="space-between" align="flex-start" wrap="nowrap">
+                        <Stack gap={2} style={{ minWidth: 0 }}>
+                            <Text fw={600}>Check for updates on startup</Text>
+                            <Text size="sm" c="dimmed">
+                                When on, Kavynex checks GitHub Releases once each time it starts and
+                                tells you if a newer version is available. Off by default, so the app
+                                contacts the update endpoint only when you check manually.
+                            </Text>
+                        </Stack>
+
+                        <Switch
+                            checked={checkUpdatesOnStartup}
+                            onChange={(event) =>
+                                onChangeCheckUpdatesOnStartup(event.currentTarget.checked)
+                            }
+                            aria-label="Check for updates on startup"
+                        />
+                    </Group>
                 </Stack>
             </Paper>
         </Stack>

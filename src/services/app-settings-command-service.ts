@@ -19,11 +19,13 @@ export async function getStoredAppSettings(): Promise<StoredAppSettingsPayload> 
 export async function setStoredAppSettings(
     importMode: string,
     libraryPath: string,
-    loadRemoteImages: boolean
+    loadRemoteImages: boolean,
+    checkUpdatesOnStartup: boolean
 ): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.SET_APP_SETTINGS, {
         importMode,
         libraryPath,
         loadRemoteImages,
+        checkUpdatesOnStartup,
     });
 }

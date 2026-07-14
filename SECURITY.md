@@ -128,11 +128,14 @@ The app's cache directory (for temporary thumbnail previews) is authorized once,
 
 The updater (`tauri-plugin-updater`) checks a fixed HTTPS endpoint on GitHub
 (`https://github.com/eduardoghi/kavynex/releases/latest/download/latest.json`,
-`tauri.conf.json`), only when the user opens Settings and explicitly asks it to check -
-there is no automatic/background check. Downloaded update artifacts are verified against
-a minisign public key embedded in `tauri.conf.json` before being installed; the matching
-private key is held by the release workflow's GitHub secrets and never checked into the
-repository.
+`tauri.conf.json`). By default this happens only when the user opens Settings and explicitly
+asks it to check - there is no automatic/background check. A single passive check on startup
+is available as an **opt-in** setting (Settings > Application update,
+`check_updates_on_startup`), off by default, so the app contacts the endpoint on launch only
+after the user turns it on; when it does, an available update is surfaced as a non-intrusive
+notice, never auto-downloaded. Downloaded update artifacts are verified against a minisign
+public key embedded in `tauri.conf.json` before being installed; the matching private key is
+held by the release workflow's GitHub secrets and never checked into the repository.
 
 ### Installers are unsigned by design
 

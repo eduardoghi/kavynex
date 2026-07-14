@@ -83,6 +83,7 @@ const mockSettingsState = {
         importMode: "copy" as const,
         libraryPath: "/library",
         loadRemoteImages: true,
+        checkUpdatesOnStartup: false,
     },
     isPreparingSettings: false,
     isMigratingLibraryPath: false,
@@ -90,6 +91,7 @@ const mockSettingsState = {
     closeSettings: vi.fn(),
     setImportMode: vi.fn(),
     setLoadRemoteImages: vi.fn(),
+    setCheckUpdatesOnStartup: vi.fn(),
     chooseLibraryPath: vi.fn(),
     openCurrentLibraryPath: vi.fn(),
 };

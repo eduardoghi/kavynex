@@ -8,6 +8,7 @@ import { useAsyncFlag } from "./use-async-flag";
 import {
     loadStoredSettings,
     persistSettings,
+    updateStoredCheckUpdatesOnStartup,
     updateStoredImportMode,
     updateStoredLibraryPath,
     updateStoredLoadRemoteImages,
@@ -26,6 +27,7 @@ type UseAppSettingsActionsReturn = {
     changeLibraryPath: (currentLibraryPath: string) => Promise<void>;
     setImportModeAction: (mode: AppSettings["importMode"]) => void;
     setLoadRemoteImagesAction: (loadRemoteImages: boolean) => void;
+    setCheckUpdatesOnStartupAction: (checkUpdatesOnStartup: boolean) => void;
     openCurrentLibraryPathAction: (libraryPath: string) => Promise<void>;
 };
 
@@ -130,6 +132,32 @@ export function useAppSettingsActions({
         [onError, setSettings]
     );
 
+    const setCheckUpdatesOnStartupAction = useCallback(
+        (checkUpdatesOnStartup: boolean): void => {
+            void (async () => {
+                try {
+                    const nextSettings =
+                        await updateStoredCheckUpdatesOnStartup(checkUpdatesOnStartup);
+                    setSettings(nextSettings);
+                } catch (error) {
+                    logError(
+                        "settings",
+                        "Failed to change the startup update-check preference.",
+                        error,
+                        { checkUpdatesOnStartup }
+                    );
+                    onError(
+                        resolveErrorMessage(
+                            error,
+                            "Failed to change the startup update-check preference."
+                        )
+                    );
+                }
+            })();
+        },
+        [onError, setSettings]
+    );
+
     const openCurrentLibraryPathAction = useCallback(
         async (libraryPath: string): Promise<void> => {
             try {
@@ -151,6 +179,7 @@ export function useAppSettingsActions({
         changeLibraryPath,
         setImportModeAction,
         setLoadRemoteImagesAction,
+        setCheckUpdatesOnStartupAction,
         openCurrentLibraryPathAction,
     };
 }

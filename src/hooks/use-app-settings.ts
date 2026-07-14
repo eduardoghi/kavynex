@@ -19,6 +19,7 @@ type UseAppSettingsReturn = {
     closeSettings: () => void;
     setImportMode: (mode: ImportMode) => void;
     setLoadRemoteImages: (loadRemoteImages: boolean) => void;
+    setCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
     chooseLibraryPath: () => Promise<void>;
     openCurrentLibraryPath: () => Promise<void>;
 };
@@ -58,6 +59,13 @@ export function useAppSettings({
     const setLoadRemoteImages = useCallback(
         (loadRemoteImages: boolean): void => {
             settingsActions.setLoadRemoteImagesAction(loadRemoteImages);
+        },
+        [settingsActions]
+    );
+
+    const setCheckUpdatesOnStartup = useCallback(
+        (checkUpdatesOnStartup: boolean): void => {
+            settingsActions.setCheckUpdatesOnStartupAction(checkUpdatesOnStartup);
         },
         [settingsActions]
     );
@@ -113,6 +121,7 @@ export function useAppSettings({
             closeSettings,
             setImportMode,
             setLoadRemoteImages,
+            setCheckUpdatesOnStartup,
             chooseLibraryPath,
             openCurrentLibraryPath,
         }),
@@ -125,6 +134,7 @@ export function useAppSettings({
             closeSettings,
             setImportMode,
             setLoadRemoteImages,
+            setCheckUpdatesOnStartup,
             chooseLibraryPath,
             openCurrentLibraryPath,
         ]

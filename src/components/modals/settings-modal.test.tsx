@@ -48,7 +48,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 
@@ -80,7 +82,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={onChangeLoadRemoteImages}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 
@@ -128,7 +132,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 
@@ -150,7 +156,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 
@@ -191,7 +199,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 
@@ -218,7 +228,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 
@@ -246,7 +258,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason="Blocked right now"
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 
@@ -272,7 +286,9 @@ describe("SettingsModal", () => {
                 libraryPathChangeDisabledReason=""
                 isMigratingLibraryPath={false}
                 loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
             />
         );
 

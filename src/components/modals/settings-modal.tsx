@@ -14,8 +14,10 @@ type SettingsModalProps = {
     importMode: ImportMode;
     libraryPath: string;
     loadRemoteImages: boolean;
+    checkUpdatesOnStartup: boolean;
     onChangeImportMode: (mode: ImportMode) => void;
     onChangeLoadRemoteImages: (loadRemoteImages: boolean) => void;
+    onChangeCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
     onChooseLibraryPath: () => void;
     onOpenLibraryPath: () => void;
     onOpenDiagnostics: () => void;
@@ -30,8 +32,10 @@ export function SettingsModal({
     importMode,
     libraryPath,
     loadRemoteImages,
+    checkUpdatesOnStartup,
     onChangeImportMode,
     onChangeLoadRemoteImages,
+    onChangeCheckUpdatesOnStartup,
     onChooseLibraryPath,
     onOpenLibraryPath,
     onOpenDiagnostics,
@@ -105,6 +109,8 @@ export function SettingsModal({
                     appUpdateErrorMessage={controller.appUpdateErrorMessage}
                     checkForUpdate={controller.checkForUpdate}
                     installUpdate={controller.installUpdate}
+                    checkUpdatesOnStartup={checkUpdatesOnStartup}
+                    onChangeCheckUpdatesOnStartup={onChangeCheckUpdatesOnStartup}
                 />
             </Stack>
         </Modal>

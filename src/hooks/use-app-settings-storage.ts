@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     importMode: "copy",
     libraryPath: "",
     loadRemoteImages: false,
+    checkUpdatesOnStartup: false,
 };
 
 function cloneDefaultSettings(): AppSettings {
@@ -15,6 +16,7 @@ function cloneDefaultSettings(): AppSettings {
         importMode: DEFAULT_SETTINGS.importMode,
         libraryPath: DEFAULT_SETTINGS.libraryPath,
         loadRemoteImages: DEFAULT_SETTINGS.loadRemoteImages,
+        checkUpdatesOnStartup: DEFAULT_SETTINGS.checkUpdatesOnStartup,
     };
 }
 
@@ -34,6 +36,12 @@ function normalizeLoadRemoteImages(value: string | null | undefined): boolean {
     return value === "true";
 }
 
+// The startup update check is opt-in too: only an explicit "true" enables it, so the app
+// contacts the update endpoint on startup only after the user turns it on in Settings.
+function normalizeCheckUpdatesOnStartup(value: string | null | undefined): boolean {
+    return value === "true";
+}
+
 export function getDefaultAppSettings(): AppSettings {
     return cloneDefaultSettings();
 }
@@ -45,6 +53,7 @@ export async function loadStoredSettings(): Promise<AppSettings> {
         importMode: normalizeImportMode(stored.importMode),
         libraryPath: normalizeLibraryPath(stored.libraryPath),
         loadRemoteImages: normalizeLoadRemoteImages(stored.loadRemoteImages),
+        checkUpdatesOnStartup: normalizeCheckUpdatesOnStartup(stored.checkUpdatesOnStartup),
     };
 }
 
@@ -52,7 +61,8 @@ export async function persistSettings(settings: AppSettings): Promise<void> {
     await setStoredAppSettings(
         settings.importMode,
         settings.libraryPath.trim(),
-        settings.loadRemoteImages
+        settings.loadRemoteImages,
+        settings.checkUpdatesOnStartup
     );
 }
 
@@ -88,6 +98,20 @@ export async function updateStoredLoadRemoteImages(
     const next: AppSettings = {
         ...current,
         loadRemoteImages,
+    };
+
+    await persistSettings(next);
+    return next;
+}
+
+export async function updateStoredCheckUpdatesOnStartup(
+    checkUpdatesOnStartup: boolean
+): Promise<AppSettings> {
+    const current = await loadStoredSettings();
+
+    const next: AppSettings = {
+        ...current,
+        checkUpdatesOnStartup,
     };
 
     await persistSettings(next);

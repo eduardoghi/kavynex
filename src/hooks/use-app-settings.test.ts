@@ -47,6 +47,7 @@ describe("useAppSettings", () => {
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
 
         mockedUseAppSettingsActions.mockReturnValue({
@@ -56,6 +57,7 @@ describe("useAppSettings", () => {
             changeLibraryPath,
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
+            setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
         });
 
@@ -168,6 +170,7 @@ describe("useAppSettings", () => {
             changeLibraryPath,
             setImportModeAction: nextSetImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
+            setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
         });
 
@@ -203,6 +206,7 @@ describe("useAppSettings", () => {
             changeLibraryPath: nextChangeLibraryPath,
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
+            setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction: nextOpenCurrentLibraryPathAction,
         });
 
@@ -238,6 +242,7 @@ describe("useAppSettings", () => {
             changeLibraryPath,
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
+            setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
         });
 
@@ -255,6 +260,7 @@ describe("useAppSettings", () => {
             importMode: "copy",
             libraryPath: "   ",
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
 
         renderHook(() =>
@@ -272,6 +278,7 @@ describe("useAppSettings", () => {
             importMode: "copy",
             libraryPath: "  /library  ",
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
 
         renderHook(() =>
@@ -289,6 +296,7 @@ describe("useAppSettings", () => {
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
 
         const failure = new Error("scope failure");
@@ -315,6 +323,7 @@ describe("useAppSettings", () => {
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
 
         const failure = new Error("migration failure");
@@ -341,6 +350,7 @@ describe("useAppSettings", () => {
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
 
         renderHook(() =>

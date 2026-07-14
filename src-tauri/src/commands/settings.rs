@@ -44,6 +44,7 @@ pub async fn set_app_settings(
     import_mode: String,
     library_path: String,
     load_remote_images: bool,
+    check_updates_on_startup: bool,
 ) -> AppResult<()> {
     let trimmed_library_path = library_path.trim().to_string();
 
@@ -58,6 +59,7 @@ pub async fn set_app_settings(
         import_mode.trim(),
         &trimmed_library_path,
         load_remote_images,
+        check_updates_on_startup,
     )
     .await
 }
@@ -154,6 +156,7 @@ mod tests {
         assert!(response["importMode"].is_null());
         assert!(response["libraryPath"].is_null());
         assert!(response["loadRemoteImages"].is_null());
+        assert!(response["checkUpdatesOnStartup"].is_null());
     }
 
     #[test]
@@ -168,7 +171,8 @@ mod tests {
             serde_json::json!({
                 "importMode": "move",
                 "libraryPath": "",
-                "loadRemoteImages": false
+                "loadRemoteImages": false,
+                "checkUpdatesOnStartup": true
             }),
         )
         .unwrap();
@@ -180,6 +184,7 @@ mod tests {
 
         assert_eq!(response["importMode"], "move");
         assert_eq!(response["loadRemoteImages"], "false");
+        assert_eq!(response["checkUpdatesOnStartup"], "true");
     }
 
     #[test]
@@ -192,7 +197,8 @@ mod tests {
             serde_json::json!({
                 "importMode": "teleport",
                 "libraryPath": "",
-                "loadRemoteImages": true
+                "loadRemoteImages": true,
+                "checkUpdatesOnStartup": false
             }),
         )
         .unwrap_err();

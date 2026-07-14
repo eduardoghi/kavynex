@@ -12,6 +12,7 @@ import { useHomeViewState } from "./use-home-view-state";
 import { useHomePlayerActions } from "./use-home-player-actions";
 import { useHomeLibraryPanel } from "./use-home-library-panel";
 import { useHomePlayerPanel } from "./use-home-player-panel";
+import { useStartupUpdateCheck } from "./use-startup-update-check";
 
 export function useHomeController(): HomeController {
     const errorState = useErrorModal();
@@ -44,6 +45,13 @@ export function useHomeController(): HomeController {
         libraryPath,
         importMode,
         onError: errorState.showError,
+    });
+
+    // Opt-in passive update check: when enabled (Settings > Application update), checks once on
+    // startup and surfaces a non-intrusive notice if a newer version exists. Off by default.
+    useStartupUpdateCheck({
+        enabled: settingsState.settings.checkUpdatesOnStartup,
+        onUpdateAvailable: errorState.showNotice,
     });
 
     const uiGuards = useHomeUiGuards({

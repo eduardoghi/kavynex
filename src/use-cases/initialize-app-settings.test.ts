@@ -30,6 +30,7 @@ describe("initializeAppSettings", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 loadRemoteImages: true,
+                checkUpdatesOnStartup: false,
             },
         });
 
@@ -49,6 +50,7 @@ describe("initializeAppSettings", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 loadRemoteImages: true,
+                checkUpdatesOnStartup: false,
             },
         });
 
@@ -73,6 +75,7 @@ describe("initializeAppSettings", () => {
                 importMode: "move",
                 libraryPath: "/library",
                 loadRemoteImages: true,
+                checkUpdatesOnStartup: false,
             },
         });
 
@@ -92,6 +95,7 @@ describe("initializeAppSettings", () => {
                 importMode: "copy",
                 libraryPath: "   ",
                 loadRemoteImages: true,
+                checkUpdatesOnStartup: false,
             },
         });
 
@@ -107,6 +111,7 @@ describe("initializeAppSettings", () => {
                 importMode: "copy",
                 libraryPath: "",
                 loadRemoteImages: true,
+                checkUpdatesOnStartup: false,
             },
         });
 
@@ -126,6 +131,7 @@ describe("initializeAppSettings", () => {
                 importMode: "move",
                 libraryPath: "/library",
                 loadRemoteImages: true,
+                checkUpdatesOnStartup: false,
             },
         });
         expect(moved.settings.importMode).toBe("move");
@@ -135,6 +141,7 @@ describe("initializeAppSettings", () => {
                 importMode: "unexpected" as never,
                 libraryPath: "/library",
                 loadRemoteImages: true,
+                checkUpdatesOnStartup: false,
             },
         });
         expect(copied.settings.importMode).toBe("copy");

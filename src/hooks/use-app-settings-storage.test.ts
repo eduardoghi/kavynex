@@ -7,6 +7,7 @@ import {
     getDefaultAppSettings,
     loadStoredSettings,
     persistSettings,
+    updateStoredCheckUpdatesOnStartup,
     updateStoredImportMode,
     updateStoredLibraryPath,
     updateStoredLoadRemoteImages,
@@ -26,6 +27,7 @@ describe("use-app-settings-storage", () => {
             importMode: null,
             libraryPath: null,
             loadRemoteImages: null,
+            checkUpdatesOnStartup: null,
         });
     });
 
@@ -34,6 +36,7 @@ describe("use-app-settings-storage", () => {
             importMode: "copy",
             libraryPath: "",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
     });
 
@@ -42,12 +45,14 @@ describe("use-app-settings-storage", () => {
             importMode: null,
             libraryPath: null,
             loadRemoteImages: null,
+            checkUpdatesOnStartup: null,
         });
 
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "copy",
             libraryPath: "",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
 
         expect(getStoredAppSettings).toHaveBeenCalledTimes(1);
@@ -58,12 +63,14 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "  /library  ",
             loadRemoteImages: "false",
+            checkUpdatesOnStartup: null,
         });
 
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "move",
             libraryPath: "/library",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
     });
 
@@ -72,12 +79,14 @@ describe("use-app-settings-storage", () => {
             importMode: "invalid-mode",
             libraryPath: "/library",
             loadRemoteImages: null,
+            checkUpdatesOnStartup: null,
         });
 
         await expect(loadStoredSettings()).resolves.toEqual({
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
     });
 
@@ -86,10 +95,12 @@ describe("use-app-settings-storage", () => {
             importMode: null,
             libraryPath: null,
             loadRemoteImages: "true",
+            checkUpdatesOnStartup: null,
         });
 
         await expect(loadStoredSettings()).resolves.toMatchObject({
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
     });
 
@@ -99,10 +110,12 @@ describe("use-app-settings-storage", () => {
                 importMode: null,
                 libraryPath: null,
                 loadRemoteImages: stored,
+                checkUpdatesOnStartup: null,
             });
 
             await expect(loadStoredSettings()).resolves.toMatchObject({
                 loadRemoteImages: false,
+                checkUpdatesOnStartup: false,
             });
         }
     });
@@ -112,9 +125,10 @@ describe("use-app-settings-storage", () => {
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("copy", "/library", true);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("copy", "/library", true, false);
     });
 
     it("trims the library path before persisting settings", async () => {
@@ -122,9 +136,10 @@ describe("use-app-settings-storage", () => {
             importMode: "copy",
             libraryPath: "  /library  ",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("copy", "/library", false);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("copy", "/library", false, false);
     });
 
     it("updates only import mode preserving current library path and remote images", async () => {
@@ -132,6 +147,7 @@ describe("use-app-settings-storage", () => {
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: "false",
+            checkUpdatesOnStartup: null,
         });
 
         const result = await updateStoredImportMode("move");
@@ -140,9 +156,10 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/library",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false, false);
     });
 
     it("updates only library path preserving current import mode and remote images", async () => {
@@ -150,6 +167,7 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/old-library",
             loadRemoteImages: null,
+            checkUpdatesOnStartup: null,
         });
 
         const result = await updateStoredLibraryPath("  /new-library  ");
@@ -158,9 +176,10 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/new-library",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/new-library", false);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/new-library", false, false);
     });
 
     it("updates only the remote images preference preserving the other settings", async () => {
@@ -168,6 +187,7 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/library",
             loadRemoteImages: null,
+            checkUpdatesOnStartup: null,
         });
 
         const result = await updateStoredLoadRemoteImages(false);
@@ -176,8 +196,29 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/library",
             loadRemoteImages: false,
+            checkUpdatesOnStartup: false,
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false, false);
+    });
+
+    it("updates only the startup update-check preference preserving the other settings", async () => {
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: "move",
+            libraryPath: "/library",
+            loadRemoteImages: "true",
+            checkUpdatesOnStartup: null,
+        });
+
+        const result = await updateStoredCheckUpdatesOnStartup(true);
+
+        expect(result).toEqual({
+            importMode: "move",
+            libraryPath: "/library",
+            loadRemoteImages: true,
+            checkUpdatesOnStartup: true,
+        });
+
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", true, true);
     });
 });
