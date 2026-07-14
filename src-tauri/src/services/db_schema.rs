@@ -397,7 +397,11 @@ async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
     ensure_videos_additive_columns(&mut tx).await?;
 
     // Backfill every row whose title_normalized has not been computed yet. On a fresh database
-    // this selects nothing; on an upgrade it normalizes each existing title once.
+    // this selects nothing; on an upgrade it normalizes each existing title once. SQLite cannot
+    // accent-fold in SQL, so the value is computed in Rust - but instead of one UPDATE round trip
+    // per row (slow on a large library), the computed (id, normalized) pairs are staged into a
+    // temp table with chunked multi-row inserts and applied with a single set-based UPDATE,
+    // mirroring the chunked-insert idiom in media_comments.rs.
     let rows: Vec<(i64, String)> =
         sqlx::query_as("SELECT id, title FROM videos WHERE title_normalized IS NULL")
             .fetch_all(&mut *tx)
@@ -409,15 +413,60 @@ async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
                 )
             })?;
 
-    for (id, title) in rows {
-        let normalized = crate::utils::text::normalize_search_text(&title);
+    if !rows.is_empty() {
+        sqlx::query(
+            "CREATE TEMP TABLE _title_normalized_backfill (id INTEGER PRIMARY KEY, normalized TEXT NOT NULL)",
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to create the title_normalized backfill table", error))?;
 
-        sqlx::query("UPDATE videos SET title_normalized = ? WHERE id = ?")
-            .bind(normalized)
-            .bind(id)
+        // Two bound parameters per row (id, normalized), so a chunk of this many rows stays well
+        // under SQLite's bound-variable limit while collapsing thousands of single-row UPDATEs
+        // into a handful of multi-row inserts plus one set-based UPDATE.
+        const BACKFILL_CHUNK_ROWS: usize = 400;
+
+        for chunk in rows.chunks(BACKFILL_CHUNK_ROWS) {
+            // The only interpolation is the number of `(?, ?)` placeholder groups; every value is
+            // bound, never interpolated, so the constructed statement is safe to assert.
+            let mut insert_sql =
+                String::from("INSERT INTO _title_normalized_backfill (id, normalized) VALUES ");
+            for index in 0..chunk.len() {
+                if index > 0 {
+                    insert_sql.push(',');
+                }
+                insert_sql.push_str("(?, ?)");
+            }
+
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(insert_sql));
+            for (id, title) in chunk {
+                let normalized = crate::utils::text::normalize_search_text(title);
+                query = query.bind(*id).bind(normalized);
+            }
+
+            query.execute(&mut *tx).await.map_err(|error| {
+                db_error("failed to stage the title_normalized backfill", error)
+            })?;
+        }
+
+        sqlx::query(
+            "UPDATE videos \
+             SET title_normalized = ( \
+                 SELECT normalized FROM _title_normalized_backfill \
+                 WHERE _title_normalized_backfill.id = videos.id \
+             ) \
+             WHERE id IN (SELECT id FROM _title_normalized_backfill)",
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to apply the title_normalized backfill", error))?;
+
+        sqlx::query("DROP TABLE _title_normalized_backfill")
             .execute(&mut *tx)
             .await
-            .map_err(|error| db_error("failed to backfill title_normalized", error))?;
+            .map_err(|error| {
+                db_error("failed to drop the title_normalized backfill table", error)
+            })?;
     }
 
     for &(_, ddl) in INDEX_DDLS {
@@ -1107,6 +1156,68 @@ mod tests {
         assert!(table_has_column(&pool, "videos", "live_chat_file_path")
             .await
             .unwrap());
+    }
+
+    #[tokio::test]
+    async fn migration_11_backfills_title_normalized_for_existing_rows() {
+        let pool = memory_pool().await;
+
+        // A pre-v11 videos table (no title_normalized column), same shape as a legacy database.
+        sqlx::query(
+            "CREATE TABLE videos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                thumbnail_path TEXT,
+                media_type TEXT NOT NULL DEFAULT 'video',
+                youtube_video_id TEXT,
+                watched_at TEXT,
+                published_at TEXT,
+                duration_seconds INTEGER,
+                progress_seconds INTEGER NOT NULL DEFAULT 0,
+                has_comments INTEGER NOT NULL DEFAULT 0,
+                comments_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE (channel_id, file_path)
+            );",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Titles spanning accents, non-latin scripts and plain ASCII, so the backfill is checked
+        // against the app's own normalization rather than a hand-computed constant.
+        let titles = ["Café com Pão", "ÖLÇÜ test", "PLAIN ascii", "日本語タイトル"];
+        for (index, title) in titles.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO videos (id, channel_id, title, file_path, media_type)
+                 VALUES (?, 1, ?, ?, 'video')",
+            )
+            .bind(index as i64 + 1)
+            .bind(*title)
+            .bind(format!("video/{index}.mp4"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        ensure_schema(&pool).await.unwrap();
+
+        for (index, title) in titles.iter().enumerate() {
+            let (stored,): (Option<String>,) =
+                sqlx::query_as("SELECT title_normalized FROM videos WHERE id = ?")
+                    .bind(index as i64 + 1)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+
+            assert_eq!(
+                stored.as_deref(),
+                Some(crate::utils::text::normalize_search_text(title).as_str()),
+                "title_normalized backfill mismatch for '{title}'"
+            );
+        }
     }
 
     #[tokio::test]
