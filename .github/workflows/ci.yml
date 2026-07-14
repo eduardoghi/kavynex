@@ -79,9 +79,14 @@ jobs:
                 # surface at release time.
                 platform: [ubuntu-22.04, windows-latest, macos-latest]
         runs-on: ${{ matrix.platform }}
-        # Never let a job run toward the 6h default: a hang (like the ubuntu test that reaped a
-        # killed child forever) fails in bounded time instead of appearing stuck for hours.
+        # Never let a job run toward the 6h default: a hang fails in bounded time.
         timeout-minutes: 30
+        # Trim debuginfo (and, on ubuntu below, link with lld) so the cold ubuntu compile is fast
+        # and the bounded test step reaches the tests quickly - a hang then shows up in a persisted
+        # log instead of the compile time masking it. TEMP diagnostic env; trimmed once green.
+        env:
+            CARGO_PROFILE_DEV_DEBUG: "0"
+            CARGO_PROFILE_TEST_DEBUG: "0"
         steps:
             - name: Checkout repository
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -100,7 +105,8 @@ jobs:
               if: matrix.platform == 'ubuntu-22.04'
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf lld
+                  echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
 
             - name: Cache Rust build
               uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -117,7 +123,22 @@ jobs:
               run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
             - name: Run tests
+              if: matrix.platform != 'ubuntu-22.04'
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+            # TEMP diagnostic: a test still hangs the ubuntu "Run tests" step. Build then run
+            # serially, each bounded by a shell `timeout` so the step FAILS with a persisted log
+            # (a job timeout/cancel leaves none). --test-threads=1 makes the last printed
+            # "test NAME ..." line the culprit. Reverted to the plain command once green.
+            - name: Run tests (ubuntu diagnostic)
+              if: matrix.platform == 'ubuntu-22.04'
+              run: |
+                  echo "::group::build test binaries (bounded 1200s)"
+                  timeout --preserve-status 1200 cargo test --manifest-path src-tauri/Cargo.toml --locked --no-run
+                  echo "::endgroup::"
+                  echo "::group::run tests serially (bounded 240s)"
+                  timeout --preserve-status 240 cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1 --nocapture
+                  echo "::endgroup::"
 
             - name: Verify generated TS bindings are up to date
               if: matrix.platform == 'ubuntu-22.04'
