@@ -53,6 +53,20 @@ unless you `cd src-tauri` first):
 - `cargo fmt --manifest-path src-tauri/Cargo.toml --all` - format (CI runs
   `--check`, i.e. it fails if this would change anything, it does not auto-fix for you).
 
+> **Do not add a `#[tokio::test]` that spawns a real child process and awaits its exit
+> without `#[ignore]`.** Two such tests in `src-tauri/src/services/yt_dlp_metadata.rs`
+> (`run_and_capture_kills_the_child_and_reports_cancellation_when_flagged` and
+> `..._reports_timeout_when_it_expires`) exercise the yt-dlp kill path. They pass locally, on
+> macOS, on Windows, and in a plain Linux container, but hang **only** on GitHub's
+> `ubuntu-22.04` runner - there the kill/reap `await` never completes and not even a
+> `tokio::time` timeout around it fires, so `cargo test` never exits and wedges the whole
+> Ubuntu job (a job timeout/cancel then leaves no log, which makes it painful to diagnose).
+> Both are `#[ignore]`d; run them deliberately with
+> `cargo test --manifest-path src-tauri/Cargo.toml -- --ignored`. If you must debug a CI-only
+> hang, make the step fail *naturally* so its log persists, e.g.
+> `timeout --preserve-status 240 cargo test ... -- --test-threads=1 --nocapture` - the last
+> printed `test NAME ...` line with no `ok` is the culprit.
+
 `pnpm tauri build` builds release installers for your current platform.
 
 ## Regenerating the TypeScript bindings
