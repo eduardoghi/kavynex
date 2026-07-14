@@ -65,9 +65,12 @@ export function useChannelMediaList({
     const mediaItemsLengthRef = useRef(0);
     const totalRef = useRef(0);
 
-    useEffect(() => {
-        selectedChannelIdRef.current = selectedChannelId;
-    }, [selectedChannelId]);
+    // Track the selected channel synchronously during render, not in an effect. On a channel
+    // switch the library section is remounted, and a child's mount effect (its applyQuery call)
+    // runs before this hook's own effects flush - so an effect-updated ref would still hold the
+    // previous channel and load the wrong channel's first page. Writing it during render keeps it
+    // current for any effect that fires afterwards.
+    selectedChannelIdRef.current = selectedChannelId;
 
     useEffect(() => {
         mediaItemsLengthRef.current = mediaItems.length;
