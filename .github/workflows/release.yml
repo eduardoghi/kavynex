@@ -85,8 +85,12 @@ jobs:
               shell: bash
               run: |
                   PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+                  # Randomize the heredoc delimiter so a commit subject that happened to contain the
+                  # literal delimiter cannot terminate the block early and inject extra key=value
+                  # pairs into GITHUB_OUTPUT. openssl is present on all GitHub-hosted runners.
+                  DELIM="NOTES_EOF_$(openssl rand -hex 16)"
                   {
-                      echo "body<<NOTES_EOF"
+                      echo "body<<$DELIM"
                       echo "See the assets below to download and install this version."
                       if [ -n "$PREV_TAG" ]; then
                           echo ""
@@ -94,7 +98,7 @@ jobs:
                           echo ""
                           git log --pretty="- %s" "$PREV_TAG..HEAD"
                       fi
-                      echo "NOTES_EOF"
+                      echo "$DELIM"
                   } >> "$GITHUB_OUTPUT"
 
             - name: Install frontend dependencies
