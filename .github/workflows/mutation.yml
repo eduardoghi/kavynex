@@ -42,3 +42,50 @@ jobs:
             # stryker.config.json, so a real regression in test strength fails this scheduled run.
             - name: Run mutation testing
               run: pnpm test:mutation
+
+    rust-mutation:
+        name: Rust mutation testing
+        runs-on: ubuntu-latest
+        # ~175 mutants across the four examined modules, each rebuilt and tested; the 60-minute
+        # budget of the frontend job above is too tight for that on the 2-vCPU runner, and this is
+        # a weekly scheduled run, not a per-PR gate, so a longer wall-clock is fine.
+        timeout-minutes: 120
+        # Trim debuginfo like ci.yml's Rust job: cargo-mutants rebuilds the tree once per mutant, so
+        # keeping the per-build cost down matters more here than anywhere else.
+        env:
+            CARGO_PROFILE_DEV_DEBUG: "0"
+            CARGO_PROFILE_TEST_DEBUG: "0"
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install Rust toolchain
+              # Pin the exact toolchain (keep in sync with rust-toolchain.toml), matching ci.yml.
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.96.0
+
+            - name: Install Linux dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf lld
+                  # Link with lld instead of the slow default ld.bfd, mirroring ci.yml's Rust job.
+                  echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+
+            - name: Cache Rust build
+              uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+              with:
+                  workspaces: src-tauri
+                  cache-on-failure: "true"
+
+            - name: Install cargo-mutants
+              run: cargo install cargo-mutants --locked
+
+            # Mutates only the security-critical modules (see src-tauri/.cargo/mutants.toml's
+            # examine_globs): path containment, the library-path guard, the yt-dlp host allow-list,
+            # and external-binary resolution. cargo-mutants exits 2 when a mutant survives - a logic
+            # change its tests did not catch - which fails this scheduled run, the mutation-level
+            # counterpart to Stryker for the frontend. The generous per-mutant timeout keeps a
+            # mutation-induced infinite loop from being misreported instead of caught.
+            - name: Run Rust mutation testing
+              run: cargo mutants --manifest-path src-tauri/Cargo.toml --no-shuffle --timeout 300

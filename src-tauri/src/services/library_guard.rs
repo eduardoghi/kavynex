@@ -193,6 +193,26 @@ mod tests {
     }
 
     #[test]
+    fn same_location_matches_two_string_forms_of_one_directory() {
+        // Two different strings that resolve to the same existing directory must match through
+        // the canonical comparison, not a raw string compare (which would see them as distinct).
+        // This is what lets the guard accept the frontend's path even when it differs from the
+        // stored form only by casing, a trailing separator, or a `.`/`..` segment.
+        let dir = unique_test_dir("canonical");
+        let nested = dir.join("sub");
+        fs::create_dir_all(&nested).unwrap();
+
+        let direct = dir.to_string_lossy().to_string();
+        // `dir/sub/..` canonicalizes back to `dir`, but is a different string than `dir` itself.
+        let indirect = nested.join("..").to_string_lossy().to_string();
+
+        assert_ne!(direct.trim(), indirect.trim());
+        assert!(paths_refer_to_same_location(&direct, &indirect));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn same_location_falls_back_to_string_equality_for_missing_paths() {
         let missing = unique_test_dir("missing");
         let missing_str = missing.to_string_lossy().to_string();

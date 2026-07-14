@@ -1,0 +1,67 @@
+# cargo-mutants configuration.
+#
+# Mutation testing for the security-critical Rust modules: cargo-mutants rewrites their logic
+# (an inverted `starts_with`, a dropped `!`, an off-by-one, a swapped return) and fails if the
+# existing tests still pass. That proves whether those tests actually kill logic mutants rather
+# than merely covering the lines - line coverage on these files is already high, but coverage
+# alone does not prove a bypass would be caught.
+#
+# Scoped to the modules whose regression cost is highest - path containment, the library-path
+# guard, the yt-dlp host allow-list, and external-binary resolution - so the run stays inside the
+# CI time budget. Widen `examine_globs` as the tests elsewhere earn the extra runtime; this is the
+# Rust counterpart to Stryker (stryker.config.json), which only mutates the frontend.
+#
+# Run locally with:
+#     cargo mutants --manifest-path src-tauri/Cargo.toml
+# CI runs it on a weekly schedule (.github/workflows/mutation.yml); a surviving mutant makes
+# cargo-mutants exit 2, which fails that run.
+
+# Test *only* these files (globs are relative to this package root, src-tauri/).
+examine_globs = [
+    "src/utils/path.rs",
+    "src/services/library_guard.rs",
+    "src/services/yt_dlp_url.rs",
+    "src/services/binaries.rs",
+]
+
+# Build and test against the committed Cargo.lock, matching every other cargo invocation in the
+# project (ci.yml / release.yml all pass --locked) so a mutation run never silently re-resolves
+# dependencies.
+additional_cargo_args = ["--locked"]
+
+# Skip mutants a unit test cannot deterministically kill, so the gate stays meaningful (a red run
+# means a real gap) instead of perpetually red on things no test can pin. What stays in scope is
+# the actual security logic: `sanitize_relative_path_strict` / `ensure_managed_library_relative_path`
+# and the containment helpers, `is_allowed_youtube_url` / `is_allowed_youtube_host`, and
+# `paths_refer_to_same_location` (the canonical-path comparison behind the library guard). Every
+# exclusion below is a function whose behavior is a filesystem/process/env boundary, a
+# cfg-split body cargo-mutants cannot evaluate, or an equivalent mutant.
+exclude_re = [
+    # Boundary functions in binaries.rs: they read the process `PATH`, spawn `--version` health
+    # checks, or resolve app directories from the `AppHandle`, none of which a unit test can pin
+    # to a deterministic result on an arbitrary machine. `resolve_from_path` also matches
+    # `resolve_from_path_var`, which is split into `#[cfg(windows)]` / `#[cfg(not(windows))]`
+    # bodies: cargo-mutants does not evaluate cfg, so on any single platform the *other* body is
+    # reported as an unkillable "missed" mutant (so it can never be green cross-platform). Its
+    # actual no-CWD guarantee stays covered directly by the binaries.rs unit tests
+    # (`resolve_from_path_var_only_searches_listed_directories` and the PATHEXT test).
+    'is_executable_file',
+    'resolve_from_path',
+    'resolve_binary_from_candidates',
+    'resolve_yt_dlp_binary',
+    'resolve_ffmpeg_binary',
+    'run_command_and_capture_first_line',
+    'validate_yt_dlp_binary',
+    'validate_ffmpeg_binary',
+    'resolve_external_tools_status',
+    # AppHandle/pool-bound guard entrypoints: they need the shared SQLite pool and settings row,
+    # which do not exist under the unit-test harness (an AppHandle command cannot run there - the
+    # pure comparison they delegate to, paths_refer_to_same_location, stays in scope and tested).
+    'configured_library_dir',
+    'ensure_configured_library_path',
+    'verify_library_path_then_blocking',
+    # Equivalent mutant: with `&&`, one empty input still returns false, because canonicalize("")
+    # always errors and an empty string never equals a non-empty one, so the fallback compare
+    # yields the same false. No input distinguishes it, so no test can kill it.
+    'replace \|\| with && in paths_refer_to_same_location',
+]

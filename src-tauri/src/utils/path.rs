@@ -392,6 +392,23 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_relative_path_allows_four_char_names_ending_in_a_digit() {
+        // A four-character stem that ends in a digit but does not start with COM/LPT (e.g.
+        // "pic1", "km2x" is five, "abc9") is a normal name, not a reserved device: the device
+        // check must require *both* the COM/LPT head and the trailing digit, so this must be
+        // accepted while COM1/LPT9 stay rejected.
+        for path in ["video/pic1.mp4", "audio/abc9.m4a", "thumbnails/xyz0.jpg"] {
+            sanitize_relative_path_strict(path)
+                .unwrap_or_else(|error| panic!("{path} should be accepted: {error}"));
+        }
+
+        // The genuine device names with the same 4-char digit shape stay rejected.
+        for path in ["video/COM1", "audio/lpt9.m4a"] {
+            sanitize_relative_path_strict(path).expect_err(&format!("{path} should be rejected"));
+        }
+    }
+
+    #[test]
     fn ensure_managed_library_relative_path_accepts_paths_under_managed_dirs() {
         for path in [
             "video/media_abc.mp4",
@@ -434,6 +451,24 @@ mod tests {
         assert!(!nested_parent.exists());
 
         let _ = fs::remove_dir_all(base_dir);
+    }
+
+    #[test]
+    fn ensure_path_parent_inside_dir_creates_a_missing_base_dir() {
+        // When the base directory does not exist yet, the function must create it (and the
+        // target's parent) rather than fail: the containment check that follows canonicalizes the
+        // base, which errors on a missing directory. This pins the defensive create-if-missing
+        // branch that callers pre-creating the base would otherwise leave unexercised.
+        let base_dir = unique_test_dir();
+        assert!(!base_dir.exists());
+
+        let target = base_dir.join("video").join("clip.mp4");
+        ensure_path_parent_inside_dir(&target, &base_dir).unwrap();
+
+        assert!(base_dir.exists());
+        assert!(base_dir.join("video").exists());
+
+        let _ = fs::remove_dir_all(&base_dir);
     }
 
     #[test]
