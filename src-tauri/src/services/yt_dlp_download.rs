@@ -34,7 +34,7 @@ use crate::services::yt_dlp_metadata::{
 use crate::services::yt_dlp_registry::{
     register_download_run, set_download_pid, DownloadRunReleaseGuard,
 };
-use crate::services::yt_dlp_url::is_allowed_youtube_url;
+use crate::services::yt_dlp_url::{is_allowed_youtube_url, youtube_ref_for_log};
 use crate::utils::format::codec_is_present;
 use crate::utils::io::read_lossy_line;
 use crate::utils::naming::unique_temp_suffix;
@@ -507,9 +507,11 @@ pub async fn download_media_from_url_async(
     logger::info(
         "yt_dlp",
         format!(
-            "download run started: run_id='{}', url='{}', format_id='{}', download_live_chat='{}', skip_auto_thumbnail_download='{}', cookies_browser='{}', cookies_path='{}'",
+            "download run started: run_id='{}', video='{}', format_id='{}', download_live_chat='{}', skip_auto_thumbnail_download='{}', cookies_browser='{}', cookies_path='{}'",
             normalized_run_id,
-            normalized_url,
+            // Log a reduced video reference, not the full pasted URL (which can carry playlist /
+            // tracking params); the file log may be pasted into a public bug report.
+            youtube_ref_for_log(&normalized_url),
             normalized_format_id,
             download_live_chat,
             skip_auto_thumbnail_download,
