@@ -141,7 +141,7 @@ index cannot serve a bare `file_path =` predicate), and comment lookups by `vide
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `10`), in `db_schema.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `11`), in `db_schema.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -150,7 +150,8 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   through `apply_baseline_schema` exactly once: it drops the legacy
   `video_live_chat_messages` table, creates all four tables with `CREATE TABLE IF NOT
   EXISTS`, adds any missing additive `videos` columns (`is_live`, `has_live_chat`,
-  `live_chat_file_path`) with guarded `ALTER TABLE ... ADD COLUMN`, creates every index,
+  `live_chat_file_path`, `title_normalized`) with guarded `ALTER TABLE ... ADD COLUMN`,
+  creates every index,
   then stamps `user_version = 7`. Because every statement is idempotent
   (`IF NOT EXISTS` / column-existence-checked `ALTER`), running the baseline against an
   already-current database is a no-op.
@@ -169,6 +170,13 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   lowest `id` (backed by a temporary `(video_id, comment_id, id)` index it drops again) and
   only then creates the real index, all in one transaction before stamping
   `user_version = 10`.
+- **v11** adds the `title_normalized` column (an accent/case-folded copy of `title`) and its
+  `idx_videos_channel_title_normalized` index, and backfills the column for every existing row.
+  Unlike v8/v9 it is not index-only: SQLite cannot accent-fold in SQL, so the backfill is
+  computed in Rust with the same `utils::text::normalize_search_text` used at insert/update time
+  (that shared normalization is what keeps a stored title and a search term comparable). The
+  column-add, the per-row backfill and the index creation all run in one transaction that stamps
+  `user_version = 11`.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
@@ -180,7 +188,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
   any dangling reference the rebuild introduced. This path is implemented and tested but
-  unused as of `SCHEMA_VERSION 9` - no migration has needed it yet - kept ready so the
+  unused as of `SCHEMA_VERSION 11` - no migration has needed it yet - kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
   transaction that also stamps the new `user_version`, so a crash mid-migration leaves the
@@ -208,11 +216,14 @@ Every pooled connection (`database.rs::build_pool_at`) is configured identically
 - `foreign_keys(true)` - `ON DELETE CASCADE` is only enforced when this pragma is on, and
   it must be set per-connection (it does not persist in the database file itself).
 
-The pool itself (`SqlitePoolOptions`) caps at 4 connections and is a process-wide
-`tokio::sync::OnceCell` singleton (`shared_pool`), opened lazily on first use and reused
-for the app's lifetime - it cannot be closed and reopened in-process, which is why the
-restore/import flows below stage their changes for the *next* startup instead of swapping
-the live pool.
+The pool itself (`SqlitePoolOptions`) caps at 4 connections. It is held in Tauri-managed state
+as a `Db` handle (`app.manage(Db::new(path))` in `lib.rs`, keyed to the database path resolved at
+startup) rather than a free-standing global; the `SqlitePool` lives in a `tokio::sync::OnceCell`
+*inside* that handle, opened lazily on first use (`Db::pool`) and reused for the app's lifetime.
+It cannot be closed and reopened in-process, which is why the restore/import flows below stage
+their changes for the *next* startup instead of swapping the live pool. Keeping it in managed
+state (rather than a process-wide static) also lets tests inject an in-memory pool via
+`Db::from_pool`.
 
 ## Backup, restore, export, import
 
@@ -232,11 +243,15 @@ most once every 24 hours (checked by the `.bak` file's mtime). It runs:
 
 Before snapshotting, the source database must pass `PRAGMA quick_check` (`is_healthy`); a
 database that fails it is skipped so a corrupt database is never allowed to overwrite a
-good backup. Rotation keeps two generations: the existing `.bak` is renamed to `.bak.1`
-before the fresh snapshot is written to `.bak` (a `.bak.tmp` is used during the `VACUUM
-INTO` and only renamed into place after it succeeds). Because `VACUUM INTO` requires the
-destination not to already exist, and produces a single, fully checkpointed file, `.bak`
-is always a complete, WAL-free snapshot - never combined with a live write-ahead log.
+good backup. Rotation keeps several generations: before the fresh snapshot is written, the
+existing generations are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on),
+dropping the oldest. `BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
+current `.bak`, so up to seven snapshots can exist (`.bak` plus `.bak.1`..`.bak.6`) - keeping more
+than one guards against the case where the newest snapshot itself captured an already-degrading
+database before the corruption was caught. A `.bak.tmp` is used during the `VACUUM INTO` and only
+renamed into `.bak` after it succeeds. Because `VACUUM INTO` requires the destination not to
+already exist, and produces a single, fully checkpointed file, `.bak` is always a complete,
+WAL-free snapshot - never combined with a live write-ahead log.
 
 ### Restore (`restore_database_from_backup`)
 
