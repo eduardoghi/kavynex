@@ -20,10 +20,18 @@ import {
     Trash2,
     UserX,
 } from "lucide-react";
-import { memo } from "react";
+import { memo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import type { Channel, ViewMode } from "../../types/media";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
+
+// Row-height estimate for the virtualized channel list. Each row is a fixed-layout avatar plus
+// two truncated text lines, so heights are near-uniform; measureElement corrects any drift.
+const CHANNEL_ROW_ESTIMATE = 72;
+// Matches the "xs" Stack gap the list used before virtualization, applied as per-row bottom
+// padding since absolutely positioned virtual rows do not receive the flex gap.
+const CHANNEL_ROW_GAP = 8;
 
 type ChannelListItemProps = {
     channel: Channel;
@@ -254,6 +262,19 @@ export function ChannelSidebar({
     onRemoveChannelAvatar,
     onClosePlayer,
 }: ChannelSidebarProps): JSX.Element {
+    const scrollViewportRef = useRef<HTMLDivElement>(null);
+
+    // Virtualize the channel rows so a library with a very large number of channels only mounts
+    // the visible rows. Rows are near-uniform height (estimateSize), corrected by measureElement.
+    const rowVirtualizer = useVirtualizer({
+        count: channels.length,
+        getScrollElement: () => scrollViewportRef.current,
+        estimateSize: () => CHANNEL_ROW_ESTIMATE + CHANNEL_ROW_GAP,
+        overscan: 6,
+    });
+
+    const virtualRows = rowVirtualizer.getVirtualItems();
+
     return (
         <AppShell.Navbar
             p="md"
@@ -296,7 +317,11 @@ export function ChannelSidebar({
                     </Badge>
                 </Group>
 
-                <ScrollArea style={{ flex: 1 }} offsetScrollbars>
+                <ScrollArea
+                    viewportRef={scrollViewportRef}
+                    style={{ flex: 1 }}
+                    offsetScrollbars
+                >
                     <Stack gap="xs">
                         {loading && (
                             <Card
@@ -333,28 +358,65 @@ export function ChannelSidebar({
                             </Card>
                         )}
 
-                        {!loading &&
-                            channels.map((channel) => (
-                                <ChannelListItem
-                                    key={channel.id}
-                                    channel={channel}
-                                    selected={channel.id === selectedChannelId}
-                                    isDeleting={channel.id === deletingChannelId}
-                                    isUpdatingAvatar={channel.id === updatingChannelAvatarId}
-                                    viewMode={viewMode}
-                                    shellBorder={shellBorder}
-                                    libraryPath={libraryPath}
-                                    onSelectChannel={onSelectChannel}
-                                    onRequestEditChannel={onRequestEditChannel}
-                                    onRequestDeleteChannel={onRequestDeleteChannel}
-                                    onUpdateChannelAvatarFromFile={onUpdateChannelAvatarFromFile}
-                                    onUpdateChannelAvatarFromYouTube={
-                                        onUpdateChannelAvatarFromYouTube
+                        {!loading && channels.length > 0 && (
+                            <Box
+                                style={{
+                                    height: `${rowVirtualizer.getTotalSize()}px`,
+                                    width: "100%",
+                                    position: "relative",
+                                }}
+                            >
+                                {virtualRows.map((virtualRow) => {
+                                    const channel = channels[virtualRow.index];
+
+                                    // The virtualizer only yields in-range indices, so this is
+                                    // never null in practice; the guard satisfies the checked-index
+                                    // type and renders nothing rather than crashing if it ever were.
+                                    if (!channel) {
+                                        return null;
                                     }
-                                    onRemoveChannelAvatar={onRemoveChannelAvatar}
-                                    onClosePlayer={onClosePlayer}
-                                />
-                            ))}
+
+                                    return (
+                                        <Box
+                                            key={channel.id}
+                                            ref={rowVirtualizer.measureElement}
+                                            data-index={virtualRow.index}
+                                            style={{
+                                                position: "absolute",
+                                                top: 0,
+                                                left: 0,
+                                                width: "100%",
+                                                transform: `translateY(${virtualRow.start}px)`,
+                                                paddingBottom: CHANNEL_ROW_GAP,
+                                            }}
+                                        >
+                                            <ChannelListItem
+                                                channel={channel}
+                                                selected={channel.id === selectedChannelId}
+                                                isDeleting={channel.id === deletingChannelId}
+                                                isUpdatingAvatar={
+                                                    channel.id === updatingChannelAvatarId
+                                                }
+                                                viewMode={viewMode}
+                                                shellBorder={shellBorder}
+                                                libraryPath={libraryPath}
+                                                onSelectChannel={onSelectChannel}
+                                                onRequestEditChannel={onRequestEditChannel}
+                                                onRequestDeleteChannel={onRequestDeleteChannel}
+                                                onUpdateChannelAvatarFromFile={
+                                                    onUpdateChannelAvatarFromFile
+                                                }
+                                                onUpdateChannelAvatarFromYouTube={
+                                                    onUpdateChannelAvatarFromYouTube
+                                                }
+                                                onRemoveChannelAvatar={onRemoveChannelAvatar}
+                                                onClosePlayer={onClosePlayer}
+                                            />
+                                        </Box>
+                                    );
+                                })}
+                            </Box>
+                        )}
                     </Stack>
                 </ScrollArea>
             </Stack>

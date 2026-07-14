@@ -8,6 +8,22 @@ vi.mock("../../utils/media-utils", () => ({
     fileSrcFromStoredPath: vi.fn(() => ""),
 }));
 
+// jsdom gives the scroll viewport a height of 0, so the real virtualizer would render no rows.
+// Mock it to yield every row (like media-grid.test.tsx) so the list assertions below still hold.
+vi.mock("@tanstack/react-virtual", () => ({
+    useVirtualizer: vi.fn(({ count }: { count: number }) => ({
+        getTotalSize: () => count * 80,
+        getVirtualItems: () =>
+            Array.from({ length: count }, (_, index) => ({
+                index,
+                key: index,
+                start: index * 80,
+            })),
+        measureElement: vi.fn(),
+        measure: vi.fn(),
+    })),
+}));
+
 describe("ChannelSidebar", () => {
     it("shows loading state", () => {
         renderWithMantine(
