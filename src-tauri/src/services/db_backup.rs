@@ -272,6 +272,16 @@ pub async fn database_quick_check_ok(db_path: &Path) -> bool {
     }
 }
 
+/// Reads a database file's `user_version` (schema version) without migrating it. Used by restore
+/// to refuse a backup produced by a newer app build. Returns `None` if the file cannot be opened
+/// or the pragma read fails.
+async fn database_schema_version(db_path: &Path) -> Option<i64> {
+    let pool = open(db_path).await.ok()?;
+    let version: Result<(i64,), _> = sqlx::query_as("PRAGMA user_version").fetch_one(&pool).await;
+    pool.close().await;
+    version.ok().map(|(value,)| value)
+}
+
 /// Restores the database from the most recent backup that passes `quick_check`, preferring
 /// the newest generation and falling back to the rotated one. The current (assumed corrupt)
 /// database and its WAL/`-shm` sidecars are moved aside to `.corrupt` rather than deleted,
@@ -282,20 +292,44 @@ pub async fn database_quick_check_ok(db_path: &Path) -> bool {
 /// database missing. The caller must ensure the pool is not already open before calling.
 pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     let mut chosen: Option<PathBuf> = None;
+    let mut skipped_newer_schema = false;
 
     for candidate in backup_candidates(db_path) {
-        if database_quick_check_ok(&candidate).await {
-            chosen = Some(candidate);
-            break;
+        if !database_quick_check_ok(&candidate).await {
+            continue;
         }
+
+        // Refuse a backup whose schema is newer than this build supports: restoring it would only
+        // "succeed" for `ensure_schema` to reject it on the next open (DatabaseSchemaTooNew),
+        // leaving the app unable to start. Catching it here fails the restore itself with a clear
+        // message. A backup written by this or an older build always passes.
+        if let Some(version) = database_schema_version(&candidate).await {
+            if version > crate::services::db_schema::SCHEMA_VERSION {
+                skipped_newer_schema = true;
+                continue;
+            }
+        }
+
+        chosen = Some(candidate);
+        break;
     }
 
-    let backup = chosen.ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::NoDatabaseBackupAvailable,
-            "no healthy database backup is available to restore",
-        )
-    })?;
+    let backup = match chosen {
+        Some(backup) => backup,
+        None if skipped_newer_schema => {
+            return Err(AppError::from_code_with_details(
+                AppErrorCode::DatabaseSchemaTooNew,
+                "the available database backup was created by a newer version of the app",
+                "refused to restore a backup whose schema version is newer than this build supports",
+            ));
+        }
+        None => {
+            return Err(AppError::from_code(
+                AppErrorCode::NoDatabaseBackupAvailable,
+                "no healthy database backup is available to restore",
+            ));
+        }
+    };
 
     // Stage the restored file first so the live database is never left missing on failure.
     let staged = sibling(db_path, ".restore.tmp");
@@ -729,6 +763,40 @@ mod tests {
 
         restore_database_from_backup(&db).await.unwrap();
         assert_eq!(read_single_value(&db).await, "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn restore_refuses_a_backup_with_a_newer_schema_version() {
+        let dir = temp_dir("restore-newer-schema");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+        assert!(backup_database(&db).await.unwrap());
+
+        // Stamp the healthy backup with a schema version newer than this build supports.
+        let options = SqliteConnectOptions::new().filename(backup_path(&db));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION + 1
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        // Corrupt the live database so a restore is attempted.
+        std::fs::write(&db, b"corrupt db").unwrap();
+
+        // The only backup is from a newer schema, so restore fails up front with a clear code
+        // instead of "succeeding" into a database the next open would reject.
+        let error = restore_database_from_backup(&db).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::DatabaseSchemaTooNew.as_str());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
