@@ -559,10 +559,16 @@ struct RebuildConnection {
 }
 
 impl RebuildConnection {
-    fn conn(&mut self) -> &mut SqliteConnection {
-        self.conn
-            .as_deref_mut()
-            .expect("rebuild connection is present until the guard is dropped")
+    // Returns the guarded connection. Errors (rather than panics) if it was already taken - by
+    // construction the connection is present until `Drop`, but returning a result keeps a future
+    // caller's real upgrade path from aborting the process should that invariant ever break.
+    fn conn(&mut self) -> AppResult<&mut SqliteConnection> {
+        self.conn.as_deref_mut().ok_or_else(|| {
+            db_error(
+                "the schema rebuild connection was unavailable",
+                "internal invariant broken: RebuildConnection::conn called after release",
+            )
+        })
     }
 }
 
@@ -599,17 +605,18 @@ pub(crate) async fn apply_table_rebuilds(
     };
 
     sqlx::query("PRAGMA foreign_keys = OFF")
-        .execute(guard.conn())
+        .execute(guard.conn()?)
         .await
         .map_err(|error| db_error("failed to disable foreign keys for migration", error))?;
 
-    let outcome = apply_table_rebuilds_in_transaction(guard.conn(), rebuilds, target_version).await;
+    let outcome =
+        apply_table_rebuilds_in_transaction(guard.conn()?, rebuilds, target_version).await;
 
     // Restore enforcement before the connection can return to the pool, regardless of the
     // rebuild outcome. On success this lets the guard hand the connection back normally; if the
     // restore itself fails (or the rebuild above panicked), the guard detaches it instead.
     sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(guard.conn())
+        .execute(guard.conn()?)
         .await
         .map_err(|error| db_error("failed to re-enable foreign keys after migration", error))?;
 
