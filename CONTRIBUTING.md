@@ -66,6 +66,13 @@ unless you `cd src-tauri` first):
 > hang, make the step fail *naturally* so its log persists, e.g.
 > `timeout --preserve-status 240 cargo test ... -- --test-threads=1 --nocapture` - the last
 > printed `test NAME ...` line with no `ok` is the culprit.
+>
+> CI and the release workflow **do** run these two on Windows and macOS (where they pass), in a
+> dedicated step - `cargo test ... run_and_capture_kills_the_child -- --ignored --test-threads=1`,
+> filtered by name so it does not also re-run the fixture-regeneration `#[ignore]` test - with a
+> short per-step `timeout-minutes` so a future hang fails diagnosably instead of wedging the job.
+> Only Linux CI skips them; that is the accepted, documented coverage gap. A new `#[ignore]`d
+> child-spawning test that should be CI-covered needs its name added to that step's filter.
 
 `pnpm tauri build` builds release installers for your current platform.
 

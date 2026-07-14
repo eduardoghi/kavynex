@@ -127,6 +127,15 @@ jobs:
             - name: Run Rust tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
+            # Mirror ci.yml: run the #[ignore]d yt-dlp process-kill tests on Windows and macOS
+            # (they hang only on the ubuntu runner) so a release is also gated on the kill/timeout/
+            # cancel path passing where it can run. Filtered by name to avoid the fixture-
+            # regeneration test; short per-step timeout so a hang fails diagnosably.
+            - name: Run ignored process-kill tests (Windows and macOS only)
+              if: matrix.platform != 'ubuntu-22.04'
+              timeout-minutes: 5
+              run: cargo test --manifest-path src-tauri/Cargo.toml --locked run_and_capture_kills_the_child -- --ignored --test-threads=1
+
             # Mirror ci.yml's bindings-freshness gate so a release cannot ship with the
             # checked-in TypeScript bindings out of sync with the Rust types they are generated
             # from. Ubuntu only, matching ci.yml; the check is platform-independent.
