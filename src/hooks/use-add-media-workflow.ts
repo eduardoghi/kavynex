@@ -7,6 +7,13 @@ import { useYtDlpEvents } from "./use-yt-dlp-events";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
+import {
+    buildCreateMediaInput,
+    buildYtDlpCommandPreview,
+    generateYtDlpRunId,
+    resolveCookiesSource,
+    validateAddMediaForm,
+} from "../use-cases/add-media";
 
 type UseAddMediaWorkflowOptions = {
     selectedChannelId: number | null;
@@ -75,70 +82,51 @@ export function useAddMediaWorkflow({
     const { ytDlpLogs, isYtDlpRunning, resetYtDlpState } = ytDlpEvents;
 
     const addMedia = useCallback(async (): Promise<void> => {
+        const validation = validateAddMediaForm(addMediaForm, selectedChannelId, {
+            isCancellingYtDlp,
+            isYtDlpRunning: ytDlpEvents.isYtDlpRunning,
+        });
+
+        if (validation.status === "skip") {
+            return;
+        }
+
+        if (validation.status === "error") {
+            onError(validation.message);
+            return;
+        }
+
+        // validation.status === "ok" only when selectedChannelId is non-null; re-check to narrow
+        // the type for TypeScript.
         if (selectedChannelId === null) {
-            onError("Select a channel before adding media.");
             return;
         }
 
-        const isPreparingMedia =
-            addMediaForm.isGeneratingThumb || addMediaForm.isLoadingYtDlpFormats;
-
-        if (isCancellingYtDlp || isPreparingMedia || ytDlpEvents.isYtDlpRunning) {
-            return;
-        }
-
-        const sourceMode = addMediaForm.sourceMode;
-        const sourceValue =
-            sourceMode === "yt-dlp" ? addMediaForm.mediaUrl.trim() : addMediaForm.mediaPath.trim();
-
-        if (!sourceValue) {
-            onError(
-                sourceMode === "yt-dlp"
-                    ? "Enter a media URL before continuing."
-                    : "Select a media file before continuing."
-            );
-            return;
-        }
-
-        if (sourceMode === "yt-dlp" && !addMediaForm.selectedYtDlpFormatId.trim()) {
-            onError("Load the available formats and choose one before continuing.");
-            return;
-        }
+        const { sourceMode, sourceValue } = validation;
 
         await runAddMedia(async () => {
             try {
+                const { cookiesBrowser, cookiesPath } = resolveCookiesSource(
+                    addMediaForm.cookiesBrowser,
+                    addMediaForm.cookiesPath
+                );
+
                 let ytDlpRunId = "";
                 let ytDlpFormatId = "";
 
-                // Resolve the cookies source the same way the format loader does
-                // (use-add-media-form.ts): "manual" selects the user-picked .txt file and is
-                // never a real --cookies-from-browser value, so it must not be sent as one.
-                const isManualCookies = addMediaForm.cookiesBrowser === "manual";
-                const cookiesBrowser = isManualCookies
-                    ? null
-                    : addMediaForm.cookiesBrowser || null;
-                const cookiesPath = isManualCookies
-                    ? addMediaForm.cookiesPath.trim() || null
-                    : null;
-
                 if (sourceMode === "yt-dlp") {
-                    ytDlpRunId =
-                        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-                            ? crypto.randomUUID()
-                            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
+                    ytDlpRunId = generateYtDlpRunId();
                     ytDlpFormatId = addMediaForm.selectedYtDlpFormatId.trim();
 
-                    // Never render the cookies file path in the preview: it can reveal the
-                    // local profile layout and may be pasted into a public bug report.
-                    const authPreview = cookiesPath
-                        ? " --cookies <file>"
-                        : cookiesBrowser
-                          ? ` --cookies-from-browser ${cookiesBrowser}`
-                          : "";
-                    const commandPreview = `yt-dlp ${addMediaForm.mediaUrl.trim()}${authPreview} --format ${ytDlpFormatId}`;
-
-                    ytDlpEvents.startRun(ytDlpRunId, commandPreview);
+                    ytDlpEvents.startRun(
+                        ytDlpRunId,
+                        buildYtDlpCommandPreview(
+                            addMediaForm.mediaUrl,
+                            cookiesBrowser,
+                            cookiesPath,
+                            ytDlpFormatId
+                        )
+                    );
 
                     ytDlpEvents.appendManualLog(
                         addMediaForm.downloadComments
@@ -160,31 +148,17 @@ export function useAddMediaWorkflow({
                 }
 
                 await createMedia(
-                    {
+                    buildCreateMediaInput(addMediaForm, {
                         channelId: selectedChannelId,
-                        title: addMediaForm.title.trim(),
                         sourceMode,
                         sourceValue,
-                        thumbnailSourcePath: addMediaForm.thumbPath || null,
-                        mediaType:
-                            sourceMode === "yt-dlp"
-                                ? addMediaForm.selectedYtDlpMediaType
-                                : addMediaForm.mediaType,
                         importMode,
                         libraryPath,
-                        publishedAt:
-                            sourceMode === "yt-dlp"
-                                ? null
-                                : addMediaForm.publishedAt.trim() || null,
                         ytDlpRunId,
                         ytDlpFormatId,
-                        ytDlpYoutubeVideoId:
-                            sourceMode === "yt-dlp" ? addMediaForm.resolvedYoutubeVideoId : null,
-                        downloadComments: addMediaForm.downloadComments,
-                        downloadLiveChat: addMediaForm.downloadLiveChat,
                         cookiesBrowser,
                         cookiesPath,
-                    },
+                    }),
                     {
                         onProgress: (message) => {
                             ytDlpEvents.appendManualLog(message);
