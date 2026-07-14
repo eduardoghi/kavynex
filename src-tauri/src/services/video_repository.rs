@@ -614,6 +614,11 @@ pub async fn count_media_using_live_chat_outside_media(
     Ok(total)
 }
 
+/// Computes every library statistic in a single pass over `videos` (one scan with `CASE` sums
+/// rather than a dozen separate `COUNT` queries). It is a full-table aggregate, but it is invoked
+/// only when the user opens the Diagnostics dialog (via `diagnostics-service.ts`), never on
+/// startup or on a poll, so the one-time scan is an acceptable cost and no cached/materialized
+/// counter is warranted. If it ever becomes a hot path, revisit with incremental counters.
 pub async fn get_media_repository_stats(pool: &SqlitePool) -> AppResult<MediaRepositoryStats> {
     sqlx::query_as::<_, MediaRepositoryStats>(
         "SELECT
