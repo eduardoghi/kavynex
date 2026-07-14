@@ -38,6 +38,7 @@ describe("useMediaLiveChat", () => {
 
         expect(readMock).toHaveBeenCalledWith("live_chat/clip.live_chat.json.gz");
         expect(result.current.liveChatMessages).toHaveLength(1);
+        expect(result.current.error).toBeNull();
     });
 
     it("does not read and stays empty without a live chat file", async () => {
@@ -49,9 +50,10 @@ describe("useMediaLiveChat", () => {
 
         expect(readMock).not.toHaveBeenCalled();
         expect(result.current.liveChatMessages).toEqual([]);
+        expect(result.current.error).toBeNull();
     });
 
-    it("clears messages and does not throw when the read fails", async () => {
+    it("surfaces an error (not an empty list) when the read fails", async () => {
         readMock.mockRejectedValue(new Error("boom"));
 
         const { result } = renderHook(() =>
@@ -67,6 +69,9 @@ describe("useMediaLiveChat", () => {
 
         await waitFor(() => expect(result.current.isLoadingLiveChat).toBe(false));
 
+        // The messages clear, but `error` is set so the panel can distinguish a failed read from a
+        // media that genuinely has no live chat (rather than showing the empty state).
         expect(result.current.liveChatMessages).toEqual([]);
+        expect(result.current.error).not.toBeNull();
     });
 });

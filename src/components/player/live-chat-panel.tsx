@@ -17,6 +17,9 @@ type LiveChatPanelProps = {
     liveChatMessages: LiveChatMessageItem[];
     visibleLiveChatMessages: LiveChatMessageItem[];
     isLoadingLiveChat: boolean;
+    // A user-facing message when the replay file could not be read. When set, the panel shows it
+    // instead of the "no messages" empty state, so a failed read is not reported as an empty chat.
+    error?: string | null;
     shellBorder: string;
 };
 
@@ -73,6 +76,7 @@ export function LiveChatPanel({
     liveChatMessages,
     visibleLiveChatMessages,
     isLoadingLiveChat,
+    error = null,
     shellBorder,
 }: LiveChatPanelProps): JSX.Element {
     const scrollViewportRef = useRef<HTMLDivElement | null>(null);
@@ -216,7 +220,13 @@ export function LiveChatPanel({
                                 </Group>
                             )}
 
-                            {!isLoadingLiveChat && liveChatMessages.length === 0 && (
+                            {!isLoadingLiveChat && error && (
+                                <Text size="sm" c="red.4">
+                                    {error}
+                                </Text>
+                            )}
+
+                            {!isLoadingLiveChat && !error && liveChatMessages.length === 0 && (
                                 <Text size="sm" c="dimmed">
                                     No live chat messages were loaded.
                                 </Text>

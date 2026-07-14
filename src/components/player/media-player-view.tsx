@@ -79,8 +79,16 @@ export function MediaPlayerView({
     // saved comments and live chat replay, and the global keyboard shortcuts. This component is
     // left to compose them and render.
     useMediaProgressPersistence(media, playerElement, onSaveProgress);
-    const { comments, isLoadingComments } = useMediaComments(media, isRefreshingComments);
-    const { liveChatMessages, isLoadingLiveChat } = useMediaLiveChat(media, libraryPath);
+    const {
+        comments,
+        isLoadingComments,
+        error: commentsError,
+    } = useMediaComments(media, isRefreshingComments);
+    const {
+        liveChatMessages,
+        isLoadingLiveChat,
+        error: liveChatError,
+    } = useMediaLiveChat(media, libraryPath);
     usePlayerKeyboardShortcuts(playerElementRef);
 
     // Clear the "can't play" banner whenever the media (or its resolved source) changes, so a
@@ -295,6 +303,7 @@ export function MediaPlayerView({
                                 liveChatMessages={liveChatMessages}
                                 playerElement={playerElement}
                                 isLoadingLiveChat={isLoadingLiveChat}
+                                error={liveChatError}
                                 shellBorder={shellBorder}
                             />
                         </Box>
@@ -308,6 +317,7 @@ export function MediaPlayerView({
                     hasComments={hasComments}
                     commentsCount={media?.comments_count ?? comments.length}
                     isLoadingComments={isLoadingComments}
+                    error={commentsError}
                     shellBorder={shellBorder}
                     canFetchComments={Boolean(media?.youtube_video_id?.trim())}
                     isFetchingComments={isRefreshingComments}

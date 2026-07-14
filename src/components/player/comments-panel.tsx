@@ -56,6 +56,10 @@ type CommentsPanelProps = {
     hasComments: boolean;
     commentsCount?: number | null;
     isLoadingComments: boolean;
+    // A user-facing message when the saved comments could not be read. When set, the panel shows
+    // it instead of the empty/"missing from database" states, so a transient read failure is not
+    // reported to the user as if the media simply had no comments.
+    error?: string | null;
     shellBorder: string;
     // Whether this media can (re)fetch comments from YouTube - true for a media with a YouTube
     // source. Offered in the empty state so a media whose comment backup was interrupted (a crash
@@ -262,6 +266,7 @@ export function CommentsPanel({
     hasComments,
     commentsCount,
     isLoadingComments,
+    error = null,
     shellBorder,
     canFetchComments = false,
     isFetchingComments = false,
@@ -412,13 +417,19 @@ export function CommentsPanel({
                         </Group>
                     )}
 
-                    {!isLoadingComments && !hasComments && (
+                    {!isLoadingComments && error && (
+                        <Text size="sm" c="red.4">
+                            {error}
+                        </Text>
+                    )}
+
+                    {!isLoadingComments && !error && !hasComments && (
                         <Text size="sm" c="dimmed">
                             {UI_TEXT.comments.noCommentsAvailable}
                         </Text>
                     )}
 
-                    {!isLoadingComments && hasComments && comments.length === 0 && (
+                    {!isLoadingComments && !error && hasComments && comments.length === 0 && (
                         <Text size="sm" c="dimmed">
                             {UI_TEXT.comments.missingFromDatabase}
                         </Text>

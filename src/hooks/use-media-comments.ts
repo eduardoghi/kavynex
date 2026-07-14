@@ -2,10 +2,15 @@ import { useEffect, useState } from "react";
 import type { MediaCommentRow, MediaRow } from "../types/media";
 import { listMediaComments } from "../services/media-service";
 import { logError } from "../utils/app-logger";
+import { resolveErrorMessage } from "../utils/error-message";
 
 type UseMediaCommentsResult = {
     comments: MediaCommentRow[];
     isLoadingComments: boolean;
+    // Non-null only when the load actually failed, so the panel can tell a read failure apart from
+    // "this media genuinely has no comments" instead of silently showing an empty/"missing from
+    // database" state for what was really a transient disk or decode error.
+    error: string | null;
 };
 
 // Loads the saved comments for the active media, reloading when the media changes or after a
@@ -17,6 +22,7 @@ export function useMediaComments(
 ): UseMediaCommentsResult {
     const [comments, setComments] = useState<MediaCommentRow[]>([]);
     const [isLoadingComments, setIsLoadingComments] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -24,11 +30,13 @@ export function useMediaComments(
         async function loadComments(): Promise<void> {
             if (!media?.id || !media.has_comments) {
                 setComments([]);
+                setError(null);
                 setIsLoadingComments(false);
                 return;
             }
 
             setIsLoadingComments(true);
+            setError(null);
 
             try {
                 const rows = await listMediaComments(media.id);
@@ -36,12 +44,18 @@ export function useMediaComments(
                 if (!cancelled) {
                     setComments(rows);
                 }
-            } catch (error) {
+            } catch (loadFailure) {
                 if (!cancelled) {
                     setComments([]);
+                    setError(
+                        resolveErrorMessage(
+                            loadFailure,
+                            "Could not load the saved comments for this media."
+                        )
+                    );
                 }
 
-                logError("media-player", "Failed to load saved comments.", error, {
+                logError("media-player", "Failed to load saved comments.", loadFailure, {
                     mediaId: media.id,
                 });
             } finally {
@@ -58,5 +72,5 @@ export function useMediaComments(
         };
     }, [media?.has_comments, media?.id, isRefreshingComments]);
 
-    return { comments, isLoadingComments };
+    return { comments, isLoadingComments, error };
 }

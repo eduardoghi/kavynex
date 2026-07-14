@@ -13,6 +13,7 @@ type LiveChatReplayProps = {
     liveChatMessages: LiveChatMessageItem[];
     playerElement: HTMLMediaElement | null;
     isLoadingLiveChat: boolean;
+    error?: string | null;
     shellBorder: string;
 };
 
@@ -23,6 +24,7 @@ export function LiveChatReplay({
     liveChatMessages,
     playerElement,
     isLoadingLiveChat,
+    error = null,
     shellBorder,
 }: LiveChatReplayProps): JSX.Element {
     const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
@@ -84,6 +86,7 @@ export function LiveChatReplay({
             liveChatMessages={liveChatMessages}
             visibleLiveChatMessages={visibleLiveChatMessages}
             isLoadingLiveChat={isLoadingLiveChat}
+            error={error}
             shellBorder={shellBorder}
         />
     );

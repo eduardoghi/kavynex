@@ -166,6 +166,28 @@ describe("CommentsPanel", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("shows the load error instead of the missing-from-database text when a read fails", () => {
+        renderWithMantine(
+            <CommentsPanel
+                comments={[]}
+                hasComments
+                commentsCount={3}
+                isLoadingComments={false}
+                error="Could not load the saved comments for this media."
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        // The read failed, so the panel must surface the error, not claim the comments are
+        // "missing from the local database" (which reads as data loss to the user).
+        expect(
+            screen.getByText("Could not load the saved comments for this media.")
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByText(UI_TEXT.comments.missingFromDatabase)
+        ).not.toBeInTheDocument();
+    });
+
     it("does not offer to fetch comments when comments are already present", () => {
         renderWithMantine(
             <CommentsPanel

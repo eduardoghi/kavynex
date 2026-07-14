@@ -51,6 +51,7 @@ describe("useMediaComments", () => {
 
         expect(listMock).toHaveBeenCalledWith(7);
         expect(result.current.comments).toHaveLength(1);
+        expect(result.current.error).toBeNull();
     });
 
     it("does not query and stays empty for a media without comments", async () => {
@@ -62,9 +63,10 @@ describe("useMediaComments", () => {
 
         expect(listMock).not.toHaveBeenCalled();
         expect(result.current.comments).toEqual([]);
+        expect(result.current.error).toBeNull();
     });
 
-    it("clears comments and does not throw when the load fails", async () => {
+    it("surfaces an error (not an empty list) when the load fails", async () => {
         listMock.mockRejectedValue(new Error("boom"));
 
         const { result } = renderHook(() =>
@@ -73,7 +75,10 @@ describe("useMediaComments", () => {
 
         await waitFor(() => expect(result.current.isLoadingComments).toBe(false));
 
+        // The comments clear, but `error` is set so the panel can distinguish a read failure from
+        // a media that genuinely has no comments (rather than showing "missing from database").
         expect(result.current.comments).toEqual([]);
+        expect(result.current.error).not.toBeNull();
     });
 
     it("reloads when a comment refresh completes", async () => {
