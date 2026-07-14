@@ -89,7 +89,7 @@ export function useHomeController(): HomeController {
 
     const libraryPanelState = useHomeLibraryPanel({
         selectedChannel: channelsState.selectedChannel,
-        mediaItems: mediaLibrary.mediaItems,
+        channelMediaTotal: mediaLibrary.channelMediaTotal,
         viewMode: mediaLibrary.mediaPlayer.viewMode,
         isLoadingMedia: mediaLibrary.isLoadingMedia,
         isAddingMedia: mediaLibrary.isAddingMedia,

@@ -52,7 +52,7 @@ export function useMediaLibrary({
     // (whose identity changes when their contents do). setMediaItems (useState) and
     // setActiveMedia (useCallback []) are stable, so a callback depending only on them is
     // itself stable.
-    const { clearMedia, loadMedia, setMediaItems } = mediaList;
+    const { clearMedia, setMediaItems } = mediaList;
     const { setActiveMedia } = mediaPlayer;
 
     // Track the active media in a ref so saveMediaProgress can read the current value without
@@ -69,6 +69,7 @@ export function useMediaLibrary({
     const mediaActions = useMediaActions({
         libraryPath,
         setMediaItems,
+        onItemsRemoved: mediaList.handleItemsRemoved,
         mediaPlayer,
         onError,
         onNotice,
@@ -79,7 +80,7 @@ export function useMediaLibrary({
         importMode,
         libraryPath,
         onError,
-        onReloadMedia: mediaList.loadMedia,
+        onReloadMedia: mediaList.reloadMedia,
     });
 
     // Latest progress saved for the media currently playing, reconciled into the in-memory list
@@ -163,17 +164,16 @@ export function useMediaLibrary({
         mediaPlayer.closePlayer();
     }, [clearMedia, mediaPlayer]);
 
-    useEffect(() => {
-        if (selectedChannelId === null) {
-            clearMedia();
-            return;
-        }
-
-        void loadMedia(selectedChannelId);
-    }, [selectedChannelId, clearMedia, loadMedia]);
+    // The channel's first page (and every filter/sort change) is loaded by the library section
+    // via applyMediaQuery, which is why there is no load-on-channel-change effect here anymore.
+    // useChannelMediaList clears itself when no channel is selected.
 
     return {
         mediaItems: mediaList.mediaItems,
+        mediaTotal: mediaList.total,
+        channelMediaTotal: mediaList.channelTotal,
+        hasMoreMedia: mediaList.hasMore,
+        isLoadingMoreMedia: mediaList.isLoadingMore,
 
         addMediaOpen: addMediaWorkflow.addMediaOpen,
         setAddMediaOpen: addMediaWorkflow.setAddMediaOpen,
@@ -196,7 +196,9 @@ export function useMediaLibrary({
         addMediaForm: addMediaWorkflow.addMediaForm,
         mediaPlayer,
 
-        loadMedia: mediaList.loadMedia,
+        applyMediaQuery: mediaList.applyQuery,
+        loadMoreMedia: mediaList.loadMore,
+        reloadMedia: mediaList.reloadMedia,
         addMedia: addMediaWorkflow.addMedia,
         cancelYtDlpDownload: addMediaWorkflow.cancelYtDlpDownload,
         markAsWatched: mediaActions.markAsWatched,

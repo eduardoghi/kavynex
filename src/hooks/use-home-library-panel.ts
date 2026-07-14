@@ -1,13 +1,13 @@
-import type { Channel, MediaRow, ViewMode } from "../types/media";
+import type { Channel, ViewMode } from "../types/media";
 import {
-    buildItemCountLabel,
+    buildItemCountLabelFromCount,
     hasSelectedChannel,
 } from "../utils/controller-helpers";
 import { useMemoObject } from "./use-memo-object";
 
 type UseHomeLibraryPanelOptions = {
     selectedChannel: Channel | null;
-    mediaItems: MediaRow[];
+    channelMediaTotal: number;
     viewMode: ViewMode;
     isLoadingMedia: boolean;
     isAddingMedia?: boolean;
@@ -23,7 +23,7 @@ type HomeLibraryPanelState = {
 
 export function useHomeLibraryPanel({
     selectedChannel,
-    mediaItems,
+    channelMediaTotal,
     viewMode,
     isLoadingMedia,
     isAddingMedia = false,
@@ -44,7 +44,7 @@ export function useHomeLibraryPanel({
     // whenever the computed values are unchanged, exactly like the useMemo this replaced.
     return useMemoObject({
         showSelectedChannelPanel,
-        itemCountLabel: buildItemCountLabel(mediaItems),
+        itemCountLabel: buildItemCountLabelFromCount(channelMediaTotal),
         disableAddMedia,
     });
 }

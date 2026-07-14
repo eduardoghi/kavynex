@@ -46,6 +46,7 @@ export {
 
 export {
     listChannelMedia,
+    listChannelMediaPage,
     listMediaComments,
     createMedia,
     deleteMediaWithFileCleanup,

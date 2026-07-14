@@ -249,6 +249,12 @@ export default function Home(): JSX.Element {
                                         isLoadingMedia={media.isLoadingMedia}
                                         isVisible={showLibrary}
                                         mediaItems={media.mediaItems}
+                                        total={media.mediaTotal}
+                                        channelTotal={media.channelMediaTotal}
+                                        hasMore={media.hasMoreMedia}
+                                        isLoadingMore={media.isLoadingMoreMedia}
+                                        onApplyQuery={media.applyMediaQuery}
+                                        onLoadMore={media.loadMoreMedia}
                                         activeMediaId={media.mediaPlayer.activeMedia?.id ?? null}
                                         focusMediaId={focusMediaId}
                                         onFocusMediaHandled={handleFocusMediaHandled}

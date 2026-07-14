@@ -1,6 +1,8 @@
 import type { MediaCommentRow, MediaRow, MediaType } from "../types/media";
 import type { MediaIntegrityReference, MediaRepositoryStats } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
+import type { MediaPage } from "../types/generated/MediaPage";
+import type { MediaPageQuery } from "../types/generated/MediaPageQuery";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 
@@ -10,6 +12,13 @@ export async function updateMediaTitle(mediaId: number, title: string): Promise<
 
 export async function listMediaByChannel(channelId: number): Promise<MediaRow[]> {
     return invokeCommand<MediaRow[]>(TAURI_COMMANDS.LIST_MEDIA_BY_CHANNEL, { channelId });
+}
+
+export async function listMediaPage(
+    channelId: number,
+    query: MediaPageQuery
+): Promise<MediaPage> {
+    return invokeCommand<MediaPage>(TAURI_COMMANDS.LIST_MEDIA_PAGE, { channelId, query });
 }
 
 export async function findMediaByChannelAndFilePath(

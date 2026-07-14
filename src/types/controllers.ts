@@ -11,6 +11,7 @@ import type {
     YtDlpFormat,
 } from "./media";
 import type { AppSettings, ImportMode } from "./settings";
+import type { MediaQueryFilters } from "../utils/media-library-filters";
 
 export type AddMediaFormController = {
     sourceMode: MediaSourceMode;
@@ -63,6 +64,12 @@ export type MediaPlayerController = {
 
 export type MediaLibraryController = {
     mediaItems: MediaRow[];
+    // Rows matching the active filters across the whole channel (for "X of Y").
+    mediaTotal: number;
+    // Rows in the channel with no filter applied (for the channel header count).
+    channelMediaTotal: number;
+    hasMoreMedia: boolean;
+    isLoadingMoreMedia: boolean;
     addMediaOpen: boolean;
     setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
     closeAddMediaModal: () => Promise<void>;
@@ -79,7 +86,9 @@ export type MediaLibraryController = {
     isYtDlpRunning: boolean;
     addMediaForm: AddMediaFormController;
     mediaPlayer: MediaPlayerController;
-    loadMedia: (channelId?: number | null) => Promise<void>;
+    applyMediaQuery: (filters: MediaQueryFilters) => Promise<void>;
+    loadMoreMedia: () => Promise<void>;
+    reloadMedia: () => Promise<void>;
     addMedia: () => Promise<void>;
     cancelYtDlpDownload: () => Promise<void>;
     markAsWatched: (mediaId: number) => Promise<void>;

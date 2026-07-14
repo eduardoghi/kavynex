@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectedChannelLibrarySection } from "./selected-channel-library-section";
 import { renderWithMantine } from "../../test/test-utils";
 import type { MediaRow } from "../../types/media";
+import type { Channel } from "../../types/media";
 
 vi.mock("../../utils/media-utils", () => ({
     initials: vi.fn((value: string) => value.slice(0, 2).toUpperCase()),
@@ -51,42 +52,77 @@ function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
     };
 }
 
+const CHANNEL_A: Channel = {
+    id: 10,
+    name: "Canal A",
+    youtube_handle: "@canala",
+    avatar_path: null,
+    created_at: "2026-03-31T10:00:00.000Z",
+};
+
+// Fresh props (with fresh spies) per render so onApplyQuery/onLoadMore assertions do not leak
+// across tests.
+function makeProps(
+    overrides: Partial<React.ComponentProps<typeof SelectedChannelLibrarySection>> = {}
+): React.ComponentProps<typeof SelectedChannelLibrarySection> {
+    return {
+        selectedChannel: CHANNEL_A,
+        itemCountLabel: "1 item(s)",
+        disableAddMedia: false,
+        isLoadingMedia: false,
+        mediaItems: [createMediaRow()],
+        total: 1,
+        channelTotal: 1,
+        hasMore: false,
+        isLoadingMore: false,
+        onApplyQuery: vi.fn(),
+        onLoadMore: vi.fn(),
+        libraryPath: "/library",
+        shellBorder: "rgba(255,255,255,0.1)",
+        shellSurface: "rgba(255,255,255,0.03)",
+        onAddMedia: vi.fn(),
+        onBack: vi.fn(),
+        onOpenMedia: vi.fn(),
+        onRequestDeleteMedia: vi.fn(),
+        ...overrides,
+    };
+}
+
 describe("SelectedChannelLibrarySection", () => {
     beforeEach(() => {
         vi.useFakeTimers();
+        vi.clearAllMocks();
     });
 
     afterEach(() => {
         vi.useRealTimers();
     });
 
-    it("renders channel header", () => {
-        renderWithMantine(
-            <SelectedChannelLibrarySection
-                selectedChannel={{
-                    id: 10,
-                    name: "Canal A",
-                    youtube_handle: "@canala",
-                    avatar_path: null,
-                    created_at: "2026-03-31T10:00:00.000Z",
-                }}
-                itemCountLabel="3 item(s)"
-                disableAddMedia={false}
-                isLoadingMedia={false}
-                mediaItems={[createMediaRow()]}
-                libraryPath="/library"
-                shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
-                onAddMedia={vi.fn()}
-                onBack={vi.fn()}
-                onOpenMedia={vi.fn()}
-                onRequestDeleteMedia={vi.fn()}
-            />
-        );
+    it("renders the channel header and the grid items it was given", () => {
+        renderWithMantine(<SelectedChannelLibrarySection {...makeProps()} />);
 
         expect(screen.getByText("Canal A")).toBeInTheDocument();
         expect(screen.getByText((content) => content.includes("@canala"))).toBeInTheDocument();
         expect(screen.getByText("grid:1")).toBeInTheDocument();
+    });
+
+    it("requests the first page on mount with the default filters", () => {
+        const onApplyQuery = vi.fn();
+
+        renderWithMantine(
+            <SelectedChannelLibrarySection {...makeProps({ onApplyQuery })} />
+        );
+
+        expect(onApplyQuery).toHaveBeenCalledWith(
+            expect.objectContaining({
+                mediaType: "all",
+                watched: "all",
+                publication: "all",
+                search: "",
+                sortCategory: "publication_date",
+                sortDirection: "desc",
+            })
+        );
     });
 
     it("calls add and back actions", () => {
@@ -95,24 +131,7 @@ describe("SelectedChannelLibrarySection", () => {
 
         renderWithMantine(
             <SelectedChannelLibrarySection
-                selectedChannel={{
-                    id: 10,
-                    name: "Canal A",
-                    youtube_handle: "@canala",
-                    avatar_path: null,
-                    created_at: "2026-03-31T10:00:00.000Z",
-                }}
-                itemCountLabel="0 item(s)"
-                disableAddMedia={false}
-                isLoadingMedia={false}
-                mediaItems={[]}
-                libraryPath="/library"
-                shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
-                onAddMedia={onAddMedia}
-                onBack={onBack}
-                onOpenMedia={vi.fn()}
-                onRequestDeleteMedia={vi.fn()}
+                {...makeProps({ onAddMedia, onBack, mediaItems: [], total: 0, channelTotal: 0 })}
             />
         );
 
@@ -123,179 +142,88 @@ describe("SelectedChannelLibrarySection", () => {
         expect(onBack).toHaveBeenCalledTimes(1);
     });
 
-    it("filters media by publication date availability", () => {
-        renderWithMantine(
-            <SelectedChannelLibrarySection
-                selectedChannel={{
-                    id: 10,
-                    name: "Canal A",
-                    youtube_handle: "@canala",
-                    avatar_path: null,
-                    created_at: "2026-03-31T10:00:00.000Z",
-                }}
-                itemCountLabel="2 item(s)"
-                disableAddMedia={false}
-                isLoadingMedia={false}
-                mediaItems={[
-                    createMediaRow({
-                        id: 1,
-                        title: "With date",
-                        file_path: "video/with-date.mp4",
-                        published_at: "2026-03-31T10:00:00.000Z",
-                    }),
-                    createMediaRow({
-                        id: 2,
-                        title: "Without date",
-                        file_path: "video/without-date.mp4",
-                        published_at: null,
-                    }),
-                ]}
-                libraryPath="/library"
-                shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
-                onAddMedia={vi.fn()}
-                onBack={vi.fn()}
-                onOpenMedia={vi.fn()}
-                onRequestDeleteMedia={vi.fn()}
-            />
-        );
+    it("requests a publication-date filter from the backend when it changes", () => {
+        const onApplyQuery = vi.fn();
 
-        expect(screen.getByText("grid:2")).toBeInTheDocument();
-        expect(screen.getByTestId("grid-titles")).toHaveTextContent("With date");
-        expect(screen.getByTestId("grid-titles")).toHaveTextContent("Without date");
+        renderWithMantine(
+            <SelectedChannelLibrarySection {...makeProps({ onApplyQuery })} />
+        );
 
         fireEvent.click(screen.getByRole("combobox", { name: /^publication date$/i }));
         fireEvent.click(screen.getByRole("option", { name: /with publication date/i }));
 
-        expect(screen.getByText("grid:1")).toBeInTheDocument();
-        expect(screen.getByTestId("grid-titles")).toHaveTextContent("With date");
+        expect(onApplyQuery).toHaveBeenLastCalledWith(
+            expect.objectContaining({ publication: "with" })
+        );
 
         fireEvent.click(screen.getByRole("combobox", { name: /^publication date$/i }));
         fireEvent.click(screen.getByRole("option", { name: /no publication date/i }));
 
-        expect(screen.getByText("grid:1")).toBeInTheDocument();
-        expect(screen.getByTestId("grid-titles")).toHaveTextContent("Without date");
+        expect(onApplyQuery).toHaveBeenLastCalledWith(
+            expect.objectContaining({ publication: "without" })
+        );
     });
 
-    it("sorts by publication date without falling back to added date", () => {
+    it("requests a sort direction change from the backend", () => {
+        const onApplyQuery = vi.fn();
+
         renderWithMantine(
-            <SelectedChannelLibrarySection
-                selectedChannel={{
-                    id: 10,
-                    name: "Canal A",
-                    youtube_handle: "@canala",
-                    avatar_path: null,
-                    created_at: "2026-03-31T10:00:00.000Z",
-                }}
-                itemCountLabel="3 item(s)"
-                disableAddMedia={false}
-                isLoadingMedia={false}
-                mediaItems={[
-                    createMediaRow({
-                        id: 1,
-                        title: "No publication but recently added",
-                        file_path: "video/no-publication.mp4",
-                        published_at: null,
-                        created_at: "2026-06-01T10:00:00.000Z",
-                    }),
-                    createMediaRow({
-                        id: 2,
-                        title: "New publication",
-                        file_path: "video/new-publication.mp4",
-                        published_at: "2025-01-01T10:00:00.000Z",
-                        created_at: "2024-01-01T10:00:00.000Z",
-                    }),
-                    createMediaRow({
-                        id: 3,
-                        title: "Old publication",
-                        file_path: "video/old-publication.mp4",
-                        published_at: "2024-01-01T10:00:00.000Z",
-                        created_at: "2026-07-01T10:00:00.000Z",
-                    }),
-                ]}
-                libraryPath="/library"
-                shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
-                onAddMedia={vi.fn()}
-                onBack={vi.fn()}
-                onOpenMedia={vi.fn()}
-                onRequestDeleteMedia={vi.fn()}
-            />
+            <SelectedChannelLibrarySection {...makeProps({ onApplyQuery })} />
         );
 
-        expect(screen.getByTestId("grid-titles")).toHaveTextContent(
-            "New publication,Old publication,No publication but recently added"
-        );
-
+        // The default direction is descending; toggling it asks the backend for ascending.
         fireEvent.click(screen.getByRole("button", { name: /sort descending/i }));
 
-        expect(screen.getByTestId("grid-titles")).toHaveTextContent(
-            "Old publication,New publication,No publication but recently added"
+        expect(onApplyQuery).toHaveBeenLastCalledWith(
+            expect.objectContaining({ sortDirection: "asc" })
         );
     });
 
-    it("resets search/filters when the channel changes (remounts via key)", () => {
-        const channelA = {
-            id: 10,
-            name: "Canal A",
-            youtube_handle: "@canala",
-            avatar_path: null,
-            created_at: "2026-03-31T10:00:00.000Z",
-        };
-        const channelB = { ...channelA, id: 20, name: "Canal B", youtube_handle: "@canalb" };
-
-        const baseProps = {
-            itemCountLabel: "1 item(s)",
-            disableAddMedia: false,
-            isLoadingMedia: false,
-            libraryPath: "/library",
-            shellBorder: "rgba(255,255,255,0.1)",
-            shellSurface: "rgba(255,255,255,0.03)",
-            onAddMedia: vi.fn(),
-            onBack: vi.fn(),
-            onOpenMedia: vi.fn(),
-            onRequestDeleteMedia: vi.fn(),
-        };
+    it("debounces the search term before querying and resets on channel remount", () => {
+        const onApplyQuery = vi.fn();
+        const props = makeProps({ onApplyQuery });
 
         const { rerender } = renderWithMantine(
-            <SelectedChannelLibrarySection
-                key={channelA.id}
-                selectedChannel={channelA}
-                mediaItems={[
-                    createMediaRow({ id: 1, title: "Alpha", file_path: "video/alpha.mp4" }),
-                ]}
-                {...baseProps}
-            />
+            <SelectedChannelLibrarySection key={CHANNEL_A.id} {...props} />
         );
 
-        // Narrow channel A down to nothing with a search term that matches no title.
         act(() => {
-            fireEvent.change(screen.getByRole("textbox"), {
-                target: { value: "zzz-no-match" },
-            });
+            fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } });
         });
+
+        // Before the debounce elapses the term has not been sent.
+        expect(onApplyQuery).not.toHaveBeenCalledWith(
+            expect.objectContaining({ search: "hello" })
+        );
 
         act(() => {
             vi.advanceTimersByTime(200);
         });
 
-        expect(screen.getByText("grid:0")).toBeInTheDocument();
+        expect(onApplyQuery).toHaveBeenLastCalledWith(
+            expect.objectContaining({ search: "hello" })
+        );
 
-        // Switching channels changes the key, so the section remounts with fresh state
-        // instead of carrying channel A's search over to channel B.
+        // Switching channels remounts the section (key change): the search input resets and the
+        // fresh mount queries with the default empty search.
+        const channelB: Channel = { ...CHANNEL_A, id: 20, name: "Canal B", youtube_handle: "@canalb" };
+        const onApplyQueryB = vi.fn();
+
         rerender(
             <SelectedChannelLibrarySection
                 key={channelB.id}
-                selectedChannel={channelB}
-                mediaItems={[
-                    createMediaRow({ id: 2, title: "Beta", file_path: "video/beta.mp4" }),
-                ]}
-                {...baseProps}
+                {...makeProps({
+                    onApplyQuery: onApplyQueryB,
+                    selectedChannel: channelB,
+                    mediaItems: [createMediaRow({ id: 2, title: "Beta" })],
+                })}
             />
         );
 
         expect(screen.getByRole("textbox")).toHaveValue("");
-        expect(screen.getByText("grid:1")).toBeInTheDocument();
+        expect(onApplyQueryB).toHaveBeenLastCalledWith(
+            expect.objectContaining({ search: "" })
+        );
         expect(screen.getByTestId("grid-titles")).toHaveTextContent("Beta");
     });
 });

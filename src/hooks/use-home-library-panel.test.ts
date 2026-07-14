@@ -13,7 +13,7 @@ describe("useHomeLibraryPanel", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isAddingMedia: false,
@@ -31,7 +31,7 @@ describe("useHomeLibraryPanel", () => {
         const { result } = renderHook(() =>
             useHomeLibraryPanel({
                 selectedChannel: null,
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isAddingMedia: false,
@@ -53,7 +53,7 @@ describe("useHomeLibraryPanel", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: true,
                 isAddingMedia: false,
@@ -75,7 +75,7 @@ describe("useHomeLibraryPanel", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "player",
                 isLoadingMedia: false,
                 isAddingMedia: false,
@@ -97,7 +97,7 @@ describe("useHomeLibraryPanel", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isAddingMedia: true,
@@ -119,7 +119,7 @@ describe("useHomeLibraryPanel", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isAddingMedia: false,
@@ -141,7 +141,7 @@ describe("useHomeLibraryPanel", () => {
                     avatar_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isAddingMedia: false,
@@ -157,7 +157,7 @@ describe("useHomeLibraryPanel", () => {
         const { result } = renderHook(() =>
             useHomeLibraryPanel({
                 selectedChannel: null,
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isMigratingLibraryPath: false,
@@ -172,7 +172,7 @@ describe("useHomeLibraryPanel", () => {
         const { result } = renderHook(() =>
             useHomeLibraryPanel({
                 selectedChannel: null,
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isAddingMedia: false,
@@ -187,7 +187,7 @@ describe("useHomeLibraryPanel", () => {
         const { result } = renderHook(() =>
             useHomeLibraryPanel({
                 selectedChannel: null,
-                mediaItems: [],
+                channelMediaTotal: 0,
                 viewMode: "library",
                 isLoadingMedia: false,
                 isAddingMedia: false,
@@ -211,7 +211,7 @@ describe("useHomeLibraryPanel", () => {
             (props: { isLoadingMedia: boolean }) =>
                 useHomeLibraryPanel({
                     selectedChannel,
-                    mediaItems: [],
+                    channelMediaTotal: 0,
                     viewMode: "library",
                     isLoadingMedia: props.isLoadingMedia,
                     isAddingMedia: false,
@@ -231,7 +231,7 @@ describe("useHomeLibraryPanel", () => {
     it("does not recompute the panel state when the re-render carries the same values", () => {
         const options = {
             selectedChannel: null,
-            mediaItems: [] as never[],
+            channelMediaTotal: 0,
             viewMode: "library" as const,
             isLoadingMedia: false,
             isAddingMedia: false,

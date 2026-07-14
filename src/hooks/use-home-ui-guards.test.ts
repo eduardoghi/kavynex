@@ -109,7 +109,13 @@ describe("useHomeUiGuards", () => {
                 openInYoutube: vi.fn().mockResolvedValue(undefined),
             },
 
-            loadMedia: vi.fn(),
+            applyMediaQuery: vi.fn().mockResolvedValue(undefined),
+            loadMoreMedia: vi.fn().mockResolvedValue(undefined),
+            reloadMedia: vi.fn().mockResolvedValue(undefined),
+            mediaTotal: 0,
+            channelMediaTotal: 0,
+            hasMoreMedia: false,
+            isLoadingMoreMedia: false,
             addMedia: vi.fn(),
             cancelYtDlpDownload: vi.fn(),
 

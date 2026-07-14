@@ -1,10 +1,13 @@
 import type { MediaCommentRow, MediaRow, YtDlpComment } from "../types/media";
+import type { MediaPage } from "../types/generated/MediaPage";
+import type { MediaPageQuery } from "../types/generated/MediaPageQuery";
 import {
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
     listMediaByChannel,
     listMediaCommentsByMediaId,
+    listMediaPage,
     markMediaAsUnwatched,
     markMediaAsWatched,
     mediaExistsForChannelAndYoutubeId,
@@ -208,6 +211,16 @@ async function tryPersistYouTubeComments(
 export async function listChannelMedia(channelId: number): Promise<MediaRow[]> {
     validateChannelId(channelId);
     return listMediaByChannel(channelId);
+}
+
+// Returns one filtered/sorted page of a channel's media plus the total match count, so the
+// library list can page through large channels instead of loading every row.
+export async function listChannelMediaPage(
+    channelId: number,
+    query: MediaPageQuery
+): Promise<MediaPage> {
+    validateChannelId(channelId);
+    return listMediaPage(channelId, query);
 }
 
 export async function listMediaComments(mediaId: number): Promise<MediaCommentRow[]> {

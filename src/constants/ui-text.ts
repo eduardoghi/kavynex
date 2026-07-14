@@ -32,6 +32,7 @@ export const UI_TEXT = {
         noResultsTitle: "No results found",
         noResultsDescription: "Try adjusting your search, filters, or sorting.",
         loading: "Loading media...",
+        loadingMore: "Loading more...",
         searchLabel: "Search by title",
         searchPlaceholder: "Type to search...",
         typeLabel: "Type",

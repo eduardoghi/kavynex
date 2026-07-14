@@ -70,6 +70,7 @@ describe("useMediaActions", () => {
     const onError = vi.fn();
     const onNotice = vi.fn();
     const setMediaItems = vi.fn();
+    const onItemsRemoved = vi.fn();
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -88,6 +89,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -113,6 +115,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -145,6 +148,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -175,6 +179,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -208,6 +213,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -235,6 +241,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -267,6 +274,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -295,6 +303,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -322,6 +331,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -348,6 +358,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -375,6 +386,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -420,6 +432,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -454,6 +467,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -481,6 +495,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -509,6 +524,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -541,6 +557,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -568,6 +585,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -597,6 +615,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -629,6 +648,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -662,6 +682,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -692,6 +713,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -725,6 +747,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -768,6 +791,7 @@ describe("useMediaActions", () => {
             useMediaActions({
                 libraryPath: "/library",
                 setMediaItems,
+                onItemsRemoved,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -801,6 +825,7 @@ describe("useMediaActions", () => {
         const makeProps = (activeMedia: MediaRow) => ({
             libraryPath: "/library",
             setMediaItems,
+            onItemsRemoved,
             mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
             onError,
             onNotice,
@@ -833,6 +858,7 @@ describe("useMediaActions", () => {
         const makeProps = (activeMedia: MediaRow) => ({
             libraryPath: "/library",
             setMediaItems,
+            onItemsRemoved,
             mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
             onError,
             onNotice,

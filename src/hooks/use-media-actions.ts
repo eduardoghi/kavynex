@@ -14,6 +14,9 @@ import { useMemoObject } from "./use-memo-object";
 type UseMediaActionsOptions = {
     libraryPath: string;
     setMediaItems: React.Dispatch<React.SetStateAction<MediaRow[]>>;
+    // Notifies the pager that `count` rows left the in-memory list (a delete), so the filtered and
+    // channel totals stay correct without a full refetch.
+    onItemsRemoved: (count: number) => void;
     mediaPlayer: {
         activeMedia: MediaRow | null;
         setActiveMedia: (media: MediaRow | null) => void;
@@ -56,6 +59,7 @@ function updateMediaItem(
 export function useMediaActions({
     libraryPath,
     setMediaItems,
+    onItemsRemoved,
     mediaPlayer,
     onError,
     onNotice,
@@ -126,8 +130,9 @@ export function useMediaActions({
             setMediaItems((currentItems) =>
                 currentItems.filter((item) => item.id !== deletingId)
             );
+            onItemsRemoved(1);
         },
-        [mediaToDelete?.id, setMediaItems]
+        [mediaToDelete?.id, onItemsRemoved, setMediaItems]
     );
 
     const confirmDeleteMedia = useCallback(async (): Promise<void> => {

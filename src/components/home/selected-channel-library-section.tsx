@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     ActionIcon,
     Avatar,
@@ -17,7 +17,8 @@ import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
 import {
-    filterAndSortMedia,
+    buildMediaQueryFilters,
+    type MediaQueryFilters,
     type MediaTypeFilter,
     type PublicationDateFilter,
     type SortCategory,
@@ -39,6 +40,14 @@ type SelectedChannelLibrarySectionProps = {
     isLoadingMedia: boolean;
     isVisible?: boolean;
     mediaItems: MediaRow[];
+    // Rows matching the active filters across the whole channel (for "X of Y").
+    total: number;
+    // Rows in the channel with no filter applied (decides the empty-vs-no-results message).
+    channelTotal: number;
+    hasMore: boolean;
+    isLoadingMore: boolean;
+    onApplyQuery: (filters: MediaQueryFilters) => void;
+    onLoadMore: () => void;
     activeMediaId?: number | null;
     focusMediaId?: number | null;
     onFocusMediaHandled?: () => void;
@@ -63,6 +72,12 @@ export function SelectedChannelLibrarySection({
     isLoadingMedia,
     isVisible = true,
     mediaItems,
+    total,
+    channelTotal,
+    hasMore,
+    isLoadingMore,
+    onApplyQuery,
+    onLoadMore,
     activeMediaId = null,
     focusMediaId = null,
     onFocusMediaHandled,
@@ -90,9 +105,11 @@ export function SelectedChannelLibrarySection({
     const [sortCategory, setSortCategory] = useState<SortCategory>("publication_date");
     const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-    const filteredItems = useMemo(
+    // The filter/sort/search selections are pushed to the backend, which returns the matching
+    // page (and total). Debounced search keeps typing from firing a query per keystroke.
+    const queryFilters = useMemo<MediaQueryFilters>(
         () =>
-            filterAndSortMedia(mediaItems, {
+            buildMediaQueryFilters({
                 searchValue: debouncedSearchValue,
                 mediaTypeFilter,
                 watchedFilter,
@@ -101,17 +118,25 @@ export function SelectedChannelLibrarySection({
                 sortDirection,
             }),
         [
-            mediaItems,
+            debouncedSearchValue,
             mediaTypeFilter,
             watchedFilter,
             publicationDateFilter,
-            debouncedSearchValue,
             sortCategory,
             sortDirection,
         ]
     );
 
-    const filteredCountLabel = `${UI_TEXT.library.showing} ${filteredItems.length} ${UI_TEXT.library.of} ${mediaItems.length} ${UI_TEXT.home.itemCountSuffix}`;
+    // Load the first page whenever the query changes (and once on mount). The section is
+    // remounted per channel, so mounting with the default filters loads the newly selected
+    // channel's first page.
+    useEffect(() => {
+        onApplyQuery(queryFilters);
+    }, [onApplyQuery, queryFilters]);
+
+    // "showing <loaded> of <total matching the filters>". With no filter active, total is the
+    // whole channel; with a filter, it is the filtered match count.
+    const filteredCountLabel = `${UI_TEXT.library.showing} ${mediaItems.length} ${UI_TEXT.library.of} ${total} ${UI_TEXT.home.itemCountSuffix}`;
 
     return (
         <Stack gap="lg">
@@ -272,7 +297,10 @@ export function SelectedChannelLibrarySection({
             </Stack>
 
             <MediaGrid
-                items={filteredItems}
+                items={mediaItems}
+                hasMore={hasMore}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
                 activeMediaId={activeMediaId}
                 focusMediaId={focusMediaId}
                 onFocusHandled={onFocusMediaHandled}
@@ -281,9 +309,9 @@ export function SelectedChannelLibrarySection({
                 shellSurface={shellSurface}
                 loading={isLoadingMedia}
                 isVisible={isVisible}
-                emptyTitle={mediaItems.length === 0 ? UI_TEXT.library.emptyTitle : UI_TEXT.library.noResultsTitle}
+                emptyTitle={channelTotal === 0 ? UI_TEXT.library.emptyTitle : UI_TEXT.library.noResultsTitle}
                 emptyDescription={
-                    mediaItems.length === 0
+                    channelTotal === 0
                         ? UI_TEXT.library.emptyDescription
                         : UI_TEXT.library.noResultsDescription
                 }

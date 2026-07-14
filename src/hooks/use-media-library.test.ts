@@ -1,9 +1,11 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaRow } from "../types/media";
+import type { MediaPage } from "../types/generated/MediaPage";
 import { useMediaLibrary } from "./use-media-library";
 import { saveMediaProgress as persistMediaProgress } from "../services/media-service";
-import { listChannelMedia } from "../services";
+import { listChannelMediaPage } from "../services";
+import { DEFAULT_MEDIA_QUERY_FILTERS } from "../utils/media-library-filters";
 
 // useChannelMediaList and useMediaPlayer are exercised for real (not mocked) below, so the
 // dependency-array mutants in useMediaLibrary's own useCallback/useEffect blocks can be
@@ -17,7 +19,7 @@ vi.mock("../services/media-service", () => ({
 }));
 
 vi.mock("../services", () => ({
-    listChannelMedia: vi.fn().mockResolvedValue([]),
+    listChannelMediaPage: vi.fn().mockResolvedValue({ items: [], total: 0 }),
 }));
 
 vi.mock("../services/library-service", () => ({
@@ -63,7 +65,7 @@ vi.mock("./use-add-media-workflow", () => ({
     }),
 }));
 
-const listChannelMediaMock = vi.mocked(listChannelMedia);
+const listMediaPageMock = vi.mocked(listChannelMediaPage);
 const persistMediaProgressMock = vi.mocked(persistMediaProgress);
 
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
@@ -89,10 +91,13 @@ function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
     };
 }
 
-// A single stable onError reference is required: useChannelMediaList's real loadMedia
-// callback depends on it, so a fresh vi.fn() per render would recreate loadMedia every
-// render and, combined with useMediaLibrary's own effect depending on loadMedia, would
-// spin into an infinite render loop.
+function page(items: MediaRow[], total = items.length): MediaPage {
+    return { items, total };
+}
+
+// A single stable onError reference is required: useChannelMediaList's real applyQuery
+// callback depends on it, so a fresh vi.fn() per render would recreate applyQuery every
+// render.
 const onErrorMock = vi.fn();
 const onNoticeMock = vi.fn();
 
@@ -110,10 +115,28 @@ function renderMediaLibrary(selectedChannelId: number | null) {
     );
 }
 
+// The library section drives the actual load; in these hook-level tests we call applyMediaQuery
+// directly (the same thing the section's effect does) to populate the media list.
+async function loadInto(
+    result: { current: ReturnType<typeof useMediaLibrary> },
+    items: MediaRow[],
+    total = items.length
+): Promise<void> {
+    listMediaPageMock.mockResolvedValueOnce(page(items, total));
+
+    await act(async () => {
+        await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+    });
+
+    await waitFor(() => {
+        expect(result.current.mediaItems).toHaveLength(items.length);
+    });
+}
+
 describe("useMediaLibrary", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        listChannelMediaMock.mockResolvedValue([]);
+        listMediaPageMock.mockResolvedValue({ items: [], total: 0 });
         persistMediaProgressMock.mockResolvedValue(undefined);
     });
 
@@ -126,47 +149,46 @@ describe("useMediaLibrary", () => {
         expect(typeof result.current.requestDeleteMedia).toBe("function");
     });
 
-    it("loads media for the initial selected channel on mount", async () => {
-        listChannelMediaMock.mockResolvedValueOnce([createMediaRow({ id: 1 })]);
-
+    it("loads a page for the selected channel when a query is applied", async () => {
         const { result } = renderMediaLibrary(7);
 
-        await waitFor(() => {
-            expect(listChannelMediaMock).toHaveBeenCalledWith(7);
-        });
+        await loadInto(result, [createMediaRow({ id: 1 })], 1);
 
-        await waitFor(() => {
-            expect(result.current.mediaItems).toEqual([createMediaRow({ id: 1 })]);
-        });
+        expect(listMediaPageMock).toHaveBeenCalledWith(
+            7,
+            expect.objectContaining({ offset: 0 })
+        );
+        expect(result.current.mediaItems).toEqual([createMediaRow({ id: 1 })]);
+        expect(result.current.mediaTotal).toBe(1);
+        expect(result.current.channelMediaTotal).toBe(1);
     });
 
-    it("clears media when there is no selected channel", async () => {
+    it("does not query and stays empty while there is no selected channel", async () => {
         const { result } = renderMediaLibrary(null);
 
-        await waitFor(() => {
-            expect(result.current.isLoadingMedia).toBe(false);
+        await act(async () => {
+            await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
 
-        expect(listChannelMediaMock).not.toHaveBeenCalled();
+        expect(listMediaPageMock).not.toHaveBeenCalled();
         expect(result.current.mediaItems).toEqual([]);
     });
 
-    it("reloads media when selectedChannelId changes across a re-render", async () => {
+    it("queries the updated channel after selectedChannelId changes across a re-render", async () => {
         const { result, rerender } = renderMediaLibrary(null);
-
-        await waitFor(() => {
-            expect(result.current.isLoadingMedia).toBe(false);
-        });
-
-        expect(listChannelMediaMock).not.toHaveBeenCalled();
-
-        listChannelMediaMock.mockResolvedValueOnce([createMediaRow({ id: 99 })]);
 
         rerender({ selectedChannelId: 42 });
 
-        await waitFor(() => {
-            expect(listChannelMediaMock).toHaveBeenCalledWith(42);
+        listMediaPageMock.mockResolvedValueOnce(page([createMediaRow({ id: 99 })], 1));
+
+        await act(async () => {
+            await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
+
+        expect(listMediaPageMock).toHaveBeenCalledWith(
+            42,
+            expect.objectContaining({ offset: 0 })
+        );
 
         await waitFor(() => {
             expect(result.current.mediaItems).toEqual([createMediaRow({ id: 99 })]);
@@ -174,16 +196,12 @@ describe("useMediaLibrary", () => {
     });
 
     it("saves media progress, flooring the value and updating only the matching item", async () => {
-        listChannelMediaMock.mockResolvedValueOnce([
+        const { result } = renderMediaLibrary(7);
+
+        await loadInto(result, [
             createMediaRow({ id: 1, progress_seconds: 0 }),
             createMediaRow({ id: 2, progress_seconds: 50 }),
         ]);
-
-        const { result } = renderMediaLibrary(7);
-
-        await waitFor(() => {
-            expect(result.current.mediaItems).toHaveLength(2);
-        });
 
         await act(async () => {
             await result.current.saveMediaProgress(1, 42.9);
@@ -197,15 +215,9 @@ describe("useMediaLibrary", () => {
     });
 
     it("clamps negative progress seconds to zero", async () => {
-        listChannelMediaMock.mockResolvedValueOnce([
-            createMediaRow({ id: 1, progress_seconds: 10 }),
-        ]);
-
         const { result } = renderMediaLibrary(7);
 
-        await waitFor(() => {
-            expect(result.current.mediaItems).toHaveLength(1);
-        });
+        await loadInto(result, [createMediaRow({ id: 1, progress_seconds: 10 })]);
 
         await act(async () => {
             await result.current.saveMediaProgress(1, -5);
@@ -270,16 +282,12 @@ describe("useMediaLibrary", () => {
     });
 
     it("defers the playing media's list update until the player closes, then reconciles it", async () => {
-        listChannelMediaMock.mockResolvedValueOnce([
+        const { result } = renderMediaLibrary(7);
+
+        await loadInto(result, [
             createMediaRow({ id: 5, progress_seconds: 0 }),
             createMediaRow({ id: 6, progress_seconds: 12 }),
         ]);
-
-        const { result } = renderMediaLibrary(7);
-
-        await waitFor(() => {
-            expect(result.current.mediaItems).toHaveLength(2);
-        });
 
         act(() => {
             result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]!);
@@ -294,7 +302,7 @@ describe("useMediaLibrary", () => {
         // The active media reflects the save immediately (its progress is read on reopen)...
         expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(90);
         // ...but the media-list array keeps its identity during playback, so the hidden library
-        // grid's O(n log n) filter/sort memo is not retriggered on every periodic save.
+        // grid is not retriggered on every periodic save.
         expect(result.current.mediaItems).toBe(listBeforeSave);
         expect(result.current.mediaItems[0]!.progress_seconds).toBe(0);
 
@@ -309,19 +317,15 @@ describe("useMediaLibrary", () => {
     });
 
     it("does not resurrect progress on a watched item when flushing on close", async () => {
-        listChannelMediaMock.mockResolvedValueOnce([
+        const { result } = renderMediaLibrary(7);
+
+        await loadInto(result, [
             createMediaRow({
                 id: 5,
                 progress_seconds: 0,
                 watched_at: "2026-01-01T00:00:00.000Z",
             }),
         ]);
-
-        const { result } = renderMediaLibrary(7);
-
-        await waitFor(() => {
-            expect(result.current.mediaItems).toHaveLength(1);
-        });
 
         act(() => {
             result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]!);

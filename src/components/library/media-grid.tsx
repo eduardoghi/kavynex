@@ -18,6 +18,10 @@ type MediaGridProps = {
     // highlights it, then calls onFocusHandled. Used to jump to a media from Diagnostics.
     focusMediaId?: number | null;
     onFocusHandled?: () => void;
+    // Server-side pagination: the grid appends the next page as the user scrolls near the bottom.
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
+    onLoadMore?: () => void;
     loading?: boolean;
     isVisible?: boolean;
     emptyTitle?: string;
@@ -61,6 +65,9 @@ export function MediaGrid({
     activeMediaId = null,
     focusMediaId = null,
     onFocusHandled,
+    hasMore = false,
+    isLoadingMore = false,
+    onLoadMore,
     loading = false,
     isVisible = true,
     emptyTitle = UI_TEXT.library.emptyTitle,
@@ -123,6 +130,23 @@ export function MediaGrid({
         overscan: 4,
     });
 
+    const virtualRows = rowVirtualizer.getVirtualItems();
+
+    // Infinite scroll: when the last virtualized row comes into view and the backend reports more
+    // matching rows, ask for the next page. isLoadingMore guards against firing repeatedly while a
+    // page is in flight.
+    useEffect(() => {
+        if (!isVisible || !hasMore || isLoadingMore || !onLoadMore) {
+            return;
+        }
+
+        const lastRow = virtualRows[virtualRows.length - 1];
+
+        if (lastRow && lastRow.index >= rows.length - 1) {
+            onLoadMore();
+        }
+    }, [virtualRows, isVisible, hasMore, isLoadingMore, onLoadMore, rows.length]);
+
     // Jump to (and briefly highlight) a media requested from elsewhere - e.g. a "missing media"
     // path clicked in Diagnostics. The target channel's media loads asynchronously, so this runs
     // again as `items` fills in; it acts only once the target is present, then clears the request.
@@ -137,7 +161,19 @@ export function MediaGrid({
         const index = items.findIndex((item) => item.id === focusMediaId);
 
         if (index < 0) {
-            // Not loaded yet (or filtered out): wait for a later `items` change.
+            // Not on the loaded page(s). With server-side pagination the target may be further
+            // down, so keep loading pages until it appears (this effect re-runs as `items` grows).
+            // Once there are no more pages it is not in the current filtered set, so give up and
+            // clear the request instead of waiting forever.
+            if (hasMore) {
+                if (!isLoadingMore) {
+                    onLoadMore?.();
+                }
+
+                return;
+            }
+
+            onFocusHandled?.();
             return;
         }
 
@@ -156,7 +192,17 @@ export function MediaGrid({
         }, MEDIA_HIGHLIGHT_DURATION_MS);
 
         onFocusHandled?.();
-    }, [focusMediaId, items, columnCount, isVisible, rowVirtualizer, onFocusHandled]);
+    }, [
+        focusMediaId,
+        items,
+        columnCount,
+        isVisible,
+        rowVirtualizer,
+        onFocusHandled,
+        hasMore,
+        isLoadingMore,
+        onLoadMore,
+    ]);
 
     useEffect(() => {
         return () => {
@@ -233,7 +279,7 @@ export function MediaGrid({
                                 position: "relative",
                             }}
                         >
-                            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                            {virtualRows.map((virtualRow) => {
                                 const rowItems = rows[virtualRow.index];
 
                                 // The virtualizer only yields in-range row indices, so this is
@@ -311,6 +357,14 @@ export function MediaGrid({
                                 );
                             })}
                         </Box>
+
+                        {isLoadingMore && (
+                            <Box style={{ textAlign: "center", paddingBlock: GRID_GAP }}>
+                                <Text size="sm" c="dimmed" aria-live="polite">
+                                    {UI_TEXT.library.loadingMore}
+                                </Text>
+                            </Box>
+                        )}
                     </Box>
                 </Box>
             )}
