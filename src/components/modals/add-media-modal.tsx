@@ -17,6 +17,7 @@ import {
     displayDateToIso,
     formatPublishedAtForDisplay,
 } from "../../utils/published-date";
+import { toUnionValue } from "../../utils/guards";
 
 // Stable no-op for the locked modal's onClose, so it is not a fresh function every render.
 const NOOP = (): void => {};
@@ -165,7 +166,11 @@ export function AddMediaModal({
                 <Stack gap="md">
                     <SegmentedControl
                         value={sourceMode}
-                        onChange={(value) => void onChangeSourceMode(value as MediaSourceMode)}
+                        onChange={(value) =>
+                            void onChangeSourceMode(
+                                toUnionValue(value, ["local", "yt-dlp"] as const, "local")
+                            )
+                        }
                         data={[
                             { label: "Local file", value: "local" },
                             { label: "URL (yt-dlp)", value: "yt-dlp" },

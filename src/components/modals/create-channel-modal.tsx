@@ -9,6 +9,7 @@ import {
 } from "@mantine/core";
 import type { ChannelAvatarMode } from "../../types/media";
 import { NOOP } from "../../utils/noop";
+import { toUnionValue } from "../../utils/guards";
 
 type CreateChannelModalProps = {
     opened: boolean;
@@ -109,7 +110,15 @@ export function CreateChannelModal({
 
                             <SegmentedControl
                                 value={avatarMode}
-                                onChange={(value) => onChangeAvatarMode(value as ChannelAvatarMode)}
+                                onChange={(value) =>
+                                    onChangeAvatarMode(
+                                        toUnionValue(
+                                            value,
+                                            ["none", "manual", "youtube"] as const,
+                                            "none"
+                                        )
+                                    )
+                                }
                                 data={[
                                     { label: "No avatar", value: "none" },
                                     { label: "Manual file", value: "manual" },

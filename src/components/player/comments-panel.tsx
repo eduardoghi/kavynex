@@ -33,6 +33,7 @@ import {
     type CommentSortMode,
     type CommentTreeNode,
 } from "./comment-tree";
+import { toUnionValue } from "../../utils/guards";
 
 // Cap how many top-level comment threads are mounted at once so media with thousands of
 // comments does not build an unbounded DOM. More threads are revealed on demand.
@@ -351,7 +352,13 @@ export function CommentsPanel({
                             label={UI_TEXT.comments.sortLabel}
                             value={commentSortMode}
                             onChange={(value) =>
-                                setCommentSortMode((value as CommentSortMode) || "likes")
+                                setCommentSortMode(
+                                    toUnionValue(
+                                        value,
+                                        ["likes", "newest", "oldest"] as const,
+                                        "likes"
+                                    )
+                                )
                             }
                             data={[
                                 { value: "likes", label: UI_TEXT.comments.sortOptions.likes },
