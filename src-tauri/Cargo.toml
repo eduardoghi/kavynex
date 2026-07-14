@@ -40,6 +40,11 @@ flate2 = "1"
 tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread", "process", "io-util", "net"] }
 tauri-plugin-os = "2.3.2"
 chrono = "0.4.44"
+# Unicode NFD normalization for the accent-insensitive title search/sort. Both the stored
+# `videos.title_normalized` column and the search term the frontend sends are normalized by the
+# same `utils::text::normalize_search_text`, so a match is guaranteed regardless of accents/case.
+# Already present transitively (via idna); pinned here as a direct dependency.
+unicode-normalization = "0.1.25"
 tauri-plugin-process = "2"
 tauri-plugin-window-state = "2"
 # Minimal hand-rolled HTTP client (hyper) for the direct thumbnail/avatar download in

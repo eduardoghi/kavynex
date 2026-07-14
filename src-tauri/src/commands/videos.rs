@@ -4,7 +4,8 @@ use crate::services::database::Db;
 use crate::services::library_cleanup::{self, ArtifactCleanupReport};
 use crate::services::video_repository as repo;
 use crate::services::video_repository::{
-    MediaCommentRow, MediaIntegrityReference, MediaRepositoryStats, MediaRow,
+    MediaCommentRow, MediaIntegrityReference, MediaPage, MediaPageQuery, MediaRepositoryStats,
+    MediaRow,
 };
 use crate::utils::path::ensure_managed_library_relative_path;
 use crate::utils::validation::{ensure_valid_media_title, ensure_valid_media_type};
@@ -32,6 +33,19 @@ pub async fn update_media_title(db: State<'_, Db>, media_id: i64, title: String)
 pub async fn list_media_by_channel(db: State<'_, Db>, channel_id: i64) -> AppResult<Vec<MediaRow>> {
     let pool = db.pool().await?;
     repo::list_media_by_channel(&pool, channel_id).await
+}
+
+/// Returns one filtered, sorted, windowed page of a channel's media (plus the total match
+/// count), so the library list can page through large channels instead of loading every row
+/// over IPC. Filtering and sorting happen in SQLite; see `repo::list_media_page`.
+#[tauri::command]
+pub async fn list_media_page(
+    db: State<'_, Db>,
+    channel_id: i64,
+    query: MediaPageQuery,
+) -> AppResult<MediaPage> {
+    let pool = db.pool().await?;
+    repo::list_media_page(&pool, channel_id, &query).await
 }
 
 #[tauri::command]

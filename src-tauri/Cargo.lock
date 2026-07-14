@@ -2161,6 +2161,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tokio",
  "ts-rs",
+ "unicode-normalization",
 ]
 
 [[package]]

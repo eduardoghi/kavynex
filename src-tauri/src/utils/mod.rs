@@ -5,4 +5,5 @@ pub mod naming;
 pub mod path;
 pub mod process;
 pub mod task;
+pub mod text;
 pub mod validation;

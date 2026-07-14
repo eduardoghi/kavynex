@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 10;
+pub(crate) const SCHEMA_VERSION: i64 = 11;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -25,6 +25,7 @@ const VIDEOS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     channel_id INTEGER NOT NULL,
     title TEXT NOT NULL CHECK (TRIM(title) <> ''),
+    title_normalized TEXT,
     file_path TEXT NOT NULL CHECK (TRIM(file_path) <> ''),
     thumbnail_path TEXT CHECK (thumbnail_path IS NULL OR TRIM(thumbnail_path) <> ''),
     media_type TEXT NOT NULL CHECK (media_type IN ('video', 'audio')),
@@ -93,6 +94,9 @@ const INDEX_DDLS: &[(&str, &str)] = &[
     // Serves the hot "list a channel's media, newest first" query
     // (WHERE channel_id = ? ORDER BY created_at DESC, id DESC) without a separate sort step.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)"),
+    // Serves the title-sorted page of a channel's media (the paginated library list ordering by
+    // title_normalized within a channel), so that sort does not filesort the whole channel.
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_title_normalized ON videos(channel_id, title_normalized)"),
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)"),
@@ -131,6 +135,10 @@ const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
         "live_chat_file_path",
         "TEXT CHECK (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) <> '')",
     ),
+    // Accent/case-folded copy of `title` for the server-side library search and title sort.
+    // Nullable and backfilled by migration v11 (SQLite cannot accent-fold in SQL, so the
+    // backfill is computed in Rust); populated on every insert/title-update thereafter.
+    ("title_normalized", "TEXT"),
 ];
 
 async fn table_has_column<'e, E>(
@@ -245,6 +253,13 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_migration_10(pool).await?;
     }
 
+    // v11: adds the `title_normalized` column (accent/case-folded title) plus its index, and
+    // backfills the column for existing rows. Not index-only: the backfill is computed in Rust
+    // because SQLite cannot accent-fold in SQL (see apply_migration_11).
+    if current_version < 11 {
+        apply_migration_11(pool).await?;
+    }
+
     // Each migration is guarded by version and transactional (it stamps the new
     // user_version inside its own transaction, so a crash leaves the database fully at the
     // old or the new version). An additive migration (a new column or index) runs the
@@ -353,6 +368,66 @@ async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
     }
 
     set_user_version(&mut tx, 10).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
+/// v11: adds the `title_normalized` column and its index, and backfills the column for every
+/// existing row.
+///
+/// `title_normalized` is the accent/case-folded copy of `title` the paginated library list
+/// searches and title-sorts against. SQLite has no accent folding of its own, so the backfill is
+/// computed in Rust with the same `utils::text::normalize_search_text` used at insert/update time
+/// (that shared normalization is what keeps a search term and a stored title comparable). The
+/// column-add, the per-row backfill and the index creation all run in one transaction that stamps
+/// `user_version = 11`, so a crash leaves the database fully at v10 or fully at v11.
+async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    // A database created before v11 (v7..=v10, where the baseline no longer runs) lacks the
+    // column; the guarded additive-columns path adds it. Idempotent on a database that already
+    // has it.
+    ensure_videos_additive_columns(&mut tx).await?;
+
+    // Backfill every row whose title_normalized has not been computed yet. On a fresh database
+    // this selects nothing; on an upgrade it normalizes each existing title once.
+    let rows: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, title FROM videos WHERE title_normalized IS NULL")
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(|error| {
+                db_error(
+                    "failed to read titles for the title_normalized backfill",
+                    error,
+                )
+            })?;
+
+    for (id, title) in rows {
+        let normalized = crate::utils::text::normalize_search_text(&title);
+
+        sqlx::query("UPDATE videos SET title_normalized = ? WHERE id = ?")
+            .bind(normalized)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to backfill title_normalized", error))?;
+    }
+
+    for &(_, ddl) in INDEX_DDLS {
+        sqlx::query(ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to create index", error))?;
+    }
+
+    set_user_version(&mut tx, 11).await?;
 
     tx.commit()
         .await

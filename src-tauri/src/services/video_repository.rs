@@ -1,8 +1,9 @@
-use serde::Serialize;
-use sqlx::SqlitePool;
+use serde::{Deserialize, Serialize};
+use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 use ts_rs::TS;
 
 use crate::services::database::{db_error, is_foreign_key_violation, is_unique_violation};
+use crate::utils::text::{escape_like_pattern, normalize_search_text};
 use crate::{AppError, AppErrorCode, AppResult};
 
 // `id`/counts/flags are i64 in Rust but ts-rs would emit `bigint`; the Tauri IPC layer
@@ -116,13 +117,226 @@ pub struct MediaIntegrityReference {
     pub live_chat_file_path: Option<String>,
 }
 
+/// One page of a channel's media plus the total number of rows matching the same filters (not
+/// just the returned page), so the frontend can show "X of Y" and know when to stop paging.
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct MediaPage {
+    pub items: Vec<MediaRow>,
+    #[ts(type = "number")]
+    pub total: i64,
+}
+
+/// The filter/sort/pagination request for [`list_media_page`], sent by the frontend. The string
+/// fields carry the same literal unions the frontend already models in
+/// `src/utils/media-library-filters.ts`; `search` is the raw term (normalized in Rust so it
+/// matches `title_normalized`), and `limit`/`offset` drive the page window.
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct MediaPageQuery {
+    #[ts(type = "\"all\" | \"video\" | \"audio\"")]
+    pub media_type: String,
+    #[ts(type = "\"all\" | \"watched\" | \"unwatched\"")]
+    pub watched: String,
+    #[ts(type = "\"all\" | \"with\" | \"without\"")]
+    pub publication: String,
+    pub search: String,
+    #[ts(type = "\"publication_date\" | \"added_date\" | \"title\" | \"duration\" | \"comments\"")]
+    pub sort_category: String,
+    #[ts(type = "\"asc\" | \"desc\"")]
+    pub sort_direction: String,
+    #[ts(type = "number")]
+    pub limit: i64,
+    #[ts(type = "number")]
+    pub offset: i64,
+}
+
+/// Upper bound on a single page so a caller (or a bug) cannot request an unbounded result set
+/// and defeat the point of paginating.
+const MAX_MEDIA_PAGE_LIMIT: i64 = 500;
+
 const MEDIA_COLUMNS: &str = "id, channel_id, title, file_path, thumbnail_path, media_type, \
     youtube_video_id, watched_at, published_at, duration_seconds, progress_seconds, has_comments, \
     comments_count, is_live, has_live_chat, live_chat_file_path, created_at";
 
+fn ensure_allowed(value: &str, allowed: &[&str], field: &str) -> AppResult<()> {
+    if allowed.contains(&value) {
+        return Ok(());
+    }
+
+    Err(AppError::invalid_input(format!(
+        "invalid {field}: '{value}'"
+    )))
+}
+
+/// Maps a validated (sort category, direction) pair to a fixed `ORDER BY` clause. The clause is
+/// always a compile-time constant chosen by `match`, so no caller-supplied text is ever
+/// interpolated into the SQL. The clauses mirror the frontend's original `filterAndSortMedia`
+/// ordering as closely as SQL allows: `title_normalized` gives accent/case-insensitive title
+/// ordering, published-date sorts always keep dated media before undated (with the undated group
+/// ordered by title), and every category tie-breaks by title then `id` for a deterministic page.
+fn resolve_order_by(sort_category: &str, sort_direction: &str) -> AppResult<&'static str> {
+    let ascending = match sort_direction {
+        "asc" => true,
+        "desc" => false,
+        other => {
+            return Err(AppError::invalid_input(format!(
+                "invalid sort direction: '{other}'"
+            )))
+        }
+    };
+
+    let clause = match (sort_category, ascending) {
+        ("title", true) => "ORDER BY title_normalized ASC, id DESC",
+        ("title", false) => "ORDER BY title_normalized DESC, id DESC",
+        ("added_date", true) => "ORDER BY created_at ASC, title_normalized ASC, id DESC",
+        ("added_date", false) => "ORDER BY created_at DESC, title_normalized DESC, id DESC",
+        ("duration", true) => {
+            "ORDER BY COALESCE(duration_seconds, 0) ASC, title_normalized ASC, id DESC"
+        }
+        ("duration", false) => {
+            "ORDER BY COALESCE(duration_seconds, 0) DESC, title_normalized DESC, id DESC"
+        }
+        ("comments", true) => "ORDER BY comments_count ASC, title_normalized ASC, id DESC",
+        ("comments", false) => "ORDER BY comments_count DESC, title_normalized DESC, id DESC",
+        // Dated media first (group key 0 vs 1), then the date in the requested direction, then a
+        // direction-independent title tie-break - matching filterAndSortMedia, where undated
+        // media always sort last and ties always fall back to an ascending title compare.
+        ("publication_date", true) => {
+            "ORDER BY (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, \
+             (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) ASC, \
+             title_normalized ASC, id DESC"
+        }
+        ("publication_date", false) => {
+            "ORDER BY (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, \
+             (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) DESC, \
+             title_normalized ASC, id DESC"
+        }
+        (other, _) => {
+            return Err(AppError::invalid_input(format!(
+                "invalid sort category: '{other}'"
+            )))
+        }
+    };
+
+    Ok(clause)
+}
+
+/// Pushes the shared `WHERE` conditions (channel + the active filters) onto a query builder.
+/// Only constant SQL fragments are pushed as text; every caller-supplied value is bound, so this
+/// never interpolates user input. Used for both the count and the page query so they filter
+/// identically.
+fn push_media_filters(
+    builder: &mut QueryBuilder<Sqlite>,
+    channel_id: i64,
+    query: &MediaPageQuery,
+    search_pattern: Option<&str>,
+) {
+    builder.push(" WHERE channel_id = ").push_bind(channel_id);
+
+    if matches!(query.media_type.as_str(), "video" | "audio") {
+        builder
+            .push(" AND media_type = ")
+            .push_bind(query.media_type.clone());
+    }
+
+    match query.watched.as_str() {
+        "watched" => {
+            builder.push(" AND watched_at IS NOT NULL AND TRIM(watched_at) <> ''");
+        }
+        "unwatched" => {
+            builder.push(" AND (watched_at IS NULL OR TRIM(watched_at) = '')");
+        }
+        _ => {}
+    }
+
+    match query.publication.as_str() {
+        "with" => {
+            builder.push(" AND published_at IS NOT NULL AND TRIM(published_at) <> ''");
+        }
+        "without" => {
+            builder.push(" AND (published_at IS NULL OR TRIM(published_at) = '')");
+        }
+        _ => {}
+    }
+
+    if let Some(pattern) = search_pattern {
+        builder
+            .push(" AND title_normalized LIKE ")
+            .push_bind(pattern.to_string())
+            .push(" ESCAPE '\\'");
+    }
+}
+
+/// Returns one filtered, sorted page of a channel's media plus the total match count.
+///
+/// Filtering, sorting and windowing all happen in SQLite so the whole channel is never loaded
+/// over IPC just to be filtered in the webview. Search is accent/case-insensitive via the
+/// `title_normalized` column (both the stored value and the term here go through
+/// `normalize_search_text`). The `limit` is clamped to [`MAX_MEDIA_PAGE_LIMIT`] and the offset
+/// floored at 0.
+pub async fn list_media_page(
+    pool: &SqlitePool,
+    channel_id: i64,
+    query: &MediaPageQuery,
+) -> AppResult<MediaPage> {
+    ensure_allowed(&query.media_type, &["all", "video", "audio"], "media type")?;
+    ensure_allowed(&query.watched, &["all", "watched", "unwatched"], "watched")?;
+    ensure_allowed(
+        &query.publication,
+        &["all", "with", "without"],
+        "publication",
+    )?;
+    let order_by = resolve_order_by(&query.sort_category, &query.sort_direction)?;
+
+    let limit = query.limit.clamp(1, MAX_MEDIA_PAGE_LIMIT);
+    let offset = query.offset.max(0);
+
+    let normalized_search = normalize_search_text(&query.search);
+    let search_pattern = (!normalized_search.is_empty())
+        .then(|| format!("%{}%", escape_like_pattern(&normalized_search)));
+
+    let mut count_builder = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM videos");
+    push_media_filters(
+        &mut count_builder,
+        channel_id,
+        query,
+        search_pattern.as_deref(),
+    );
+    let (total,): (i64,) = count_builder
+        .build_query_as::<(i64,)>()
+        .fetch_one(pool)
+        .await
+        .map_err(|error| db_error("failed to count channel media page", error))?;
+
+    let mut page_builder =
+        QueryBuilder::<Sqlite>::new(format!("SELECT {MEDIA_COLUMNS} FROM videos"));
+    push_media_filters(
+        &mut page_builder,
+        channel_id,
+        query,
+        search_pattern.as_deref(),
+    );
+    page_builder.push(" ").push(order_by);
+    page_builder.push(" LIMIT ").push_bind(limit);
+    page_builder.push(" OFFSET ").push_bind(offset);
+
+    let items = page_builder
+        .build_query_as::<MediaRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|error| db_error("failed to list channel media page", error))?;
+
+    Ok(MediaPage { items, total })
+}
+
 pub async fn update_media_title(pool: &SqlitePool, media_id: i64, title: &str) -> AppResult<()> {
-    let result = sqlx::query("UPDATE videos SET title = ? WHERE id = ?")
+    // Keep title_normalized in step with title so the server-side search/sort stays correct after
+    // a rename (see utils::text::normalize_search_text).
+    let result = sqlx::query("UPDATE videos SET title = ?, title_normalized = ? WHERE id = ?")
         .bind(title)
+        .bind(normalize_search_text(title))
         .bind(media_id)
         .execute(pool)
         .await
@@ -229,15 +443,16 @@ pub async fn insert_media(
     // the row vanish and the function wrongly report "nothing inserted").
     let row: Option<(i64,)> = sqlx::query_as(
         "INSERT INTO videos (
-            channel_id, title, file_path, thumbnail_path, media_type, youtube_video_id,
-            published_at, duration_seconds, progress_seconds, has_comments, comments_count,
-            is_live, has_live_chat, live_chat_file_path
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)
+            channel_id, title, title_normalized, file_path, thumbnail_path, media_type,
+            youtube_video_id, published_at, duration_seconds, progress_seconds, has_comments,
+            comments_count, is_live, has_live_chat, live_chat_file_path
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)
          ON CONFLICT(channel_id, file_path) DO UPDATE SET file_path = excluded.file_path
          RETURNING id",
     )
     .bind(channel_id)
     .bind(title)
+    .bind(normalize_search_text(title))
     .bind(file_path)
     .bind(thumbnail_path)
     .bind(media_type)
@@ -456,6 +671,7 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 channel_id INTEGER NOT NULL,
                 title TEXT NOT NULL,
+                title_normalized TEXT,
                 file_path TEXT NOT NULL,
                 thumbnail_path TEXT,
                 media_type TEXT NOT NULL DEFAULT 'video',
@@ -569,6 +785,7 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 channel_id INTEGER NOT NULL,
                 title TEXT NOT NULL,
+                title_normalized TEXT,
                 file_path TEXT NOT NULL,
                 thumbnail_path TEXT,
                 media_type TEXT NOT NULL DEFAULT 'video',
@@ -1013,5 +1230,332 @@ mod tests {
         assert_eq!(stats.total_media, 0);
         assert_eq!(stats.total_with_thumbnail, 0);
         assert_eq!(stats.total_without_live_chat, 0);
+    }
+
+    fn default_page_query() -> MediaPageQuery {
+        MediaPageQuery {
+            media_type: "all".to_string(),
+            watched: "all".to_string(),
+            publication: "all".to_string(),
+            search: String::new(),
+            sort_category: "added_date".to_string(),
+            sort_direction: "desc".to_string(),
+            limit: 100,
+            offset: 0,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn seed_media(
+        pool: &SqlitePool,
+        channel_id: i64,
+        title: &str,
+        file_path: &str,
+        media_type: &str,
+        published_at: Option<&str>,
+        duration_seconds: Option<i64>,
+        watched: bool,
+    ) -> i64 {
+        let id = insert_media(
+            pool,
+            channel_id,
+            title,
+            file_path,
+            None,
+            media_type,
+            None,
+            published_at,
+            duration_seconds,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+        if watched {
+            mark_media_as_watched(pool, id).await.unwrap();
+        }
+
+        id
+    }
+
+    #[tokio::test]
+    async fn insert_media_populates_title_normalized_for_search() {
+        let pool = create_test_pool().await;
+        seed_media(
+            &pool,
+            1,
+            "Café com Pão",
+            "video/a.mp4",
+            "video",
+            None,
+            None,
+            false,
+        )
+        .await;
+        seed_media(
+            &pool,
+            1,
+            "Random Clip",
+            "video/b.mp4",
+            "video",
+            None,
+            None,
+            false,
+        )
+        .await;
+
+        // An unaccented, differently-cased query still matches the accented title, proving the
+        // stored title_normalized and the search term share one normalization.
+        let mut query = default_page_query();
+        query.search = "CAFE com pao".to_string();
+
+        let page = list_media_page(&pool, 1, &query).await.unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].title, "Café com Pão");
+    }
+
+    #[tokio::test]
+    async fn update_media_title_keeps_search_in_sync() {
+        let pool = create_test_pool().await;
+        let id = seed_media(
+            &pool,
+            1,
+            "Original",
+            "video/a.mp4",
+            "video",
+            None,
+            None,
+            false,
+        )
+        .await;
+
+        update_media_title(&pool, id, "Renomeado É Ótimo")
+            .await
+            .unwrap();
+
+        let mut query = default_page_query();
+        query.search = "otimo".to_string();
+        let page = list_media_page(&pool, 1, &query).await.unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].id, id);
+
+        // The old title no longer matches.
+        query.search = "original".to_string();
+        assert_eq!(list_media_page(&pool, 1, &query).await.unwrap().total, 0);
+    }
+
+    #[tokio::test]
+    async fn list_media_page_filters_by_type_watched_and_publication() {
+        let pool = create_test_pool().await;
+        seed_media(
+            &pool,
+            1,
+            "V watched dated",
+            "video/a.mp4",
+            "video",
+            Some("2026-01-01"),
+            None,
+            true,
+        )
+        .await;
+        seed_media(
+            &pool,
+            1,
+            "V unwatched undated",
+            "video/b.mp4",
+            "video",
+            None,
+            None,
+            false,
+        )
+        .await;
+        seed_media(
+            &pool,
+            1,
+            "A unwatched dated",
+            "audio/c.m4a",
+            "audio",
+            Some("2026-02-01"),
+            None,
+            false,
+        )
+        .await;
+
+        let mut query = default_page_query();
+        query.media_type = "video".to_string();
+        assert_eq!(list_media_page(&pool, 1, &query).await.unwrap().total, 2);
+
+        let mut query = default_page_query();
+        query.watched = "watched".to_string();
+        let watched_page = list_media_page(&pool, 1, &query).await.unwrap();
+        assert_eq!(watched_page.total, 1);
+        assert_eq!(watched_page.items[0].title, "V watched dated");
+
+        let mut query = default_page_query();
+        query.watched = "unwatched".to_string();
+        assert_eq!(list_media_page(&pool, 1, &query).await.unwrap().total, 2);
+
+        let mut query = default_page_query();
+        query.publication = "with".to_string();
+        assert_eq!(list_media_page(&pool, 1, &query).await.unwrap().total, 2);
+
+        let mut query = default_page_query();
+        query.publication = "without".to_string();
+        let undated = list_media_page(&pool, 1, &query).await.unwrap();
+        assert_eq!(undated.total, 1);
+        assert_eq!(undated.items[0].title, "V unwatched undated");
+    }
+
+    #[tokio::test]
+    async fn list_media_page_windows_results_and_reports_full_total() {
+        let pool = create_test_pool().await;
+        for index in 0..5 {
+            seed_media(
+                &pool,
+                1,
+                &format!("Title {index}"),
+                &format!("video/{index}.mp4"),
+                "video",
+                None,
+                None,
+                false,
+            )
+            .await;
+        }
+
+        let mut query = default_page_query();
+        query.sort_category = "title".to_string();
+        query.sort_direction = "asc".to_string();
+        query.limit = 2;
+        query.offset = 0;
+
+        let first = list_media_page(&pool, 1, &query).await.unwrap();
+        // total counts all matches, not just the returned window.
+        assert_eq!(first.total, 5);
+        assert_eq!(first.items.len(), 2);
+        assert_eq!(first.items[0].title, "Title 0");
+        assert_eq!(first.items[1].title, "Title 1");
+
+        query.offset = 4;
+        let last = list_media_page(&pool, 1, &query).await.unwrap();
+        assert_eq!(last.total, 5);
+        assert_eq!(last.items.len(), 1);
+        assert_eq!(last.items[0].title, "Title 4");
+    }
+
+    #[tokio::test]
+    async fn list_media_page_publication_sort_keeps_dated_before_undated() {
+        let pool = create_test_pool().await;
+        seed_media(
+            &pool,
+            1,
+            "Older dated",
+            "video/a.mp4",
+            "video",
+            Some("2025-01-01"),
+            None,
+            false,
+        )
+        .await;
+        seed_media(
+            &pool,
+            1,
+            "Newer dated",
+            "video/b.mp4",
+            "video",
+            Some("2026-01-01"),
+            None,
+            false,
+        )
+        .await;
+        seed_media(
+            &pool,
+            1,
+            "Undated",
+            "video/c.mp4",
+            "video",
+            None,
+            None,
+            false,
+        )
+        .await;
+
+        let mut query = default_page_query();
+        query.sort_category = "publication_date".to_string();
+        query.sort_direction = "desc".to_string();
+
+        let titles: Vec<String> = list_media_page(&pool, 1, &query)
+            .await
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|item| item.title)
+            .collect();
+
+        // Newest dated first, then older dated, then the undated media last regardless of direction.
+        assert_eq!(titles, vec!["Newer dated", "Older dated", "Undated"]);
+    }
+
+    #[tokio::test]
+    async fn list_media_page_search_treats_like_metacharacters_literally() {
+        let pool = create_test_pool().await;
+        seed_media(
+            &pool,
+            1,
+            "100% real",
+            "video/a.mp4",
+            "video",
+            None,
+            None,
+            false,
+        )
+        .await;
+        seed_media(
+            &pool,
+            1,
+            "100 percent",
+            "video/b.mp4",
+            "video",
+            None,
+            None,
+            false,
+        )
+        .await;
+
+        let mut query = default_page_query();
+        query.search = "100%".to_string();
+
+        // "%" is escaped, so only the title literally containing "100%" matches, not "100 percent".
+        let page = list_media_page(&pool, 1, &query).await.unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].title, "100% real");
+    }
+
+    #[tokio::test]
+    async fn list_media_page_rejects_invalid_filter_and_sort_values() {
+        let pool = create_test_pool().await;
+
+        let mut query = default_page_query();
+        query.media_type = "image".to_string();
+        assert_eq!(
+            list_media_page(&pool, 1, &query).await.unwrap_err().code,
+            AppErrorCode::InvalidInput.as_str()
+        );
+
+        let mut query = default_page_query();
+        query.sort_category = "views".to_string();
+        assert_eq!(
+            list_media_page(&pool, 1, &query).await.unwrap_err().code,
+            AppErrorCode::InvalidInput.as_str()
+        );
+
+        let mut query = default_page_query();
+        query.sort_direction = "sideways".to_string();
+        assert_eq!(
+            list_media_page(&pool, 1, &query).await.unwrap_err().code,
+            AppErrorCode::InvalidInput.as_str()
+        );
     }
 }
