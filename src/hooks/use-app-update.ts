@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { Update } from "@tauri-apps/plugin-updater";
+import type { Update } from "../lib/tauri-platform";
 import {
     checkAppUpdate,
     installAppUpdate,

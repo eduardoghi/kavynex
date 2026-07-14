@@ -1,4 +1,4 @@
-import { getVersion } from "@tauri-apps/api/app";
+import { getVersion } from "../lib/tauri-platform";
 import { getMediaRepositoryStats } from "../repositories/media-repository";
 import type {
     AppDiagnostics,

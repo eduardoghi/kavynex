@@ -56,28 +56,24 @@ export default tseslint.config(
                 { checksVoidReturn: { attributes: false } },
             ],
 
-            // Keep the IPC boundary a single choke point (docs/ARCHITECTURE.md): the raw Tauri
-            // command/event primitives may only be imported by src/lib/tauri-client.ts, which
-            // wraps them (invokeCommand/invokeVoid/listenTauri) with consistent error
-            // normalization. Everything else goes through those wrappers, so a stray invoke()/
-            // listen() that bypasses the boundary fails lint instead of relying on code review.
-            // Only these named IPC primitives are restricted - convertFileSrc, getVersion and
-            // type-only imports (e.g. UnlistenFn) from @tauri-apps/api are legitimate elsewhere.
+            // Keep every Tauri touchpoint inside the src/lib seam (docs/ARCHITECTURE.md):
+            // tauri-client.ts wraps the IPC commands/events with consistent error normalization
+            // (invokeCommand/invokeVoid/listenTauri), and tauri-platform.ts re-exports the
+            // platform capabilities (dialogs, opener, process, updater, app version,
+            // convertFileSrc). Banning `@tauri-apps` everywhere else is what keeps "which Tauri
+            // capabilities does this app actually use?" - the question every review against
+            // src-tauri/capabilities/ asks - a two-file read instead of a tree-wide grep a new
+            // caller can silently invalidate. This was previously scoped to invoke()/listen()
+            // only, which left every plugin import (dialog/opener/process/updater) outside the
+            // boundary it was supposed to enforce.
             "no-restricted-imports": [
                 "error",
                 {
-                    paths: [
+                    patterns: [
                         {
-                            name: "@tauri-apps/api/core",
-                            importNames: ["invoke"],
+                            group: ["@tauri-apps/*", "@tauri-apps/**"],
                             message:
-                                "Call Tauri commands through src/lib/tauri-client.ts (invokeCommand/invokeVoid), not invoke() directly.",
-                        },
-                        {
-                            name: "@tauri-apps/api/event",
-                            importNames: ["listen", "emit"],
-                            message:
-                                "Subscribe to Tauri events through src/lib/tauri-client.ts (listenTauri), not listen()/emit() directly.",
+                                "Import Tauri through the src/lib seam: tauri-client.ts for commands/events (invokeCommand/invokeVoid/listenTauri), tauri-platform.ts for dialogs, opener, process, updater, app version and convertFileSrc.",
                         },
                     ],
                 },
@@ -85,8 +81,9 @@ export default tseslint.config(
         },
     },
     {
-        // The single IPC choke point is allowed to import the raw primitives it wraps.
-        files: ["src/lib/tauri-client.ts"],
+        // The two seam modules are the only files allowed to import @tauri-apps: tauri-client.ts
+        // wraps the raw IPC primitives, tauri-platform.ts re-exports the platform capabilities.
+        files: ["src/lib/tauri-client.ts", "src/lib/tauri-platform.ts"],
         rules: {
             "no-restricted-imports": "off",
         },

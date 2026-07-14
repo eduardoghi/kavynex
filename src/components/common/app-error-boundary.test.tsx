@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import { AppErrorBoundary } from "./app-error-boundary";
 
-vi.mock("@tauri-apps/plugin-process", () => ({
+vi.mock("../../lib/tauri-platform", () => ({
     relaunch: vi.fn(),
 }));
 
@@ -11,7 +11,7 @@ vi.mock("../../utils/global-error-reporting", () => ({
     reportFatalError: vi.fn(),
 }));
 
-import { relaunch } from "@tauri-apps/plugin-process";
+import { relaunch } from "../../lib/tauri-platform";
 import { reportFatalError } from "../../utils/global-error-reporting";
 
 function CrashingChild({ shouldThrow }: { shouldThrow: boolean }): JSX.Element {

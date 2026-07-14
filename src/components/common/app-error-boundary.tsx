@@ -1,5 +1,5 @@
 import { Component, type CSSProperties, type ErrorInfo, type ReactNode } from "react";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { relaunch } from "../../lib/tauri-platform";
 import { reportFatalError } from "../../utils/global-error-reporting";
 
 type AppErrorBoundaryProps = {

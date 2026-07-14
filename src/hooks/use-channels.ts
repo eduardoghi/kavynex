@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { openFileDialog } from "../lib/tauri-platform";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Channel, ChannelAvatarMode } from "../types/media";
 import { findSelectedChannel } from "../utils/controller-helpers";
@@ -155,7 +155,7 @@ export function useChannels({
 
     const pickChannelAvatarViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selection = await open({
+            const selection = await openFileDialog({
                 multiple: false,
                 directory: false,
                 filters: [
@@ -244,7 +244,7 @@ export function useChannels({
     const updateChannelAvatarFromFile = useCallback(
         async (channel: Channel): Promise<void> => {
             try {
-                const selection = await open({
+                const selection = await openFileDialog({
                     multiple: false,
                     directory: false,
                     filters: [

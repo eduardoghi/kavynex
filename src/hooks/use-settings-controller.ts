@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { openFileDialog, relaunch, saveFileDialog } from "../lib/tauri-platform";
 import type { AppUpdateInfo, AppUpdateProgress } from "../services/app-update-service";
 import {
     exportDatabase,
@@ -144,7 +143,7 @@ export function useSettingsController({
         let destination: string | null;
 
         try {
-            destination = await save({
+            destination = await saveFileDialog({
                 title: "Export database",
                 defaultPath: "kavynex-backup.db",
                 filters: [{ name: "Database", extensions: ["db"] }],
@@ -180,7 +179,7 @@ export function useSettingsController({
         let selection: string | string[] | null;
 
         try {
-            selection = await open({
+            selection = await openFileDialog({
                 title: "Import database",
                 multiple: false,
                 directory: false,

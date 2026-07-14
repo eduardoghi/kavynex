@@ -10,7 +10,7 @@ import { DEFAULT_MEDIA_QUERY_FILTERS } from "../utils/media-library-filters";
 // useChannelMediaList and useMediaPlayer are exercised for real (not mocked) below, so the
 // dependency-array mutants in useMediaLibrary's own useCallback/useEffect blocks can be
 // observed through real state transitions instead of static, shallow return values.
-vi.mock("@tauri-apps/api/core", () => ({
+vi.mock("../lib/tauri-platform", () => ({
     convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }));
 

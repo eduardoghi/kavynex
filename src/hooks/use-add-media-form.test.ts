@@ -2,8 +2,8 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAddMediaForm } from "./use-add-media-form";
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-    open: vi.fn(),
+vi.mock("../lib/tauri-platform", () => ({
+    openFileDialog: vi.fn(),
 }));
 
 vi.mock("../utils/media-utils", () => ({
@@ -70,7 +70,7 @@ vi.mock("./use-yt-dlp-format-loader", () => ({
     useYtDlpFormatLoader: (options: YtDlpFormatLoaderOptions) => mockUseYtDlpFormatLoader(options),
 }));
 
-import { open } from "@tauri-apps/plugin-dialog";
+import { openFileDialog } from "../lib/tauri-platform";
 import { logError } from "../utils/app-logger";
 
 describe("useAddMediaForm", () => {
@@ -116,7 +116,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("requests a single, non-directory file from the dialog", async () => {
-        vi.mocked(open).mockResolvedValueOnce("/tmp/video.mp4");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/video.mp4");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -124,7 +124,7 @@ describe("useAddMediaForm", () => {
             await result.current.pickMediaViaDialog();
         });
 
-        expect(open).toHaveBeenCalledWith({
+        expect(openFileDialog).toHaveBeenCalledWith({
             multiple: false,
             directory: false,
         });
@@ -238,7 +238,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("picks media through dialog", async () => {
-        vi.mocked(open).mockResolvedValueOnce("/tmp/video.mp4");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/video.mp4");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -252,7 +252,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("ignores empty media selection from dialog", async () => {
-        vi.mocked(open).mockResolvedValueOnce(null);
+        vi.mocked(openFileDialog).mockResolvedValueOnce(null);
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -264,7 +264,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("trims whitespace from the selected media path", async () => {
-        vi.mocked(open).mockResolvedValueOnce("  /tmp/video.mp4  ");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("  /tmp/video.mp4  ");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -276,7 +276,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("preserves an already-set title when picking new media", async () => {
-        vi.mocked(open).mockResolvedValueOnce("/tmp/other-video.mp4");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/other-video.mp4");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -293,7 +293,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("falls back to Untitled when the selected file has no derivable name", async () => {
-        vi.mocked(open).mockResolvedValueOnce("/tmp/");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -305,7 +305,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("picks thumbnail through dialog", async () => {
-        vi.mocked(open).mockResolvedValueOnce("/tmp/thumb.jpg");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/thumb.jpg");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -313,12 +313,12 @@ describe("useAddMediaForm", () => {
             await result.current.pickThumbViaDialog();
         });
 
-        expect(open).toHaveBeenCalled();
+        expect(openFileDialog).toHaveBeenCalled();
         expect(mockSetManualThumbPath).toHaveBeenCalledWith("/tmp/thumb.jpg");
     });
 
     it("ignores a thumbnail selection with an unsupported extension", async () => {
-        vi.mocked(open).mockResolvedValueOnce("/tmp/thumb.gif");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/thumb.gif");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -330,7 +330,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("ignores empty thumbnail selection from dialog", async () => {
-        vi.mocked(open).mockResolvedValueOnce(null);
+        vi.mocked(openFileDialog).mockResolvedValueOnce(null);
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -343,7 +343,7 @@ describe("useAddMediaForm", () => {
 
     it("reports dialog error when thumbnail picker fails", async () => {
         const onError = vi.fn();
-        vi.mocked(open).mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(openFileDialog).mockRejectedValueOnce(new Error("boom"));
 
         const { result } = renderHook(() =>
             useAddMediaForm({
@@ -400,7 +400,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("picks a valid cookies text file through the dialog", async () => {
-        vi.mocked(open).mockResolvedValueOnce("/tmp/cookies.TXT");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/cookies.TXT");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -415,7 +415,7 @@ describe("useAddMediaForm", () => {
 
     it("rejects a cookies file without a .txt extension", async () => {
         const onError = vi.fn();
-        vi.mocked(open).mockResolvedValueOnce("/tmp/cookies.json");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/cookies.json");
 
         const { result } = renderHook(() =>
             useAddMediaForm({
@@ -433,7 +433,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("ignores empty cookies file selection", async () => {
-        vi.mocked(open).mockResolvedValueOnce(null);
+        vi.mocked(openFileDialog).mockResolvedValueOnce(null);
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -561,7 +561,7 @@ describe("useAddMediaForm", () => {
 
     it("reports dialog error when media picker fails", async () => {
         const onError = vi.fn();
-        vi.mocked(open).mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(openFileDialog).mockRejectedValueOnce(new Error("boom"));
 
         const { result } = renderHook(() =>
             useAddMediaForm({
@@ -577,7 +577,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("does not throw when reporting an error without an onError callback", async () => {
-        vi.mocked(open).mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(openFileDialog).mockRejectedValueOnce(new Error("boom"));
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -594,7 +594,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("uses the latest onError callback across re-renders", async () => {
-        vi.mocked(open).mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(openFileDialog).mockRejectedValueOnce(new Error("boom"));
 
         const { result, rerender } = renderHook(
             ({ onError }: { onError?: (message: string) => void }) => useAddMediaForm({ onError }),
@@ -612,7 +612,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("uses the latest onError callback for cookies file errors across re-renders", async () => {
-        vi.mocked(open).mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(openFileDialog).mockRejectedValueOnce(new Error("boom"));
 
         const { result, rerender } = renderHook(
             ({ onError }: { onError?: (message: string) => void }) => useAddMediaForm({ onError }),
@@ -662,7 +662,7 @@ describe("useAddMediaForm", () => {
 
     it("clears yt-dlp terminal state after picking a cookies file", async () => {
         const ytDlpTerminal = createYtDlpTerminalMock();
-        vi.mocked(open).mockResolvedValueOnce("/tmp/cookies.txt");
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/cookies.txt");
 
         const { result } = renderHook(() => useAddMediaForm({ ytDlpTerminal }));
 

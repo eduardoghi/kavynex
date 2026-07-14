@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "../lib/tauri-platform";
 import {
     extensionFromPath,
     fileNameFromPath,
@@ -19,7 +19,7 @@ import {
     stripWindowsExtendedPrefix,
 } from "./media-utils";
 
-vi.mock("@tauri-apps/api/core", () => ({
+vi.mock("../lib/tauri-platform", () => ({
     convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }));
 

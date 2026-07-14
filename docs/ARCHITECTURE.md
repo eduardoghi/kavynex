@@ -103,9 +103,13 @@ repositories (src/repositories/**)
 src/lib/tauri-client.ts  ->  @tauri-apps/api  ->  IPC  ->  Rust commands
 ```
 
+(Alongside it, `src/lib/tauri-platform.ts` covers the non-IPC Tauri surfaces - dialogs, the
+system opener, process relaunch, the updater, the app version, `convertFileSrc` - so those
+never reach a component either. See "The Tauri boundary" below.)
+
 - **Components** (`src/components/`) are presentation: they receive data and callbacks as
   props and render Mantine/React UI. They never call `invoke()` and never import
-  `@tauri-apps/api` directly - that import only appears in `src/lib/tauri-client.ts`.
+  `@tauri-apps` directly - only the two seam modules under `src/lib/` do.
 - **Hooks** (`src/hooks/`) hold UI state and orchestration. `useHomeController`
   (`src/hooks/use-home-controller.tsx`) is the composition root for the main `Home` page:
   it wires together `useErrorModal`, `useAppBootstrap`, `useAppSettings`, `useChannels`,
@@ -127,19 +131,32 @@ src/lib/tauri-client.ts  ->  @tauri-apps/api  ->  IPC  ->  Rust commands
   `src/repositories/media-repository.ts`) are the thin, typed layer directly over a
   database-backed Tauri command (`listChannels`, `insertChannel`,
   `deleteChannelWithArtifacts`, etc.) - one function per command, no business logic.
-- **`src/lib/tauri-client.ts`** is the single IPC boundary: `invokeTauri`/`invokeCommand`/
+- **`src/lib/tauri-client.ts`** is the IPC boundary: `invokeTauri`/`invokeCommand`/
   `invokeVoid` wrap `@tauri-apps/api/core`'s `invoke()` (normalizing thrown errors through
   `parseAppError`) and `listenTauri` wraps `@tauri-apps/api/event`'s `listen()`. Every
-  repository and IPC-calling service goes through these three functions; nothing else in
-  the frontend imports `@tauri-apps/api` directly. This is a convention enforced by code
-  review, not by an ESLint rule.
+  repository and IPC-calling service goes through these three functions.
+- **`src/lib/tauri-platform.ts`** is the sibling seam for Tauri's *platform* capabilities -
+  everything that is not a call into our own Rust backend: `openFileDialog`/`saveFileDialog`
+  (plugin-dialog), `openUrl` (plugin-opener), `relaunch` (plugin-process),
+  `checkForAppUpdate` plus the `Update` type (plugin-updater), `getVersion`, and
+  `convertFileSrc`. These are deliberate re-exports rather than wrappers: each keeps the
+  plugin's exact signature, so routing a caller through the seam is a pure import change.
+  Error normalization stays with the IPC seam, which is where `AppError` is produced.
 
-### The IPC boundary in one sentence
+### The Tauri boundary
 
 A component never calls `invoke()`; it calls a hook; the hook calls a use-case or service;
-the service or repository calls `invokeCommand`/`invokeVoid` from `tauri-client.ts`; that
-is the only place `@tauri-apps/api` is imported. Events emitted by the backend (yt-dlp
-progress, download completion) are subscribed to the same way, through `listenTauri`.
+the service or repository calls `invokeCommand`/`invokeVoid` from `tauri-client.ts`. Events
+emitted by the backend (yt-dlp progress, download completion) are subscribed to the same
+way, through `listenTauri`.
+
+`src/lib/tauri-client.ts` and `src/lib/tauri-platform.ts` are the **only** two files that
+import `@tauri-apps` at all, and that is enforced by `eslint.config.js`'s
+`no-restricted-imports` rule rather than by code review. The point is not tidiness: it keeps
+"which Tauri capabilities does this app actually use?" - the question every review against
+`src-tauri/capabilities/` has to answer - a two-file read instead of a tree-wide grep that
+any new caller could silently invalidate. A test that needs to stub a Tauri call mocks the
+seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` package.
 
 ## Where to look for what
 

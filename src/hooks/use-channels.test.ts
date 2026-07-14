@@ -3,19 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Channel } from "../types/media";
 import { useChannels } from "./use-channels";
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-    open: vi.fn(),
+vi.mock("../lib/tauri-platform", () => ({
+    openFileDialog: vi.fn(),
 }));
 
 vi.mock("./use-channel-actions", () => ({
     useChannelActions: vi.fn(),
 }));
 
-import { open } from "@tauri-apps/plugin-dialog";
+import { openFileDialog } from "../lib/tauri-platform";
 import { useChannelActions } from "./use-channel-actions";
 
 const mockedUseChannelActions = vi.mocked(useChannelActions);
-const mockedOpen = vi.mocked(open);
+const mockedOpen = vi.mocked(openFileDialog);
 
 const channelA = {
     id: 10,

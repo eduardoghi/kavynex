@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "../lib/tauri-client";
 import {
     EVENT_YT_DLP_CANCELLED,
     EVENT_YT_DLP_ERROR,

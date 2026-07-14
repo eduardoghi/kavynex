@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "../lib/tauri-platform";
 import { openExternalUrl } from "./library-service";
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
+vi.mock("../lib/tauri-platform", () => ({
     openUrl: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-    open: vi.fn(),
+    openFileDialog: vi.fn(),
 }));
 
 const openUrlMock = vi.mocked(openUrl);

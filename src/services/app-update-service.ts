@@ -1,5 +1,4 @@
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { checkForAppUpdate, relaunch, type Update } from "../lib/tauri-platform";
 
 export type AppUpdateInfo = {
     currentVersion: string;
@@ -15,7 +14,7 @@ export type AppUpdateProgress = {
 };
 
 export async function checkAppUpdate(): Promise<Update | null> {
-    return await check({
+    return await checkForAppUpdate({
         timeout: 30000
     });
 }

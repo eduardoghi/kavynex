@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@tauri-apps/api/app", () => ({
+vi.mock("../lib/tauri-platform", () => ({
     getVersion: vi.fn(),
 }));
 
@@ -32,7 +32,7 @@ vi.mock("../repositories/media-repository", () => ({
     getMediaRepositoryStats: vi.fn(),
 }));
 
-import { getVersion } from "@tauri-apps/api/app";
+import { getVersion } from "../lib/tauri-platform";
 import { getMediaRepositoryStats } from "../repositories/media-repository";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
 import { getLibraryIntegrity } from "./diagnostics-library-integrity";

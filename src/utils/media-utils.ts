@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "../lib/tauri-platform";
 import type { MediaType } from "../types/media";
 
 const AUDIO_EXTENSIONS = new Set([

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { openFileDialog } from "../lib/tauri-platform";
 import type { MediaSourceMode, MediaType, YtDlpFormat } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
 import { resolveErrorMessage } from "../utils/error-message";
@@ -187,7 +187,7 @@ export function useAddMediaForm({
     );
 
     const pickSinglePathFromDialog = useCallback(async (): Promise<string> => {
-        const selection = await open({
+        const selection = await openFileDialog({
             multiple: false,
             directory: false,
         });
