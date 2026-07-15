@@ -6,6 +6,7 @@ function keyboardEvent(key: string): KeyboardEvent {
     return {
         key,
         preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
     } as unknown as KeyboardEvent;
 }
 
@@ -30,7 +31,20 @@ describe("activateOnEnterOrSpace", () => {
         expect(event.preventDefault).toHaveBeenCalledTimes(1);
     });
 
-    it("ignores other keys without preventing default", () => {
+    it("claims the key so a global shortcut does not also act on it", () => {
+        // These controls live inside the player, whose shortcuts listen on `document` and only
+        // skip real form fields. Without stopPropagation, Space on an author link would open the
+        // channel and toggle play/pause on the video behind it.
+        for (const key of ["Enter", " "]) {
+            const event = keyboardEvent(key);
+
+            activateOnEnterOrSpace(vi.fn())(event);
+
+            expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    it("ignores other keys without preventing default or stopping propagation", () => {
         const onActivate = vi.fn();
         const event = keyboardEvent("a");
 
@@ -38,5 +52,6 @@ describe("activateOnEnterOrSpace", () => {
 
         expect(onActivate).not.toHaveBeenCalled();
         expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(event.stopPropagation).not.toHaveBeenCalled();
     });
 });
