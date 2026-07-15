@@ -626,9 +626,16 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     }
 
     let pre_import = pre_import_path(db_path);
-    let _ = std::fs::remove_file(&pre_import);
 
+    // Only consume the previous undo snapshot when this run is about to replace it in the same
+    // step. Removing it unconditionally destroys the user's only copy of their database when an
+    // earlier run died between the move-aside below and the swap further down: that leaves the
+    // database file gone and `.pre-import` holding the sole copy, and this function is reached
+    // again on the next startup (`resume_interrupted_restore` only covers `.restore.tmp`, not a
+    // staged import). The move-aside is a rename, not a copy, so nothing would put it back.
     if db_path.exists() {
+        let _ = std::fs::remove_file(&pre_import);
+
         std::fs::rename(db_path, &pre_import)
             .map_err(|error| backup_error("failed to set aside the current database", error))?;
     }
@@ -949,6 +956,14 @@ mod tests {
 
         assert!(apply_pending_database_import(&db).unwrap());
         assert_eq!(read_video_title(&db).await, "imported");
+
+        // The interrupted run left `.pre-import` holding the *only* copy of the previous
+        // database (the move-aside above is a rename, not a copy). Applying the staged import
+        // must not consume it: without this, the undo snapshot - and with it the user's whole
+        // previous library - is deleted here with no way back, since the resume path never
+        // repopulates it.
+        assert!(pre_import_path(&db).exists());
+        assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
