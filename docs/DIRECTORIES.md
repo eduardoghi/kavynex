@@ -25,10 +25,11 @@ codebase re-implements or overrides.
 Alongside `kavynex.db`, SQLite's WAL mode (see `docs/DATABASE.md`) creates sidecar files
 `kavynex.db-wal` and `kavynex.db-shm` in the same directory while the app is running.
 The backup/restore/import machinery in `services/db_backup.rs` also writes siblings here:
-`kavynex.db.bak`, `kavynex.db.bak.1` (rotated backup), `kavynex.db.corrupt` (a database
-moved aside after a failed restore), `kavynex.db.pre-import` (moved aside before an
-import is applied), and short-lived `.bak.tmp` / `.import-staged` / `.import-staged.tmp`
-/ `.restore.tmp` files used only during the corresponding operation.
+`kavynex.db.bak`, `kavynex.db.bak.1` (rotated backup), `kavynex.db.corrupt` and
+`kavynex.db.corrupt.1` (databases moved aside after a failed restore, rotated the same way
+so a repeated restore keeps the earlier evidence), `kavynex.db.pre-import` (moved aside
+before an import is applied), and short-lived `.bak.tmp` / `.import-staged` /
+`.import-staged.tmp` / `.restore.tmp` files used only during the corresponding operation.
 
 Note that on Windows and macOS, Tauri's `app_config_dir` and `app_data_dir` resolve to
 the *same* directory; on Linux they differ (`~/.config/...` vs `~/.local/share/...`).

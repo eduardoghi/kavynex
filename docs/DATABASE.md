@@ -262,7 +262,11 @@ the first candidate that itself passes `quick_check`; if neither is healthy, it 
 `NoDatabaseBackupAvailable`. The current (assumed corrupt) database is moved aside to a
 sibling `.corrupt` file - never deleted - so it can still be inspected, and its `-wal`/
 `-shm` sidecars are removed so the restored snapshot is never combined with a stale
-write-ahead log. The chosen backup is copied to a `.restore.tmp` staging file first and
+write-ahead log. A repeated restore rotates the earlier snapshots (`.corrupt` becomes
+`.corrupt.1`, and so on) rather than overwriting them, so the first failure's evidence
+survives the second - which is when it is most worth having. Fewer generations are kept
+than for `.bak`: each one is a full copy of an already-broken database, so the oldest is
+dropped once the rotation is full. The chosen backup is copied to a `.restore.tmp` staging file first and
 only renamed into place after the corrupt database has been moved aside, so a failure
 partway through never leaves the app without a database file. The caller must ensure the
 connection pool is not already open before calling this (it is only reachable from the

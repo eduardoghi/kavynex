@@ -17,6 +17,7 @@ const BACKUP_MIN_INTERVAL_SECS: u64 = 24 * 60 * 60;
 // degraded one before it is caught. This many *rotated* generations are kept in addition to the
 // current `.bak`.
 const BACKUP_ROTATED_GENERATIONS: usize = 6;
+const CORRUPT_ROTATED_GENERATIONS: usize = 2;
 
 fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
     let name = db_path
@@ -41,19 +42,30 @@ fn generation_backup_path(db_path: &Path, generation: usize) -> PathBuf {
     }
 }
 
-/// Shifts the rotated generations up by one, dropping the oldest, so a fresh snapshot can be
-/// promoted into `.bak` without discarding the previous ones: `.bak.{N}` is overwritten by
-/// `.bak.{N-1}`, and so on down to `.bak` becoming `.bak.1`.
-fn rotate_backups(db_path: &Path) {
-    for generation in (1..=BACKUP_ROTATED_GENERATIONS).rev() {
-        let source = generation_backup_path(db_path, generation - 1);
-        let target = generation_backup_path(db_path, generation);
+/// Shifts a rotated snapshot family up by one generation, dropping the oldest, so a fresh file
+/// can be promoted into generation 0 without discarding the previous ones: generation `N` is
+/// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort - a
+/// generation that cannot be moved is left where it is rather than failing the caller.
+fn rotate_generations(
+    db_path: &Path,
+    generations: usize,
+    path_for: fn(&Path, usize) -> PathBuf,
+) {
+    for generation in (1..=generations).rev() {
+        let source = path_for(db_path, generation - 1);
+        let target = path_for(db_path, generation);
 
         if source.exists() {
             let _ = std::fs::remove_file(&target);
             let _ = std::fs::rename(&source, &target);
         }
     }
+}
+
+/// Shifts the rotated backup generations up by one so a fresh snapshot can be promoted into
+/// `.bak`: `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`.
+fn rotate_backups(db_path: &Path) {
+    rotate_generations(db_path, BACKUP_ROTATED_GENERATIONS, generation_backup_path);
 }
 
 fn temp_backup_path(db_path: &Path) -> PathBuf {
@@ -178,8 +190,22 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     // Shift the existing generations up, then promote the fresh snapshot into `.bak`.
     rotate_backups(db_path);
 
-    std::fs::rename(&temp, &backup)
-        .map_err(|error| backup_error("failed to store database backup", error))?;
+    // Rotation has already moved the previous `.bak` to `.bak.1`, so a failure here leaves
+    // generation 0 absent until the next successful backup. A restore still succeeds - the
+    // candidate list falls through to `.bak.1` and beyond - but the newest snapshot silently
+    // did not land, which is only inferable from backup timestamps. Log it before propagating
+    // so the state is observable.
+    if let Err(error) = std::fs::rename(&temp, &backup) {
+        logger::warn(
+            "db_backup",
+            format!(
+                "failed to promote the fresh snapshot after rotating generations; \
+                 the newest backup slot is empty until the next run: {error}"
+            ),
+        );
+
+        return Err(backup_error("failed to store database backup", error));
+    }
 
     Ok(true)
 }
@@ -221,6 +247,24 @@ pub struct DatabaseBackupStatus {
 
 fn corrupt_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".corrupt")
+}
+
+/// The database set aside by the most recent restore is `.corrupt` (generation 0); earlier ones
+/// are `.corrupt.1` through `.corrupt.{CORRUPT_ROTATED_GENERATIONS}`.
+fn generation_corrupt_path(db_path: &Path, generation: usize) -> PathBuf {
+    if generation == 0 {
+        corrupt_path(db_path)
+    } else {
+        sibling(db_path, &format!(".corrupt.{generation}"))
+    }
+}
+
+/// Shifts the corrupt snapshots up a generation so a second restore does not discard the
+/// evidence from the first. Fewer generations are kept than for `.bak`: each one is a full copy
+/// of a database that is already known to be broken, so this bounds the disk they can occupy
+/// while still leaving repeated corruption diagnosable.
+fn rotate_corrupt_snapshots(db_path: &Path) {
+    rotate_generations(db_path, CORRUPT_ROTATED_GENERATIONS, generation_corrupt_path);
 }
 
 /// Where `restore_database_from_backup` stages the chosen snapshot before renaming it into place.
@@ -374,10 +418,13 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     std::fs::copy(&backup, &staged)
         .map_err(|error| backup_error("failed to stage restored database", error))?;
 
-    // Move the corrupt database aside and drop its sidecar WAL files.
+    // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than
+    // overwrite: a second restore (the restored database degraded again) would otherwise discard
+    // the first failure's evidence, which is exactly the case where repeated corruption most
+    // needs diagnosing.
     if db_path.exists() {
         let corrupt = corrupt_path(db_path);
-        let _ = std::fs::remove_file(&corrupt);
+        rotate_corrupt_snapshots(db_path);
 
         if let Err(error) = std::fs::rename(db_path, &corrupt) {
             let _ = std::fs::remove_file(&staged);
@@ -765,6 +812,68 @@ mod tests {
         // The corrupt copy is preserved for inspection, not deleted.
         assert!(corrupt_path(&db).exists());
         assert_eq!(std::fs::read(corrupt_path(&db)).unwrap(), b"not a database");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn restore_rotates_previous_corrupt_snapshots_instead_of_discarding_them() {
+        let dir = temp_dir("restore-corrupt-rotate");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+        assert!(backup_database(&db).await.unwrap());
+
+        // First corruption and restore: the broken database lands in `.corrupt`.
+        std::fs::write(&db, b"first corruption").unwrap();
+        restore_database_from_backup(&db).await.unwrap();
+        assert_eq!(std::fs::read(corrupt_path(&db)).unwrap(), b"first corruption");
+
+        // A second corruption and restore must not throw the first one away: it rotates to
+        // `.corrupt.1` while the newest takes `.corrupt`. Overwriting instead would destroy the
+        // evidence of exactly the repeated-corruption case worth diagnosing.
+        std::fs::write(&db, b"second corruption").unwrap();
+        restore_database_from_backup(&db).await.unwrap();
+
+        assert_eq!(read_single_value(&db).await, "hello");
+        assert_eq!(
+            std::fs::read(corrupt_path(&db)).unwrap(),
+            b"second corruption"
+        );
+        assert_eq!(
+            std::fs::read(generation_corrupt_path(&db, 1)).unwrap(),
+            b"first corruption"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn corrupt_snapshot_rotation_drops_only_the_oldest_generation() {
+        let dir = temp_dir("corrupt-rotate-bound");
+        let db = dir.join("kavynex.db");
+
+        // Fill every kept generation, then rotate once more: the oldest falls off the end and
+        // the rest shift up, so the family stays bounded instead of growing per restore.
+        for generation in 0..=CORRUPT_ROTATED_GENERATIONS {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                generation_corrupt_path(&db, generation),
+                format!("gen{generation}"),
+            )
+            .unwrap();
+        }
+
+        rotate_corrupt_snapshots(&db);
+
+        // Generation 0 is now free for the incoming snapshot.
+        assert!(!corrupt_path(&db).exists());
+
+        for generation in 1..=CORRUPT_ROTATED_GENERATIONS {
+            assert_eq!(
+                std::fs::read(generation_corrupt_path(&db, generation)).unwrap(),
+                format!("gen{}", generation - 1).into_bytes()
+            );
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }
