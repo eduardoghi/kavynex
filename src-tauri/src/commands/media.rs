@@ -53,19 +53,13 @@ pub async fn cleanup_unreferenced_media_artifacts(
 // async service functions (`library_media`/`library_cleanup`) cannot be called directly
 // with a mock `AppHandle` either, since their signatures take the same concrete type.
 //
-// Even setting that aside, both commands would immediately call
-// `services::library_guard::ensure_configured_library_path` /
-// `services::library_cleanup::cleanup_unreferenced_artifacts`, which read the app
-// settings through `services::database::shared_pool` - a process-wide `OnceCell` whose
-// backing sqlite file location is derived from `AppHandle::path().app_config_dir()`.
-// Under a real `AppHandle<Wry>` built from `tauri::test::mock_context()` (empty config
-// `identifier`), that resolves to the real OS user config directory
-// (`dirs::config_dir()` itself), with no test-friendly override available without
-// touching production code; and since the pool only ever initializes once per test
-// binary (this repo's CI runs plain `cargo test`, not a per-test-process runner like
-// `nextest`), a real round trip would either write into the developer's actual AppData
-// directory or silently reuse whatever pool a different test already opened - failing
-// both the "self-contained" and "deterministic" requirements.
+// The runtime mismatch above is the whole of it: the database is no longer the obstacle.
+// The pool lives in managed state (`services::database::Db`, registered by `lib.rs`'s
+// setup and resolved through `try_state`), and `Db::from_pool` exists precisely so a test
+// can manage a `Db` backed by an in-memory schema onto a mock app - which is how the
+// pool-only commands (`settings.rs`, `channels.rs`, `videos.rs`, `database.rs`) are driven
+// through the real IPC boundary today. What keeps *these two* commands out is only their
+// `AppHandle` parameter, not where their settings come from.
 //
 // `cleanup_unreferenced_media_artifacts`'s reference-counting behavior (a file shared by
 // two rows is kept, an unreferenced one is deleted) is already covered thoroughly at the
