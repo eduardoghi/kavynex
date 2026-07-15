@@ -146,10 +146,14 @@ and try again.
 Kavynex writes a rolling log file in addition to stderr. On the current platform's app
 log directory (see `docs/DIRECTORIES.md`) look for `kavynex.log` (and `kavynex.log.1`,
 the previous rotation, once the current file passes 5 MB). Attach the relevant lines when
-reporting a bug. Logs can contain file paths, the full URL of each video you download (so
-they reveal which videos were fetched), and, when the cookies-from-browser feature is used,
-the fact that a browser cookie source was used (not the cookie values themselves) - still
-avoid pasting full logs in a public issue without a quick read-through first.
+reporting a bug. Logs can contain file paths and a reference to each video you download, so
+they do reveal which videos were fetched - a run that succeeds records only a reduced
+reference (the video id; the playlist and tracking parameters of the URL you pasted are
+dropped), but one that fails also records yt-dlp's own verbose output, which can include the
+full URL. When the cookies-from-browser feature is used they record only the fact that a
+browser cookie source was used, never the cookie values; the path of a cookies *file* is
+redacted as well. Still avoid pasting full logs in a public issue without a quick
+read-through first.
 
 ## Privacy
 

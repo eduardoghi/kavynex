@@ -146,9 +146,13 @@ certificate is a recurring cost that is hard to justify here. In practice this m
 
 - Windows SmartScreen and macOS Gatekeeper will warn on first run; this is expected and
   is not evidence of tampering.
-- Release integrity for a manually downloaded installer is instead provided by
-  `SHA256SUMS.txt`, published alongside every release (`.github/workflows/release.yml`'s
-  `checksums` job) - compare the hash of what you downloaded against that file.
+- *Download* integrity for a manually downloaded installer is provided by `SHA256SUMS.txt`,
+  published alongside every release (`.github/workflows/release.yml`'s `checksums` job) -
+  compare the hash of what you downloaded against that file. Note what this does and does
+  not prove: the `checksums` job hashes the assets already attached to the release, so the
+  file tells you your copy matches what the release page serves (it catches a truncated or
+  corrupted download), not that those assets are what the build produced. Tying an installer
+  back to the source and the CI run that built it is what the build provenance below is for.
 - The updater path (in-app update, once installed) does not rely on installer signing at
   all; it relies on the minisign signature described above, which is independent of OS
   code-signing.
