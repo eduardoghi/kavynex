@@ -182,3 +182,71 @@ jobs:
             # cargo-audit above so the same gate is not run twice. Config: src-tauri/deny.toml.
             - name: Check licenses, sources and bans
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
+
+    rust-coverage:
+        name: Rust coverage (informational)
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        # Informational on purpose: this job exists to produce a number, not to gate on one.
+        # The frontend has coverage floors (vitest.config.ts) and broad mutation testing
+        # (Stryker); the Rust side - the actual trust boundary - has `cargo test`, which is only
+        # pass/fail, and cargo-mutants scoped to four security-critical modules
+        # (src-tauri/.cargo/mutants.toml). For the other ~45 files under services/ and commands/
+        # (db_backup.rs, thumbnail_download.rs, the live chat path, every command wrapper) there
+        # is no visibility at all: nobody can say whether db_backup.rs sits at 80% or 30%.
+        #
+        # First reading, taken locally on 2026-07-15 before this job existed: 74.06% regions,
+        # 63.66% functions, 70.25% lines. For contrast the frontend sits at 89.21% lines /
+        # 83.75% functions and is gated on it - so the less instrumented side is the one that
+        # holds the trust boundary. Take a few more readings here before turning this into a
+        # floor: a threshold picked from a guess is worse than none, being either slack enough
+        # to be meaningless or just under the real number and permanently red.
+        continue-on-error: true
+        env:
+            CARGO_PROFILE_DEV_DEBUG: "0"
+            CARGO_PROFILE_TEST_DEBUG: "0"
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install Rust toolchain
+              # Pin the exact toolchain (keep in sync with rust-toolchain.toml). llvm-tools-preview
+              # supplies the llvm-profdata/llvm-cov binaries cargo-llvm-cov drives.
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.96.0
+                  components: llvm-tools-preview
+
+            - name: Install Linux dependencies
+              # No lld/RUSTFLAGS here, unlike the rust job: cargo-llvm-cov sets its own RUSTFLAGS
+              # for instrumentation, and a second value in the environment would fight it.
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+            - name: Cache Rust build
+              uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+              with:
+                  # Instrumented builds cannot share the plain rust job's artifacts, so this keeps
+                  # its own cache entry rather than thrashing that one.
+                  workspaces: src-tauri
+                  key: llvm-cov
+                  cache-on-failure: "true"
+
+            - name: Install cargo-llvm-cov
+              # Pinned like every other tool install (ci.yml/release.yml/mutation.yml): an
+              # unpinned `cargo install` builds whatever released today, so the measurement could
+              # move because the tool changed rather than because the tests did.
+              run: cargo install cargo-llvm-cov@0.8.7 --locked
+
+            - name: Measure coverage
+              run: |
+                  cargo llvm-cov --manifest-path src-tauri/Cargo.toml --locked --summary-only \
+                      | tee coverage-summary.txt
+                  {
+                      echo "### Rust coverage (informational, not a gate)"
+                      echo ""
+                      echo '```'
+                      cat coverage-summary.txt
+                      echo '```'
+                  } >> "$GITHUB_STEP_SUMMARY"
