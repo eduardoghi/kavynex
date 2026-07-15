@@ -351,6 +351,33 @@ describe("useSettingsController", () => {
         expect(relaunchMock).toHaveBeenCalledTimes(1);
     });
 
+    it("drops a picked but unconfirmed import when the modal closes", async () => {
+        getLibrarySummaryMock.mockResolvedValue(createSummary());
+        openMock.mockResolvedValueOnce("/backups/import.db");
+
+        const { result, rerender } = renderHook(
+            ({ opened }) => useSettingsController({ opened, libraryPath: "/library" }),
+            { initialProps: { opened: true } }
+        );
+
+        await act(async () => {
+            await result.current.pickImportFileAction();
+        });
+
+        expect(result.current.pendingImportPath).toBe("/backups/import.db");
+
+        // The modal only locks while a database operation is in flight, so an import waiting on
+        // its confirmation can be dismissed with Esc or a click outside. The component stays
+        // mounted, so the pending path has to be cleared here or reopening Settings re-shows the
+        // "Replace the current database?" confirmation for a file the user already walked away
+        // from - one click from replacing their library with it.
+        rerender({ opened: false });
+        expect(result.current.pendingImportPath).toBeNull();
+
+        rerender({ opened: true });
+        expect(result.current.pendingImportPath).toBeNull();
+    });
+
     it("reports an error when the import dialog itself fails to open", async () => {
         getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
         openMock.mockRejectedValueOnce(new Error("dialog crashed"));

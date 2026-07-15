@@ -264,6 +264,14 @@ export function useSettingsController({
             setIsLoadingLibrarySummary(false);
             setCanUndoImport(false);
             setIsUndoImportConfirmOpen(false);
+            // A picked-but-unconfirmed import must not outlive the modal. The modal only locks
+            // while `databaseBusy` is set, so a pending import - which is idle, waiting on the
+            // confirmation - can be dismissed with Esc or a click outside, and this component
+            // stays mounted (home-modals only toggles `opened`). Without clearing it, reopening
+            // Settings re-shows "Replace the current database?" for the file the user walked
+            // away from, out of context and one click from replacing their library.
+            setPendingImportPath(null);
+            setDatabaseMessage(null);
             return;
         }
 
