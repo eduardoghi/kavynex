@@ -192,8 +192,6 @@ const mockMediaLibrary = {
         downloadLiveChat: true,
         cookiesBrowser: "",
         cookiesPath: "",
-        isDragging: false,
-        isThumbDragging: false,
         isGeneratingThumb: false,
 
         ytDlpFormats: [],
@@ -216,14 +214,6 @@ const mockMediaLibrary = {
 
         pickMediaViaDialog: vi.fn(),
         pickThumbViaDialog: vi.fn(),
-        applyDroppedMediaPath: vi.fn(),
-        applyDroppedThumbPath: vi.fn(),
-        onDropMedia: vi.fn(),
-        onDragOverMedia: vi.fn(),
-        onDragLeaveMedia: vi.fn(),
-        onDropThumb: vi.fn(),
-        onDragOverThumb: vi.fn(),
-        onDragLeaveThumb: vi.fn(),
         resetForm: vi.fn(),
     },
 

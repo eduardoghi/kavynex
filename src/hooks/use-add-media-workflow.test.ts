@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
-import type { MediaSourceMode, MediaType } from "../types/media";
+import type { useAddMediaForm } from "./use-add-media-form";
 import { useAddMediaWorkflow } from "./use-add-media-workflow";
 
 vi.mock("../services", () => ({
@@ -23,49 +23,16 @@ const mockAppendManualLog = vi.fn();
 const mockMarkStopped = vi.fn();
 const mockStartManualSession = vi.fn();
 
+// Derived from the real hook's return type rather than hand-listed, so a field that the hook
+// stops exposing (or never exposed) fails to compile here instead of quietly living on in the
+// mock. Callable members become vi.fn()s; plain state fields keep their real types, which is
+// what lets the tests below assign to them directly.
+type AddMediaForm = ReturnType<typeof useAddMediaForm>;
+
 type MockAddMediaForm = {
-    sourceMode: MediaSourceMode;
-    mediaUrl: string;
-    title: string;
-    mediaPath: string;
-    mediaType: MediaType;
-    thumbPath: string;
-    publishedAt: string;
-    downloadComments: boolean;
-    downloadLiveChat: boolean;
-    cookiesBrowser: string;
-    cookiesPath: string;
-    isDragging: boolean;
-    isThumbDragging: boolean;
-    isGeneratingThumb: boolean;
-    ytDlpFormats: Array<unknown>;
-    selectedYtDlpFormatId: string;
-    isLoadingYtDlpFormats: boolean;
-    selectedYtDlpMediaType: MediaType;
-    resolvedYoutubeVideoId: string | null;
-    setSourceMode: ReturnType<typeof vi.fn>;
-    setMediaUrl: ReturnType<typeof vi.fn>;
-    setTitle: ReturnType<typeof vi.fn>;
-    setPublishedAt: ReturnType<typeof vi.fn>;
-    setDownloadComments: ReturnType<typeof vi.fn>;
-    setDownloadLiveChat: ReturnType<typeof vi.fn>;
-    setCookiesBrowser: ReturnType<typeof vi.fn>;
-    setCookiesPath: ReturnType<typeof vi.fn>;
-    pickCookiesFileViaDialog: ReturnType<typeof vi.fn>;
-    clearCookiesPath: ReturnType<typeof vi.fn>;
-    setSelectedYtDlpFormatId: ReturnType<typeof vi.fn>;
-    loadYtDlpFormats: ReturnType<typeof vi.fn>;
-    pickMediaViaDialog: ReturnType<typeof vi.fn>;
-    pickThumbViaDialog: ReturnType<typeof vi.fn>;
-    applyDroppedMediaPath: ReturnType<typeof vi.fn>;
-    applyDroppedThumbPath: ReturnType<typeof vi.fn>;
-    onDropMedia: ReturnType<typeof vi.fn>;
-    onDragOverMedia: ReturnType<typeof vi.fn>;
-    onDragLeaveMedia: ReturnType<typeof vi.fn>;
-    onDropThumb: ReturnType<typeof vi.fn>;
-    onDragOverThumb: ReturnType<typeof vi.fn>;
-    onDragLeaveThumb: ReturnType<typeof vi.fn>;
-    resetForm: ReturnType<typeof vi.fn>;
+    [K in keyof AddMediaForm]: AddMediaForm[K] extends (...args: never[]) => unknown
+        ? ReturnType<typeof vi.fn>
+        : AddMediaForm[K];
 };
 
 type MockYtDlpEvents = {
@@ -95,8 +62,6 @@ function createMockAddMediaForm(): MockAddMediaForm {
         downloadLiveChat: true,
         cookiesBrowser: "",
         cookiesPath: "",
-        isDragging: false,
-        isThumbDragging: false,
         isGeneratingThumb: false,
         ytDlpFormats: [],
         selectedYtDlpFormatId: "",
@@ -117,14 +82,6 @@ function createMockAddMediaForm(): MockAddMediaForm {
         loadYtDlpFormats: vi.fn(),
         pickMediaViaDialog: vi.fn(),
         pickThumbViaDialog: vi.fn(),
-        applyDroppedMediaPath: vi.fn(),
-        applyDroppedThumbPath: vi.fn(),
-        onDropMedia: vi.fn(),
-        onDragOverMedia: vi.fn(),
-        onDragLeaveMedia: vi.fn(),
-        onDropThumb: vi.fn(),
-        onDragOverThumb: vi.fn(),
-        onDragLeaveThumb: vi.fn(),
         resetForm: mockResetForm,
     };
 }
