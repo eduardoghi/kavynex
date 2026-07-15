@@ -175,6 +175,13 @@ jobs:
             - name: Audit production JS dependencies
               run: pnpm audit --prod --audit-level high
 
+            # Mirror ci.yml's license gate for the same reason as every other check duplicated
+            # here: the release is dispatched manually, so nothing guarantees the chosen ref ever
+            # went through CI. Platform-independent, so it runs once on Ubuntu.
+            - name: Check production JS licenses
+              if: matrix.platform == 'ubuntu-22.04'
+              run: pnpm licenses:check
+
             # Mirror ci.yml's lint gate so a manually dispatched release cannot ship on a
             # commit with an ESLint violation that never went through CI. Platform-independent,
             # so it runs once on Ubuntu rather than on every matrix target.

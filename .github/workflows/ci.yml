@@ -57,6 +57,16 @@ jobs:
               continue-on-error: true
               run: pnpm audit --dev --audit-level high
 
+            # cargo-deny has enforced a license allow-list on the Rust side since it landed
+            # (src-tauri/deny.toml); the npm side only had pnpm audit, which reports security
+            # advisories and says nothing about licensing. For an MIT-licensed public project
+            # that asymmetry is the gap a copyleft transitive would slip through - the more so
+            # now that Dependabot groups routine bumps into a single PR. Gated rather than
+            # informational because the tree was measured first: 94 production packages, 7
+            # distinct licenses, every one already permissive.
+            - name: Check production JS licenses
+              run: pnpm licenses:check
+
             - name: Lint
               run: pnpm lint
 
