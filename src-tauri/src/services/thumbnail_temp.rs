@@ -112,24 +112,57 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
     })
 }
 
+/// The scale filter both generators share: fit the thumbnail to 640px wide, never upscaling a
+/// smaller source, and let the height follow the aspect ratio.
+const THUMBNAIL_SCALE_FILTER: &str = "scale='min(640,iw)':-1";
+
+/// Builds the ffmpeg argv for a video thumbnail: seek slightly past the start (a frame at exactly
+/// 0 is often black or missing on some encodes) and take a single scaled frame.
+///
+/// Extracted as a pure function, like `yt_dlp_download::build_download_command_args`, so the argv
+/// can be asserted without spawning ffmpeg. Both paths are otherwise only observable as a blank
+/// thumbnail on a user's machine.
+fn build_video_thumbnail_args(source_path: &Path, out_png: &Path) -> Vec<String> {
+    vec![
+        "-y".to_string(),
+        "-ss".to_string(),
+        "0.1".to_string(),
+        "-i".to_string(),
+        source_path.to_string_lossy().to_string(),
+        "-frames:v".to_string(),
+        "1".to_string(),
+        "-vf".to_string(),
+        THUMBNAIL_SCALE_FILTER.to_string(),
+        out_png.to_string_lossy().to_string(),
+    ]
+}
+
+/// Builds the ffmpeg argv for an audio file's embedded cover art. Unlike the video path there is
+/// no `-ss` (there is no timeline to seek); `-map 0:v:0` selects the attached picture stream, and
+/// ffmpeg fails when the file has none - which is what the caller reports as
+/// `ThumbnailNotSupportedForAudio`.
+fn build_audio_thumbnail_args(source_path: &Path, out_png: &Path) -> Vec<String> {
+    vec![
+        "-y".to_string(),
+        "-i".to_string(),
+        source_path.to_string_lossy().to_string(),
+        "-map".to_string(),
+        "0:v:0".to_string(),
+        "-frames:v".to_string(),
+        "1".to_string(),
+        "-vf".to_string(),
+        THUMBNAIL_SCALE_FILTER.to_string(),
+        out_png.to_string_lossy().to_string(),
+    ]
+}
+
 fn generate_video_temporary_thumbnail(
     ffmpeg: &str,
     source_path: &Path,
     out_png: &Path,
 ) -> AppResult<()> {
     let mut command = std::process::Command::new(ffmpeg);
-    command.args([
-        "-y",
-        "-ss",
-        "0.1",
-        "-i",
-        source_path.to_string_lossy().as_ref(),
-        "-frames:v",
-        "1",
-        "-vf",
-        "scale='min(640,iw)':-1",
-        out_png.to_string_lossy().as_ref(),
-    ]);
+    command.args(build_video_thumbnail_args(source_path, out_png));
 
     let output = run_tracked_ffmpeg(command)?;
 
@@ -154,18 +187,7 @@ fn generate_audio_embedded_temporary_thumbnail(
     out_png: &Path,
 ) -> AppResult<()> {
     let mut command = std::process::Command::new(ffmpeg);
-    command.args([
-        "-y",
-        "-i",
-        source_path.to_string_lossy().as_ref(),
-        "-map",
-        "0:v:0",
-        "-frames:v",
-        "1",
-        "-vf",
-        "scale='min(640,iw)':-1",
-        out_png.to_string_lossy().as_ref(),
-    ]);
+    command.args(build_audio_thumbnail_args(source_path, out_png));
 
     let output = run_tracked_ffmpeg(command)?;
 
@@ -256,6 +278,143 @@ mod tests {
 
         assert_eq!(media_subdir_from_extension(&ext_video), "video");
         assert_eq!(media_subdir_from_extension(&ext_audio), "audio");
+    }
+
+    #[test]
+    fn video_thumbnail_args_seek_past_the_start_and_take_one_scaled_frame() {
+        let args =
+            build_video_thumbnail_args(Path::new("/tmp/clip.mp4"), Path::new("/tmp/out.png"));
+
+        assert_eq!(
+            args,
+            vec![
+                "-y",
+                "-ss",
+                "0.1",
+                "-i",
+                "/tmp/clip.mp4",
+                "-frames:v",
+                "1",
+                "-vf",
+                THUMBNAIL_SCALE_FILTER,
+                "/tmp/out.png",
+            ]
+        );
+    }
+
+    #[test]
+    fn audio_thumbnail_args_map_the_attached_picture_and_never_seek() {
+        let args =
+            build_audio_thumbnail_args(Path::new("/tmp/song.mp3"), Path::new("/tmp/out.png"));
+
+        assert_eq!(
+            args,
+            vec![
+                "-y",
+                "-i",
+                "/tmp/song.mp3",
+                "-map",
+                "0:v:0",
+                "-frames:v",
+                "1",
+                "-vf",
+                THUMBNAIL_SCALE_FILTER,
+                "/tmp/out.png",
+            ]
+        );
+
+        // An audio file has no timeline to seek into, so -ss must not appear: with it, ffmpeg
+        // reports no frames for a cover-art stream and a working thumbnail turns into a
+        // "does not have an embedded thumbnail" error.
+        assert!(!args.iter().any(|arg| arg == "-ss"));
+    }
+
+    #[test]
+    fn both_arg_builders_pass_the_source_as_a_single_argument() {
+        // A path with spaces (and a leading dash, which a shell would read as a flag) must stay
+        // one argv entry. This holds because the args are handed to Command as an array and never
+        // joined into a shell string, and it is what keeps an odd filename from becoming an
+        // ffmpeg option.
+        let source = Path::new("/tmp/my clips/-weird name.mp4");
+        let out = Path::new("/tmp/out dir/thumb.png");
+
+        for args in [
+            build_video_thumbnail_args(source, out),
+            build_audio_thumbnail_args(source, out),
+        ] {
+            assert!(args
+                .iter()
+                .any(|arg| arg == "/tmp/my clips/-weird name.mp4"));
+            assert_eq!(args.last().unwrap(), "/tmp/out dir/thumb.png");
+        }
+    }
+
+    #[test]
+    fn ensure_generated_thumbnail_exists_accepts_a_non_empty_file() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let thumb = dir.join("thumb.png");
+        fs::write(&thumb, b"\x89PNG\r\n").unwrap();
+
+        ensure_generated_thumbnail_exists(&thumb, AppErrorCode::FfmpegFailed, "boom").unwrap();
+        assert!(thumb.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ensure_generated_thumbnail_exists_rejects_a_missing_file() {
+        let dir = unique_test_dir();
+        let missing = dir.join("thumb.png");
+
+        let error = ensure_generated_thumbnail_exists(&missing, AppErrorCode::FfmpegFailed, "boom")
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
+    }
+
+    #[test]
+    fn ensure_generated_thumbnail_exists_rejects_and_removes_a_zero_byte_file() {
+        // ffmpeg can exit 0 having written nothing. Without this guard the empty file would be
+        // returned as a valid preview and, worse, cached: generate_temporary_thumbnail_sync
+        // short-circuits on an existing out_png, so the blank result would stick for that source
+        // until the temp dir is swept.
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let thumb = dir.join("thumb.png");
+        fs::write(&thumb, b"").unwrap();
+
+        let error = ensure_generated_thumbnail_exists(
+            &thumb,
+            AppErrorCode::ThumbnailNotSupportedForAudio,
+            "boom",
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error.code,
+            AppErrorCode::ThumbnailNotSupportedForAudio.as_str()
+        );
+        assert!(
+            !thumb.exists(),
+            "the empty thumbnail must be removed, not left to be served from cache"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ensure_generated_thumbnail_exists_rejects_a_directory() {
+        let dir = unique_test_dir();
+        let fake = dir.join("thumb.png");
+        fs::create_dir_all(&fake).unwrap();
+
+        let error = ensure_generated_thumbnail_exists(&fake, AppErrorCode::FfmpegFailed, "boom")
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
