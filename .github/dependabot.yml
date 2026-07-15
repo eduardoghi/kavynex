@@ -1,4 +1,12 @@
 version: 2
+
+# Grouping rule, applied the same way to every ecosystem: routine bumps (minor/patch) arrive as
+# a single PR per ecosystem per week, while a major update is deliberately left out of the group
+# so it gets its own PR. The dependency graph behind this repo is large (hundreds of npm packages
+# and crates once transitive deps are counted), and ungrouped weekly updates open one PR per
+# bump - volume that a single maintainer ends up ignoring, which quietly turns Dependabot into
+# noise instead of a safety net. A major is the case that actually needs to be read on its own
+# (breaking changes, migration notes), so it stays unbatched.
 updates:
     - package-ecosystem: npm
       directory: "/"
@@ -9,6 +17,13 @@ updates:
       # survives a squash-merge without violating the commit convention.
       commit-message:
           prefix: "build"
+      groups:
+          npm-minor-and-patch:
+              patterns:
+                  - "*"
+              update-types:
+                  - "minor"
+                  - "patch"
 
     - package-ecosystem: cargo
       directory: "/src-tauri"
@@ -17,6 +32,13 @@ updates:
       open-pull-requests-limit: 10
       commit-message:
           prefix: "build"
+      groups:
+          cargo-minor-and-patch:
+              patterns:
+                  - "*"
+              update-types:
+                  - "minor"
+                  - "patch"
 
     - package-ecosystem: github-actions
       directory: "/"
@@ -25,3 +47,10 @@ updates:
       open-pull-requests-limit: 10
       commit-message:
           prefix: "build"
+      groups:
+          actions-minor-and-patch:
+              patterns:
+                  - "*"
+              update-types:
+                  - "minor"
+                  - "patch"
