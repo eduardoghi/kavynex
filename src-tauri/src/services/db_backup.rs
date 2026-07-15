@@ -46,11 +46,7 @@ fn generation_backup_path(db_path: &Path, generation: usize) -> PathBuf {
 /// can be promoted into generation 0 without discarding the previous ones: generation `N` is
 /// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort - a
 /// generation that cannot be moved is left where it is rather than failing the caller.
-fn rotate_generations(
-    db_path: &Path,
-    generations: usize,
-    path_for: fn(&Path, usize) -> PathBuf,
-) {
+fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, usize) -> PathBuf) {
     for generation in (1..=generations).rev() {
         let source = path_for(db_path, generation - 1);
         let target = path_for(db_path, generation);
@@ -264,7 +260,11 @@ fn generation_corrupt_path(db_path: &Path, generation: usize) -> PathBuf {
 /// of a database that is already known to be broken, so this bounds the disk they can occupy
 /// while still leaving repeated corruption diagnosable.
 fn rotate_corrupt_snapshots(db_path: &Path) {
-    rotate_generations(db_path, CORRUPT_ROTATED_GENERATIONS, generation_corrupt_path);
+    rotate_generations(
+        db_path,
+        CORRUPT_ROTATED_GENERATIONS,
+        generation_corrupt_path,
+    );
 }
 
 /// Where `restore_database_from_backup` stages the chosen snapshot before renaming it into place.
@@ -826,7 +826,10 @@ mod tests {
         // First corruption and restore: the broken database lands in `.corrupt`.
         std::fs::write(&db, b"first corruption").unwrap();
         restore_database_from_backup(&db).await.unwrap();
-        assert_eq!(std::fs::read(corrupt_path(&db)).unwrap(), b"first corruption");
+        assert_eq!(
+            std::fs::read(corrupt_path(&db)).unwrap(),
+            b"first corruption"
+        );
 
         // A second corruption and restore must not throw the first one away: it rotates to
         // `.corrupt.1` while the newest takes `.corrupt`. Overwriting instead would destroy the

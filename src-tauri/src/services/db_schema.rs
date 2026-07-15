@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 11;
+pub(crate) const SCHEMA_VERSION: i64 = 12;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -97,6 +97,17 @@ const INDEX_DDLS: &[(&str, &str)] = &[
     // Serves the title-sorted page of a channel's media (the paginated library list ordering by
     // title_normalized within a channel), so that sort does not filesort the whole channel.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_title_normalized ON videos(channel_id, title_normalized)"),
+    // One index per `list_media_page` sort category, each mirroring that category's ORDER BY
+    // exactly (see video_repository::resolve_order_by). SQLite only walks an index in ORDER BY
+    // order when the leading terms match term for term, so `duration` and `publication_date`
+    // must index the same COALESCE/CASE *expressions* the clause sorts on - a plain index on
+    // duration_seconds or published_at is never used by those queries. Measured with EXPLAIN
+    // QUERY PLAN: without these, every one of these sorts falls back to idx_videos_channel_id
+    // and re-sorts the channel's whole matching set on each page.
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_title_id ON videos(channel_id, created_at DESC, title_normalized DESC, id DESC)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_comments_count ON videos(channel_id, comments_count, title_normalized)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_duration ON videos(channel_id, COALESCE(duration_seconds, 0), title_normalized)"),
+    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_ordered ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END), (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END), title_normalized)"),
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)"),
@@ -260,6 +271,11 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_migration_11(pool).await?;
     }
 
+    // v12: adds the per-sort-category indexes for `list_media_page`.
+    if current_version < 12 {
+        apply_migration_12(pool).await?;
+    }
+
     // Each migration is guarded by version and transactional (it stamps the new
     // user_version inside its own transaction, so a crash leaves the database fully at the
     // old or the new version). An additive migration (a new column or index) runs the
@@ -309,6 +325,14 @@ async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
 /// reaches databases created before v9 by re-running the guarded index DDLs.
 async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 9).await
+}
+
+/// v12: creates the four `list_media_page` sort indexes (`idx_videos_channel_created_title_id`,
+/// `idx_videos_channel_comments_count`, `idx_videos_channel_duration`,
+/// `idx_videos_channel_published_ordered`). Additive, so it reaches databases created before v12
+/// by re-running the guarded index DDLs.
+async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
+    apply_index_only_migration(pool, 12).await
 }
 
 /// v10: creates `idx_video_comments_video_comment_unique`, moving the "no duplicate

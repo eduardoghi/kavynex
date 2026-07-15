@@ -659,6 +659,80 @@ mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
+    /// A pool carrying the *real* schema (`db_schema::ensure_schema`), unlike `create_test_pool`
+    /// below, which hand-rolls a minimal `videos` table. The sort-index test needs the real index
+    /// set, since that is exactly what it is asserting about.
+    async fn schema_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("create sqlite memory pool");
+
+        crate::services::db_schema::ensure_schema(&pool)
+            .await
+            .expect("apply schema");
+
+        pool
+    }
+
+    /// Each `list_media_page` sort category and the index that must serve its ORDER BY.
+    const SORT_INDEX_EXPECTATIONS: &[(&str, &str, &str)] = &[
+        ("added_date", "desc", "idx_videos_channel_created_title_id"),
+        ("title", "asc", "idx_videos_channel_title_normalized"),
+        ("comments", "asc", "idx_videos_channel_comments_count"),
+        ("duration", "asc", "idx_videos_channel_duration"),
+        (
+            "publication_date",
+            "asc",
+            "idx_videos_channel_published_ordered",
+        ),
+    ];
+
+    /// Every sort category must be answered from an index rather than by pulling the channel's
+    /// whole matching set into a sort. This pins the coupling between `resolve_order_by` and the
+    /// index DDLs in db_schema: SQLite only walks an index in ORDER BY order when the leading
+    /// terms match term for term, so reordering a clause - or indexing `duration_seconds` instead
+    /// of the `COALESCE(duration_seconds, 0)` the clause actually sorts on - silently drops the
+    /// index and reintroduces the full sort with no other symptom than a slow grid.
+    #[tokio::test]
+    async fn every_media_page_sort_is_served_by_an_index() {
+        let pool = schema_pool().await;
+
+        for &(category, direction, expected_index) in SORT_INDEX_EXPECTATIONS {
+            let order_by = resolve_order_by(category, direction).unwrap();
+            let sql = format!(
+                "EXPLAIN QUERY PLAN SELECT id FROM videos WHERE channel_id = 1 {order_by} LIMIT 60 OFFSET 0"
+            );
+
+            // AssertSqlSafe: the only interpolated part is `resolve_order_by`'s return value,
+            // which is a fixed &'static str chosen by a match, never caller input.
+            let plan: Vec<String> =
+                sqlx::query_as::<_, (i64, i64, i64, String)>(sqlx::AssertSqlSafe(sql))
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_else(|error| panic!("explain {category}: {error}"))
+                    .into_iter()
+                    .map(|(_, _, _, detail)| detail)
+                    .collect();
+
+            let detail = plan.join(" | ");
+
+            assert!(
+                detail.contains(expected_index),
+                "{category} {direction} should use {expected_index}, plan was: {detail}"
+            );
+
+            // "USE TEMP B-TREE FOR ORDER BY" is a full sort of the matching rows. The narrower
+            // "... FOR LAST TERM OF ORDER BY" only breaks ties inside an already-ordered walk and
+            // is fine, so this must not be a blanket TEMP B-TREE check.
+            assert!(
+                !detail.contains("USE TEMP B-TREE FOR ORDER BY"),
+                "{category} {direction} still sorts the whole result set, plan was: {detail}"
+            );
+        }
+    }
+
     async fn create_test_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)

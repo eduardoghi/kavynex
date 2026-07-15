@@ -128,8 +128,7 @@ belonged to those rows (media, thumbnails, avatar, live chat), not for the rows.
 ### Indexes
 
 `db_schema.rs` creates a set of indexes to support the app's real query patterns:
-`videos(channel_id)`, a composite `videos(channel_id, created_at DESC, id DESC)` for the
-"list a channel's media, newest first" query, lookups by `youtube_handle`,
+`videos(channel_id)`, lookups by `youtube_handle`,
 `avatar_path`, `thumbnail_path`, `youtube_video_id`, `watched_at`, `published_at`,
 `has_comments`, `is_live`, `has_live_chat`, a unique index backing
 `(channel_id, file_path)`, a partial unique index backing
@@ -140,10 +139,42 @@ index cannot serve a bare `file_path =` predicate), and comment lookups by `vide
 `parent_comment_id`, and `comment_id`. All index DDL uses
 `CREATE INDEX IF NOT EXISTS`, so it is safe to re-run on every migration.
 
+### The `list_media_page` sort indexes
+
+`list_media_page` is the grid's query, and it re-runs on every filter, sort and page change,
+so each of its five sort categories gets an index whose columns mirror that category's
+`ORDER BY` exactly (`video_repository::resolve_order_by`):
+
+| Sort category | Index |
+|---|---|
+| `added_date` | `idx_videos_channel_created_title_id` |
+| `title` | `idx_videos_channel_title_normalized` |
+| `comments` | `idx_videos_channel_comments_count` |
+| `duration` | `idx_videos_channel_duration` |
+| `publication_date` | `idx_videos_channel_published_ordered` |
+
+"Mirror exactly" is the whole point, and it is easy to get wrong. SQLite only walks an index
+in `ORDER BY` order when the leading terms match term for term, so:
+
+- `duration` sorts on `COALESCE(duration_seconds, 0)`, and `publication_date` on two `CASE`
+  expressions. Their indexes must be on those **expressions**, not on the bare
+  `duration_seconds` / `published_at` columns - a plain column index is still *reported* as
+  used by `EXPLAIN QUERY PLAN` while the query silently sorts the whole result set anyway.
+- `added_date` sorts on `created_at DESC, title_normalized DESC, id DESC`. The older
+  `idx_videos_channel_created_id` omits `title_normalized`, so it could not serve that clause
+  and the default view of every channel was doing a full sort until v12 added the index above.
+
+`services/video_repository.rs`'s `every_media_page_sort_is_served_by_an_index` pins this: it
+runs `EXPLAIN QUERY PLAN` for each category against the real schema and fails if the plan
+loses the intended index or falls back to `USE TEMP B-TREE FOR ORDER BY` (a full sort). The
+narrower `USE TEMP B-TREE FOR LAST TERM OF ORDER BY` is expected and fine - it only breaks
+ties inside an already-ordered index walk. Change a clause in `resolve_order_by` and that test
+is what tells you the matching index no longer applies.
+
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `11`), in `db_schema.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `12`), in `db_schema.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -179,6 +210,10 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   (that shared normalization is what keeps a stored title and a search term comparable). The
   column-add, the per-row backfill and the index creation all run in one transaction that stamps
   `user_version = 11`.
+- **v12** adds one index per `list_media_page` sort category
+  (`idx_videos_channel_created_title_id`, `idx_videos_channel_comments_count`,
+  `idx_videos_channel_duration`, `idx_videos_channel_published_ordered`). Index-only like
+  v8/v9: the migration just re-runs the index DDL list and stamps `user_version = 12`.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
@@ -190,7 +225,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
   any dangling reference the rebuild introduced. This path is implemented and tested but
-  unused as of `SCHEMA_VERSION 11` - no migration has needed it yet - kept ready so the
+  unused as of `SCHEMA_VERSION 12` - no migration has needed it yet - kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
   transaction that also stamps the new `user_version`, so a crash mid-migration leaves the
