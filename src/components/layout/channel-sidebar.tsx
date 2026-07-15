@@ -359,7 +359,13 @@ export function ChannelSidebar({
                         )}
 
                         {!loading && channels.length > 0 && (
+                            // Only the rows near the viewport exist in the DOM, so assistive tech
+                            // cannot count the channels by walking it. The explicit list role plus
+                            // aria-setsize/aria-posinset below restore that: every row announces
+                            // "N of <total>" even though the rest is not rendered.
                             <Box
+                                role="list"
+                                aria-label="Channels"
                                 style={{
                                     height: `${rowVirtualizer.getTotalSize()}px`,
                                     width: "100%",
@@ -381,6 +387,9 @@ export function ChannelSidebar({
                                             key={channel.id}
                                             ref={rowVirtualizer.measureElement}
                                             data-index={virtualRow.index}
+                                            role="listitem"
+                                            aria-setsize={channels.length}
+                                            aria-posinset={virtualRow.index + 1}
                                             style={{
                                                 position: "absolute",
                                                 top: 0,

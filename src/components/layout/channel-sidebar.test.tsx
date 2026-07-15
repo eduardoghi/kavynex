@@ -325,4 +325,50 @@ describe("ChannelSidebar", () => {
 
         expect(onRequestDeleteChannel).toHaveBeenCalledWith(channel);
     });
+
+    it("exposes each channel as a positioned item of a list", () => {
+        // Virtualization keeps only the rows near the viewport in the DOM, so a screen reader
+        // cannot count the channels by walking it; the roles and set/position hints carry that.
+        renderWithMantine(
+            <ChannelSidebar
+                channels={[
+                    {
+                        id: 1,
+                        name: "Canal A",
+                        youtube_handle: "@a",
+                        avatar_path: null,
+                        created_at: "2026-01-01T00:00:00.000Z",
+                    },
+                    {
+                        id: 2,
+                        name: "Canal B",
+                        youtube_handle: "@b",
+                        avatar_path: null,
+                        created_at: "2026-01-02T00:00:00.000Z",
+                    },
+                ]}
+                selectedChannelId={null}
+                viewMode="library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                deletingChannelId={null}
+                updatingChannelAvatarId={null}
+                libraryPath="/library"
+                onSelectChannel={vi.fn()}
+                onRequestEditChannel={vi.fn()}
+                onRequestDeleteChannel={vi.fn()}
+                onUpdateChannelAvatarFromFile={vi.fn()}
+                onUpdateChannelAvatarFromYouTube={vi.fn()}
+                onRemoveChannelAvatar={vi.fn()}
+                onClosePlayer={vi.fn()}
+            />,
+            { withAppShell: true }
+        );
+
+        const items = screen.getAllByRole("listitem");
+        expect(items).toHaveLength(2);
+        expect(items.map((item) => item.getAttribute("aria-posinset"))).toEqual(["1", "2"]);
+        expect(items.map((item) => item.getAttribute("aria-setsize"))).toEqual(["2", "2"]);
+    });
 });
