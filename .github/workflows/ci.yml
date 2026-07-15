@@ -159,8 +159,14 @@ jobs:
               with:
                   toolchain: 1.96.0
 
+            # Pin the tool version (keep in sync with release.yml): an unpinned `cargo install`
+            # builds whatever the latest release happens to be on the day CI runs, so the code
+            # executing here is not the code this repository last reviewed, and a green run stops
+            # being reproducible. Pinning costs nothing in security freshness - cargo-audit
+            # downloads the RustSec advisory database at run time, so a pinned tool still checks
+            # against today's advisories.
             - name: Install cargo-audit
-              run: cargo install cargo-audit --locked
+              run: cargo install cargo-audit@0.22.2 --locked
 
             # RUSTSEC advisories are not covered by pnpm audit; this closes that gap for the
             # Rust dependency tree.
@@ -168,7 +174,7 @@ jobs:
               run: cargo audit --file src-tauri/Cargo.lock
 
             - name: Install cargo-deny
-              run: cargo install cargo-deny --locked
+              run: cargo install cargo-deny@0.20.2 --locked
 
             # cargo-audit covers advisories; cargo-deny adds the checks it does not: license
             # compliance (no copyleft license in an MIT-licensed app), dependency source trust

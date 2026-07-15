@@ -4,7 +4,54 @@ on:
     workflow_dispatch:
 
 jobs:
+    # The dependency gates run in their own job, deliberately kept out of publish-tauri: they
+    # `cargo install` third-party tools, which compiles and runs those crates' build scripts on
+    # the runner, and publish-tauri is the runner that holds TAURI_SIGNING_PRIVATE_KEY. Building
+    # them here instead keeps that code off the signing job entirely, and compiles each tool once
+    # rather than once per matrix platform. publish-tauri `needs` this, so a failed gate still
+    # blocks the release (the release is dispatched manually, so nothing guarantees the chosen
+    # ref already passed ci.yml's identical checks).
+    audit:
+        name: Cargo audit and deny
+        runs-on: ubuntu-latest
+        # No secrets are needed to read the lockfile; this job never gets the signing key.
+        permissions:
+            contents: read
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install Rust toolchain
+              # Pin the exact toolchain (keep in sync with rust-toolchain.toml) instead of a
+              # moving "stable".
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.96.0
+
+            # Pin the tool version (keep in sync with ci.yml): an unpinned `cargo install` builds
+            # whatever the latest release happens to be at dispatch time, so the code executing on
+            # the runner is not the code this repository last reviewed. Pinning costs nothing in
+            # security freshness - cargo-audit downloads the RustSec advisory database at run
+            # time, so a pinned tool still checks against today's advisories.
+            - name: Install cargo-audit
+              run: cargo install cargo-audit@0.22.2 --locked
+
+            # RUSTSEC advisories are not covered by pnpm audit; this closes that gap for the Rust
+            # dependency tree.
+            - name: Audit Rust dependencies
+              run: cargo audit --file src-tauri/Cargo.lock
+
+            - name: Install cargo-deny
+              run: cargo install cargo-deny@0.20.2 --locked
+
+            # cargo-audit covers advisories; cargo-deny adds the checks it does not: license
+            # compliance, dependency source trust (crates.io only), and wildcard requirements.
+            # Config: src-tauri/deny.toml.
+            - name: Check licenses, sources and bans
+              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
+
     publish-tauri:
+        needs: audit
         permissions:
             contents: write
             # Build provenance attestation (actions/attest-build-provenance): id-token mints
@@ -148,26 +195,6 @@ jobs:
               run: |
                   cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings
                   git diff --exit-code -- src/types/generated
-
-            # RUSTSEC advisories are not covered by pnpm audit; mirror ci.yml's cargo-audit
-            # gate here so a manually dispatched release cannot ship a Rust dependency with a
-            # known advisory published since the last CI run.
-            - name: Install cargo-audit
-              run: cargo install cargo-audit --locked
-
-            - name: Audit Rust dependencies
-              run: cargo audit --file src-tauri/Cargo.lock
-
-            # Mirror ci.yml's cargo-deny gate (license/source/ban checks) so a manually
-            # dispatched release cannot ship a dependency with a disallowed license or an
-            # untrusted source. Ubuntu only; the check is platform-independent.
-            - name: Install cargo-deny
-              if: matrix.platform == 'ubuntu-22.04'
-              run: cargo install cargo-deny --locked
-
-            - name: Check licenses, sources and bans
-              if: matrix.platform == 'ubuntu-22.04'
-              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
 
             - name: Build frontend
               run: pnpm build

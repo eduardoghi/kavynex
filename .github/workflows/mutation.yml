@@ -78,8 +78,12 @@ jobs:
                   workspaces: src-tauri
                   cache-on-failure: "true"
 
+            # Pin the tool version, like ci.yml/release.yml do for cargo-audit and cargo-deny: an
+            # unpinned `cargo install` builds whatever the latest release happens to be on the day
+            # the schedule fires, so a mutation score could move because the tool changed rather
+            # than because the tests did.
             - name: Install cargo-mutants
-              run: cargo install cargo-mutants --locked
+              run: cargo install cargo-mutants@27.1.0 --locked
 
             # Mutates only the security-critical modules (see src-tauri/.cargo/mutants.toml's
             # examine_globs): path containment, the library-path guard, the yt-dlp host allow-list,
