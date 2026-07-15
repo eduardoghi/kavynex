@@ -1,5 +1,5 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
-import { invokeTauri } from "../lib/tauri-client";
+import { invokeCommand } from "../lib/tauri-client";
 import { listChannels } from "../repositories/channel-repository";
 import { listMediaIntegrityReferences } from "../repositories/media-repository";
 import type {
@@ -102,7 +102,7 @@ export async function getLibraryIntegrity(
 
     // Always call through, even with no references: the library folder may still hold orphan
     // files the database no longer knows about.
-    const report = await invokeTauri<LibraryIntegrityReport>(
+    const report = await invokeCommand<LibraryIntegrityReport>(
         TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY,
         {
             libraryPath: normalizedLibraryPath,

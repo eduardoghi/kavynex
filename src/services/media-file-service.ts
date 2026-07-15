@@ -1,5 +1,5 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
-import { invokeTauri } from "../lib/tauri-client";
+import { invokeCommand } from "../lib/tauri-client";
 import type { ImportMode } from "../types/settings";
 import { normalizeString } from "../utils/guards";
 import { ClientError } from "../utils/app-error";
@@ -20,7 +20,7 @@ export async function importMediaFile(
         throw new ClientError("Library path is required.");
     }
 
-    const result = await invokeTauri<string>(TAURI_COMMANDS.IMPORT_MEDIA_FILE, {
+    const result = await invokeCommand<string>(TAURI_COMMANDS.IMPORT_MEDIA_FILE, {
         path: normalizedSourcePath,
         mode: importMode,
         libraryPath: normalizedLibraryPath,

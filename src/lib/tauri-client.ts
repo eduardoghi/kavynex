@@ -14,7 +14,7 @@ export type { Event, UnlistenFn };
 
 type InvokeArgs = Record<string, unknown> | undefined;
 
-export async function invokeTauri<TResult>(
+export async function invokeCommand<TResult>(
     command: TauriCommandName,
     args?: InvokeArgs
 ): Promise<TResult> {
@@ -25,18 +25,11 @@ export async function invokeTauri<TResult>(
     }
 }
 
-export async function invokeCommand<TResult>(
-    command: TauriCommandName,
-    args?: InvokeArgs
-): Promise<TResult> {
-    return invokeTauri<TResult>(command, args);
-}
-
 export async function invokeVoid(
     command: TauriCommandName,
     args?: InvokeArgs
 ): Promise<void> {
-    await invokeTauri<null>(command, args);
+    await invokeCommand<null>(command, args);
 }
 
 export async function listenTauri<TPayload>(

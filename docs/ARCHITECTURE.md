@@ -131,10 +131,12 @@ never reach a component either. See "The Tauri boundary" below.)
   `src/repositories/media-repository.ts`) are the thin, typed layer directly over a
   database-backed Tauri command (`listChannels`, `insertChannel`,
   `deleteChannelWithArtifacts`, etc.) - one function per command, no business logic.
-- **`src/lib/tauri-client.ts`** is the IPC boundary: `invokeTauri`/`invokeCommand`/
-  `invokeVoid` wrap `@tauri-apps/api/core`'s `invoke()` (normalizing thrown errors through
-  `parseAppError`) and `listenTauri` wraps `@tauri-apps/api/event`'s `listen()`. Every
-  repository and IPC-calling service goes through these three functions.
+- **`src/lib/tauri-client.ts`** is the IPC boundary: `invokeCommand`/`invokeVoid` wrap
+  `@tauri-apps/api/core`'s `invoke()` (normalizing thrown errors through `parseAppError`)
+  and `listenTauri` wraps `@tauri-apps/api/event`'s `listen()`. Every repository and
+  IPC-calling service goes through these functions. Use `invokeCommand` when the command
+  returns a value and `invokeVoid` when it does not; the command name is typed as
+  `TauriCommandName`, so it must come from the `TAURI_COMMANDS` map rather than a literal.
 - **`src/lib/tauri-platform.ts`** is the sibling seam for Tauri's *platform* capabilities -
   everything that is not a call into our own Rust backend: `openFileDialog`/`saveFileDialog`
   (plugin-dialog), `openUrl` (plugin-opener), `relaunch` (plugin-process),
