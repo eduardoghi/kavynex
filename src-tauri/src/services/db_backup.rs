@@ -223,6 +223,43 @@ fn corrupt_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".corrupt")
 }
 
+/// Where `restore_database_from_backup` stages the chosen snapshot before renaming it into place.
+fn restore_staging_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".restore.tmp")
+}
+
+/// Finishes a restore that was interrupted between moving the old database aside and renaming the
+/// staged snapshot into place.
+///
+/// That window is only two renames wide, but if the process dies inside it the database file is
+/// simply absent - and the pool opens with `create_if_missing(true)`, so the next launch would
+/// create a fresh, empty one and present an empty library while the user's data sits untouched in
+/// `.restore.tmp` (and `.corrupt`) right next to it. Nothing would say so: the app would look like
+/// a first run. Recoverable by hand, but only by someone who knows to look.
+///
+/// Deliberately narrow: it acts only when the database is missing *and* a staging file is present,
+/// which is exactly the interrupted state - a normal launch has a database and never reaches the
+/// rename. Runs at startup before the pool can open, and before any pending import is applied, so
+/// an import staged on top of a restore still sets the restored database aside as its undo
+/// snapshot rather than nothing. Returns whether a restore was resumed.
+pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
+    let staged = restore_staging_path(db_path);
+
+    if db_path.exists() || !staged.exists() {
+        return Ok(false);
+    }
+
+    std::fs::rename(&staged, db_path)
+        .map_err(|error| backup_error("failed to resume an interrupted restore", error))?;
+
+    logger::warn(
+        "db_backup",
+        "resumed a restore that was interrupted before the database was renamed into place",
+    );
+
+    Ok(true)
+}
+
 fn modified_ms(path: &Path) -> Option<u64> {
     let modified = std::fs::metadata(path)
         .and_then(|meta| meta.modified())
@@ -332,7 +369,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     };
 
     // Stage the restored file first so the live database is never left missing on failure.
-    let staged = sibling(db_path, ".restore.tmp");
+    let staged = restore_staging_path(db_path);
     let _ = std::fs::remove_file(&staged);
     std::fs::copy(&backup, &staged)
         .map_err(|error| backup_error("failed to stage restored database", error))?;
@@ -728,6 +765,78 @@ mod tests {
         // The corrupt copy is preserved for inspection, not deleted.
         assert!(corrupt_path(&db).exists());
         assert_eq!(std::fs::read(corrupt_path(&db)).unwrap(), b"not a database");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Reproduces the crash window in `restore_database_from_backup`: the process dies between
+    /// the rename that moves the old database aside and the one that renames the staged snapshot
+    /// into place, leaving no database at all next to a `.restore.tmp` holding the real data.
+    fn simulate_restore_interrupted_after_moving_db_aside(db: &Path, staged_contents: &Path) {
+        std::fs::copy(staged_contents, restore_staging_path(db)).unwrap();
+        std::fs::rename(db, corrupt_path(db)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn resume_finishes_a_restore_interrupted_before_the_final_rename() {
+        let dir = temp_dir("resume-restore");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+        assert!(backup_database(&db).await.unwrap());
+
+        simulate_restore_interrupted_after_moving_db_aside(&db, &backup_path(&db));
+
+        // The state a crash leaves behind: no database, but the staged snapshot is right there.
+        // Opening the pool now would create_if_missing a fresh, empty one.
+        assert!(!db.exists());
+        assert!(restore_staging_path(&db).exists());
+
+        assert!(resume_interrupted_restore(&db).unwrap());
+
+        // The database is back with its data, and the staging file is consumed.
+        assert_eq!(read_single_value(&db).await, "hello");
+        assert!(!restore_staging_path(&db).exists());
+    }
+
+    #[tokio::test]
+    async fn resume_is_a_noop_on_a_normal_launch() {
+        let dir = temp_dir("resume-noop");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        // No staging file: nothing was interrupted.
+        assert!(!resume_interrupted_restore(&db).unwrap());
+        assert_eq!(read_single_value(&db).await, "hello");
+
+        // A staging file left over while the database is present must not clobber the live
+        // database - only the "database missing" state is the interrupted one.
+        std::fs::write(restore_staging_path(&db), b"not a database").unwrap();
+        assert!(!resume_interrupted_restore(&db).unwrap());
+        assert_eq!(read_single_value(&db).await, "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn an_interrupted_import_already_resumes_itself() {
+        // Unlike the restore path, an import interrupted in the same window needs no help: its
+        // staging file is `.import-staged`, which apply_pending_database_import already looks for
+        // at startup, and it skips the move-aside when the database is missing. Pinned so the
+        // asymmetry is a documented fact rather than something to be re-derived.
+        let dir = temp_dir("import-resumes");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("incoming.db");
+        seed_kavynex_db(&source, "imported").await;
+        stage_database_import(&db, &source).await.unwrap();
+
+        // Crash after the database was moved aside, before the staged file was renamed in.
+        std::fs::rename(&db, pre_import_path(&db)).unwrap();
+        assert!(!db.exists());
+
+        assert!(apply_pending_database_import(&db).unwrap());
+        assert_eq!(read_video_title(&db).await, "imported");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

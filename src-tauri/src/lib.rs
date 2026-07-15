@@ -206,6 +206,23 @@ pub fn run() {
                     // process-wide static. The pool itself still opens lazily on first use.
                     app.manage(services::database::Db::new(db_path.clone()));
 
+                    // Finish a restore that died between moving the old database aside and
+                    // renaming the staged snapshot in. The pool opens with create_if_missing,
+                    // so without this the next launch would quietly create an empty database
+                    // and show an empty library while the data sat in `.restore.tmp`. Runs
+                    // before the import below so a pending import still sets the *restored*
+                    // database aside as its undo snapshot.
+                    match services::db_backup::resume_interrupted_restore(&db_path) {
+                        Ok(true) => {
+                            services::logger::info("app", "resumed an interrupted database restore")
+                        }
+                        Ok(false) => {}
+                        Err(error) => services::logger::error(
+                            "app",
+                            format!("failed to resume an interrupted database restore: {error}"),
+                        ),
+                    }
+
                     match services::db_backup::apply_pending_database_import(&db_path) {
                         Ok(true) => {
                             services::logger::info("app", "applied a pending database import")
