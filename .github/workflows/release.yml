@@ -164,8 +164,15 @@ jobs:
               if: matrix.platform == 'ubuntu-22.04'
               run: pnpm lint
 
+            # `test:coverage` rather than a plain run, mirroring ci.yml: the coverage floors live
+            # in vitest.config.ts and are only enforced when coverage is collected, so running
+            # without it silently drops that gate from the release path - the one path that cannot
+            # assume ci.yml ever ran against this ref. Kept on every matrix target rather than
+            # Ubuntu-only like Lint: the suite is jsdom-based but not fully platform-independent
+            # (date formatting varies with the runner's ICU - see the U+202F handling in
+            # media-utils.test.ts), so each platform is worth exercising.
             - name: Run tests
-              run: pnpm test -- --run
+              run: pnpm test:coverage
 
             # The release is dispatched manually, so nothing guarantees the chosen ref went
             # through ci.yml. Gate the published binaries on the same Rust checks CI runs.
