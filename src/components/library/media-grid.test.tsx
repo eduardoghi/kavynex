@@ -230,6 +230,29 @@ describe("MediaGrid", () => {
             ]);
         });
 
+        it("renders no stray text around the list", () => {
+            renderGrid(false);
+
+            // A `//` comment written in JSX children position is a text node, not a comment: it
+            // ships as visible page text. The spot that invites the mistake is the scroll
+            // container that wraps the list, so assert on structure rather than on any one
+            // phrase - neither it nor the list itself may contribute text of its own; every
+            // string on screen has to come from a card.
+            const list = screen.getByRole("list");
+            const containers = [list, list.parentElement].filter(
+                (node): node is HTMLElement => node !== null
+            );
+
+            const strayText = containers.flatMap((container) =>
+                Array.from(container.childNodes)
+                    .filter((node) => node.nodeType === Node.TEXT_NODE)
+                    .map((node) => node.textContent?.trim() ?? "")
+                    .filter((text) => text.length > 0)
+            );
+
+            expect(strayText).toEqual([]);
+        });
+
         it("reports an unknown set size while more pages remain", () => {
             renderGrid(true);
 

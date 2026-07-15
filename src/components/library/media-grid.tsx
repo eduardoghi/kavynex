@@ -272,12 +272,12 @@ export function MediaGrid({
                             position: "relative",
                         }}
                     >
-                        // Only the rows near the viewport exist in the DOM, so assistive tech
-                        // cannot count the media by walking it. The list role here, plus
-                        // aria-setsize/aria-posinset on each card below, restore that. The rows
-                        // and the grid inside them are pure layout (the column count is just a
-                        // responsive reflow), so they are marked presentational and the cards
-                        // stay the list's own items.
+                        {/* Only the rows near the viewport exist in the DOM, so assistive tech
+                            cannot count the media by walking it. The list role here, plus
+                            aria-setsize/aria-posinset on each card below, restore that. The rows
+                            and the grid inside them are pure layout (the column count is just a
+                            responsive reflow), so they are marked presentational and the cards
+                            stay the list's own items. */}
                         <Box
                             role="list"
                             aria-label={UI_TEXT.library.title}
