@@ -110,7 +110,20 @@ pub async fn update_channel_name_and_handle(
         .bind(channel_id)
         .execute(pool)
         .await
-        .map_err(|error| db_error("failed to update channel name and handle", error))?;
+        .map_err(|error| {
+            // Same UNIQUE column as insert_channel, so a rename onto a handle another channel
+            // already holds must report the same actionable code. Without this it fell through
+            // to db_error's generic AppError, whose details the frontend deliberately suppresses,
+            // leaving the user with an unactionable message for a fixable mistake.
+            if is_unique_violation(&error) {
+                return AppError::from_code(
+                    AppErrorCode::ChannelAlreadyExists,
+                    "a channel with this YouTube handle already exists",
+                );
+            }
+
+            db_error("failed to update channel name and handle", error)
+        })?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::invalid_input("channel not found"));
@@ -232,6 +245,40 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error.code, AppErrorCode::ChannelAlreadyExists.as_str());
+    }
+
+    #[tokio::test]
+    async fn update_channel_name_and_handle_maps_a_duplicate_handle_to_a_friendly_error() {
+        let pool = create_test_pool().await;
+
+        insert_channel(&pool, "Alice", "@alice", None)
+            .await
+            .unwrap();
+        let bob_id = insert_channel(&pool, "Bob", "@bob", None).await.unwrap();
+
+        // Renaming Bob onto Alice's handle hits the same UNIQUE constraint insert_channel does,
+        // so it must surface the same actionable code rather than a generic database error.
+        let error = update_channel_name_and_handle(&pool, bob_id, "Bob", "@alice")
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::ChannelAlreadyExists.as_str());
+    }
+
+    #[tokio::test]
+    async fn update_channel_name_and_handle_renames_to_a_free_handle() {
+        let pool = create_test_pool().await;
+
+        let id = insert_channel(&pool, "Bob", "@bob", None).await.unwrap();
+
+        // The guard above must not reject a legitimate rename.
+        update_channel_name_and_handle(&pool, id, "Bobby", "@bobby")
+            .await
+            .unwrap();
+
+        let channel = get_channel_by_id(&pool, id).await.unwrap().unwrap();
+        assert_eq!(channel.name, "Bobby");
+        assert_eq!(channel.youtube_handle, "@bobby");
     }
 
     #[tokio::test]
