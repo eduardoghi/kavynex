@@ -18,10 +18,14 @@
         "!src/**/*.d.ts"
     ],
     "reporters": ["html", "clear-text", "progress"],
-    "coverageAnalysis": "off",
+    "coverageAnalysis_comment": "Measured on this repo: the mutate globs above yield 6325 mutants. Under the previous 'off' setting each one re-ran the whole 1278-test suite, which put a full run far past the scheduled job's timeout - so the gate never produced a score at all and the break threshold below was moot. 'perTest' runs only the tests that cover each mutant; verified working with the vitest runner.",
+    "coverageAnalysis": "perTest",
+    "ignoreStatic_comment": "Stryker's own recommendation for this tree: it reports 92 static mutants (1% of the total) estimated to take 58% of the run. A static mutant lives in module-level code, so perTest cannot attribute it to a test and falls back to running the whole suite - the exact cost perTest exists to remove. Skipping that 1% buys back most of the runtime; a full run then takes ~29 minutes locally.",
+    "ignoreStatic": true,
+    "thresholds_comment": "break is what fails the scheduled run (.github/workflows/mutation.yml). The measured score is 71.66% (3287 of 4587 mutants killed; 81.08% counting only covered code), so the previous break of 50 let the score fall 21 points before failing, while 70 would leave under 2 points of headroom and flake on any normal change. 60 matches the 'low' band this config already declares and keeps ~11 points of real headroom. Re-measure before tightening further; the 533 no-coverage mutants are what hold the total below the covered-code score.",
     "thresholds": {
         "high": 80,
         "low": 60,
-        "break": 50
+        "break": 60
     }
 }

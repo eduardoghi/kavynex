@@ -19,7 +19,11 @@ jobs:
     mutation:
         name: Mutation testing
         runs-on: ubuntu-latest
-        timeout-minutes: 60
+        # ~6.2k mutants; a full run measures ~29 minutes on a developer machine, and the 2-vCPU
+        # runner is slower, so 60 left no real margin. This is a weekly scheduled run, not a
+        # per-PR gate, so a longer wall-clock is fine - and a timeout here would report as a
+        # failure indistinguishable from a real mutation-score regression.
+        timeout-minutes: 120
         steps:
             - name: Checkout repository
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
