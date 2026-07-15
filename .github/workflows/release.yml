@@ -32,6 +32,7 @@ jobs:
     audit:
         name: Cargo audit and deny
         runs-on: ubuntu-latest
+        timeout-minutes: 60
         # No secrets are needed to read the lockfile; this job never gets the signing key.
         permissions:
             contents: read
@@ -95,6 +96,10 @@ jobs:
                       args: ""
 
         runs-on: ${{ matrix.platform }}
+        # This job holds the repository-wide `release` concurrency lock (cancel-in-progress is
+        # deliberately false), so a hang here blocks every later release dispatch until GitHub's
+        # 6h default expires. Bound it well above the slowest matrix leg instead.
+        timeout-minutes: 90
 
         steps:
             - name: Checkout repository
@@ -266,6 +271,7 @@ jobs:
         name: Publish checksums
         needs: publish-tauri
         runs-on: ubuntu-latest
+        timeout-minutes: 60
         permissions:
             contents: write
 
