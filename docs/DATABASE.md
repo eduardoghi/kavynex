@@ -151,7 +151,8 @@ so each of its five sort categories gets an index whose columns mirror that cate
 | `title` | `idx_videos_channel_title_normalized` |
 | `comments` | `idx_videos_channel_comments_count` |
 | `duration` | `idx_videos_channel_duration` |
-| `publication_date` | `idx_videos_channel_published_ordered` |
+| `publication_date` (asc) | `idx_videos_channel_published_ordered` |
+| `publication_date` (desc) | `idx_videos_channel_published_desc` |
 
 "Mirror exactly" is the whole point, and it is easy to get wrong. SQLite only walks an index
 in `ORDER BY` order when the leading terms match term for term, so:
@@ -161,15 +162,26 @@ in `ORDER BY` order when the leading terms match term for term, so:
   `duration_seconds` / `published_at` columns - a plain column index is still *reported* as
   used by `EXPLAIN QUERY PLAN` while the query silently sorts the whole result set anyway.
 - `added_date` sorts on `created_at DESC, title_normalized DESC, id DESC`. The older
-  `idx_videos_channel_created_id` omits `title_normalized`, so it could not serve that clause
-  and the default view of every channel was doing a full sort until v12 added the index above.
+  `idx_videos_channel_created_id` omits `title_normalized`, so it could not serve that clause.
+- `publication_date` is the only category needing **two** indexes, one per direction. SQLite can
+  walk an index forwards or backwards, but not partly each way, and this clause is
+  mixed-direction: desc reverses only the date, keeping the dated-first group key and the title
+  tie-break ascending. So the all-ASC `..._published_ordered` serves `asc`, while `desc` - the
+  grid's *default* view, and therefore the app's hottest query - needs `..._published_desc`,
+  whose term directions mirror that clause. A same-direction index is not a near-miss here: it
+  serves the leading group key and sorts the other three terms, and since almost every row shares
+  that key, that is the whole channel.
 
 `services/video_repository.rs`'s `every_media_page_sort_is_served_by_an_index` pins this: it
-runs `EXPLAIN QUERY PLAN` for each category against the real schema and fails if the plan
-loses the intended index or falls back to `USE TEMP B-TREE FOR ORDER BY` (a full sort). The
-narrower `USE TEMP B-TREE FOR LAST TERM OF ORDER BY` is expected and fine - it only breaks
-ties inside an already-ordered index walk. Change a clause in `resolve_order_by` and that test
-is what tells you the matching index no longer applies.
+runs `EXPLAIN QUERY PLAN` for each category **in both directions** against the real schema and
+fails if the plan loses the intended index or sorts rows the index was supposed to have ordered.
+Only one temp-B-tree form is accepted, `USE TEMP B-TREE FOR LAST TERM OF ORDER BY`, which just
+breaks ties inside an already-ordered walk. The test matches that benign form rather than
+blacklisting the bad ones, because the bad ones are not one string: a partially-served clause
+reports `USE TEMP B-TREE FOR LAST <n> TERMS OF ORDER BY`, which a blacklist for the blanket
+`FOR ORDER BY` silently passes - which is exactly how `publication_date desc` sorted every
+default channel view undetected. Change a clause in `resolve_order_by` and that test is what
+tells you the matching index no longer applies.
 
 ## Versioned migrations
 
@@ -210,10 +222,12 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   (that shared normalization is what keeps a stored title and a search term comparable). The
   column-add, the per-row backfill and the index creation all run in one transaction that stamps
   `user_version = 11`.
-- **v12** adds one index per `list_media_page` sort category
+- **v12** adds the indexes backing `list_media_page`'s sort categories
   (`idx_videos_channel_created_title_id`, `idx_videos_channel_comments_count`,
-  `idx_videos_channel_duration`, `idx_videos_channel_published_ordered`). Index-only like
-  v8/v9: the migration just re-runs the index DDL list and stamps `user_version = 12`.
+  `idx_videos_channel_duration`, `idx_videos_channel_published_ordered`, and
+  `idx_videos_channel_published_desc` - see "The `list_media_page` sort indexes" above for why
+  `publication_date` needs one index per direction). Index-only like v8/v9: the migration just
+  re-runs the index DDL list and stamps `user_version = 12`.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump

@@ -677,15 +677,30 @@ mod tests {
     }
 
     /// Each `list_media_page` sort category and the index that must serve its ORDER BY.
+    ///
+    /// Every category is pinned in *both* directions. Pinning one direction per category is not
+    /// enough: a direction the clause reverses only partially (a mixed-direction ORDER BY) cannot
+    /// be served by walking a same-direction index forwards or backwards, so the two directions of
+    /// one category are genuinely different plans. `publication_date desc` - the grid's default
+    /// view - is exactly that case, and went unnoticed while only its `asc` twin was pinned.
     const SORT_INDEX_EXPECTATIONS: &[(&str, &str, &str)] = &[
+        ("added_date", "asc", "idx_videos_channel_created_title_id"),
         ("added_date", "desc", "idx_videos_channel_created_title_id"),
         ("title", "asc", "idx_videos_channel_title_normalized"),
+        ("title", "desc", "idx_videos_channel_title_normalized"),
         ("comments", "asc", "idx_videos_channel_comments_count"),
+        ("comments", "desc", "idx_videos_channel_comments_count"),
         ("duration", "asc", "idx_videos_channel_duration"),
+        ("duration", "desc", "idx_videos_channel_duration"),
         (
             "publication_date",
             "asc",
             "idx_videos_channel_published_ordered",
+        ),
+        (
+            "publication_date",
+            "desc",
+            "idx_videos_channel_published_desc",
         ),
     ];
 
@@ -723,13 +738,20 @@ mod tests {
                 "{category} {direction} should use {expected_index}, plan was: {detail}"
             );
 
-            // "USE TEMP B-TREE FOR ORDER BY" is a full sort of the matching rows. The narrower
-            // "... FOR LAST TERM OF ORDER BY" only breaks ties inside an already-ordered walk and
-            // is fine, so this must not be a blanket TEMP B-TREE check.
-            assert!(
-                !detail.contains("USE TEMP B-TREE FOR ORDER BY"),
-                "{category} {direction} still sorts the whole result set, plan was: {detail}"
-            );
+            // Exactly one temp-B-tree form is acceptable: "... FOR LAST TERM OF ORDER BY", which
+            // only breaks ties inside an already-ordered index walk. Every other form sorts rows
+            // the index was supposed to have ordered - the blanket "FOR ORDER BY" (a full sort)
+            // and, just as bad, "FOR LAST <n> TERMS OF ORDER BY", where only the leading terms are
+            // served. Matching the benign form rather than blacklisting the bad ones is what keeps
+            // a new SQLite wording from silently passing: anything unrecognized fails loudly.
+            for fragment in detail.split(" | ") {
+                assert!(
+                    !fragment.contains("USE TEMP B-TREE")
+                        || fragment.contains("USE TEMP B-TREE FOR LAST TERM OF ORDER BY"),
+                    "{category} {direction} sorts rows the index should have ordered, \
+                     plan was: {detail}"
+                );
+            }
         }
     }
 
