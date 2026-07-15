@@ -1,15 +1,15 @@
 {
-  "identifier": "desktop-capability",
-  "platforms": [
-    "macOS",
-    "windows",
-    "linux"
-  ],
-  "windows": [
-    "main"
-  ],
-  "permissions": [
-    "updater:default",
-    "process:default"
-  ]
+    "identifier": "desktop-capability",
+    "platforms": [
+        "macOS",
+        "windows",
+        "linux"
+    ],
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "updater:default",
+        "process:allow-restart"
+    ]
 }

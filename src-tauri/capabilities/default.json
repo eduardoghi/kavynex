@@ -15,10 +15,7 @@
         { "url": "https://youtu.be/*" }
       ]
     },
-    "dialog:default",
     "dialog:allow-open",
-    "dialog:allow-save",
-
-    "process:allow-restart"
+    "dialog:allow-save"
   ]
 }
