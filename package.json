@@ -15,6 +15,7 @@
     "tauri": "tauri",
     "lint": "eslint .",
     "licenses:check": "node scripts/check-js-licenses.js",
+    "advisories:check": "node scripts/check-js-advisories.js",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

@@ -55,8 +55,8 @@ jobs:
             - name: Install cargo-audit
               run: cargo install cargo-audit@0.22.2 --locked
 
-            # RUSTSEC advisories are not covered by pnpm audit; this closes that gap for the Rust
-            # dependency tree.
+            # RUSTSEC advisories are not covered by the JS advisory check; this closes that gap
+            # for the Rust dependency tree.
             - name: Audit Rust dependencies
               run: cargo audit --file src-tauri/Cargo.lock
 
@@ -178,7 +178,7 @@ jobs:
             # run on the chosen ref would otherwise ship unaudited. Re-run the same production
             # JS audit CI gates on, before building the binaries.
             - name: Audit production JS dependencies
-              run: pnpm audit --prod --audit-level high
+              run: pnpm run advisories:check
 
             # Mirror ci.yml's license gate for the same reason as every other check duplicated
             # here: the release is dispatched manually, so nothing guarantees the chosen ref ever

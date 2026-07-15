@@ -48,8 +48,14 @@ jobs:
             # Fail only on high/critical advisories so a low-severity transitive
             # finding does not block all CI; RUSTSEC advisories are covered separately
             # by the cargo-audit job.
+            #
+            # Not `pnpm audit`: npm retired the legacy audit endpoints on 2026-07-15 and every
+            # pnpm release (10.34.5 and 11.13.0 both verified) still calls them, so that command
+            # now fails with HTTP 410 whether or not an advisory exists. The script queries
+            # osv.dev - the same GitHub Advisory data, via the source osv-scanner wraps - and
+            # keeps the same high/critical bar. See scripts/check-js-advisories.js.
             - name: Audit production JS dependencies
-              run: pnpm audit --prod --audit-level high
+              run: pnpm run advisories:check
 
             # `--prod` above skips devDependencies (the build/test toolchain, which still
             # runs arbitrary code during install/build). Scan them too, but non-blocking:
@@ -57,7 +63,7 @@ jobs:
             # it never ships in a release artifact.
             - name: Audit dev JS dependencies (non-blocking)
               continue-on-error: true
-              run: pnpm audit --dev --audit-level high
+              run: pnpm run advisories:check --dev
 
             # cargo-deny has enforced a license allow-list on the Rust side since it landed
             # (src-tauri/deny.toml); the npm side only had pnpm audit, which reports security
@@ -181,8 +187,8 @@ jobs:
             - name: Install cargo-audit
               run: cargo install cargo-audit@0.22.2 --locked
 
-            # RUSTSEC advisories are not covered by pnpm audit; this closes that gap for the
-            # Rust dependency tree.
+            # RUSTSEC advisories are not covered by the JS advisory check above; this closes
+            # that gap for the Rust dependency tree.
             - name: Audit Rust dependencies
               run: cargo audit --file src-tauri/Cargo.lock
 

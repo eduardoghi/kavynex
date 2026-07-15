@@ -37,6 +37,11 @@ pnpm tauri dev
 Frontend:
 
 - `pnpm lint` - ESLint (`eslint.config.js`) over `src/**/*.{ts,tsx}`.
+- `pnpm advisories:check` - fails on a high/critical security advisory in the production
+  dependency tree, querying osv.dev (add `--dev` for the toolchain tree, which CI reports but
+  does not gate on). This replaced `pnpm audit`, which npm's retired audit endpoints broke for
+  every pnpm version - see `scripts/check-js-advisories.js`.
+- `pnpm licenses:check` - fails on a production dependency whose license is not allow-listed.
 - `pnpm test` - Vitest in watch mode.
 - `pnpm test:run` - Vitest, single run (what CI uses).
 - `pnpm test:mutation` - Stryker mutation testing (`stryker.config.json`); slower, run it
@@ -153,5 +158,5 @@ ci: audit rust dependencies with cargo-audit
 Keep changes focused and include tests for new behavior (Vitest for frontend, `#[test]`/
 `#[tokio::test]` for Rust). CI runs on every push/PR: frontend lint/test/build, Rust
 fmt/clippy/test across Linux/Windows/macOS, the TS-bindings-freshness check, and a
-`cargo audit` pass over Rust dependencies (RUSTSEC advisories are not covered by
-`pnpm audit`, so this is a separate job).
+`cargo audit` pass over Rust dependencies (RUSTSEC advisories are not covered by the JS
+advisory check, so this is a separate job).
