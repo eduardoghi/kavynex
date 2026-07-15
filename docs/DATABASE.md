@@ -101,9 +101,11 @@ CREATE TABLE app_settings (
 )
 ```
 
-A generic key/value table. Today it holds exactly two keys, `import_mode` and
-`library_path` (see `StoredAppSettings` in `database.rs`), upserted via
-`INSERT ... ON CONFLICT(key) DO UPDATE`.
+A generic key/value table, upserted via `INSERT ... ON CONFLICT(key) DO UPDATE`. The keys it
+holds are whatever `StoredAppSettings` in `database.rs` defines - currently `import_mode`,
+`library_path`, `load_remote_images` and `check_updates_on_startup`. Read them from there
+rather than trusting a count here: adding a setting is a one-line change on that struct, and
+this document is not what stops the two from drifting.
 
 ### Live chat is not in the database
 
