@@ -124,6 +124,17 @@ primitive if it is ever widened too far:
 The app's cache directory (for temporary thumbnail previews) is authorized once, in
 `lib.rs`'s `setup()`, since it never contains anything but app-generated temp files.
 
+The scope decides *which files* may be served; the CSP decides *whether the webview may fetch
+them at all*, and the two must agree. `tauri.conf.json`'s `img-src`/`media-src` therefore name
+both `asset:` and `http://asset.localhost`: those are not two capabilities but one, spelled the
+way each platform needs. Tauri's `convertFileSrc` returns `asset://localhost/<path>` everywhere
+except Windows, which gets `http://asset.localhost/<path>`, and neither is covered by `'self'`
+(the document is served from `http://tauri.localhost`). Dropping either token does not tighten
+anything - it silently breaks every thumbnail and every video on the platforms that use that
+form. Nothing in the normal loop catches it: `pnpm tauri dev` serves the page from the Vite
+origin, where no CSP header is injected, so only a packaged build exercises this. That is why
+`src/lib/tauri-platform.test.ts` pins both tokens.
+
 ### Updater
 
 The updater (`tauri-plugin-updater`) checks a fixed HTTPS endpoint on GitHub
