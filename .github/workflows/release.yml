@@ -3,6 +3,24 @@ name: release
 on:
     workflow_dispatch:
 
+# Only one release may be in flight at a time. Without this, two manual dispatches (the classic
+# "I don't think the first one started") both pass the "tag does not exist yet" check below,
+# both build and sign on four runners, and both upload assets to the same draft - leaving the
+# checksums job to hash whatever mix of the two happened to land. That is a corrupted release,
+# not just wasted minutes.
+#
+# `cancel-in-progress: false` is the point: cancelling a run that is already signing or
+# uploading is worse than making the second one wait. The queued run starts only after the
+# first finishes, by which time the tag exists and its own guard fails it with a clear message.
+#
+# Unlike ci.yml/mutation.yml this group is deliberately not keyed on `github.ref`: what is
+# contended here is not the ref but the release itself (one tag, one draft, one set of assets),
+# which is repository-global. Two dispatches from different refs carrying the same package.json
+# version would still collide on the same tag, and a per-ref group would happily let them.
+concurrency:
+    group: release
+    cancel-in-progress: false
+
 jobs:
     # The dependency gates run in their own job, deliberately kept out of publish-tauri: they
     # `cargo install` third-party tools, which compiles and runs those crates' build scripts on
