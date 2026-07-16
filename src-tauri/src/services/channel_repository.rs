@@ -132,40 +132,13 @@ pub async fn update_channel_name_and_handle(
     Ok(())
 }
 
-pub async fn update_channel_avatar_path(
-    pool: &SqlitePool,
-    channel_id: i64,
-    avatar_path: Option<&str>,
-) -> AppResult<()> {
-    let result = sqlx::query("UPDATE channels SET avatar_path = ? WHERE id = ?")
-        .bind(avatar_path)
-        .bind(channel_id)
-        .execute(pool)
-        .await
-        .map_err(|error| db_error("failed to update channel avatar path", error))?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::invalid_input("channel not found"));
-    }
-
-    Ok(())
-}
-
-pub async fn count_channels_using_avatar_path_outside_channel(
-    pool: &SqlitePool,
-    avatar_path: &str,
-    channel_id: i64,
-) -> AppResult<i64> {
-    let (total,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) AS total FROM channels WHERE avatar_path = ? AND id <> ?")
-            .bind(avatar_path)
-            .bind(channel_id)
-            .fetch_one(pool)
-            .await
-            .map_err(|error| db_error("failed to count channels using avatar path", error))?;
-
-    Ok(total)
-}
+// `update_channel_avatar_path` and `count_channels_using_avatar_path_outside_channel` lived here
+// until they were superseded by `library_cleanup::replace_channel_avatar_and_plan_cleanup`, which
+// does the update and the reference decision in one transaction. Both were removed rather than
+// kept "in case": neither had a caller outside its own test, and the count encoded the *older*
+// rule - it only looked at other channels' avatars, missing the video thumbnails that can point
+// at the same content-addressed file, which is the exact bug the replacement fixes. A dead
+// helper that still passes its own tests is the kind of thing a future change reaches for.
 
 #[cfg(test)]
 mod tests {
@@ -325,52 +298,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_name_handle_and_avatar() {
+    async fn update_name_and_handle() {
         let pool = create_test_pool().await;
         let id = insert_channel(&pool, "Old", "@old", None).await.unwrap();
 
         update_channel_name_and_handle(&pool, id, "New", "@new")
             .await
             .unwrap();
-        update_channel_avatar_path(&pool, id, Some("thumbnails/x.jpg"))
-            .await
-            .unwrap();
 
         let channel = get_channel_by_id(&pool, id).await.unwrap().unwrap();
         assert_eq!(channel.name, "New");
         assert_eq!(channel.youtube_handle, "@new");
-        assert_eq!(channel.avatar_path.as_deref(), Some("thumbnails/x.jpg"));
-
-        update_channel_avatar_path(&pool, id, None).await.unwrap();
-        assert!(get_channel_by_id(&pool, id)
-            .await
-            .unwrap()
-            .unwrap()
-            .avatar_path
-            .is_none());
-    }
-
-    #[tokio::test]
-    async fn count_channels_using_avatar_path_outside_channel_excludes_own_channel() {
-        let pool = create_test_pool().await;
-        let a = insert_channel(&pool, "A", "@a", Some("shared.jpg"))
-            .await
-            .unwrap();
-        insert_channel(&pool, "B", "@b", Some("shared.jpg"))
-            .await
-            .unwrap();
-
-        assert_eq!(
-            count_channels_using_avatar_path_outside_channel(&pool, "shared.jpg", a)
-                .await
-                .unwrap(),
-            1
-        );
-        assert_eq!(
-            count_channels_using_avatar_path_outside_channel(&pool, "unused.jpg", a)
-                .await
-                .unwrap(),
-            0
-        );
     }
 }

@@ -84,6 +84,46 @@ mod tests {
     }
 
     #[test]
+    fn a_waiting_writer_does_not_deadlock_the_guarded_leaf_functions() {
+        // The module's rule - a guarded function must never call another one while holding the
+        // guard - is what keeps this gate from wedging the app, and it is enforced only by
+        // convention. std::sync::RwLock makes no reentrancy guarantee and is write-preferring on
+        // most platforms: a second read acquired while a writer waits can block forever, and the
+        // symptom (every library operation hangs) points nowhere near the nested call that caused
+        // it. This pins the shape the real call sites rely on - a loop taking the guard once per
+        // file, released between iterations, while a migration is trying to get in.
+        let (started, rx) = mpsc::channel();
+        let (release, wait_to_release) = mpsc::channel::<()>();
+
+        let held = library_read_guard();
+
+        // A migration asks for the exclusive side and blocks: the reader above holds it.
+        let writer = thread::spawn(move || {
+            let _ = started.send(());
+            let _write = library_write_guard();
+            let _ = wait_to_release.recv_timeout(Duration::from_secs(5));
+        });
+
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        thread::sleep(Duration::from_millis(50));
+        drop(held);
+
+        // With the writer queued, a sequence of independent per-file acquisitions must still each
+        // complete rather than deadlock. They may wait for the migration - that is the point of
+        // the gate - so this only requires that the whole sequence finishes.
+        let sequential = thread::spawn(|| {
+            for _ in 0..3 {
+                let _guard = library_read_guard();
+            }
+        });
+
+        let _ = release.send(());
+        writer.join().unwrap();
+
+        sequential.join().unwrap();
+    }
+
+    #[test]
     fn read_guard_recovers_from_a_poisoned_gate() {
         // Simulate a prior library operation that panicked while holding a guard.
         let poisoning = thread::spawn(|| {
