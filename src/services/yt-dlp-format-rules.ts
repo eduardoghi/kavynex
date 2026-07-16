@@ -1,9 +1,15 @@
 // Pure yt-dlp format logic: labelling, preference sorting, synthesizing merged video+audio
 // options, and picking a sensible default. Kept free of React/IPC so it can be unit-tested
 // in isolation and reused by the format-loader hook.
-import type { MediaType, YtDlpFormat } from "../types/media";
+//
+// This module owns what the picker shows. It takes the backend's formats (`YtDlpFormat`) and
+// returns the list the user chooses from (`YtDlpFormatOption`), which is a different list: it
+// adds the merged video+audio entries YouTube does not serve as a single format, and every
+// entry carries a label built here. The backend deliberately sends no label or order, because
+// it cannot produce either for a row it never emitted.
+import type { MediaType, YtDlpFormat, YtDlpFormatOption } from "../types/media";
 
-type ExtendedYtDlpFormat = YtDlpFormat & {
+type ExtendedYtDlpFormat = YtDlpFormatOption & {
     sort_rank: number;
 };
 
@@ -311,7 +317,7 @@ function removeDuplicateFormats(formats: ExtendedYtDlpFormat[]): ExtendedYtDlpFo
     return nextFormats;
 }
 
-export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormat[] {
+export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormatOption[] {
     const nativeFormats: ExtendedYtDlpFormat[] = formats
         .filter((item) => item.has_video && item.has_audio)
         .map((item) => ({

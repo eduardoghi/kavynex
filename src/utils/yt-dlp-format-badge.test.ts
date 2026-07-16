@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { YtDlpFormat } from "../types/media";
+import type { YtDlpFormatOption } from "../types/media";
 import {
     buildFormatBadgeLabel,
     buildFormatBadgeTone,
     getBadgeStyle,
 } from "./yt-dlp-format-badge";
 
-function makeFormat(overrides: Partial<YtDlpFormat> = {}): YtDlpFormat {
+function makeFormat(overrides: Partial<YtDlpFormatOption> = {}): YtDlpFormatOption {
     return {
         format_id: "137",
         display_name: "Video + Audio",

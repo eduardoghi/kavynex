@@ -9,10 +9,11 @@ vi.mock("../services/media-download-service", () => ({
 import { listYtDlpFormats } from "../services/media-download-service";
 import type { YtDlpFormat, YtDlpFormatsResult } from "../types/media";
 
+// The backend's shape. It carries no label: the loader runs every format through
+// buildMergedFormats, which is what names each row (and adds the merged ones).
 function makeFormat(overrides: Partial<YtDlpFormat> = {}): YtDlpFormat {
     return {
         format_id: "fmt",
-        display_name: "unused-input-label",
         ext: "mp4",
         media_type: "video",
         has_video: true,
@@ -231,7 +232,6 @@ describe("useYtDlpFormatLoader", () => {
             formats: [
                 {
                     format_id: "audio-only",
-                    display_name: "Audio only",
                     ext: "m4a",
                     media_type: "audio",
                     has_video: false,
@@ -245,7 +245,6 @@ describe("useYtDlpFormatLoader", () => {
                 },
                 {
                     format_id: "best",
-                    display_name: "1080p",
                     ext: "mp4",
                     media_type: "video",
                     has_video: true,
@@ -406,7 +405,6 @@ describe("useYtDlpFormatLoader", () => {
                 formats: [
                     {
                         format_id: "best",
-                        display_name: "1080p",
                         ext: "mp4",
                         media_type: "video",
                         has_video: true,

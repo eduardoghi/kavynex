@@ -7,10 +7,10 @@ import {
     inferSelectedMediaType,
 } from "./yt-dlp-format-rules";
 
+// The backend's shape, which carries no label - buildMergedFormats is what adds one.
 function format(overrides: Partial<YtDlpFormat> = {}): YtDlpFormat {
     return {
         format_id: "0",
-        display_name: "",
         ext: "mp4",
         media_type: "video",
         has_video: true,

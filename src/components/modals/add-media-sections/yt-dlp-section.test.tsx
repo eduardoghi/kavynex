@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { YtDlpSection } from "./yt-dlp-section";
 import { renderWithMantine } from "../../../test/test-utils";
-import type { YtDlpFormat } from "../../../types/media";
+import type { YtDlpFormatOption } from "../../../types/media";
 
 function renderYtDlpSection(
     overrides: Partial<ComponentProps<typeof YtDlpSection>> = {}
@@ -33,7 +33,7 @@ function renderYtDlpSection(
     );
 }
 
-function createYtDlpFormat(overrides: Partial<YtDlpFormat> = {}): YtDlpFormat {
+function createYtDlpFormat(overrides: Partial<YtDlpFormatOption> = {}): YtDlpFormatOption {
     return {
         format_id: "best",
         display_name: "1080p mp4",

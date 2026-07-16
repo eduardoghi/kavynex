@@ -1,4 +1,4 @@
-import type { YtDlpFormat } from "../types/media";
+import type { YtDlpFormatOption } from "../types/media";
 
 // Pure mapping logic for the yt-dlp format badge shown in the add-media modal. Kept out of the
 // component (yt-dlp-section.tsx) so the label/tone/style rules can be unit-tested in isolation
@@ -14,7 +14,7 @@ export type BadgeStyle = {
 };
 
 /** The short, uppercase label describing a selected yt-dlp format (or the empty state). */
-export function buildFormatBadgeLabel(format: YtDlpFormat | null): string {
+export function buildFormatBadgeLabel(format: YtDlpFormatOption | null): string {
     if (!format) {
         return "NO FORMAT SELECTED";
     }
@@ -49,7 +49,7 @@ export function buildFormatBadgeLabel(format: YtDlpFormat | null): string {
 }
 
 /** The logical color (tone) for a selected format's badge (or the empty state). */
-export function buildFormatBadgeTone(format: YtDlpFormat | null): BadgeTone {
+export function buildFormatBadgeTone(format: YtDlpFormatOption | null): BadgeTone {
     if (!format) {
         return "neutral";
     }

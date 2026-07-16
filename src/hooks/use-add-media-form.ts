@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { openFileDialog } from "../lib/tauri-platform";
-import type { MediaSourceMode, MediaType, YtDlpFormat } from "../types/media";
+import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
@@ -36,7 +36,7 @@ type UseAddMediaFormReturn = {
     cookiesPath: string;
     isGeneratingThumb: boolean;
 
-    ytDlpFormats: YtDlpFormat[];
+    ytDlpFormats: YtDlpFormatOption[];
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
     selectedYtDlpMediaType: MediaType;

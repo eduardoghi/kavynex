@@ -6,7 +6,7 @@ import {
     TextInput,
 } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
-import type { MediaSourceMode, MediaType, YtDlpFormat } from "../../types/media";
+import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../../types/media";
 import { AddMediaModalActions } from "./add-media-sections/add-media-modal-actions";
 import { LocalMediaSection } from "./add-media-sections/local-media-section";
 import { ThumbnailSection } from "./add-media-sections/thumbnail-section";
@@ -44,7 +44,7 @@ type AddMediaModalProps = {
 
     ytDlpLogs: string[];
     isYtDlpRunning: boolean;
-    ytDlpFormats: YtDlpFormat[];
+    ytDlpFormats: YtDlpFormatOption[];
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
 

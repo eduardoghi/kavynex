@@ -16,9 +16,7 @@ use crate::models::yt_dlp::{
 use crate::services::binaries::resolve_yt_dlp_binary_async;
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
-use crate::utils::format::{
-    build_format_display_name, codec_is_present, normalize_yt_dlp_upload_date, sort_yt_dlp_formats,
-};
+use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
 use crate::utils::io::read_lossy_line;
 use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -714,7 +712,7 @@ pub async fn list_yt_dlp_formats_async(
     let youtube_video_id =
         resolve_youtube_video_id(metadata.id.as_deref(), metadata.extractor.as_deref());
 
-    let mut formats: Vec<YtDlpFormatOption> = metadata
+    let formats: Vec<YtDlpFormatOption> = metadata
         .formats
         .into_iter()
         .filter_map(|format| {
@@ -754,7 +752,6 @@ pub async fn list_yt_dlp_formats_async(
 
             Some(YtDlpFormatOption {
                 format_id,
-                display_name: build_format_display_name(&format, &media_type),
                 ext,
                 media_type,
                 has_video,
@@ -772,8 +769,6 @@ pub async fn list_yt_dlp_formats_async(
             })
         })
         .collect();
-
-    sort_yt_dlp_formats(&mut formats);
 
     let friendly_hints = build_friendly_terminal_hints(&stdout_logs, &stderr_logs);
 

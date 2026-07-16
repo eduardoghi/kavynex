@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { listYtDlpFormats } from "../services/media-download-service";
-import type { MediaType, YtDlpFormat } from "../types/media";
+import type { MediaType, YtDlpFormatOption } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
 import { useRequestGuard } from "./use-request-guard";
@@ -24,7 +24,7 @@ type UseYtDlpFormatLoaderOptions = {
 };
 
 type UseYtDlpFormatLoaderReturn = {
-    ytDlpFormats: YtDlpFormat[];
+    ytDlpFormats: YtDlpFormatOption[];
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
     selectedYtDlpMediaType: MediaType;
@@ -50,7 +50,7 @@ export function useYtDlpFormatLoader({
     onTerminalLog,
     onTerminalStop,
 }: UseYtDlpFormatLoaderOptions): UseYtDlpFormatLoaderReturn {
-    const [ytDlpFormats, setYtDlpFormats] = useState<YtDlpFormat[]>([]);
+    const [ytDlpFormats, setYtDlpFormats] = useState<YtDlpFormatOption[]>([]);
     const [selectedYtDlpFormatId, setSelectedYtDlpFormatIdState] = useState("");
     const [isLoadingYtDlpFormats, setIsLoadingYtDlpFormats] = useState(false);
     const [resolvedYoutubeVideoId, setResolvedYoutubeVideoId] = useState<string | null>(null);

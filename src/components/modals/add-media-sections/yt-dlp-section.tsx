@@ -12,7 +12,7 @@ import {
 } from "@mantine/core";
 import { FileText, Link as LinkIcon, ListVideo, X } from "lucide-react";
 import type { ReactNode } from "react";
-import type { YtDlpFormat } from "../../../types/media";
+import type { YtDlpFormatOption } from "../../../types/media";
 import { COOKIES_BROWSER_SELECT_OPTIONS } from "../../../constants/cookies-browsers";
 import { formatBytes } from "../../../utils/media-utils";
 import {
@@ -29,7 +29,7 @@ type YtDlpSectionProps = {
     cookiesPath: string;
     isLocked: boolean;
     isLoadingYtDlpFormats: boolean;
-    ytDlpFormats: YtDlpFormat[];
+    ytDlpFormats: YtDlpFormatOption[];
     selectedYtDlpFormatId: string;
     downloadComments: boolean;
     downloadLiveChat: boolean;

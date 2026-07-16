@@ -8,7 +8,7 @@ import type {
     MediaSourceMode,
     MediaType,
     ViewMode,
-    YtDlpFormat,
+    YtDlpFormatOption,
 } from "./media";
 import type { AppSettings, ImportMode } from "./settings";
 import type { MediaQueryFilters } from "../utils/media-library-filters";
@@ -26,7 +26,7 @@ export type AddMediaFormController = {
     cookiesBrowser: string;
     cookiesPath: string;
     isGeneratingThumb: boolean;
-    ytDlpFormats: YtDlpFormat[];
+    ytDlpFormats: YtDlpFormatOption[];
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
     selectedYtDlpMediaType: MediaType;
