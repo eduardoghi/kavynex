@@ -263,7 +263,15 @@ Every pooled connection (`database.rs::build_pool_at`) is configured identically
   the slower default `FULL` (fsync on every commit).
 - `busy_timeout(30_000ms)` - a connection waits up to 30 seconds for a lock instead of
   failing immediately with `SQLITE_BUSY` when another connection (or the backup/export
-  path, which opens its own short-lived pool against the same file) holds it.
+  path, which opens its own short-lived pool against the same file) holds it. Note the one
+  case it cannot cover: a *deferred* transaction that reads and then writes takes its snapshot
+  on the read and asks for the write lock later, and if another connection commits in between,
+  SQLite rejects that upgrade with `SQLITE_BUSY_SNAPSHOT` **immediately, without consulting the
+  busy handler** - waiting can never make a stale snapshot writable. That is why the
+  read-then-write transactions in `services/library_cleanup.rs` open with `BEGIN IMMEDIATE`
+  (`begin_with(BEGIN_IMMEDIATE)`), taking the write lock up front so the wait happens where this
+  timeout does apply. A transaction that writes first (e.g. `media_comments::replace_media_comments`)
+  is unaffected.
 - `foreign_keys(true)` - `ON DELETE CASCADE` is only enforced when this pragma is on, and
   it must be set per-connection (it does not persist in the database file itself).
 

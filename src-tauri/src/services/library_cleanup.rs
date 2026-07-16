@@ -24,6 +24,19 @@ use crate::services::library_guard::configured_library_dir;
 use crate::services::library_media::delete_media_file_sync;
 use crate::services::logger;
 use crate::services::thumbnail_persist::delete_thumbnail_file_sync;
+
+/// Opens the read-then-write transactions below with `BEGIN IMMEDIATE` rather than sqlx's
+/// default deferred `BEGIN`.
+///
+/// Each of them reads first (which rows exist, what artifacts they point at) and writes second,
+/// so a deferred transaction takes its read snapshot on the SELECT and only asks for the write
+/// lock later. In WAL mode, if another connection commits in between, SQLite fails that upgrade
+/// with `SQLITE_BUSY_SNAPSHOT` **immediately, without consulting the busy handler** - the
+/// `busy_timeout` these connections carry cannot help, because no amount of waiting can make a
+/// stale snapshot writable. The user would see a bare "failed to delete media" with no retry.
+/// `BEGIN IMMEDIATE` takes the write lock up front, so the wait happens where `busy_timeout`
+/// does apply and the snapshot is guaranteed writable once acquired.
+const BEGIN_IMMEDIATE: &str = "BEGIN IMMEDIATE";
 use crate::utils::path::absolute_path_from_relative;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -129,7 +142,7 @@ pub async fn delete_media_row_and_plan_cleanup(
     media_id: i64,
 ) -> AppResult<Option<ArtifactCleanupPlan>> {
     let mut tx = pool
-        .begin()
+        .begin_with(BEGIN_IMMEDIATE)
         .await
         .map_err(|error| db_error("failed to start media deletion transaction", error))?;
 
@@ -180,7 +193,7 @@ pub async fn delete_channel_row_and_plan_cleanup(
     channel_id: i64,
 ) -> AppResult<Option<ArtifactCleanupPlan>> {
     let mut tx = pool
-        .begin()
+        .begin_with(BEGIN_IMMEDIATE)
         .await
         .map_err(|error| db_error("failed to start channel deletion transaction", error))?;
 
@@ -466,7 +479,7 @@ pub async fn replace_channel_avatar_and_plan_cleanup(
     let next_avatar = normalized(avatar_path);
 
     let mut tx = pool
-        .begin()
+        .begin_with(BEGIN_IMMEDIATE)
         .await
         .map_err(|error| db_error("failed to start channel avatar update transaction", error))?;
 
