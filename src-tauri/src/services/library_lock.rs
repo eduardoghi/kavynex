@@ -22,7 +22,9 @@
 //! single fs call. A guarded function must never call another guarded function while holding the
 //! guard - a nested read acquisition can deadlock against a waiting writer (`std::sync::RwLock`
 //! makes no reentrancy guarantee). Acquiring the guard once per file inside a loop (release
-//! between iterations) is fine; nesting is not.
+//! between iterations) is fine; nesting is not. In debug and test builds this rule is enforced by
+//! a per-thread depth check that panics at the offending acquisition (see `library_read_guard`),
+//! not left to code review alone.
 
 use std::sync::{OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -31,13 +33,57 @@ fn library_operation_gate() -> &'static RwLock<()> {
     GATE.get_or_init(|| RwLock::new(()))
 }
 
+/// RAII guard returned by [`library_read_guard`]. Holding it is what serializes a single library
+/// write or delete against a migration; drop it as soon as that fs work is done. Behaves like the
+/// `RwLockReadGuard` it wraps; in debug and test builds it additionally maintains the per-thread
+/// read-guard depth that backs the no-nesting check (see [`library_read_guard`]).
+pub struct LibraryReadGuard {
+    _inner: RwLockReadGuard<'static, ()>,
+}
+
+// How many library read guards the current thread holds. The no-nesting rule means this never
+// exceeds 1: the acquire path debug-asserts it was 0 before incrementing, and the guard's Drop
+// decrements it. Debug/test builds only - a release build carries no counter and no Drop work.
+#[cfg(debug_assertions)]
+thread_local! {
+    static READ_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+impl Drop for LibraryReadGuard {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        READ_DEPTH.with(|depth| depth.set(depth.get() - 1));
+    }
+}
+
 /// Acquires the shared (read) side of the library gate. Hold the returned guard for the extent
-/// of a single library write or delete; drop it as soon as that fs work is done. See the module
-/// docs for the no-nesting rule.
-pub fn library_read_guard() -> RwLockReadGuard<'static, ()> {
-    library_operation_gate()
+/// of a single library write or delete; drop it as soon as that fs work is done.
+///
+/// The module's no-nesting rule (a guarded leaf function must never acquire a second read guard
+/// while holding one) is otherwise convention-only, and violating it can deadlock against a
+/// waiting migration - `std::sync::RwLock` is write-preferring and makes no reentrancy guarantee,
+/// so the second read blocks behind the queued writer that the first read is blocking. The
+/// debug-only depth check below turns that into a loud, located panic at the offending
+/// acquisition instead of a later hang with no pointer to the cause. It compiles to nothing in a
+/// release build.
+pub fn library_read_guard() -> LibraryReadGuard {
+    #[cfg(debug_assertions)]
+    READ_DEPTH.with(|depth| {
+        debug_assert_eq!(
+            depth.get(),
+            0,
+            "nested library read guard: a guarded function acquired a second read guard while \
+             holding one, which can deadlock against a waiting migration (see the library_lock \
+             module docs)"
+        );
+        depth.set(depth.get() + 1);
+    });
+
+    let inner = library_operation_gate()
         .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    LibraryReadGuard { _inner: inner }
 }
 
 /// Acquires the exclusive (write) side for a library migration's destructive copy/remove phase.
@@ -121,6 +167,20 @@ mod tests {
         writer.join().unwrap();
 
         sequential.join().unwrap();
+    }
+
+    // Debug-only: the depth check is compiled out of a release build, so under `cargo test
+    // --release` a second same-thread read would simply succeed (no waiting writer here) and no
+    // panic would occur. The whole test is gated to the builds where the assertion is live.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "nested library read guard")]
+    fn a_nested_read_guard_panics_in_debug_builds() {
+        let _first = library_read_guard();
+        // Acquiring a second read guard on the same thread while the first is still held is exactly
+        // the nesting the module forbids. The debug depth check must catch it right here rather
+        // than let a real deadlock form against a waiting migration.
+        let _second = library_read_guard();
     }
 
     #[test]
