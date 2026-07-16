@@ -349,16 +349,6 @@ pub async fn update_media_title(pool: &SqlitePool, media_id: i64, title: &str) -
     Ok(())
 }
 
-pub async fn list_media_by_channel(pool: &SqlitePool, channel_id: i64) -> AppResult<Vec<MediaRow>> {
-    sqlx::query_as::<_, MediaRow>(sqlx::AssertSqlSafe(format!(
-        "SELECT {MEDIA_COLUMNS} FROM videos WHERE channel_id = ? ORDER BY created_at DESC, id DESC"
-    )))
-    .bind(channel_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| db_error("failed to list media by channel", error))
-}
-
 pub async fn find_media_by_channel_and_file_path(
     pool: &SqlitePool,
     channel_id: i64,
@@ -836,9 +826,6 @@ mod tests {
         assert_eq!(found.title, "Video A");
         assert_eq!(found.duration_seconds, Some(120));
         assert_eq!(found.has_live_chat, 0);
-
-        let list = list_media_by_channel(&pool, 1).await.unwrap();
-        assert_eq!(list.len(), 1);
     }
 
     #[tokio::test]

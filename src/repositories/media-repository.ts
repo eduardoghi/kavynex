@@ -10,10 +10,6 @@ export async function updateMediaTitle(mediaId: number, title: string): Promise<
     await invokeVoid(TAURI_COMMANDS.UPDATE_MEDIA_TITLE, { mediaId, title });
 }
 
-export async function listMediaByChannel(channelId: number): Promise<MediaRow[]> {
-    return invokeCommand<MediaRow[]>(TAURI_COMMANDS.LIST_MEDIA_BY_CHANNEL, { channelId });
-}
-
 export async function listMediaPage(
     channelId: number,
     query: MediaPageQuery

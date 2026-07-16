@@ -45,7 +45,6 @@ export {
 } from "./media-file-service";
 
 export {
-    listChannelMedia,
     listChannelMediaPage,
     listMediaComments,
     createMedia,

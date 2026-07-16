@@ -316,7 +316,6 @@ pub fn run() {
             commands::channels::replace_channel_avatar,
             commands::channels::delete_channel_with_artifacts,
             commands::videos::update_media_title,
-            commands::videos::list_media_by_channel,
             commands::videos::list_media_page,
             commands::videos::find_media_by_channel_and_file_path,
             commands::videos::media_exists_for_channel_and_youtube_id,

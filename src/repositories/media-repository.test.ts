@@ -7,7 +7,6 @@ import {
     findMediaByChannelAndFilePath,
     getMediaRepositoryStats,
     insertMedia,
-    listMediaByChannel,
     listMediaCommentsByMediaId,
     listMediaIntegrityReferences,
     markMediaAsUnwatched,
@@ -37,16 +36,6 @@ describe("media-repository command wiring", () => {
         expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.UPDATE_MEDIA_TITLE, {
             mediaId: 5,
             title: "New Title",
-        });
-    });
-
-    it("listMediaByChannel passes channel id and returns rows", async () => {
-        const rows = [{ id: 1 }];
-        invokeCommandMock.mockResolvedValueOnce(rows as never);
-
-        await expect(listMediaByChannel(3)).resolves.toBe(rows);
-        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.LIST_MEDIA_BY_CHANNEL, {
-            channelId: 3,
         });
     });
 

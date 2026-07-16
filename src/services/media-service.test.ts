@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createMedia,
     deleteMediaWithFileCleanup,
-    listChannelMedia,
     refreshMediaComments,
     saveMediaProgress,
     setMediaUnwatched,
@@ -13,7 +12,6 @@ vi.mock("../repositories", () => ({
     deleteMediaWithArtifacts: vi.fn(),
     findMediaByChannelAndFilePath: vi.fn(),
     insertMedia: vi.fn(),
-    listMediaByChannel: vi.fn(),
     listMediaCommentsByMediaId: vi.fn(),
     markMediaAsUnwatched: vi.fn(),
     markMediaAsWatched: vi.fn(),
@@ -53,7 +51,6 @@ import {
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
-    listMediaByChannel,
     markMediaAsUnwatched,
     markMediaAsWatched,
     mediaExistsForChannelAndYoutubeId,
@@ -65,7 +62,6 @@ import {
     prepareYtDlpArtifacts,
 } from "./media-artifacts-service";
 import {
-    validateChannelId,
     validateCreateMediaInput,
     validateMediaId,
 } from "./media-input-service";
@@ -77,37 +73,6 @@ import { logError } from "../utils/app-logger";
 describe("media-service", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-    });
-
-    it("lists channel media after validating channel id", async () => {
-        vi.mocked(validateChannelId).mockImplementationOnce(() => {});
-        vi.mocked(listMediaByChannel).mockResolvedValueOnce([
-            {
-                id: 1,
-                channel_id: 10,
-                title: "Video A",
-                file_path: "video/a.mp4",
-                thumbnail_path: null,
-                media_type: "video",
-                youtube_video_id: null,
-                watched_at: null,
-                published_at: null,
-                duration_seconds: 125,
-                progress_seconds: 0,
-                has_comments: 0,
-                comments_count: 0,
-                is_live: 0,
-                has_live_chat: 0,
-                live_chat_file_path: null,
-                created_at: "2026-03-31T10:00:00.000Z",
-            },
-        ]);
-
-        const result = await listChannelMedia(10);
-
-        expect(validateChannelId).toHaveBeenCalledWith(10);
-        expect(listMediaByChannel).toHaveBeenCalledWith(10);
-        expect(result).toHaveLength(1);
     });
 
     it("creates local media successfully", async () => {

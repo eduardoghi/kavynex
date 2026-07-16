@@ -1,11 +1,10 @@
-import type { MediaCommentRow, MediaRow, YtDlpComment } from "../types/media";
+import type { MediaCommentRow, YtDlpComment } from "../types/media";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { MediaPageQuery } from "../types/generated/MediaPageQuery";
 import {
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
-    listMediaByChannel,
     listMediaCommentsByMediaId,
     listMediaPage,
     markMediaAsUnwatched,
@@ -206,11 +205,6 @@ async function tryPersistYouTubeComments(
             "Failed to fetch comments. Import will continue without them."
         );
     }
-}
-
-export async function listChannelMedia(channelId: number): Promise<MediaRow[]> {
-    validateChannelId(channelId);
-    return listMediaByChannel(channelId);
 }
 
 // Returns one filtered/sorted page of a channel's media plus the total match count, so the

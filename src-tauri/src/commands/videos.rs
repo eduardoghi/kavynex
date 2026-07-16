@@ -29,12 +29,6 @@ pub async fn update_media_title(db: State<'_, Db>, media_id: i64, title: String)
     repo::update_media_title(&pool, media_id, &title).await
 }
 
-#[tauri::command]
-pub async fn list_media_by_channel(db: State<'_, Db>, channel_id: i64) -> AppResult<Vec<MediaRow>> {
-    let pool = db.pool().await?;
-    repo::list_media_by_channel(&pool, channel_id).await
-}
-
 /// Returns one filtered, sorted, windowed page of a channel's media (plus the total match
 /// count), so the library list can page through large channels instead of loading every row
 /// over IPC. Filtering and sorting happen in SQLite; see `repo::list_media_page`.
@@ -186,7 +180,7 @@ mod tests {
                 crate::commands::channels::insert_channel,
                 insert_media,
                 update_media_title,
-                list_media_by_channel,
+                list_media_page,
                 mark_media_as_watched
             ])
             .build(mock_context(noop_assets()))
@@ -226,8 +220,21 @@ mod tests {
         })
     }
 
+    fn default_media_page_query() -> serde_json::Value {
+        serde_json::json!({
+            "mediaType": "all",
+            "watched": "all",
+            "publication": "all",
+            "search": "",
+            "sortCategory": "added_date",
+            "sortDirection": "desc",
+            "limit": 50,
+            "offset": 0
+        })
+    }
+
     #[test]
-    fn insert_and_list_media_round_trips_through_ipc() {
+    fn insert_and_page_media_round_trips_through_ipc() {
         let webview = test_webview(memory_db());
         let channel_id = seed_channel(&webview);
 
@@ -241,19 +248,23 @@ mod tests {
         .unwrap();
         assert!(media_id.is_some(), "insert should return the new row id");
 
-        let list = invoke(
+        // Read the row back through the real paginated-list command the library uses (there is no
+        // separate unpaginated list command); this exercises the MediaPageQuery deserialization and
+        // the MediaPage response over a genuine IPC round trip.
+        let page = invoke(
             &webview,
-            "list_media_by_channel",
-            serde_json::json!({ "channelId": channel_id }),
+            "list_media_page",
+            serde_json::json!({ "channelId": channel_id, "query": default_media_page_query() }),
         )
         .unwrap()
         .deserialize::<serde_json::Value>()
         .unwrap();
 
-        let list = list.as_array().unwrap();
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0]["file_path"], "video/media_x.mp4");
-        assert_eq!(list[0]["title"], "Video");
+        assert_eq!(page["total"], 1);
+        let items = page["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["file_path"], "video/media_x.mp4");
+        assert_eq!(items[0]["title"], "Video");
     }
 
     #[test]
