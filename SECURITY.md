@@ -59,12 +59,19 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
   documented tradeoff.
 - `open_path_in_system` - spawns the OS file manager on the resolved path. Because it
   takes both `path` and `library_path` from the caller, its containment check alone cannot
-  be trusted (a caller can pass the same value as both). The real risk there is a UNC /
-  network path (`\\host\share`): merely resolving one on Windows triggers an SMB/NTLM
-  authentication handshake, leaking the user's NTLM hash to `host`. `services/library.rs::
-  resolve_path_inside_library` therefore rejects network paths outright, *before* any
-  `canonicalize` call can reach out over SMB. A library kept on a network share loses only
-  the "reveal in file manager" convenience as a result.
+  be trusted (a caller can pass the same value as both). Two things follow from that, and
+  each is handled where it has to be:
+  - A UNC / network path (`\\host\share`): merely resolving one on Windows triggers an
+    SMB/NTLM authentication handshake, leaking the user's NTLM hash to `host`.
+    `services/library.rs::resolve_path_inside_library` therefore rejects network paths
+    outright, *before* any `canonicalize` call can reach out over SMB. A library kept on a
+    network share loses only the "reveal in file manager" convenience as a result.
+  - On macOS, the command always uses `open -R` (reveal) and never a bare `open`. A `.app`
+    bundle is a directory, so passing one to a bare `open` *launches* the application rather
+    than showing it - and with both arguments caller-supplied, containment does not rule that
+    out (`/Applications` as both `path` and `library_path` contains every installed app).
+    `-R` reveals files and directories alike, so revealing unconditionally costs nothing and
+    keeps the command's worst case at "a Finder window opened somewhere unexpected".
 
 The security boundary these share is the same one this whole document is about: the Rust
 command layer holds regardless of what the frontend sends. React's default escaping (see

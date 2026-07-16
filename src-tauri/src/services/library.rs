@@ -155,13 +155,13 @@ pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppRe
 
     #[cfg(target_os = "macos")]
     {
+        // Always reveal, never open. A macOS `.app` bundle is a *directory*, so plain
+        // `open <dir>` would launch the application rather than show it in Finder - and both
+        // `path` and `library_path` arrive from the caller, so the containment check cannot rule
+        // that out on its own (a caller can pass `/Applications` as both). `-R` reveals files and
+        // directories alike, which is all this command is ever meant to do.
         let mut command = std::process::Command::new("open");
-
-        if canonical_path.is_file() {
-            command.arg("-R").arg(&canonical_path);
-        } else {
-            command.arg(&canonical_path);
-        }
+        command.arg("-R").arg(&canonical_path);
 
         command.spawn().map_err(|error| {
             AppError::from_code(
