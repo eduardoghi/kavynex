@@ -711,6 +711,141 @@ mod tests {
         ))
     }
 
+    /// Names of the `.<file>.backup-<suffix>` scratch files `replace_file_safely` creates, so a
+    /// test can assert it cleaned up after itself rather than leaving one in the library.
+    fn leftover_backup_names(dir: &Path) -> Vec<String> {
+        fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name.contains(".backup-"))
+            .collect()
+    }
+
+    // The guard these three functions exist for: a destination that already holds *different*
+    // bytes is someone else's file, and must come back as an error with the file untouched. Only
+    // the identical-content path may proceed. A flipped comparison here would not fail loudly -
+    // it would silently overwrite a file in the user's library - so each test asserts the
+    // destination's bytes are unchanged, not just that an error came back.
+
+    #[test]
+    fn copy_file_atomic_rejects_a_destination_holding_different_content() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source.mp4");
+        let destination = dir.join("destination.mp4");
+        fs::write(&source, b"incoming bytes").unwrap();
+        fs::write(&destination, b"an existing user file").unwrap();
+
+        let error = copy_file_atomic(&source, &destination).unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
+        assert_eq!(fs::read(&destination).unwrap(), b"an existing user file");
+        assert!(source.exists(), "a rejected copy must not consume the source");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_or_copy_file_rejects_a_destination_holding_different_content() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source.mp4");
+        let destination = dir.join("destination.mp4");
+        fs::write(&source, b"incoming bytes").unwrap();
+        fs::write(&destination, b"an existing user file").unwrap();
+
+        let error = move_or_copy_file(&source, &destination).unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
+        assert_eq!(fs::read(&destination).unwrap(), b"an existing user file");
+        // A move that refused to happen must leave the source in place: removing it here would
+        // destroy the only copy of the file the caller asked to move.
+        assert!(source.exists(), "a rejected move must not consume the source");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replace_file_safely_moves_the_source_in_when_no_destination_exists() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source.json");
+        let destination = dir.join("nested").join("destination.json");
+        fs::write(&source, b"fresh content").unwrap();
+
+        replace_file_safely(&source, &destination).unwrap();
+
+        assert_eq!(fs::read(&destination).unwrap(), b"fresh content");
+        assert!(!source.exists(), "the source should have been moved, not copied");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replace_file_safely_overwrites_an_existing_destination_and_leaves_no_backup() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source.json");
+        let destination = dir.join("destination.json");
+        fs::write(&source, b"new content").unwrap();
+        fs::write(&destination, b"stale content").unwrap();
+
+        replace_file_safely(&source, &destination).unwrap();
+
+        assert_eq!(fs::read(&destination).unwrap(), b"new content");
+        // Unlike copy_file_atomic/move_or_copy_file, this one is *meant* to replace differing
+        // content - that is the whole point of the backup dance. What it must not do is leave the
+        // scratch backup behind once the replace succeeded.
+        assert_eq!(leftover_backup_names(&dir), Vec::<String>::new());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replace_file_safely_restores_the_original_when_the_replace_fails() {
+        // The branch that justifies the backup dance existing at all: the destination has already
+        // been renamed aside when the replace fails, so without the restore the user is left with
+        // no file at all where their data used to be.
+        //
+        // Unix-only because making the replace fail *after* the backup succeeded needs the rename
+        // of the source to be refused, which means taking write permission off the source's own
+        // directory - the destination's directory has to stay writable for the backup and the
+        // restore themselves. Windows has no portable equivalent (its read-only attribute does not
+        // block a rename), so this branch is covered on Linux/macOS CI only.
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_test_dir();
+        let source_dir = dir.join("source-dir");
+        let destination_dir = dir.join("destination-dir");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(&destination_dir).unwrap();
+
+        let source = source_dir.join("source.json");
+        let destination = destination_dir.join("destination.json");
+        fs::write(&source, b"new content").unwrap();
+        fs::write(&destination, b"the original file").unwrap();
+
+        // Renaming a file out of a directory needs write permission on that directory.
+        fs::set_permissions(&source_dir, fs::Permissions::from_mode(0o555)).unwrap();
+
+        let error = replace_file_safely(&source, &destination).unwrap_err();
+
+        // The original error is reported, not a restore failure.
+        assert_eq!(error.code, AppErrorCode::FileMoveFailed.as_str());
+        // What actually matters: the destination is back, byte for byte, and no backup is orphaned.
+        assert_eq!(fs::read(&destination).unwrap(), b"the original file");
+        assert_eq!(leftover_backup_names(&destination_dir), Vec::<String>::new());
+
+        fs::set_permissions(&source_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn find_best_matching_file_prefers_requested_extension() {
         let dir = unique_test_dir();
