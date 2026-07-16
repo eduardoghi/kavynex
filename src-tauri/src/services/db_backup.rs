@@ -316,9 +316,19 @@ fn modified_ms(path: &Path) -> Option<u64> {
 
 /// The existing backup files, most recent first. Rotation always writes the freshest snapshot
 /// to `.bak` (generation 0), so it precedes the rotated `.bak.1`.. `.bak.N` generations.
+///
+/// `.bak.tmp` is included last. `backup_database` snapshots into it and only renames it into
+/// `.bak` once the `VACUUM INTO` succeeds, so a run that died in that window leaves a complete,
+/// already-health-checked snapshot sitting there that nothing else would ever look at. It goes
+/// last, not first, even though it is the freshest: a run that instead died *during* the vacuum
+/// leaves a partial file under the same name, and there is no way to tell the two apart here.
+/// Every caller re-runs `quick_check` on the candidate it picks, which is what makes offering
+/// this safe - a torn file is rejected there, and a healthy one is only reached when no real
+/// generation survived.
 fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
     (0..=BACKUP_ROTATED_GENERATIONS)
         .map(|generation| generation_backup_path(db_path, generation))
+        .chain(std::iter::once(temp_backup_path(db_path)))
         .filter(|path| path.exists())
         .collect()
 }
@@ -422,16 +432,36 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     // overwrite: a second restore (the restored database degraded again) would otherwise discard
     // the first failure's evidence, which is exactly the case where repeated corruption most
     // needs diagnosing.
+    //
+    // Move it under a scratch name *before* rotating. Rotating first would shift the existing
+    // generations - dropping the oldest and emptying the `.corrupt` slot - and a rename that then
+    // failed would leave that loss with nothing put in its place, so a couple of failed restores
+    // would evict every earlier snapshot while adding none. Rotating only once the database is
+    // safely out of the way keeps the generations intact on failure.
     if db_path.exists() {
-        let corrupt = corrupt_path(db_path);
-        rotate_corrupt_snapshots(db_path);
+        let pending = sibling(db_path, ".corrupt.tmp");
+        let _ = std::fs::remove_file(&pending);
 
-        if let Err(error) = std::fs::rename(db_path, &corrupt) {
+        if let Err(error) = std::fs::rename(db_path, &pending) {
             let _ = std::fs::remove_file(&staged);
             return Err(backup_error(
                 "failed to move aside the corrupt database",
                 error,
             ));
+        }
+
+        rotate_corrupt_snapshots(db_path);
+
+        if let Err(error) = std::fs::rename(&pending, corrupt_path(db_path)) {
+            // The database is already off the live path, so the restore can still proceed; the
+            // evidence just keeps the scratch name. Say so rather than lose the thread.
+            logger::warn(
+                "db_backup",
+                format!(
+                    "the corrupt database was set aside as .corrupt.tmp because it could not be \
+                     renamed into the .corrupt slot: {error}"
+                ),
+            );
         }
     }
 
@@ -591,9 +621,28 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
         // silently drop whatever committed writes still sat in its WAL. Best effort: a source
         // on read-only media cannot be checkpointed, but such a source was not being written
         // to either, so its `.db` is already self-contained.
-        let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-            .execute(&pool)
+        //
+        // The pragma reports whether it actually finished, and that has to be read rather than
+        // discarded: it answers `busy = 1` when another connection held a lock and frames were
+        // left behind. Copying then produces a database quietly missing its most recent commits,
+        // which is worse than refusing - the user would have no way to tell. `log` is the frames
+        // still in the WAL afterwards, so `busy` alone is not the test: a busy answer with an
+        // empty WAL has nothing left to lose and is fine to import.
+        let checkpoint = sqlx::query_as::<_, (i64, i64, i64)>("PRAGMA wal_checkpoint(TRUNCATE)")
+            .fetch_optional(&pool)
             .await;
+
+        if let Ok(Some((busy, remaining_frames, _))) = checkpoint {
+            if busy != 0 && remaining_frames > 0 {
+                pool.close().await;
+
+                return Err(AppError::from_code(
+                    AppErrorCode::DatabaseImportInvalid,
+                    "the selected database is still in use, so its most recent changes could not \
+                     be read; close the app that has it open and try again",
+                ));
+            }
+        }
     }
 
     pool.close().await;
@@ -964,6 +1013,44 @@ mod tests {
         // repopulates it.
         assert!(pre_import_path(&db).exists());
         assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn restore_reaches_a_snapshot_stranded_in_the_backup_temp_file() {
+        // backup_database vacuums into `.bak.tmp` and only renames it into `.bak` once that
+        // succeeds. A run that died in that window leaves a complete, healthy snapshot there that
+        // nothing else would ever look at - so with no other generation on disk the restore used
+        // to report "no backup available" while a good one sat right next to the database.
+        let dir = temp_dir("backup-temp-orphan");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "corrupted").await;
+        seed_kavynex_db(&temp_backup_path(&db), "stranded").await;
+
+        assert!(!backup_path(&db).exists());
+
+        restore_database_from_backup(&db).await.unwrap();
+
+        assert_eq!(read_video_title(&db).await, "stranded");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn restore_prefers_a_real_generation_over_the_backup_temp_file() {
+        // `.bak.tmp` is also where a run that died *during* the vacuum leaves a partial file, and
+        // nothing here can tell that apart from the complete one above. So it is the last resort,
+        // never preferred over a real generation, even though it would be the fresher of the two.
+        let dir = temp_dir("backup-temp-order");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "corrupted").await;
+        seed_kavynex_db(&backup_path(&db), "rotated-generation").await;
+        seed_kavynex_db(&temp_backup_path(&db), "stranded").await;
+
+        restore_database_from_backup(&db).await.unwrap();
+
+        assert_eq!(read_video_title(&db).await, "rotated-generation");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
