@@ -578,6 +578,42 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         }
     }
 
+    // The table names alone are not enough. A database carrying those four names with different
+    // *columns* - a namesake schema from another app, a hand-edited file, a half-finished
+    // migration - passes the check above, and if it is also stamped at this build's
+    // SCHEMA_VERSION then `ensure_schema` treats it as current and repairs nothing. It would swap
+    // in cleanly and then fail with "no such column" on the first query, after the previous
+    // database had already been set aside. Spot-check the columns each table is actually queried
+    // through so that lands here, as a refused import, instead.
+    //
+    // Deliberately a sample, not a schema diff: enough to tell a kavynex database from a
+    // look-alike, while leaving the additive columns the migrations themselves add (and backfill)
+    // to `ensure_schema`, which is what a genuinely older database needs.
+    const REQUIRED_COLUMNS: [(&str, &str); 9] = [
+        ("channels", "id"),
+        ("channels", "youtube_handle"),
+        ("videos", "id"),
+        ("videos", "channel_id"),
+        ("videos", "file_path"),
+        ("videos", "media_type"),
+        ("video_comments", "video_id"),
+        ("app_settings", "key"),
+        ("app_settings", "value"),
+    ];
+
+    for (table, column) in REQUIRED_COLUMNS {
+        let has_column = crate::services::db_schema::table_has_column(pool, table, column)
+            .await
+            .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+        if !has_column {
+            return Err(AppError::from_code(
+                AppErrorCode::DatabaseImportInvalid,
+                "the selected file is not a kavynex database",
+            ));
+        }
+    }
+
     let (user_version,): (i64,) = sqlx::query_as("PRAGMA user_version")
         .fetch_one(pool)
         .await
@@ -1018,6 +1054,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn import_rejects_a_namesake_database_whose_columns_are_wrong() {
+        // The four table names with the wrong columns: another app's namesake schema, a
+        // hand-edited file, a half-finished migration. Stamped at this build's SCHEMA_VERSION,
+        // so ensure_schema would consider it current and repair nothing - it would swap in
+        // cleanly and then fail with "no such column" on the first query, after the previous
+        // database had already been set aside. It has to be refused here instead.
+        let dir = temp_dir("import-wrong-columns");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("namesake.db");
+        let options = SqliteConnectOptions::new()
+            .filename(&source)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+
+        for ddl in [
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, label TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, name TEXT)",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, body TEXT)",
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let error = stage_database_import(&db, &source).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+
+        // Nothing was staged, so the next startup has no import to apply.
+        assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn restore_reaches_a_snapshot_stranded_in_the_backup_temp_file() {
         // backup_database vacuums into `.bak.tmp` and only renames it into `.bak` once that
         // succeeds. A run that died in that window leaves a complete, healthy snapshot there that
@@ -1138,12 +1222,15 @@ mod tests {
             .connect_with(options)
             .await
             .unwrap();
-        // Import validation now requires every core table, so a representative kavynex
-        // database in tests must have all of them, not just `videos`.
+        // Import validation requires every core table *and* the columns each is queried
+        // through, so a representative kavynex database in tests must carry both. Still a
+        // deliberately reduced shape - no constraints, no indexes, only the columns the
+        // validation names - since these tests are about the file swap, not the schema.
         for ddl in [
-            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT)",
-            "CREATE TABLE videos (id INTEGER PRIMARY KEY, title TEXT)",
-            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, text TEXT)",
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
+             file_path TEXT, media_type TEXT)",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT)",
             "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         ] {
             sqlx::query(ddl).execute(&pool).await.unwrap();

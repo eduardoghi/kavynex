@@ -159,7 +159,7 @@ const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     ("title_normalized", "TEXT"),
 ];
 
-async fn table_has_column<'e, E>(
+pub(crate) async fn table_has_column<'e, E>(
     executor: E,
     table: &'static str,
     column: &'static str,
