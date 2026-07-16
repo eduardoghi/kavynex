@@ -21,8 +21,11 @@ type PlayerMediaHeaderProps = {
     canOpenInYoutube: boolean;
     isWatched: boolean;
     isAudio?: boolean;
-    isLive?: boolean;
-    hasLiveChat?: boolean;
+    // Required rather than defaulting to false: as optional props they silently defaulted their
+    // badges out of existence when the only caller forgot to pass them, and nothing failed. The
+    // compiler is the only thing that catches that.
+    isLive: boolean;
+    hasLiveChat: boolean;
     isRefreshingComments?: boolean;
     onOpenInYoutube: () => void | Promise<void>;
     onOpenFileLocation?: () => void | Promise<void>;
@@ -57,8 +60,8 @@ export function PlayerMediaHeader({
     canOpenInYoutube,
     isWatched,
     isAudio = false,
-    isLive = false,
-    hasLiveChat = false,
+    isLive,
+    hasLiveChat,
     isRefreshingComments = false,
     onOpenInYoutube,
     onOpenFileLocation,

@@ -123,6 +123,10 @@ export function MediaPlayerView({
     const kavynexCreatedLabel = formatCreatedAt(media?.created_at);
     const filePathLabel = shortPath(media?.file_path ?? "");
     const hasComments = Boolean(media?.has_comments);
+    const isLive = Boolean(media?.is_live);
+    // Stricter than the grid card's plain `has_live_chat`, and deliberately so: this same value
+    // decides whether the replay panel below is rendered at all, so the header badge promises
+    // exactly what the player can actually show.
     const hasLiveChat = Boolean(media?.has_live_chat && media?.live_chat_file_path?.trim());
 
     const setVideoElement = useCallback((element: HTMLVideoElement | null): void => {
@@ -250,6 +254,8 @@ export function MediaPlayerView({
                     canOpenInYoutube={canOpenInYoutube}
                     isWatched={isWatched}
                     isAudio={isAudio}
+                    isLive={isLive}
+                    hasLiveChat={hasLiveChat}
                     onOpenInYoutube={onOpenInYoutube}
                     onOpenFileLocation={onOpenFileLocation}
                     onRefreshComments={onRefreshComments}

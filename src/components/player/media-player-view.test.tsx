@@ -37,6 +37,67 @@ describe("MediaPlayerView", () => {
         expect(screen.getByText("Unable to open media")).toBeInTheDocument();
     });
 
+    it("passes the live and chat replay state through to the header", () => {
+        // The regression this pins was in the wiring, not the header: the header rendered both
+        // badges correctly all along, but MediaPlayerView never passed the props, so they silently
+        // defaulted to false and neither badge ever appeared. A header-only test cannot see that.
+        renderWithMantine(
+            <MediaPlayerView
+                media={createMedia({
+                    title: "Live Test",
+                    is_live: 1,
+                    has_live_chat: 1,
+                    live_chat_file_path: "live_chat/test.live_chat.json.gz",
+                })}
+                mediaSrc="file:///media/test.mp4"
+                thumbnailSrc=""
+                isAudio={false}
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                libraryPath="/library"
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("LIVE")).toBeInTheDocument();
+        expect(screen.getByText("CHAT REPLAY")).toBeInTheDocument();
+    });
+
+    it("does not claim a chat replay when the media has no live chat file", () => {
+        // `has_live_chat` alone is not enough: the badge must promise only what the player can
+        // actually show, and the replay panel needs the file path.
+        renderWithMantine(
+            <MediaPlayerView
+                media={createMedia({
+                    title: "Live Test",
+                    is_live: 1,
+                    has_live_chat: 1,
+                    live_chat_file_path: "",
+                })}
+                mediaSrc="file:///media/test.mp4"
+                thumbnailSrc=""
+                isAudio={false}
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                libraryPath="/library"
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("LIVE")).toBeInTheDocument();
+        expect(screen.queryByText("CHAT REPLAY")).not.toBeInTheDocument();
+    });
+
     it("renders audio player state", () => {
         renderWithMantine(
             <MediaPlayerView

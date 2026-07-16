@@ -13,6 +13,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
+                isLive={false}
+                hasLiveChat={false}
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -37,6 +39,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
+                isLive={false}
+                hasLiveChat={false}
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={onMarkWatched}
                 onMarkUnwatched={vi.fn()}
@@ -62,6 +66,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube
                 isWatched
+                isLive={false}
+                hasLiveChat={false}
                 onOpenInYoutube={onOpenInYoutube}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -71,5 +77,51 @@ describe("PlayerMediaHeader", () => {
 
         fireEvent.click(screen.getByRole("button", { name: /open source on youtube/i }));
         expect(onOpenInYoutube).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the live and chat replay badges only for a live media that has a chat replay", () => {
+        // These badges were dead for as long as they existed: the props defaulted to false and the
+        // only caller never passed them, so nothing rendered and nothing failed. Pin both states.
+        const { unmount } = renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                hasLiveChat={false}
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
+        expect(screen.queryByText("CHAT REPLAY")).not.toBeInTheDocument();
+
+        unmount();
+
+        renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive
+                hasLiveChat
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("LIVE")).toBeInTheDocument();
+        expect(screen.getByText("CHAT REPLAY")).toBeInTheDocument();
     });
 });
