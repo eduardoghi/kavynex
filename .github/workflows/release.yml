@@ -102,6 +102,18 @@ jobs:
         timeout-minutes: 90
 
         steps:
+            # This is the job that holds TAURI_SIGNING_PRIVATE_KEY and `contents: write`, so it is
+            # where a stray dispatch must be stopped. `workflow_dispatch` lets the runner pick any
+            # ref, and nothing else pins it to main - so without this a build from a throwaway or
+            # unreviewed branch would be compiled, signed with the real minisign key, and published
+            # as a draft. Fail before checkout, before any secret is in scope. `github.ref` is
+            # `refs/heads/<branch>` for a branch dispatch.
+            - name: Refuse to release from a non-main ref
+              if: github.ref != 'refs/heads/main'
+              run: |
+                  echo "::error::Release must be dispatched from main, got ${{ github.ref }}." >&2
+                  exit 1
+
             - name: Checkout repository
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
               with:
