@@ -408,14 +408,28 @@ pub async fn delete_channel_with_artifacts(
 /// disk only the ones no row still references. Used to clean up artifacts that were prepared
 /// for a media creation that never inserted a row (createMedia failing before insertMedia, a
 /// local import failing mid-way, or a yt-dlp auto-downloaded thumbnail being overridden by a
-/// manual one). Because the reference count and the unlink happen in a single backend call,
-/// the frontend can no longer interleave another operation between "is it still used" and
-/// "delete it" - the check-then-act race that existed when the cleanup was orchestrated over
-/// several IPC round-trips.
+/// manual one).
 ///
 /// Media files, thumbnails and live chat replays are content-addressed and can be shared
 /// (the same video added to several channels, a thumbnail reused as a channel avatar), so a
 /// freshly prepared artifact can already back a registered row; such a path is kept.
+///
+/// What the single backend call does and does not close: the frontend can no longer interleave
+/// an operation between "is it still used" and "delete it", which is the race that existed when
+/// this was orchestrated over several IPC round-trips. It does **not** make the count and the
+/// unlink atomic against a concurrent *backend* command. A wrapping transaction would not fix
+/// that either - the unlink necessarily happens after any commit, since the filesystem cannot
+/// join a SQLite transaction - so the delete paths above are not a template to copy here; only a
+/// lock keyed by artifact path, held across both the count and the unlink and taken by
+/// `insert_media` too, would close it.
+///
+/// That is deliberately not built, because the interleaving it guards against is not currently
+/// reachable: it needs two media creations in flight at once resolving to the same
+/// content-addressed path, and the add-media modal is locked for the duration of one
+/// (`isModalLocked` covers the whole run), so a second cannot start. If that ever changes -
+/// a queue, a batch import, background re-download - this becomes reachable and the consequence
+/// is a row pointing at a file this deleted, so revisit it then rather than assuming the count
+/// still holds.
 async fn plan_unreferenced_artifacts(
     conn: &mut SqliteConnection,
     file_path: Option<String>,
