@@ -128,6 +128,23 @@ export function SelectedChannelLibrarySection({
         ]
     );
 
+    // A Diagnostics jump names one specific media, but these selections are local state and this
+    // section is only remounted when the *channel* changes. Jumping to a media in the already
+    // selected channel while a filter excluded it left the grid paging to the end of the list and
+    // giving up silently - no scroll, no highlight, no message, just a modal that closed and
+    // nothing happening. Clear the selections so the target is in the result set. Sort is left
+    // alone: ordering cannot exclude a row.
+    useEffect(() => {
+        if (focusMediaId === null) {
+            return;
+        }
+
+        setSearchValue("");
+        setMediaTypeFilter("all");
+        setWatchedFilter("all");
+        setPublicationDateFilter("all");
+    }, [focusMediaId]);
+
     // Load the first page whenever the query changes (and once on mount). The section is
     // remounted per channel, so mounting with the default filters loads the newly selected
     // channel's first page.
