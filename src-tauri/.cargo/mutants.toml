@@ -17,6 +17,17 @@
 # cargo-mutants exit 2, which fails that run.
 
 # Test *only* these files (globs are relative to this package root, src-tauri/).
+#
+# Worth widening next, in this order, but each needs its own measured run before it is added -
+# a surviving mutant fails the scheduled job, so a glob added on faith turns the gate red weekly
+# instead of proving anything:
+#   - `src/services/filesystem.rs` - the atomic copy/replace primitives, whose job is to refuse to
+#     overwrite differing content and to restore the original when a replace fails. A flipped
+#     comparison there does not fail loudly; it silently overwrites a file in the user's library.
+#     Measured at 121 mutants (against 72 for the whole current scope), so it needs the CI time
+#     budget checked as well as the survivors killed.
+#   - `src/services/library_media.rs` and `src/services/library_cleanup.rs` - content-addressing
+#     and the reference-count-before-unlink decision.
 examine_globs = [
     "src/utils/path.rs",
     "src/services/library_guard.rs",
