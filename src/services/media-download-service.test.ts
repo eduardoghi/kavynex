@@ -31,12 +31,14 @@ describe("media-download-service", () => {
     it("loads yt-dlp formats when url is valid", async () => {
         vi.mocked(invokeCommand).mockResolvedValueOnce({
             suggested_title: "Video A",
+            youtube_video_id: "abc",
             formats: [],
             terminal_logs: [],
         });
 
         await expect(listYtDlpFormats("https://youtube.com/watch?v=abc")).resolves.toEqual({
             suggested_title: "Video A",
+            youtube_video_id: "abc",
             formats: [],
             terminal_logs: [],
         });

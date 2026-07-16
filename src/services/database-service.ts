@@ -17,7 +17,7 @@ export async function ensureDatabaseReady(): Promise<void> {
  * Used to offer recovery when {@link ensureDatabaseReady} fails.
  */
 export async function getDatabaseBackupStatus(): Promise<DatabaseBackupStatus> {
-    return invokeCommand<DatabaseBackupStatus>(TAURI_COMMANDS.GET_DATABASE_BACKUP_STATUS);
+    return invokeCommand(TAURI_COMMANDS.GET_DATABASE_BACKUP_STATUS);
 }
 
 /**
@@ -51,7 +51,7 @@ export async function importDatabase(sourcePath: string): Promise<void> {
  * incompatible database was imported.
  */
 export async function getDatabaseImportUndoStatus(): Promise<boolean> {
-    return invokeCommand<boolean>(TAURI_COMMANDS.GET_DATABASE_IMPORT_UNDO_STATUS);
+    return invokeCommand(TAURI_COMMANDS.GET_DATABASE_IMPORT_UNDO_STATUS);
 }
 
 /**
@@ -69,5 +69,5 @@ export async function undoDatabaseImport(): Promise<void> {
  * the database reported no problems.
  */
 export async function checkDatabaseIntegrity(): Promise<boolean> {
-    return invokeCommand<boolean>(TAURI_COMMANDS.CHECK_DATABASE_INTEGRITY);
+    return invokeCommand(TAURI_COMMANDS.CHECK_DATABASE_INTEGRITY);
 }

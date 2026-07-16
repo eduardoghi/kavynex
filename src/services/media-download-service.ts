@@ -25,7 +25,7 @@ export async function listYtDlpFormats(
         };
     }
 
-    return invokeCommand<YtDlpFormatsResult>(TAURI_COMMANDS.LIST_YT_DLP_FORMATS, {
+    return invokeCommand(TAURI_COMMANDS.LIST_YT_DLP_FORMATS, {
         url: normalizedUrl,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),
@@ -63,7 +63,7 @@ export async function downloadMediaFromUrl(
         throw createAppError("INVALID_FORMAT_ID", "format id is empty");
     }
 
-    return invokeCommand<DownloadedMediaResult>(TAURI_COMMANDS.DOWNLOAD_MEDIA_FROM_URL, {
+    return invokeCommand(TAURI_COMMANDS.DOWNLOAD_MEDIA_FROM_URL, {
         url: normalizedUrl,
         libraryPath: normalizedLibraryPath,
         runId: normalizedRunId,
@@ -98,7 +98,7 @@ export async function fetchYouTubeComments(
         throw createAppError("INVALID_YOUTUBE_VIDEO_ID", "youtube video id is empty");
     }
 
-    return invokeCommand<YtDlpComment[]>(TAURI_COMMANDS.FETCH_YOUTUBE_COMMENTS, {
+    return invokeCommand(TAURI_COMMANDS.FETCH_YOUTUBE_COMMENTS, {
         videoId: normalizedVideoId,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),

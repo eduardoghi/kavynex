@@ -3,5 +3,5 @@ import { invokeCommand } from "../lib/tauri-client";
 import type { ExternalToolsStatus } from "../types/diagnostics";
 
 export async function getExternalToolsStatus(): Promise<ExternalToolsStatus> {
-    return invokeCommand<ExternalToolsStatus>(TAURI_COMMANDS.CHECK_EXTERNAL_TOOLS);
+    return invokeCommand(TAURI_COMMANDS.CHECK_EXTERNAL_TOOLS);
 }

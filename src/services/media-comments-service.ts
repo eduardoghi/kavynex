@@ -6,7 +6,7 @@ export async function replaceMediaCommentsInBackend(
     mediaId: number,
     comments: YtDlpComment[]
 ): Promise<number> {
-    return invokeCommand<number>(TAURI_COMMANDS.REPLACE_MEDIA_COMMENTS, {
+    return invokeCommand(TAURI_COMMANDS.REPLACE_MEDIA_COMMENTS, {
         mediaId,
         comments,
     });

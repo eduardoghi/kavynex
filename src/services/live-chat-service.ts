@@ -548,7 +548,7 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
 // so reads/deletes go through backend commands rather than the plugin-fs (whose scope is
 // fixed to app data at build time). The command returns the already-decompressed JSON text.
 async function readLiveChatFileText(relativePath: string): Promise<string> {
-    return invokeCommand<string>(TAURI_COMMANDS.READ_LIVE_CHAT_FILE, { relativePath });
+    return invokeCommand(TAURI_COMMANDS.READ_LIVE_CHAT_FILE, { relativePath });
 }
 
 /**
@@ -563,7 +563,7 @@ export async function deleteLiveChatFile(relativePath: string): Promise<void> {
  * diagnostics.
  */
 export async function listLiveChatFiles(): Promise<string[]> {
-    return invokeCommand<string[]>(TAURI_COMMANDS.LIST_LIVE_CHAT_FILES);
+    return invokeCommand(TAURI_COMMANDS.LIST_LIVE_CHAT_FILES);
 }
 
 /**

@@ -20,7 +20,7 @@ export async function importMediaFile(
         throw new ClientError("Library path is required.");
     }
 
-    const result = await invokeCommand<string>(TAURI_COMMANDS.IMPORT_MEDIA_FILE, {
+    const result = await invokeCommand(TAURI_COMMANDS.IMPORT_MEDIA_FILE, {
         path: normalizedSourcePath,
         mode: importMode,
         libraryPath: normalizedLibraryPath,

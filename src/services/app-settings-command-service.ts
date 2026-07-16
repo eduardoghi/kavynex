@@ -10,7 +10,7 @@ export type { StoredAppSettingsPayload };
  * Returns null values for keys that were never set.
  */
 export async function getStoredAppSettings(): Promise<StoredAppSettingsPayload> {
-    return invokeCommand<StoredAppSettingsPayload>(TAURI_COMMANDS.GET_APP_SETTINGS);
+    return invokeCommand(TAURI_COMMANDS.GET_APP_SETTINGS);
 }
 
 /**

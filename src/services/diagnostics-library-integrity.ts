@@ -102,7 +102,7 @@ export async function getLibraryIntegrity(
 
     // Always call through, even with no references: the library folder may still hold orphan
     // files the database no longer knows about.
-    const report = await invokeCommand<LibraryIntegrityReport>(
+    const report = await invokeCommand(
         TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY,
         {
             libraryPath: normalizedLibraryPath,

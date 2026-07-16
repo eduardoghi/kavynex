@@ -4,19 +4,19 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 
 export async function listChannels(): Promise<Channel[]> {
-    return invokeCommand<Channel[]>(TAURI_COMMANDS.LIST_CHANNELS);
+    return invokeCommand(TAURI_COMMANDS.LIST_CHANNELS);
 }
 
 export async function findChannelByYoutubeHandle(
     youtubeHandle: string
 ): Promise<Channel | null> {
-    return invokeCommand<Channel | null>(TAURI_COMMANDS.FIND_CHANNEL_BY_YOUTUBE_HANDLE, {
+    return invokeCommand(TAURI_COMMANDS.FIND_CHANNEL_BY_YOUTUBE_HANDLE, {
         youtubeHandle,
     });
 }
 
 export async function getChannelById(channelId: number): Promise<Channel | null> {
-    return invokeCommand<Channel | null>(TAURI_COMMANDS.GET_CHANNEL_BY_ID, {
+    return invokeCommand(TAURI_COMMANDS.GET_CHANNEL_BY_ID, {
         channelId,
     });
 }
@@ -26,7 +26,7 @@ export async function insertChannel(
     youtubeHandle: string,
     avatarPath: string | null
 ): Promise<number> {
-    return invokeCommand<number>(TAURI_COMMANDS.INSERT_CHANNEL, {
+    return invokeCommand(TAURI_COMMANDS.INSERT_CHANNEL, {
         name,
         youtubeHandle,
         avatarPath,
@@ -49,7 +49,7 @@ export async function replaceChannelAvatar(
     channelId: number,
     avatarPath: string | null
 ): Promise<ArtifactCleanupReport> {
-    return invokeCommand<ArtifactCleanupReport>(TAURI_COMMANDS.REPLACE_CHANNEL_AVATAR, {
+    return invokeCommand(TAURI_COMMANDS.REPLACE_CHANNEL_AVATAR, {
         channelId,
         avatarPath,
     });
@@ -58,7 +58,7 @@ export async function replaceChannelAvatar(
 export async function deleteChannelWithArtifacts(
     channelId: number
 ): Promise<ArtifactCleanupReport> {
-    return invokeCommand<ArtifactCleanupReport>(TAURI_COMMANDS.DELETE_CHANNEL_WITH_ARTIFACTS, {
+    return invokeCommand(TAURI_COMMANDS.DELETE_CHANNEL_WITH_ARTIFACTS, {
         channelId,
     });
 }

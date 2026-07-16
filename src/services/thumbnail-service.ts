@@ -11,7 +11,7 @@ export async function generateTemporaryThumbnail(mediaPath: string): Promise<str
     }
 
     return normalizeString(
-        await invokeCommand<string>(TAURI_COMMANDS.GENERATE_TEMP_THUMBNAIL, {
+        await invokeCommand(TAURI_COMMANDS.GENERATE_TEMP_THUMBNAIL, {
             path: normalizedMediaPath,
         })
     );
@@ -33,7 +33,7 @@ export async function persistThumbnailFile(
     }
 
     return normalizeString(
-        await invokeCommand<string>(TAURI_COMMANDS.PERSIST_THUMBNAIL_FILE, {
+        await invokeCommand(TAURI_COMMANDS.PERSIST_THUMBNAIL_FILE, {
             path: normalizedSourcePath,
             libraryPath: normalizedLibraryPath,
         })
@@ -56,7 +56,7 @@ export async function downloadThumbnailFromUrl(
     }
 
     return normalizeString(
-        await invokeCommand<string>(TAURI_COMMANDS.DOWNLOAD_THUMBNAIL_FROM_URL, {
+        await invokeCommand(TAURI_COMMANDS.DOWNLOAD_THUMBNAIL_FROM_URL, {
             url: normalizedUrl,
             libraryPath: normalizedLibraryPath,
         })
@@ -79,7 +79,7 @@ export async function downloadChannelAvatarFromHandle(
     }
 
     return normalizeString(
-        await invokeCommand<string>(TAURI_COMMANDS.DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE, {
+        await invokeCommand(TAURI_COMMANDS.DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE, {
             youtubeHandle: normalizedYoutubeHandle,
             libraryPath: normalizedLibraryPath,
         })
@@ -93,7 +93,7 @@ export async function deleteTemporaryThumbnail(tempThumbnailPath: string): Promi
         return;
     }
 
-    await invokeCommand<void>(TAURI_COMMANDS.DELETE_TEMP_THUMBNAIL, {
+    await invokeCommand(TAURI_COMMANDS.DELETE_TEMP_THUMBNAIL, {
         path: normalizedTempThumbnailPath,
     });
 }
@@ -109,7 +109,7 @@ export async function deleteThumbnailFile(
         return;
     }
 
-    await invokeCommand<void>(TAURI_COMMANDS.DELETE_THUMBNAIL_FILE, {
+    await invokeCommand(TAURI_COMMANDS.DELETE_THUMBNAIL_FILE, {
         thumbnailPath: normalizedThumbnailPath,
         libraryPath: normalizedLibraryPath,
     });

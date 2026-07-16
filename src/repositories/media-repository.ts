@@ -14,14 +14,14 @@ export async function listMediaPage(
     channelId: number,
     query: MediaPageQuery
 ): Promise<MediaPage> {
-    return invokeCommand<MediaPage>(TAURI_COMMANDS.LIST_MEDIA_PAGE, { channelId, query });
+    return invokeCommand(TAURI_COMMANDS.LIST_MEDIA_PAGE, { channelId, query });
 }
 
 export async function findMediaByChannelAndFilePath(
     channelId: number,
     filePath: string
 ): Promise<MediaRow | null> {
-    return invokeCommand<MediaRow | null>(
+    return invokeCommand(
         TAURI_COMMANDS.FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH,
         { channelId, filePath }
     );
@@ -31,7 +31,7 @@ export async function mediaExistsForChannelAndYoutubeId(
     channelId: number,
     youtubeVideoId: string
 ): Promise<boolean> {
-    return invokeCommand<boolean>(TAURI_COMMANDS.MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID, {
+    return invokeCommand(TAURI_COMMANDS.MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID, {
         channelId,
         youtubeVideoId,
     });
@@ -49,7 +49,7 @@ export async function insertMedia(
     isLive: boolean,
     liveChatFilePath: string | null
 ): Promise<number> {
-    return invokeCommand<number>(TAURI_COMMANDS.INSERT_MEDIA, {
+    return invokeCommand(TAURI_COMMANDS.INSERT_MEDIA, {
         channelId,
         title,
         filePath,
@@ -64,19 +64,19 @@ export async function insertMedia(
 }
 
 export async function listMediaCommentsByMediaId(mediaId: number): Promise<MediaCommentRow[]> {
-    return invokeCommand<MediaCommentRow[]>(TAURI_COMMANDS.LIST_MEDIA_COMMENTS_BY_MEDIA_ID, {
+    return invokeCommand(TAURI_COMMANDS.LIST_MEDIA_COMMENTS_BY_MEDIA_ID, {
         mediaId,
     });
 }
 
 export async function deleteMediaWithArtifacts(mediaId: number): Promise<ArtifactCleanupReport> {
-    return invokeCommand<ArtifactCleanupReport>(TAURI_COMMANDS.DELETE_MEDIA_WITH_ARTIFACTS, {
+    return invokeCommand(TAURI_COMMANDS.DELETE_MEDIA_WITH_ARTIFACTS, {
         mediaId,
     });
 }
 
 export async function markMediaAsWatched(mediaId: number): Promise<string> {
-    return invokeCommand<string>(TAURI_COMMANDS.MARK_MEDIA_AS_WATCHED, { mediaId });
+    return invokeCommand(TAURI_COMMANDS.MARK_MEDIA_AS_WATCHED, { mediaId });
 }
 
 export async function markMediaAsUnwatched(mediaId: number): Promise<void> {
@@ -95,18 +95,18 @@ export async function cleanupUnreferencedMediaArtifacts(
     thumbnailPath: string | null,
     liveChatFilePath: string | null
 ): Promise<ArtifactCleanupReport> {
-    return invokeCommand<ArtifactCleanupReport>(
+    return invokeCommand(
         TAURI_COMMANDS.CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS,
         { filePath, thumbnailPath, liveChatFilePath }
     );
 }
 
 export async function getMediaRepositoryStats(): Promise<MediaRepositoryStats> {
-    return invokeCommand<MediaRepositoryStats>(TAURI_COMMANDS.GET_MEDIA_REPOSITORY_STATS);
+    return invokeCommand(TAURI_COMMANDS.GET_MEDIA_REPOSITORY_STATS);
 }
 
 export async function listMediaIntegrityReferences(): Promise<MediaIntegrityReference[]> {
-    return invokeCommand<MediaIntegrityReference[]>(
+    return invokeCommand(
         TAURI_COMMANDS.LIST_MEDIA_INTEGRITY_REFERENCES
     );
 }

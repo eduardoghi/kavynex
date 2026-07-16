@@ -34,7 +34,7 @@ export async function chooseLibraryDirectory(): Promise<string | null> {
 }
 
 export async function resolveDefaultLibraryDirectory(): Promise<string> {
-    const path = await invokeCommand<string>(TAURI_COMMANDS.RESOLVE_DEFAULT_LIBRARY_DIRECTORY);
+    const path = await invokeCommand(TAURI_COMMANDS.RESOLVE_DEFAULT_LIBRARY_DIRECTORY);
     return normalizeString(path);
 }
 
@@ -45,7 +45,7 @@ export async function ensureDirectoryExists(path: string): Promise<string> {
         throw new ClientError("Directory path is required.");
     }
 
-    const result = await invokeCommand<string>(TAURI_COMMANDS.ENSURE_DIRECTORY_EXISTS, {
+    const result = await invokeCommand(TAURI_COMMANDS.ENSURE_DIRECTORY_EXISTS, {
         path: normalizedPath,
     });
 
@@ -59,7 +59,7 @@ export async function resolveExistingDirectory(path: string): Promise<string> {
         throw new ClientError("Directory path is required.");
     }
 
-    const result = await invokeCommand<string>(TAURI_COMMANDS.RESOLVE_EXISTING_DIRECTORY, {
+    const result = await invokeCommand(TAURI_COMMANDS.RESOLVE_EXISTING_DIRECTORY, {
         path: normalizedPath,
     });
 
@@ -73,7 +73,7 @@ export async function isDirectoryEmpty(path: string): Promise<boolean> {
         throw new ClientError("Directory path is required.");
     }
 
-    return invokeCommand<boolean>(TAURI_COMMANDS.IS_DIRECTORY_EMPTY, {
+    return invokeCommand(TAURI_COMMANDS.IS_DIRECTORY_EMPTY, {
         path: normalizedPath,
     });
 }
@@ -93,7 +93,7 @@ export async function migrateLibraryDirectory(
         throw new ClientError("New library path is required.");
     }
 
-    const finalLibraryPath = await invokeCommand<string>(
+    const finalLibraryPath = await invokeCommand(
         TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY,
         {
             oldLibraryPath: normalizedCurrentLibraryPath,
@@ -115,7 +115,7 @@ export async function getLibrarySummary(path: string): Promise<LibrarySummaryInf
     }
 
     try {
-        const result = await invokeCommand<LibrarySummaryInfo>(TAURI_COMMANDS.GET_LIBRARY_SUMMARY, {
+        const result = await invokeCommand(TAURI_COMMANDS.GET_LIBRARY_SUMMARY, {
             libraryPath: normalizedPath,
         });
 
