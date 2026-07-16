@@ -148,6 +148,30 @@ notice, never auto-downloaded. Downloaded update artifacts are verified against 
 public key embedded in `tauri.conf.json` before being installed; the matching private key is
 held by the release workflow's GitHub secrets and never checked into the repository.
 
+#### Accepted risk: the updater can be rolled back to an older signed release
+
+The minisign signature covers the *bytes of each update artifact*, not the `latest.json` that
+names which version is current. `latest.json` carries the version string and the artifact URL,
+and the client only compares that version against the installed one - it has no notion of a
+monotonic release counter or a signed timestamp (the `tauri-plugin-updater` protocol has no TUF-
+style freeze/rollback protection). So an attacker who can *write to the GitHub release* - which
+is a weaker capability than holding the minisign private key, since release assets stay editable
+after publication - could repoint `latest.json` at an **older, already-signed** artifact from a
+previous release while advertising a higher version number. Every already-published artifact keeps
+a valid signature forever, so the client would accept it and effectively downgrade the app to a
+prior (possibly vulnerable) version. The signature check is not bypassed here; it is simply not a
+freshness check.
+
+This is a structural limitation of the updater protocol rather than a defect in Kavynex, and a
+full fix (a signed version counter, or TUF metadata) is disproportionate for a solo project. What
+reduces the exposure: the release is always created as a draft and published by hand (`release.yml`,
+`CONTRIBUTING.md`), the endpoint is a fixed HTTPS URL under an account protected by the repository's
+own access controls, and published release assets are never rewritten in the normal flow - the
+`checksums` job only *adds* `SHA256SUMS.txt`. Rotating the minisign key does **not** address this
+one (the old artifacts stay validly signed under the old key); the mitigations that matter are the
+GitHub account controls and not tampering with an already-published release. It is recorded here
+rather than left implicit because "the update is signed" reads as stronger than it is.
+
 ### Installers are unsigned by design
 
 Kavynex's installers (the `.exe`/`.msi` on Windows, the `.dmg` on macOS, the
