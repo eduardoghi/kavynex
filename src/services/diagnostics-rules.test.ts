@@ -18,8 +18,8 @@ function baseDiagnostics(): AppDiagnostics {
         libraryPath: "/library",
         importMode: "copy",
         externalTools: {
-            yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true },
-            ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true },
+            yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true, release_age_days: null },
+            ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true, release_age_days: null },
         },
         librarySummary: {
             total_bytes: 1024,
@@ -122,6 +122,47 @@ describe("buildDiagnosticsIssues", () => {
                     "URL imports will not work until yt-dlp is installed or configured correctly.",
             },
         ]);
+    });
+
+    it("flags YT_DLP_OUTDATED once the installed release is old enough", () => {
+        const input = baseDiagnostics();
+        input.externalTools.yt_dlp.release_age_days = 61;
+
+        expect(buildDiagnosticsIssues(input)).toEqual([
+            {
+                code: "YT_DLP_OUTDATED",
+                severity: "info",
+                title: "yt-dlp may be out of date",
+                description:
+                    'The installed yt-dlp was released 61 days ago. YouTube changes often break older versions, so update it (for example with "yt-dlp -U") if downloads start failing.',
+            },
+        ]);
+    });
+
+    it("stays quiet about a yt-dlp release that is recent, ageless, or exactly at the threshold", () => {
+        // `null` is the ffmpeg/unparseable case, and it must not read as "age zero" or as stale.
+        // 60 is the threshold itself: the rule fires *past* it, so the boundary stays silent.
+        for (const releaseAge of [null, 0, 59, 60]) {
+            const input = baseDiagnostics();
+            input.externalTools.yt_dlp.release_age_days = releaseAge;
+
+            expect(buildDiagnosticsIssues(input).map((issue) => issue.code)).not.toContain(
+                "YT_DLP_OUTDATED"
+            );
+        }
+    });
+
+    it("does not call an unavailable yt-dlp outdated as well", () => {
+        // An unhealthy tool already has its own issue; adding "may be out of date" on top would
+        // point at the wrong fix, since there is no working copy to update in the first place.
+        const input = baseDiagnostics();
+        input.externalTools.yt_dlp.healthy = false;
+        input.externalTools.yt_dlp.release_age_days = 400;
+
+        const codes = buildDiagnosticsIssues(input).map((issue) => issue.code);
+
+        expect(codes).toContain("YT_DLP_NOT_AVAILABLE");
+        expect(codes).not.toContain("YT_DLP_OUTDATED");
     });
 
     it("flags FFMPEG_NOT_AVAILABLE when ffmpeg is unhealthy", () => {

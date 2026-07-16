@@ -49,11 +49,15 @@ function defaultExternalToolsStatus(): ExternalToolsStatus {
             path: "",
             version: "",
             healthy: false,
+            // No version was read at all, so there is no release date to age: an unhealthy tool
+            // has its own issue to report and must not also be called out as merely outdated.
+            release_age_days: null,
         },
         ffmpeg: {
             path: "",
             version: "",
             healthy: false,
+            release_age_days: null,
         },
     };
 }

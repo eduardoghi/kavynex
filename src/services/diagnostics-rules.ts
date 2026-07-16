@@ -7,6 +7,11 @@ import type {
     DiagnosticsOverviewStatus,
 } from "../types/diagnostics";
 
+// How old a yt-dlp release has to be before the diagnostics mention it. Deliberately generous:
+// yt-dlp ships very often, so a stricter threshold would nag about a version that still works,
+// and this only ever suggests an update - it never blocks a download.
+const YT_DLP_STALE_AFTER_DAYS = 60;
+
 function compareIssueSeverity(left: DiagnosticsIssue, right: DiagnosticsIssue): number {
     const rank: Record<DiagnosticsIssue["severity"], number> = {
         error: 0,
@@ -74,6 +79,28 @@ export function buildDiagnosticsIssues(
             title: "yt-dlp is not available",
             description:
                 "URL imports will not work until yt-dlp is installed or configured correctly.",
+        });
+    }
+
+    // yt-dlp breaks against YouTube whenever the site changes, and the fix is almost always just
+    // updating it. Without this, that failure reaches the user as yt-dlp's own raw extractor error
+    // in the terminal panel, which says nothing about the copy on their PATH being old - so the
+    // app looks broken when it is not. The backend reports the age (yt-dlp versions are dates);
+    // deciding when an age is worth mentioning is a diagnostics rule, so it lives here with the
+    // rest of them. Informational rather than a warning: an old yt-dlp often still works fine, and
+    // this must not read as "something is wrong" when nothing is.
+    const ytDlpAgeDays = input.externalTools.yt_dlp.release_age_days;
+
+    if (
+        input.externalTools.yt_dlp.healthy &&
+        ytDlpAgeDays !== null &&
+        ytDlpAgeDays > YT_DLP_STALE_AFTER_DAYS
+    ) {
+        issues.push({
+            code: "YT_DLP_OUTDATED",
+            severity: "info",
+            title: "yt-dlp may be out of date",
+            description: `The installed yt-dlp was released ${ytDlpAgeDays} days ago. YouTube changes often break older versions, so update it (for example with "yt-dlp -U") if downloads start failing.`,
         });
     }
 

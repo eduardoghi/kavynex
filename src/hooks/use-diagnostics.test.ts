@@ -36,11 +36,13 @@ function createSummary(label: string): DiagnosticsSummary {
                     path: "/tools/yt-dlp",
                     version: "2026.01.01",
                     healthy: true,
+                    release_age_days: null,
                 },
                 ffmpeg: {
                     path: "/tools/ffmpeg",
                     version: "7.0",
                     healthy: true,
+                    release_age_days: null,
                 },
             },
             librarySummary: {

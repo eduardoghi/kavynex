@@ -103,11 +103,13 @@ describe("diagnostics-service", () => {
                 path: "/tools/yt-dlp",
                 version: "2026.01.01",
                 healthy: true,
+                release_age_days: null,
             },
             ffmpeg: {
                 path: "/tools/ffmpeg",
                 version: "7.0",
                 healthy: true,
+                release_age_days: null,
             },
         });
 
@@ -188,11 +190,13 @@ describe("diagnostics-service", () => {
                 path: "/tools/yt-dlp",
                 version: "2026.01.01",
                 healthy: true,
+                release_age_days: null,
             },
             ffmpeg: {
                 path: "/tools/ffmpeg",
                 version: "7.0",
                 healthy: true,
+                release_age_days: null,
             },
         });
 
@@ -251,11 +255,13 @@ describe("diagnostics-service", () => {
                 path: "",
                 version: "",
                 healthy: false,
+                release_age_days: null,
             },
             ffmpeg: {
                 path: "",
                 version: "",
                 healthy: false,
+                release_age_days: null,
             },
         });
 
@@ -327,11 +333,13 @@ describe("diagnostics-service", () => {
                 path: "/tools/yt-dlp",
                 version: "2026.01.01",
                 healthy: true,
+                release_age_days: null,
             },
             ffmpeg: {
                 path: "/tools/ffmpeg",
                 version: "7.0",
                 healthy: true,
+                release_age_days: null,
             },
         });
 
@@ -400,8 +408,8 @@ describe("diagnostics-service", () => {
         });
 
         getExternalToolsStatusMock.mockResolvedValueOnce({
-            yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true },
-            ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true },
+            yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true, release_age_days: null },
+            ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true, release_age_days: null },
         });
 
         getLibrarySummaryMock.mockResolvedValueOnce({
@@ -452,11 +460,13 @@ describe("diagnostics-service", () => {
                 path: "/tools/yt-dlp",
                 version: "2026.01.01",
                 healthy: true,
+                release_age_days: null,
             },
             ffmpeg: {
                 path: "/tools/ffmpeg",
                 version: "7.0",
                 healthy: true,
+                release_age_days: null,
             },
         });
 

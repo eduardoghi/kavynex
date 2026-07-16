@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use chrono::{NaiveDate, Utc};
 use tauri::{AppHandle, Manager};
 
 use crate::models::yt_dlp::{ExternalToolHealth, ExternalToolsStatus};
@@ -150,6 +151,38 @@ pub fn resolve_ffmpeg_binary(app: &AppHandle) -> AppResult<String> {
     )
 }
 
+/// Parses the release date out of a yt-dlp version string.
+///
+/// yt-dlp versions are dates: `2026.07.01` for a stable release, with a trailing build counter on
+/// a nightly/master build (`2026.07.01.123456`). Anything that is not a plausible date - ffmpeg's
+/// `N-124716-g054dffd133-win64-gpl`, a distro-patched string, an empty read - yields `None` rather
+/// than a guess, since a wrong date here would show the user a warning about nothing.
+fn parse_release_date(version: &str) -> Option<NaiveDate> {
+    let mut parts = version.trim().split('.');
+
+    let year: i32 = parts.next()?.parse().ok()?;
+    let month: u32 = parts.next()?.parse().ok()?;
+    let day: u32 = parts.next()?.parse().ok()?;
+
+    // Guard against a version that merely looks numeric (something like `1.2.3` parses fine but is
+    // not a date). NaiveDate rejects an impossible month/day; the year bound rejects the rest.
+    if !(2000..=2999).contains(&year) {
+        return None;
+    }
+
+    NaiveDate::from_ymd_opt(year, month, day)
+}
+
+/// Days between the release `version` names and `today`, or `None` when the version does not
+/// encode a date. A version dated in the future (a clock skewed backwards, a nightly built
+/// elsewhere) reports 0 rather than a negative age: the tool is not stale, which is all the caller
+/// asks about.
+fn release_age_days(version: &str, today: NaiveDate) -> Option<u32> {
+    let released = parse_release_date(version)?;
+
+    Some((today - released).num_days().max(0) as u32)
+}
+
 fn run_command_and_capture_first_line(
     binary_path: &str,
     args: &[&str],
@@ -220,16 +253,23 @@ pub fn resolve_external_tools_status(app: &AppHandle) -> AppResult<ExternalTools
     let yt_dlp_version = validate_yt_dlp_binary(&yt_dlp_path)?;
     let ffmpeg_version = validate_ffmpeg_binary(&ffmpeg_path)?;
 
+    // Only yt-dlp carries a date in its version, so ffmpeg simply reports no age. The clock is
+    // read once, here at the boundary, so the age computation itself stays pure and testable.
+    let today = Utc::now().date_naive();
+    let yt_dlp_age = release_age_days(&yt_dlp_version, today);
+
     Ok(ExternalToolsStatus {
         yt_dlp: ExternalToolHealth {
             path: yt_dlp_path,
             version: yt_dlp_version,
             healthy: true,
+            release_age_days: yt_dlp_age,
         },
         ffmpeg: ExternalToolHealth {
             path: ffmpeg_path,
             version: ffmpeg_version,
             healthy: true,
+            release_age_days: None,
         },
     })
 }
@@ -341,6 +381,50 @@ mod tests {
         assert!(found.to_lowercase().ends_with("kavynex-fake-tool.exe"));
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn release_age_days_reads_the_date_out_of_a_yt_dlp_version() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 16).unwrap();
+
+        // A stable release, and the same date as a nightly with a trailing build counter.
+        assert_eq!(release_age_days("2026.07.01", today), Some(15));
+        assert_eq!(release_age_days("2026.07.01.123456", today), Some(15));
+        assert_eq!(release_age_days("  2026.07.16  ", today), Some(0));
+        assert_eq!(release_age_days("2025.07.16", today), Some(365));
+    }
+
+    #[test]
+    fn release_age_days_reports_no_age_for_a_version_that_is_not_a_date() {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 16).unwrap();
+
+        for version in [
+            // ffmpeg's own version line: must never be mistaken for a date.
+            "ffmpeg version N-124716-g054dffd133-win64-gpl",
+            "N-124716-g054dffd133",
+            // Numeric but not a date - the shape a naive parser would happily accept.
+            "1.2.3",
+            "2026.13.01",
+            "2026.02.30",
+            "2026.07",
+            "unknown",
+            "",
+        ] {
+            assert_eq!(
+                release_age_days(version, today),
+                None,
+                "{version} should not yield an age"
+            );
+        }
+    }
+
+    #[test]
+    fn release_age_days_never_reports_a_negative_age() {
+        // A clock behind the release date (skew, or a nightly built on a machine ahead of this
+        // one) must read as "not stale", not as a huge or negative number.
+        let today = NaiveDate::from_ymd_opt(2026, 7, 16).unwrap();
+
+        assert_eq!(release_age_days("2026.08.01", today), Some(0));
     }
 
     #[test]

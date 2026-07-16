@@ -231,6 +231,14 @@ pub struct ExternalToolHealth {
     pub path: String,
     pub version: String,
     pub healthy: bool,
+    /// Days between the release this version names and today, when the version string encodes a
+    /// date - yt-dlp's versions are dates (`2026.07.01`), ffmpeg's are not, so this is `None` for
+    /// ffmpeg and for anything unparseable.
+    ///
+    /// Deliberately a fact rather than a verdict: whether an age is worth warning about is a
+    /// diagnostics policy, and every other such rule lives in `src/services/diagnostics-rules.ts`
+    /// rather than being split across the IPC boundary.
+    pub release_age_days: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, TS)]
