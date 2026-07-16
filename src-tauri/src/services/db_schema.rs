@@ -40,6 +40,14 @@ const VIDEOS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS videos (
     has_live_chat INTEGER NOT NULL DEFAULT 0,
     live_chat_file_path TEXT CHECK (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) <> ''),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    -- has_live_chat is set only when a live_chat_file_path is stored: insert_media derives both
+    -- from the same optional path, so a row flagged as having a live chat with no stored path is a
+    -- corruption the write path can never produce. Enforce it here so an out-of-band writer or a
+    -- malformed import cannot persist that state, rather than only counting it in the library
+    -- diagnostics (see video_repository::get_media_repository_stats). One-directional on purpose:
+    -- the flag being clear while a path is present is harmless (it just hides a stored replay), so
+    -- only the flag-without-path direction is rejected.
+    CHECK (has_live_chat = 0 OR live_chat_file_path IS NOT NULL),
     FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
     UNIQUE (channel_id, file_path)
 )";
@@ -91,8 +99,12 @@ const LEGACY_TABLE_DROPS: &[&str] = &["DROP TABLE IF EXISTS video_live_chat_mess
 // table only drops that table's indexes.
 const INDEX_DDLS: &[(&str, &str)] = &[
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)"),
-    // Serves the hot "list a channel's media, newest first" query
-    // (WHERE channel_id = ? ORDER BY created_at DESC, id DESC) without a separate sort step.
+    // Covers a channel's media newest-first (channel_id = ? ORDER BY created_at DESC, id DESC)
+    // without a separate sort step. Its original caller (the unpaginated list_media_by_channel)
+    // was removed; the paginated list_media_page sorts include title_normalized and are served by
+    // the composite indexes below, not this one. Kept because dropping it entangles the v8
+    // migration identity and its dedicated idempotency test - a standalone cleanup, not part of
+    // removing that caller - and it still fits any future newest-first-only listing.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)"),
     // Serves the title-sorted page of a channel's media (the paginated library list ordering by
     // title_normalized within a channel), so that sort does not filesort the whole channel.
@@ -118,11 +130,12 @@ const INDEX_DDLS: &[(&str, &str)] = &[
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)"),
-    ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_file_path_unique ON videos(channel_id, file_path)"),
     // Serves the artifact reference-count lookups run on every media/channel delete
-    // (WHERE file_path = ? / WHERE live_chat_file_path = ?). The composite unique index above
-    // cannot serve a bare `file_path =` predicate without the leading `channel_id`, so a
-    // dedicated single-column index is needed to keep deletes off a full table scan.
+    // (WHERE file_path = ? / WHERE live_chat_file_path = ?). The table's (channel_id, file_path)
+    // UNIQUE constraint already provides the auto-index that backs the insert_media upsert's
+    // ON CONFLICT(channel_id, file_path), but that composite index cannot serve a bare
+    // `file_path =` predicate without the leading `channel_id`, so a dedicated single-column
+    // index is needed to keep deletes off a full table scan.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_file_path ON videos(file_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_live_chat_file_path ON videos(live_chat_file_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)"),
@@ -180,6 +193,79 @@ where
     .map_err(|error| db_error("failed to read table columns", error))?;
 
     Ok(rows.iter().any(|(name,)| name == column))
+}
+
+/// True when `table` has a UNIQUE index whose columns are exactly `columns`, in order - whether it
+/// comes from a table-level UNIQUE constraint (an auto-index) or an explicit `CREATE UNIQUE INDEX`.
+///
+/// Used to validate an imported database: `insert_media`'s `ON CONFLICT(channel_id, file_path)`
+/// upsert needs this unique index to exist, and a namesake database carrying the right columns but
+/// no such index would be accepted and then fail every insert at runtime. The index name is never
+/// interpolated - it flows from `pragma_index_list` into `pragma_index_info` through the join - so
+/// a crafted index name in the untrusted import file cannot inject SQL. `table` is a `&'static str`
+/// constant, safe to interpolate for the same reason as `table_has_column`.
+pub(crate) async fn table_has_unique_index_on(
+    pool: &SqlitePool,
+    table: &'static str,
+    columns: &[&str],
+) -> AppResult<bool> {
+    let rows: Vec<(String, i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT il.name, ii.seqno, ii.name \
+         FROM pragma_index_list('{table}') AS il \
+         JOIN pragma_index_info(il.name) AS ii \
+         WHERE il.\"unique\" = 1"
+    )))
+    .fetch_all(pool)
+    .await
+    .map_err(|error| db_error("failed to read table indexes", error))?;
+
+    let mut by_index: std::collections::BTreeMap<String, Vec<(i64, String)>> =
+        std::collections::BTreeMap::new();
+    for (index_name, seqno, column) in rows {
+        by_index.entry(index_name).or_default().push((seqno, column));
+    }
+
+    for index_columns in by_index.values_mut() {
+        index_columns.sort_by_key(|(seqno, _)| *seqno);
+
+        if index_columns.len() == columns.len()
+            && index_columns
+                .iter()
+                .zip(columns)
+                .all(|((_, got), want)| got == want)
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// True when `table` declares a FOREIGN KEY on `column` that references `parent` with
+/// `ON DELETE CASCADE`.
+///
+/// Used to validate an imported database: `PRAGMA foreign_keys` only enforces the foreign keys a
+/// table's DDL actually declares - it never adds a missing one - so a namesake database whose
+/// videos table lacks this cascade would be accepted and then silently orphan a channel's videos
+/// and their comments when the channel is deleted. `table` is a `&'static str` constant (safe to
+/// interpolate); `column` and `parent` are bound.
+pub(crate) async fn table_has_cascade_foreign_key(
+    pool: &SqlitePool,
+    table: &'static str,
+    column: &str,
+    parent: &str,
+) -> AppResult<bool> {
+    let (count,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT COUNT(*) FROM pragma_foreign_key_list('{table}') \
+         WHERE \"table\" = ? AND \"from\" = ? AND \"on_delete\" = 'CASCADE'"
+    )))
+    .bind(parent)
+    .bind(column)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| db_error("failed to read table foreign keys", error))?;
+
+    Ok(count > 0)
 }
 
 async fn ensure_videos_additive_columns(conn: &mut SqliteConnection) -> AppResult<()> {
@@ -789,6 +875,88 @@ mod tests {
             .unwrap();
             assert_eq!(count, 1, "expected table {table} to exist");
         }
+    }
+
+    #[tokio::test]
+    async fn videos_check_rejects_a_live_chat_flag_without_a_path() {
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        // A parent channel for the rows below (sqlx enables foreign_keys by default), so the
+        // rejected insert fails on the live-chat CHECK rather than on the channel foreign key.
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Flag set with no stored path: the state insert_media can never produce and the library
+        // diagnostics used to only count is now refused by the schema itself.
+        let rejected = sqlx::query(
+            "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 'T', 'video/a.mp4', 'video', 1, NULL)",
+        )
+        .execute(&pool)
+        .await;
+        assert!(
+            rejected.is_err(),
+            "has_live_chat = 1 with no live_chat_file_path must be rejected"
+        );
+
+        // Flag set with a path, flag clear with no path, and flag clear with a path are all
+        // allowed - only the flag-without-path combination is the corruption being fenced off.
+        for (file_path, has_flag, path) in [
+            ("video/b.mp4", "1", "'live_chat/b.json.gz'"),
+            ("video/c.mp4", "0", "NULL"),
+            ("video/d.mp4", "0", "'live_chat/d.json.gz'"),
+        ] {
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
+                 VALUES (1, 'T', '{file_path}', 'video', {has_flag}, {path})"
+            )))
+            .execute(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("{file_path} should be accepted: {error}"));
+        }
+    }
+
+    #[tokio::test]
+    async fn introspection_helpers_see_the_videos_constraints() {
+        // Backs the import-validation helpers against the real schema: the (channel_id, file_path)
+        // unique key comes from a table-level UNIQUE constraint (an auto-index, not a named
+        // CREATE UNIQUE INDEX), so this also pins that the auto-index form is detected.
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        assert!(
+            table_has_unique_index_on(&pool, "videos", &["channel_id", "file_path"])
+                .await
+                .unwrap(),
+            "the (channel_id, file_path) unique key should be detected"
+        );
+        assert!(
+            !table_has_unique_index_on(&pool, "videos", &["file_path", "channel_id"])
+                .await
+                .unwrap(),
+            "column order matters: the reversed pair is a different key"
+        );
+        assert!(
+            !table_has_unique_index_on(&pool, "videos", &["thumbnail_path"])
+                .await
+                .unwrap(),
+            "a non-unique index must not be counted"
+        );
+        assert!(
+            table_has_cascade_foreign_key(&pool, "videos", "channel_id", "channels")
+                .await
+                .unwrap(),
+            "the videos -> channels ON DELETE CASCADE should be detected"
+        );
+        assert!(
+            !table_has_cascade_foreign_key(&pool, "videos", "channel_id", "app_settings")
+                .await
+                .unwrap(),
+            "a cascade to a different parent must not match"
+        );
     }
 
     #[tokio::test]

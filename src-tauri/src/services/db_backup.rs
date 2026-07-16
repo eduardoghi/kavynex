@@ -614,6 +614,38 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         }
     }
 
+    // The columns can all be present while the row-level guarantees the app relies on are silently
+    // absent - a look-alike or hand-built database that named the columns but omitted the
+    // constraints. Two of those cannot be repaired after the swap and must land here as a refused
+    // import: without the (channel_id, file_path) unique index the insert_media upsert's
+    // ON CONFLICT target has nothing to match, so every insert fails; without the videos -> channels
+    // ON DELETE CASCADE a channel delete leaves its videos and their comments orphaned. Enabling
+    // PRAGMA foreign_keys cannot rescue either - it only enforces constraints the DDL declares, it
+    // never adds one - so the shape has to be verified before the database is accepted.
+    let has_unique_media_key = crate::services::db_schema::table_has_unique_index_on(
+        pool,
+        "videos",
+        &["channel_id", "file_path"],
+    )
+    .await
+    .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+    let has_channel_cascade = crate::services::db_schema::table_has_cascade_foreign_key(
+        pool,
+        "videos",
+        "channel_id",
+        "channels",
+    )
+    .await
+    .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+    if !has_unique_media_key || !has_channel_cascade {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected file is not a kavynex database",
+        ));
+    }
+
     let (user_version,): (i64,) = sqlx::query_as("PRAGMA user_version")
         .fetch_one(pool)
         .await
@@ -1102,6 +1134,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn import_rejects_a_database_missing_the_media_unique_key() {
+        // Right tables, right columns, stamped current - but the (channel_id, file_path) unique
+        // key that insert_media's ON CONFLICT upsert targets is absent. Accepting it would swap in
+        // a database on which every media insert then fails at runtime, so it is refused here (a
+        // column check alone cannot see the missing constraint).
+        let dir = temp_dir("import-no-unique");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("namesake.db");
+        seed_namesake_with_videos_ddl(
+            &source,
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, file_path TEXT, \
+             media_type TEXT, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE)",
+        )
+        .await;
+
+        let error = stage_database_import(&db, &source).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+        assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn import_rejects_a_database_missing_the_channel_cascade() {
+        // Right tables, right columns, the unique key present - but no videos -> channels
+        // ON DELETE CASCADE. Accepting it would let a later channel delete orphan that channel's
+        // videos and their comments, since PRAGMA foreign_keys can only enforce a foreign key the
+        // DDL declares and never adds a missing one, so it is refused here.
+        let dir = temp_dir("import-no-cascade");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("namesake.db");
+        seed_namesake_with_videos_ddl(
+            &source,
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, file_path TEXT, \
+             media_type TEXT, UNIQUE (channel_id, file_path))",
+        )
+        .await;
+
+        let error = stage_database_import(&db, &source).await.unwrap_err();
+        assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+        assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn restore_reaches_a_snapshot_stranded_in_the_backup_temp_file() {
         // backup_database vacuums into `.bak.tmp` and only renames it into `.bak` once that
         // succeeds. A run that died in that window leaves a complete, healthy snapshot there that
@@ -1222,14 +1305,18 @@ mod tests {
             .connect_with(options)
             .await
             .unwrap();
-        // Import validation requires every core table *and* the columns each is queried
-        // through, so a representative kavynex database in tests must carry both. Still a
-        // deliberately reduced shape - no constraints, no indexes, only the columns the
-        // validation names - since these tests are about the file swap, not the schema.
+        // Import validation requires every core table, the columns each is queried through, and
+        // the two videos constraints the app relies on at runtime (the (channel_id, file_path)
+        // unique key behind insert_media's upsert, and the videos -> channels ON DELETE CASCADE),
+        // so a representative kavynex database in tests must carry all of them. Still a reduced
+        // shape otherwise - only the columns the validation names, no extra indexes - since these
+        // tests are about the file swap, not the full schema.
         for ddl in [
             "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
             "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
-             file_path TEXT, media_type TEXT)",
+             file_path TEXT, media_type TEXT, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+             UNIQUE (channel_id, file_path))",
             "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT)",
             "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         ] {
@@ -1237,6 +1324,46 @@ mod tests {
         }
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "INSERT INTO videos (title) VALUES ('{title}')"
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+    }
+
+    // Builds a namesake database whose four core tables all carry the required columns and which
+    // is stamped at this build's SCHEMA_VERSION (so ensure_schema would treat it as current and
+    // repair nothing), letting a test vary only the videos DDL to probe a single missing
+    // constraint the column check cannot catch.
+    async fn seed_namesake_with_videos_ddl(source: &Path, videos_ddl: &str) {
+        let options = SqliteConnectOptions::new()
+            .filename(source)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+
+        sqlx::query("CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(videos_ddl))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
         )))
         .execute(&pool)
         .await
