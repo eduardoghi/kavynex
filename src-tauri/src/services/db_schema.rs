@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 12;
+pub(crate) const SCHEMA_VERSION: i64 = 13;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -154,6 +154,30 @@ const INDEX_DDLS: &[(&str, &str)] = &[
     // yt-dlp leaves without an id (comment_id NULL/blank) stay legitimately distinct rows,
     // mirroring idx_videos_channel_youtube_video_id_unique.
     ("video_comments", "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''"),
+];
+
+// Every trigger, paired with the table it belongs to (same shape as INDEX_DDLS). These backport
+// the videos live-chat CHECK to databases whose `videos` table predates it: a table created by an
+// older app version already exists, so the CHECK in VIDEOS_TABLE_DDL never reaches it (CREATE TABLE
+// IF NOT EXISTS is a no-op and SQLite has no ALTER TABLE ADD CONSTRAINT), and rebuilding the main
+// table just to add a CHECK is not worth its risk. A BEFORE INSERT/UPDATE trigger enforces the same
+// invariant with a plain CREATE TRIGGER on the existing table. On a fresh database the CHECK is the
+// primary guard and these are a harmless redundant net. Dropping a table drops its triggers, so a
+// future table rebuild recreates the rebuilt table's triggers from this list, exactly as it does
+// its indexes.
+const TRIGGER_DDLS: &[(&str, &str)] = &[
+    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_live_chat_requires_path_insert \
+        BEFORE INSERT ON videos \
+        WHEN NEW.has_live_chat <> 0 AND NEW.live_chat_file_path IS NULL \
+        BEGIN \
+            SELECT RAISE(ABORT, 'has_live_chat is set but live_chat_file_path is null'); \
+        END"),
+    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_live_chat_requires_path_update \
+        BEFORE UPDATE ON videos \
+        WHEN NEW.has_live_chat <> 0 AND NEW.live_chat_file_path IS NULL \
+        BEGIN \
+            SELECT RAISE(ABORT, 'has_live_chat is set but live_chat_file_path is null'); \
+        END"),
 ];
 
 /// Additive columns for the videos table. Fresh databases already get these from the
@@ -369,14 +393,23 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_migration_12(pool).await?;
     }
 
+    // v13: enforces the videos live-chat invariant on databases whose table predates the CHECK.
+    // Repairs any already-inconsistent row, then adds the enforcement triggers. Not index-only,
+    // but still additive (no table rebuild) - see apply_migration_13.
+    if current_version < 13 {
+        apply_migration_13(pool).await?;
+    }
+
     // Each migration is guarded by version and transactional (it stamps the new
     // user_version inside its own transaction, so a crash leaves the database fully at the
     // old or the new version). An additive migration (a new column or index) runs the
-    // guarded ALTER/CREATE like `apply_migration_8`. A change to a CHECK/UNIQUE/column
-    // type, or dropping a column, cannot be expressed with `ALTER TABLE ADD COLUMN`, so it
-    // rebuilds the affected table with `apply_table_rebuilds` (create new, copy, drop,
-    // rename - with foreign keys disabled and verified) instead of being silently skipped
-    // by the additive baseline above.
+    // guarded ALTER/CREATE like `apply_migration_8`. Enforcing a new invariant on an existing
+    // table can often stay additive too: `apply_migration_13` backports the videos live-chat
+    // CHECK with a trigger rather than a rebuild. A change that genuinely rewrites the table -
+    // a column type, dropping a column, replacing a UNIQUE - cannot be expressed with
+    // `ALTER TABLE ADD COLUMN` or a trigger, so it rebuilds the affected table with
+    // `apply_table_rebuilds` (create new, copy, drop, rename - with foreign keys disabled and
+    // verified) instead of being silently skipped by the additive baseline above.
 
     Ok(())
 }
@@ -426,6 +459,53 @@ async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
 /// by re-running the guarded index DDLs.
 async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 12).await
+}
+
+/// v13: brings the videos live-chat invariant (has_live_chat set implies a stored
+/// live_chat_file_path) to databases created before the CHECK in VIDEOS_TABLE_DDL existed.
+///
+/// Such a database's `videos` table already exists, so the CHECK never reached it (CREATE TABLE
+/// IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table without rebuilding
+/// it). Rather than rebuild the largest table just to add a CHECK, this repairs any row that
+/// already violates the invariant and installs BEFORE INSERT/UPDATE triggers that reject future
+/// violations - a plain `CREATE TRIGGER` on the existing table, touching no row content.
+///
+/// The repair only clears `has_live_chat` where no path is stored (correcting a flag to match the
+/// absent file); it never deletes a row or a stored path. It must run before the triggers, because
+/// the triggers fire only on new writes and would otherwise leave a pre-existing bad row in place.
+/// The repair, the trigger creation and the version stamp share one transaction, so a crash leaves
+/// the database fully at v12 or fully at v13.
+async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    // Correct any row that predates the invariant: the flag says a live chat exists but no path is
+    // stored, so the truth is there is none. Clears only the flag, never a path or the row.
+    sqlx::query(
+        "UPDATE videos SET has_live_chat = 0 \
+         WHERE has_live_chat <> 0 \
+           AND (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) = '')",
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| db_error("failed to repair inconsistent live chat flags", error))?;
+
+    for &(_, ddl) in TRIGGER_DDLS {
+        sqlx::query(ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to create trigger", error))?;
+    }
+
+    set_user_version(&mut tx, 13).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
 }
 
 /// v10: creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
@@ -821,6 +901,18 @@ async fn apply_table_rebuilds_in_transaction(
             .map_err(|error| db_error("failed to recreate index after rebuild", error))?;
     }
 
+    // Dropping a table also drops its triggers, so recreate the rebuilt tables' triggers the same
+    // way. A rebuilt `videos` would otherwise lose the live-chat enforcement triggers.
+    for &(table, ddl) in TRIGGER_DDLS {
+        if !rebuilt_tables.contains(table) {
+            continue;
+        }
+        sqlx::query(ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to recreate trigger after rebuild", error))?;
+    }
+
     // A rebuild must never leave a child row pointing at a now-missing parent.
     let violations = sqlx::query("PRAGMA foreign_key_check")
         .fetch_all(&mut *tx)
@@ -957,6 +1049,108 @@ mod tests {
                 .unwrap(),
             "a cascade to a different parent must not match"
         );
+    }
+
+    #[tokio::test]
+    async fn migration_13_repairs_and_fences_live_chat_on_a_pre_check_database() {
+        let pool = memory_pool().await;
+
+        // A videos table as an older app version left it: the live-chat columns are present but
+        // there is no CHECK and no trigger. Stamped at v12 so ensure_schema runs only migration_13
+        // over this hand-built table (baseline and 8..12 are skipped for current_version >= their
+        // targets), which is exactly the pre-CHECK database this migration must reach.
+        sqlx::query("CREATE TABLE channels (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, youtube_handle TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE videos ( \
+                id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                channel_id INTEGER, \
+                title TEXT, \
+                file_path TEXT, \
+                media_type TEXT, \
+                has_live_chat INTEGER NOT NULL DEFAULT 0, \
+                live_chat_file_path TEXT, \
+                FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+                UNIQUE (channel_id, file_path) \
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        // A pre-existing violation the CHECK-less table held (flag set, no path), plus a
+        // consistent row that must stay untouched.
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 1, 'bad', 'video/bad.mp4', 'video', 1, NULL)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (2, 1, 'ok', 'video/ok.mp4', 'video', 1, 'live_chat/ok.json.gz')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("PRAGMA user_version = 12")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        ensure_schema(&pool).await.unwrap();
+        assert_eq!(read_user_version(&pool).await.unwrap(), SCHEMA_VERSION);
+
+        // The pre-existing violation was repaired (flag cleared, path still NULL, row intact);
+        // the consistent row keeps its flag.
+        let (bad_flag, bad_path): (i64, Option<String>) =
+            sqlx::query_as("SELECT has_live_chat, live_chat_file_path FROM videos WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(bad_flag, 0);
+        assert_eq!(bad_path, None);
+
+        let (ok_flag,): (i64,) = sqlx::query_as("SELECT has_live_chat FROM videos WHERE id = 2")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(ok_flag, 1);
+
+        // The trigger now rejects a fresh violating insert and a violating update, while a
+        // consistent insert still succeeds.
+        let rejected_insert = sqlx::query(
+            "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 't', 'video/new.mp4', 'video', 1, NULL)",
+        )
+        .execute(&pool)
+        .await;
+        assert!(
+            rejected_insert.is_err(),
+            "the trigger must reject has_live_chat = 1 with no path on insert"
+        );
+
+        let rejected_update = sqlx::query("UPDATE videos SET has_live_chat = 1 WHERE id = 1")
+            .execute(&pool)
+            .await;
+        assert!(
+            rejected_update.is_err(),
+            "the trigger must reject flipping has_live_chat on with no path"
+        );
+
+        sqlx::query(
+            "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 't2', 'video/new2.mp4', 'video', 0, NULL)",
+        )
+        .execute(&pool)
+        .await
+        .expect("a consistent insert must still succeed");
     }
 
     #[tokio::test]
