@@ -60,7 +60,7 @@ Choose the package according to your distribution:
 The installers are not code-signed (a deliberate tradeoff - see `SECURITY.md`), so
 SmartScreen/Gatekeeper will warn on first run. To confirm a download is authentic:
 
-- Compare its hash against `SHA256SUMS.txt`, published with every release.
+- Compare its hash against `SHA256SUMS.txt`, published alongside the installers.
 - Or, with the [GitHub CLI](https://cli.github.com/), verify its build provenance:
 
   ```
@@ -68,6 +68,11 @@ SmartScreen/Gatekeeper will warn on first run. To confirm a download is authenti
   ```
 
   A successful check confirms the file was built by this repository's release workflow.
+
+Both apply from the next release onward: the checksum and provenance steps were added to the
+release workflow after v1.1.1 was published, so that release - the latest at the time of
+writing - has neither, and `gh attestation verify` will report no attestation for it rather
+than a failure to trust.
 
 ## Screenshots
 
@@ -109,8 +114,11 @@ pnpm tauri build
 ## Tests
 
 ```bash
-pnpm test
+pnpm test:run
 ```
+
+(`pnpm test` runs the same suite in watch mode.) See `CONTRIBUTING.md` for the Rust suite and
+the rest of the checks CI runs.
 
 ## Troubleshooting
 

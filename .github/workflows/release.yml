@@ -291,3 +291,56 @@ jobs:
                   (cd assets && sha256sum * > ../SHA256SUMS.txt)
                   cat SHA256SUMS.txt
                   gh release upload "v$VERSION" SHA256SUMS.txt --clobber
+
+            # The four build legs upload to the draft independently (fail-fast is off), so a leg
+            # that dies leaves a draft holding the other three - complete-looking, and one manual
+            # "Publish" away from shipping a release with, say, no Windows installer. This job is
+            # skipped entirely when a leg fails, so the only thing standing between that draft and
+            # publication is the maintainer noticing the run is red. Name the expected set instead,
+            # and fail loudly listing what is missing.
+            #
+            # Runs after the upload above so SHA256SUMS.txt is part of what gets checked.
+            - name: Verify the draft has every expected asset
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  ASSETS=$(gh release view "v$VERSION" --json assets --jq '.assets[].name')
+                  echo "$ASSETS"
+
+                  # One entry per artifact the matrix is expected to produce, as a glob. The
+                  # `.sig` files are the updater's; note the two .dmg files deliberately have
+                  # none - tauri signs the macOS updater bundle (.app.tar.gz), not the disk image.
+                  MISSING=""
+                  for pattern in \
+                      "kavynex_${VERSION}_x64-setup.exe" \
+                      "kavynex_${VERSION}_x64-setup.exe.sig" \
+                      "kavynex_${VERSION}_x64_en-US.msi" \
+                      "kavynex_${VERSION}_x64_en-US.msi.sig" \
+                      "kavynex_${VERSION}_aarch64.dmg" \
+                      "kavynex_${VERSION}_x64.dmg" \
+                      "kavynex_aarch64.app.tar.gz" \
+                      "kavynex_aarch64.app.tar.gz.sig" \
+                      "kavynex_x64.app.tar.gz" \
+                      "kavynex_x64.app.tar.gz.sig" \
+                      "kavynex_${VERSION}_amd64.AppImage" \
+                      "kavynex_${VERSION}_amd64.AppImage.sig" \
+                      "kavynex_${VERSION}_amd64.deb" \
+                      "kavynex_${VERSION}_amd64.deb.sig" \
+                      "kavynex-${VERSION}-1.x86_64.rpm" \
+                      "kavynex-${VERSION}-1.x86_64.rpm.sig" \
+                      "latest.json" \
+                      "SHA256SUMS.txt" \
+                  ; do
+                      if ! printf '%s\n' "$ASSETS" | grep -qxF "$pattern"; then
+                          MISSING="$MISSING  $pattern\n"
+                      fi
+                  done
+
+                  if [ -n "$MISSING" ]; then
+                      echo "::error::The draft release v$VERSION is incomplete. Do not publish it."
+                      printf "Missing assets:\n$MISSING"
+                      exit 1
+                  fi
+
+                  echo "The draft release v$VERSION has every expected asset."

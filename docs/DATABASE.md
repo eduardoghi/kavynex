@@ -33,6 +33,7 @@ CREATE TABLE videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     channel_id INTEGER NOT NULL,
     title TEXT NOT NULL CHECK (TRIM(title) <> ''),
+    title_normalized TEXT,
     file_path TEXT NOT NULL CHECK (TRIM(file_path) <> ''),
     thumbnail_path TEXT CHECK (thumbnail_path IS NULL OR TRIM(thumbnail_path) <> ''),
     media_type TEXT NOT NULL CHECK (media_type IN ('video', 'audio')),
@@ -52,9 +53,14 @@ CREATE TABLE videos (
 )
 ```
 
-One row per media item (video or audio), local or downloaded. Note what is *not* here:
-there is no column holding live chat messages themselves - `live_chat_file_path` only
-points at a file on disk (see "Live chat is not in the database" below). `file_path` and
+One row per media item (video or audio), local or downloaded. `title_normalized` is an
+accent/case-folded copy of `title`, written alongside it on every insert/update by
+`utils::text::normalize_search_text` (the same function the search term goes through, which is
+what makes the two comparable) and backfilled for existing rows by the v11 migration. It is
+what the title search and the title sort actually read; SQLite cannot accent-fold in SQL, so
+the folding has to be stored rather than computed per query. Note what is *not* here: there is
+no column holding live chat messages themselves - `live_chat_file_path` only points at a file
+on disk (see "Live chat is not in the database" below). `file_path` and
 `thumbnail_path` are stored relative to the library directory, matching `avatar_path`.
 Uniqueness is enforced two ways: `(channel_id, file_path)` always, and, via a partial
 unique index, `(channel_id, youtube_video_id)` whenever `youtube_video_id` is set - so the
@@ -135,7 +141,9 @@ belonged to those rows (media, thumbnails, avatar, live chat), not for the rows.
 `(channel_id, youtube_video_id)`, single-column indexes on `file_path` and
 `live_chat_file_path` (which keep the per-artifact reference-count lookups run on every
 media/channel delete off a full table scan - the composite `(channel_id, file_path)`
-index cannot serve a bare `file_path =` predicate), and comment lookups by `video_id`,
+index cannot serve a bare `file_path =` predicate), `(channel_id, thumbnail_path)` (which
+serves the other half of a channel delete: collecting the thumbnails its videos point at,
+before deciding which are still referenced elsewhere), and comment lookups by `video_id`,
 `parent_comment_id`, and `comment_id`. All index DDL uses
 `CREATE INDEX IF NOT EXISTS`, so it is safe to re-run on every migration.
 
@@ -299,6 +307,12 @@ most once every 24 hours (checked by the `.bak` file's mtime). It runs:
   pre-existing corruption can be rolled back.
 - **In the background**, off the startup critical path, on a normal launch where no
   migration is pending.
+- **Periodically while the app runs** (`lib.rs::spawn_periodic_backup`), every
+  `PERIODIC_BACKUP_CHECK_INTERVAL_SECS` (6 hours). Both invocations above happen at startup, so
+  without this a session left running for days would never take another snapshot. It creates no
+  extra backups - `backup_database` throttles to once per 24h regardless of how often it is
+  asked - the loop only needs to wake often enough that a long session eventually crosses that
+  threshold.
 
 Before snapshotting, the source database must pass `PRAGMA quick_check` (`is_healthy`); a
 database that fails it is skipped so a corrupt database is never allowed to overwrite a
@@ -314,26 +328,46 @@ WAL-free snapshot - never combined with a live write-ahead log.
 
 ### Restore (`restore_database_from_backup`)
 
-Used when opening the live database fails. It tries `.bak` first, then `.bak.1`, picking
-the first candidate that itself passes `quick_check`; if neither is healthy, it fails with
-`NoDatabaseBackupAvailable`. The current (assumed corrupt) database is moved aside to a
-sibling `.corrupt` file - never deleted - so it can still be inspected, and its `-wal`/
-`-shm` sidecars are removed so the restored snapshot is never combined with a stale
-write-ahead log. A repeated restore rotates the earlier snapshots (`.corrupt` becomes
-`.corrupt.1`, and so on) rather than overwriting them, so the first failure's evidence
-survives the second - which is when it is most worth having. Fewer generations are kept
-than for `.bak`: each one is a full copy of an already-broken database, so the oldest is
-dropped once the rotation is full. The chosen backup is copied to a `.restore.tmp` staging file first and
-only renamed into place after the corrupt database has been moved aside, so a failure
-partway through never leaves the app without a database file. The caller must ensure the
-connection pool is not already open before calling this (it is only reachable from the
-restore-from-backup UI flow, which by definition follows a failed open).
+Used when opening the live database fails. It walks every generation in turn - `.bak`, then
+`.bak.1` through `.bak.6` - and takes the first that itself passes `quick_check`, so a run of
+bad snapshots does not cost the recovery. `.bak.tmp` is offered last: `backup_database` vacuums
+into it and only promotes it once that succeeds, so a run that died in that window strands a
+complete snapshot there that nothing else would look at - but a run that died *during* the
+vacuum leaves a partial file under the same name, and nothing can tell them apart, so it must
+never outrank a real generation. The `quick_check` on the chosen candidate is what makes
+offering it safe. A candidate whose `user_version` is *newer* than this build's
+`SCHEMA_VERSION` is skipped as well, and if that was the only thing on offer the restore fails
+with `DatabaseSchemaTooNew` rather than "succeeding" into a database the next open would
+reject. With nothing healthy left, it fails with `NoDatabaseBackupAvailable`.
+
+The current (assumed corrupt) database is moved aside to a sibling `.corrupt` file - never
+deleted - so it can still be inspected, and its `-wal`/`-shm` sidecars are removed so the
+restored snapshot is never combined with a stale write-ahead log. A repeated restore rotates
+the earlier snapshots (`.corrupt` becomes `.corrupt.1`, and so on) rather than overwriting
+them, so the first failure's evidence survives the second - which is when it is most worth
+having. Fewer generations are kept than for `.bak` (`CORRUPT_ROTATED_GENERATIONS`, 2): each one
+is a full copy of an already-broken database, so the oldest is dropped once the rotation is
+full. The database is moved under a scratch `.corrupt.tmp` *before* the generations are
+rotated, because rotating first would shift them - dropping the oldest, emptying the `.corrupt`
+slot - and a rename that then failed would leave that loss with nothing put in its place.
+
+The chosen backup is copied to a `.restore.tmp` staging file first and only renamed into place
+after the corrupt database has been moved aside, so a failure partway through never leaves the
+app without a database file. There is a window of two renames where the database is
+transiently absent; `resume_interrupted_restore` (called from `setup()` before the pool opens)
+is what covers a crash inside it, finishing the rename rather than letting the next launch
+create an empty database beside the staged one. The caller must ensure the connection pool is
+not already open before calling this (it is only reachable from the restore-from-backup UI
+flow, which by definition follows a failed open).
 
 ### Export (`export_database`)
 
 A user-triggered `VACUUM INTO` snapshot to a user-chosen destination path (via a save
-dialog). Refuses to export a database that fails `quick_check`. The destination is
-cleared first (`VACUUM INTO` fails if the target already exists).
+dialog). Refuses to export a database that fails `quick_check`. The destination is *not*
+cleared first: `VACUUM INTO` cannot write over an existing file, so the snapshot goes to a
+`.export-staging` sibling and only once it succeeds is any previous file at the destination
+replaced. That ordering is the point - exporting over last month's export must not destroy it
+before knowing the new one is good.
 
 ### Import (`stage_database_import` / `apply_pending_database_import`)
 
@@ -342,17 +376,27 @@ live connection pool is a singleton that cannot be reopened mid-session:
 
 1. `stage_database_import` validates the selected file - it must open as a healthy SQLite
    database (`quick_check`), contain the four core tables (`channels`, `videos`,
-   `video_comments`, `app_settings` - a cheap "is this actually a kavynex database" check),
-   and have a `user_version` no higher than this build's `SCHEMA_VERSION`
-   (`DatabaseSchemaTooNew` otherwise) - then copies it to a `.import-staged.tmp` file and
-   renames it to `.import-staged` (atomic staging, so a partial copy is never picked up).
+   `video_comments`, `app_settings`) *and* the columns each of them is queried through, and
+   have a `user_version` no higher than this build's `SCHEMA_VERSION` (`DatabaseSchemaTooNew`
+   otherwise) - then copies it to a `.import-staged.tmp` file and renames it to
+   `.import-staged` (atomic staging, so a partial copy is never picked up). The column check
+   matters because the names alone are not a "is this a kavynex database" test: a namesake
+   schema stamped at the current `SCHEMA_VERSION` would pass, and `ensure_schema` would then
+   consider it current and repair nothing, so it would swap in cleanly and fail with "no such
+   column" on the first query - after the previous database had already been set aside. Any
+   WAL frames the source still holds are checkpointed into it first, since only the `.db` file
+   is copied; if a lock prevents that and frames remain, the import is refused rather than
+   silently dropping the source's most recent commits.
 2. On the *next* app startup, before the pool opens, `lib.rs`'s `setup()` calls
    `apply_pending_database_import`. If a staged file exists, the current database is
    moved aside to `.pre-import` (a safety net, not deleted), the staged file's `-wal`/
    `-shm` sidecars are dropped, and the staged file is renamed into place as the new
    `kavynex.db`. If that rename fails, the previous database is rolled back from
    `.pre-import` so the app is never left without one to open. A failure here is logged
-   but never blocks startup.
+   but never blocks startup. The move-aside is a rename, not a copy, so `.pre-import` can be
+   the *only* copy of the previous database if a run dies between the two renames; the removal
+   of an older `.pre-import` therefore happens only in the branch that immediately replaces it,
+   never unconditionally.
 
 ## Related files
 

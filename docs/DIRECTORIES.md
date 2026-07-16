@@ -25,11 +25,24 @@ codebase re-implements or overrides.
 Alongside `kavynex.db`, SQLite's WAL mode (see `docs/DATABASE.md`) creates sidecar files
 `kavynex.db-wal` and `kavynex.db-shm` in the same directory while the app is running.
 The backup/restore/import machinery in `services/db_backup.rs` also writes siblings here:
-`kavynex.db.bak`, `kavynex.db.bak.1` (rotated backup), `kavynex.db.corrupt` and
-`kavynex.db.corrupt.1` (databases moved aside after a failed restore, rotated the same way
-so a repeated restore keeps the earlier evidence), `kavynex.db.pre-import` (moved aside
-before an import is applied), and short-lived `.bak.tmp` / `.import-staged` /
-`.import-staged.tmp` / `.restore.tmp` files used only during the corresponding operation.
+
+- `kavynex.db.bak` plus `kavynex.db.bak.1` .. `kavynex.db.bak.6` - the rotated automatic
+  snapshots (`BACKUP_ROTATED_GENERATIONS` = 6, so up to seven exist). More than one is kept
+  because the newest can itself have captured an already-degrading database.
+- `kavynex.db.corrupt` plus `kavynex.db.corrupt.1` .. `kavynex.db.corrupt.2` - databases moved
+  aside after a failed restore, rotated the same way so a repeated restore keeps the earlier
+  evidence. Fewer generations than `.bak`: each is a full copy of an already-broken database.
+- `kavynex.db.pre-import` - the database as it was before the last applied import, kept so the
+  import can be undone. It persists until the next import replaces it.
+- Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
+  (the snapshot being vacuumed, before it is promoted to `.bak`), `.import-staged` /
+  `.import-staged.tmp` (an import waiting for the next startup), `.restore.tmp` (a snapshot
+  being restored), `.corrupt.tmp` (a database being moved aside), and `.export-staging` next
+  to a chosen *export* destination rather than here.
+
+See `docs/DATABASE.md` for the rotation, restore and import rules these files follow - the
+counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in
+`db_backup.rs`, which is what to read if this list and the code ever disagree.
 
 Note that on Windows and macOS, Tauri's `app_config_dir` and `app_data_dir` resolve to
 the *same* directory; on Linux they differ (`~/.config/...` vs `~/.local/share/...`).

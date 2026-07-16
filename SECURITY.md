@@ -158,7 +158,7 @@ certificate is a recurring cost that is hard to justify here. In practice this m
 - Windows SmartScreen and macOS Gatekeeper will warn on first run; this is expected and
   is not evidence of tampering.
 - *Download* integrity for a manually downloaded installer is provided by `SHA256SUMS.txt`,
-  published alongside every release (`.github/workflows/release.yml`'s `checksums` job) -
+  published alongside the installers (`.github/workflows/release.yml`'s `checksums` job) -
   compare the hash of what you downloaded against that file. Note what this does and does
   not prove: the `checksums` job hashes the assets already attached to the release, so the
   file tells you your copy matches what the release page serves (it catches a truncated or
@@ -167,6 +167,16 @@ certificate is a recurring cost that is hard to justify here. In practice this m
 - The updater path (in-app update, once installed) does not rely on installer signing at
   all; it relies on the minisign signature described above, which is independent of OS
   code-signing.
+
+### When these three controls started applying
+
+`SHA256SUMS.txt` and the provenance attestation were both added to the release workflow after
+v1.1.1 shipped (the `checksums` job and `actions/attest-build-provenance` respectively), so no
+release published before them carries either, and `gh attestation verify` reports *no
+attestation* for those installers rather than a failed check. The minisign signature on the
+updater artifacts predates both and applies to every release. This section is what the next
+release onward looks like; it is recorded here rather than quietly implied, because "verify the
+hash" is useless advice if the file it names is not there.
 
 ### Build provenance
 
@@ -186,6 +196,34 @@ gh attestation verify <installer-file> --repo eduardoghi/kavynex
 ```
 
 A successful check confirms the file was built by this repository's release workflow.
+
+### Accepted risk: the signing key is present while dependencies build
+
+The release workflow's build step (`.github/workflows/release.yml`, `tauri-apps/tauri-action`)
+runs `cargo build` and signs the resulting artifacts in one invocation, so
+`TAURI_SIGNING_PRIVATE_KEY` and a `contents: write` `GITHUB_TOKEN` are in the environment while
+the whole transitive Rust dependency tree compiles - including every crate's `build.rs`. A
+compromised transitive dependency, or a compromised release of the action itself, could read
+both during the compile phase, before any signing happens.
+
+This is a known, accepted risk rather than an oversight, and it is structural: `tauri-action`
+does not separate building from signing, so the two cannot be split into a job that holds the
+secret and a job that does not. What is done about it:
+
+- Every action is pinned to a full commit SHA, so a tag cannot be repointed at new code.
+- The `permissions:` blocks are per-job; only the build job holds `contents: write` /
+  `id-token: write`, and the dependency-audit job (which installs and runs `cargo-audit` /
+  `cargo-deny`) is a separate job with no access to the signing secrets.
+- The release build deliberately skips the Rust build cache that CI uses, so a poisoned cache
+  entry cannot reach the job that holds the key.
+- Releases are always created as drafts and published by hand, so a build is inspected before
+  the updater endpoint can ever serve it.
+
+The residual exposure is a malicious `build.rs` in a dependency the lockfile already pins,
+reading the environment during a release build. `minimumReleaseAge` and `blockExoticSubdeps`
+(`pnpm-workspace.yaml`) plus `cargo-deny`'s source allow-list are what reduce the chance of such
+a dependency arriving in the first place; nothing in the current workflow removes the exposure
+itself. Rotating the minisign key is the response if a compromise is ever suspected.
 
 ## Reporting a vulnerability
 
