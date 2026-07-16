@@ -51,9 +51,33 @@ fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, us
         let source = path_for(db_path, generation - 1);
         let target = path_for(db_path, generation);
 
-        if source.exists() {
-            let _ = std::fs::remove_file(&target);
-            let _ = std::fs::rename(&source, &target);
+        if !source.exists() {
+            continue;
+        }
+
+        // `rename` already replaces an existing target on both Windows and Unix, so the removal
+        // below is only a fallback for the targets rename itself refuses (a locked or read-only
+        // file on Windows). It has to come *after* the first attempt rather than before it:
+        // clearing the target up front and then failing to rename into it leaves the snapshot
+        // sitting in `source`, which the next iteration's removal would then delete without it
+        // ever having been copied anywhere - silently costing a generation.
+        if std::fs::rename(&source, &target).is_ok() {
+            continue;
+        }
+
+        let _ = std::fs::remove_file(&target);
+
+        if std::fs::rename(&source, &target).is_err() {
+            // Stop instead of shifting the generations below into a slot this one still holds.
+            // Rotation is best effort, so a generation that cannot be promoted is left where it
+            // is - but letting the loop continue would have generation N-1 overwrite it.
+            logger::warn(
+                "db_backup",
+                format!(
+                    "backup rotation stopped at generation {generation}: the snapshot could not be promoted"
+                ),
+            );
+            return;
         }
     }
 }
