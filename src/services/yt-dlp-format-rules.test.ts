@@ -88,6 +88,54 @@ describe("buildMergedFormats", () => {
         expect(merged.map((f) => f.height)).toEqual([2160, 1080, 720]);
     });
 
+    it("sums the merged size only when both tracks report one", () => {
+        const merged = buildMergedFormats([
+            format({
+                format_id: "137",
+                height: 1080,
+                has_video: true,
+                has_audio: false,
+                filesize_bytes: 50_000_000,
+            }),
+            format({
+                format_id: "140",
+                ext: "m4a",
+                abr: 128,
+                has_video: false,
+                has_audio: true,
+                filesize_bytes: 500_000,
+            }),
+        ]);
+
+        expect(merged[0]!.filesize_bytes).toBe(50_500_000);
+    });
+
+    it("reports an unknown merged size when a track has no filesize", () => {
+        // yt-dlp routinely omits filesize on DASH video-only formats. Coalescing the missing
+        // side to 0 made the merged entry report the size of its audio alone - a 1080p option
+        // rendered as "500 KB". Unknown is the honest answer.
+        const merged = buildMergedFormats([
+            format({
+                format_id: "137",
+                height: 1080,
+                has_video: true,
+                has_audio: false,
+                filesize_bytes: null,
+            }),
+            format({
+                format_id: "140",
+                ext: "m4a",
+                abr: 128,
+                has_video: false,
+                has_audio: true,
+                filesize_bytes: 500_000,
+            }),
+        ]);
+
+        expect(merged[0]!.format_id).toBe("137+140");
+        expect(merged[0]!.filesize_bytes).toBeNull();
+    });
+
     it("drops duplicate format ids", () => {
         const merged = buildMergedFormats([
             format({ format_id: "137", height: 1080, has_video: true, has_audio: false }),

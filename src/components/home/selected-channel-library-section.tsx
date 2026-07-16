@@ -26,6 +26,7 @@ import {
     type WatchedFilter,
 } from "../../utils/media-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
+import { toUnionValue } from "../../utils/guards";
 import { AppButton } from "../ui/app-button";
 
 // Debounce the search before it drives the (O(n log n) filter+sort) memo, so typing in a
@@ -202,7 +203,11 @@ export function SelectedChannelLibrarySection({
                     <Select
                         label={UI_TEXT.library.typeLabel}
                         value={mediaTypeFilter}
-                        onChange={(value) => setMediaTypeFilter((value as MediaTypeFilter) || "all")}
+                        onChange={(value) =>
+                            setMediaTypeFilter(
+                                toUnionValue(value, ["all", "video", "audio"] as const, "all")
+                            )
+                        }
                         data={[
                             { value: "all", label: UI_TEXT.library.filters.all },
                             { value: "video", label: UI_TEXT.library.filters.video },
@@ -214,7 +219,11 @@ export function SelectedChannelLibrarySection({
                     <Select
                         label={UI_TEXT.library.statusLabel}
                         value={watchedFilter}
-                        onChange={(value) => setWatchedFilter((value as WatchedFilter) || "all")}
+                        onChange={(value) =>
+                            setWatchedFilter(
+                                toUnionValue(value, ["all", "watched", "unwatched"] as const, "all")
+                            )
+                        }
                         data={[
                             { value: "all", label: UI_TEXT.library.filters.all },
                             { value: "watched", label: UI_TEXT.library.filters.watched },
@@ -227,7 +236,9 @@ export function SelectedChannelLibrarySection({
                         label={UI_TEXT.library.publicationDateLabel}
                         value={publicationDateFilter}
                         onChange={(value) =>
-                            setPublicationDateFilter((value as PublicationDateFilter) || "all")
+                            setPublicationDateFilter(
+                                toUnionValue(value, ["all", "with", "without"] as const, "all")
+                            )
                         }
                         data={[
                             { value: "all", label: UI_TEXT.library.filters.all },
@@ -247,7 +258,19 @@ export function SelectedChannelLibrarySection({
                         label={UI_TEXT.library.sortLabel}
                         value={sortCategory}
                         onChange={(value) =>
-                            setSortCategory((value as SortCategory) || "publication_date")
+                            setSortCategory(
+                                toUnionValue(
+                                    value,
+                                    [
+                                        "publication_date",
+                                        "added_date",
+                                        "title",
+                                        "duration",
+                                        "comments",
+                                    ] as const,
+                                    "publication_date"
+                                )
+                            )
                         }
                         data={[
                             {

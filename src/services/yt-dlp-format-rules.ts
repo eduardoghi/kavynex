@@ -342,6 +342,21 @@ export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormat[] {
     const preferredAudioId = normalizeFormatId(preferredAudio?.format_id);
     const preferredAudioExt = preferredAudio?.ext.trim().toUpperCase() || "AUDIO";
 
+    // A merged entry's size is the sum of its two tracks, so it is only knowable when both are.
+    // Treating a missing side as 0 would understate the total by that entire track.
+    function mergedFilesizeBytes(
+        videoBytes: number | null | undefined,
+        audioBytes: number | null | undefined
+    ): number | null {
+        if (videoBytes == null || audioBytes == null) {
+            return null;
+        }
+
+        const total = videoBytes + audioBytes;
+
+        return total > 0 ? total : null;
+    }
+
     const mergedFormats: ExtendedYtDlpFormat[] =
         preferredAudio && preferredAudioId
             ? videoOnlyFormats.map((videoFormat) => {
@@ -354,9 +369,16 @@ export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormat[] {
                       media_type: "video" as const,
                       has_video: true,
                       has_audio: true,
-                      filesize_bytes:
-                          (videoFormat.filesize_bytes ?? 0) +
-                              (preferredAudio.filesize_bytes ?? 0) || null,
+                      // Only report a merged size when *both* sides are known. Coalescing a
+                      // missing side to 0 understates the total by that whole track, and the
+                      // side that goes missing is normally the video one: yt-dlp often omits
+                      // filesize on DASH video-only formats, which would render a 1080p entry
+                      // as the size of its audio alone. A null reads as "size unknown", which
+                      // is the truth here.
+                      filesize_bytes: mergedFilesizeBytes(
+                          videoFormat.filesize_bytes,
+                          preferredAudio.filesize_bytes
+                      ),
                       height: videoFormat.height,
                       abr: preferredAudio.abr ?? null,
                       tbr: videoFormat.tbr ?? null,
