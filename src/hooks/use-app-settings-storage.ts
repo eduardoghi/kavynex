@@ -66,54 +66,65 @@ export async function persistSettings(settings: AppSettings): Promise<void> {
     );
 }
 
-export async function updateStoredImportMode(mode: ImportMode): Promise<AppSettings> {
-    const current = await loadStoredSettings();
+// Serializes the read-modify-write updates below.
+//
+// `app_settings` is written as a whole row: each setter loads all four values, replaces one, and
+// writes them all back. Run two of those concurrently and both read the same pre-change snapshot,
+// so the second write reverts the first one's field. That is not theoretical - the Privacy and
+// Application-update toggles live in the same modal, a double-click apart, and the callers are
+// fire-and-forget (nothing awaits them, so nothing else orders the writes). One of the fields at
+// risk is `loadRemoteImages`, which decides whether the player talks to Google's CDNs at all.
+//
+// Chaining is enough because these run in one webview against a single-writer database; the point
+// is only that each update reads what the previous one wrote.
+let settingsUpdateQueue: Promise<unknown> = Promise.resolve();
 
-    const next: AppSettings = {
-        ...current,
-        importMode: normalizeImportMode(mode),
-    };
+function enqueueSettingsUpdate(operation: () => Promise<AppSettings>): Promise<AppSettings> {
+    // Run the next update whether the previous one resolved or rejected: a failed write must not
+    // wedge every later setting change for the rest of the session.
+    const result = settingsUpdateQueue.then(operation, operation);
 
-    await persistSettings(next);
-    return next;
+    settingsUpdateQueue = result.catch(() => undefined);
+
+    return result;
 }
 
-export async function updateStoredLibraryPath(libraryPath: string): Promise<AppSettings> {
-    const current = await loadStoredSettings();
-
-    const next: AppSettings = {
-        ...current,
-        libraryPath: normalizeLibraryPath(libraryPath),
-    };
-
-    await persistSettings(next);
-    return next;
-}
-
-export async function updateStoredLoadRemoteImages(
-    loadRemoteImages: boolean
+async function updateStoredField(
+    apply: (current: AppSettings) => AppSettings
 ): Promise<AppSettings> {
     const current = await loadStoredSettings();
-
-    const next: AppSettings = {
-        ...current,
-        loadRemoteImages,
-    };
+    const next = apply(current);
 
     await persistSettings(next);
+
     return next;
 }
 
-export async function updateStoredCheckUpdatesOnStartup(
+export function updateStoredImportMode(mode: ImportMode): Promise<AppSettings> {
+    return enqueueSettingsUpdate(() =>
+        updateStoredField((current) => ({ ...current, importMode: normalizeImportMode(mode) }))
+    );
+}
+
+export function updateStoredLibraryPath(libraryPath: string): Promise<AppSettings> {
+    return enqueueSettingsUpdate(() =>
+        updateStoredField((current) => ({
+            ...current,
+            libraryPath: normalizeLibraryPath(libraryPath),
+        }))
+    );
+}
+
+export function updateStoredLoadRemoteImages(loadRemoteImages: boolean): Promise<AppSettings> {
+    return enqueueSettingsUpdate(() =>
+        updateStoredField((current) => ({ ...current, loadRemoteImages }))
+    );
+}
+
+export function updateStoredCheckUpdatesOnStartup(
     checkUpdatesOnStartup: boolean
 ): Promise<AppSettings> {
-    const current = await loadStoredSettings();
-
-    const next: AppSettings = {
-        ...current,
-        checkUpdatesOnStartup,
-    };
-
-    await persistSettings(next);
-    return next;
+    return enqueueSettingsUpdate(() =>
+        updateStoredField((current) => ({ ...current, checkUpdatesOnStartup }))
+    );
 }

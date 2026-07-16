@@ -31,6 +31,46 @@ describe("use-app-settings-storage", () => {
         });
     });
 
+    it("does not lose a concurrent update to a different setting", async () => {
+        // Model the real backend: the row holds all four values, a read returns what the last
+        // write stored, and a write is not instant. Without serialization both updates below
+        // read the same pre-change snapshot and the second write reverts the first one's field.
+        // The two toggles this covers (Privacy and Application update) render in the same modal,
+        // and their callers are fire-and-forget, so nothing else orders these writes.
+        const row = {
+            importMode: "copy" as string | null,
+            libraryPath: null as string | null,
+            loadRemoteImages: "false" as string | null,
+            checkUpdatesOnStartup: "false" as string | null,
+        };
+
+        const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+        vi.mocked(getStoredAppSettings).mockImplementation(async () => {
+            await settle();
+            return { ...row };
+        });
+
+        vi.mocked(setStoredAppSettings).mockImplementation(
+            async (importMode, libraryPath, loadRemoteImages, checkUpdatesOnStartup) => {
+                await settle();
+                row.importMode = importMode;
+                row.libraryPath = libraryPath;
+                row.loadRemoteImages = String(loadRemoteImages);
+                row.checkUpdatesOnStartup = String(checkUpdatesOnStartup);
+            }
+        );
+
+        await Promise.all([
+            updateStoredLoadRemoteImages(true),
+            updateStoredCheckUpdatesOnStartup(true),
+        ]);
+
+        // Both toggles must survive: neither may be reverted by the other's write.
+        expect(row.loadRemoteImages).toBe("true");
+        expect(row.checkUpdatesOnStartup).toBe("true");
+    });
+
     it("returns default settings", () => {
         expect(getDefaultAppSettings()).toEqual({
             importMode: "copy",
