@@ -68,7 +68,34 @@ export function useMediaActions({
     const [mediaToDelete, setMediaToDelete] = useState<MediaRow | null>(null);
 
     const { isRunning: isDeletingMedia, runWithFlag: runDeleteAction } = useAsyncFlag();
-    const { isRunning: isUpdatingWatched, runWithFlag: runWatchedAction } = useAsyncFlag();
+
+    // Watched updates are guarded per media row, not by one shared flag. A single flag made the
+    // second of two quick toggles on *different* cards a silent no-op: useAsyncFlag's runWithFlag
+    // returns undefined without throwing when it is already running, and no component renders a
+    // busy state for it, so the click just vanished. Keying by media id keeps the re-entrancy
+    // guard where it belongs - one row cannot be toggled twice concurrently - while leaving
+    // independent rows independent.
+    const watchedInFlightRef = useRef<Set<number>>(new Set());
+    const [watchedInFlight, setWatchedInFlight] = useState<ReadonlySet<number>>(new Set());
+
+    const runWatchedActionFor = useCallback(
+        async (mediaId: number, task: () => Promise<void>): Promise<void> => {
+            if (watchedInFlightRef.current.has(mediaId)) {
+                return;
+            }
+
+            watchedInFlightRef.current.add(mediaId);
+            setWatchedInFlight(new Set(watchedInFlightRef.current));
+
+            try {
+                await task();
+            } finally {
+                watchedInFlightRef.current.delete(mediaId);
+                setWatchedInFlight(new Set(watchedInFlightRef.current));
+            }
+        },
+        []
+    );
     const { isRunning: isRefreshingComments, runWithFlag: runRefreshCommentsAction } =
         useAsyncFlag();
     const { isRunning: isUpdatingTitle, runWithFlag: runUpdateTitleAction } = useAsyncFlag();
@@ -169,7 +196,7 @@ export function useMediaActions({
 
     const markAsWatched = useCallback(
         async (mediaId: number): Promise<void> => {
-            await runWatchedAction(async () => {
+            await runWatchedActionFor(mediaId, async () => {
                 try {
                     const watchedAt = await executeMarkMediaWatched({
                         mediaId,
@@ -196,12 +223,12 @@ export function useMediaActions({
                 }
             });
         },
-        [setActiveMedia, onError, runWatchedAction, setMediaItems]
+        [setActiveMedia, onError, runWatchedActionFor, setMediaItems]
     );
 
     const markAsUnwatched = useCallback(
         async (mediaId: number): Promise<void> => {
-            await runWatchedAction(async () => {
+            await runWatchedActionFor(mediaId, async () => {
                 try {
                     await executeMarkMediaUnwatched({
                         mediaId,
@@ -225,7 +252,7 @@ export function useMediaActions({
                 }
             });
         },
-        [setActiveMedia, onError, runWatchedAction, setMediaItems]
+        [setActiveMedia, onError, runWatchedActionFor, setMediaItems]
     );
 
     const refreshComments = useCallback(
@@ -370,7 +397,7 @@ export function useMediaActions({
         confirmDeleteMediaOpen,
         mediaToDelete,
         isDeletingMedia,
-        isUpdatingWatched,
+        isUpdatingWatched: watchedInFlight.size > 0,
         isRefreshingComments,
         isUpdatingTitle,
         requestDeleteMedia,

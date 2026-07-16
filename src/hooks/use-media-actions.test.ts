@@ -139,6 +139,76 @@ describe("useMediaActions", () => {
         });
     });
 
+    it("does not drop a watched toggle on another media while one is in flight", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        // A slow round trip, so the second toggle starts while the first is still running.
+        vi.mocked(executeMarkMediaWatched).mockImplementation(
+            () =>
+                new Promise((resolve) =>
+                    setTimeout(() => resolve("2026-03-31T20:00:00.000Z"), 0)
+                )
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        // Two different rows toggled back to back. A single shared re-entrancy flag made the
+        // second one a silent no-op - no request, no error, no disabled state to explain it -
+        // because these rows are independent and nothing serializes them.
+        await act(async () => {
+            await Promise.all([result.current.markAsWatched(1), result.current.markAsWatched(2)]);
+        });
+
+        expect(executeMarkMediaWatched).toHaveBeenCalledTimes(2);
+        expect(executeMarkMediaWatched).toHaveBeenCalledWith({
+            mediaId: 1,
+            updateMediaItems: setMediaItems,
+        });
+        expect(executeMarkMediaWatched).toHaveBeenCalledWith({
+            mediaId: 2,
+            updateMediaItems: setMediaItems,
+        });
+    });
+
+    it("still guards a repeated watched toggle on the same media", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(executeMarkMediaWatched).mockImplementation(
+            () =>
+                new Promise((resolve) =>
+                    setTimeout(() => resolve("2026-03-31T20:00:00.000Z"), 0)
+                )
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        // Keying the guard by media id must not lose the guard itself: the same row toggled
+        // twice concurrently still runs once.
+        await act(async () => {
+            await Promise.all([result.current.markAsWatched(1), result.current.markAsWatched(1)]);
+        });
+
+        expect(executeMarkMediaWatched).toHaveBeenCalledTimes(1);
+    });
+
     it("marks media as unwatched and updates active player state", async () => {
         const mediaPlayer = createMediaPlayer();
 
