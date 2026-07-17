@@ -829,7 +829,16 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     // The marker is what makes the two states distinguishable at all: `db_path` present plus a
     // `.pre-import` plus a staged import is also exactly what a perfectly normal *second* import
     // looks like, and that one does have to consume the old undo copy.
-    let recovering_from_a_failed_swap = marker.exists();
+    //
+    // Reading the marker this way is only sound because it is written *after* the move-aside
+    // succeeds (see below), so its presence really does mean `.pre-import` holds the database.
+    // `.pre-import` is required to actually be there on top of that: a marker with no snapshot
+    // behind it cannot be describing a database this function set aside, so the claim it makes is
+    // not true and acting on it would skip the move-aside while `db_path` is still the user's real
+    // library. That combination is unreachable through the ordering below, which is exactly why it
+    // must not be trusted when it does turn up - a rollback that put the database back but failed
+    // to clear the marker leaves it, as would anything editing these files out of band.
+    let recovering_from_a_failed_swap = marker.exists() && pre_import.exists();
 
     if recovering_from_a_failed_swap {
         logger::warn(
@@ -837,21 +846,28 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
             "an earlier import died mid-swap: keeping the existing pre-import snapshot as the undo copy",
         );
     } else if db_path.exists() {
-        // Durable before the move-aside, not after: the window being guarded is precisely the one
-        // where the process dies between these two renames.
-        write_import_applying_marker(&marker)?;
-
         // Only consume the previous undo snapshot when this run is about to replace it in the
         // same step, so a crash can never leave the database file gone with `.pre-import` already
         // removed. (`resume_interrupted_restore` only covers `.restore.tmp`, not a staged import,
         // and the move-aside is a rename rather than a copy, so nothing else would put it back.)
         let _ = std::fs::remove_file(&pre_import);
 
-        std::fs::rename(db_path, &pre_import).map_err(|error| {
-            // The move-aside never happened, so nothing is in flight for the marker to describe.
-            let _ = std::fs::remove_file(&marker);
-            backup_error("failed to set aside the current database", error)
-        })?;
+        std::fs::rename(db_path, &pre_import)
+            .map_err(|error| backup_error("failed to set aside the current database", error))?;
+
+        // Durable only once `.pre-import` actually holds the user's database, which is the claim
+        // the recovery branch above reads it as. Written *before* the move-aside it would also
+        // cover the window where that rename had not run yet - and there `db_path` is still the
+        // user's real database, not the pool's empty file, so a crash in that window left the next
+        // run skipping the move-aside and letting the swap below overwrite the library with no
+        // undo copy behind it.
+        if let Err(error) = write_import_applying_marker(&marker) {
+            // Nothing is in flight for a marker to describe: put the database back so the next run
+            // sees an ordinary pending import rather than a half-applied one.
+            let _ = std::fs::rename(&pre_import, db_path);
+
+            return Err(error);
+        }
     }
 
     let _ = std::fs::remove_file(sibling(db_path, "-wal"));
@@ -1222,6 +1238,76 @@ mod tests {
         assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
         // A completed swap clears the marker, so the next import behaves normally again.
         assert!(!import_applying_marker_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_marker_with_no_snapshot_behind_it_never_skips_the_move_aside() {
+        // The other half of the marker's contract, and the one that decides whether it is safe to
+        // act on at all: the marker only means "`.pre-import` holds the user's database" because
+        // it is written *after* the move-aside succeeds. Written before it, it would also be there
+        // in the window where that rename had not run yet - and there `db_path` is still the real
+        // library rather than the pool's empty file, so treating the marker as a recovery signal
+        // would skip the move-aside and let the swap below overwrite the library outright, with
+        // nothing in `.pre-import` to undo it with.
+        //
+        // The ordering makes that state unreachable; requiring `.pre-import` to actually exist is
+        // what keeps it survivable if it shows up anyway (a rollback that restored the database but
+        // failed to clear the marker leaves exactly this).
+        let dir = temp_dir("import-marker-without-snapshot");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("incoming.db");
+        seed_kavynex_db(&source, "imported").await;
+        stage_database_import(&db, &source).await.unwrap();
+
+        // A marker claiming a move-aside that never happened: the database is untouched and there
+        // is no snapshot behind the claim.
+        write_import_applying_marker(&import_applying_marker_path(&db)).unwrap();
+        assert!(!pre_import_path(&db).exists());
+
+        assert!(apply_pending_database_import(&db).unwrap());
+        assert_eq!(read_video_title(&db).await, "imported");
+
+        // The library that was sitting at `db_path` has to have been set aside rather than
+        // overwritten, so the import stays undoable.
+        assert!(pre_import_path(&db).exists());
+        assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
+        assert!(!import_applying_marker_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_move_aside_whose_marker_cannot_be_written_is_rolled_back() {
+        // The move-aside now runs before the marker, so a failure to write the marker leaves the
+        // database already set aside with nothing recording that fact. Returning the error there
+        // and walking away would leave `db_path` missing, and the app carries on past a failed
+        // import (lib.rs only logs), so the pool would create an empty database in its place and
+        // the next run would read that as an ordinary second import and consume `.pre-import` -
+        // the only copy. Undoing the move-aside is what keeps the failure inert.
+        let dir = temp_dir("import-marker-write-fails");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("incoming.db");
+        seed_kavynex_db(&source, "imported").await;
+        stage_database_import(&db, &source).await.unwrap();
+
+        // A directory sitting on the marker path is something `File::create` cannot write over,
+        // which fails the marker write without touching anything else.
+        std::fs::create_dir(import_applying_marker_path(&db)).unwrap();
+
+        assert!(apply_pending_database_import(&db).is_err());
+
+        // The database has to be back where it was, still holding the user's library, with the
+        // import left pending rather than half-applied.
+        assert!(db.exists());
+        assert_eq!(read_video_title(&db).await, "current");
+        assert!(!pre_import_path(&db).exists());
+        assert!(import_staged_path(&db).exists());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

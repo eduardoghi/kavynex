@@ -40,13 +40,14 @@ The backup/restore/import machinery in `services/db_backup.rs` also writes sibli
   below), `.restore.tmp` (a snapshot being restored), `.corrupt.tmp` (a database being moved
   aside), and `.export-staging` next to a chosen *export* destination rather than here.
 
-`.import-applying` is written just before an import moves the current database aside and removed
-once the swap (or its rollback) has put a database back in place, so it only ever outlives a
-startup when the swap died in between. Finding it there is what tells the next launch that
-`.pre-import` holds the *only* copy of the database and must be kept rather than consumed - on
-disk that state is otherwise indistinguishable from a normal second import. If you ever see one
-sitting next to `kavynex.db` on a healthy install, an import failed midway and `.pre-import` is
-the database to go back to.
+`.import-applying` is written once an import has moved the current database aside into
+`.pre-import`, and removed once the swap (or its rollback) has put a database back in place, so it
+only ever outlives a startup when the swap died in between. Finding it there, with a `.pre-import`
+beside it, is what tells the next launch that snapshot holds the *only* copy of the database and
+must be kept rather than consumed - on disk that state is otherwise indistinguishable from a normal
+second import. If you ever see one sitting next to `kavynex.db` on a healthy install, an import
+failed midway and `.pre-import` is the database to go back to. See `docs/DATABASE.md` for why it is
+written after the move-aside rather than before it.
 
 See `docs/DATABASE.md` for the rotation, restore and import rules these files follow - the
 counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in

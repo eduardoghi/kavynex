@@ -431,10 +431,22 @@ live connection pool is a singleton that cannot be reopened mid-session:
    `create_if_missing`. On the next launch a database file exists again, and on disk that state is
    indistinguishable from a perfectly normal *second* import (staged file + `.pre-import` + a
    database), which does have to consume the old undo copy. Telling them apart needs a persistent
-   signal, so an `.import-applying` marker is written before the move-aside and cleared once the
-   swap or its rollback has put a database back. A marker that outlived a restart means
-   `.pre-import` is the only real copy, and the move-aside is skipped rather than overwriting it
-   with the empty file. See `docs/DIRECTORIES.md` for the file itself.
+   signal, so an `.import-applying` marker is written once the move-aside has succeeded and cleared
+   once the swap or its rollback has put a database back. A marker that outlived a restart, with a
+   `.pre-import` behind it, means that snapshot is the only real copy, and the move-aside is
+   skipped rather than overwriting it with the empty file. See `docs/DIRECTORIES.md` for the file
+   itself.
+
+   The marker follows the move-aside rather than preceding it, and that order is the whole of its
+   meaning. Written first, it would also be on disk in the window before the rename ran - and there
+   `db_path` is still the user's real library, not the pool's empty file, so the next run would read
+   the marker, skip the move-aside, and let the swap overwrite the library with nothing behind it to
+   undo with. Writing it after the rename makes its presence a true claim: `.pre-import` holds the
+   database. The marker write failing is handled by undoing the move-aside, so the failure leaves
+   the import merely pending. On top of that, a marker with no `.pre-import` behind it is ignored -
+   that combination cannot be reached through the ordering above, which is exactly why it is not
+   trusted when it does appear (a rollback that restored the database but failed to clear the marker
+   leaves it).
 
 ## Related files
 
