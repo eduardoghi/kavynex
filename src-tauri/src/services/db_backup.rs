@@ -1125,6 +1125,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn rotation_stops_instead_of_overwriting_a_generation_it_could_not_promote() {
+        // Rotation walks the generations oldest-first, promoting each into the slot above it. A
+        // promotion that fails leaves that snapshot still sitting in its own slot - so carrying on
+        // to the next generation would rename the one below straight over it, destroying a snapshot
+        // that was never copied anywhere. Stopping is what keeps a failed promotion cost-free.
+        let dir = temp_dir("rotate-blocked-generation");
+        let db = dir.join("kavynex.db");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(generation_corrupt_path(&db, 0), b"gen0").unwrap();
+        std::fs::write(generation_corrupt_path(&db, 1), b"gen1").unwrap();
+
+        // A directory on the oldest slot is something `rename` refuses to write over and
+        // `remove_file` cannot clear, so generation 1 has nowhere to be promoted to. This is the
+        // stand-in for what blocks it in the wild: a locked or read-only file on Windows.
+        std::fs::create_dir(generation_corrupt_path(&db, CORRUPT_ROTATED_GENERATIONS)).unwrap();
+
+        rotate_corrupt_snapshots(&db);
+
+        // Generation 1 could not be promoted, so it has to be left intact rather than overwritten
+        // by generation 0 shifting up into a slot that is still occupied.
+        assert_eq!(
+            std::fs::read(generation_corrupt_path(&db, 1)).unwrap(),
+            b"gen1"
+        );
+        assert_eq!(
+            std::fs::read(generation_corrupt_path(&db, 0)).unwrap(),
+            b"gen0"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Reproduces the crash window in `restore_database_from_backup`: the process dies between
     /// the rename that moves the old database aside and the one that renames the staged snapshot
     /// into place, leaving no database at all next to a `.restore.tmp` holding the real data.
