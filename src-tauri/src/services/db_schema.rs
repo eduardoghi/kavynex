@@ -1119,7 +1119,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn migration_13_repairs_and_fences_live_chat_on_a_pre_check_database() {
+    async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_database() {
         let pool = memory_pool().await;
 
         // A videos table as an older app version left it: the live-chat columns are present but
@@ -1166,6 +1166,15 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        // An accented title, so the backfill below is pinned to the real normalizer rather than to
+        // anything a plain lower() would also satisfy.
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (3, 1, 'Ação  Válida', 'video/accent.mp4', 'video', 0, NULL)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
         sqlx::query("PRAGMA user_version = 12")
             .execute(&pool)
             .await
@@ -1189,6 +1198,26 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(ok_flag, 1);
+
+        // The other half of this migration: the table above predates `title_normalized`, so the
+        // column is added and every existing row is backfilled with the same normalizer the search
+        // term goes through. This is not covered by v11's backfill - only a database below v11 ever
+        // runs v11, and this one is stamped at v12 - and a NULL here fails silently, leaving the
+        // media in the library while invisible to every title search.
+        let normalized: Vec<(i64, Option<String>)> =
+            sqlx::query_as("SELECT id, title_normalized FROM videos ORDER BY id")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            normalized,
+            vec![
+                (1, Some("bad".to_string())),
+                (2, Some("ok".to_string())),
+                (3, Some("acao valida".to_string())),
+            ],
+            "migration 13 must backfill title_normalized for every pre-existing row"
+        );
 
         // The trigger now rejects a fresh violating insert and a violating update, while a
         // consistent insert still succeeds.
@@ -1218,6 +1247,28 @@ mod tests {
         .execute(&pool)
         .await
         .expect("a consistent insert must still succeed");
+
+        // The second invariant this migration fences, for the same reason: repairing the existing
+        // rows is worthless if the next write can put a NULL straight back.
+        let rejected_null_insert = sqlx::query(
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type) \
+             VALUES (1, 't3', NULL, 'video/new3.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await;
+        assert!(
+            rejected_null_insert.is_err(),
+            "the trigger must reject a NULL title_normalized on insert"
+        );
+
+        let rejected_null_update =
+            sqlx::query("UPDATE videos SET title_normalized = NULL WHERE id = 2")
+                .execute(&pool)
+                .await;
+        assert!(
+            rejected_null_update.is_err(),
+            "the trigger must reject clearing title_normalized on update"
+        );
     }
 
     #[tokio::test]
