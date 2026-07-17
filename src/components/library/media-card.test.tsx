@@ -43,6 +43,68 @@ describe("MediaCard", () => {
         expect(screen.getByText("2026-03-31")).toBeInTheDocument();
     });
 
+    it("falls back to the placeholder when the thumbnail file is gone", () => {
+        // A row can point at a thumbnail that is no longer on disk (moved or deleted outside the
+        // app - the case Diagnostics reports as "some thumbnail files are missing on disk"). The
+        // browser's broken-image glyph reads as the app being broken rather than as a missing file.
+        renderWithMantine(
+            <MediaCard
+                media={createMedia({
+                    title: "Video A",
+                    thumbnail_path: "thumbnails/thumb_abc.png",
+                    media_type: "video",
+                })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        const image = screen.getByAltText("Video A");
+        expect(image).toBeInTheDocument();
+
+        fireEvent.error(image);
+
+        // The same placeholder a media with no thumbnail at all shows.
+        expect(screen.queryByAltText("Video A")).not.toBeInTheDocument();
+    });
+
+    it("shows a thumbnail again after a failed one is replaced", () => {
+        // The failure is keyed to the thumbnail it happened on, so replacing a missing thumbnail
+        // does not leave the card stuck on the placeholder for the rest of the session.
+        const { rerender } = renderWithMantine(
+            <MediaCard
+                media={createMedia({
+                    title: "Video A",
+                    thumbnail_path: "thumbnails/gone.png",
+                })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        fireEvent.error(screen.getByAltText("Video A"));
+        expect(screen.queryByAltText("Video A")).not.toBeInTheDocument();
+
+        rerender(
+            <MediaCard
+                media={createMedia({
+                    title: "Video A",
+                    thumbnail_path: "thumbnails/replacement.png",
+                })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByAltText("Video A")).toBeInTheDocument();
+    });
+
     it("opens media on card click", () => {
         const media = createMedia({
             title: "Video A",

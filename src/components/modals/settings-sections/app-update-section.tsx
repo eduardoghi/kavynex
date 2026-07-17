@@ -51,7 +51,14 @@ export function AppUpdateSection({
                                 void checkForUpdate();
                             }}
                             loading={appUpdateStatus === "checking"}
-                            disabled={appUpdateStatus === "downloading"}
+                            // Disabled while checking as well as while downloading. `loading` alone
+                            // relies on Mantine having re-rendered before the next click lands,
+                            // which is a promise about timing rather than about state; checkForUpdate
+                            // has no request guard, so two overlapping checks would let whichever
+                            // resolves last win regardless of which was asked for last.
+                            disabled={
+                                appUpdateStatus === "checking" || appUpdateStatus === "downloading"
+                            }
                         >
                             Check update
                         </AppButton>

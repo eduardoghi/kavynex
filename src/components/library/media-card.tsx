@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
     ActionIcon,
     Badge,
@@ -65,6 +65,19 @@ function MediaCardComponent({
     const isLive = Boolean(media.is_live);
     const hasLiveChat = Boolean(media.has_live_chat);
     const thumbSrc = fileSrcFromStoredPath(media.thumbnail_path, libraryPath);
+
+    // Reset the failure when the thumbnail itself changes, so replacing a missing thumbnail with a
+    // new one shows it rather than staying on the placeholder. Keying state to a value is cheaper
+    // and less error-prone here than an effect: the grid keys cards by media id, so this only has
+    // to cover the same card getting a new thumbnail.
+    const [thumbFailed, setThumbFailed] = useState(false);
+    const [thumbFailedFor, setThumbFailedFor] = useState(thumbSrc);
+
+    if (thumbFailedFor !== thumbSrc) {
+        setThumbFailedFor(thumbSrc);
+        setThumbFailed(false);
+    }
+
     const publishedLabel = formatPublishedDate(media.published_at);
     const durationLabel = formatDuration(media.duration_seconds);
     const commentsCount = media.comments_count;
@@ -121,12 +134,19 @@ function MediaCardComponent({
                     flexShrink: 0,
                 }}
             >
-                {thumbSrc ? (
+                {thumbSrc && !thumbFailed ? (
                     <img
                         src={thumbSrc}
                         alt={media.title}
                         loading="lazy"
                         decoding="async"
+                        // A row can point at a thumbnail that is no longer on disk - the file was
+                        // moved or deleted outside the app, which the Diagnostics dialog reports as
+                        // "some thumbnail files are missing on disk". Without this the card renders
+                        // the browser's broken-image glyph, which reads as the app being broken
+                        // rather than as a missing file; the placeholder below is the same thing a
+                        // media with no thumbnail at all shows.
+                        onError={() => setThumbFailed(true)}
                         style={{
                             width: "100%",
                             height: "100%",
