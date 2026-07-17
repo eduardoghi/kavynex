@@ -28,6 +28,35 @@ type LiveChatItemProps = {
     shellBorder: string;
 };
 
+// Stable React keys for messages that carry no id of their own (some stickers and gifts).
+//
+// The visible window is a slice of the parsed array, so a message keeps its object identity as it
+// slides through - but its *index* shifts on every advance, and an index-based key makes React tear
+// down and rebuild a row that merely moved, throwing away exactly the memoization LiveChatItem
+// exists for. Content is not a usable key either: two identical messages from the same author at
+// the same offset are indistinguishable, and duplicate keys are their own bug. Identity is the one
+// thing here that is both stable and unique, so hang the key off the object itself. The WeakMap
+// lets a message be collected with the parsed array it came from.
+const fallbackItemKeys = new WeakMap<LiveChatMessageItem, string>();
+let nextFallbackItemKey = 0;
+
+export function liveChatItemKey(message: LiveChatMessageItem): string {
+    if (message.message_id) {
+        return message.message_id;
+    }
+
+    const existing = fallbackItemKeys.get(message);
+
+    if (existing !== undefined) {
+        return existing;
+    }
+
+    const key = `unidentified-${nextFallbackItemKey++}`;
+    fallbackItemKeys.set(message, key);
+
+    return key;
+}
+
 // Dispatches a live chat message to the component for its kind. Memoized so a sliding visible
 // window only renders the newly added rows: existing rows keep the same `message` reference and
 // are skipped by the shallow prop comparison.
@@ -243,12 +272,9 @@ export function LiveChatPanel({
 
                         {!isLoadingLiveChat &&
                             inlineMessages.length > 0 &&
-                            inlineMessages.map((message, index) => (
+                            inlineMessages.map((message) => (
                                 <LiveChatItem
-                                    key={
-                                        message.message_id ??
-                                        `${message.message_offset_ms}-${index}`
-                                    }
+                                    key={liveChatItemKey(message)}
                                     message={message}
                                     shellBorder={shellBorder}
                                 />
