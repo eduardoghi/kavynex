@@ -306,18 +306,18 @@ export async function createMedia(
             prepared.mediaType
         );
 
-        const createdId = await insertMedia(
-            normalizedInput.channelId,
-            normalizedInput.title,
-            prepared.filePath,
-            prepared.thumbnailPath,
-            prepared.mediaType,
-            prepared.youtubeVideoId,
-            prepared.publishedAt,
+        const createdId = await insertMedia({
+            channelId: normalizedInput.channelId,
+            title: normalizedInput.title,
+            filePath: prepared.filePath,
+            thumbnailPath: prepared.thumbnailPath,
+            mediaType: prepared.mediaType,
+            youtubeVideoId: prepared.youtubeVideoId,
+            publishedAt: prepared.publishedAt,
             durationSeconds,
-            Boolean(prepared.isLive),
-            prepared.liveChatFilePath ?? null
-        );
+            isLive: Boolean(prepared.isLive),
+            liveChatFilePath: prepared.liveChatFilePath ?? null,
+        });
 
         mediaRegistered = true;
 

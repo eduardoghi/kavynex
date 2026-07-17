@@ -128,18 +128,18 @@ describe("media-service", () => {
             "/library",
             "video"
         );
-        expect(insertMedia).toHaveBeenCalledWith(
-            10,
-            "Video A",
-            "video/a.mp4",
-            "thumbnails/a.jpg",
-            "video",
-            null,
-            "2026-03-31",
-            125,
-            false,
-            null
-        );
+        expect(insertMedia).toHaveBeenCalledWith({
+            channelId: 10,
+            title: "Video A",
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            mediaType: "video",
+            youtubeVideoId: null,
+            publishedAt: "2026-03-31",
+            durationSeconds: 125,
+            isLive: false,
+            liveChatFilePath: null,
+        });
         expect(result).toEqual({ id: 55 });
     });
 
@@ -196,18 +196,18 @@ describe("media-service", () => {
             "/library",
             "video"
         );
-        expect(insertMedia).toHaveBeenCalledWith(
-            10,
-            "Video A",
-            "video/a.mp4",
-            "thumbnails/a.jpg",
-            "video",
-            "abc",
-            "2026-03-31",
-            242,
-            true,
-            "live-chat/abc.json"
-        );
+        expect(insertMedia).toHaveBeenCalledWith({
+            channelId: 10,
+            title: "Video A",
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            mediaType: "video",
+            youtubeVideoId: "abc",
+            publishedAt: "2026-03-31",
+            durationSeconds: 242,
+            isLive: true,
+            liveChatFilePath: "live-chat/abc.json",
+        });
         expect(result).toEqual({ id: 77 });
     });
 

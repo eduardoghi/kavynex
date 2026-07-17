@@ -61,18 +61,18 @@ describe("media-repository command wiring", () => {
         invokeCommandMock.mockResolvedValueOnce(101 as never);
 
         await expect(
-            insertMedia(
-                3,
-                "Video A",
-                "video/a.mp4",
-                "thumb/a.jpg",
-                "video",
-                "yt1",
-                "2026-01-01",
-                120,
-                false,
-                "live_chat/a.json"
-            )
+            insertMedia({
+                channelId: 3,
+                title: "Video A",
+                filePath: "video/a.mp4",
+                thumbnailPath: "thumb/a.jpg",
+                mediaType: "video",
+                youtubeVideoId: "yt1",
+                publishedAt: "2026-01-01",
+                durationSeconds: 120,
+                isLive: false,
+                liveChatFilePath: "live_chat/a.json",
+            })
         ).resolves.toBe(101);
 
         expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.INSERT_MEDIA, {

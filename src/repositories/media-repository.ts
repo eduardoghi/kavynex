@@ -37,30 +37,25 @@ export async function mediaExistsForChannelAndYoutubeId(
     });
 }
 
-export async function insertMedia(
-    channelId: number,
-    title: string,
-    filePath: string,
-    thumbnailPath: string | null,
-    mediaType: MediaType,
-    youtubeVideoId: string | null,
-    publishedAt: string | null,
-    durationSeconds: number | null,
-    isLive: boolean,
-    liveChatFilePath: string | null
-): Promise<number> {
-    return invokeCommand(TAURI_COMMANDS.INSERT_MEDIA, {
-        channelId,
-        title,
-        filePath,
-        thumbnailPath,
-        mediaType,
-        youtubeVideoId,
-        publishedAt,
-        durationSeconds,
-        isLive,
-        liveChatFilePath,
-    });
+// Named rather than positional, unlike its siblings here, because ten arguments in a row put four
+// `string | null`s next to each other: swapping youtubeVideoId and publishedAt at the call site
+// type-checks cleanly and only shows up as wrong data in the database. The parameter names are the
+// only thing that can catch that, so they have to be at the call site rather than in this file.
+export type InsertMediaInput = {
+    channelId: number;
+    title: string;
+    filePath: string;
+    thumbnailPath: string | null;
+    mediaType: MediaType;
+    youtubeVideoId: string | null;
+    publishedAt: string | null;
+    durationSeconds: number | null;
+    isLive: boolean;
+    liveChatFilePath: string | null;
+};
+
+export async function insertMedia(input: InsertMediaInput): Promise<number> {
+    return invokeCommand(TAURI_COMMANDS.INSERT_MEDIA, input);
 }
 
 export async function listMediaCommentsByMediaId(mediaId: number): Promise<MediaCommentRow[]> {
