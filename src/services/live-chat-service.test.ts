@@ -5,10 +5,17 @@ import {
     type LiveChatMessageItem,
 } from "./live-chat-service";
 import { invokeCommand } from "../lib/tauri-client";
+import { logWarn } from "../utils/app-logger";
 
 vi.mock("../lib/tauri-client", () => ({
     invokeCommand: vi.fn(),
     invokeVoid: vi.fn(),
+}));
+
+vi.mock("../utils/app-logger", () => ({
+    logInfo: vi.fn(),
+    logWarn: vi.fn(),
+    logError: vi.fn(),
 }));
 
 // The backend command returns the already-decompressed JSON text; tests feed it directly.
@@ -386,6 +393,39 @@ describe("readLiveChatMessagesFromFile", () => {
         const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
 
         expect(messages[0]?.author_channel_id).toBeNull();
+    });
+
+    it("skips a corrupt line, keeps the valid ones, and warns about the loss", async () => {
+        const valid = rawLine({
+            message: { runs: [{ text: "hello" }] },
+            authorName: { simpleText: "@alice" },
+        });
+        // A truncated/corrupt JSON line between two valid ones (the shape yt-dlp/YouTube drift
+        // would produce). It must be dropped without aborting the replay, and reported.
+        mockFile(`${valid}\n{not valid json\n${valid}`);
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages).toHaveLength(2);
+        expect(logWarn).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(logWarn).mock.calls[0]?.[2]).toMatchObject({
+            liveChatFilePath: "live_chat/x.json",
+            failedLines: 1,
+            parsedLines: 2,
+        });
+    });
+
+    it("does not warn when every line parses cleanly", async () => {
+        mockFile(
+            rawLine({
+                message: { runs: [{ text: "hi" }] },
+                authorName: { simpleText: "@a" },
+            })
+        );
+
+        await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(logWarn).not.toHaveBeenCalled();
     });
 });
 

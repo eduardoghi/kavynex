@@ -1,5 +1,6 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
+import { logWarn } from "../utils/app-logger";
 
 export type LiveChatBadgeType = "owner" | "moderator" | "member" | "verified" | "other";
 
@@ -581,6 +582,8 @@ export async function readLiveChatMessagesFromFile(
     const lines = contents.split(/\r?\n/);
 
     const messages: LiveChatMessageItem[] = [];
+    let parsedLines = 0;
+    let failedLines = 0;
 
     for (const line of lines) {
         if (!line.trim()) {
@@ -589,9 +592,23 @@ export async function readLiveChatMessagesFromFile(
 
         try {
             messages.push(...parseLiveChatLine(line));
+            parsedLines += 1;
         } catch {
-            continue;
+            // One corrupt/truncated line, or a JSON shape yt-dlp/YouTube changed, must not abort
+            // the whole replay - but it must not vanish silently either. Swallowing each failure
+            // (the previous `catch { continue }`) meant a format drift dropped chat messages with
+            // no signal at all. Count them and warn once below so the loss shows up in the log
+            // (and in any bug report) instead of only as fewer messages than the video had.
+            failedLines += 1;
         }
+    }
+
+    if (failedLines > 0) {
+        logWarn("live-chat", "Some live chat replay lines could not be parsed and were skipped.", {
+            liveChatFilePath: relativePath,
+            failedLines,
+            parsedLines,
+        });
     }
 
     // Keep messages ordered by playback offset so the visible-window lookup can binary
