@@ -33,10 +33,15 @@ const BLOCKING_SEVERITIES = new Set(["HIGH", "CRITICAL"]);
 const QUERY_BATCH_SIZE = 100;
 
 function readInstalledPackages(scope) {
-    // An argv array rather than a command string, so nothing is ever concatenated into a shell
-    // line. `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to
-    // spawn `.bat`/`.cmd` without one (CVE-2024-27980); CI runs on Linux and takes the
-    // shell-free path. Every argument here is a literal in this file either way.
+    // `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to spawn
+    // `.bat`/`.cmd` without one (CVE-2024-27980); CI runs on Linux and takes the shell-free path.
+    //
+    // Note what the argv array does and does not buy on that Windows path: with `shell: true` Node
+    // concatenates the array into a command line rather than passing it through, which is what
+    // DEP0190 warns about - the array is not an escaping mechanism there. What actually makes this
+    // safe is that every argument below is a literal written in this file; none is derived from a
+    // package name, a lockfile entry, or anything else outside it. Keep it that way: an argument
+    // built from external data would need the shim resolved and invoked directly instead.
     //
     // `licenses list` is what enumerates the tree, as in check-js-licenses.js: it returns a flat,
     // fully-resolved inventory of name+versions straight from the lockfile. `pnpm list` returns a

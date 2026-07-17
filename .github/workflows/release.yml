@@ -204,8 +204,12 @@ jobs:
 
             # The release is dispatched manually, so an advisory published after the last CI
             # run on the chosen ref would otherwise ship unaudited. Re-run the same production
-            # JS audit CI gates on, before building the binaries.
+            # JS audit CI gates on, before building the binaries. Platform-independent (it reads
+            # the lockfile and queries osv.dev), so it runs once on Ubuntu rather than on all four
+            # matrix targets - four concurrent runs would only multiply the chance of a transient
+            # osv.dev failure taking a build leg down with it.
             - name: Audit production JS dependencies
+              if: matrix.platform == 'ubuntu-22.04'
               run: pnpm run advisories:check
 
             # Mirror ci.yml's license gate for the same reason as every other check duplicated
