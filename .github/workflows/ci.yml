@@ -193,8 +193,29 @@ jobs:
 
             # RUSTSEC advisories are not covered by the JS advisory check above; this closes
             # that gap for the Rust dependency tree.
+            #
+            # `--deny unsound` because without it cargo audit exits 0 on one: the tree carries 18
+            # warnings today, so a new unsound advisory would land in that pile and ship silently.
+            # An unsound crate is a real defect (UB reachable from safe code), unlike the bulk of
+            # those warnings, which are unmaintained notices.
+            #
+            # Not `--deny warnings`: it fails today on the GTK3 and unic-* crates, which are
+            # unmaintained upstream and arrive transitively through tauri itself. Gating on
+            # something this project cannot act on only trains everyone to ignore a red run.
+            #
+            # Not `--deny yanked` either, for the same reason and no other: `spin 0.9.8` is yanked
+            # and comes in via sqlx-sqlite -> flume, so it is equally out of reach. Unlike an
+            # advisory it has no RUSTSEC id, so it cannot be ignored one-by-one the way the line
+            # below does - it is deny-all or nothing. Worth revisiting whenever sqlx moves.
+            #
+            # RUSTSEC-2024-0429 (glib unsound, via that same GTK3 tree) is ignored by name rather
+            # than by omission: naming it is what makes a *new* unsound advisory fail the run
+            # instead of hiding among the allowed warnings. Re-check it when GTK3 moves.
             - name: Audit Rust dependencies
-              run: cargo audit --file src-tauri/Cargo.lock
+              run: >
+                  cargo audit --file src-tauri/Cargo.lock
+                  --deny unsound
+                  --ignore RUSTSEC-2024-0429
 
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked

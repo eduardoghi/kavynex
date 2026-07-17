@@ -56,9 +56,14 @@ jobs:
               run: cargo install cargo-audit@0.22.2 --locked
 
             # RUSTSEC advisories are not covered by the JS advisory check; this closes that gap
-            # for the Rust dependency tree.
+            # for the Rust dependency tree. Same flags as ci.yml's audit job, which is where the
+            # reasoning for each one is written down - they have to stay in step, since the release
+            # is dispatched by hand and cannot assume CI ever ran against the chosen commit.
             - name: Audit Rust dependencies
-              run: cargo audit --file src-tauri/Cargo.lock
+              run: >
+                  cargo audit --file src-tauri/Cargo.lock
+                  --deny unsound
+                  --ignore RUSTSEC-2024-0429
 
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked

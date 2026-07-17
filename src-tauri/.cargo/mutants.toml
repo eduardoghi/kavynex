@@ -24,8 +24,24 @@
 #   - `src/services/filesystem.rs` - the atomic copy/replace primitives, whose job is to refuse to
 #     overwrite differing content and to restore the original when a replace fails. A flipped
 #     comparison there does not fail loudly; it silently overwrites a file in the user's library.
-#     Measured at 121 mutants (against 72 for the whole current scope), so it needs the CI time
-#     budget checked as well as the survivors killed.
+#
+#     MEASURED (2026-07-17, cargo-mutants 27.1.0, `--no-config --file src/services/filesystem.rs`):
+#     121 mutants in 15m - 31 caught, 34 missed, 56 unviable. Two things follow, and they point the
+#     opposite way from what this note used to assume:
+#       * The CI time budget is not the obstacle. 15m against this job's 120m limit leaves room even
+#         once it runs alongside the current scope.
+#       * The 34 survivors are. Adding the glob today fails the weekly run on its first firing.
+#     They are not all test gaps, which is what makes this a real piece of work rather than a
+#     mechanical one: some are equivalent mutants that no test can kill. `replace || with && in
+#     file_paths_have_same_content` (line 63) is one - with `&&`, a missing file falls through to the
+#     `is_file()` guard below, which returns the same `Ok(false)` the existence guard would have.
+#     Each survivor has to be read and sorted into "kill it with a test" or "exclude it as
+#     equivalent, with the reason written down" before the glob goes in.
+#     Where they sit: the matching helpers (`find_latest_matching_file`, `find_best_matching_file`,
+#     `find_unique_matching_file`, `clean_matching_files_in_dir`) hold about half; the rest are in
+#     `replace_file_safely`, `move_or_copy_file`, `copy_file_atomic`, `alternative_destination_path`
+#     and `file_paths_have_same_content` - and that second group is the one this file cares about,
+#     since those are the overwrite-refusal primitives themselves.
 #   - `src/services/library_media.rs` and `src/services/library_cleanup.rs` - content-addressing
 #     and the reference-count-before-unlink decision.
 examine_globs = [
