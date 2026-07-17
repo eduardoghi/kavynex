@@ -444,6 +444,100 @@ describe("useMediaActions", () => {
         );
     });
 
+    it("refreshes a second media while the first refresh is still in flight", async () => {
+        // The guard used to be one shared flag, which returned undefined without throwing when it
+        // was already running - so the second refresh vanished with no error and no refreshed
+        // comments, and nothing rendered a busy state to hint at why. The player's Back button is
+        // live during a refresh, so "refresh A, go back, open B, refresh B" is an ordinary
+        // sequence rather than a race the user has to engineer.
+        const mediaPlayer = createMediaPlayer();
+
+        let resolveFirst: (() => void) | undefined;
+        vi.mocked(refreshMediaComments)
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveFirst = () => resolve({ updated: true, totalComments: 5 });
+                    })
+            )
+            .mockResolvedValueOnce({ updated: true, totalComments: 9 });
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        const first = createMediaRow({ id: 1 });
+        const second = createMediaRow({ id: 2 });
+
+        // Left in flight on purpose: this is the state that used to swallow the next refresh.
+        let firstRefresh: Promise<void>;
+        act(() => {
+            firstRefresh = result.current.refreshComments(first);
+        });
+
+        await act(async () => {
+            await result.current.refreshComments(second);
+        });
+
+        expect(refreshMediaComments).toHaveBeenCalledTimes(2);
+        expect(refreshMediaComments).toHaveBeenLastCalledWith(2, second.youtube_video_id, null);
+
+        await act(async () => {
+            resolveFirst?.();
+            await firstRefresh;
+        });
+    });
+
+    it("ignores a second refresh of the same media while one is in flight", async () => {
+        // The other half of the guard: keying by id must still stop the same row being refreshed
+        // twice at once, which is what the shared flag got right.
+        const mediaPlayer = createMediaPlayer();
+
+        let resolveFirst: (() => void) | undefined;
+        vi.mocked(refreshMediaComments).mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = () => resolve({ updated: true, totalComments: 5 });
+                })
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        const media = createMediaRow({ id: 1 });
+
+        let firstRefresh: Promise<void>;
+        act(() => {
+            firstRefresh = result.current.refreshComments(media);
+        });
+
+        await act(async () => {
+            await result.current.refreshComments(media);
+        });
+
+        expect(refreshMediaComments).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            resolveFirst?.();
+            await firstRefresh;
+        });
+    });
+
     it("updates only the targeted item when refreshing comments", async () => {
         const mediaPlayer = createMediaPlayer();
 

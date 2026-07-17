@@ -5,6 +5,7 @@ import { executeDeleteMedia } from "../use-cases/delete-media";
 import { executeMarkMediaWatched } from "../use-cases/mark-media-watched";
 import { executeMarkMediaUnwatched } from "../use-cases/mark-media-unwatched";
 import { useAsyncFlag } from "./use-async-flag";
+import { usePerIdAsyncFlag } from "./use-per-id-async-flag";
 import { logError } from "../utils/app-logger";
 import { openExternalUrl, openFileLocation } from "../services/library-service";
 import { refreshMediaComments, updateMediaTitle } from "../services/media-service";
@@ -30,8 +31,7 @@ type UseMediaActionsReturn = {
     confirmDeleteMediaOpen: boolean;
     mediaToDelete: MediaRow | null;
     isDeletingMedia: boolean;
-    isUpdatingWatched: boolean;
-    isRefreshingComments: boolean;
+    commentsInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
     requestDeleteMedia: (media: MediaRow) => void;
     confirmDeleteMedia: () => Promise<void>;
@@ -75,29 +75,13 @@ export function useMediaActions({
     // busy state for it, so the click just vanished. Keying by media id keeps the re-entrancy
     // guard where it belongs - one row cannot be toggled twice concurrently - while leaving
     // independent rows independent.
-    const watchedInFlightRef = useRef<Set<number>>(new Set());
-    const [watchedInFlight, setWatchedInFlight] = useState<ReadonlySet<number>>(new Set());
+    const { runFor: runWatchedActionFor } = usePerIdAsyncFlag();
 
-    const runWatchedActionFor = useCallback(
-        async (mediaId: number, task: () => Promise<void>): Promise<void> => {
-            if (watchedInFlightRef.current.has(mediaId)) {
-                return;
-            }
-
-            watchedInFlightRef.current.add(mediaId);
-            setWatchedInFlight(new Set(watchedInFlightRef.current));
-
-            try {
-                await task();
-            } finally {
-                watchedInFlightRef.current.delete(mediaId);
-                setWatchedInFlight(new Set(watchedInFlightRef.current));
-            }
-        },
-        []
-    );
-    const { isRunning: isRefreshingComments, runWithFlag: runRefreshCommentsAction } =
-        useAsyncFlag();
+    // Refreshing comments is per media for the same reason: the player's Back button is live while
+    // a refresh is in flight, so opening another media and refreshing it is an ordinary sequence,
+    // and one shared flag silently dropped that second refresh - the button responded, the
+    // comments stayed stale, and nothing said so.
+    const { inFlight: commentsInFlight, runFor: runRefreshCommentsFor } = usePerIdAsyncFlag();
     const { isRunning: isUpdatingTitle, runWithFlag: runUpdateTitleAction } = useAsyncFlag();
 
     // A ref that always holds the latest active media so the callbacks below can read it
@@ -257,7 +241,7 @@ export function useMediaActions({
 
     const refreshComments = useCallback(
         async (media: MediaRow): Promise<void> => {
-            await runRefreshCommentsAction(async () => {
+            await runRefreshCommentsFor(media.id, async () => {
                 try {
                     const result = await refreshMediaComments(
                         media.id,
@@ -313,7 +297,7 @@ export function useMediaActions({
             setActiveMedia,
             onError,
             onNotice,
-            runRefreshCommentsAction,
+            runRefreshCommentsFor,
             setMediaItems,
         ]
     );
@@ -397,8 +381,7 @@ export function useMediaActions({
         confirmDeleteMediaOpen,
         mediaToDelete,
         isDeletingMedia,
-        isUpdatingWatched: watchedInFlight.size > 0,
-        isRefreshingComments,
+        commentsInFlight,
         isUpdatingTitle,
         requestDeleteMedia,
         confirmDeleteMedia,

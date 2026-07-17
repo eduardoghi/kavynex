@@ -120,8 +120,7 @@ describe("useHomeActions", () => {
             isLoadingMedia: false,
             isAddingMedia: false,
             isDeletingMedia: false,
-            isUpdatingWatched: false,
-            isRefreshingComments: false,
+            commentsInFlight: new Set<number>(),
             isUpdatingTitle: false,
             isCancellingYtDlp: false,
 

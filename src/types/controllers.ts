@@ -78,8 +78,11 @@ export type MediaLibraryController = {
     isLoadingMedia: boolean;
     isAddingMedia: boolean;
     isDeletingMedia: boolean;
-    isUpdatingWatched: boolean;
-    isRefreshingComments: boolean;
+    // The media ids whose comments are being refreshed, rather than one "something is refreshing"
+    // flag. A shared flag both dropped the second refresh and disabled the button that would have
+    // retried it, so the two have to be per media together: guarding one row while marking every
+    // row busy just moves the silent no-op into the UI.
+    commentsInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
     isCancellingYtDlp: boolean;
     ytDlpLogs: string[];

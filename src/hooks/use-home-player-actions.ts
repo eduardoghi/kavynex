@@ -23,7 +23,12 @@ type UseHomePlayerActionsOptions = {
     // notice, and the media-list/active-media updates) lives in the media-library action;
     // the player only adapts it to the active media, so both share one source of truth.
     refreshComments: (media: MediaRow) => Promise<void>;
-    isRefreshingComments: boolean;
+    // The ids being refreshed, not a shared "something is refreshing" flag: the player resolves it
+    // against the media it is showing, so a refresh left running on a media the user navigated away
+    // from cannot mark this one busy. That matters beyond the label - the button renders `loading`
+    // from it, and Mantine disables a loading button, so a shared flag would block the refresh of
+    // the media actually on screen.
+    commentsInFlight: ReadonlySet<number>;
     libraryPath: string;
 };
 
@@ -32,7 +37,7 @@ export function useHomePlayerActions({
     homeMediaActions,
     onError,
     refreshComments,
-    isRefreshingComments,
+    commentsInFlight,
     libraryPath,
 }: UseHomePlayerActionsOptions): HomePlayerActionsController {
     // Destructure the stable fields off the per-render mediaPlayer/homeMediaActions controller
@@ -145,7 +150,9 @@ export function useHomePlayerActions({
         openInYoutube,
         openFileLocation: openCurrentFileLocation,
         refreshComments: refreshActiveComments,
-        isRefreshingComments,
+        // Resolved against the media on screen, so a refresh still running on one the user
+        // navigated away from does not report this one as busy.
+        isRefreshingComments: activeMedia ? commentsInFlight.has(activeMedia.id) : false,
         markActiveAsWatched,
         markActiveAsUnwatched,
         saveProgress,

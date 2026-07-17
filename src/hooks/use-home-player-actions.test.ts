@@ -49,7 +49,7 @@ type MockOptions = {
     homeMediaActions: MockHomeMediaActions;
     onError: (message: string) => void;
     refreshComments: (media: MediaRow) => Promise<void>;
-    isRefreshingComments: boolean;
+    commentsInFlight: ReadonlySet<number>;
     libraryPath: string;
 };
 
@@ -69,7 +69,7 @@ function createDefaultOptions(overrides?: {
     homeMediaActions?: MockHomeMediaActions;
     onError?: (message: string) => void;
     refreshComments?: (media: MediaRow) => Promise<void>;
-    isRefreshingComments?: boolean;
+    commentsInFlight?: ReadonlySet<number>;
     libraryPath?: string;
 }): MockOptions {
     const mediaPlayer: MockMediaPlayer = {
@@ -87,7 +87,7 @@ function createDefaultOptions(overrides?: {
         refreshComments:
             overrides?.refreshComments ??
             vi.fn<(media: MediaRow) => Promise<void>>().mockResolvedValue(undefined),
-        isRefreshingComments: overrides?.isRefreshingComments ?? false,
+        commentsInFlight: overrides?.commentsInFlight ?? new Set<number>(),
         libraryPath: overrides?.libraryPath ?? "/library",
     };
 }
@@ -461,12 +461,37 @@ describe("useHomePlayerActions", () => {
             expect(options.refreshComments).toHaveBeenCalledWith(activeMedia);
         });
 
-        it("exposes the media-library refreshing flag", () => {
-            const options = createDefaultOptions({ isRefreshingComments: true });
+        it("reports refreshing only for the media it is showing", () => {
+            const activeMedia = createMediaRow({ id: 7 });
 
-            const { result } = renderHook(() => useHomePlayerActions(options));
+            const { result } = renderHook(() =>
+                useHomePlayerActions(
+                    createDefaultOptions({
+                        activeMedia,
+                        commentsInFlight: new Set([7]),
+                    })
+                )
+            );
 
             expect(result.current.isRefreshingComments).toBe(true);
+        });
+
+        it("does not report refreshing when another media is the one being refreshed", () => {
+            // The button renders `loading` from this, and Mantine disables a loading button, so a
+            // flag that answered "is anything refreshing" would leave the user unable to refresh
+            // the media actually on screen while a refresh they navigated away from finishes.
+            const activeMedia = createMediaRow({ id: 7 });
+
+            const { result } = renderHook(() =>
+                useHomePlayerActions(
+                    createDefaultOptions({
+                        activeMedia,
+                        commentsInFlight: new Set([42]),
+                    })
+                )
+            );
+
+            expect(result.current.isRefreshingComments).toBe(false);
         });
 
         it("uses the refresh implementation from the latest render", async () => {
