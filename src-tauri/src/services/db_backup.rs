@@ -144,15 +144,95 @@ async fn is_healthy(pool: &SqlitePool) -> bool {
     }
 }
 
+/// The outcome of a full `PRAGMA integrity_check`: whether the database is sound and, when it is
+/// not, what SQLite actually reported.
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct DatabaseIntegrityReport {
+    pub ok: bool,
+    /// The problems SQLite listed, one per entry, capped at [`MAX_INTEGRITY_PROBLEMS`]. Empty when
+    /// `ok`.
+    pub problems: Vec<String>,
+    /// True when SQLite reported more problems than were kept, so the UI can say the list is
+    /// partial rather than presenting a truncated list as the whole story.
+    pub truncated: bool,
+}
+
+/// A corrupt database can report a problem per damaged page, which is unbounded and useless past
+/// the first handful: the answer is the same either way ("restore from a backup"), and the point of
+/// showing any of them is to say *what* is wrong, not to enumerate it.
+const MAX_INTEGRITY_PROBLEMS: usize = 20;
+
+/// `SQLITE_CORRUPT` ("database disk image is malformed").
+const SQLITE_CORRUPT_CODE: &str = "11";
+
+/// The SQLite-native error code behind a `sqlx::Error`, when it has one. A failure that never
+/// reached the database (a pool timeout, a decode error) has none.
+fn sqlite_error_code(error: &sqlx::Error) -> Option<String> {
+    match error {
+        sqlx::Error::Database(database_error) => {
+            database_error.code().map(|code| code.into_owned())
+        }
+        _ => None,
+    }
+}
+
 /// Runs a full `PRAGMA integrity_check`, a thorough (and slower) check than the `quick_check`
 /// used by the automatic health paths above. User-triggered only, so the extra cost is fine.
-pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<bool> {
-    let (result,): (String,) = sqlx::query_as("PRAGMA integrity_check")
-        .fetch_one(pool)
-        .await
-        .map_err(|error| backup_error("failed to run the database integrity check", error))?;
+///
+/// `fetch_all` rather than `fetch_one`: on a healthy database the pragma returns the single row
+/// `ok`, but on a damaged one it returns *a row per problem found*. Reading only the first row
+/// threw away everything SQLite had to say about the damage, leaving the UI with a bare "there is
+/// a problem" and the user with nothing to act on or report.
+pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIntegrityReport> {
+    let rows: Vec<(String,)> = match sqlx::query_as("PRAGMA integrity_check").fetch_all(pool).await {
+        Ok(rows) => rows,
+        // Past a certain amount of damage SQLite gives up on the pragma itself and fails the query
+        // with SQLITE_CORRUPT instead of listing what is wrong. That is still an answer - the most
+        // definitive one there is - so it must not surface as "the check could not run", which
+        // reads like the tool broke rather than the database. Only this one code is treated this
+        // way: an IO error or a lock timeout says nothing about integrity and still propagates.
+        Err(error) => {
+            if sqlite_error_code(&error).as_deref() == Some(SQLITE_CORRUPT_CODE) {
+                return Ok(DatabaseIntegrityReport {
+                    ok: false,
+                    problems: vec![format!("SQLite reported the database as corrupt: {error}")],
+                    truncated: false,
+                });
+            }
 
-    Ok(result == "ok")
+            return Err(backup_error(
+                "failed to run the database integrity check",
+                error,
+            ));
+        }
+    };
+
+    // The healthy answer is exactly one row reading `ok`; anything else is a list of problems.
+    // Checking the shape rather than just the first row keeps a database that somehow reports `ok`
+    // alongside real problems from being called sound.
+    let ok = rows.len() == 1 && rows[0].0 == "ok";
+
+    if ok {
+        return Ok(DatabaseIntegrityReport {
+            ok: true,
+            problems: Vec::new(),
+            truncated: false,
+        });
+    }
+
+    let problems: Vec<String> = rows
+        .iter()
+        .take(MAX_INTEGRITY_PROBLEMS)
+        .map(|(problem,)| problem.clone())
+        .collect();
+
+    Ok(DatabaseIntegrityReport {
+        ok: false,
+        truncated: rows.len() > problems.len(),
+        problems,
+    })
 }
 
 /// Escapes a value for embedding as a single-quoted SQLite string literal by doubling every
@@ -2044,8 +2124,108 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(run_full_integrity_check(&pool).await.unwrap());
+        let report = run_full_integrity_check(&pool).await.unwrap();
+
+        assert!(report.ok);
+        assert!(report.problems.is_empty());
+        assert!(!report.truncated);
 
         pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn run_full_integrity_check_keeps_what_sqlite_reported_about_a_damaged_database() {
+        // The whole point of the change this pins: `PRAGMA integrity_check` answers with one row
+        // per problem, so reading a single row threw away everything SQLite had to say and left the
+        // UI with a bare "there is a problem" and the user with nothing to act on.
+        //
+        // The damage is real rather than simulated: an index page is overwritten with garbage while
+        // the file is closed, which leaves the database openable (the header and schema are intact)
+        // but internally inconsistent - exactly the state this check exists to find, and the one
+        // "not a database" never reaches because it fails at open instead.
+        let dir = temp_dir("integrity-damaged");
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("kavynex.db");
+
+        // The real schema rather than the reduced `seed_kavynex_db` shape: this test is about what
+        // `integrity_check` finds inside the file, so the indexes it walks have to be the real ones.
+        {
+            let options = SqliteConnectOptions::new()
+                .filename(&db)
+                .create_if_missing(true);
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await
+                .unwrap();
+            crate::services::db_schema::ensure_schema(&pool).await.unwrap();
+            sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+                .execute(&pool)
+                .await
+                .unwrap();
+
+            for id in 2..400 {
+                sqlx::query(
+                    "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type) \
+                     VALUES (?, 1, ?, ?, ?, 'video')",
+                )
+                .bind(id)
+                .bind(format!("title {id}"))
+                .bind(format!("title {id}"))
+                .bind(format!("video/{id}.mp4"))
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+
+            // Fold the WAL back in so the damage below lands on the database file itself rather
+            // than on pages the next open would replay over.
+            sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+
+        let mut bytes = std::fs::read(&db).unwrap();
+        let page_size = u16::from_be_bytes([bytes[16], bytes[17]]) as usize;
+        assert!(page_size >= 512, "unexpected page size: {page_size}");
+
+        // Scribble over the interior of several pages, leaving page 1 (the header and schema)
+        // alone so the file still opens.
+        for page in 3..8 {
+            let start = page * page_size + 16;
+            let end = start + 64;
+
+            if end < bytes.len() {
+                bytes[start..end].fill(0x5A);
+            }
+        }
+        std::fs::write(&db, &bytes).unwrap();
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite://{}", db.to_string_lossy()))
+            .await
+            .unwrap();
+
+        let report = run_full_integrity_check(&pool).await.unwrap();
+
+        // Damage this heavy is reported one of two ways depending on what SQLite manages to walk:
+        // a list of problems, or a flat SQLITE_CORRUPT on the pragma itself. Both are integrity
+        // answers and both have to arrive as one - never as "the check could not run", which reads
+        // as the tool breaking rather than the database being broken.
+        assert!(!report.ok, "the damaged database must not be reported sound");
+        assert!(
+            !report.problems.is_empty(),
+            "what SQLite reported has to reach the caller, not just the fact that it failed"
+        );
+        assert!(
+            report.problems.len() <= MAX_INTEGRITY_PROBLEMS,
+            "the problem list is capped so a shredded database cannot report unboundedly"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

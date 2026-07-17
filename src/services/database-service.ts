@@ -1,8 +1,9 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
+import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 
-export type { DatabaseBackupStatus };
+export type { DatabaseBackupStatus, DatabaseIntegrityReport };
 
 /**
  * Initializes the backend database (creating and migrating the schema on first call)
@@ -65,9 +66,10 @@ export async function undoDatabaseImport(): Promise<void> {
 
 /**
  * Runs a full `PRAGMA integrity_check` against the live database, a more thorough (and
- * slower) check than the quick check used by the automatic health paths. Resolves to whether
- * the database reported no problems.
+ * slower) check than the quick check used by the automatic health paths. Resolves to what SQLite
+ * reported - the problems it listed, not just whether the check passed - so a failing check can say
+ * what is wrong rather than only that something is.
  */
-export async function checkDatabaseIntegrity(): Promise<boolean> {
+export async function checkDatabaseIntegrity(): Promise<DatabaseIntegrityReport> {
     return invokeCommand(TAURI_COMMANDS.CHECK_DATABASE_INTEGRITY);
 }

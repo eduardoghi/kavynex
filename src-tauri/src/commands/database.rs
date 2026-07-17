@@ -3,7 +3,7 @@ use std::path::Path;
 use tauri::{AppHandle, State};
 
 use crate::services::database::{database_path, is_pool_initialized, Db};
-use crate::services::db_backup::{self, DatabaseBackupStatus};
+use crate::services::db_backup::{self, DatabaseBackupStatus, DatabaseIntegrityReport};
 use crate::utils::path::extension_from_path;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -118,9 +118,10 @@ pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
 
 /// Runs a full `PRAGMA integrity_check` against the live database, a more thorough (and
 /// slower) check than the `quick_check` used by the automatic health paths. User-triggered
-/// from the Diagnostics dialog.
+/// from the Diagnostics dialog. Returns what SQLite reported, not just whether it passed, so a
+/// failing check can say what is damaged rather than only that something is.
 #[tauri::command]
-pub async fn check_database_integrity(db: State<'_, Db>) -> AppResult<bool> {
+pub async fn check_database_integrity(db: State<'_, Db>) -> AppResult<DatabaseIntegrityReport> {
     let pool = db.pool().await?;
     db_backup::run_full_integrity_check(&pool).await
 }
@@ -160,14 +161,17 @@ mod tests {
     fn check_database_integrity_command_reports_ok_over_ipc() {
         let webview = test_webview(memory_db());
 
-        let healthy = invoke(&webview, "check_database_integrity", serde_json::json!({}))
+        // Deserialized into the shape the frontend actually receives (camelCase over serde), so a
+        // rename on the Rust side breaks here rather than silently at runtime.
+        let report = invoke(&webview, "check_database_integrity", serde_json::json!({}))
             .unwrap()
-            .deserialize::<bool>()
+            .deserialize::<serde_json::Value>()
             .unwrap();
 
-        assert!(
-            healthy,
-            "a freshly migrated database should pass integrity_check"
+        assert_eq!(
+            report,
+            serde_json::json!({ "ok": true, "problems": [], "truncated": false }),
+            "a freshly migrated database should pass integrity_check with nothing to report"
         );
     }
 

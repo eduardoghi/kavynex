@@ -24,6 +24,7 @@ import type {
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
+import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
@@ -72,7 +73,7 @@ export type TauriCommandReturns = {
     import_database: void;
     get_database_import_undo_status: boolean;
     undo_database_import: void;
-    check_database_integrity: boolean;
+    check_database_integrity: DatabaseIntegrityReport;
     get_app_settings: StoredAppSettingsPayload;
     set_app_settings: void;
 
