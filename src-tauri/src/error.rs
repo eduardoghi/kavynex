@@ -100,6 +100,10 @@ pub enum AppErrorCode {
     SourceMediaNotFound,
     InvalidSourceMedia,
     InvalidMediaPath,
+    // Split out from InvalidMediaPath, which covered an empty path, an unconfigured library, a
+    // path outside the library and a file that is simply gone. Only the last has a cause the user
+    // recognizes and can act on, and it was reaching them as "the selected media item is invalid".
+    MediaFileNotFound,
     CreateMediaDirFailed,
     RemoveMediaFailed,
     UnsupportedMediaExtension,
@@ -245,6 +249,7 @@ impl AppErrorCode {
             Self::SourceMediaNotFound => "SOURCE_MEDIA_NOT_FOUND",
             Self::InvalidSourceMedia => "INVALID_SOURCE_MEDIA",
             Self::InvalidMediaPath => "INVALID_MEDIA_PATH",
+            Self::MediaFileNotFound => "MEDIA_FILE_NOT_FOUND",
             Self::CreateMediaDirFailed => "CREATE_MEDIA_DIR_FAILED",
             Self::RemoveMediaFailed => "REMOVE_MEDIA_FAILED",
             Self::UnsupportedMediaExtension => "UNSUPPORTED_MEDIA_EXTENSION",

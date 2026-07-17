@@ -275,10 +275,17 @@ export function MediaPlayerView({
                         title="This file can't be played here"
                     >
                         <Stack gap="sm">
+                            {/* Deliberately does not claim the file is still on disk. The webview
+                                reports a file that is gone and a format it cannot decode with the
+                                same MediaError code (MEDIA_ERR_SRC_NOT_SUPPORTED), so the player
+                                cannot tell them apart - and asserting the wrong one is worse than
+                                naming both. "Open file location" resolves the path in the backend,
+                                which does know, and says so when the file is missing. */}
                             <Text size="sm">
-                                Kavynex's built-in player couldn't play this file - it may use a
-                                format the player doesn't support. The file is still saved on
-                                disk; open its location to play it in another app.
+                                Kavynex's built-in player couldn't play this file. Either it uses a
+                                format the player doesn't support, or the file is no longer where
+                                the library expects it. Open its location to check - a file that is
+                                there will usually play in another app.
                             </Text>
 
                             {onOpenFileLocation && (

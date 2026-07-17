@@ -88,9 +88,21 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
         )
     })?;
 
-    let canonical_path = std::fs::canonicalize(&resolved_path).map_err(|_| {
+    // A path that simply is not there gets its own code, distinct from the invalid/outside-the-
+    // library cases below. It is the one failure here with a cause the user recognizes and can act
+    // on - the file was moved, deleted, or lives on a drive that is not plugged in - and the
+    // frontend cannot tell it apart from the others once they all arrive as InvalidMediaPath. Only
+    // NotFound is treated this way: a permission error or an IO failure says nothing about the file
+    // being gone.
+    let canonical_path = std::fs::canonicalize(&resolved_path).map_err(|error| {
+        let code = if error.kind() == std::io::ErrorKind::NotFound {
+            AppErrorCode::MediaFileNotFound
+        } else {
+            AppErrorCode::InvalidMediaPath
+        };
+
         AppError::from_code(
-            AppErrorCode::InvalidMediaPath,
+            code,
             format!(
                 "path does not exist: {}",
                 crate::services::logger::redact_path(&resolved_path)
@@ -314,6 +326,41 @@ mod tests {
         ] {
             assert!(!is_network_path(value), "should not flag: {value}");
         }
+    }
+
+    #[test]
+    fn reports_a_missing_file_as_missing_rather_than_invalid() {
+        // The one failure here with a cause the user recognizes: the file was moved, deleted, or
+        // sits on a drive that is not plugged in. Sharing InvalidMediaPath with the empty-path and
+        // outside-the-library cases left it reaching them as "the selected media item is invalid",
+        // which describes their library rather than their disk.
+        let library = make_temp_library("missing-file-code");
+
+        let error = resolve_path_inside_library("gone.mp4", Some(library.to_str().unwrap()))
+            .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::MediaFileNotFound.as_str());
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn keeps_a_path_outside_the_library_distinct_from_a_missing_one() {
+        // Both fail, but only one is the user's file being gone: a path that resolves outside the
+        // library is a containment failure, and reporting it as "missing" would send the user
+        // looking for a file that is right where they left it.
+        let library = make_temp_library("outside-library-code");
+        let outside = std::env::temp_dir().join("kavynex-outside-library-target.mp4");
+        fs::write(&outside, b"").unwrap();
+
+        let error =
+            resolve_path_inside_library(outside.to_str().unwrap(), Some(library.to_str().unwrap()))
+                .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidMediaPath.as_str());
+
+        let _ = fs::remove_file(&outside);
+        let _ = fs::remove_dir_all(&library);
     }
 
     #[test]

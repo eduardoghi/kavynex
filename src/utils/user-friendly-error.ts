@@ -19,6 +19,7 @@ import {
     SOURCE_MEDIA_NOT_FOUND_ERROR_CODE,
     INVALID_SOURCE_THUMBNAIL_ERROR_CODE,
     SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE,
+    MEDIA_FILE_NOT_FOUND_ERROR_CODE,
     LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE,
     LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE,
     INVALID_THUMBNAIL_FILE_ERROR_CODE,
@@ -70,6 +71,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [INVALID_LIBRARY_PATH_ERROR_CODE]: "Configure a valid library folder before continuing.",
     [INVALID_LIBRARY_MIGRATION_ERROR_CODE]: "The selected library migration path is not valid.",
     [INVALID_MEDIA_PATH_ERROR_CODE]: "The selected media item is invalid.",
+    [MEDIA_FILE_NOT_FOUND_ERROR_CODE]:
+        "The media file is missing from the library folder. It may have been moved or deleted outside Kavynex, or it may be on a drive that is not connected.",
     [INVALID_THUMBNAIL_PATH_ERROR_CODE]: "The selected thumbnail is invalid.",
     [INVALID_TEMP_THUMBNAIL_PATH_ERROR_CODE]: "The temporary thumbnail is invalid.",
 
