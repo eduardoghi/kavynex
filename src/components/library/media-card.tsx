@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import {
     ActionIcon,
     Badge,
@@ -46,6 +46,87 @@ export const MEDIA_CARD_HEIGHT = 292;
 const MEDIA_THUMBNAIL_HEIGHT = 158;
 const MEDIA_TITLE_HEIGHT = 44;
 const MEDIA_FOOTER_HEIGHT = 28;
+
+// Style objects that never depend on the card's props or state, hoisted to module scope so they
+// are allocated once instead of rebuilt on every render. Only the delta that reacts to
+// isActive/isWatched/isAudio (the root card, the thumbnail border and the media-type badge)
+// stays inline below. This component is memoized and re-renders whenever its own primitive props
+// flip (e.g. the active-media id changes), so avoiding the per-render allocation compounds across
+// a virtualized grid of cards.
+const THUMBNAIL_IMG_STYLE: CSSProperties = {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+};
+
+const THUMBNAIL_PLACEHOLDER_STYLE: CSSProperties = {
+    height: "100%",
+    display: "grid",
+    placeItems: "center",
+    opacity: 0.95,
+};
+
+const TOP_BADGE_GROUP_STYLE: CSSProperties = {
+    position: "absolute",
+    top: rem(10),
+    left: rem(10),
+};
+
+const DURATION_BADGE_STYLE: CSSProperties = {
+    position: "absolute",
+    right: rem(6),
+    bottom: rem(6),
+    background: "rgba(0, 0, 0, 0.78)",
+    color: "#ffffff",
+    fontWeight: 800,
+    letterSpacing: rem(0.2),
+    pointerEvents: "none",
+};
+
+const CONTENT_STACK_STYLE: CSSProperties = {
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+};
+
+const TITLE_GROUP_STYLE: CSSProperties = {
+    height: rem(MEDIA_TITLE_HEIGHT),
+    minHeight: rem(MEDIA_TITLE_HEIGHT),
+    maxHeight: rem(MEDIA_TITLE_HEIGHT),
+};
+
+// Above the stretched open-button overlay so the menu stays clickable while the rest of the card
+// opens the media.
+const MENU_ACTION_ICON_STYLE: CSSProperties = {
+    position: "relative",
+    zIndex: 2,
+    flexShrink: 0,
+};
+
+const FOOTER_GROUP_STYLE: CSSProperties = {
+    height: rem(MEDIA_FOOTER_HEIGHT),
+    minHeight: rem(MEDIA_FOOTER_HEIGHT),
+    maxHeight: rem(MEDIA_FOOTER_HEIGHT),
+    marginTop: "auto",
+};
+
+const CHAT_BADGE_STYLE: CSSProperties = {
+    flexShrink: 0,
+    background: "rgba(239,68,68,0.14)",
+    borderColor: "rgba(239,68,68,0.34)",
+    color: "rgb(252,165,165)",
+    fontWeight: 800,
+};
+
+const COMMENTS_BADGE_STYLE: CSSProperties = {
+    flexShrink: 0,
+    background: "rgba(255,255,255,0.055)",
+    borderColor: "rgba(255,255,255,0.14)",
+    color: "rgba(255,255,255,0.74)",
+    fontWeight: 700,
+    paddingInline: rem(8),
+};
 
 function MediaCardComponent({
     media,
@@ -147,34 +228,15 @@ function MediaCardComponent({
                         // rather than as a missing file; the placeholder below is the same thing a
                         // media with no thumbnail at all shows.
                         onError={() => setThumbFailed(true)}
-                        style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            display: "block",
-                        }}
+                        style={THUMBNAIL_IMG_STYLE}
                     />
                 ) : (
-                    <Box
-                        style={{
-                            height: "100%",
-                            display: "grid",
-                            placeItems: "center",
-                            opacity: 0.95,
-                        }}
-                    >
+                    <Box style={THUMBNAIL_PLACEHOLDER_STYLE}>
                         {isAudio ? <Music size={34} /> : <Play size={34} />}
                     </Box>
                 )}
 
-                <Group
-                    gap="xs"
-                    style={{
-                        position: "absolute",
-                        top: rem(10),
-                        left: rem(10),
-                    }}
-                >
+                <Group gap="xs" style={TOP_BADGE_GROUP_STYLE}>
                     {isActive && (
                         <Badge variant="filled" color="violet">
                             {UI_TEXT.library.selected}
@@ -203,44 +265,19 @@ function MediaCardComponent({
                 </Group>
 
                 {durationLabel && (
-                    <Badge
-                        variant="filled"
-                        color="dark"
-                        style={{
-                            position: "absolute",
-                            right: rem(6),
-                            bottom: rem(6),
-                            background: "rgba(0, 0, 0, 0.78)",
-                            color: "#ffffff",
-                            fontWeight: 800,
-                            letterSpacing: rem(0.2),
-                            pointerEvents: "none",
-                        }}
-                    >
+                    <Badge variant="filled" color="dark" style={DURATION_BADGE_STYLE}>
                         {durationLabel}
                     </Badge>
                 )}
             </Box>
 
-            <Stack
-                gap={6}
-                mt="sm"
-                style={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflow: "hidden",
-                }}
-            >
+            <Stack gap={6} mt="sm" style={CONTENT_STACK_STYLE}>
                 <Group
                     justify="space-between"
                     wrap="nowrap"
                     gap="xs"
                     align="start"
-                    style={{
-                        height: rem(MEDIA_TITLE_HEIGHT),
-                        minHeight: rem(MEDIA_TITLE_HEIGHT),
-                        maxHeight: rem(MEDIA_TITLE_HEIGHT),
-                    }}
+                    style={TITLE_GROUP_STYLE}
                 >
                     <Box style={{ minWidth: 0, flex: 1 }}>
                         <Text
@@ -261,13 +298,7 @@ function MediaCardComponent({
                             <ActionIcon
                                 variant="subtle"
                                 aria-label={`Actions for ${media.title}`}
-                                style={{
-                                    // Above the stretched open-button overlay so the menu stays
-                                    // clickable while the rest of the card opens the media.
-                                    position: "relative",
-                                    zIndex: 2,
-                                    flexShrink: 0,
-                                }}
+                                style={MENU_ACTION_ICON_STYLE}
                             >
                                 <MoreVertical size={18} />
                             </ActionIcon>
@@ -335,12 +366,7 @@ function MediaCardComponent({
                     align="center"
                     gap="xs"
                     wrap="nowrap"
-                    style={{
-                        height: rem(MEDIA_FOOTER_HEIGHT),
-                        minHeight: rem(MEDIA_FOOTER_HEIGHT),
-                        maxHeight: rem(MEDIA_FOOTER_HEIGHT),
-                        marginTop: "auto",
-                    }}
+                    style={FOOTER_GROUP_STYLE}
                 >
                     <Text
                         size="xs"
@@ -356,16 +382,7 @@ function MediaCardComponent({
 
                     <Group gap={6} wrap="nowrap">
                         {hasLiveChat && (
-                            <Badge
-                                variant="outline"
-                                style={{
-                                    flexShrink: 0,
-                                    background: "rgba(239,68,68,0.14)",
-                                    borderColor: "rgba(239,68,68,0.34)",
-                                    color: "rgb(252,165,165)",
-                                    fontWeight: 800,
-                                }}
-                            >
+                            <Badge variant="outline" style={CHAT_BADGE_STYLE}>
                                 CHAT
                             </Badge>
                         )}
@@ -374,14 +391,7 @@ function MediaCardComponent({
                             <Badge
                                 variant="outline"
                                 leftSection={<MessageCircle size={12} />}
-                                style={{
-                                    flexShrink: 0,
-                                    background: "rgba(255,255,255,0.055)",
-                                    borderColor: "rgba(255,255,255,0.14)",
-                                    color: "rgba(255,255,255,0.74)",
-                                    fontWeight: 700,
-                                    paddingInline: rem(8),
-                                }}
+                                style={COMMENTS_BADGE_STYLE}
                             >
                                 {commentsCount}
                             </Badge>

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
     ActionIcon,
     Anchor,
@@ -50,6 +50,35 @@ const REPLIES_LOAD_MORE_STEP = 10;
 // thousands of comments does not re-walk the tree on every keystroke. The input itself stays
 // controlled and responsive.
 const COMMENT_SEARCH_DEBOUNCE_MS = 200;
+
+// Style objects that never depend on a comment's props or state, hoisted to module scope so they
+// are allocated once instead of rebuilt on every render. CommentItem is memoized and rendered
+// recursively across a whole thread, so avoiding the per-node allocation compounds. The styles
+// that read runtime values (the reply border keyed on shellBorder, the indent keyed on level)
+// stay inline.
+const COMMENT_TEXT_STYLE: CSSProperties = {
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    lineHeight: 1.5,
+};
+
+const REPLY_TOGGLE_BUTTON_STYLES = {
+    root: {
+        color: "var(--mantine-color-blue-4)",
+        fontWeight: 700,
+    },
+    section: {
+        marginRight: rem(4),
+    },
+} satisfies Record<string, CSSProperties>;
+
+const LOAD_MORE_REPLIES_BUTTON_STYLES = {
+    root: {
+        color: "var(--mantine-color-blue-4)",
+        fontWeight: 700,
+        alignSelf: "flex-start",
+    },
+} satisfies Record<string, CSSProperties>;
 
 type CommentsPanelProps = {
     comments: MediaCommentRow[];
@@ -158,14 +187,7 @@ function CommentItemComponent({
                         )}
                     </Group>
 
-                    <Text
-                        size="sm"
-                        style={{
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                            lineHeight: 1.5,
-                        }}
-                    >
+                    <Text size="sm" style={COMMENT_TEXT_STYLE}>
                         {comment.text}
                     </Text>
 
@@ -192,15 +214,7 @@ function CommentItemComponent({
                                     )
                                 }
                                 onClick={() => setExpandedReplies((current) => !current)}
-                                styles={{
-                                    root: {
-                                        color: "var(--mantine-color-blue-4)",
-                                        fontWeight: 700,
-                                    },
-                                    section: {
-                                        marginRight: rem(4),
-                                    },
-                                }}
+                                styles={REPLY_TOGGLE_BUTTON_STYLES}
                             >
                                 {repliesVisible ? UI_TEXT.comments.hideReplies : replyCountLabel}
                             </Button>
@@ -241,13 +255,7 @@ function CommentItemComponent({
                                     (current) => current + REPLIES_LOAD_MORE_STEP
                                 )
                             }
-                            styles={{
-                                root: {
-                                    color: "var(--mantine-color-blue-4)",
-                                    fontWeight: 700,
-                                    alignSelf: "flex-start",
-                                },
-                            }}
+                            styles={LOAD_MORE_REPLIES_BUTTON_STYLES}
                         >
                             {UI_TEXT.comments.loadMore} (
                             {comment.replies.length - visibleReplyCount})

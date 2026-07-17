@@ -20,7 +20,7 @@ import {
     Trash2,
     UserX,
 } from "lucide-react";
-import { memo, useRef } from "react";
+import { memo, useRef, type CSSProperties } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import type { Channel, ViewMode } from "../../types/media";
@@ -32,6 +32,48 @@ const CHANNEL_ROW_ESTIMATE = 72;
 // Matches the "xs" Stack gap the list used before virtualization, applied as per-row bottom
 // padding since absolutely positioned virtual rows do not receive the flex gap.
 const CHANNEL_ROW_GAP = 8;
+
+// Style objects that never depend on props or state, hoisted to module scope so they are
+// allocated once rather than rebuilt on every render. The row's own dynamic styles (the card
+// background/border keyed on selected/isBusy, the avatar border keyed on shellBorder) stay inline
+// because they read runtime values.
+const ROW_MENU_STYLES = {
+    dropdown: {
+        borderRadius: 14,
+        padding: 6,
+        background: "rgba(36, 36, 40, 0.98)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(12px)",
+    },
+    item: {
+        borderRadius: 10,
+        paddingBlock: 10,
+        paddingInline: 12,
+    },
+    divider: {
+        marginBlock: 6,
+    },
+} satisfies Record<string, CSSProperties>;
+
+// Above the stretched select overlay so the menu stays clickable while the rest of the row
+// selects the channel.
+const ROW_ACTION_ICON_STYLE: CSSProperties = {
+    position: "relative",
+    zIndex: 2,
+};
+
+const COUNT_BADGE_STYLES = {
+    root: {
+        minWidth: 30,
+        justifyContent: "center",
+        paddingInline: 10,
+    },
+    label: {
+        fontWeight: 800,
+        fontSize: 12,
+        lineHeight: 1,
+    },
+} satisfies Record<string, CSSProperties>;
 
 type ChannelListItemProps = {
     channel: Channel;
@@ -138,35 +180,14 @@ const ChannelListItem = memo(function ChannelListItem({
                         shadow="lg"
                         width={220}
                         offset={8}
-                        styles={{
-                            dropdown: {
-                                borderRadius: 14,
-                                padding: 6,
-                                background: "rgba(36, 36, 40, 0.98)",
-                                border: "1px solid rgba(255,255,255,0.08)",
-                                backdropFilter: "blur(12px)",
-                            },
-                            item: {
-                                borderRadius: 10,
-                                paddingBlock: 10,
-                                paddingInline: 12,
-                            },
-                            divider: {
-                                marginBlock: 6,
-                            },
-                        }}
+                        styles={ROW_MENU_STYLES}
                     >
                         <Menu.Target>
                             <ActionIcon
                                 variant="subtle"
                                 radius="xl"
                                 aria-label={`Actions for ${channel.name}`}
-                                style={{
-                                    // Above the stretched select overlay so the menu stays
-                                    // clickable while the rest of the row selects the channel.
-                                    position: "relative",
-                                    zIndex: 2,
-                                }}
+                                style={ROW_ACTION_ICON_STYLE}
                             >
                                 <MoreVertical size={18} />
                             </ActionIcon>
@@ -300,18 +321,7 @@ export function ChannelSidebar({
                         color="gray"
                         radius="xl"
                         size="lg"
-                        styles={{
-                            root: {
-                                minWidth: 30,
-                                justifyContent: "center",
-                                paddingInline: 10,
-                            },
-                            label: {
-                                fontWeight: 800,
-                                fontSize: 12,
-                                lineHeight: 1,
-                            },
-                        }}
+                        styles={COUNT_BADGE_STYLES}
                     >
                         {loading ? "..." : channels.length}
                     </Badge>
