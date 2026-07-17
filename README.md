@@ -190,6 +190,24 @@ them to yt-dlp for that request only; Kavynex does not transmit, store, or displ
 cookie values. See `docs/DATABASE.md` and `SECURITY.md` for more detail on what is stored
 locally and how it is protected.
 
+### Taking your data with you, or removing it
+
+Everything Kavynex holds is a plain file on your disk, so both are file operations rather than
+in-app flows:
+
+- **Your media, thumbnails and live chat replays** live in the library folder you chose (Settings >
+  Library folder shows the current path). They are ordinary files - copy the folder anywhere and it
+  is a complete backup of the media itself.
+- **The database** (channels, titles, watched state, comments) is a single SQLite file. Settings >
+  Database > Export writes a snapshot of it wherever you choose, which is the portable copy to keep.
+
+Uninstalling removes the app, not your data - by design, since the library is usually the point.
+To remove everything, delete the library folder plus the three app directories (config, cache and
+logs). The Diagnostics dialog shows the resolved library folder; `docs/DIRECTORIES.md` lists the
+per-OS paths of the other three and what each one holds. Note that the config directory is the one
+holding the database and its automatic backups, so deleting it discards the channel/watched/comment
+data even though the media files live elsewhere.
+
 ## More documentation
 
 - `docs/ARCHITECTURE.md` - the layered backend/frontend architecture and the IPC boundary.

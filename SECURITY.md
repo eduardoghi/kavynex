@@ -142,6 +142,25 @@ form. Nothing in the normal loop catches it: `pnpm tauri dev` serves the page fr
 origin, where no CSP header is injected, so only a packaged build exercises this. That is why
 `src/lib/tauri-platform.test.ts` pins both tokens.
 
+#### The one relaxed directive: `style-src 'unsafe-inline'`
+
+Every other directive in the CSP is strict, so this one is worth stating rather than leaving to be
+noticed. Mantine styles components through Emotion, a CSS-in-JS library: it injects a `<style>`
+element at runtime and sets inline `style` attributes, both of which a strict `style-src` blocks.
+Removing the token does not harden the app, it renders it unusable.
+
+What keeps the cost low is that it is `style-src` and not `script-src`. `script-src` is not relaxed
+- it inherits `default-src 'self'`, so no inline script runs, and `object-src 'none'`, `base-uri
+'self'` and `frame-ancestors 'none'` close the usual ways around that. Injected CSS alone cannot
+execute code; the realistic worst case is a styling/exfiltration trick, and that needs an injection
+sink to begin with. There is none: YouTube-derived text (titles, comments, chat, author names) is
+rendered as React children, never through `dangerouslySetInnerHTML` or `eval`, which is the same
+property the threat model above rests on.
+
+So the honest statement of the tradeoff is: this token is load-bearing for the UI framework, and the
+thing that makes it acceptable is the absence of an injection sink rather than the token itself
+being harmless. A future change that introduces raw-HTML rendering would have to revisit it.
+
 ### Updater
 
 The updater (`tauri-plugin-updater`) checks a fixed HTTPS endpoint on GitHub
