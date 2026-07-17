@@ -194,7 +194,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `12`), in `db_schema.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `13`), in `db_schema.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -236,6 +236,24 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   `idx_videos_channel_published_desc` - see "The `list_media_page` sort indexes" above for why
   `publication_date` needs one index per direction). Index-only like v8/v9: the migration just
   re-runs the index DDL list and stamps `user_version = 12`.
+- **v13** backports the two `videos` row invariants to a table that predates them, since
+  `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table and SQLite has no
+  `ALTER TABLE ADD CONSTRAINT`: `has_live_chat` set implies a stored `live_chat_file_path`
+  (declared as a `CHECK` on a fresh table), and `title_normalized` is never NULL. Rebuilding the
+  largest table just to add a `CHECK` is not worth its risk, so each becomes a pair of
+  `BEFORE INSERT`/`BEFORE UPDATE` triggers (`TRIGGER_DDLS`) that reject the same states with a
+  plain `CREATE TRIGGER`, touching no row content. Rows that already violate an invariant are
+  repaired first - clearing a `has_live_chat` flag that has no path behind it, and computing the
+  missing `title_normalized` with v11's backfill - because the triggers only fire on new writes,
+  and a leftover NULL title would otherwise make every later edit of that row fail. The repairs,
+  the triggers and the stamp share one transaction.
+
+  The title repair is not redundant with v11. Only a database below v11 ever runs v11, so a row
+  that arrived with a NULL afterwards (an imported database, an out-of-band writer) is never
+  reached again - and a NULL `title_normalized` fails silently: `LIKE` never matches it, so the
+  media sits in the library while being invisible to every title search. An import is the one hole
+  the triggers cannot cover, because it replaces the whole file and fires no write at all; that is
+  refused up front instead (see "Importing a database" below).
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
@@ -247,7 +265,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
   any dangling reference the rebuild introduced. This path is implemented and tested but
-  unused as of `SCHEMA_VERSION 12` - no migration has needed it yet - kept ready so the
+  unused as of `SCHEMA_VERSION 13` - no migration has needed it yet - kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
   transaction that also stamps the new `user_version`, so a crash mid-migration leaves the
@@ -387,6 +405,15 @@ live connection pool is a singleton that cannot be reopened mid-session:
    WAL frames the source still holds are checkpointed into it first, since only the `.db` file
    is copied; if a lock prevents that and frames remain, the import is refused rather than
    silently dropping the source's most recent commits.
+
+   A database stamped at v11 or later whose `videos` still hold a NULL `title_normalized` is
+   refused here too. This is the one hole v13's triggers cannot cover - an import replaces the
+   whole file, so no write ever fires - and stamping v11 or later is a claim to have been
+   backfilled already, which makes `ensure_schema` skip past the migration that would repair it.
+   The rows would then be permanently invisible to every title search while still sitting in the
+   library. The version gate is the point: below v11 a NULL is simply what that schema looks like,
+   and importing an older library has to keep working, which it does because the swap is followed
+   by v11's backfill.
 2. On the *next* app startup, before the pool opens, `lib.rs`'s `setup()` calls
    `apply_pending_database_import`. If a staged file exists, the current database is
    moved aside to `.pre-import` (a safety net, not deleted), the staged file's `-wal`/
@@ -397,6 +424,17 @@ live connection pool is a singleton that cannot be reopened mid-session:
    the *only* copy of the previous database if a run dies between the two renames; the removal
    of an older `.pre-import` therefore happens only in the branch that immediately replaces it,
    never unconditionally.
+
+   That guard alone is not enough, because it only asks whether a database file is *there*. A run
+   whose swap failed *and* whose rollback also failed leaves the data solely in `.pre-import` -
+   and the app keeps starting, so the pool creates an empty `kavynex.db` through
+   `create_if_missing`. On the next launch a database file exists again, and on disk that state is
+   indistinguishable from a perfectly normal *second* import (staged file + `.pre-import` + a
+   database), which does have to consume the old undo copy. Telling them apart needs a persistent
+   signal, so an `.import-applying` marker is written before the move-aside and cleared once the
+   swap or its rollback has put a database back. A marker that outlived a restart means
+   `.pre-import` is the only real copy, and the move-aside is skipped rather than overwriting it
+   with the empty file. See `docs/DIRECTORIES.md` for the file itself.
 
 ## Related files
 
