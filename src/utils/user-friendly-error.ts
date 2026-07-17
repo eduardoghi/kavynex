@@ -19,6 +19,8 @@ import {
     SOURCE_MEDIA_NOT_FOUND_ERROR_CODE,
     INVALID_SOURCE_THUMBNAIL_ERROR_CODE,
     SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE,
+    LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE,
+    LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE,
     INVALID_THUMBNAIL_FILE_ERROR_CODE,
     THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO_ERROR_CODE,
     CHANNEL_ALREADY_EXISTS_ERROR_CODE,
@@ -73,6 +75,10 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
 
     [INVALID_SOURCE_MEDIA_ERROR_CODE]: "Select a valid media file.",
     [SOURCE_MEDIA_NOT_FOUND_ERROR_CODE]: "The selected media file was not found.",
+    [LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE]:
+        "The saved live chat file is missing from the library folder. It may have been moved or deleted outside Kavynex.",
+    [LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE]:
+        "The saved live chat file could not be read - it looks damaged. The video itself is unaffected.",
     [INVALID_SOURCE_THUMBNAIL_ERROR_CODE]: "Select a valid thumbnail image.",
     [SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE]: "The selected thumbnail image was not found.",
     [INVALID_THUMBNAIL_FILE_ERROR_CODE]: "Choose a valid thumbnail image file.",

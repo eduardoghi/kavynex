@@ -54,6 +54,13 @@ pub enum AppErrorCode {
     FileMoveFailed,
     SourceFileRemoveFailed,
     LiveChatCompressFailed,
+    // Split out from LiveChatCompressFailed, which covered every live chat failure - compressing,
+    // a missing file, a corrupt archive - with one code the frontend had no message for, so all of
+    // them reached the user as the generic fallback plus a raw Rust string. These two are the ones
+    // a user can actually act on, and they call for opposite actions: a moved/deleted file is
+    // recoverable by putting it back, a corrupt archive is not.
+    LiveChatFileNotFound,
+    LiveChatFileUnreadable,
 
     InvalidDestinationPath,
     CreateDestinationParentFailed,
@@ -197,6 +204,8 @@ impl AppErrorCode {
             Self::FileMoveFailed => "FILE_MOVE_FAILED",
             Self::SourceFileRemoveFailed => "SOURCE_FILE_REMOVE_FAILED",
             Self::LiveChatCompressFailed => "LIVE_CHAT_COMPRESS_FAILED",
+            Self::LiveChatFileNotFound => "LIVE_CHAT_FILE_NOT_FOUND",
+            Self::LiveChatFileUnreadable => "LIVE_CHAT_FILE_UNREADABLE",
 
             Self::InvalidDestinationPath => "INVALID_DESTINATION_PATH",
             Self::CreateDestinationParentFailed => "CREATE_DESTINATION_PARENT_FAILED",

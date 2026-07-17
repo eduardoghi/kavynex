@@ -69,16 +69,46 @@ pub fn gzip_decompress(data: &[u8]) -> AppResult<Vec<u8>> {
 
 /// Reads a stored live chat file and returns its JSON text, transparently gunzipping the
 /// gzip-compressed files (older files may still be plain JSON and are returned as-is).
+///
+/// The two ways this fails are told apart rather than sharing one code, because they call for
+/// opposite things from the user: a file that was moved or deleted can be put back, while a
+/// corrupt archive cannot and only the backup can help. Both used to arrive as
+/// `LiveChatCompressFailed`, which the frontend has no message for, so either one reached the user
+/// as "check the logs for details" with a raw Rust string underneath.
 pub fn read_live_chat_text(path: &Path) -> AppResult<String> {
-    let bytes = fs::read(path).map_err(|e| compress_error("failed to read live chat file", e))?;
+    let bytes = fs::read(path).map_err(|error| {
+        let code = if error.kind() == std::io::ErrorKind::NotFound {
+            AppErrorCode::LiveChatFileNotFound
+        } else {
+            AppErrorCode::LiveChatFileUnreadable
+        };
+
+        AppError::from_code_with_details(
+            code,
+            "failed to read live chat file",
+            error.to_string(),
+        )
+    })?;
 
     let raw = if is_gzip(&bytes) {
-        gzip_decompress(&bytes)?
+        gzip_decompress(&bytes).map_err(|error| {
+            AppError::from_code_with_details(
+                AppErrorCode::LiveChatFileUnreadable,
+                "the live chat file could not be decompressed",
+                error.message,
+            )
+        })?
     } else {
         bytes
     };
 
-    String::from_utf8(raw).map_err(|e| compress_error("live chat file is not valid utf-8", e))
+    String::from_utf8(raw).map_err(|error| {
+        AppError::from_code_with_details(
+            AppErrorCode::LiveChatFileUnreadable,
+            "the live chat file is not valid utf-8",
+            error.to_string(),
+        )
+    })
 }
 
 /// One-time migration that moves live chat files from the old app-data location into the
@@ -359,6 +389,39 @@ mod tests {
         let gz = dir.join("compressed.json");
         fs::write(&gz, gzip_compress(b"{\"b\":2}").unwrap()).unwrap();
         assert_eq!(read_live_chat_text(&gz).unwrap(), "{\"b\":2}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_live_chat_text_tells_a_missing_file_apart_from_an_unreadable_one() {
+        // These share nothing but the fact that they fail: a file the user moved out of the library
+        // can be put back, while a corrupt archive cannot and only a backup helps. Reporting both
+        // under one code left the frontend with no way to say either, so both surfaced as the
+        // generic "check the logs" fallback with a raw Rust string attached.
+        let dir = temp_dir("read-failures");
+        fs::create_dir_all(&dir).unwrap();
+
+        let missing = dir.join("gone.json.gz");
+        let error = read_live_chat_text(&missing).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::LiveChatFileNotFound.as_str());
+
+        // Gzip magic bytes with a shredded body: present, readable, and not decompressible.
+        let corrupt = dir.join("corrupt.json.gz");
+        let mut bytes = gzip_compress(b"{\"a\":1}").unwrap();
+        let tail = bytes.len() - 4;
+        bytes[4..tail].fill(0xFF);
+        fs::write(&corrupt, &bytes).unwrap();
+
+        let error = read_live_chat_text(&corrupt).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::LiveChatFileUnreadable.as_str());
+
+        // Valid gzip wrapping bytes that are not text.
+        let not_utf8 = dir.join("binary.json.gz");
+        fs::write(&not_utf8, gzip_compress(&[0xF0, 0x28, 0x8C, 0x28]).unwrap()).unwrap();
+
+        let error = read_live_chat_text(&not_utf8).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::LiveChatFileUnreadable.as_str());
 
         let _ = fs::remove_dir_all(&dir);
     }
