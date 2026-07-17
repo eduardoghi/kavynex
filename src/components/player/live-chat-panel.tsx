@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef } from "react";
-import { Badge, Box, Divider, Group, Loader, Paper, Stack, Text, rem } from "@mantine/core";
+import { Badge, Box, Divider, Group, Paper, Stack, Text, rem } from "@mantine/core";
 import { MessageCircle } from "lucide-react";
+import { AsyncStatusRegion } from "../common/async-status-region";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
 import { resolveAvatarSrc } from "../../utils/avatar";
 import { useRemoteImagesEnabled } from "./remote-images-context";
@@ -244,22 +245,11 @@ export function LiveChatPanel({
                     }}
                 >
                     <Stack gap="md">
-                        <Box role="status" aria-live="polite">
-                            {isLoadingLiveChat && (
-                                <Group gap="sm">
-                                    <Loader size="sm" />
-                                    <Text size="sm" c="dimmed">
-                                        Loading live chat replay...
-                                    </Text>
-                                </Group>
-                            )}
-
-                            {!isLoadingLiveChat && error && (
-                                <Text size="sm" c="red.4">
-                                    {error}
-                                </Text>
-                            )}
-
+                        <AsyncStatusRegion
+                            loading={isLoadingLiveChat}
+                            loadingMessage="Loading live chat replay..."
+                            error={error}
+                        >
                             {!isLoadingLiveChat && !error && liveChatMessages.length === 0 && (
                                 <Text size="sm" c="dimmed">
                                     No live chat messages were loaded.
@@ -273,7 +263,7 @@ export function LiveChatPanel({
                                         No messages visible for the current playback time.
                                     </Text>
                                 )}
-                        </Box>
+                        </AsyncStatusRegion>
 
                         {!isLoadingLiveChat &&
                             inlineMessages.length > 0 &&

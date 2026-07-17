@@ -7,7 +7,6 @@ import {
     Button,
     Divider,
     Group,
-    Loader,
     Paper,
     Select,
     Stack,
@@ -22,6 +21,7 @@ import type { MediaCommentRow } from "../../types/media";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { activateOnEnterOrSpace } from "../../utils/keyboard";
+import { AsyncStatusRegion } from "../common/async-status-region";
 import { SafeAvatar } from "./safe-avatar";
 import { useRemoteImagesEnabled } from "./remote-images-context";
 import {
@@ -415,22 +415,11 @@ export function CommentsPanel({
 
                 <Divider color={shellBorder} />
 
-                <Box role="status" aria-live="polite">
-                    {isLoadingComments && (
-                        <Group gap="sm">
-                            <Loader size="sm" />
-                            <Text size="sm" c="dimmed">
-                                {UI_TEXT.comments.loading}
-                            </Text>
-                        </Group>
-                    )}
-
-                    {!isLoadingComments && error && (
-                        <Text size="sm" c="red.4">
-                            {error}
-                        </Text>
-                    )}
-
+                <AsyncStatusRegion
+                    loading={isLoadingComments}
+                    loadingMessage={UI_TEXT.comments.loading}
+                    error={error}
+                >
                     {!isLoadingComments && !error && !hasComments && (
                         <Text size="sm" c="dimmed">
                             {UI_TEXT.comments.noCommentsAvailable}
@@ -471,7 +460,7 @@ export function CommentsPanel({
                                 {UI_TEXT.comments.noSearchResults}
                             </Text>
                         )}
-                </Box>
+                </AsyncStatusRegion>
 
                 {!isLoadingComments && filteredCommentTree.length > 0 && (
                     <Stack gap="lg">
