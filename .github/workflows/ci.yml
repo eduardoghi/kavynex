@@ -95,7 +95,11 @@ jobs:
                 # macOS is included because the release ships macOS binaries; without it,
                 # platform-specific bugs (path semantics, canonicalization) would only
                 # surface at release time.
-                platform: [ubuntu-22.04, windows-latest, macos-latest]
+                # Pinned images rather than the `-latest` aliases, matching release.yml: `-latest`
+                # silently moves to a new major OS (the 2026-07-14 run already resolved
+                # `macos-latest` to macos-26-arm64), and CI is only worth anything here if it tests
+                # on what the release actually builds on.
+                platform: [ubuntu-22.04, windows-2025, macos-26]
         runs-on: ${{ matrix.platform }}
         # Never let a job run toward the 6h default: a hang fails in bounded time.
         timeout-minutes: 30

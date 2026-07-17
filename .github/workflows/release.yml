@@ -82,17 +82,25 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
+                # Pinned images, like ubuntu-22.04 already was, rather than the `-latest` aliases.
+                # `-latest` moves to a new major OS whenever GitHub decides, which is not a
+                # theoretical worry here: the 2026-07-14 run resolved `macos-latest` to
+                # macos-26-arm64 while the runner-images README still documented it as macOS 15.
+                # The Rust toolchain and Node are pinned to the version, so leaving the OS itself
+                # free is the one thing that could still change what a release is built on between
+                # two otherwise identical runs. These are the images those runs actually used, so
+                # this pins current behavior rather than changing it; bump them deliberately.
                 include:
-                    - platform: macos-latest
+                    - platform: macos-26
                       args: --target aarch64-apple-darwin
 
-                    - platform: macos-latest
+                    - platform: macos-26
                       args: --target x86_64-apple-darwin
 
                     - platform: ubuntu-22.04
                       args: ""
 
-                    - platform: windows-latest
+                    - platform: windows-2025
                       args: ""
 
         runs-on: ${{ matrix.platform }}
@@ -108,10 +116,18 @@ jobs:
             # unreviewed branch would be compiled, signed with the real minisign key, and published
             # as a draft. Fail before checkout, before any secret is in scope. `github.ref` is
             # `refs/heads/<branch>` for a branch dispatch.
+            # `github.ref` goes through `env:` rather than being interpolated into the script:
+            # `${{ }}` is substituted before the shell ever parses the line, and a branch name may
+            # contain shell metacharacters, so interpolating it directly would let a branch named
+            # `$(...)` run its own code in a job that holds `id-token: write`. It takes push access
+            # to reach, which is not much of an attacker, but this is the one step where a hostile
+            # ref is the expected input.
             - name: Refuse to release from a non-main ref
               if: github.ref != 'refs/heads/main'
+              env:
+                  DISPATCHED_REF: ${{ github.ref }}
               run: |
-                  echo "::error::Release must be dispatched from main, got ${{ github.ref }}." >&2
+                  echo "::error::Release must be dispatched from main, got $DISPATCHED_REF." >&2
                   exit 1
 
             - name: Checkout repository
@@ -142,7 +158,7 @@ jobs:
               with:
                   toolchain: 1.96.0
                   components: rustfmt, clippy
-                  targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+                  targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
             - name: Install Linux dependencies
               if: matrix.platform == 'ubuntu-22.04'
@@ -356,3 +372,16 @@ jobs:
                   fi
 
                   echo "The draft release v$VERSION has every expected asset."
+
+            # The check above proves latest.json is *present*, which is not the same as it being
+            # complete. Every build leg merges its own entries into that one file on the release, so
+            # a leg that uploaded its installer but lost the merge (a transient API error, two legs
+            # racing) leaves a latest.json that parses fine and simply never offers an update to one
+            # platform. Nothing else would notice: the file is there, the installers are there, and
+            # only users on the missing platform would silently stop getting updates.
+            #
+            # Reads the copy the checksums step already downloaded, and checks the four keys the
+            # updater actually looks up - tauri also emits `-app`/`-msi`/`-nsis`/`-appimage`/`-deb`/
+            # `-rpm` variants, but the client resolves the bare `<os>-<arch>` one.
+            - name: Verify latest.json offers every platform
+              run: node scripts/verify-latest-json.js assets/latest.json
