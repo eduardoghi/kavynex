@@ -2271,6 +2271,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rebuilding_videos_puts_its_triggers_and_indexes_back() {
+        // The rebuild path is kept ready but unused, so nothing has ever run it against a real
+        // table - and `videos` is the only one carrying triggers. Dropping a table drops its
+        // triggers with it, so a rebuild that forgot to recreate them would hand back a table that
+        // still looks right and silently accepts the rows the triggers exist to reject. That is the
+        // failure this pins, because the first real rebuild should be a data change rather than the
+        // first outing for this plumbing.
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type) \
+             VALUES (1, 1, 'kept', 'kept', 'video/kept.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // The same shape the schema already declares, under a staging name: this rebuild changes
+        // nothing about the table, so anything that differs afterwards was lost by the rebuild
+        // itself rather than by the new definition.
+        let new_ddl = VIDEOS_TABLE_DDL.replace(
+            "CREATE TABLE IF NOT EXISTS videos (",
+            "CREATE TABLE videos_rebuilt (",
+        );
+        let rebuild = TableRebuild {
+            table: "videos",
+            staging_table: "videos_rebuilt",
+            new_ddl: Box::leak(new_ddl.into_boxed_str()),
+            carried_columns: "id, channel_id, title, title_normalized, file_path, thumbnail_path, \
+                              media_type, youtube_video_id, watched_at, published_at, \
+                              duration_seconds, progress_seconds, has_comments, comments_count, \
+                              is_live, has_live_chat, live_chat_file_path, created_at",
+        };
+
+        apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), SCHEMA_VERSION)
+            .await
+            .unwrap();
+
+        let (title,): (String,) = sqlx::query_as("SELECT title FROM videos WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(title, "kept");
+
+        // Both triggers have to be enforcing again, not merely present.
+        let live_chat_violation = sqlx::query(
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 't', 't', 'video/a.mp4', 'video', 1, NULL)",
+        )
+        .execute(&pool)
+        .await;
+        assert!(
+            live_chat_violation.is_err(),
+            "the live chat trigger must survive a rebuild of videos"
+        );
+
+        let title_violation = sqlx::query(
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type) \
+             VALUES (1, 't', NULL, 'video/b.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await;
+        assert!(
+            title_violation.is_err(),
+            "the title_normalized trigger must survive a rebuild of videos"
+        );
+
+        // Indexes are recreated the same way and from the same catalog, so a rebuild that lost
+        // them would leave the grid's hottest query unserved while still returning correct rows.
+        let (index_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'videos' \
+             AND name LIKE 'idx_%'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let expected_indexes = INDEX_DDLS
+            .iter()
+            .filter(|(table, _)| *table == "videos")
+            .count() as i64;
+        assert_eq!(index_count, expected_indexes);
+    }
+
+    #[tokio::test]
     async fn apply_table_rebuilds_rejects_data_that_violates_the_new_constraint() {
         let pool = memory_pool().await;
 
