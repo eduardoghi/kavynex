@@ -85,7 +85,12 @@ const LiveChatItem = memo(function LiveChatItem({
         );
     }
 
-    if (message.amount_text) {
+    // Dispatch on the kind the parser assigned, not on amount_text being present. A super sticker
+    // whose purchase amount could not be parsed still has no message_text (stickers never carry
+    // one) and its image lives in sticker_image_url, which only SuperChatMessage renders - so
+    // routing it by amount alone dropped it into RegularChatMessage as a near-empty row, image and
+    // all. The amount is what the badge shows; it is not what the message is.
+    if (message.kind === "superchat" || message.kind === "sticker") {
         return (
             <SuperChatMessage
                 message={message}

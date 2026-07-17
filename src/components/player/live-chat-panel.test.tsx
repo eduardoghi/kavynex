@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { LiveChatPanel, liveChatItemKey } from "./live-chat-panel";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
+import { RemoteImagesProvider } from "./remote-images-context";
 import { renderWithMantine } from "../../test/test-utils";
 
 function makeChatMessage(overrides: Partial<LiveChatMessageItem> = {}): LiveChatMessageItem {
@@ -56,6 +57,34 @@ describe("liveChatItemKey", () => {
 });
 
 describe("LiveChatPanel", () => {
+    it("renders a super sticker whose purchase amount could not be parsed", () => {
+        // A sticker carries no message_text and its image lives in sticker_image_url, which only
+        // the super chat row renders. Dispatching on amount_text being present dropped a sticker
+        // with an unparsed amount into the regular row, where it showed as a near-empty line with
+        // the image gone.
+        const sticker = makeChatMessage({
+            kind: "sticker",
+            amount_text: null,
+            message_text: "",
+            message_parts: [],
+            sticker_image_url: "https://lh3.googleusercontent.com/sticker.png",
+            author_name: "Buyer",
+        });
+
+        renderWithMantine(
+            <RemoteImagesProvider value={true}>
+                <LiveChatPanel
+                    liveChatMessages={[sticker]}
+                    visibleLiveChatMessages={[sticker]}
+                    isLoadingLiveChat={false}
+                    shellBorder="rgba(255,255,255,0.1)"
+                />
+            </RemoteImagesProvider>
+        );
+
+        expect(screen.getByRole("img", { name: "Super Sticker" })).toBeInTheDocument();
+    });
+
     it("shows the load error instead of the empty state when a read fails", () => {
         renderWithMantine(
             <LiveChatPanel

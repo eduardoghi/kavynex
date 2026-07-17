@@ -35,6 +35,34 @@ function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
 }
 
 describe("buildCommentTree", () => {
+    it("keeps comments visible when their parent chain loops", () => {
+        // Two comments naming each other as parent: neither is a root, so a single attach pass
+        // builds an island nothing reaches and both vanish from the UI - silently, while
+        // comments_count still counts them. Malformed data is the only way in, which is why this
+        // cannot rely on the data being well formed.
+        const tree = buildCommentTree(
+            [
+                comment({ id: 1, comment_id: "a", parent_comment_id: "b", text: "first" }),
+                comment({ id: 2, comment_id: "b", parent_comment_id: "a", text: "second" }),
+            ],
+            "newest"
+        );
+
+        expect(countCommentsInTree(tree)).toBe(2);
+        expect(tree.map((node) => node.text).sort()).toEqual(["first", "second"]);
+    });
+
+    it("keeps a comment that names itself as its parent", () => {
+        const tree = buildCommentTree(
+            [comment({ id: 1, comment_id: "a", parent_comment_id: "a", text: "self" })],
+            "newest"
+        );
+
+        expect(countCommentsInTree(tree)).toBe(1);
+        expect(tree[0]?.text).toBe("self");
+        expect(tree[0]?.replies).toEqual([]);
+    });
+
     it("nests replies under their parent by comment_id", () => {
         const tree = buildCommentTree(
             [

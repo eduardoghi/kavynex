@@ -104,6 +104,45 @@ export function compareComments(
     return left.id - right.id;
 }
 
+/// Whether following `node`'s parents ends at a root rather than looping back on itself.
+///
+/// Attaching a node whose chain loops (a comment naming itself as its parent, or two naming each
+/// other) builds an island that no root reaches, so those comments render nowhere at all - silently,
+/// and while still being counted in `comments_count`. The data would have to be malformed for that
+/// to happen, which is exactly why it must not depend on the data being well formed: the cost of
+/// being wrong is a comment that exists in the library and cannot be seen.
+function chainEndsAtARoot(
+    node: CommentTreeNode,
+    byCommentId: Map<string, CommentTreeNode>
+): boolean {
+    const seen = new Set<CommentTreeNode>();
+    let current = node;
+
+    for (;;) {
+        if (seen.has(current)) {
+            return false;
+        }
+
+        seen.add(current);
+
+        const parentId = current.parent_comment_id?.trim() ?? "";
+
+        if (!parentId || parentId.toLowerCase() === "root") {
+            return true;
+        }
+
+        const parent = byCommentId.get(parentId);
+
+        if (!parent) {
+            // An unknown parent is already treated as a root by the caller (the reply arrived
+            // without its thread), so the chain ends here.
+            return true;
+        }
+
+        current = parent;
+    }
+}
+
 export function buildCommentTree(
     comments: MediaCommentRow[],
     sortMode: CommentSortMode
@@ -135,6 +174,12 @@ export function buildCommentTree(
         const parentNode = byCommentId.get(parentId);
 
         if (!parentNode) {
+            roots.push(node);
+            continue;
+        }
+
+        // Show it at the top level rather than losing it inside a cycle.
+        if (!chainEndsAtARoot(node, byCommentId)) {
             roots.push(node);
             continue;
         }
