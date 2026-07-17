@@ -17,7 +17,30 @@ import { readFileSync } from "fs";
 // what a release has to carry.
 const REQUIRED_PLATFORMS = ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"];
 
-export function findLatestJsonProblems(manifest, expectedVersion) {
+// Derives the URL prefix every updater artifact must sit under, from the same GitHub release
+// endpoint the client is actually pointed at (tauri.conf.json's updater `endpoints`). That
+// endpoint is `.../releases/latest/download/latest.json`, while the per-asset URLs are
+// `.../releases/download/v<version>/<asset>`, so they share everything up to `/releases/` and then
+// take `download/`. Deriving the prefix from the endpoint - rather than hardcoding the owner/repo a
+// second time here - keeps this in step with the one place the repo is already declared, so moving
+// the repo cannot leave this check pointing at the old one. Returns null when the endpoint is
+// missing or not shaped like a GitHub release URL, so the caller can fail loudly.
+export function releaseDownloadPrefix(updaterEndpoint) {
+    if (typeof updaterEndpoint !== "string") {
+        return null;
+    }
+
+    const marker = "/releases/";
+    const markerIndex = updaterEndpoint.indexOf(marker);
+
+    if (markerIndex === -1) {
+        return null;
+    }
+
+    return `${updaterEndpoint.slice(0, markerIndex)}/releases/download/`;
+}
+
+export function findLatestJsonProblems(manifest, expectedVersion, expectedUrlPrefix) {
     const problems = [];
 
     if (manifest?.version !== expectedVersion) {
@@ -40,8 +63,19 @@ export function findLatestJsonProblems(manifest, expectedVersion) {
             problems.push(`${platform}: empty signature`);
         }
 
-        if (!entry.url?.trim()) {
+        const url = entry.url?.trim();
+
+        if (!url) {
             problems.push(`${platform}: empty url`);
+        } else if (expectedUrlPrefix && !url.startsWith(expectedUrlPrefix)) {
+            // A non-empty but wrong url - a mismatched owner/repo or a non-github host from a
+            // tauri-action misconfiguration - passes the emptiness check above and then points the
+            // updater somewhere other than this release. Requiring the repo's own release-download
+            // prefix rules that out (the trailing `/` after the repo name means a look-alike host
+            // like github.com.evil or a `kavynex-evil` repo cannot match).
+            problems.push(
+                `${platform}: url ${JSON.stringify(entry.url)} is not under ${expectedUrlPrefix}`
+            );
         }
     }
 
@@ -58,6 +92,20 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
     }
 
     const expectedVersion = JSON.parse(readFileSync("package.json", "utf8")).version;
+
+    // Derive the required artifact URL prefix from the updater endpoint the client is pointed at,
+    // so a url pointing at the wrong repo/host is caught here rather than shipping in the manifest.
+    const updaterEndpoint = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"))?.plugins
+        ?.updater?.endpoints?.[0];
+    const expectedUrlPrefix = releaseDownloadPrefix(updaterEndpoint);
+
+    if (!expectedUrlPrefix) {
+        console.error(
+            "::error::could not derive the expected release URL prefix from tauri.conf.json's updater endpoint"
+        );
+        process.exit(1);
+    }
+
     const raw = readFileSync(manifestPath, "utf8");
     console.log(raw);
 
@@ -70,7 +118,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
         process.exit(1);
     }
 
-    const problems = findLatestJsonProblems(manifest, expectedVersion);
+    const problems = findLatestJsonProblems(manifest, expectedVersion, expectedUrlPrefix);
 
     if (problems.length > 0) {
         console.error(
