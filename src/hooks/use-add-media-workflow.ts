@@ -5,6 +5,8 @@ import { useAddMediaForm } from "./use-add-media-form";
 import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents } from "./use-yt-dlp-events";
 import { resolveErrorMessage } from "../utils/error-message";
+import { parseAppError } from "../utils/app-error";
+import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
 import {
@@ -20,6 +22,10 @@ type UseAddMediaWorkflowOptions = {
     importMode: ImportMode;
     libraryPath: string;
     onError: (message: string) => void;
+    // A cancelled download is a result the user asked for, not a failure, so it needs the neutral
+    // channel rather than the error modal (the same split useMediaActions makes for "no comments
+    // were found").
+    onNotice: (message: string) => void;
     onReloadMedia: (channelId?: number | null) => Promise<void>;
 };
 
@@ -41,6 +47,7 @@ export function useAddMediaWorkflow({
     importMode,
     libraryPath,
     onError,
+    onNotice,
     onReloadMedia,
 }: UseAddMediaWorkflowOptions): UseAddMediaWorkflowReturn {
     const [addMediaOpen, setAddMediaOpen] = useState(false);
@@ -173,6 +180,15 @@ export function useAddMediaWorkflow({
             } catch (error) {
                 ytDlpEvents.markStopped();
 
+                // A cancelled download travels as an error because that is how the backend unwinds
+                // it, but it is the outcome the user clicked for: the run stopped and nothing was
+                // left behind. Reporting it through the error modal told them something went wrong
+                // when the thing they asked for is exactly what happened.
+                if (parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
+                    onNotice("Download cancelled. Nothing was added to your library.");
+                    return;
+                }
+
                 logError("add-media", "Failed to add media.", error, {
                     selectedChannelId,
                     sourceMode: addMediaForm.sourceMode,
@@ -188,6 +204,7 @@ export function useAddMediaWorkflow({
         isCancellingYtDlp,
         libraryPath,
         onError,
+        onNotice,
         onReloadMedia,
         runAddMedia,
         selectedChannelId,

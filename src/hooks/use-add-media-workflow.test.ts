@@ -129,6 +129,7 @@ import { logError } from "../utils/app-logger";
 
 describe("useAddMediaWorkflow", () => {
     const onError = vi.fn();
+    const onNotice = vi.fn();
     const onReloadMedia = vi.fn();
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -154,6 +155,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -199,6 +201,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -223,6 +226,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -247,6 +251,63 @@ describe("useAddMediaWorkflow", () => {
         );
     });
 
+    it("reports a cancelled download as a notice rather than an error", async () => {
+        // Cancelling travels as an error because that is how the backend unwinds the run, but it is
+        // the outcome the user clicked for: the download stopped and nothing was left behind.
+        // Routing it to the error modal answered "Cancel" with "Something went wrong".
+        vi.mocked(createMedia).mockRejectedValue({
+            code: "YT_DLP_DOWNLOAD_CANCELLED",
+            message: "download cancelled",
+        });
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(onNotice).toHaveBeenCalledWith(
+            "Download cancelled. Nothing was added to your library."
+        );
+        expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("still reports a real download failure as an error", async () => {
+        // The other side of the split: only cancellation is the expected outcome, so an actual
+        // failure must keep reaching the error modal.
+        vi.mocked(createMedia).mockRejectedValue({
+            code: "YT_DLP_DOWNLOAD_FAILED",
+            message: "yt-dlp exited with status 1",
+        });
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(onError).toHaveBeenCalled();
+        expect(onNotice).not.toHaveBeenCalled();
+    });
+
     it("treats a blank published date as no date", async () => {
         vi.mocked(createMedia).mockResolvedValue({ id: 1 });
 
@@ -258,6 +319,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -288,6 +350,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -306,6 +369,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -327,6 +391,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -350,6 +415,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -374,6 +440,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -400,6 +467,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -424,6 +492,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -445,6 +514,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -466,6 +536,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -495,6 +566,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -540,6 +612,7 @@ describe("useAddMediaWorkflow", () => {
                     importMode: "copy",
                     libraryPath: "/library",
                     onError,
+                    onNotice,
                     onReloadMedia,
                 })
             );
@@ -576,6 +649,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -621,6 +695,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -651,6 +726,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -693,6 +769,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -739,6 +816,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -763,6 +841,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -796,6 +875,7 @@ describe("useAddMediaWorkflow", () => {
                     importMode: "copy",
                     libraryPath: "/library",
                     onError: props.onError,
+                    onNotice,
                     onReloadMedia,
                 }),
             { initialProps: { selectedChannelId: 10, onError } }
@@ -830,6 +910,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -851,6 +932,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -873,6 +955,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -895,6 +978,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -924,6 +1008,7 @@ describe("useAddMediaWorkflow", () => {
                     importMode: "copy",
                     libraryPath: "/library",
                     onError: props.onError,
+                    onNotice,
                     onReloadMedia,
                 }),
             { initialProps: { onError } }
@@ -947,6 +1032,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -970,6 +1056,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -992,6 +1079,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -1020,6 +1108,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -1046,6 +1135,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -1072,6 +1162,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -1106,6 +1197,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );
@@ -1146,6 +1238,7 @@ describe("useAddMediaWorkflow", () => {
                     importMode: "copy",
                     libraryPath: "/library",
                     onError,
+                    onNotice,
                     onReloadMedia,
                 }),
             { initialProps: { selectedChannelId: 10 } }
@@ -1170,6 +1263,7 @@ describe("useAddMediaWorkflow", () => {
                     importMode: "copy",
                     libraryPath: "/library",
                     onError,
+                    onNotice,
                     onReloadMedia,
                 }),
             { initialProps: { selectedChannelId: 10 } }
@@ -1189,6 +1283,7 @@ describe("useAddMediaWorkflow", () => {
                     importMode: "copy",
                     libraryPath: "/library",
                     onError,
+                    onNotice,
                     onReloadMedia,
                 }),
             { initialProps: { selectedChannelId: 10 } }
@@ -1207,6 +1302,7 @@ describe("useAddMediaWorkflow", () => {
                 importMode: "copy",
                 libraryPath: "/library",
                 onError,
+                onNotice,
                 onReloadMedia,
             })
         );

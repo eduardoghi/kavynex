@@ -80,6 +80,7 @@ export function useMediaLibrary({
         importMode,
         libraryPath,
         onError,
+        onNotice,
         onReloadMedia: mediaList.reloadMedia,
     });
 
