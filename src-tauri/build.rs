@@ -17,6 +17,14 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV");
 
+    // Gated to the MSVC toolchain deliberately, not by oversight: the linker args below
+    // (/MANIFEST:EMBED, /MANIFESTINPUT, /WX) are MSVC link.exe flags. The GNU toolchain
+    // (x86_64-pc-windows-gnu) uses a different linker that does not understand them, and would
+    // need its own way to embed the manifest (e.g. a windres/.rc resource). The project only
+    // ships the MSVC target, so that path is not implemented. If a windows-gnu target is ever
+    // added, it must embed the manifest some other way or it will reproduce the
+    // STATUS_ENTRYPOINT_NOT_FOUND crash described above (a manifest-less binary falls back to
+    // comctl32 v5.82, which lacks TaskDialogIndirect).
     if target_os == "windows" && target_env.as_deref() == Ok("msvc") {
         embed_windows_app_manifest();
     }
