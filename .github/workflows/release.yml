@@ -3,6 +3,14 @@ name: release
 on:
     workflow_dispatch:
 
+# Least-privilege default for the whole workflow, matching ci.yml/mutation.yml. The jobs that need
+# more escalate in their own `permissions:` block (publish-tauri: contents/id-token/attestations
+# write; checksums: contents write); the audit job stays read-only. Declaring the read-only default
+# here means a job added later without its own block inherits read-only rather than the
+# repository/organization default, so a new job cannot silently gain write access.
+permissions:
+    contents: read
+
 # Only one release may be in flight at a time. Without this, two manual dispatches (the classic
 # "I don't think the first one started") both pass the "tag does not exist yet" check below,
 # both build and sign on four runners, and both upload assets to the same draft - leaving the
