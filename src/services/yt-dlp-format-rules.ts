@@ -210,93 +210,66 @@ export function buildCompactLabel(
     return appendProtocol(parts.join(" · "), format);
 }
 
-function compareAudioPreference(left: YtDlpFormat, right: YtDlpFormat): number {
-    const leftExt = left.ext.trim().toLowerCase();
-    const rightExt = right.ext.trim().toLowerCase();
+// Compares two formats by a sequence of "higher is better" scores, in order, returning as soon as
+// one differs (higher first). When every score ties, falls back to a natural-numeric comparison of
+// the format id so the order stays deterministic. The three sorts below differ only in which scores
+// they rank by, so they share this ladder instead of each repeating the compare-return-or-continue
+// chain.
+function compareByDescendingScores(
+    left: YtDlpFormat,
+    right: YtDlpFormat,
+    scores: ReadonlyArray<(format: YtDlpFormat) => number>
+): number {
+    for (const score of scores) {
+        const diff = score(right) - score(left);
 
-    const leftM4aBoost = leftExt === "m4a" ? 1 : 0;
-    const rightM4aBoost = rightExt === "m4a" ? 1 : 0;
-
-    if (rightM4aBoost !== leftM4aBoost) {
-        return rightM4aBoost - leftM4aBoost;
-    }
-
-    const abrDiff = getAbrScore(right) - getAbrScore(left);
-
-    if (abrDiff !== 0) {
-        return abrDiff;
-    }
-
-    const sizeDiff = getFileSizeScore(right) - getFileSizeScore(left);
-
-    if (sizeDiff !== 0) {
-        return sizeDiff;
+        if (diff !== 0) {
+            return diff;
+        }
     }
 
     return left.format_id.localeCompare(right.format_id, undefined, {
         numeric: true,
         sensitivity: "base",
     });
+}
+
+// 1 for an m4a audio stream, 0 otherwise, so descending order floats m4a to the front - it muxes
+// into an mp4 container without a re-encode, making it the preferred merge partner.
+function m4aPreferenceScore(format: YtDlpFormat): number {
+    return format.ext.trim().toLowerCase() === "m4a" ? 1 : 0;
+}
+
+function compareAudioPreference(left: YtDlpFormat, right: YtDlpFormat): number {
+    return compareByDescendingScores(left, right, [
+        m4aPreferenceScore,
+        getAbrScore,
+        getFileSizeScore,
+    ]);
 }
 
 function compareVideoPreference(left: YtDlpFormat, right: YtDlpFormat): number {
-    const resolutionDiff = getResolutionScore(right) - getResolutionScore(left);
-
-    if (resolutionDiff !== 0) {
-        return resolutionDiff;
-    }
-
-    const bitrateDiff = getTbrScore(right) - getTbrScore(left);
-
-    if (bitrateDiff !== 0) {
-        return bitrateDiff;
-    }
-
-    const sizeDiff = getFileSizeScore(right) - getFileSizeScore(left);
-
-    if (sizeDiff !== 0) {
-        return sizeDiff;
-    }
-
-    return left.format_id.localeCompare(right.format_id, undefined, {
-        numeric: true,
-        sensitivity: "base",
-    });
+    return compareByDescendingScores(left, right, [
+        getResolutionScore,
+        getTbrScore,
+        getFileSizeScore,
+    ]);
 }
 
 function compareDisplayOrder(left: ExtendedYtDlpFormat, right: ExtendedYtDlpFormat): number {
+    // sort_rank groups the list (merged, native, video-only, audio-only) and is the only ascending
+    // key - a lower rank comes first - so it is compared here rather than through the descending
+    // helper, which then breaks ties within a group by the same scores the other sorts rank by.
     if (left.sort_rank !== right.sort_rank) {
         return left.sort_rank - right.sort_rank;
     }
 
-    const resolutionDiff = getResolutionScore(right) - getResolutionScore(left);
-
-    if (resolutionDiff !== 0) {
-        return resolutionDiff;
-    }
-
-    const abrDiff = getAbrScore(right) - getAbrScore(left);
-
-    if (abrDiff !== 0) {
-        return abrDiff;
-    }
-
-    const bitrateDiff = getTbrScore(right) - getTbrScore(left);
-
-    if (bitrateDiff !== 0) {
-        return bitrateDiff;
-    }
-
-    const sizeDiff = getFileSizeScore(right) - getFileSizeScore(left);
-
-    if (sizeDiff !== 0) {
-        return sizeDiff;
-    }
-
-    return left.format_id.localeCompare(right.format_id, undefined, {
-        numeric: true,
-        sensitivity: "base",
-    });
+    return compareByDescendingScores(left, right, [
+        getResolutionScore,
+        getAbrScore,
+        getTbrScore,
+        getFileSizeScore,
+    ]);
 }
 
 function removeDuplicateFormats(formats: ExtendedYtDlpFormat[]): ExtendedYtDlpFormat[] {
