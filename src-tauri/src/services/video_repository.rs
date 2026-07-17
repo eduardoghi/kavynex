@@ -297,6 +297,19 @@ pub async fn list_media_page(
     let search_pattern = (!normalized_search.is_empty())
         .then(|| format!("%{}%", escape_like_pattern(&normalized_search)));
 
+    // The count and the page run inside one transaction so they answer from the same snapshot.
+    // Taken from the pool separately they can straddle a concurrent insert or delete (a download
+    // finishing, a delete committing), and the grid then renders a page drawn from one version of
+    // the table while reporting a total from another - an off-by-one "x of y", or a page whose
+    // offset no longer means what the total says it does. Deferred and read-only: it never asks for
+    // the write lock, so it cannot hit the SQLITE_BUSY_SNAPSHOT upgrade that makes the
+    // read-then-write transactions elsewhere use BEGIN IMMEDIATE. In WAL a reader takes its
+    // snapshot on the first read and holds it, which is exactly the guarantee wanted here.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to open the media page read transaction", error))?;
+
     let mut count_builder = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM videos");
     push_media_filters(
         &mut count_builder,
@@ -306,7 +319,7 @@ pub async fn list_media_page(
     );
     let (total,): (i64,) = count_builder
         .build_query_as::<(i64,)>()
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|error| db_error("failed to count channel media page", error))?;
 
@@ -324,9 +337,14 @@ pub async fn list_media_page(
 
     let items = page_builder
         .build_query_as::<MediaRow>()
-        .fetch_all(pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(|error| db_error("failed to list channel media page", error))?;
+
+    // Nothing was written, so this only releases the snapshot; a rollback would do the same.
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to close the media page read transaction", error))?;
 
     Ok(MediaPage { items, total })
 }
