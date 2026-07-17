@@ -41,6 +41,35 @@ pub fn log_frontend_error(scope: String, message: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::test_ipc::invoke;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    fn test_webview() -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![log_frontend_error])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn log_frontend_error_command_accepts_scope_and_message_over_ipc() {
+        let webview = test_webview();
+
+        // A void command: invoking it with the two string arguments must succeed across the IPC
+        // boundary. This pins that the command is registered and that its `scope`/`message`
+        // arguments deserialize - the reason to drive it through invoke rather than call the
+        // function directly (which the sanitize tests below already do).
+        invoke(
+            &webview,
+            "log_frontend_error",
+            serde_json::json!({ "scope": "player", "message": "render crashed" }),
+        )
+        .unwrap();
+    }
 
     #[test]
     fn sanitize_log_text_replaces_control_chars_and_trims() {

@@ -156,7 +156,8 @@ mod tests {
                 resolve_existing_directory,
                 is_directory_empty,
                 get_library_summary,
-                check_library_integrity
+                check_library_integrity,
+                open_path_in_system
             ])
             .build(mock_context(noop_assets()))
             .unwrap();
@@ -299,5 +300,23 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn open_path_in_system_command_rejects_a_missing_library_over_ipc() {
+        let webview = test_webview();
+
+        // With no configured library the command rejects in resolve_path_inside_library, before it
+        // ever spawns a file manager, and the error code must survive the IPC round trip. Also
+        // exercises the `path`/`libraryPath` (camelCase Option<String>) argument deserialization -
+        // the one command in this file that takes an optional argument over IPC.
+        let error = invoke(
+            &webview,
+            "open_path_in_system",
+            serde_json::json!({ "path": "video/clip.mp4", "libraryPath": null }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidMediaPath.as_str());
     }
 }
