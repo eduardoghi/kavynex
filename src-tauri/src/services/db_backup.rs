@@ -707,6 +707,30 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         ));
     }
 
+    // A row with no `title_normalized` is invisible to the library search - `LIKE` never matches a
+    // NULL - while still sitting in the library, which is the kind of loss the user only notices
+    // much later, looking for something they know they saved.
+    //
+    // The version gate is the whole point: below v11 the column legitimately holds NULLs (or does
+    // not exist), and importing such a database is fine because `ensure_schema` runs the v11
+    // backfill right after the swap. At v11 or above it claims to be backfilled already, so
+    // `ensure_schema` skips straight past it and the NULLs would survive untouched forever. The
+    // trigger cannot catch this either: an import replaces the whole file, so no INSERT ever fires.
+    if user_version >= 11 {
+        let (unnormalized,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM videos WHERE title_normalized IS NULL")
+                .fetch_one(pool)
+                .await
+                .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+        if unnormalized > 0 {
+            return Err(AppError::from_code(
+                AppErrorCode::DatabaseImportInvalid,
+                "the selected database has media whose searchable title was never computed, so it would be missing from every search",
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -1697,6 +1721,87 @@ mod tests {
         let error = stage_database_import(&db, &foreign).await.unwrap_err();
         assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
         assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Seeds a database whose `videos` carries `title_normalized`, stamped at `user_version`, with
+    /// one row whose normalized title is NULL - the state an import must be judged on.
+    async fn seed_db_with_null_normalized_title(path: &Path, user_version: i64) {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+
+        for ddl in [
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
+             title_normalized TEXT, file_path TEXT, media_type TEXT, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+             UNIQUE (channel_id, file_path))",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT)",
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+
+        sqlx::query("INSERT INTO videos (title, title_normalized) VALUES ('Ação', NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {user_version}"
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn import_rejects_a_current_database_whose_titles_were_never_normalized() {
+        // Stamped at the current version, so ensure_schema treats it as fully migrated and never
+        // runs the v11 backfill. The media would sit in the library permanently invisible to every
+        // title search, with nothing to say so. The triggers cannot catch this - an import replaces
+        // the file wholesale, so no INSERT fires - which is why it has to be refused here.
+        let dir = temp_dir("import-null-normalized");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("unnormalized.db");
+        seed_db_with_null_normalized_title(&source, crate::services::db_schema::SCHEMA_VERSION)
+            .await;
+
+        let error = stage_database_import(&db, &source).await.unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+        assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn import_accepts_an_older_database_whose_titles_are_not_normalized_yet() {
+        // The counterpart, and the reason the check is gated on the version rather than applied to
+        // every database: below v11 a NULL title_normalized is simply what that schema looks like.
+        // Refusing it would block the genuine "import my library from an older Kavynex" case, which
+        // ensure_schema fixes by running the v11 backfill right after the swap.
+        let dir = temp_dir("import-old-unnormalized");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("older.db");
+        seed_db_with_null_normalized_title(&source, 10).await;
+
+        stage_database_import(&db, &source).await.unwrap();
+
+        assert!(import_staged_path(&db).exists());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

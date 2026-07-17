@@ -178,6 +178,26 @@ const TRIGGER_DDLS: &[(&str, &str)] = &[
         BEGIN \
             SELECT RAISE(ABORT, 'has_live_chat is set but live_chat_file_path is null'); \
         END"),
+    // title_normalized is the accent/case-folded copy of `title` that the library search matches
+    // against and the title sort orders by. A NULL there is invisible rather than loud: `LIKE`
+    // never matches it, so the media silently disappears from every title search while still
+    // sitting in the library. insert_media and update_media_title both derive it from the same
+    // title, so the write path cannot produce a NULL - these keep an out-of-band writer from
+    // introducing one. The column itself stays nullable: it is added to pre-v11 databases by
+    // ALTER TABLE, which cannot add a NOT NULL column without inventing a default for the rows
+    // already there, and v11 is what backfills them.
+    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_title_normalized_not_null_insert \
+        BEFORE INSERT ON videos \
+        WHEN NEW.title_normalized IS NULL \
+        BEGIN \
+            SELECT RAISE(ABORT, 'title_normalized is null'); \
+        END"),
+    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_title_normalized_not_null_update \
+        BEFORE UPDATE ON videos \
+        WHEN NEW.title_normalized IS NULL \
+        BEGIN \
+            SELECT RAISE(ABORT, 'title_normalized is null'); \
+        END"),
 ];
 
 /// Additive columns for the videos table. Fresh databases already get these from the
@@ -461,20 +481,23 @@ async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 12).await
 }
 
-/// v13: brings the videos live-chat invariant (has_live_chat set implies a stored
-/// live_chat_file_path) to databases created before the CHECK in VIDEOS_TABLE_DDL existed.
+/// v13: brings the videos row invariants to databases whose `videos` table predates them - the
+/// live-chat one (has_live_chat set implies a stored live_chat_file_path) and the
+/// title_normalized one (never NULL).
 ///
-/// Such a database's `videos` table already exists, so the CHECK never reached it (CREATE TABLE
-/// IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table without rebuilding
-/// it). Rather than rebuild the largest table just to add a CHECK, this repairs any row that
-/// already violates the invariant and installs BEFORE INSERT/UPDATE triggers that reject future
-/// violations - a plain `CREATE TRIGGER` on the existing table, touching no row content.
+/// Such a database's `videos` table already exists, so the CHECK in VIDEOS_TABLE_DDL never reached
+/// it (CREATE TABLE IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table
+/// without rebuilding it). Rather than rebuild the largest table just to add a CHECK, this repairs
+/// any row that already violates an invariant and installs BEFORE INSERT/UPDATE triggers that
+/// reject future violations - a plain `CREATE TRIGGER` on the existing table, touching no row
+/// content.
 ///
-/// The repair only clears `has_live_chat` where no path is stored (correcting a flag to match the
-/// absent file); it never deletes a row or a stored path. It must run before the triggers, because
-/// the triggers fire only on new writes and would otherwise leave a pre-existing bad row in place.
-/// The repair, the trigger creation and the version stamp share one transaction, so a crash leaves
-/// the database fully at v12 or fully at v13.
+/// Neither repair destroys anything: the live-chat one only clears `has_live_chat` where no path is
+/// stored (correcting a flag to match the absent file), and the title one only computes a value for
+/// rows that have none. Both must run before the triggers, which fire only on new writes and would
+/// otherwise leave a pre-existing bad row in place - and, worse for the title one, would then
+/// reject every later edit of that row's title. The repairs, the trigger creation and the version
+/// stamp share one transaction, so a crash leaves the database fully at v12 or fully at v13.
 async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
     let mut tx = pool
         .begin()
@@ -491,6 +514,27 @@ async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
     .execute(&mut *tx)
     .await
     .map_err(|error| db_error("failed to repair inconsistent live chat flags", error))?;
+
+    // The backfill below reads title_normalized, so make sure the column is there rather than
+    // assuming the v11 that adds it has run. In the normal order it has - but a database stamped
+    // past v11 without the column (hand-edited, an import) would otherwise fail the whole migration
+    // with "no such column" instead of being repaired. Idempotent, exactly as in v11.
+    ensure_videos_additive_columns(&mut tx).await?;
+
+    // v11 backfilled title_normalized, but only databases below v11 ever run it: a row that arrived
+    // with a NULL afterwards (an imported database, an out-of-band writer) is never reached again
+    // and stays invisible to every title search. Sweep those up once here, before the trigger below
+    // starts refusing them.
+    let repaired_titles = backfill_missing_title_normalized(&mut tx).await?;
+
+    if repaired_titles > 0 {
+        crate::services::logger::warn(
+            "db_schema",
+            format!(
+                "v13: computed the missing normalized title of {repaired_titles} row(s); they were invisible to library search"
+            ),
+        );
+    }
 
     for &(_, ddl) in TRIGGER_DDLS {
         sqlx::query(ddl)
@@ -582,26 +626,24 @@ async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
 /// (that shared normalization is what keeps a search term and a stored title comparable). The
 /// column-add, the per-row backfill and the index creation all run in one transaction that stamps
 /// `user_version = 11`, so a crash leaves the database fully at v10 or fully at v11.
-async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
-    let mut tx = pool
-        .begin()
-        .await
-        .map_err(|error| db_error("failed to begin schema migration", error))?;
-
-    // A database created before v11 (v7..=v10, where the baseline no longer runs) lacks the
-    // column; the guarded additive-columns path adds it. Idempotent on a database that already
-    // has it.
-    ensure_videos_additive_columns(&mut tx).await?;
-
-    // Backfill every row whose title_normalized has not been computed yet. On a fresh database
-    // this selects nothing; on an upgrade it normalizes each existing title once. SQLite cannot
-    // accent-fold in SQL, so the value is computed in Rust - but instead of one UPDATE round trip
-    // per row (slow on a large library), the computed (id, normalized) pairs are staged into a
-    // temp table with chunked multi-row inserts and applied with a single set-based UPDATE,
-    // mirroring the chunked-insert idiom in media_comments.rs.
+/// Computes `title_normalized` for every row that is still missing one, and reports how many rows
+/// it repaired.
+///
+/// Shared by v11, which introduces the column, and v13, which sweeps up any row that arrived with a
+/// NULL after v11 had already run (an imported database, an out-of-band writer) and would otherwise
+/// never be reached: `ensure_schema` only runs the migrations above the stored version, so a
+/// database stamped at v11 or later is never backfilled again.
+///
+/// SQLite has no accent folding of its own, so the value is computed in Rust with the same
+/// `utils::text::normalize_search_text` used at insert/update time - that shared normalization is
+/// what keeps a search term and a stored title comparable. Instead of one UPDATE round trip per row
+/// (slow on a large library), the computed (id, normalized) pairs are staged into a temp table with
+/// chunked multi-row inserts and applied with a single set-based UPDATE, mirroring the
+/// chunked-insert idiom in media_comments.rs.
+async fn backfill_missing_title_normalized(conn: &mut SqliteConnection) -> AppResult<usize> {
     let rows: Vec<(i64, String)> =
         sqlx::query_as("SELECT id, title FROM videos WHERE title_normalized IS NULL")
-            .fetch_all(&mut *tx)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|error| {
                 db_error(
@@ -614,7 +656,7 @@ async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
         sqlx::query(
             "CREATE TEMP TABLE _title_normalized_backfill (id INTEGER PRIMARY KEY, normalized TEXT NOT NULL)",
         )
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await
         .map_err(|error| db_error("failed to create the title_normalized backfill table", error))?;
 
@@ -641,7 +683,7 @@ async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
                 query = query.bind(*id).bind(normalized);
             }
 
-            query.execute(&mut *tx).await.map_err(|error| {
+            query.execute(&mut *conn).await.map_err(|error| {
                 db_error("failed to stage the title_normalized backfill", error)
             })?;
         }
@@ -654,17 +696,42 @@ async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
              ) \
              WHERE id IN (SELECT id FROM _title_normalized_backfill)",
         )
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await
         .map_err(|error| db_error("failed to apply the title_normalized backfill", error))?;
 
         sqlx::query("DROP TABLE _title_normalized_backfill")
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await
             .map_err(|error| {
                 db_error("failed to drop the title_normalized backfill table", error)
             })?;
     }
+
+    Ok(rows.len())
+}
+
+/// v11: adds the `title_normalized` column and its index, and backfills the column for every
+/// existing row.
+///
+/// `title_normalized` is the accent/case-folded copy of `title` the paginated library list searches
+/// and title-sorts against. The column-add, the per-row backfill and the index creation all run in
+/// one transaction that stamps `user_version = 11`, so a crash leaves the database fully at v10 or
+/// fully at v11.
+async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    // A database created before v11 (v7..=v10, where the baseline no longer runs) lacks the
+    // column; the guarded additive-columns path adds it. Idempotent on a database that already
+    // has it.
+    ensure_videos_additive_columns(&mut tx).await?;
+
+    // On a fresh database this repairs nothing; on an upgrade it normalizes each existing title
+    // once.
+    backfill_missing_title_normalized(&mut tx).await?;
 
     for &(_, ddl) in INDEX_DDLS {
         sqlx::query(ddl)
@@ -984,8 +1051,8 @@ mod tests {
         // Flag set with no stored path: the state insert_media can never produce and the library
         // diagnostics used to only count is now refused by the schema itself.
         let rejected = sqlx::query(
-            "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
-             VALUES (1, 'T', 'video/a.mp4', 'video', 1, NULL)",
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 'T', 't', 'video/a.mp4', 'video', 1, NULL)",
         )
         .execute(&pool)
         .await;
@@ -1002,8 +1069,8 @@ mod tests {
             ("video/d.mp4", "0", "'live_chat/d.json.gz'"),
         ] {
             sqlx::query(sqlx::AssertSqlSafe(format!(
-                "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
-                 VALUES (1, 'T', '{file_path}', 'video', {has_flag}, {path})"
+                "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, has_live_chat, live_chat_file_path) \
+                 VALUES (1, 'T', 't', '{file_path}', 'video', {has_flag}, {path})"
             )))
             .execute(&pool)
             .await
@@ -1126,8 +1193,8 @@ mod tests {
         // The trigger now rejects a fresh violating insert and a violating update, while a
         // consistent insert still succeeds.
         let rejected_insert = sqlx::query(
-            "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
-             VALUES (1, 't', 'video/new.mp4', 'video', 1, NULL)",
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 't', 't', 'video/new.mp4', 'video', 1, NULL)",
         )
         .execute(&pool)
         .await;
@@ -1145,8 +1212,8 @@ mod tests {
         );
 
         sqlx::query(
-            "INSERT INTO videos (channel_id, title, file_path, media_type, has_live_chat, live_chat_file_path) \
-             VALUES (1, 't2', 'video/new2.mp4', 'video', 0, NULL)",
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, has_live_chat, live_chat_file_path) \
+             VALUES (1, 't2', 't2', 'video/new2.mp4', 'video', 0, NULL)",
         )
         .execute(&pool)
         .await
@@ -1911,8 +1978,8 @@ mod tests {
             .await
             .unwrap();
         sqlx::query(
-            "INSERT INTO videos (id, channel_id, title, file_path, media_type)
-             VALUES (1, 1, 'V', 'video/v.mp4', 'video')",
+            "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type)
+             VALUES (1, 1, 'V', 'v', 'video/v.mp4', 'video')",
         )
         .execute(&pool)
         .await
@@ -2076,8 +2143,8 @@ mod tests {
             .await
             .unwrap();
         sqlx::query(
-            "INSERT INTO videos (id, channel_id, title, file_path, media_type)
-             VALUES (1, 1, 'V', 'video/v.mp4', 'video')",
+            "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type)
+             VALUES (1, 1, 'V', 'v', 'video/v.mp4', 'video')",
         )
         .execute(&pool)
         .await

@@ -599,8 +599,8 @@ mod tests {
         live_chat_file_path: Option<&str>,
     ) -> i64 {
         let result = sqlx::query(
-            "INSERT INTO videos (channel_id, title, file_path, thumbnail_path, media_type, live_chat_file_path)
-             VALUES (?, 'title', ?, ?, 'video', ?)",
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, thumbnail_path, media_type, live_chat_file_path)
+             VALUES (?, 'title', 'title', ?, ?, 'video', ?)",
         )
         .bind(channel_id)
         .bind(file_path)
