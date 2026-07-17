@@ -3,9 +3,9 @@
 // capabilities (dialogs, opener, process, updater, app version, asset URLs) live in the sibling
 // `tauri-platform.ts`. Between them these two modules are the only files allowed to import
 // `@tauri-apps` at all, enforced by eslint.config.js - see tauri-platform.ts for the rationale.
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
-import type { TauriCommandName } from "../constants/tauri-commands";
+import { TAURI_COMMANDS, type TauriCommandName } from "../constants/tauri-commands";
 import type { TauriCommandReturns } from "./tauri-command-returns";
 import { parseAppError } from "../utils/app-error";
 
@@ -39,6 +39,42 @@ export async function invokeVoid(
     args?: InvokeArgs
 ): Promise<void> {
     await invokeCommand(command, args);
+}
+
+// The streamed live chat protocol: a run of `batch` events carrying raw JSON lines, ended by a
+// single `done` event. Mirrors LiveChatStreamEvent on the Rust side (commands/live_chat.rs).
+type LiveChatStreamEvent = { kind: "batch"; lines: string[] } | { kind: "done" };
+
+// Streams a live chat replay file from the backend one batch of lines at a time, so a long replay
+// is never held as a single decompressed string on either side of the IPC boundary (the frontend
+// keeps only the compact parsed messages). `onLines` runs for each batch as it arrives.
+//
+// The promise resolves only after the backend's terminal `done` message, not merely when the
+// command returns: channel messages and the invoke response travel independently, so resolving on
+// the command return could race the last in-flight batch and drop its lines. It rejects (normalized
+// through invokeCommand's parseAppError) if the read fails, in which case the caller discards any
+// partial batches it already accumulated.
+export async function streamLiveChatFile(
+    relativePath: string,
+    onLines: (lines: string[]) => void
+): Promise<void> {
+    const channel = new Channel<LiveChatStreamEvent>();
+
+    let signalDone: () => void = () => {};
+    const done = new Promise<void>((resolve) => {
+        signalDone = resolve;
+    });
+
+    channel.onmessage = (event) => {
+        if (event.kind === "batch") {
+            onLines(event.lines);
+        } else {
+            signalDone();
+        }
+    };
+
+    await invokeCommand(TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE, { relativePath, onBatch: channel });
+    await done;
 }
 
 export async function listenTauri<TPayload>(

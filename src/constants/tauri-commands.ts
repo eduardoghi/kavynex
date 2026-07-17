@@ -11,7 +11,7 @@ export const TAURI_COMMANDS = {
     OPEN_PATH_IN_SYSTEM: "open_path_in_system",
 
     IMPORT_MEDIA_FILE: "import_media_file",
-    READ_LIVE_CHAT_FILE: "read_live_chat_file",
+    STREAM_LIVE_CHAT_FILE: "stream_live_chat_file",
     DELETE_LIVE_CHAT_FILE: "delete_live_chat_file",
     LIST_LIVE_CHAT_FILES: "list_live_chat_files",
     MIGRATE_LIVE_CHAT_TO_LIBRARY: "migrate_live_chat_to_library",

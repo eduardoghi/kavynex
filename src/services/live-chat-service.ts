@@ -1,5 +1,5 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
-import { invokeCommand, invokeVoid } from "../lib/tauri-client";
+import { invokeCommand, invokeVoid, streamLiveChatFile } from "../lib/tauri-client";
 import { logWarn } from "../utils/app-logger";
 
 export type LiveChatBadgeType = "owner" | "moderator" | "member" | "verified" | "other";
@@ -545,13 +545,6 @@ function parseLiveChatLine(line: string): LiveChatMessageItem[] {
     return messages;
 }
 
-// Live chat files live in the library (under `live_chat/`), whose path is user-configurable,
-// so reads/deletes go through backend commands rather than the plugin-fs (whose scope is
-// fixed to app data at build time). The command returns the already-decompressed JSON text.
-async function readLiveChatFileText(relativePath: string): Promise<string> {
-    return invokeCommand(TAURI_COMMANDS.READ_LIVE_CHAT_FILE, { relativePath });
-}
-
 /**
  * Deletes a live chat replay file from the library, if it exists.
  */
@@ -575,33 +568,38 @@ export async function migrateLiveChatToLibrary(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.MIGRATE_LIVE_CHAT_TO_LIBRARY);
 }
 
+// Live chat files live in the library (under `live_chat/`), whose path is user-configurable, so
+// the read goes through a backend command rather than the plugin-fs (whose scope is fixed to app
+// data at build time). The replay is streamed line by line (see streamLiveChatFile) and parsed
+// incrementally here, so a long dense stream is never held as one giant decompressed string on
+// either side of the IPC boundary; only the compact parsed messages below are retained (they must
+// be, so the playback-time window can seek anywhere in the timeline).
 export async function readLiveChatMessagesFromFile(
     relativePath: string
 ): Promise<LiveChatMessageItem[]> {
-    const contents = await readLiveChatFileText(relativePath);
-    const lines = contents.split(/\r?\n/);
-
     const messages: LiveChatMessageItem[] = [];
     let parsedLines = 0;
     let failedLines = 0;
 
-    for (const line of lines) {
-        if (!line.trim()) {
-            continue;
-        }
+    await streamLiveChatFile(relativePath, (lines) => {
+        for (const line of lines) {
+            if (!line.trim()) {
+                continue;
+            }
 
-        try {
-            messages.push(...parseLiveChatLine(line));
-            parsedLines += 1;
-        } catch {
-            // One corrupt/truncated line, or a JSON shape yt-dlp/YouTube changed, must not abort
-            // the whole replay - but it must not vanish silently either. Swallowing each failure
-            // (the previous `catch { continue }`) meant a format drift dropped chat messages with
-            // no signal at all. Count them and warn once below so the loss shows up in the log
-            // (and in any bug report) instead of only as fewer messages than the video had.
-            failedLines += 1;
+            try {
+                messages.push(...parseLiveChatLine(line));
+                parsedLines += 1;
+            } catch {
+                // One corrupt/truncated line, or a JSON shape yt-dlp/YouTube changed, must not
+                // abort the whole replay - but it must not vanish silently either. Swallowing each
+                // failure (the previous `catch { continue }`) meant a format drift dropped chat
+                // messages with no signal at all. Count them and warn once below so the loss shows
+                // up in the log (and in any bug report) instead of only as fewer messages.
+                failedLines += 1;
+            }
         }
-    }
+    });
 
     if (failedLines > 0) {
         logWarn("live-chat", "Some live chat replay lines could not be parsed and were skipped.", {

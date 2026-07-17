@@ -4,12 +4,13 @@ import {
     readLiveChatMessagesFromFile,
     type LiveChatMessageItem,
 } from "./live-chat-service";
-import { invokeCommand } from "../lib/tauri-client";
+import { streamLiveChatFile } from "../lib/tauri-client";
 import { logWarn } from "../utils/app-logger";
 
 vi.mock("../lib/tauri-client", () => ({
     invokeCommand: vi.fn(),
     invokeVoid: vi.fn(),
+    streamLiveChatFile: vi.fn(),
 }));
 
 vi.mock("../utils/app-logger", () => ({
@@ -18,9 +19,12 @@ vi.mock("../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-// The backend command returns the already-decompressed JSON text; tests feed it directly.
+// Simulate the backend streaming the whole replay: the file's lines are delivered as a single
+// batch to the parse callback, exactly as streamLiveChatFile would deliver them over the channel.
 function mockFile(content: string): void {
-    vi.mocked(invokeCommand).mockResolvedValue(content);
+    vi.mocked(streamLiveChatFile).mockImplementation(async (_relativePath, onLines) => {
+        onLines(content.split(/\r?\n/));
+    });
 }
 
 function rawLine(renderer: Record<string, unknown>, offset = "0"): string {

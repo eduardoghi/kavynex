@@ -42,7 +42,7 @@ export type TauriCommandReturns = {
     open_path_in_system: void;
 
     import_media_file: string;
-    read_live_chat_file: string;
+    stream_live_chat_file: void;
     delete_live_chat_file: void;
     list_live_chat_files: string[];
     migrate_live_chat_to_library: void;

@@ -1,23 +1,45 @@
 use std::path::Path;
 
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
 use crate::services::library_guard::configured_library_dir;
 use crate::services::live_chat_storage::{
     compress_existing_live_chat_files, list_live_chat_relative_paths, migrate_live_chat_files,
-    read_live_chat_text,
+    stream_live_chat_lines, LIVE_CHAT_STREAM_BATCH_LINES,
 };
 use crate::utils::path::absolute_path_from_relative;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
-/// Resolves a library-relative path to an absolute path inside the library and reads the live
-/// chat replay text (gunzipped). Extracted from the command so the resolve-then-read glue -
-/// including its rejection of `..`/absolute paths via `absolute_path_from_relative` - can be
-/// unit-tested without a Tauri `AppHandle`, which the command needs and the IPC mock cannot host.
-fn read_live_chat_relative_sync(library_dir: &Path, relative_path: &str) -> AppResult<String> {
+/// How a streamed live chat replay reaches the frontend: a run of `batch` events, each carrying a
+/// slice of raw JSON lines, terminated by a single `done` event. The frontend resolves its read
+/// only on `done`, never merely when the command returns - channel messages and the invoke
+/// response travel independently, so resolving on the return could race the last in-flight batch.
+/// The `kind` tag and camelCase variant names match the TS union in `lib/tauri-client.ts`.
+#[derive(Clone, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum LiveChatStreamEvent {
+    Batch { lines: Vec<String> },
+    Done,
+}
+
+/// Resolves a library-relative path to an absolute path inside the library and streams the live
+/// chat replay (gunzipped) to `emit`, one batch of lines at a time. Extracted from the command so
+/// the resolve-then-stream glue - including its rejection of `..`/absolute paths via
+/// `absolute_path_from_relative` - can be unit-tested without a Tauri `AppHandle`/`Channel`, which
+/// the command needs and the IPC mock cannot host.
+fn stream_live_chat_relative_sync<F>(
+    library_dir: &Path,
+    relative_path: &str,
+    batch_lines: usize,
+    emit: F,
+) -> AppResult<()>
+where
+    F: FnMut(Vec<String>) -> AppResult<()>,
+{
     let absolute = absolute_path_from_relative(library_dir, relative_path)?;
-    read_live_chat_text(&absolute)
+    stream_live_chat_lines(&absolute, batch_lines, emit)
 }
 
 /// Resolves a library-relative path to an absolute path inside the library and removes the live
@@ -38,12 +60,42 @@ fn delete_live_chat_relative_sync(library_dir: &Path, relative_path: &str) -> Ap
     Ok(())
 }
 
-/// Reads a live chat replay file from the library and returns its JSON text (gunzipped).
+/// Streams a live chat replay file from the library to the frontend over `on_batch`, one batch of
+/// lines at a time (transparently gunzipped), so a long replay is never materialized as one giant
+/// string on either side of the IPC boundary. A terminal `Done` event follows the last batch.
 #[tauri::command]
-pub async fn read_live_chat_file(app: AppHandle, relative_path: String) -> AppResult<String> {
+pub async fn stream_live_chat_file(
+    app: AppHandle,
+    relative_path: String,
+    on_batch: Channel<LiveChatStreamEvent>,
+) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
 
-    run_blocking(move || read_live_chat_relative_sync(&library_dir, &relative_path)).await
+    run_blocking(move || {
+        stream_live_chat_relative_sync(
+            &library_dir,
+            &relative_path,
+            LIVE_CHAT_STREAM_BATCH_LINES,
+            |lines| {
+                on_batch
+                    .send(LiveChatStreamEvent::Batch { lines })
+                    .map_err(|error| {
+                        AppError::from_code(
+                            AppErrorCode::LiveChatFileUnreadable,
+                            format!("failed to stream live chat batch: {error}"),
+                        )
+                    })
+            },
+        )?;
+
+        on_batch.send(LiveChatStreamEvent::Done).map_err(|error| {
+            AppError::from_code(
+                AppErrorCode::LiveChatFileUnreadable,
+                format!("failed to signal live chat stream completion: {error}"),
+            )
+        })
+    })
+    .await
 }
 
 /// Deletes a live chat replay file from the library, if it exists.
@@ -97,7 +149,7 @@ pub async fn migrate_live_chat_to_library(app: AppHandle) -> AppResult<()> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_library_dir(tag: &str) -> PathBuf {
@@ -115,38 +167,67 @@ mod tests {
         dir
     }
 
+    /// Collects every streamed line from the resolve-then-stream glue into one vector.
+    fn collect_relative(library: &Path, relative_path: &str) -> AppResult<Vec<String>> {
+        let mut lines = Vec::new();
+
+        stream_live_chat_relative_sync(library, relative_path, 500, |batch| {
+            lines.extend(batch);
+            Ok(())
+        })?;
+
+        Ok(lines)
+    }
+
     #[test]
-    fn read_live_chat_relative_sync_reads_a_file_inside_the_library() {
+    fn live_chat_stream_event_serializes_to_the_shape_the_frontend_expects() {
+        // The wire contract the tests mock away: this must match the LiveChatStreamEvent union in
+        // lib/tauri-client.ts exactly, or the frontend's channel handler would misread every batch.
+        let batch = serde_json::to_value(LiveChatStreamEvent::Batch {
+            lines: vec!["a".to_string(), "b".to_string()],
+        })
+        .unwrap();
+        assert_eq!(
+            batch,
+            serde_json::json!({ "kind": "batch", "lines": ["a", "b"] })
+        );
+
+        let done = serde_json::to_value(LiveChatStreamEvent::Done).unwrap();
+        assert_eq!(done, serde_json::json!({ "kind": "done" }));
+    }
+
+    #[test]
+    fn stream_live_chat_relative_sync_reads_a_file_inside_the_library() {
         let library = unique_library_dir("read");
         fs::write(
             library.join("live_chat").join("clip.live_chat.json"),
-            b"{\"replayChatItemAction\":{}}",
+            b"{\"replayChatItemAction\":{}}\n",
         )
         .unwrap();
 
-        let text = read_live_chat_relative_sync(&library, "live_chat/clip.live_chat.json").unwrap();
-        assert_eq!(text, "{\"replayChatItemAction\":{}}");
+        let lines = collect_relative(&library, "live_chat/clip.live_chat.json").unwrap();
+        assert_eq!(lines, vec!["{\"replayChatItemAction\":{}}".to_string()]);
 
         let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
-    fn read_live_chat_relative_sync_rejects_a_traversal_path() {
+    fn stream_live_chat_relative_sync_rejects_a_traversal_path() {
         let library = unique_library_dir("read-traversal");
         // A file planted outside the library must stay unreachable through a `..` path.
         fs::write(library.parent().unwrap().join("secret.json"), b"secret").unwrap();
 
-        let error = read_live_chat_relative_sync(&library, "../secret.json").unwrap_err();
+        let error = collect_relative(&library, "../secret.json").unwrap_err();
         assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
 
         let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
-    fn read_live_chat_relative_sync_errors_on_a_missing_file() {
+    fn stream_live_chat_relative_sync_errors_on_a_missing_file() {
         let library = unique_library_dir("read-missing");
 
-        let result = read_live_chat_relative_sync(&library, "live_chat/missing.json");
+        let result = collect_relative(&library, "live_chat/missing.json");
         assert!(result.is_err());
 
         let _ = fs::remove_dir_all(&library);

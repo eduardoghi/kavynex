@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 
 use flate2::read::GzDecoder;
@@ -67,48 +67,139 @@ pub fn gzip_decompress(data: &[u8]) -> AppResult<Vec<u8>> {
     gzip_decompress_with_limit(data, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
 }
 
-/// Reads a stored live chat file and returns its JSON text, transparently gunzipping the
-/// gzip-compressed files (older files may still be plain JSON and are returned as-is).
+/// How many replay lines are grouped into one streamed batch. Large enough that per-message IPC
+/// overhead is negligible, small enough that only a bounded slice of the file is ever in memory.
+pub const LIVE_CHAT_STREAM_BATCH_LINES: usize = 500;
+
+/// Streams a stored live chat file to `emit`, one batch of lines at a time, transparently
+/// gunzipping the gzip-compressed files (older files may still be plain JSON and stream as-is).
+/// The whole decompressed payload is never held in memory: the previous read returned the entire
+/// file as one `String`, which for a long dense stream is hundreds of MB, and the frontend then
+/// held a second copy across the IPC boundary before parsing. Here only a bounded batch is alive
+/// at once, and only the compact parsed messages are retained on the frontend.
 ///
 /// The two ways this fails are told apart rather than sharing one code, because they call for
-/// opposite things from the user: a file that was moved or deleted can be put back, while a
-/// corrupt archive cannot and only the backup can help. Both used to arrive as
-/// `LiveChatCompressFailed`, which the frontend has no message for, so either one reached the user
-/// as "check the logs for details" with a raw Rust string underneath.
-pub fn read_live_chat_text(path: &Path) -> AppResult<String> {
-    let bytes = fs::read(path).map_err(|error| {
+/// opposite things from the user: a file that was moved or deleted can be put back
+/// (`LiveChatFileNotFound`), while a corrupt or oversized archive cannot and only the backup can
+/// help (`LiveChatFileUnreadable`).
+///
+/// Enforces the same [`MAX_LIVE_CHAT_DECOMPRESSED_BYTES`] ceiling as before, counted across the
+/// decompressed stream via a `.take` on the reader, so a crafted tiny gzip (a decompression bomb)
+/// still cannot expand without limit even though nothing buffers it whole - including a single
+/// line that never ends. Blank lines are preserved as-is; the caller does the parsing and skips
+/// them, exactly as the whole-file path did.
+pub fn stream_live_chat_lines<F>(path: &Path, batch_lines: usize, emit: F) -> AppResult<()>
+where
+    F: FnMut(Vec<String>) -> AppResult<()>,
+{
+    let mut file = fs::File::open(path).map_err(|error| {
         let code = if error.kind() == std::io::ErrorKind::NotFound {
             AppErrorCode::LiveChatFileNotFound
         } else {
             AppErrorCode::LiveChatFileUnreadable
         };
 
+        AppError::from_code_with_details(code, "failed to read live chat file", error.to_string())
+    })?;
+
+    // Peek the gzip magic to decide whether to wrap the file in a streaming gunzip, then rewind to
+    // the start so the chosen reader sees the whole file.
+    let mut magic = [0u8; 2];
+    let is_compressed = match file.read_exact(&mut magic) {
+        Ok(()) => is_gzip(&magic),
+        // A file shorter than two bytes cannot be gzip; stream it verbatim.
+        Err(_) => false,
+    };
+
+    file.rewind().map_err(|error| {
         AppError::from_code_with_details(
-            code,
-            "failed to read live chat file",
+            AppErrorCode::LiveChatFileUnreadable,
+            "failed to rewind live chat file",
             error.to_string(),
         )
     })?;
 
-    let raw = if is_gzip(&bytes) {
-        gzip_decompress(&bytes).map_err(|error| {
-            AppError::from_code_with_details(
-                AppErrorCode::LiveChatFileUnreadable,
-                "the live chat file could not be decompressed",
-                error.message,
-            )
-        })?
+    let decoded: Box<dyn Read> = if is_compressed {
+        Box::new(GzDecoder::new(file))
     } else {
-        bytes
+        Box::new(file)
     };
 
-    String::from_utf8(raw).map_err(|error| {
-        AppError::from_code_with_details(
-            AppErrorCode::LiveChatFileUnreadable,
-            "the live chat file is not valid utf-8",
-            error.to_string(),
-        )
-    })
+    stream_reader_lines(decoded, batch_lines, MAX_LIVE_CHAT_DECOMPRESSED_BYTES, emit)
+}
+
+/// Reads `reader` line by line, decoding each line lossily, and hands `emit` batches of at most
+/// `batch_lines` lines. Aborts with `LiveChatFileUnreadable` once the decompressed byte count
+/// exceeds `max_total_bytes`. Split out from [`stream_live_chat_lines`] so the ceiling can be
+/// tested against a small in-memory reader without materializing a real multi-hundred-MB stream.
+fn stream_reader_lines<R, F>(
+    reader: R,
+    batch_lines: usize,
+    max_total_bytes: u64,
+    mut emit: F,
+) -> AppResult<()>
+where
+    R: Read,
+    F: FnMut(Vec<String>) -> AppResult<()>,
+{
+    let batch_lines = batch_lines.max(1);
+
+    // Bound the byte count with `.take` so a decompression bomb (or a single huge line with no
+    // newline) can never buffer past the ceiling. `+ 1` so a stream landing exactly on the limit
+    // still reads, while anything larger is caught below - mirroring gzip_decompress_with_limit.
+    let mut reader = BufReader::new(reader.take(max_total_bytes + 1));
+
+    let mut batch: Vec<String> = Vec::with_capacity(batch_lines);
+    let mut raw: Vec<u8> = Vec::new();
+    let mut total_bytes: u64 = 0;
+
+    loop {
+        raw.clear();
+
+        let read = reader.read_until(b'\n', &mut raw).map_err(|error| {
+            AppError::from_code_with_details(
+                AppErrorCode::LiveChatFileUnreadable,
+                "failed to read live chat file",
+                error.to_string(),
+            )
+        })?;
+
+        if read == 0 {
+            break;
+        }
+
+        total_bytes += read as u64;
+
+        if total_bytes > max_total_bytes {
+            return Err(AppError::from_code(
+                AppErrorCode::LiveChatFileUnreadable,
+                "the live chat file is too large when decompressed",
+            ));
+        }
+
+        // Strip the trailing newline (and a preceding carriage return), matching the line split
+        // the frontend used on the whole-file text.
+        while matches!(raw.last(), Some(b'\n') | Some(b'\r')) {
+            raw.pop();
+        }
+
+        // Per-line lossy UTF-8 decoding. The whole-file path used a strict `String::from_utf8`
+        // that failed the entire read on one stray byte; decoding each line lossily is a superset
+        // that keeps a single garbled line from discarding an otherwise-good replay (the parser
+        // then drops just that line and counts it), consistent with `read_lossy_line` elsewhere.
+        batch.push(String::from_utf8_lossy(&raw).into_owned());
+
+        if batch.len() >= batch_lines {
+            emit(std::mem::take(&mut batch))?;
+            batch = Vec::with_capacity(batch_lines);
+        }
+    }
+
+    if !batch.is_empty() {
+        emit(batch)?;
+    }
+
+    Ok(())
 }
 
 /// One-time migration that moves live chat files from the old app-data location into the
@@ -377,33 +468,70 @@ mod tests {
         assert_eq!(ok, payload);
     }
 
+    /// Collects every streamed line into one vector, plus the number of batches `emit` was called
+    /// with, so a test can assert both the content and that batching actually happened.
+    fn collect_streamed_lines(path: &Path, batch_lines: usize) -> AppResult<(Vec<String>, usize)> {
+        let mut lines = Vec::new();
+        let mut batches = 0;
+
+        stream_live_chat_lines(path, batch_lines, |batch| {
+            batches += 1;
+            lines.extend(batch);
+            Ok(())
+        })?;
+
+        Ok((lines, batches))
+    }
+
     #[test]
-    fn read_live_chat_text_reads_gzip_and_plain() {
-        let dir = temp_dir("read");
+    fn stream_live_chat_lines_streams_gzip_and_plain() {
+        let dir = temp_dir("stream");
         fs::create_dir_all(&dir).unwrap();
 
+        // Plain (legacy uncompressed) replay: streamed verbatim, one entry per line, blank lines
+        // preserved (the frontend skips them, exactly as it did on the whole-file text).
         let plain = dir.join("plain.json");
-        fs::write(&plain, b"{\"a\":1}").unwrap();
-        assert_eq!(read_live_chat_text(&plain).unwrap(), "{\"a\":1}");
+        fs::write(&plain, b"{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let (lines, _) = collect_streamed_lines(&plain, 500).unwrap();
+        assert_eq!(lines, vec!["{\"a\":1}".to_string(), "{\"b\":2}".to_string()]);
 
+        // Gzip replay: transparently gunzipped while streaming, same result.
         let gz = dir.join("compressed.json");
-        fs::write(&gz, gzip_compress(b"{\"b\":2}").unwrap()).unwrap();
-        assert_eq!(read_live_chat_text(&gz).unwrap(), "{\"b\":2}");
+        fs::write(&gz, gzip_compress(b"{\"a\":1}\n{\"b\":2}\n").unwrap()).unwrap();
+        let (lines, _) = collect_streamed_lines(&gz, 500).unwrap();
+        assert_eq!(lines, vec!["{\"a\":1}".to_string(), "{\"b\":2}".to_string()]);
 
         let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn read_live_chat_text_tells_a_missing_file_apart_from_an_unreadable_one() {
+    fn stream_live_chat_lines_delivers_multiple_batches_when_over_the_batch_size() {
+        let dir = temp_dir("stream-batches");
+        fs::create_dir_all(&dir).unwrap();
+
+        // Five lines with a batch size of two must arrive as three batches (2 + 2 + 1) rather than
+        // one whole-file read - the point of streaming.
+        let file = dir.join("many.json");
+        fs::write(&file, b"a\nb\nc\nd\ne\n").unwrap();
+
+        let (lines, batches) = collect_streamed_lines(&file, 2).unwrap();
+        assert_eq!(lines, vec!["a", "b", "c", "d", "e"]);
+        assert_eq!(batches, 3);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stream_live_chat_lines_tells_a_missing_file_apart_from_a_corrupt_one() {
         // These share nothing but the fact that they fail: a file the user moved out of the library
-        // can be put back, while a corrupt archive cannot and only a backup helps. Reporting both
-        // under one code left the frontend with no way to say either, so both surfaced as the
-        // generic "check the logs" fallback with a raw Rust string attached.
-        let dir = temp_dir("read-failures");
+        // can be put back (LiveChatFileNotFound), while a corrupt archive cannot and only a backup
+        // helps (LiveChatFileUnreadable). Keeping the two codes apart is what lets the frontend say
+        // either instead of the generic "check the logs" fallback.
+        let dir = temp_dir("stream-failures");
         fs::create_dir_all(&dir).unwrap();
 
         let missing = dir.join("gone.json.gz");
-        let error = read_live_chat_text(&missing).unwrap_err();
+        let error = collect_streamed_lines(&missing, 500).unwrap_err();
         assert_eq!(error.code, AppErrorCode::LiveChatFileNotFound.as_str());
 
         // Gzip magic bytes with a shredded body: present, readable, and not decompressible.
@@ -413,17 +541,55 @@ mod tests {
         bytes[4..tail].fill(0xFF);
         fs::write(&corrupt, &bytes).unwrap();
 
-        let error = read_live_chat_text(&corrupt).unwrap_err();
-        assert_eq!(error.code, AppErrorCode::LiveChatFileUnreadable.as_str());
-
-        // Valid gzip wrapping bytes that are not text.
-        let not_utf8 = dir.join("binary.json.gz");
-        fs::write(&not_utf8, gzip_compress(&[0xF0, 0x28, 0x8C, 0x28]).unwrap()).unwrap();
-
-        let error = read_live_chat_text(&not_utf8).unwrap_err();
+        let error = collect_streamed_lines(&corrupt, 500).unwrap_err();
         assert_eq!(error.code, AppErrorCode::LiveChatFileUnreadable.as_str());
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stream_reader_lines_decodes_a_garbled_line_lossily_and_keeps_the_rest() {
+        // A single non-UTF-8 line between two valid ones must not discard the whole replay: it is
+        // decoded lossily (U+FFFD) and streamed like any other, and the frontend parser then drops
+        // just that line. This is the deliberate behavior change from the whole-file strict
+        // `String::from_utf8`, matching the philosophy of `utils::io::read_lossy_line`.
+        let mut data: Vec<u8> = b"before\n".to_vec();
+        data.extend_from_slice(&[0xff, 0xfe]);
+        data.extend_from_slice(b"\nafter\n");
+
+        let mut lines = Vec::new();
+        stream_reader_lines(&data[..], 500, MAX_LIVE_CHAT_DECOMPRESSED_BYTES, |batch| {
+            lines.extend(batch);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "before");
+        assert!(lines[1].contains('\u{fffd}'));
+        assert_eq!(lines[2], "after");
+    }
+
+    #[test]
+    fn stream_reader_lines_rejects_a_stream_larger_than_the_ceiling() {
+        // The decompression-bomb guard: a stream whose decoded size exceeds the ceiling is aborted
+        // rather than buffered. Tested against a small in-memory reader with a small cap so no
+        // multi-hundred-MB payload is needed. A line with no terminator also exercises the `.take`
+        // bound (read_until cannot run away buffering the whole line).
+        let data = vec![b'x'; 4096];
+
+        let error = stream_reader_lines(&data[..], 500, 1024, |_| Ok(())).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::LiveChatFileUnreadable.as_str());
+
+        // A stream at or under the cap streams cleanly.
+        let small = b"a\nb\n".to_vec();
+        let mut lines = Vec::new();
+        stream_reader_lines(&small[..], 500, 1024, |batch| {
+            lines.extend(batch);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(lines, vec!["a", "b"]);
     }
 
     #[test]

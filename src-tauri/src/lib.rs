@@ -279,7 +279,7 @@ pub fn run() {
             commands::library::open_path_in_system,
             commands::media::import_media_file,
             commands::media::cleanup_unreferenced_media_artifacts,
-            commands::live_chat::read_live_chat_file,
+            commands::live_chat::stream_live_chat_file,
             commands::live_chat::delete_live_chat_file,
             commands::live_chat::list_live_chat_files,
             commands::live_chat::migrate_live_chat_to_library,
