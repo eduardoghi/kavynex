@@ -559,16 +559,25 @@ pub async fn update_media_progress(
     media_id: i64,
     progress_seconds: i64,
 ) -> AppResult<()> {
-    // Deliberately idempotent - a zero-row result is expected here, not an error: the
-    // `watched_at IS NULL` guard means a watched media matches no row (progress is not tracked
-    // once watched), and saving progress for a since-deleted media is a harmless no-op. This is
-    // unlike the title/unwatched updates above, where zero rows means the media id is unknown.
-    sqlx::query("UPDATE videos SET progress_seconds = ? WHERE id = ? AND watched_at IS NULL")
-        .bind(progress_seconds)
-        .bind(media_id)
-        .execute(pool)
-        .await
-        .map_err(|error| db_error("failed to update media progress", error))?;
+    // Deliberately idempotent - a zero-row result is expected here, not an error: the watched
+    // guard means a watched media matches no row (progress is not tracked once watched), and
+    // saving progress for a since-deleted media is a harmless no-op. This is unlike the
+    // title/unwatched updates above, where zero rows means the media id is unknown.
+    //
+    // The guard mirrors the "unwatched" predicate every other query in this file uses
+    // (push_media_filters, the stats query) - NULL *or* a blank string - rather than `IS NULL`
+    // alone. The app's own writes never leave `watched_at = ''`, but an imported or hand-edited
+    // database can, and treating such a row as watched here (while the rest of the app shows it
+    // unwatched) would silently drop its playback progress forever.
+    sqlx::query(
+        "UPDATE videos SET progress_seconds = ? \
+         WHERE id = ? AND (watched_at IS NULL OR TRIM(watched_at) = '')",
+    )
+    .bind(progress_seconds)
+    .bind(media_id)
+    .execute(pool)
+    .await
+    .map_err(|error| db_error("failed to update media progress", error))?;
 
     Ok(())
 }
@@ -1210,6 +1219,44 @@ mod tests {
             .unwrap()
             .watched_at
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn progress_is_saved_for_a_media_whose_watched_at_is_a_blank_string() {
+        // The app's own writes only ever set watched_at to a timestamp or NULL, but an imported or
+        // hand-edited database can carry a blank string, which every "unwatched" query in this file
+        // treats as unwatched. update_media_progress must agree, or such a row would show unwatched
+        // everywhere yet never persist playback progress.
+        let pool = create_test_pool().await;
+        let id = insert_media(
+            &pool,
+            1,
+            "A",
+            "video/a.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query("UPDATE videos SET watched_at = '' WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        update_media_progress(&pool, id, 55).await.unwrap();
+
+        let media = find_media_by_channel_and_file_path(&pool, 1, "video/a.mp4")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(media.progress_seconds, 55);
     }
 
     #[tokio::test]
