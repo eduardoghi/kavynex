@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     buildYoutubeWatchUrl,
@@ -131,5 +133,28 @@ describe("youtube utils", () => {
         expect(buildYoutubeWatchUrl("a b&list=x")).toBe(
             "https://www.youtube.com/watch?v=a%20b%26list%3Dx"
         );
+    });
+});
+
+// The backend has its own copy of this rule (is_valid_youtube_handle in
+// src-tauri/src/utils/validation.rs) that rejects a malformed handle regardless of what this
+// client check let through. The two are independent implementations that must agree on every
+// normalized handle: if they drift, an input this side accepts comes back as a raw backend error
+// instead of the friendly one the UI expects. Both sides assert against the same shared fixture so
+// a divergence fails a test here (and the mirrored one in validation.rs) rather than reaching a
+// user. Add a case to shared/youtube-handle-cases.json and both checks pick it up.
+describe("isValidNormalizedYoutubeHandle shared parity fixture", () => {
+    // Resolved from the repo root (vitest's cwd), not import.meta.url: vitest does not serve the
+    // test module as a file: URL, so fileURLToPath would reject it.
+    const fixture = JSON.parse(
+        readFileSync(resolve(process.cwd(), "shared/youtube-handle-cases.json"), "utf-8")
+    ) as { valid: string[]; invalid: string[] };
+
+    it.each(fixture.valid)("accepts %j", (handle) => {
+        expect(isValidNormalizedYoutubeHandle(handle)).toBe(true);
+    });
+
+    it.each(fixture.invalid)("rejects %j", (handle) => {
+        expect(isValidNormalizedYoutubeHandle(handle)).toBe(false);
     });
 });

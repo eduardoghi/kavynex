@@ -144,6 +144,40 @@ mod tests {
     }
 
     #[test]
+    fn youtube_handle_validation_matches_the_shared_fixture() {
+        // The frontend has its own copy of this rule (isValidNormalizedYoutubeHandle in
+        // src/utils/youtube.ts) so it can give fast, friendly feedback before a round trip. The two
+        // are independent implementations that must agree on every normalized handle: if the
+        // backend tightened the rule and the frontend did not, an invalid handle would pass the
+        // client check and come back as a raw backend error instead of the catalogued one. This
+        // asserts the Rust side against the same shared cases the TypeScript side checks (see
+        // src/utils/youtube.parity.test.ts), so a change on either side that breaks parity fails a
+        // test rather than surfacing to a user.
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/youtube-handle-cases.json"
+        ));
+        let cases: serde_json::Value =
+            serde_json::from_str(raw).expect("the shared fixture must be valid JSON");
+
+        for handle in cases["valid"].as_array().expect("valid must be an array") {
+            let handle = handle.as_str().expect("each case must be a string");
+            assert!(
+                is_valid_youtube_handle(handle),
+                "the shared fixture marks {handle:?} valid but Rust rejects it"
+            );
+        }
+
+        for handle in cases["invalid"].as_array().expect("invalid must be an array") {
+            let handle = handle.as_str().expect("each case must be a string");
+            assert!(
+                !is_valid_youtube_handle(handle),
+                "the shared fixture marks {handle:?} invalid but Rust accepts it"
+            );
+        }
+    }
+
+    #[test]
     fn channel_name_requires_non_blank() {
         ensure_valid_channel_name("Chan").unwrap();
         ensure_valid_channel_name("  Chan  ").unwrap();

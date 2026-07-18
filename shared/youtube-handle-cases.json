@@ -1,0 +1,28 @@
+{
+    "_comment": "Shared accept/reject fixture for a NORMALIZED YouTube handle, asserted from both sides so the two independent validators cannot drift apart: TypeScript isValidNormalizedYoutubeHandle (src/utils/youtube.ts, src/utils/youtube.parity.test.ts) and Rust is_valid_youtube_handle (src-tauri/src/utils/validation.rs). The frontend normalizes free-form input before it reaches either check, so every entry here is already in the stored @name / channel|c|user/id shape. Add a case to both sides at once by editing this one file.",
+    "valid": [
+        "@chan",
+        "@Chan_Name-1.2",
+        "@a",
+        "channel/UCabcdef",
+        "c/SomeName",
+        "user/legacyname",
+        "CHANNEL/UCabc",
+        "channel/UC/with/slashes"
+    ],
+    "invalid": [
+        "",
+        "   ",
+        "@",
+        "@ ",
+        "@bad name",
+        "@bad/name",
+        "@emoji😀",
+        "plainname",
+        "channel/",
+        "c/",
+        "user/  ",
+        "channels/x",
+        "http://youtube.com/@chan"
+    ]
+}
