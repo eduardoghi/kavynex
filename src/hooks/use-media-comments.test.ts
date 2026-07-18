@@ -81,7 +81,7 @@ describe("useMediaComments", () => {
         expect(result.current.error).not.toBeNull();
     });
 
-    it("reloads when a comment refresh completes", async () => {
+    it("waits for a refresh to complete before reloading, not firing on its rising edge", async () => {
         listMock.mockResolvedValue([commentRow()]);
         const target = createMedia({ id: 7, has_comments: 1 });
 
@@ -90,10 +90,14 @@ describe("useMediaComments", () => {
             { initialProps: { refreshing: true } }
         );
 
-        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+        // While a refresh is in flight nothing is fetched: reloading now would only re-read the
+        // pre-refresh rows. Give any stray effect a tick to run, then confirm it stayed quiet.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(listMock).not.toHaveBeenCalled();
 
+        // The refresh completing (the falling edge) is what triggers the single reload.
         rerender({ refreshing: false });
 
-        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
     });
 });
