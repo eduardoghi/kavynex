@@ -53,7 +53,13 @@ function readInstalledPackages(scope) {
     });
 
     // Shape: { "<license expression>": [{ name, versions: ["1.2.3", ...], ... }, ...], ... }
-    const byLicense = JSON.parse(raw);
+    return collectPackages(JSON.parse(raw));
+}
+
+// Flattens pnpm's `licenses list` shape into a de-duplicated list of { name, version }. Exported
+// so the parsing the scan's coverage depends on (a package the scanner never lists is a package it
+// never checks) is unit-tested without shelling out to pnpm. See check-js-advisories.test.js.
+export function collectPackages(byLicense) {
     const packages = new Map();
 
     for (const entries of Object.values(byLicense)) {
@@ -65,6 +71,19 @@ function readInstalledPackages(scope) {
     }
 
     return [...packages.values()];
+}
+
+// Splits `items` into consecutive chunks of at most `size`. OSV's batch endpoint caps how many
+// queries it accepts per call, so the query set is paginated through this. Exported so the
+// batching (a bug here would silently skip whole pages of packages) is unit-tested.
+export function chunk(items, size) {
+    const batches = [];
+
+    for (let start = 0; start < items.length; start += size) {
+        batches.push(items.slice(start, start + size));
+    }
+
+    return batches;
 }
 
 async function postJson(url, body) {
@@ -95,8 +114,7 @@ async function getJson(url) {
 async function findVulnerabilityIds(packages) {
     const affectedBy = new Map();
 
-    for (let start = 0; start < packages.length; start += QUERY_BATCH_SIZE) {
-        const batch = packages.slice(start, start + QUERY_BATCH_SIZE);
+    for (const batch of chunk(packages, QUERY_BATCH_SIZE)) {
         const payload = {
             queries: batch.map((pkg) => ({
                 package: { name: pkg.name, ecosystem: "npm" },
@@ -123,8 +141,8 @@ async function findVulnerabilityIds(packages) {
 }
 
 // The batch endpoint returns ids only, so severity needs one lookup per advisory. There are
-// normally none; a handful at most.
-function severityOf(vuln) {
+// normally none; a handful at most. Exported for tests.
+export function severityOf(vuln) {
     const declared = vuln.database_specific?.severity;
 
     if (typeof declared === "string") {
@@ -132,6 +150,18 @@ function severityOf(vuln) {
     }
 
     return "UNKNOWN";
+}
+
+// Whether an advisory should fail the gate: a high/critical severity that has not been withdrawn.
+// The withdrawn filter and the severity floor are the whole gate decision, so they are extracted
+// here and unit-tested rather than living only inside main()'s network loop, where the current
+// tree (normally zero advisories) never exercises them. See check-js-advisories.test.js.
+export function isBlockingAdvisory(vuln) {
+    if (vuln.withdrawn) {
+        return false;
+    }
+
+    return BLOCKING_SEVERITIES.has(severityOf(vuln));
 }
 
 async function main() {
@@ -144,19 +174,14 @@ async function main() {
     for (const [id, affected] of affectedBy) {
         const vuln = await getJson(`${OSV_VULN_URL}/${encodeURIComponent(id)}`);
 
-        // A withdrawn advisory was retracted by its publisher; it is not a finding.
-        if (vuln.withdrawn) {
-            continue;
-        }
-
-        const severity = severityOf(vuln);
-
-        if (!BLOCKING_SEVERITIES.has(severity)) {
+        // A withdrawn advisory is skipped and anything below high/critical does not gate; both live
+        // in isBlockingAdvisory so the decision is testable without the network.
+        if (!isBlockingAdvisory(vuln)) {
             continue;
         }
 
         blocking.push(
-            `${severity} ${id} - ${[...affected].sort().join(", ")}\n` +
+            `${severityOf(vuln)} ${id} - ${[...affected].sort().join(", ")}\n` +
                 `    ${vuln.summary ?? "(no summary)"}\n` +
                 `    https://osv.dev/vulnerability/${id}`
         );
@@ -180,9 +205,13 @@ async function main() {
     );
 }
 
-main().catch((error) => {
-    // Never pass silently on a transport failure: a scanner that cannot reach its data source has
-    // not cleared the tree, and treating that as success is how a gate quietly stops gating.
-    console.error(`Advisory check could not complete: ${error.message}`);
-    process.exit(1);
-});
+// Only run the gate when invoked as a script, so the exports above stay unit-testable (importing
+// this file must not shell out to pnpm or reach the network). Mirrors check-js-licenses.js.
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+    main().catch((error) => {
+        // Never pass silently on a transport failure: a scanner that cannot reach its data source
+        // has not cleared the tree, and treating that as success is how a gate quietly stops gating.
+        console.error(`Advisory check could not complete: ${error.message}`);
+        process.exit(1);
+    });
+}
