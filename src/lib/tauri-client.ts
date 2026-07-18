@@ -7,6 +7,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { TAURI_COMMANDS, type TauriCommandName } from "../constants/tauri-commands";
 import type { TauriCommandReturns } from "./tauri-command-returns";
+import { validateIpcResult } from "./ipc-schemas";
 import { parseAppError } from "../utils/app-error";
 
 // Re-exported so an event subscriber can type its unsubscribe handle (and its handler payload)
@@ -28,7 +29,11 @@ export async function invokeCommand<K extends TauriCommandName>(
     args?: InvokeArgs
 ): Promise<TauriCommandReturns[K]> {
     try {
-        return await invoke<TauriCommandReturns[K]>(command, args);
+        const result = await invoke<TauriCommandReturns[K]>(command, args);
+        // Validate the structured result against its schema (ipc-schemas.ts) before handing it back,
+        // so a malformed response fails here with a clear message rather than as a shape surprise
+        // deep in a caller. A command with no registered schema passes through unchanged.
+        return validateIpcResult(command, result);
     } catch (error) {
         throw parseAppError(error);
     }

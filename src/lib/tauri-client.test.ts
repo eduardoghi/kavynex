@@ -18,27 +18,53 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { APP_ERROR_CODE } from "../constants/error-codes";
 import { invokeCommand, invokeVoid, listenTauri } from "./tauri-client";
 
+// A full, schema-valid Channel: LIST_CHANNELS now validates its result at the seam (ipc-schemas.ts),
+// so the mock has to be a real row, not a stub, for the forwarding tests to reach the return.
+const validChannel = {
+    id: 1,
+    name: "Some Channel",
+    youtube_handle: "@some",
+    avatar_path: null,
+    created_at: "2026-01-01T00:00:00Z",
+};
+
 beforeEach(() => {
     vi.clearAllMocks();
 });
 
 describe("invokeCommand", () => {
     it("forwards the command and args to invoke and returns its result", async () => {
-        invokeMock.mockResolvedValue([{ id: 1 }]);
+        invokeMock.mockResolvedValue([validChannel]);
 
         const result = await invokeCommand(TAURI_COMMANDS.LIST_CHANNELS, { channelId: 7 });
 
-        expect(result).toEqual([{ id: 1 }]);
+        expect(result).toEqual([validChannel]);
         expect(invokeMock).toHaveBeenCalledTimes(1);
         expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.LIST_CHANNELS, { channelId: 7 });
     });
 
     it("passes undefined args through instead of substituting an empty object", async () => {
-        invokeMock.mockResolvedValue(null);
+        invokeMock.mockResolvedValue([]);
 
         await invokeCommand(TAURI_COMMANDS.LIST_CHANNELS);
 
         expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.LIST_CHANNELS, undefined);
+    });
+
+    it("rejects with a normalized error when the backend result fails its schema", async () => {
+        // The seam validates structured results (ipc-schemas.ts): a malformed response is turned
+        // into the same AppErrorShape a rejection would be, so a caller never receives an object of
+        // the wrong shape. The specific failing field is logged, not surfaced.
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        invokeMock.mockResolvedValue([{ id: "not-a-number" }]);
+
+        const error = await invokeCommand(TAURI_COMMANDS.LIST_CHANNELS).catch(
+            (value: unknown) => value
+        );
+
+        expect(error).toMatchObject({ code: APP_ERROR_CODE });
+        expect(spy).toHaveBeenCalled();
+        spy.mockRestore();
     });
 
     it("normalizes a rejected backend error into an AppErrorShape", async () => {
