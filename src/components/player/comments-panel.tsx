@@ -30,6 +30,7 @@ import {
     filterCommentTree,
     formatCommentPublishedAt,
     normalizeSearchValue,
+    sortCommentTree,
     type CommentSortMode,
     type CommentTreeNode,
 } from "./comment-tree";
@@ -287,9 +288,14 @@ export function CommentsPanel({
         COMMENT_SEARCH_DEBOUNCE_MS
     );
 
+    // Build the thread structure once per comment set, then sort separately: linking (the id map
+    // and per-node cycle check) depends only on `comments`, so toggling the sort re-sorts without
+    // re-linking the whole tree - which matters for media with a large saved comment history.
+    const commentThreads = useMemo(() => buildCommentTree(comments), [comments]);
+
     const commentTree = useMemo(
-        () => buildCommentTree(comments, commentSortMode),
-        [commentSortMode, comments]
+        () => sortCommentTree(commentThreads, commentSortMode),
+        [commentThreads, commentSortMode]
     );
 
     const normalizedCommentSearch = useMemo(

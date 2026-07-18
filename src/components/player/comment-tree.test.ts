@@ -8,6 +8,7 @@ import {
     matchesCommentSearch,
     normalizeSearchValue,
     parseCommentTimestamp,
+    sortCommentTree,
 } from "./comment-tree";
 
 function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
@@ -117,6 +118,40 @@ describe("buildCommentTree", () => {
 
         expect(buildCommentTree([older, newer], "newest").map((n) => n.id)).toEqual([2, 1]);
         expect(buildCommentTree([older, newer], "oldest").map((n) => n.id)).toEqual([1, 2]);
+    });
+});
+
+describe("sortCommentTree", () => {
+    it("matches the order of a one-shot sorted build", () => {
+        const comments = [
+            comment({ id: 1, comment_id: "a", like_count: 5 }),
+            comment({ id: 2, comment_id: "b", like_count: 10 }),
+            comment({ id: 3, comment_id: "c", parent_comment_id: "b", like_count: 1 }),
+            comment({ id: 4, comment_id: "d", parent_comment_id: "b", like_count: 9 }),
+        ];
+
+        const structure = buildCommentTree(comments);
+        const sorted = sortCommentTree(structure, "likes");
+
+        const oneShot = buildCommentTree(comments, "likes");
+
+        const flatten = (nodes: ReturnType<typeof buildCommentTree>): number[] =>
+            nodes.flatMap((node) => [node.id, ...flatten(node.replies)]);
+
+        expect(flatten(sorted)).toEqual(flatten(oneShot));
+    });
+
+    it("does not mutate the built structure it is given", () => {
+        const structure = buildCommentTree([
+            comment({ id: 1, comment_id: "a", like_count: 1 }),
+            comment({ id: 2, comment_id: "b", like_count: 9 }),
+        ]);
+
+        const beforeOrder = structure.map((node) => node.id);
+        sortCommentTree(structure, "likes");
+
+        // The input keeps its original (insertion) order; the sort returned a new tree.
+        expect(structure.map((node) => node.id)).toEqual(beforeOrder);
     });
 });
 

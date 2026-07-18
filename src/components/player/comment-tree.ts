@@ -143,9 +143,15 @@ function chainEndsAtARoot(
     }
 }
 
+// Builds the parent/child thread structure. The sort is a separate step (`sortCommentTree`)
+// because linking - the id map and the per-node cycle check (`chainEndsAtARoot`, worst case
+// O(n) each) - depends only on the comments, not on the sort order. Splitting them lets the
+// caller memoize the structure on `comments` alone, so toggling the sort re-sorts without
+// re-linking the whole tree. `sortMode` is optional and, when given, sorts in place for callers
+// (and tests) that want a one-shot sorted tree; the panel passes it through `sortCommentTree`.
 export function buildCommentTree(
     comments: MediaCommentRow[],
-    sortMode: CommentSortMode
+    sortMode?: CommentSortMode
 ): CommentTreeNode[] {
     const nodes = comments.map((comment) => ({
         ...comment,
@@ -187,17 +193,35 @@ export function buildCommentTree(
         parentNode.replies.push(node);
     }
 
-    const sortNodes = (items: CommentTreeNode[]): void => {
-        items.sort((left, right) => compareComments(left, right, sortMode));
+    if (sortMode) {
+        const mode = sortMode;
+        const sortNodes = (items: CommentTreeNode[]): void => {
+            items.sort((left, right) => compareComments(left, right, mode));
 
-        for (const item of items) {
-            sortNodes(item.replies);
-        }
-    };
+            for (const item of items) {
+                sortNodes(item.replies);
+            }
+        };
 
-    sortNodes(roots);
+        sortNodes(roots);
+    }
 
     return roots;
+}
+
+// Returns a sorted copy of a built tree without mutating the input, so the structure built by
+// `buildCommentTree` can stay memoized on `comments` while this runs again on every sort change.
+// Node objects are shallow-cloned (new arrays, reused fields), which is what a reorder implies.
+export function sortCommentTree(
+    nodes: CommentTreeNode[],
+    sortMode: CommentSortMode
+): CommentTreeNode[] {
+    return [...nodes]
+        .sort((left, right) => compareComments(left, right, sortMode))
+        .map((node) => ({
+            ...node,
+            replies: sortCommentTree(node.replies, sortMode),
+        }));
 }
 
 export function filterCommentTree(nodes: CommentTreeNode[], query: string): CommentTreeNode[] {
