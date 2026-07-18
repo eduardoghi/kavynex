@@ -54,9 +54,14 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
   output lands inside the managed tree.
 - `export_database` - the destination is **extension-gated** to `.db`/`.sqlite`/
   `.sqlite3` (`commands/database.rs::validate_export_destination`) so the exported
-  database cannot be written over an arbitrary file such as a document or a key. It is
-  otherwise caller-chosen (the backend cannot see the save dialog); this is an accepted,
-  documented tradeoff.
+  database cannot be written over an arbitrary file such as a document or a key, and it is
+  additionally **refused if it resolves inside the app's own config directory**
+  (`destination_is_inside_dir`), where the live `kavynex.db` and every backup generation live -
+  those share the `.db` extension, so without this a save aimed there could clobber the live
+  database or a recovery snapshot. The destination is otherwise caller-chosen (the backend cannot
+  see the save dialog, and the pick-then-confirm import UX depends on the dialog staying on the
+  frontend); overwriting *another* app's `.db`/`.sqlite` file remains the accepted, documented
+  residual of that tradeoff.
 - `open_path_in_system` - spawns the OS file manager on the resolved path. Because it
   takes both `path` and `library_path` from the caller, its containment check alone cannot
   be trusted (a caller can pass the same value as both). Two things follow from that, and

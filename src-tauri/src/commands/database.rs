@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::services::database::{database_path, is_pool_initialized, Db};
 use crate::services::db_backup::{self, DatabaseBackupStatus, DatabaseIntegrityReport};
@@ -33,6 +33,33 @@ fn validate_export_destination(destination_path: &str) -> AppResult<()> {
     }
 
     Ok(())
+}
+
+/// True when `destination`'s directory resolves inside `protected_dir`. `export_database` removes
+/// and replaces the file at the destination, and the app's config directory holds the live
+/// `kavynex.db` plus every backup generation (`.bak`, `.corrupt`, `.pre-import`, ...), so an export
+/// aimed there - by a compromised frontend, or a user who navigated the save dialog into it - could
+/// clobber the live database or a recovery snapshot with a fresh export. The extension gate alone
+/// would allow that (they share the `.db` extension); this refuses it.
+///
+/// Compares canonical paths so a symlink or a `..`-laden path cannot dodge the check. The
+/// destination file need not exist yet (it is a save target), so its parent directory is
+/// canonicalized instead; a parent that cannot be canonicalized is treated as *not* inside
+/// (fail open), because the export would fail later on that path anyway and rejecting a legitimate
+/// destination on a canonicalize error would be worse than leaving the extension gate as the guard.
+fn destination_is_inside_dir(destination: &Path, protected_dir: &Path) -> bool {
+    let Ok(canonical_protected) = protected_dir.canonicalize() else {
+        return false;
+    };
+
+    let Some(parent) = destination.parent() else {
+        return false;
+    };
+
+    match parent.canonicalize() {
+        Ok(canonical_parent) => canonical_parent.starts_with(&canonical_protected),
+        Err(_) => false,
+    }
 }
 
 /// Initializes the shared database pool (creating and migrating the schema on first
@@ -80,6 +107,23 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
 #[tauri::command]
 pub async fn export_database(app: AppHandle, destination_path: String) -> AppResult<()> {
     validate_export_destination(&destination_path)?;
+
+    // Refuse an export aimed inside the app's own config directory, where the live database and
+    // every backup generation live: replacing one of those with an export is a data-loss path the
+    // shared `.db` extension would otherwise let through (see destination_is_inside_dir).
+    let config_dir = app.path().app_config_dir().map_err(|error| {
+        AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            format!("failed to resolve the app data directory: {error}"),
+        )
+    })?;
+
+    if destination_is_inside_dir(Path::new(destination_path.trim()), &config_dir) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "the export cannot be written into the app's own data directory, which holds the live database and its backups",
+        ));
+    }
 
     let path = database_path(&app)?;
     db_backup::export_database(&path, Path::new(&destination_path)).await
@@ -186,6 +230,40 @@ mod tests {
             validate_export_destination(path)
                 .unwrap_or_else(|error| panic!("{path} should be accepted: {error}"));
         }
+    }
+
+    #[test]
+    fn destination_is_inside_dir_detects_a_target_within_the_protected_directory() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        let protected = std::env::temp_dir().join(format!("kavynex-export-guard-{nanos}"));
+        std::fs::create_dir_all(&protected).unwrap();
+
+        // A destination directly inside the protected directory (e.g. overwriting kavynex.db.bak).
+        let inside = protected.join("kavynex.db.bak");
+        assert!(destination_is_inside_dir(&inside, &protected));
+
+        // A destination in a sibling directory is not inside it, even though its name is a prefix.
+        let sibling = std::env::temp_dir().join(format!("kavynex-export-guard-{nanos}-elsewhere"));
+        std::fs::create_dir_all(&sibling).unwrap();
+        let outside = sibling.join("backup.db");
+        assert!(!destination_is_inside_dir(&outside, &protected));
+
+        let _ = std::fs::remove_dir_all(&protected);
+        let _ = std::fs::remove_dir_all(&sibling);
+    }
+
+    #[test]
+    fn destination_is_inside_dir_fails_open_when_the_parent_cannot_be_canonicalized() {
+        // A destination whose parent directory does not exist cannot be confirmed as inside the
+        // protected directory, so the guard must not reject it (the extension gate still applies).
+        let protected = std::env::temp_dir();
+        let missing_parent = protected.join("does-not-exist-kavynex").join("backup.db");
+        assert!(!destination_is_inside_dir(&missing_parent, &protected));
     }
 
     #[test]
