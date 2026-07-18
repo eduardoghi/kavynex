@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { HomeController } from "../types/controllers";
 import { useChannels } from "./use-channels";
 import { useMediaLibrary } from "./use-media-library";
@@ -105,15 +106,22 @@ export function useHomeController(): HomeController {
         libraryPath,
     });
 
+    // chooseLibraryPath is orchestrated at the Home level (UI-guard checks), so it replaces the
+    // raw settings-hook version while the rest of the slice passes through. Memoized so this
+    // override does not allocate a new settings object (defeating useAppSettings's own
+    // memoization) on every render of the controller.
+    const settings = useMemo(
+        () => ({
+            ...settingsState,
+            chooseLibraryPath: homeActions.chooseLibraryPath,
+        }),
+        [settingsState, homeActions.chooseLibraryPath]
+    );
+
     return {
         channels: channelsState,
         media: mediaLibrary,
-        // chooseLibraryPath is orchestrated at the Home level (UI-guard checks), so it
-        // replaces the raw settings-hook version while the rest of the slice passes through.
-        settings: {
-            ...settingsState,
-            chooseLibraryPath: homeActions.chooseLibraryPath,
-        },
+        settings,
         diagnostics: diagnosticsState,
         error: errorState,
         databaseRecovery,

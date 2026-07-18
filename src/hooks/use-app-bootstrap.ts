@@ -9,6 +9,7 @@ import { DATABASE_SCHEMA_TOO_NEW_ERROR_CODE } from "../constants/error-codes";
 import { parseAppError } from "../utils/app-error";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { useMemoObject } from "./use-memo-object";
 
 const SCHEMA_TOO_NEW_MESSAGE =
     "This library was created by a newer version of Kavynex. Update Kavynex to open it.";
@@ -101,11 +102,12 @@ export function useAppBootstrap({
         setOpen(false);
     }, []);
 
-    return {
+    // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
+    return useMemoObject({
         open,
         backedUpAtMs,
         isRestoring,
         restoreFromBackup,
         dismiss,
-    };
+    });
 }

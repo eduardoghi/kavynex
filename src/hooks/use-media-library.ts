@@ -7,6 +7,7 @@ import { useChannelMediaList } from "./use-channel-media-list";
 import { useMediaActions } from "./use-media-actions";
 import { useMediaPlayer } from "./use-media-player";
 import { saveMediaProgress as persistMediaProgress } from "../services/media-service";
+import { useMemoObject } from "./use-memo-object";
 
 function updateProgressInMemory(
     item: MediaRow,
@@ -169,7 +170,8 @@ export function useMediaLibrary({
     // via applyMediaQuery, which is why there is no load-on-channel-change effect here anymore.
     // useChannelMediaList clears itself when no channel is selected.
 
-    return {
+    // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
+    return useMemoObject({
         mediaItems: mediaList.mediaItems,
         mediaTotal: mediaList.total,
         channelMediaTotal: mediaList.channelTotal,
@@ -214,5 +216,5 @@ export function useMediaLibrary({
         closeDeleteMediaModal: mediaActions.closeDeleteMediaModal,
 
         clearMediaAndPlayer,
-    };
+    });
 }

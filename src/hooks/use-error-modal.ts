@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ErrorModalVariant } from "../components/modals/error-modal";
 import type { ErrorModalController } from "../types/controllers";
+import { useMemoObject } from "./use-memo-object";
 
 export function useErrorModal(): ErrorModalController {
     const [errorOpen, setErrorOpen] = useState(false);
@@ -26,12 +27,13 @@ export function useErrorModal(): ErrorModalController {
         setErrorMessage("");
     }, []);
 
-    return {
+    // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
+    return useMemoObject({
         errorOpen,
         errorMessage,
         errorVariant,
         showError,
         showNotice,
         closeErrorModal,
-    };
+    });
 }

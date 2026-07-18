@@ -86,12 +86,17 @@ export function useAddMediaWorkflow({
     // captured at the last render (see the "does not close the modal while ..." tests, which
     // flip these flags on the mocked controllers without triggering a re-render in between).
     const { resetForm } = addMediaForm;
-    const { ytDlpLogs, isYtDlpRunning, resetYtDlpState } = ytDlpEvents;
+    // startRun/appendManualLog/markStopped are stable (useCallback in useYtDlpEvents), so addMedia
+    // can depend on them directly instead of on the whole ytDlpEvents object - whose identity
+    // changes on every log line (ytDlpLogs is part of it), which was churning addMedia's identity
+    // on each stdout line during an active download.
+    const { ytDlpLogs, isYtDlpRunning, resetYtDlpState, startRun, appendManualLog, markStopped } =
+        ytDlpEvents;
 
     const addMedia = useCallback(async (): Promise<void> => {
         const validation = validateAddMediaForm(addMediaForm, selectedChannelId, {
             isCancellingYtDlp,
-            isYtDlpRunning: ytDlpEvents.isYtDlpRunning,
+            isYtDlpRunning,
         });
 
         if (validation.status === "skip") {
@@ -125,7 +130,7 @@ export function useAddMediaWorkflow({
                     ytDlpRunId = generateYtDlpRunId();
                     ytDlpFormatId = addMediaForm.selectedYtDlpFormatId.trim();
 
-                    ytDlpEvents.startRun(
+                    startRun(
                         ytDlpRunId,
                         buildYtDlpCommandPreview(
                             addMediaForm.mediaUrl,
@@ -135,22 +140,22 @@ export function useAddMediaWorkflow({
                         )
                     );
 
-                    ytDlpEvents.appendManualLog(
+                    appendManualLog(
                         addMediaForm.downloadComments
                             ? "Comments: enabled"
                             : "Comments: disabled"
                     );
 
-                    ytDlpEvents.appendManualLog(
+                    appendManualLog(
                         addMediaForm.downloadLiveChat
                             ? "Live chat: enabled"
                             : "Live chat: disabled"
                     );
 
                     if (cookiesPath) {
-                        ytDlpEvents.appendManualLog("Cookies: manual .txt file");
+                        appendManualLog("Cookies: manual .txt file");
                     } else if (cookiesBrowser) {
-                        ytDlpEvents.appendManualLog(`Cookies from browser: ${cookiesBrowser}`);
+                        appendManualLog(`Cookies from browser: ${cookiesBrowser}`);
                     }
                 }
 
@@ -168,7 +173,7 @@ export function useAddMediaWorkflow({
                     }),
                     {
                         onProgress: (message) => {
-                            ytDlpEvents.appendManualLog(message);
+                            appendManualLog(message);
                         },
                     }
                 );
@@ -178,7 +183,7 @@ export function useAddMediaWorkflow({
 
                 setAddMediaOpen(false);
             } catch (error) {
-                ytDlpEvents.markStopped();
+                markStopped();
 
                 // A cancelled download travels as an error because that is how the backend unwinds
                 // it, but it is the outcome the user clicked for: the run stopped and nothing was
@@ -200,15 +205,18 @@ export function useAddMediaWorkflow({
         });
     }, [
         addMediaForm,
+        appendManualLog,
         importMode,
         isCancellingYtDlp,
+        isYtDlpRunning,
         libraryPath,
+        markStopped,
         onError,
         onNotice,
         onReloadMedia,
         runAddMedia,
         selectedChannelId,
-        ytDlpEvents,
+        startRun,
     ]);
 
     const cancelYtDlpDownload = useCallback(async (): Promise<void> => {

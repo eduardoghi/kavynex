@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Text } from "@mantine/core";
 import { RotateCcw } from "lucide-react";
 import { AddMediaModal } from "../modals/add-media-modal";
@@ -39,9 +40,28 @@ function formatBackupTimestamp(backedUpAtMs: number | null): string {
     return `the backup from ${new Date(backedUpAtMs).toLocaleString("en-US")}`;
 }
 
-export function HomeModals({
+// Every modal except AddMediaModal. Split out and memoized so an active yt-dlp download - whose log
+// lines change `media`'s identity several times a second - re-renders only AddMediaModal (which
+// shows the terminal), not this whole set. It deliberately receives the individual delete-media
+// fields rather than the `media` controller, so its props stay referentially stable across a log
+// update; every other slice it takes is already memoized by its own hook.
+type HomeSecondaryModalsProps = {
+    channels: ChannelsController;
+    mediaActions: HomeMediaActionsController;
+    settings: AppSettingsController;
+    diagnostics: DiagnosticsController;
+    error: ErrorModalController;
+    databaseRecovery: DatabaseRecoveryController;
+    uiGuards: HomeUiGuardsController;
+    onOpenDiagnosticsMedia: (target: DiagnosticsMediaTarget) => void;
+    confirmDeleteMediaOpen: boolean;
+    mediaToDelete: MediaLibraryController["mediaToDelete"];
+    isDeletingMedia: boolean;
+    closeDeleteMediaModal: MediaLibraryController["closeDeleteMediaModal"];
+};
+
+const HomeSecondaryModals = memo(function HomeSecondaryModals({
     channels,
-    media,
     mediaActions,
     settings,
     diagnostics,
@@ -49,9 +69,11 @@ export function HomeModals({
     databaseRecovery,
     uiGuards,
     onOpenDiagnosticsMedia,
-}: HomeModalsProps): JSX.Element {
-    const addMediaForm = media.addMediaForm;
-
+    confirmDeleteMediaOpen,
+    mediaToDelete,
+    isDeletingMedia,
+    closeDeleteMediaModal,
+}: HomeSecondaryModalsProps): JSX.Element {
     return (
         <>
             <CreateChannelModal
@@ -89,54 +111,15 @@ export function HomeModals({
                 onCreate={() => void channels.saveEditedChannel()}
             />
 
-            <AddMediaModal
-                opened={media.addMediaOpen}
-                onClose={() => void uiGuards.closeAddMediaModalSafely()}
-                sourceMode={addMediaForm.sourceMode}
-                mediaUrl={addMediaForm.mediaUrl}
-                title={addMediaForm.title}
-                mediaPath={addMediaForm.mediaPath}
-                mediaType={addMediaForm.mediaType}
-                thumbPath={addMediaForm.thumbPath}
-                publishedAt={addMediaForm.publishedAt}
-                downloadComments={addMediaForm.downloadComments}
-                downloadLiveChat={addMediaForm.downloadLiveChat}
-                cookiesBrowser={addMediaForm.cookiesBrowser}
-                cookiesPath={addMediaForm.cookiesPath}
-                isGeneratingThumb={addMediaForm.isGeneratingThumb}
-                loading={media.isAddingMedia}
-                isCancellingYtDlp={media.isCancellingYtDlp}
-                ytDlpLogs={media.ytDlpLogs}
-                isYtDlpRunning={media.isYtDlpRunning}
-                ytDlpFormats={addMediaForm.ytDlpFormats}
-                selectedYtDlpFormatId={addMediaForm.selectedYtDlpFormatId}
-                isLoadingYtDlpFormats={addMediaForm.isLoadingYtDlpFormats}
-                onChangeSourceMode={addMediaForm.setSourceMode}
-                onChangeMediaUrl={addMediaForm.setMediaUrl}
-                onChangeTitle={addMediaForm.setTitle}
-                onChangePublishedAt={addMediaForm.setPublishedAt}
-                onChangeDownloadComments={addMediaForm.setDownloadComments}
-                onChangeDownloadLiveChat={addMediaForm.setDownloadLiveChat}
-                onChangeCookiesBrowser={addMediaForm.setCookiesBrowser}
-                onPickCookiesFile={() => void addMediaForm.pickCookiesFileViaDialog()}
-                onClearCookiesPath={addMediaForm.clearCookiesPath}
-                onChangeSelectedYtDlpFormatId={addMediaForm.setSelectedYtDlpFormatId}
-                onLoadYtDlpFormats={() => void addMediaForm.loadYtDlpFormats()}
-                onPickMedia={() => void addMediaForm.pickMediaViaDialog()}
-                onPickThumb={() => void addMediaForm.pickThumbViaDialog()}
-                onAdd={() => void mediaActions.addMedia()}
-                onCancelYtDlpDownload={() => void media.cancelYtDlpDownload()}
-            />
-
             <ConfirmDeleteModal
-                opened={media.confirmDeleteMediaOpen}
-                onClose={media.closeDeleteMediaModal}
+                opened={confirmDeleteMediaOpen}
+                onClose={closeDeleteMediaModal}
                 onConfirm={() => void mediaActions.confirmDeleteMedia()}
-                loading={media.isDeletingMedia}
+                loading={isDeletingMedia}
                 title={<Text fw={900}>Delete</Text>}
                 message={
                     <>
-                        Delete <b>{media.mediaToDelete?.title ?? "this item"}</b>?
+                        Delete <b>{mediaToDelete?.title ?? "this item"}</b>?
                     </>
                 }
                 description="This permanently deletes the media file and its thumbnail from disk. This cannot be undone."
@@ -210,6 +193,78 @@ export function HomeModals({
                 onClose={error.closeErrorModal}
                 variant={error.errorVariant}
                 message={error.errorMessage}
+            />
+        </>
+    );
+});
+
+export function HomeModals({
+    channels,
+    media,
+    mediaActions,
+    settings,
+    diagnostics,
+    error,
+    databaseRecovery,
+    uiGuards,
+    onOpenDiagnosticsMedia,
+}: HomeModalsProps): JSX.Element {
+    const addMediaForm = media.addMediaForm;
+
+    return (
+        <>
+            <AddMediaModal
+                opened={media.addMediaOpen}
+                onClose={() => void uiGuards.closeAddMediaModalSafely()}
+                sourceMode={addMediaForm.sourceMode}
+                mediaUrl={addMediaForm.mediaUrl}
+                title={addMediaForm.title}
+                mediaPath={addMediaForm.mediaPath}
+                mediaType={addMediaForm.mediaType}
+                thumbPath={addMediaForm.thumbPath}
+                publishedAt={addMediaForm.publishedAt}
+                downloadComments={addMediaForm.downloadComments}
+                downloadLiveChat={addMediaForm.downloadLiveChat}
+                cookiesBrowser={addMediaForm.cookiesBrowser}
+                cookiesPath={addMediaForm.cookiesPath}
+                isGeneratingThumb={addMediaForm.isGeneratingThumb}
+                loading={media.isAddingMedia}
+                isCancellingYtDlp={media.isCancellingYtDlp}
+                ytDlpLogs={media.ytDlpLogs}
+                isYtDlpRunning={media.isYtDlpRunning}
+                ytDlpFormats={addMediaForm.ytDlpFormats}
+                selectedYtDlpFormatId={addMediaForm.selectedYtDlpFormatId}
+                isLoadingYtDlpFormats={addMediaForm.isLoadingYtDlpFormats}
+                onChangeSourceMode={addMediaForm.setSourceMode}
+                onChangeMediaUrl={addMediaForm.setMediaUrl}
+                onChangeTitle={addMediaForm.setTitle}
+                onChangePublishedAt={addMediaForm.setPublishedAt}
+                onChangeDownloadComments={addMediaForm.setDownloadComments}
+                onChangeDownloadLiveChat={addMediaForm.setDownloadLiveChat}
+                onChangeCookiesBrowser={addMediaForm.setCookiesBrowser}
+                onPickCookiesFile={() => void addMediaForm.pickCookiesFileViaDialog()}
+                onClearCookiesPath={addMediaForm.clearCookiesPath}
+                onChangeSelectedYtDlpFormatId={addMediaForm.setSelectedYtDlpFormatId}
+                onLoadYtDlpFormats={() => void addMediaForm.loadYtDlpFormats()}
+                onPickMedia={() => void addMediaForm.pickMediaViaDialog()}
+                onPickThumb={() => void addMediaForm.pickThumbViaDialog()}
+                onAdd={() => void mediaActions.addMedia()}
+                onCancelYtDlpDownload={() => void media.cancelYtDlpDownload()}
+            />
+
+            <HomeSecondaryModals
+                channels={channels}
+                mediaActions={mediaActions}
+                settings={settings}
+                diagnostics={diagnostics}
+                error={error}
+                databaseRecovery={databaseRecovery}
+                uiGuards={uiGuards}
+                onOpenDiagnosticsMedia={onOpenDiagnosticsMedia}
+                confirmDeleteMediaOpen={media.confirmDeleteMediaOpen}
+                mediaToDelete={media.mediaToDelete}
+                isDeletingMedia={media.isDeletingMedia}
+                closeDeleteMediaModal={media.closeDeleteMediaModal}
             />
         </>
     );
