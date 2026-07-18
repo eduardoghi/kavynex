@@ -99,6 +99,9 @@ export const UI_TEXT = {
         resultsShowing: "Showing",
         resultsFor: "result(s) for",
         loadMore: "Load more comments",
+        truncatedNoticePrefix: "Showing the first",
+        truncatedNoticeMiddle: "of",
+        truncatedNoticeSuffix: "saved comments; the rest are not loaded here.",
         sortOptions: {
             likes: "Most relevant",
             newest: "Newest first",

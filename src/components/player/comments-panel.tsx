@@ -327,6 +327,13 @@ export function CommentsPanel({
 
     const remainingThreadCount = filteredCommentTree.length - visibleCommentTree.length;
 
+    // The backend caps how many comments a single media loads at once (a defensive ceiling for a
+    // pathologically large backup). comments_count is the number of rows actually stored, so fewer
+    // loaded than that means the cap truncated the set - surface it rather than letting search and
+    // the thread list silently cover only part of what is saved.
+    const isCommentLoadTruncated =
+        commentsCount != null && comments.length < commentsCount;
+
     return (
         <Paper
             withBorder
@@ -363,6 +370,15 @@ export function CommentsPanel({
                                     ? `${commentsCount ?? comments.length} ${UI_TEXT.comments.savedWithMedia}`
                                     : UI_TEXT.comments.none}
                             </Text>
+                            {isCommentLoadTruncated && (
+                                <Text size="xs" c="dimmed" role="status">
+                                    {UI_TEXT.comments.truncatedNoticePrefix}{" "}
+                                    {comments.length.toLocaleString()}{" "}
+                                    {UI_TEXT.comments.truncatedNoticeMiddle}{" "}
+                                    {(commentsCount ?? 0).toLocaleString()}{" "}
+                                    {UI_TEXT.comments.truncatedNoticeSuffix}
+                                </Text>
+                            )}
                         </Box>
                     </Group>
 

@@ -188,6 +188,38 @@ describe("CommentsPanel", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("notes when fewer comments were loaded than the media has saved", () => {
+        renderWithMantine(
+            <CommentsPanel
+                comments={[comment({ id: 1, comment_id: "c1", text: "hello" })]}
+                hasComments
+                commentsCount={50000}
+                isLoadingComments={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        expect(
+            screen.getByText(new RegExp(UI_TEXT.comments.truncatedNoticeSuffix))
+        ).toBeInTheDocument();
+    });
+
+    it("does not note truncation when every saved comment was loaded", () => {
+        renderWithMantine(
+            <CommentsPanel
+                comments={[comment({ id: 1, comment_id: "c1", text: "hello" })]}
+                hasComments
+                commentsCount={1}
+                isLoadingComments={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        expect(
+            screen.queryByText(new RegExp(UI_TEXT.comments.truncatedNoticeSuffix))
+        ).not.toBeInTheDocument();
+    });
+
     it("does not offer to fetch comments when comments are already present", () => {
         renderWithMantine(
             <CommentsPanel

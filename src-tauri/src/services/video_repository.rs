@@ -156,6 +156,15 @@ pub struct MediaPageQuery {
 /// and defeat the point of paginating.
 const MAX_MEDIA_PAGE_LIMIT: i64 = 500;
 
+/// Upper bound on how many comments a single media loads at once. Comments are threaded on the
+/// client, which needs them all in one shot, so this is not a page size but a defensive ceiling: a
+/// video with a pathologically large comment backup would otherwise pull every row into memory,
+/// across IPC, and through client-side validation and tree-building on the main thread. The earliest
+/// rows are kept (ORDER BY id ASC); the frontend compares the loaded count against the stored
+/// `comments_count` and tells the user when some were not loaded. Set high enough that no realistic
+/// backup is ever truncated.
+const MAX_MEDIA_COMMENTS_LOADED: i64 = 50_000;
+
 const MEDIA_COLUMNS: &str = "id, channel_id, title, file_path, thumbnail_path, media_type, \
     youtube_video_id, watched_at, published_at, duration_seconds, progress_seconds, has_comments, \
     comments_count, is_live, has_live_chat, live_chat_file_path, created_at";
@@ -515,9 +524,11 @@ pub async fn list_media_comments_by_media_id(
             created_at
          FROM video_comments
          WHERE video_id = ?
-         ORDER BY id ASC",
+         ORDER BY id ASC
+         LIMIT ?",
     )
     .bind(media_id)
+    .bind(MAX_MEDIA_COMMENTS_LOADED)
     .fetch_all(pool)
     .await
     .map_err(|error| db_error("failed to list media comments", error))
@@ -1257,6 +1268,47 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(media.progress_seconds, 55);
+    }
+
+    #[tokio::test]
+    async fn lists_comments_in_id_order_within_the_load_cap() {
+        // The load is capped (MAX_MEDIA_COMMENTS_LOADED) so a pathological backup cannot pull every
+        // row at once, but a normal set must come back whole and ordered by id. Guards the query's
+        // LIMIT/ORDER BY so the cap never accidentally truncates or reorders an ordinary load.
+        let pool = create_test_pool().await;
+        sqlx::query(
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER, \
+             comment_id TEXT, parent_comment_id TEXT, author_name TEXT NOT NULL DEFAULT '', \
+             author_handle TEXT, author_channel_id TEXT, author_thumbnail TEXT, \
+             text TEXT NOT NULL DEFAULT '', like_count INTEGER NOT NULL DEFAULT 0, \
+             reply_count INTEGER NOT NULL DEFAULT 0, is_author_uploader INTEGER NOT NULL DEFAULT 0, \
+             is_favorited INTEGER NOT NULL DEFAULT 0, is_pinned INTEGER NOT NULL DEFAULT 0, \
+             is_edited INTEGER NOT NULL DEFAULT 0, time_text TEXT, published_at TEXT, \
+             created_at TEXT NOT NULL DEFAULT (datetime('now')));",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        for text in ["first", "second", "third"] {
+            sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (7, ?)")
+                .bind(text)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        // A comment on a different media must not leak into the result.
+        sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (8, 'other')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let comments = list_media_comments_by_media_id(&pool, 7).await.unwrap();
+
+        assert_eq!(
+            comments.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(),
+            ["first", "second", "third"]
+        );
     }
 
     #[tokio::test]
