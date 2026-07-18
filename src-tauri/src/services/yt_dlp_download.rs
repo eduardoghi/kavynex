@@ -473,6 +473,58 @@ fn build_download_command_args(
     args
 }
 
+/// The terminal outcome of the yt-dlp wait loop, decided from the flags the loop set and the
+/// child's exit status.
+#[derive(Debug, PartialEq, Eq)]
+enum DownloadTermination {
+    /// The child went silent past the stall threshold with no file growth and was killed.
+    Stalled,
+    /// The user (or app exit) cancelled the run.
+    Cancelled,
+    /// The child exited non-zero; carries the user-facing message built from its stderr.
+    Failed(String),
+    /// The child exited zero and was neither stalled nor cancelled.
+    Succeeded,
+}
+
+/// Decides the wait loop's terminal outcome. Extracted as a pure function so the precedence a
+/// stall preempts a cancel, which preempts a non-zero exit and the failure-message shaping can be
+/// asserted without spawning a process; the surrounding orchestration (`download_media_from_url_async`)
+/// needs a live `AppHandle` to emit events and cannot run under the unit-test harness.
+///
+/// The precedence matters: a run killed for stalling also comes back with a non-success exit
+/// status and a cancel flag set once the kill lands, so classifying purely on the exit status
+/// would report every stall/cancel as a generic failure. `captured_stderr` is consulted only for
+/// the `Failed` case and is expected to already carry the empty-buffer fallback the caller applies.
+fn classify_download_termination(
+    stalled: bool,
+    cancel_requested: bool,
+    exit_success: bool,
+    captured_stderr: &str,
+) -> DownloadTermination {
+    if stalled {
+        return DownloadTermination::Stalled;
+    }
+
+    if cancel_requested {
+        return DownloadTermination::Cancelled;
+    }
+
+    if !exit_success {
+        let trimmed = captured_stderr.trim();
+
+        let message = if trimmed.is_empty() {
+            "yt-dlp download failed".to_string()
+        } else {
+            format!("yt-dlp download failed: {trimmed}")
+        };
+
+        return DownloadTermination::Failed(message);
+    }
+
+    DownloadTermination::Succeeded
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async(
     app: &AppHandle,
@@ -982,49 +1034,53 @@ pub async fn download_media_from_url_async(
             logger::warn("yt_dlp", format!("yt-dlp stderr task failed: {e}"));
         }
 
-        if stalled {
-            let message = "yt-dlp download stalled with no progress and was stopped";
-            emit_download_error(app, &normalized_run_id, message);
+        // Read the captured stderr only on the path that uses it (a non-zero exit that was neither
+        // stalled nor cancelled), preserving the empty-buffer fallback the failure message expects.
+        let captured_stderr = if !stalled && !cancel_requested && !status.success() {
+            let guard = stderr_buffer.lock().await;
 
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadTimeout,
-                message,
-            ));
-        }
-
-        if cancel_requested {
-            let message = "yt-dlp download cancelled";
-            emit_download_cancelled(app, &normalized_run_id, message);
-
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadCancelled,
-                message,
-            ));
-        }
-
-        if !status.success() {
-            let stderr_message = {
-                let guard = stderr_buffer.lock().await;
-
-                if guard.is_empty() {
-                    "yt-dlp failed".to_string()
-                } else {
-                    guard.join("\n")
-                }
-            };
-
-            let message = if stderr_message.trim().is_empty() {
-                "yt-dlp download failed".to_string()
+            if guard.is_empty() {
+                "yt-dlp failed".to_string()
             } else {
-                format!("yt-dlp download failed: {}", stderr_message.trim())
-            };
+                guard.join("\n")
+            }
+        } else {
+            String::new()
+        };
 
-            emit_download_error(app, &normalized_run_id, message.clone());
+        match classify_download_termination(
+            stalled,
+            cancel_requested,
+            status.success(),
+            &captured_stderr,
+        ) {
+            DownloadTermination::Stalled => {
+                let message = "yt-dlp download stalled with no progress and was stopped";
+                emit_download_error(app, &normalized_run_id, message);
 
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadFailed,
-                message,
-            ));
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpDownloadTimeout,
+                    message,
+                ));
+            }
+            DownloadTermination::Cancelled => {
+                let message = "yt-dlp download cancelled";
+                emit_download_cancelled(app, &normalized_run_id, message);
+
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpDownloadCancelled,
+                    message,
+                ));
+            }
+            DownloadTermination::Failed(message) => {
+                emit_download_error(app, &normalized_run_id, message.clone());
+
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpDownloadFailed,
+                    message,
+                ));
+            }
+            DownloadTermination::Succeeded => {}
         }
 
         let downloaded_temp =
@@ -1405,6 +1461,43 @@ mod tests {
         assert_eq!(
             resolve_format_has_video("bestvideo[height<=720]+bestaudio", &formats),
             None
+        );
+    }
+
+    #[test]
+    fn classify_download_termination_applies_stall_cancel_failure_precedence() {
+        // A stall preempts everything: a killed-for-stalling child also comes back non-success with
+        // the cancel flag set, so the exit status alone must not win.
+        assert_eq!(
+            classify_download_termination(true, true, false, "boom"),
+            DownloadTermination::Stalled
+        );
+
+        // A cancel preempts a non-zero exit for the same reason (the kill sets both).
+        assert_eq!(
+            classify_download_termination(false, true, false, "boom"),
+            DownloadTermination::Cancelled
+        );
+
+        // A clean, uncancelled, un-stalled exit succeeds.
+        assert_eq!(
+            classify_download_termination(false, false, true, ""),
+            DownloadTermination::Succeeded
+        );
+    }
+
+    #[test]
+    fn classify_download_termination_shapes_the_failure_message() {
+        // A non-zero exit carries the stderr, prefixed and trimmed.
+        assert_eq!(
+            classify_download_termination(false, false, false, "  ERROR: unavailable  "),
+            DownloadTermination::Failed("yt-dlp download failed: ERROR: unavailable".to_string())
+        );
+
+        // An empty captured stderr falls back to the bare message rather than a dangling prefix.
+        assert_eq!(
+            classify_download_termination(false, false, false, "   "),
+            DownloadTermination::Failed("yt-dlp download failed".to_string())
         );
     }
 
