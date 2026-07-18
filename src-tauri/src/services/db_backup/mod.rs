@@ -20,15 +20,6 @@ const BACKUP_MIN_INTERVAL_SECS: u64 = 24 * 60 * 60;
 const BACKUP_ROTATED_GENERATIONS: usize = 6;
 const CORRUPT_ROTATED_GENERATIONS: usize = 2;
 
-// A copy of the database written into a user-chosen external directory (Settings > Database), so a
-// disk failure that takes the app config directory does not also take every snapshot with it - the
-// `.bak` rotation above lives on the same volume as the live database. Only the database is
-// mirrored here; the far larger media files live under the library directory and are backed up
-// separately. Kept to a couple of rotated generations like the corrupt set: this is a redundancy
-// against hardware loss, not the primary history the `.bak` family already provides on-volume.
-const EXTERNAL_BACKUP_FILE_NAME: &str = "kavynex-backup.db";
-const EXTERNAL_BACKUP_ROTATED_GENERATIONS: usize = 2;
-
 // Serializes `backup_database` so at most one snapshot runs at a time. Two independent schedulers
 // drive it - the pool-init snapshot (services::database) and the periodic loop (lib.rs) - and the
 // is_recent() throttle is mtime-based, so it only suppresses a second call once the first has
@@ -163,96 +154,16 @@ async fn is_healthy(pool: &SqlitePool) -> bool {
     }
 }
 
-/// The outcome of a full `PRAGMA integrity_check`: whether the database is sound and, when it is
-/// not, what SQLite actually reported.
-#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
-pub struct DatabaseIntegrityReport {
-    pub ok: bool,
-    /// The problems SQLite listed, one per entry, capped at [`MAX_INTEGRITY_PROBLEMS`]. Empty when
-    /// `ok`.
-    pub problems: Vec<String>,
-    /// True when SQLite reported more problems than were kept, so the UI can say the list is
-    /// partial rather than presenting a truncated list as the whole story.
-    pub truncated: bool,
-}
-
-/// A corrupt database can report a problem per damaged page, which is unbounded and useless past
-/// the first handful: the answer is the same either way ("restore from a backup"), and the point of
-/// showing any of them is to say *what* is wrong, not to enumerate it.
-const MAX_INTEGRITY_PROBLEMS: usize = 20;
-
-/// `SQLITE_CORRUPT` ("database disk image is malformed").
-const SQLITE_CORRUPT_CODE: &str = "11";
-
-/// The SQLite-native error code behind a `sqlx::Error`, when it has one. A failure that never
-/// reached the database (a pool timeout, a decode error) has none.
-fn sqlite_error_code(error: &sqlx::Error) -> Option<String> {
-    match error {
-        sqlx::Error::Database(database_error) => {
-            database_error.code().map(|code| code.into_owned())
-        }
-        _ => None,
-    }
-}
-
-/// Runs a full `PRAGMA integrity_check`, a thorough (and slower) check than the `quick_check`
-/// used by the automatic health paths above. User-triggered only, so the extra cost is fine.
-///
-/// `fetch_all` rather than `fetch_one`: on a healthy database the pragma returns the single row
-/// `ok`, but on a damaged one it returns *a row per problem found*. Reading only the first row
-/// threw away everything SQLite had to say about the damage, leaving the UI with a bare "there is
-/// a problem" and the user with nothing to act on or report.
-pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIntegrityReport> {
-    let rows: Vec<(String,)> = match sqlx::query_as("PRAGMA integrity_check").fetch_all(pool).await {
-        Ok(rows) => rows,
-        // Past a certain amount of damage SQLite gives up on the pragma itself and fails the query
-        // with SQLITE_CORRUPT instead of listing what is wrong. That is still an answer - the most
-        // definitive one there is - so it must not surface as "the check could not run", which
-        // reads like the tool broke rather than the database. Only this one code is treated this
-        // way: an IO error or a lock timeout says nothing about integrity and still propagates.
-        Err(error) => {
-            if sqlite_error_code(&error).as_deref() == Some(SQLITE_CORRUPT_CODE) {
-                return Ok(DatabaseIntegrityReport {
-                    ok: false,
-                    problems: vec![format!("SQLite reported the database as corrupt: {error}")],
-                    truncated: false,
-                });
-            }
-
-            return Err(backup_error(
-                "failed to run the database integrity check",
-                error,
-            ));
-        }
-    };
-
-    // The healthy answer is exactly one row reading `ok`; anything else is a list of problems.
-    // Checking the shape rather than just the first row keeps a database that somehow reports `ok`
-    // alongside real problems from being called sound.
-    let ok = rows.len() == 1 && rows[0].0 == "ok";
-
-    if ok {
-        return Ok(DatabaseIntegrityReport {
-            ok: true,
-            problems: Vec::new(),
-            truncated: false,
-        });
-    }
-
-    let problems: Vec<String> = rows
-        .iter()
-        .take(MAX_INTEGRITY_PROBLEMS)
-        .map(|(problem,)| problem.clone())
-        .collect();
-
-    Ok(DatabaseIntegrityReport {
-        ok: false,
-        truncated: rows.len() > problems.len(),
-        problems,
-    })
-}
+// The full `PRAGMA integrity_check` and its background throttle live in the `integrity` submodule.
+mod integrity;
+pub use integrity::{
+    integrity_check_is_due, mark_integrity_check_passed, run_full_integrity_check,
+    DatabaseIntegrityReport,
+};
+// The parent module's integrity tests assert against these internals; test-only so a non-test
+// build does not flag them unused.
+#[cfg(test)]
+use integrity::{integrity_check_marker_path, MAX_INTEGRITY_PROBLEMS};
 
 /// Escapes a value for embedding as a single-quoted SQLite string literal by doubling every
 /// `'`. This is the ONE place in the whole database layer where non-constant, externally
@@ -480,43 +391,6 @@ pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {
     }
 }
 
-// How often the background full integrity check runs at most. The automatic paths (open, backup)
-// use `quick_check`, which is fast but shallow: a subtly damaged page can pass it and then be
-// migrated over. A full `integrity_check` catches that, but it reads the whole database, which is
-// why it is deliberately not on the open path (see `services::database::build_pool_at`). This runs
-// it off the startup critical path instead, throttled to once a week so it never becomes a
-// per-launch cost.
-const INTEGRITY_CHECK_MIN_INTERVAL_SECS: u64 = 7 * 24 * 60 * 60;
-
-fn integrity_check_marker_path(db_path: &Path) -> PathBuf {
-    sibling(db_path, ".integrity-checked")
-}
-
-/// Whether a background full integrity check is due: true when the marker is missing (never run)
-/// or older than [`INTEGRITY_CHECK_MIN_INTERVAL_SECS`]. The marker's mtime records the last check
-/// that passed, so a database that keeps failing is re-checked every launch until it is repaired.
-pub fn integrity_check_is_due(db_path: &Path) -> bool {
-    !is_recent(
-        &integrity_check_marker_path(db_path),
-        INTEGRITY_CHECK_MIN_INTERVAL_SECS,
-    )
-}
-
-/// Records that a full integrity check just passed, so [`integrity_check_is_due`] throttles the
-/// next one for a week. Best effort: a marker that cannot be written only means the check runs
-/// again next launch, which is harmless. Called only after a clean check, never after a failing
-/// one, so a damaged database stays flagged on every launch until it is restored.
-pub fn mark_integrity_check_passed(db_path: &Path) {
-    let marker = integrity_check_marker_path(db_path);
-
-    if let Err(error) = std::fs::File::create(&marker) {
-        logger::warn(
-            "db_integrity",
-            format!("failed to write the integrity-check marker: {error}"),
-        );
-    }
-}
-
 /// Opens `db_path` and runs `quick_check`, returning whether it passes. A file that cannot even
 /// be opened as a database (or fails the check) returns false. Used both to pick a healthy backup
 /// to restore and, in the pool builder, to refuse migrating a database that is already damaged
@@ -704,133 +578,16 @@ fn write_import_applying_marker(marker: &Path) -> AppResult<()> {
     Ok(())
 }
 
-/// Exports a consistent, self-contained snapshot of the database to a user-chosen path via
-/// `VACUUM INTO` (WAL-safe: the snapshot is always fully checkpointed, never combined with a
-/// live write-ahead log). Refuses to export a database that fails `quick_check` so a corrupt
-/// file is never handed out as a good backup.
-///
-/// `VACUUM INTO` writes to a staging file next to the destination and is only promoted onto
-/// `dest_path` (via rename) once it succeeds, so a failed export (disk full, bad path) never
-/// destroys a pre-existing export at that path.
-pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> {
-    if !db_path.exists() {
-        return Err(AppError::from_code(
-            AppErrorCode::AppError,
-            "there is no database to export yet",
-        ));
-    }
-
-    let pool = open(db_path).await?;
-
-    if !is_healthy(&pool).await {
-        pool.close().await;
-        return Err(AppError::from_code(
-            AppErrorCode::AppError,
-            "cannot export a database that fails an integrity check",
-        ));
-    }
-
-    // VACUUM INTO fails if its target file already exists, so it always writes to a fresh
-    // staging path rather than dest_path directly.
-    let staging = sibling(dest_path, ".export-staging");
-    let _ = std::fs::remove_file(&staging);
-
-    let vacuum_sql = format!(
-        "VACUUM INTO '{}'",
-        escape_sql_literal(&staging.to_string_lossy())
-    );
-    let result = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
-        .execute(&pool)
-        .await;
-    pool.close().await;
-
-    if let Err(error) = result {
-        let _ = std::fs::remove_file(&staging);
-        return Err(backup_error("failed to export database", error));
-    }
-
-    // The snapshot is confirmed good; only now is any previous export at dest_path replaced.
-    // The caller's save dialog has already confirmed the overwrite.
-    let _ = std::fs::remove_file(dest_path);
-    std::fs::rename(&staging, dest_path).map_err(|error| {
-        let _ = std::fs::remove_file(&staging);
-        backup_error("failed to finalize database export", error)
-    })?;
-
-    Ok(())
-}
-
-fn external_backup_path(dir: &Path) -> PathBuf {
-    dir.join(EXTERNAL_BACKUP_FILE_NAME)
-}
-
-/// The current external mirror is generation 0 (`kavynex-backup.db`); older ones are
-/// `kavynex-backup.db.1`..`kavynex-backup.db.{EXTERNAL_BACKUP_ROTATED_GENERATIONS}`.
-fn generation_external_backup_path(dir: &Path, generation: usize) -> PathBuf {
-    if generation == 0 {
-        external_backup_path(dir)
-    } else {
-        dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.{generation}"))
-    }
-}
-
-/// Mirrors the database into a user-chosen external backup directory (Settings > Database) so a
-/// disk failure that takes the app config directory does not also take every snapshot with it.
-/// Best effort and throttled to once a day, exactly like the on-volume `.bak` snapshot; only the
-/// database is copied (the media files are far larger and live under the library directory, which
-/// the user backs up separately). Returns true when a fresh mirror was written.
-///
-/// The directory must already exist: an external drive that is currently unplugged (or a network
-/// share that is offline) is skipped quietly rather than recreated, since a recreated folder at a
-/// path that now resolves to a different device would silently write the backup to the wrong
-/// place. `export_database` refuses a source that fails its integrity check, so a corrupt database
-/// never overwrites a good external mirror.
-pub async fn mirror_database_to_external_dir(
-    db_path: &Path,
-    external_dir: &Path,
-) -> AppResult<bool> {
-    if !db_path.exists() {
-        return Ok(false);
-    }
-
-    if !external_dir.is_dir() {
-        // The chosen directory is gone (drive unplugged, share offline). Not something to surface
-        // on every background tick: skip and try again next time.
-        return Ok(false);
-    }
-
-    let current = external_backup_path(external_dir);
-
-    if is_recent(&current, BACKUP_MIN_INTERVAL_SECS) {
-        return Ok(false);
-    }
-
-    // Export to a fresh staging file inside the external directory first, so a failed export (a
-    // drive pulled mid-write) never disturbs the mirror generations already there. Only once the
-    // fresh copy is complete are the older generations rotated up and it is promoted into
-    // generation 0. This is stricter than backup_database's rotate-then-write, on purpose: an
-    // external/removable target fails far more often than the app's own config volume.
-    let staged = external_dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
-    let _ = std::fs::remove_file(&staged);
-
-    export_database(db_path, &staged).await?;
-
-    rotate_generations(
-        external_dir,
-        EXTERNAL_BACKUP_ROTATED_GENERATIONS,
-        generation_external_backup_path,
-    );
-
-    if let Err(error) = std::fs::rename(&staged, &current) {
-        let _ = std::fs::remove_file(&staged);
-        return Err(backup_error(
-            "failed to promote the external database backup",
-            error,
-        ));
-    }
-
-    Ok(true)
-}
+// The user-triggered export and the once-a-day external mirror live in the `external` submodule.
+mod external;
+pub use external::{export_database, mirror_database_to_external_dir};
+// The parent module's mirror tests reach these internals; test-only so a non-test build does not
+// flag the imports unused.
+#[cfg(test)]
+use external::{
+    external_backup_path, generation_external_backup_path, EXTERNAL_BACKUP_FILE_NAME,
+    EXTERNAL_BACKUP_ROTATED_GENERATIONS,
+};
 
 async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     if !is_healthy(pool).await {
