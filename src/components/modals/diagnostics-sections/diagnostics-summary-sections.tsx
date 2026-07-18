@@ -341,6 +341,17 @@ export function DiagnosticsSummarySections({
                         />
                     </Group>
 
+                    <Group grow align="stretch">
+                        <DiagnosticsMetricCard
+                            label="Corrupt media files"
+                            value={diagnostics.libraryIntegrity.corrupt_media_files}
+                        />
+                        <DiagnosticsMetricCard
+                            label="Corrupt thumbnails"
+                            value={diagnostics.libraryIntegrity.corrupt_thumbnail_files}
+                        />
+                    </Group>
+
                     <DiagnosticsExamplesList
                         label="Missing media examples"
                         items={diagnostics.libraryIntegrity.missing_media_examples}
@@ -366,6 +377,14 @@ export function DiagnosticsSummarySections({
                         items={[
                             ...diagnostics.libraryIntegrity.invalid_media_examples,
                             ...diagnostics.libraryIntegrity.invalid_thumbnail_examples,
+                        ]}
+                    />
+
+                    <DiagnosticsExamplesList
+                        label="Corrupt file examples"
+                        items={[
+                            ...diagnostics.libraryIntegrity.corrupt_media_examples,
+                            ...diagnostics.libraryIntegrity.corrupt_thumbnail_examples,
                         ]}
                     />
                 </Stack>

@@ -227,6 +227,35 @@ export function buildDiagnosticsIssues(
         );
     }
 
+    if (input.libraryIntegrity.corrupt_media_files > 0) {
+        issues.push(
+            withExamples(
+                {
+                    code: "CORRUPT_MEDIA_FILES_ON_DISK",
+                    severity: "warning",
+                    title: "Some media files are empty or corrupted",
+                    description: `${input.libraryIntegrity.corrupt_media_files} media file(s) exist in the library folder but are zero bytes, so the file is truncated or corrupted rather than a healthy backup.`,
+                },
+                input.libraryIntegrity.corrupt_media_examples,
+                resolveMissingMedia
+            )
+        );
+    }
+
+    if (input.libraryIntegrity.corrupt_thumbnail_files > 0) {
+        issues.push(
+            withExamples(
+                {
+                    code: "CORRUPT_THUMBNAIL_FILES_ON_DISK",
+                    severity: "info",
+                    title: "Some thumbnail files are empty or corrupted",
+                    description: `${input.libraryIntegrity.corrupt_thumbnail_files} thumbnail file(s) exist in the library folder but are zero bytes, so the file is truncated or corrupted.`,
+                },
+                input.libraryIntegrity.corrupt_thumbnail_examples
+            )
+        );
+    }
+
     if (input.libraryIntegrity.orphan_media_files > 0) {
         issues.push(
             withExamples(

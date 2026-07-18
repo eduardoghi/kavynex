@@ -18,10 +18,16 @@ pub struct LibraryIntegrityReport {
     pub missing_media_files: usize,
     pub missing_media_examples: Vec<String>,
     #[ts(type = "number")]
+    pub corrupt_media_files: usize,
+    pub corrupt_media_examples: Vec<String>,
+    #[ts(type = "number")]
     pub checked_thumbnail_files: usize,
     #[ts(type = "number")]
     pub missing_thumbnail_files: usize,
     pub missing_thumbnail_examples: Vec<String>,
+    #[ts(type = "number")]
+    pub corrupt_thumbnail_files: usize,
+    pub corrupt_thumbnail_examples: Vec<String>,
     #[ts(type = "number")]
     pub orphan_media_files: usize,
     pub orphan_media_examples: Vec<String>,
@@ -41,6 +47,11 @@ struct PathCheckOutcome {
     checked: usize,
     missing: usize,
     missing_examples: Vec<String>,
+    /// Files that exist inside the library but are zero-length, i.e. present-but-corrupted
+    /// (a truncated copy, external-disk corruption). Counted separately from `missing` so the
+    /// diagnostics do not report a hollow file as healthy just because it is on disk.
+    corrupt: usize,
+    corrupt_examples: Vec<String>,
     /// Stored paths that are neither checked nor missing because they are malformed for a
     /// library-relative reference: absolute, or escaping via `..`, or resolving outside the
     /// library. The database is supposed to only hold managed relative paths, so these are a
@@ -80,6 +91,8 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
         checked: 0,
         missing: 0,
         missing_examples: Vec::new(),
+        corrupt: 0,
+        corrupt_examples: Vec::new(),
         invalid: 0,
         invalid_examples: Vec::new(),
     };
@@ -118,6 +131,23 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
 
             if outcome.missing_examples.len() < 5 {
                 outcome.missing_examples.push(stored_path);
+            }
+
+            continue;
+        }
+
+        // Present on disk, but a zero-length file is a truncated/corrupted artifact (a bad copy,
+        // an interrupted write, external-disk corruption) rather than a healthy one. Surface it
+        // distinctly so a hollow file is not reported as fine just because it exists.
+        let is_zero_length = fs::metadata(&resolved_path)
+            .map(|meta| meta.len() == 0)
+            .unwrap_or(false);
+
+        if is_zero_length {
+            outcome.corrupt += 1;
+
+            if outcome.corrupt_examples.len() < 5 {
+                outcome.corrupt_examples.push(stored_path);
             }
         }
     }
@@ -226,9 +256,13 @@ pub fn check_library_integrity_sync(
         checked_media_files: media.checked,
         missing_media_files: media.missing,
         missing_media_examples: media.missing_examples,
+        corrupt_media_files: media.corrupt,
+        corrupt_media_examples: media.corrupt_examples,
         checked_thumbnail_files: thumbnail.checked,
         missing_thumbnail_files: thumbnail.missing,
         missing_thumbnail_examples: thumbnail.missing_examples,
+        corrupt_thumbnail_files: thumbnail.corrupt,
+        corrupt_thumbnail_examples: thumbnail.corrupt_examples,
         orphan_media_files,
         orphan_media_examples,
         orphan_thumbnail_files,
@@ -294,6 +328,28 @@ mod tests {
         assert_eq!(outcome.checked, 1);
         assert_eq!(outcome.missing, 0);
         assert_eq!(outcome.invalid, 0);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn collect_missing_paths_reports_zero_length_file_as_corrupt_not_missing() {
+        let library = unique_test_dir("corrupt");
+        fs::create_dir_all(library.join("video")).unwrap();
+        // A present but zero-length file: a truncated/corrupted artifact, not a healthy one.
+        fs::write(library.join("video").join("empty.mp4"), b"").unwrap();
+        // A healthy file alongside it must stay uncounted as corrupt.
+        fs::write(library.join("video").join("ok.mp4"), b"data").unwrap();
+
+        let outcome = collect_missing_paths(
+            &library,
+            vec!["video/empty.mp4".to_string(), "video/ok.mp4".to_string()],
+        );
+
+        assert_eq!(outcome.checked, 2);
+        assert_eq!(outcome.missing, 0);
+        assert_eq!(outcome.corrupt, 1);
+        assert_eq!(outcome.corrupt_examples, vec!["video/empty.mp4"]);
 
         let _ = fs::remove_dir_all(&library);
     }
