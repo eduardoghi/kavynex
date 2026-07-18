@@ -33,8 +33,10 @@ const ALLOWED = new Set([
 
 // pnpm reports SPDX expressions ("MIT OR Apache-2.0", "(MIT OR CC0-1.0)"). A dual license is fine
 // as long as one side is allowed - we can take that side. An AND expression needs every term to be
-// allowed, since all of them bind.
-function isAllowed(expression) {
+// allowed, since all of them bind. Exported so the AND/OR/paren logic is unit-tested (see
+// scripts/check-js-licenses.test.js): the current tree has no compound expression, so nothing else
+// exercises this branch until the day a dependency ships one - exactly when a bug here would matter.
+export function isAllowed(expression) {
     const normalized = expression.trim().replace(/^\(|\)$/g, "");
 
     if (normalized.includes(" AND ")) {
@@ -102,4 +104,8 @@ function main() {
     );
 }
 
-main();
+// Only run the gate when invoked as a script, so the export above stays unit-testable (importing
+// this file must not shell out to pnpm).
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+    main();
+}
