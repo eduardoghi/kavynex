@@ -19,6 +19,15 @@ const BACKUP_MIN_INTERVAL_SECS: u64 = 24 * 60 * 60;
 const BACKUP_ROTATED_GENERATIONS: usize = 6;
 const CORRUPT_ROTATED_GENERATIONS: usize = 2;
 
+// A copy of the database written into a user-chosen external directory (Settings > Database), so a
+// disk failure that takes the app config directory does not also take every snapshot with it - the
+// `.bak` rotation above lives on the same volume as the live database. Only the database is
+// mirrored here; the far larger media files live under the library directory and are backed up
+// separately. Kept to a couple of rotated generations like the corrupt set: this is a redundancy
+// against hardware loss, not the primary history the `.bak` family already provides on-volume.
+const EXTERNAL_BACKUP_FILE_NAME: &str = "kavynex-backup.db";
+const EXTERNAL_BACKUP_ROTATED_GENERATIONS: usize = 2;
+
 fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
     let name = db_path
         .file_name()
@@ -678,6 +687,78 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
     Ok(())
 }
 
+fn external_backup_path(dir: &Path) -> PathBuf {
+    dir.join(EXTERNAL_BACKUP_FILE_NAME)
+}
+
+/// The current external mirror is generation 0 (`kavynex-backup.db`); older ones are
+/// `kavynex-backup.db.1`..`kavynex-backup.db.{EXTERNAL_BACKUP_ROTATED_GENERATIONS}`.
+fn generation_external_backup_path(dir: &Path, generation: usize) -> PathBuf {
+    if generation == 0 {
+        external_backup_path(dir)
+    } else {
+        dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.{generation}"))
+    }
+}
+
+/// Mirrors the database into a user-chosen external backup directory (Settings > Database) so a
+/// disk failure that takes the app config directory does not also take every snapshot with it.
+/// Best effort and throttled to once a day, exactly like the on-volume `.bak` snapshot; only the
+/// database is copied (the media files are far larger and live under the library directory, which
+/// the user backs up separately). Returns true when a fresh mirror was written.
+///
+/// The directory must already exist: an external drive that is currently unplugged (or a network
+/// share that is offline) is skipped quietly rather than recreated, since a recreated folder at a
+/// path that now resolves to a different device would silently write the backup to the wrong
+/// place. `export_database` refuses a source that fails its integrity check, so a corrupt database
+/// never overwrites a good external mirror.
+pub async fn mirror_database_to_external_dir(
+    db_path: &Path,
+    external_dir: &Path,
+) -> AppResult<bool> {
+    if !db_path.exists() {
+        return Ok(false);
+    }
+
+    if !external_dir.is_dir() {
+        // The chosen directory is gone (drive unplugged, share offline). Not something to surface
+        // on every background tick: skip and try again next time.
+        return Ok(false);
+    }
+
+    let current = external_backup_path(external_dir);
+
+    if is_recent(&current, BACKUP_MIN_INTERVAL_SECS) {
+        return Ok(false);
+    }
+
+    // Export to a fresh staging file inside the external directory first, so a failed export (a
+    // drive pulled mid-write) never disturbs the mirror generations already there. Only once the
+    // fresh copy is complete are the older generations rotated up and it is promoted into
+    // generation 0. This is stricter than backup_database's rotate-then-write, on purpose: an
+    // external/removable target fails far more often than the app's own config volume.
+    let staged = external_dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
+    let _ = std::fs::remove_file(&staged);
+
+    export_database(db_path, &staged).await?;
+
+    rotate_generations(
+        external_dir,
+        EXTERNAL_BACKUP_ROTATED_GENERATIONS,
+        generation_external_backup_path,
+    );
+
+    if let Err(error) = std::fs::rename(&staged, &current) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(backup_error(
+            "failed to promote the external database backup",
+            error,
+        ));
+    }
+
+    Ok(true)
+}
+
 async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     if !is_healthy(pool).await {
         return Err(AppError::from_code(
@@ -1099,6 +1180,96 @@ mod tests {
             .unwrap();
         pool.close().await;
         value
+    }
+
+    #[tokio::test]
+    async fn mirror_writes_a_readable_copy_into_the_external_dir() {
+        let dir = temp_dir("ext-write-src");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        let external = temp_dir("ext-write-dest");
+
+        assert!(mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+
+        let current = external_backup_path(&external);
+        assert!(current.exists());
+        assert_eq!(read_single_value(&current).await, "hello");
+        // The staging file is renamed into place, never left behind.
+        assert!(!external
+            .join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"))
+            .exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&external);
+    }
+
+    #[tokio::test]
+    async fn mirror_is_throttled_when_recent() {
+        let dir = temp_dir("ext-throttle-src");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        let external = temp_dir("ext-throttle-dest");
+
+        assert!(mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+        // A second run within the 24h window is a no-op: the mirror was just written.
+        assert!(!mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&external);
+    }
+
+    #[tokio::test]
+    async fn mirror_skips_when_the_external_dir_is_missing() {
+        let dir = temp_dir("ext-missing-src");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        // A path that does not exist stands in for an unplugged external drive.
+        let external = dir.join("unplugged-drive");
+        assert!(!external.exists());
+
+        assert!(!mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+        // The missing directory is never recreated (it could now resolve to another device).
+        assert!(!external.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn external_backup_generations_rotate_up() {
+        let dir = temp_dir("ext-rotate");
+
+        std::fs::write(generation_external_backup_path(&dir, 0), b"gen0").unwrap();
+        std::fs::write(generation_external_backup_path(&dir, 1), b"gen1").unwrap();
+
+        rotate_generations(
+            &dir,
+            EXTERNAL_BACKUP_ROTATED_GENERATIONS,
+            generation_external_backup_path,
+        );
+
+        // gen0 -> gen1 and gen1 -> gen2, leaving generation 0 free for a fresh mirror.
+        assert!(!generation_external_backup_path(&dir, 0).exists());
+        assert_eq!(
+            std::fs::read(generation_external_backup_path(&dir, 1)).unwrap(),
+            b"gen0"
+        );
+        assert_eq!(
+            std::fs::read(generation_external_backup_path(&dir, 2)).unwrap(),
+            b"gen1"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
