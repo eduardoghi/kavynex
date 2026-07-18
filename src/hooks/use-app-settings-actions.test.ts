@@ -434,4 +434,25 @@ describe("useAppSettingsActions", () => {
         expect(result.current.setImportModeAction).not.toBe(firstImportMode);
         expect(result.current.openCurrentLibraryPathAction).not.toBe(firstOpen);
     });
+
+    it("returns a stable controller object across a rerender with unchanged props", () => {
+        // The object must keep its identity when nothing it depends on changes. Without the
+        // useMemoObject wrap it was a fresh literal every render, which propagated through
+        // use-app-settings and defeated the HomeSecondaryModals memo boundary (it re-rendered on
+        // every yt-dlp log tick even though no setting had changed).
+        const onError = vi.fn();
+        const setSettings = vi.fn();
+
+        const { result, rerender } = renderHook(
+            (props: { onError: (message: string) => void; setSettings: typeof setSettings }) =>
+                useAppSettingsActions(props),
+            { initialProps: { onError, setSettings } }
+        );
+
+        const first = result.current;
+
+        rerender({ onError, setSettings });
+
+        expect(result.current).toBe(first);
+    });
 });

@@ -11,6 +11,7 @@ import { getLibrarySummary, type LibrarySummaryInfo } from "../services/library-
 import { parseAppError } from "../utils/app-error";
 import { logError } from "../utils/app-logger";
 import { useAppUpdate, type AppUpdateStatus } from "./use-app-update";
+import { useMemoObject } from "./use-memo-object";
 
 const EMPTY_LIBRARY_SUMMARY: LibrarySummaryInfo = {
     total_bytes: 0,
@@ -304,7 +305,10 @@ export function useSettingsController({
         };
     }, [opened, libraryPath, loadLibrarySummary]);
 
-    return {
+    // Memoized for a stable identity across renders, matching every sibling controller hook. Not
+    // load-bearing today (settings-modal destructures individual fields), but it keeps this hook
+    // consistent with the others and safe to pass whole to a memoized consumer later.
+    return useMemoObject({
         librarySummary,
         isLoadingLibrarySummary,
         librarySummaryError,
@@ -327,5 +331,5 @@ export function useSettingsController({
         appUpdateErrorMessage,
         checkForUpdate,
         installUpdate,
-    };
+    });
 }

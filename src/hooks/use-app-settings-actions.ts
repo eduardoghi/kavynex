@@ -6,6 +6,7 @@ import { initializeAppSettings } from "../use-cases/initialize-app-settings";
 import { chooseExternalBackupDirectory } from "../services/database-service";
 import { openLibraryDirectory } from "../services/library-service";
 import { useAsyncFlag } from "./use-async-flag";
+import { useMemoObject } from "./use-memo-object";
 import {
     loadStoredSettings,
     persistSettings,
@@ -211,7 +212,13 @@ export function useAppSettingsActions({
         });
     }, [onError, runSaveExternalBackupDir, setSettings]);
 
-    return {
+    // Memoized so the controller object keeps a stable identity across renders, like every sibling
+    // controller hook. The action members are already useCallback-stable, so this object's identity
+    // only turns over when one of the boolean flags flips - which is exactly when a consumer that
+    // depends on the whole object should re-render. Without this, the object was fresh every render,
+    // which propagated through use-app-settings's callbacks and defeated the memo boundary
+    // HomeSecondaryModals relies on (it would re-render on every yt-dlp log tick).
+    return useMemoObject({
         isPreparingSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
@@ -223,5 +230,5 @@ export function useAppSettingsActions({
         openCurrentLibraryPathAction,
         chooseExternalBackupDirAction,
         clearExternalBackupDirAction,
-    };
+    });
 }
