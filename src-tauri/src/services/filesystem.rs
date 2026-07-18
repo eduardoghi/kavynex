@@ -63,8 +63,7 @@ fn fsync_file(path: &Path) -> AppResult<()> {
 /// Linux/Unix filesystems a crash right after a rename can otherwise lose the new directory entry
 /// even though the file's own data was already fsynced, so the destination could vanish after a
 /// power loss - the same durability gap already closed for the db-backup and library-migration
-/// commit markers. Best effort and only meaningful on Unix: `std` cannot open a directory as a
-/// `File` on Windows, whose NTFS rename does not need this, so it is a no-op there.
+/// commit markers. Best effort: any failure is ignored.
 #[cfg(unix)]
 fn fsync_parent_dir(path: &Path) {
     if let Some(parent) = path.parent() {
@@ -74,7 +73,78 @@ fn fsync_parent_dir(path: &Path) {
     }
 }
 
-#[cfg(not(unix))]
+/// Windows counterpart. `std` cannot open a directory as a `File`, so the handle is obtained via
+/// `CreateFileW` with `FILE_FLAG_BACKUP_SEMANTICS` (required to open a directory) and flushed with
+/// `FlushFileBuffers` - the same operation `sync_all` performs for a file. This closes the same
+/// power-loss window on NTFS with write caching enabled that the Unix path closes; the previous
+/// no-op assumed NTFS never needed it, which is not something the code could demonstrate. Best
+/// effort: any failure degrades to the previous no-op behavior and is ignored.
+#[cfg(windows)]
+fn fsync_parent_dir(path: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+
+    let Some(parent) = path.parent() else {
+        return;
+    };
+
+    if parent.as_os_str().is_empty() {
+        return;
+    }
+
+    let wide: Vec<u16> = parent
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateFileW(
+            lp_file_name: *const u16,
+            dw_desired_access: u32,
+            dw_share_mode: u32,
+            lp_security_attributes: *mut core::ffi::c_void,
+            dw_creation_disposition: u32,
+            dw_flags_and_attributes: u32,
+            h_template_file: *mut core::ffi::c_void,
+        ) -> *mut core::ffi::c_void;
+        fn FlushFileBuffers(h_file: *mut core::ffi::c_void) -> i32;
+        fn CloseHandle(h_object: *mut core::ffi::c_void) -> i32;
+    }
+
+    const GENERIC_READ: u32 = 0x8000_0000;
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+    const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+    const OPEN_EXISTING: u32 = 3;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+
+    let invalid_handle = usize::MAX as *mut core::ffi::c_void;
+
+    // SAFETY: lp_file_name is a NUL-terminated UTF-16 buffer that outlives the call; the security
+    // and template arguments are null as the API allows. The returned handle is checked against
+    // the null/INVALID_HANDLE_VALUE sentinels and always closed before returning.
+    unsafe {
+        let handle = CreateFileW(
+            wide.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            std::ptr::null_mut(),
+        );
+
+        if handle.is_null() || handle == invalid_handle {
+            return;
+        }
+
+        let _ = FlushFileBuffers(handle);
+        let _ = CloseHandle(handle);
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn fsync_parent_dir(_path: &Path) {}
 
 fn file_paths_have_same_content(left: &Path, right: &Path) -> AppResult<bool> {
