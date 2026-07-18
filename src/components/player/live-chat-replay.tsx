@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-    getActiveLiveChatPin,
+    extractLiveChatPins,
+    getActiveLiveChatPinFromPins,
     getVisibleLiveChatMessages,
     type LiveChatMessageItem,
 } from "../../services/live-chat-service";
@@ -82,12 +83,20 @@ export function LiveChatReplay({
         [liveChatMessages, currentPlaybackTime]
     );
 
-    // Derived here, from the full message list, rather than inside the panel from the capped visible
+    // The pins are extracted once per message list (not per playback tick), so the active-pin
+    // lookup below stays a binary search over this small array instead of re-scanning every message
+    // each tick.
+    const liveChatPins = useMemo(
+        () => extractLiveChatPins(liveChatMessages),
+        [liveChatMessages]
+    );
+
+    // Derived here, from the full pin list, rather than inside the panel from the capped visible
     // window: a pin that was set more than a visible-window ago is no longer in that window but is
     // still the active pin, and deriving it from the window would make the banner disappear.
     const activePin = useMemo(
-        () => getActiveLiveChatPin(liveChatMessages, currentPlaybackTime),
-        [liveChatMessages, currentPlaybackTime]
+        () => getActiveLiveChatPinFromPins(liveChatPins, currentPlaybackTime),
+        [liveChatPins, currentPlaybackTime]
     );
 
     return (

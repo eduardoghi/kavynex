@@ -654,26 +654,41 @@ export function getVisibleLiveChatMessages(
     return messages.slice(start, upperBound);
 }
 
-// Returns the pinned message in effect at `playbackSeconds`: the most recent pin whose offset is at
-// or before the current time. Searched over the WHOLE message list, not the capped visible window
-// getVisibleLiveChatMessages returns - a pin "stays until a newer pin replaces it", so it can have
-// been set far more than MAX_VISIBLE_LIVE_CHAT_MESSAGES ago and must not vanish once it scrolls out
-// of that window. Messages are sorted ascending by offset, so scanning back from the current
-// position returns the nearest preceding pin (cheap in the common case: a pin near the playhead).
+// The pinned messages only, keeping their ascending-offset order (a filtered subset of the
+// already-sorted list). Extracted once per message list so the per-playback-tick active-pin lookup
+// is a binary search over this small array (getActiveLiveChatPinFromPins) instead of a backward
+// scan over every message - which was O(n) per tick whenever no pin preceded the playhead.
+export function extractLiveChatPins(
+    messages: LiveChatMessageItem[]
+): LiveChatMessageItem[] {
+    return messages.filter((message) => message.kind === "pinned");
+}
+
+// The pin in effect at `playbackSeconds` given the pre-extracted, offset-sorted `pins`: the most
+// recent pin at or before the current time. O(log P) in the number of pins. A pin "stays until a
+// newer pin replaces it", so it is searched over the whole pin list, never the capped visible
+// window - it can have been set far more than MAX_VISIBLE_LIVE_CHAT_MESSAGES ago and must not
+// vanish once it scrolls out of that window.
+export function getActiveLiveChatPinFromPins(
+    pins: LiveChatMessageItem[],
+    playbackSeconds: number
+): LiveChatMessageItem | null {
+    const playbackMs = Math.max(0, Math.floor(playbackSeconds * 1000));
+    const upperBound = countMessagesUpToOffset(pins, playbackMs);
+
+    if (upperBound <= 0) {
+        return null;
+    }
+
+    return pins[upperBound - 1] ?? null;
+}
+
+// Convenience over the whole message list: extracts the pins and resolves the active one. The
+// per-tick UI path uses the two functions above directly (memoizing the extraction) so it does not
+// re-filter every message each tick.
 export function getActiveLiveChatPin(
     messages: LiveChatMessageItem[],
     playbackSeconds: number
 ): LiveChatMessageItem | null {
-    const playbackMs = Math.max(0, Math.floor(playbackSeconds * 1000));
-    const upperBound = countMessagesUpToOffset(messages, playbackMs);
-
-    for (let index = upperBound - 1; index >= 0; index -= 1) {
-        const message = messages[index];
-
-        if (message && message.kind === "pinned") {
-            return message;
-        }
-    }
-
-    return null;
+    return getActiveLiveChatPinFromPins(extractLiveChatPins(messages), playbackSeconds);
 }
