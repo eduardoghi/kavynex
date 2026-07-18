@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    getActiveLiveChatPin,
     getVisibleLiveChatMessages,
     readLiveChatMessagesFromFile,
     type LiveChatMessageItem,
@@ -484,5 +485,74 @@ describe("getVisibleLiveChatMessages", () => {
 
     it("clamps negative playback time to zero", () => {
         expect(getVisibleLiveChatMessages(messages, -5)).toHaveLength(1);
+    });
+});
+
+describe("getActiveLiveChatPin", () => {
+    function itemAtOffset(
+        offsetMs: number,
+        kind: LiveChatMessageItem["kind"] = "message"
+    ): LiveChatMessageItem {
+        return {
+            kind,
+            message_id: `${kind}-${offsetMs}`,
+            message_offset_ms: offsetMs,
+            author_name: "Author",
+            author_channel_id: null,
+            author_thumbnail: null,
+            author_badges: [],
+            message_text: `msg ${offsetMs}`,
+            message_parts: [],
+            timestamp_text: null,
+            amount_text: null,
+            superchat_body_color: null,
+            superchat_text_color: null,
+            sticker_image_url: null,
+            pinned_header: null,
+        };
+    }
+
+    it("returns null when there is no pin before the playback time", () => {
+        const messages = [itemAtOffset(0), itemAtOffset(1000), itemAtOffset(2000)];
+
+        expect(getActiveLiveChatPin(messages, 5)).toBeNull();
+        expect(getActiveLiveChatPin([], 5)).toBeNull();
+    });
+
+    it("returns the most recent pin at or before the playback time", () => {
+        const messages = [
+            itemAtOffset(0, "pinned"),
+            itemAtOffset(1000),
+            itemAtOffset(2000, "pinned"),
+            itemAtOffset(3000),
+        ];
+
+        // Between the two pins, the earlier one is active.
+        expect(getActiveLiveChatPin(messages, 1)?.message_offset_ms).toBe(0);
+        // Once the newer pin's offset passes, it replaces the earlier one.
+        expect(getActiveLiveChatPin(messages, 2.5)?.message_offset_ms).toBe(2000);
+    });
+
+    it("does not return a pin whose offset is after the playback time", () => {
+        const messages = [itemAtOffset(0), itemAtOffset(5000, "pinned")];
+
+        expect(getActiveLiveChatPin(messages, 2)).toBeNull();
+    });
+
+    it("keeps returning a pin set far more than the visible window ago", () => {
+        // The regression this guards: a pin at the very start, then 400 later messages (double the
+        // 200-message visible window). The pin has long scrolled out of the visible slice, but it
+        // is still the active pin and must not disappear.
+        const messages = [
+            itemAtOffset(0, "pinned"),
+            ...Array.from({ length: 400 }, (_, index) => itemAtOffset(index + 1)),
+        ];
+
+        // The pin is not in the visible window at this point...
+        const visible = getVisibleLiveChatMessages(messages, 1000);
+        expect(visible.some((message) => message.kind === "pinned")).toBe(false);
+
+        // ...but it is still resolved as the active pin.
+        expect(getActiveLiveChatPin(messages, 1000)?.message_id).toBe("pinned-0");
     });
 });

@@ -17,6 +17,9 @@ const STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 type LiveChatPanelProps = {
     liveChatMessages: LiveChatMessageItem[];
     visibleLiveChatMessages: LiveChatMessageItem[];
+    // The pinned banner in effect at the current playback time, derived by the parent from the full
+    // message list (not the capped visible window, which a long-standing pin scrolls out of).
+    activePin: LiveChatMessageItem | null;
     isLoadingLiveChat: boolean;
     // A user-facing message when the replay file could not be read. When set, the panel shows it
     // instead of the "no messages" empty state, so a failed read is not reported as an empty chat.
@@ -110,6 +113,7 @@ const LiveChatItem = memo(function LiveChatItem({
 export function LiveChatPanel({
     liveChatMessages,
     visibleLiveChatMessages,
+    activePin,
     isLoadingLiveChat,
     error = null,
     shellBorder,
@@ -156,26 +160,15 @@ export function LiveChatPanel({
         element.scrollTop = element.scrollHeight;
     }, [visibleLiveChatMessages]);
 
-    // Pinned banners are shown sticky at the top (YouTube-style) instead of inline. The
-    // active pin is the most recent one up to the current playback time; it stays until a
-    // newer pin replaces it. Both are memoized so they are only recomputed when the visible
-    // window actually changes, not on every parent render.
+    // Pinned banners are shown sticky at the top (YouTube-style) instead of inline. The active pin
+    // (`activePin`) is derived by the parent from the full message list so a long-standing pin does
+    // not disappear when it scrolls out of the capped visible window; here we only strip pinned
+    // messages out of the inline list so a pin never renders twice. Memoized so it is recomputed
+    // only when the visible window actually changes, not on every parent render.
     const inlineMessages = useMemo(
         () => visibleLiveChatMessages.filter((message) => message.kind !== "pinned"),
         [visibleLiveChatMessages]
     );
-
-    const activePin = useMemo(() => {
-        let pin: LiveChatMessageItem | null = null;
-
-        for (const message of visibleLiveChatMessages) {
-            if (message.kind === "pinned") {
-                pin = message;
-            }
-        }
-
-        return pin;
-    }, [visibleLiveChatMessages]);
 
     return (
         <Paper

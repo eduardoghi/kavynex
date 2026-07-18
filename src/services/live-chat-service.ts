@@ -653,3 +653,27 @@ export function getVisibleLiveChatMessages(
 
     return messages.slice(start, upperBound);
 }
+
+// Returns the pinned message in effect at `playbackSeconds`: the most recent pin whose offset is at
+// or before the current time. Searched over the WHOLE message list, not the capped visible window
+// getVisibleLiveChatMessages returns - a pin "stays until a newer pin replaces it", so it can have
+// been set far more than MAX_VISIBLE_LIVE_CHAT_MESSAGES ago and must not vanish once it scrolls out
+// of that window. Messages are sorted ascending by offset, so scanning back from the current
+// position returns the nearest preceding pin (cheap in the common case: a pin near the playhead).
+export function getActiveLiveChatPin(
+    messages: LiveChatMessageItem[],
+    playbackSeconds: number
+): LiveChatMessageItem | null {
+    const playbackMs = Math.max(0, Math.floor(playbackSeconds * 1000));
+    const upperBound = countMessagesUpToOffset(messages, playbackMs);
+
+    for (let index = upperBound - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+
+        if (message && message.kind === "pinned") {
+            return message;
+        }
+    }
+
+    return null;
+}

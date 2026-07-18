@@ -76,6 +76,7 @@ describe("LiveChatPanel", () => {
                 <LiveChatPanel
                     liveChatMessages={[sticker]}
                     visibleLiveChatMessages={[sticker]}
+                    activePin={null}
                     isLoadingLiveChat={false}
                     shellBorder="rgba(255,255,255,0.1)"
                 />
@@ -90,6 +91,7 @@ describe("LiveChatPanel", () => {
             <LiveChatPanel
                 liveChatMessages={[]}
                 visibleLiveChatMessages={[]}
+                activePin={null}
                 isLoadingLiveChat={false}
                 error="Could not load the live chat replay for this media."
                 shellBorder="rgba(255,255,255,0.1)"
@@ -105,11 +107,36 @@ describe("LiveChatPanel", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("shows the active pin banner even when the pin is not in the visible window", () => {
+        // The pin was set long ago and has scrolled out of the capped visible window, but the parent
+        // still resolves it as the active pin from the full list. The banner must render regardless.
+        const pin = makeChatMessage({
+            kind: "pinned",
+            message_id: "pinned-1",
+            message_text: "Pinned announcement",
+            message_parts: [{ type: "text", text: "Pinned announcement" }],
+        });
+        const recent = makeChatMessage({ message_id: "recent-1", message_text: "later message" });
+
+        renderWithMantine(
+            <LiveChatPanel
+                liveChatMessages={[pin, recent]}
+                visibleLiveChatMessages={[recent]}
+                activePin={pin}
+                isLoadingLiveChat={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        expect(screen.getByText("Pinned announcement")).toBeInTheDocument();
+    });
+
     it("shows the empty state when there is no error and no messages", () => {
         renderWithMantine(
             <LiveChatPanel
                 liveChatMessages={[]}
                 visibleLiveChatMessages={[]}
+                activePin={null}
                 isLoadingLiveChat={false}
                 error={null}
                 shellBorder="rgba(255,255,255,0.1)"
