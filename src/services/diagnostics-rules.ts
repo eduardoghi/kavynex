@@ -319,6 +319,20 @@ export function buildDiagnosticsIssues(
         );
     }
 
+    if (input.liveChatIntegrity.corrupt_live_chat_files > 0) {
+        issues.push(
+            withExamples(
+                {
+                    code: "CORRUPT_LIVE_CHAT_FILES",
+                    severity: "warning",
+                    title: "Some live chat replay files are corrupted",
+                    description: `${input.liveChatIntegrity.corrupt_live_chat_files} live chat file(s) are present but empty (zero-length), so their replay cannot be read.`,
+                },
+                input.liveChatIntegrity.corrupt_live_chat_examples
+            )
+        );
+    }
+
     if (input.liveChatIntegrity.orphan_live_chat_files > 0) {
         issues.push(
             withExamples(

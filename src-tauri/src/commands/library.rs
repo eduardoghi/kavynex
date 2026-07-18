@@ -119,9 +119,15 @@ pub async fn check_library_integrity(
     library_path: String,
     media_paths: Vec<String>,
     thumbnail_paths: Vec<String>,
+    live_chat_paths: Vec<String>,
 ) -> AppResult<LibraryIntegrityReport> {
     run_blocking(move || {
-        library_integrity::check_library_integrity_sync(&library_path, media_paths, thumbnail_paths)
+        library_integrity::check_library_integrity_sync(
+            &library_path,
+            media_paths,
+            thumbnail_paths,
+            live_chat_paths,
+        )
     })
     .await
 }
@@ -190,9 +196,12 @@ mod tests {
     fn check_library_integrity_command_accepts_camel_case_ipc_payload() {
         let library = unique_test_dir("command-integrity");
         fs::create_dir_all(library.join("video")).unwrap();
+        fs::create_dir_all(library.join("live_chat")).unwrap();
         fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
         // Not referenced by the database -> should be reported as an orphan.
         fs::write(library.join("video").join("orphan.mp4"), b"data").unwrap();
+        // A referenced live chat file that is present but zero-length -> corrupt.
+        fs::write(library.join("live_chat").join("a.json.gz"), b"").unwrap();
 
         let webview = test_webview();
 
@@ -202,7 +211,8 @@ mod tests {
             serde_json::json!({
                 "libraryPath": library.to_string_lossy(),
                 "mediaPaths": ["video/a.mp4", "video/missing.mp4"],
-                "thumbnailPaths": ["thumbnails/missing.jpg"]
+                "thumbnailPaths": ["thumbnails/missing.jpg"],
+                "liveChatPaths": ["live_chat/a.json.gz"]
             }),
         )
         .unwrap()
@@ -215,6 +225,12 @@ mod tests {
         assert_eq!(response["missing_thumbnail_files"], 1);
         assert_eq!(response["orphan_media_files"], 1);
         assert_eq!(response["orphan_media_examples"][0], "video/orphan.mp4");
+        assert_eq!(response["checked_live_chat_files"], 1);
+        assert_eq!(response["corrupt_live_chat_files"], 1);
+        assert_eq!(
+            response["corrupt_live_chat_examples"][0],
+            "live_chat/a.json.gz"
+        );
 
         let _ = fs::remove_dir_all(&library);
     }

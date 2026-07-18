@@ -40,6 +40,20 @@ pub struct LibraryIntegrityReport {
     #[ts(type = "number")]
     pub invalid_thumbnail_files: usize,
     pub invalid_thumbnail_examples: Vec<String>,
+    #[ts(type = "number")]
+    pub checked_live_chat_files: usize,
+    #[ts(type = "number")]
+    pub missing_live_chat_files: usize,
+    pub missing_live_chat_examples: Vec<String>,
+    #[ts(type = "number")]
+    pub corrupt_live_chat_files: usize,
+    pub corrupt_live_chat_examples: Vec<String>,
+    #[ts(type = "number")]
+    pub orphan_live_chat_files: usize,
+    pub orphan_live_chat_examples: Vec<String>,
+    #[ts(type = "number")]
+    pub invalid_live_chat_files: usize,
+    pub invalid_live_chat_examples: Vec<String>,
 }
 
 /// Outcome of checking one set of stored paths against the library on disk.
@@ -226,6 +240,7 @@ pub fn check_library_integrity_sync(
     library_path: &str,
     media_paths: Vec<String>,
     thumbnail_paths: Vec<String>,
+    live_chat_paths: Vec<String>,
 ) -> AppResult<LibraryIntegrityReport> {
     let raw_root = PathBuf::from(library_path);
     let library_root = raw_root.canonicalize().unwrap_or(raw_root);
@@ -233,24 +248,30 @@ pub fn check_library_integrity_sync(
     logger::info(
         "library_integrity",
         format!(
-            "checking integrity for library='{}', media_paths={}, thumbnail_paths={}",
+            "checking integrity for library='{}', media_paths={}, thumbnail_paths={}, live_chat_paths={}",
             logger::redact_path(&library_root),
             media_paths.len(),
-            thumbnail_paths.len()
+            thumbnail_paths.len(),
+            live_chat_paths.len()
         ),
     );
 
     let media_expected = build_expected_set(&media_paths);
     let thumbnail_expected = build_expected_set(&thumbnail_paths);
+    let live_chat_expected = build_expected_set(&live_chat_paths);
 
     let media = collect_missing_paths(&library_root, media_paths);
     let thumbnail = collect_missing_paths(&library_root, thumbnail_paths);
+    let live_chat = collect_missing_paths(&library_root, live_chat_paths);
 
     let (orphan_media_files, orphan_media_examples) =
         collect_orphan_paths(&library_root, &["video", "audio"], &media_expected);
 
     let (orphan_thumbnail_files, orphan_thumbnail_examples) =
         collect_orphan_paths(&library_root, &["thumbnails"], &thumbnail_expected);
+
+    let (orphan_live_chat_files, orphan_live_chat_examples) =
+        collect_orphan_paths(&library_root, &["live_chat"], &live_chat_expected);
 
     Ok(LibraryIntegrityReport {
         checked_media_files: media.checked,
@@ -271,6 +292,15 @@ pub fn check_library_integrity_sync(
         invalid_media_examples: media.invalid_examples,
         invalid_thumbnail_files: thumbnail.invalid,
         invalid_thumbnail_examples: thumbnail.invalid_examples,
+        checked_live_chat_files: live_chat.checked,
+        missing_live_chat_files: live_chat.missing,
+        missing_live_chat_examples: live_chat.missing_examples,
+        corrupt_live_chat_files: live_chat.corrupt,
+        corrupt_live_chat_examples: live_chat.corrupt_examples,
+        orphan_live_chat_files,
+        orphan_live_chat_examples,
+        invalid_live_chat_files: live_chat.invalid,
+        invalid_live_chat_examples: live_chat.invalid_examples,
     })
 }
 
@@ -296,14 +326,23 @@ mod tests {
     fn check_library_integrity_sync_reports_missing_and_orphan_files() {
         let library = unique_test_dir("service-integrity");
         fs::create_dir_all(library.join("video")).unwrap();
+        fs::create_dir_all(library.join("live_chat")).unwrap();
         fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
         // Not referenced by the database -> should be reported as an orphan.
         fs::write(library.join("video").join("orphan.mp4"), b"data").unwrap();
+        // A referenced live chat file that is present but zero-length -> corrupt, not missing.
+        fs::write(library.join("live_chat").join("a.json.gz"), b"").unwrap();
+        // A live chat file on disk that no row references -> orphan.
+        fs::write(library.join("live_chat").join("orphan.json.gz"), b"data").unwrap();
 
         let report = check_library_integrity_sync(
             library.to_string_lossy().as_ref(),
             vec!["video/a.mp4".to_string(), "video/missing.mp4".to_string()],
             vec!["thumbnails/missing.jpg".to_string()],
+            vec![
+                "live_chat/a.json.gz".to_string(),
+                "live_chat/missing.json.gz".to_string(),
+            ],
         )
         .unwrap();
 
@@ -313,6 +352,24 @@ mod tests {
         assert_eq!(report.missing_thumbnail_files, 1);
         assert_eq!(report.orphan_media_files, 1);
         assert_eq!(report.orphan_media_examples, vec!["video/orphan.mp4"]);
+
+        // Live chat now gets the same checks as media/thumbnails.
+        assert_eq!(report.checked_live_chat_files, 2);
+        assert_eq!(report.missing_live_chat_files, 1);
+        assert_eq!(
+            report.missing_live_chat_examples,
+            vec!["live_chat/missing.json.gz"]
+        );
+        assert_eq!(report.corrupt_live_chat_files, 1);
+        assert_eq!(
+            report.corrupt_live_chat_examples,
+            vec!["live_chat/a.json.gz"]
+        );
+        assert_eq!(report.orphan_live_chat_files, 1);
+        assert_eq!(
+            report.orphan_live_chat_examples,
+            vec!["live_chat/orphan.json.gz"]
+        );
 
         let _ = fs::remove_dir_all(&library);
     }

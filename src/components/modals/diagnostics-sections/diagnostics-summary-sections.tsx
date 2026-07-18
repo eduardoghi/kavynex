@@ -410,6 +410,10 @@ export function DiagnosticsSummarySections({
                             value={diagnostics.liveChatIntegrity.missing_live_chat_files}
                         />
                         <DiagnosticsMetricCard
+                            label="Corrupt live chat files"
+                            value={diagnostics.liveChatIntegrity.corrupt_live_chat_files}
+                        />
+                        <DiagnosticsMetricCard
                             label="Orphan live chat files"
                             value={diagnostics.liveChatIntegrity.orphan_live_chat_files}
                         />
@@ -418,6 +422,11 @@ export function DiagnosticsSummarySections({
                     <DiagnosticsExamplesList
                         label="Missing live chat examples"
                         items={diagnostics.liveChatIntegrity.missing_live_chat_examples}
+                    />
+
+                    <DiagnosticsExamplesList
+                        label="Corrupt live chat examples"
+                        items={diagnostics.liveChatIntegrity.corrupt_live_chat_examples}
                     />
 
                     <DiagnosticsExamplesList

@@ -61,6 +61,15 @@ function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
         corrupt_media_examples: [],
         corrupt_thumbnail_files: 0,
         corrupt_thumbnail_examples: [],
+        checked_live_chat_files: 0,
+        missing_live_chat_files: 0,
+        missing_live_chat_examples: [],
+        corrupt_live_chat_files: 0,
+        corrupt_live_chat_examples: [],
+        orphan_live_chat_files: 0,
+        orphan_live_chat_examples: [],
+        invalid_live_chat_files: 0,
+        invalid_live_chat_examples: [],
     };
 }
 
@@ -70,6 +79,7 @@ function buildIntegrityPayload(
 ): {
     mediaPaths: string[];
     thumbnailPaths: string[];
+    liveChatPaths: string[];
 } {
     return {
         mediaPaths: normalizeNonEmptyUniquePaths(
@@ -83,6 +93,9 @@ function buildIntegrityPayload(
             ...mediaReferences.map((item) => item.thumbnail_path),
             ...channelAvatarPaths,
         ]),
+        liveChatPaths: normalizeNonEmptyUniquePaths(
+            mediaReferences.map((item) => item.live_chat_file_path)
+        ),
     };
 }
 
@@ -112,6 +125,7 @@ export async function getLibraryIntegrity(
             libraryPath: normalizedLibraryPath,
             mediaPaths: payload.mediaPaths,
             thumbnailPaths: payload.thumbnailPaths,
+            liveChatPaths: payload.liveChatPaths,
         }
     );
 

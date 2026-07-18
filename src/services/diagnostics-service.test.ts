@@ -24,10 +24,6 @@ vi.mock("./diagnostics-live-chat-storage", () => ({
     getLiveChatStorageSummary: vi.fn(),
 }));
 
-vi.mock("./diagnostics-live-chat-integrity", () => ({
-    getLiveChatIntegrity: vi.fn(),
-}));
-
 vi.mock("../repositories/media-repository", () => ({
     getMediaRepositoryStats: vi.fn(),
 }));
@@ -37,7 +33,6 @@ import { getMediaRepositoryStats } from "../repositories/media-repository";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
 import { getLibraryIntegrity } from "./diagnostics-library-integrity";
 import { getLibrarySummary } from "./diagnostics-library-summary";
-import { getLiveChatIntegrity } from "./diagnostics-live-chat-integrity";
 import { getLiveChatStorageSummary } from "./diagnostics-live-chat-storage";
 import { getRuntimeDiagnosticsInfo } from "./diagnostics-runtime";
 import { getDiagnosticsSummary } from "./diagnostics-service";
@@ -49,7 +44,6 @@ const getLibrarySummaryMock = vi.mocked(getLibrarySummary);
 const getMediaRepositoryStatsMock = vi.mocked(getMediaRepositoryStats);
 const getLibraryIntegrityMock = vi.mocked(getLibraryIntegrity);
 const getLiveChatStorageSummaryMock = vi.mocked(getLiveChatStorageSummary);
-const getLiveChatIntegrityMock = vi.mocked(getLiveChatIntegrity);
 
 function createMediaRepositoryStats(
     overrides: Partial<Awaited<ReturnType<typeof getMediaRepositoryStats>>> = {}
@@ -74,14 +68,6 @@ function createMediaRepositoryStats(
 function mockHealthyLiveChatDiagnostics(): void {
     getLiveChatStorageSummaryMock.mockResolvedValueOnce({
         live_chat_files: 0,
-    });
-
-    getLiveChatIntegrityMock.mockResolvedValueOnce({
-        checked_live_chat_files: 0,
-        missing_live_chat_files: 0,
-        missing_live_chat_examples: [],
-        orphan_live_chat_files: 0,
-        orphan_live_chat_examples: [],
     });
 }
 
@@ -155,6 +141,15 @@ describe("diagnostics-service", () => {
             corrupt_media_examples: [],
             corrupt_thumbnail_files: 0,
             corrupt_thumbnail_examples: [],
+            checked_live_chat_files: 0,
+            missing_live_chat_files: 0,
+            missing_live_chat_examples: [],
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: [],
+            orphan_live_chat_files: 0,
+            orphan_live_chat_examples: [],
+            invalid_live_chat_files: 0,
+            invalid_live_chat_examples: [],
         }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
@@ -169,7 +164,6 @@ describe("diagnostics-service", () => {
         expect(getLibrarySummaryMock).toHaveBeenCalledWith("/library");
         expect(getLibraryIntegrityMock).toHaveBeenCalledWith("/library");
         expect(getLiveChatStorageSummaryMock).toHaveBeenCalled();
-        expect(getLiveChatIntegrityMock).toHaveBeenCalled();
 
         expect(result.overview.status).toBe("healthy");
         expect(result.overview.issueCount).toBe(0);
@@ -233,6 +227,15 @@ describe("diagnostics-service", () => {
             corrupt_media_examples: [],
             corrupt_thumbnail_files: 0,
             corrupt_thumbnail_examples: [],
+            checked_live_chat_files: 0,
+            missing_live_chat_files: 0,
+            missing_live_chat_examples: [],
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: [],
+            orphan_live_chat_files: 0,
+            orphan_live_chat_examples: [],
+            invalid_live_chat_files: 0,
+            invalid_live_chat_examples: [],
         }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
@@ -315,6 +318,15 @@ describe("diagnostics-service", () => {
             corrupt_media_examples: [],
             corrupt_thumbnail_files: 0,
             corrupt_thumbnail_examples: [],
+            checked_live_chat_files: 0,
+            missing_live_chat_files: 0,
+            missing_live_chat_examples: [],
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: [],
+            orphan_live_chat_files: 0,
+            orphan_live_chat_examples: [],
+            invalid_live_chat_files: 0,
+            invalid_live_chat_examples: [],
         }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
@@ -397,6 +409,15 @@ describe("diagnostics-service", () => {
             corrupt_media_examples: [],
             corrupt_thumbnail_files: 0,
             corrupt_thumbnail_examples: [],
+            checked_live_chat_files: 0,
+            missing_live_chat_files: 0,
+            missing_live_chat_examples: [],
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: [],
+            orphan_live_chat_files: 0,
+            orphan_live_chat_examples: [],
+            invalid_live_chat_files: 0,
+            invalid_live_chat_examples: [],
         }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();
@@ -508,6 +529,15 @@ describe("diagnostics-service", () => {
             corrupt_media_examples: [],
             corrupt_thumbnail_files: 0,
             corrupt_thumbnail_examples: [],
+            checked_live_chat_files: 0,
+            missing_live_chat_files: 0,
+            missing_live_chat_examples: [],
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: [],
+            orphan_live_chat_files: 0,
+            orphan_live_chat_examples: [],
+            invalid_live_chat_files: 0,
+            invalid_live_chat_examples: [],
         }, mediaByPath: {} });
 
         mockHealthyLiveChatDiagnostics();

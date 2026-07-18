@@ -26,6 +26,11 @@ export type LiveChatIntegrityReport = {
     checked_live_chat_files: number;
     missing_live_chat_files: number;
     missing_live_chat_examples: string[];
+    // Present but zero-length (truncated/corrupted) replay files, mirroring the corrupt check
+    // media and thumbnails already get. Derived from the backend library-integrity check, which
+    // is the only side that can stat the files.
+    corrupt_live_chat_files: number;
+    corrupt_live_chat_examples: string[];
     orphan_live_chat_files: number;
     orphan_live_chat_examples: string[];
 };

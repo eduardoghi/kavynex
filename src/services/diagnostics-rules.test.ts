@@ -62,11 +62,22 @@ function baseDiagnostics(): AppDiagnostics {
             corrupt_media_examples: [],
             corrupt_thumbnail_files: 0,
             corrupt_thumbnail_examples: [],
+            checked_live_chat_files: 0,
+            missing_live_chat_files: 0,
+            missing_live_chat_examples: [],
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: [],
+            orphan_live_chat_files: 0,
+            orphan_live_chat_examples: [],
+            invalid_live_chat_files: 0,
+            invalid_live_chat_examples: [],
         },
         liveChatIntegrity: {
             checked_live_chat_files: 0,
             missing_live_chat_files: 0,
             missing_live_chat_examples: [],
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: [],
             orphan_live_chat_files: 0,
             orphan_live_chat_examples: [],
         },
@@ -384,6 +395,21 @@ describe("buildDiagnosticsIssues", () => {
                 title: "Some live chat replay files are missing",
                 description:
                     "2 live chat file(s) referenced by the database were not found in app storage.",
+            },
+        ]);
+    });
+
+    it("flags CORRUPT_LIVE_CHAT_FILES with the exact corrupt count in the description", () => {
+        const input = baseDiagnostics();
+        input.liveChatIntegrity.corrupt_live_chat_files = 4;
+
+        expect(buildDiagnosticsIssues(input)).toEqual([
+            {
+                code: "CORRUPT_LIVE_CHAT_FILES",
+                severity: "warning",
+                title: "Some live chat replay files are corrupted",
+                description:
+                    "4 live chat file(s) are present but empty (zero-length), so their replay cannot be read.",
             },
         ]);
     });

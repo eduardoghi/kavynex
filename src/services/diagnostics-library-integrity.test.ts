@@ -36,7 +36,7 @@ describe("getLibraryIntegrity", () => {
                 title: "Video A",
                 file_path: "video/a.mp4",
                 thumbnail_path: "thumbnails/a.jpg",
-                live_chat_file_path: null,
+                live_chat_file_path: "live_chat/a.json.gz",
             },
         ]);
         listChannelsMock.mockResolvedValueOnce([
@@ -56,6 +56,7 @@ describe("getLibraryIntegrity", () => {
             libraryPath: string;
             mediaPaths: string[];
             thumbnailPaths: string[];
+            liveChatPaths: string[];
         };
 
         expect(invokeCommandMock.mock.calls[0]![0]).toBe(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY);
@@ -64,6 +65,9 @@ describe("getLibraryIntegrity", () => {
         expect(payload.thumbnailPaths).toContain("thumbnails/avatar.jpg");
         expect(payload.thumbnailPaths).toContain("thumbnails/a.jpg");
         expect(payload.mediaPaths).toContain("video/a.mp4");
+        // Live chat replay paths are forwarded too, so the backend can flag a missing/corrupt/
+        // orphan live chat file the same way it does for media and thumbnails.
+        expect(payload.liveChatPaths).toContain("live_chat/a.json.gz");
     });
 
     it("skips the backend call and both queries when the library path is blank", async () => {

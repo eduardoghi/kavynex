@@ -25,7 +25,6 @@ import { createEmptyLibrarySummary } from "./library-service";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
 import { getRuntimeDiagnosticsInfo } from "./diagnostics-runtime";
 import { getLiveChatStorageSummary } from "./diagnostics-live-chat-storage";
-import { getLiveChatIntegrity } from "./diagnostics-live-chat-integrity";
 
 type GetDiagnosticsInput = {
     libraryPath: string;
@@ -109,16 +108,30 @@ function defaultLibraryIntegrity(): LibraryIntegrityReport {
         corrupt_media_examples: [],
         corrupt_thumbnail_files: 0,
         corrupt_thumbnail_examples: [],
-    };
-}
-
-function defaultLiveChatIntegrity(): LiveChatIntegrityReport {
-    return {
         checked_live_chat_files: 0,
         missing_live_chat_files: 0,
         missing_live_chat_examples: [],
+        corrupt_live_chat_files: 0,
+        corrupt_live_chat_examples: [],
         orphan_live_chat_files: 0,
         orphan_live_chat_examples: [],
+        invalid_live_chat_files: 0,
+        invalid_live_chat_examples: [],
+    };
+}
+
+// Live chat integrity is a projection of the single backend library-integrity check (the only
+// side that can stat the files), rather than a separate pass: this is what gives live chat the
+// same missing/corrupt/orphan detection media and thumbnails get.
+function deriveLiveChatIntegrity(report: LibraryIntegrityReport): LiveChatIntegrityReport {
+    return {
+        checked_live_chat_files: report.checked_live_chat_files,
+        missing_live_chat_files: report.missing_live_chat_files,
+        missing_live_chat_examples: report.missing_live_chat_examples,
+        corrupt_live_chat_files: report.corrupt_live_chat_files,
+        corrupt_live_chat_examples: report.corrupt_live_chat_examples,
+        orphan_live_chat_files: report.orphan_live_chat_files,
+        orphan_live_chat_examples: report.orphan_live_chat_examples,
     };
 }
 
@@ -132,7 +145,6 @@ const DIAGNOSTIC_CHECKS = [
     { code: "LIVE_CHAT_STORAGE", label: "live chat storage" },
     { code: "MEDIA_STATS", label: "media statistics" },
     { code: "LIBRARY_INTEGRITY", label: "library integrity" },
-    { code: "LIVE_CHAT_INTEGRITY", label: "live chat integrity" },
 ] as const;
 
 // A rejected sub-check is replaced by its zeroed default so the rest of the report can still
@@ -179,7 +191,6 @@ export async function getDiagnosticsSummary(
         getLiveChatStorageSummary(),
         getMediaRepositoryStats(),
         getLibraryIntegrity(normalizedLibraryPath),
-        getLiveChatIntegrity(),
     ]);
 
     const [
@@ -190,7 +201,6 @@ export async function getDiagnosticsSummary(
         liveChatStorage,
         mediaRepositoryStats,
         libraryIntegrity,
-        liveChatIntegrity,
     ] = settled;
 
     const libraryIntegrityResult = settledValue(libraryIntegrity, {
@@ -209,7 +219,7 @@ export async function getDiagnosticsSummary(
         liveChatStorage: settledValue(liveChatStorage, defaultLiveChatStorageSummary()),
         mediaRepositoryStats: settledValue(mediaRepositoryStats, defaultMediaRepositoryStats()),
         libraryIntegrity: libraryIntegrityResult.report,
-        liveChatIntegrity: settledValue(liveChatIntegrity, defaultLiveChatIntegrity()),
+        liveChatIntegrity: deriveLiveChatIntegrity(libraryIntegrityResult.report),
     };
 
     const issues = sortDiagnosticsIssues([
