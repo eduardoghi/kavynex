@@ -7,8 +7,14 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { TAURI_COMMANDS, type TauriCommandName } from "../constants/tauri-commands";
 import type { TauriCommandReturns } from "./tauri-command-returns";
-import { validateIpcResult } from "./ipc-schemas";
+import {
+    liveChatStreamEventSchema,
+    parseEventPayload,
+    validateIpcResult,
+    type LiveChatStreamEvent,
+} from "./ipc-schemas";
 import { parseAppError } from "../utils/app-error";
+import type { z } from "zod";
 
 // Re-exported so an event subscriber can type its unsubscribe handle (and its handler payload)
 // without reaching for `@tauri-apps/api/event` itself, which the boundary rule forbids.
@@ -46,10 +52,6 @@ export async function invokeVoid(
     await invokeCommand(command, args);
 }
 
-// The streamed live chat protocol: a run of `batch` events carrying raw JSON lines, ended by a
-// single `done` event. Mirrors LiveChatStreamEvent on the Rust side (commands/live_chat.rs).
-type LiveChatStreamEvent = { kind: "batch"; lines: string[] } | { kind: "done" };
-
 // Streams a live chat replay file from the backend one batch of lines at a time, so a long replay
 // is never held as a single decompressed string on either side of the IPC boundary (the frontend
 // keeps only the compact parsed messages). `onLines` runs for each batch as it arrives.
@@ -59,6 +61,10 @@ type LiveChatStreamEvent = { kind: "batch"; lines: string[] } | { kind: "done" }
 // the command return could race the last in-flight batch and drop its lines. It rejects (normalized
 // through invokeCommand's parseAppError) if the read fails, in which case the caller discards any
 // partial batches it already accumulated.
+//
+// Each channel message is validated against liveChatStreamEventSchema before it is acted on, so a
+// backend bug that changed the wire shape (a batch line that is not a string) is dropped and logged
+// at the seam rather than flowing into the parser as the wrong type.
 export async function streamLiveChatFile(
     relativePath: string,
     onLines: (lines: string[]) => void
@@ -70,7 +76,17 @@ export async function streamLiveChatFile(
         signalDone = resolve;
     });
 
-    channel.onmessage = (event) => {
+    channel.onmessage = (rawEvent) => {
+        const event = parseEventPayload(
+            liveChatStreamEventSchema,
+            TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE,
+            rawEvent
+        );
+
+        if (!event) {
+            return;
+        }
+
         if (event.kind === "batch") {
             onLines(event.lines);
         } else {
@@ -87,4 +103,24 @@ export async function listenTauri<TPayload>(
     handler: (event: Event<TPayload>) => void
 ): Promise<UnlistenFn> {
     return listen<TPayload>(eventName, handler);
+}
+
+// Like `listenTauri`, but validates each event's payload against `schema` before invoking the
+// handler. A payload that does not match is dropped and logged (see parseEventPayload) rather than
+// passed on as the wrong shape - the event-side counterpart to invokeCommand's result validation.
+// The handler receives a payload already narrowed to the schema's type.
+export async function listenValidated<TSchema extends z.ZodTypeAny>(
+    eventName: string,
+    schema: TSchema,
+    handler: (payload: z.infer<TSchema>) => void
+): Promise<UnlistenFn> {
+    return listen<unknown>(eventName, (event) => {
+        const payload = parseEventPayload(schema, eventName, event.payload);
+
+        if (payload === null) {
+            return;
+        }
+
+        handler(payload);
+    });
 }

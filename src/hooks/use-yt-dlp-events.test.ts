@@ -9,23 +9,27 @@ import {
 } from "../constants/events";
 import { useYtDlpEvents } from "./use-yt-dlp-events";
 
-const eventHandlers = new Map<string, (event: { payload: any }) => void>();
+const eventHandlers = new Map<string, (payload: any) => void>();
 const unlistenMocks = new Map<string, ReturnType<typeof vi.fn>>();
 
+// The hook subscribes through listenValidated (eventName, schema, handler); the schema is exercised
+// by the ipc-schemas tests, so this mock ignores it and hands the payload straight to the handler.
 vi.mock("../lib/tauri-client", () => ({
-    listenTauri: vi.fn(async (eventName: string, handler: (event: { payload: any }) => void) => {
-        eventHandlers.set(eventName, handler);
-        const unlisten = vi.fn();
-        unlistenMocks.set(eventName, unlisten);
-        return unlisten;
-    }),
+    listenValidated: vi.fn(
+        async (eventName: string, _schema: unknown, handler: (payload: any) => void) => {
+            eventHandlers.set(eventName, handler);
+            const unlisten = vi.fn();
+            unlistenMocks.set(eventName, unlisten);
+            return unlisten;
+        }
+    ),
 }));
 
 vi.mock("../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-import { listenTauri } from "../lib/tauri-client";
+import { listenValidated } from "../lib/tauri-client";
 import { logError } from "../utils/app-logger";
 
 const ALL_EVENTS = [
@@ -43,7 +47,7 @@ function emit(eventName: string, payload: any): void {
         throw new Error(`Missing handler for event: ${eventName}`);
     }
 
-    handler({ payload });
+    handler(payload);
 }
 
 describe("useYtDlpEvents", () => {
@@ -753,8 +757,8 @@ describe("useYtDlpEvents", () => {
         it("unlistens immediately for a listener that resolves after unmount", async () => {
             let resolveLog: (fn: () => void) => void = () => {};
 
-            vi.mocked(listenTauri).mockImplementationOnce(
-                ((eventName: string, handler: any) => {
+            vi.mocked(listenValidated).mockImplementationOnce(
+                ((eventName: string, _schema: unknown, handler: any) => {
                     eventHandlers.set(eventName, handler);
 
                     return new Promise((resolve) => {
@@ -790,7 +794,7 @@ describe("useYtDlpEvents", () => {
         });
 
         it("logs an error when listener registration fails", async () => {
-            vi.mocked(listenTauri).mockRejectedValueOnce(new Error("registration failed"));
+            vi.mocked(listenValidated).mockRejectedValueOnce(new Error("registration failed"));
 
             renderHook(() => useYtDlpEvents());
 

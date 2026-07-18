@@ -16,7 +16,8 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { APP_ERROR_CODE } from "../constants/error-codes";
-import { invokeCommand, invokeVoid, listenTauri } from "./tauri-client";
+import { invokeCommand, invokeVoid, listenTauri, listenValidated } from "./tauri-client";
+import { IPC_EVENT_SCHEMAS } from "./ipc-schemas";
 
 // A full, schema-valid Channel: LIST_CHANNELS now validates its result at the seam (ipc-schemas.ts),
 // so the mock has to be a real row, not a stub, for the forwarding tests to reach the return.
@@ -132,5 +133,47 @@ describe("listenTauri", () => {
 
         expect(listenMock).toHaveBeenCalledWith("yt-dlp://log", handler);
         expect(result).toBe(unlisten);
+    });
+});
+
+describe("listenValidated", () => {
+    it("hands the validated payload to the handler when it matches the schema", async () => {
+        const unlisten = vi.fn();
+        listenMock.mockResolvedValue(unlisten);
+        const handler = vi.fn();
+
+        const result = await listenValidated("yt-dlp-log", IPC_EVENT_SCHEMAS.ytDlpLog, handler);
+
+        // listenValidated wraps the handler; drive the wrapper the way `listen` would.
+        const wrapped = listenMock.mock.calls[0]?.[1] as (event: { payload: unknown }) => void;
+        wrapped({
+            payload: { run_id: "r1", line: "hello", stream: "stdout", level: "info" },
+        });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler).toHaveBeenCalledWith({
+            run_id: "r1",
+            line: "hello",
+            stream: "stdout",
+            level: "info",
+        });
+        expect(result).toBe(unlisten);
+    });
+
+    it("drops a payload that does not match the schema instead of calling the handler", async () => {
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const unlisten = vi.fn();
+        listenMock.mockResolvedValue(unlisten);
+        const handler = vi.fn();
+
+        await listenValidated("yt-dlp-log", IPC_EVENT_SCHEMAS.ytDlpLog, handler);
+
+        const wrapped = listenMock.mock.calls[0]?.[1] as (event: { payload: unknown }) => void;
+        // `run_id` as a number, and missing `stream`/`level`: a backend contract break.
+        wrapped({ payload: { run_id: 7, line: "hello" } });
+
+        expect(handler).not.toHaveBeenCalled();
+        expect(spy).toHaveBeenCalled();
+        spy.mockRestore();
     });
 });

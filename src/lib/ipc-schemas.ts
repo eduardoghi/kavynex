@@ -33,7 +33,11 @@ import type {
     MediaCommentRow,
     MediaRow,
     YtDlpComment,
+    YtDlpFailedEvent,
+    YtDlpFinishedEvent,
     YtDlpFormatsResult,
+    YtDlpLogEvent,
+    YtDlpTerminalEvent,
 } from "../types/media";
 import type {
     ExternalToolsStatus,
@@ -292,6 +296,77 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     list_media_integrity_references:
         z.array(mediaIntegrityReferenceSchema) satisfies z.ZodType<MediaIntegrityReference[]>,
 };
+
+// Schemas for the payloads the backend pushes over `listen`/`Channel` (yt-dlp progress, the live
+// chat stream). These cross the same IPC boundary as command results but travel as fire-and-forget
+// events, so `invokeCommand`'s validation never sees them: without these, a backend bug that
+// changed an event's shape (a `run_id` becoming a number, a batch line that is not a string) would
+// flow into a handler as the wrong shape rather than being caught at the seam. Typed
+// `z.ZodType<TheEvent>` like the command schemas, so a schema that drifts from its generated type is
+// a compile error here.
+
+const ytDlpLogEventSchema = z.object({
+    run_id: z.string(),
+    line: z.string(),
+    stream: z.enum(["stdout", "stderr", "system"]),
+    level: z.enum(["info", "warn", "error"]),
+}) satisfies z.ZodType<YtDlpLogEvent>;
+
+const ytDlpFinishedEventSchema = z.object({
+    run_id: z.string(),
+    file_path: z.string(),
+    suggested_title: z.string(),
+}) satisfies z.ZodType<YtDlpFinishedEvent>;
+
+const ytDlpFailedEventSchema = z.object({
+    run_id: z.string(),
+    message: z.string(),
+}) satisfies z.ZodType<YtDlpFailedEvent>;
+
+const ytDlpTerminalEventSchema = z.object({
+    run_id: z.string(),
+    status: z.enum(["finished", "failed", "cancelled"]),
+    message: z.string().nullable(),
+    file_path: z.string().nullable(),
+    suggested_title: z.string().nullable(),
+}) satisfies z.ZodType<YtDlpTerminalEvent>;
+
+export const IPC_EVENT_SCHEMAS = {
+    ytDlpLog: ytDlpLogEventSchema,
+    ytDlpFinished: ytDlpFinishedEventSchema,
+    // The error and cancelled events carry the same payload shape as a failed event.
+    ytDlpFailed: ytDlpFailedEventSchema,
+    ytDlpTerminal: ytDlpTerminalEventSchema,
+} as const;
+
+// The streamed live chat protocol on the `Channel`: a run of `batch` events carrying raw JSON
+// lines, ended by a single `done`. Mirrors LiveChatStreamEvent on the Rust side
+// (commands/live_chat.rs).
+export const liveChatStreamEventSchema = z.union([
+    z.object({ kind: z.literal("batch"), lines: z.array(z.string()) }),
+    z.object({ kind: z.literal("done") }),
+]);
+
+export type LiveChatStreamEvent = z.infer<typeof liveChatStreamEventSchema>;
+
+// Validates an event/channel payload against `schema`. Returns the parsed value on success, or
+// `null` on a mismatch after logging the specific fields that failed. Unlike `validateIpcResult`
+// this never throws: an event is fire-and-forget with no caller to reject to, so a malformed
+// payload is dropped (and logged for a bug report) rather than propagated into a handler.
+export function parseEventPayload<TSchema extends z.ZodTypeAny>(
+    schema: TSchema,
+    source: string,
+    payload: unknown
+): z.infer<TSchema> | null {
+    const parsed = schema.safeParse(payload);
+
+    if (parsed.success) {
+        return parsed.data;
+    }
+
+    console.error(`Invalid IPC event payload for "${source}": ${describeIssues(parsed.error)}`);
+    return null;
+}
 
 // Compact, path-annotated summary of what did not match, for the log line below. Kept off zod's
 // prettifier so the message shape stays stable across zod point releases.

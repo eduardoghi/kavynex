@@ -7,19 +7,10 @@ import {
     EVENT_YT_DLP_LOG,
     EVENT_YT_DLP_TERMINAL,
 } from "../constants/events";
-import { listenTauri } from "../lib/tauri-client";
+import { listenValidated } from "../lib/tauri-client";
+import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
 import { logError } from "../utils/app-logger";
-import type {
-    YtDlpFailedEvent,
-    YtDlpFinishedEvent,
-    YtDlpLogEvent,
-    YtDlpTerminalEvent,
-} from "../types/media";
 import { useMemoObject } from "./use-memo-object";
-
-// The error and cancelled events carry the same payload shape.
-type YtDlpErrorEvent = YtDlpFailedEvent;
-type YtDlpCancelledEvent = YtDlpFailedEvent;
 
 type UseYtDlpEventsReturn = {
     ytDlpLogs: string[];
@@ -164,15 +155,19 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
         void (async () => {
             try {
-                const unlistenLog = await listenTauri<YtDlpLogEvent>(EVENT_YT_DLP_LOG, (event) => {
-                    const currentRunId = currentRunIdRef.current;
+                const unlistenLog = await listenValidated(
+                    EVENT_YT_DLP_LOG,
+                    IPC_EVENT_SCHEMAS.ytDlpLog,
+                    (payload) => {
+                        const currentRunId = currentRunIdRef.current;
 
-                    if (!currentRunId || event.payload.run_id !== currentRunId) {
-                        return;
+                        if (!currentRunId || payload.run_id !== currentRunId) {
+                            return;
+                        }
+
+                        appendLogs(payload.line);
                     }
-
-                    appendLogs(event.payload.line);
-                });
+                );
 
                 if (isDisposed) {
                     unlistenLog();
@@ -180,16 +175,17 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                     unlisteners.push(unlistenLog);
                 }
 
-                const unlistenFinished = await listenTauri<YtDlpFinishedEvent>(
+                const unlistenFinished = await listenValidated(
                     EVENT_YT_DLP_FINISHED,
-                    (event) => {
+                    IPC_EVENT_SCHEMAS.ytDlpFinished,
+                    (payload) => {
                         const currentRunId = currentRunIdRef.current;
 
-                        if (!currentRunId || event.payload.run_id !== currentRunId) {
+                        if (!currentRunId || payload.run_id !== currentRunId) {
                             return;
                         }
 
-                        finalizeRun(`Download finished: ${event.payload.file_path}`);
+                        finalizeRun(`Download finished: ${payload.file_path}`);
                     }
                 );
 
@@ -199,16 +195,17 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                     unlisteners.push(unlistenFinished);
                 }
 
-                const unlistenError = await listenTauri<YtDlpErrorEvent>(
+                const unlistenError = await listenValidated(
                     EVENT_YT_DLP_ERROR,
-                    (event) => {
+                    IPC_EVENT_SCHEMAS.ytDlpFailed,
+                    (payload) => {
                         const currentRunId = currentRunIdRef.current;
 
-                        if (!currentRunId || event.payload.run_id !== currentRunId) {
+                        if (!currentRunId || payload.run_id !== currentRunId) {
                             return;
                         }
 
-                        finalizeRun(`ERROR: ${event.payload.message}`);
+                        finalizeRun(`ERROR: ${payload.message}`);
                     }
                 );
 
@@ -218,16 +215,17 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                     unlisteners.push(unlistenError);
                 }
 
-                const unlistenCancelled = await listenTauri<YtDlpCancelledEvent>(
+                const unlistenCancelled = await listenValidated(
                     EVENT_YT_DLP_CANCELLED,
-                    (event) => {
+                    IPC_EVENT_SCHEMAS.ytDlpFailed,
+                    (payload) => {
                         const currentRunId = currentRunIdRef.current;
 
-                        if (!currentRunId || event.payload.run_id !== currentRunId) {
+                        if (!currentRunId || payload.run_id !== currentRunId) {
                             return;
                         }
 
-                        finalizeRun(`Cancelled: ${event.payload.message}`);
+                        finalizeRun(`Cancelled: ${payload.message}`);
                     }
                 );
 
@@ -237,18 +235,19 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                     unlisteners.push(unlistenCancelled);
                 }
 
-                const unlistenTerminal = await listenTauri<YtDlpTerminalEvent>(
+                const unlistenTerminal = await listenValidated(
                     EVENT_YT_DLP_TERMINAL,
-                    (event) => {
+                    IPC_EVENT_SCHEMAS.ytDlpTerminal,
+                    (payload) => {
                         const currentRunId = currentRunIdRef.current;
 
-                        if (!currentRunId || event.payload.run_id !== currentRunId) {
+                        if (!currentRunId || payload.run_id !== currentRunId) {
                             return;
                         }
 
-                        if (event.payload.status === "finished") {
-                            if (event.payload.file_path?.trim()) {
-                                finalizeRun(`Terminal finished: ${event.payload.file_path}`);
+                        if (payload.status === "finished") {
+                            if (payload.file_path?.trim()) {
+                                finalizeRun(`Terminal finished: ${payload.file_path}`);
                                 return;
                             }
 
@@ -256,16 +255,16 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                             return;
                         }
 
-                        if (event.payload.status === "failed") {
+                        if (payload.status === "failed") {
                             finalizeRun(
-                                `Terminal failed: ${event.payload.message?.trim() || "Unknown failure"}`
+                                `Terminal failed: ${payload.message?.trim() || "Unknown failure"}`
                             );
                             return;
                         }
 
-                        if (event.payload.status === "cancelled") {
+                        if (payload.status === "cancelled") {
                             finalizeRun(
-                                `Terminal cancelled: ${event.payload.message?.trim() || "Cancelled"}`
+                                `Terminal cancelled: ${payload.message?.trim() || "Cancelled"}`
                             );
                         }
                     }
