@@ -7,6 +7,7 @@ pub mod utils;
 
 pub use error::{AppError, AppErrorCode, AppResult};
 
+use std::path::Path;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
@@ -15,6 +16,13 @@ use tauri::{AppHandle, Manager};
 // the actual snapshot to once per 24h, so this only needs to be frequent enough that a
 // long-running session eventually crosses that threshold - it does not create extra backups.
 const PERIODIC_BACKUP_CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
+
+// The first backup pass runs after this short delay rather than a full interval, so a session
+// that is only open briefly still gets one snapshot (and one external-backup mirror) near
+// startup. Both the local snapshot and the external mirror are throttled to once per 24h, so an
+// early pass is a no-op when a recent backup already exists. The delay gives app bootstrap time
+// to open the database pool (which the external-mirror step reads its setting from) first.
+const INITIAL_BACKUP_DELAY_SECS: u64 = 60;
 
 fn spawn_startup_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
@@ -84,10 +92,58 @@ fn spawn_startup_library_cleanup(app_handle: AppHandle) {
 /// This periodically re-invokes the (internally throttled) `backup_database` so a long
 /// session still gets its daily snapshot without waiting for the next restart. Failures are
 /// logged and never stop the loop or the app.
+/// Reads the configured external backup directory (Settings > Database) and, when one is set,
+/// mirrors the database into it so a disk failure that takes the app config directory does not take
+/// every snapshot with it. Best effort: any failure is logged and never stops the periodic loop. An
+/// empty or absent setting means the feature is off and is silent.
+async fn run_external_database_backup(app_handle: &AppHandle, db_path: &Path) {
+    // The setting lives in the database, so reading it opens the shared pool if it is not open yet.
+    let pool = match services::database::shared_pool(app_handle).await {
+        Ok(pool) => pool,
+        Err(error) => {
+            services::logger::warn(
+                "db_backup",
+                format!("external backup: failed to open the database pool: {error}"),
+            );
+            return;
+        }
+    };
+
+    let external_dir = match services::database::get_app_settings_from_pool(&pool).await {
+        Ok(settings) => settings.external_backup_dir.unwrap_or_default(),
+        Err(error) => {
+            services::logger::warn(
+                "db_backup",
+                format!("external backup: failed to read the setting: {error}"),
+            );
+            return;
+        }
+    };
+
+    let external_dir = external_dir.trim();
+
+    if external_dir.is_empty() {
+        return;
+    }
+
+    match services::db_backup::mirror_database_to_external_dir(db_path, Path::new(external_dir)).await
+    {
+        Ok(true) => services::logger::info("db_backup", "external database backup written"),
+        Ok(false) => {}
+        Err(error) => services::logger::warn(
+            "db_backup",
+            format!("external database backup failed: {error}"),
+        ),
+    }
+}
+
 fn spawn_periodic_backup(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
+        let mut delay = Duration::from_secs(INITIAL_BACKUP_DELAY_SECS);
+
         loop {
-            tokio::time::sleep(Duration::from_secs(PERIODIC_BACKUP_CHECK_INTERVAL_SECS)).await;
+            tokio::time::sleep(delay).await;
+            delay = Duration::from_secs(PERIODIC_BACKUP_CHECK_INTERVAL_SECS);
 
             let db_path = match services::database::database_path(&app_handle) {
                 Ok(db_path) => db_path,
@@ -107,6 +163,8 @@ fn spawn_periodic_backup(app_handle: AppHandle) {
                     services::logger::warn("db_backup", format!("periodic backup failed: {error}"))
                 }
             }
+
+            run_external_database_backup(&app_handle, &db_path).await;
         }
     });
 }
