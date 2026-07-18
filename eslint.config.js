@@ -1,9 +1,13 @@
+import { defineConfig } from "eslint/config";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
-export default tseslint.config(
+// defineConfig (eslint/config) rather than tseslint.config(): the latter's variadic overload is
+// deprecated, and this config never used its `extends` sugar - it spreads tseslint.configs.recommended
+// inline - so the two are equivalent here.
+export default defineConfig(
     {
         ignores: [
             "dist/**",
