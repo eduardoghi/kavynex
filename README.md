@@ -201,6 +201,13 @@ in-app flows:
 - **The database** (channels, titles, watched state, comments) is a single SQLite file. Settings >
   Database > Export writes a snapshot of it wherever you choose, which is the portable copy to keep.
 
+The database's automatic `.bak` snapshots live next to the database itself, on the same disk, so a
+drive failure takes them with it. To guard against that, **Settings > Database > Automatic external
+backup** lets you point Kavynex at an external folder (another drive or a network share); it copies
+the database there once a day. Only the database is copied - the media files are large and are not
+mirrored, so keep an off-drive copy of the library folder yourself (an external disk, or your own
+cloud backup).
+
 Uninstalling removes the app, not your data - by design, since the library is usually the point.
 To remove everything, delete the library folder plus the three app directories (config, cache and
 logs). The Diagnostics dialog shows the resolved library folder; `docs/DIRECTORIES.md` lists the
