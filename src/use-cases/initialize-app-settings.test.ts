@@ -31,6 +31,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
 
@@ -51,6 +52,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
 
@@ -76,6 +78,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
 
@@ -96,6 +99,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "   ",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
 
@@ -112,6 +116,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
 
@@ -132,6 +137,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
         expect(moved.settings.importMode).toBe("move");
@@ -142,6 +148,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
         expect(copied.settings.importMode).toBe("copy");

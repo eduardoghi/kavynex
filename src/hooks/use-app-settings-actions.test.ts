@@ -50,6 +50,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         vi.mocked(initializeAppSettings).mockResolvedValueOnce({
@@ -58,6 +59,7 @@ describe("useAppSettingsActions", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
             shouldWarnAboutLibraryPath: false,
         });
@@ -82,6 +84,7 @@ describe("useAppSettingsActions", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
         });
         expect(setSettings).toHaveBeenCalledWith({
@@ -89,12 +92,14 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
         expect(persistSettings).toHaveBeenCalledWith({
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
         expect(onError).not.toHaveBeenCalled();
@@ -109,6 +114,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         vi.mocked(initializeAppSettings).mockResolvedValueOnce({
@@ -117,6 +123,7 @@ describe("useAppSettingsActions", () => {
                 libraryPath: "",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                externalBackupDir: "",
             },
             shouldWarnAboutLibraryPath: true,
         });
@@ -139,12 +146,14 @@ describe("useAppSettingsActions", () => {
             libraryPath: "",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
         expect(persistSettings).toHaveBeenCalledWith({
             importMode: "copy",
             libraryPath: "",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
         expect(onError).toHaveBeenCalledTimes(1);
@@ -196,6 +205,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/new-library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         const { result } = renderHook(() =>
@@ -218,6 +228,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/new-library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
     });
 
@@ -285,6 +296,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         const { result } = renderHook(() =>
@@ -307,6 +319,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
         expect(onError).not.toHaveBeenCalled();
     });

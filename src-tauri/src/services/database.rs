@@ -18,6 +18,7 @@ const IMPORT_MODE_KEY: &str = "import_mode";
 const LIBRARY_PATH_KEY: &str = "library_path";
 const LOAD_REMOTE_IMAGES_KEY: &str = "load_remote_images";
 const CHECK_UPDATES_ON_STARTUP_KEY: &str = "check_updates_on_startup";
+const EXTERNAL_BACKUP_DIR_KEY: &str = "external_backup_dir";
 
 /// The application database, held in Tauri-managed state (`app.manage`) rather than a
 /// process-wide static. The pool is created once, lazily, on first access and reused for the
@@ -98,6 +99,10 @@ pub struct StoredAppSettings {
     // on startup. Off by default, so the app contacts the update endpoint only when explicitly
     // asked, preserving the manual-only privacy stance unless the user opts in.
     pub check_updates_on_startup: Option<String>,
+    // Absolute path of a user-chosen external directory the database is mirrored into once a day
+    // (absent/empty means the feature is off). Kept off-volume from the app config directory so a
+    // disk failure that takes the live database and its `.bak` snapshots does not take this too.
+    pub external_backup_dir: Option<String>,
 }
 
 pub(crate) fn db_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
@@ -243,11 +248,12 @@ pub fn is_pool_initialized(app: &AppHandle) -> bool {
 
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
     let rows: Vec<(String, String)> =
-        sqlx::query_as("SELECT key, value FROM app_settings WHERE key IN (?, ?, ?, ?)")
+        sqlx::query_as("SELECT key, value FROM app_settings WHERE key IN (?, ?, ?, ?, ?)")
             .bind(IMPORT_MODE_KEY)
             .bind(LIBRARY_PATH_KEY)
             .bind(LOAD_REMOTE_IMAGES_KEY)
             .bind(CHECK_UPDATES_ON_STARTUP_KEY)
+            .bind(EXTERNAL_BACKUP_DIR_KEY)
             .fetch_all(pool)
             .await
             .map_err(|error| db_error("failed to read app settings", error))?;
@@ -263,6 +269,8 @@ pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAp
             settings.load_remote_images = Some(value);
         } else if key == CHECK_UPDATES_ON_STARTUP_KEY {
             settings.check_updates_on_startup = Some(value);
+        } else if key == EXTERNAL_BACKUP_DIR_KEY {
+            settings.external_backup_dir = Some(value);
         }
     }
 
@@ -315,6 +323,19 @@ pub(crate) async fn set_library_path_in_pool(
     upsert_setting(pool, LIBRARY_PATH_KEY, library_path)
         .await
         .map_err(|error| db_error("failed to persist the recovered library path", error))
+}
+
+/// Upserts only the external backup directory setting (Settings > Database). An empty value is the
+/// valid "turn the feature off" state; a non-empty value is validated by the command layer before
+/// it reaches here. Kept a standalone setting rather than folded into `set_app_settings_in_pool`
+/// so toggling the backup destination never has to round-trip the whole settings form.
+pub async fn set_external_backup_dir_in_pool(
+    pool: &SqlitePool,
+    external_backup_dir: &str,
+) -> AppResult<()> {
+    upsert_setting(pool, EXTERNAL_BACKUP_DIR_KEY, external_backup_dir)
+        .await
+        .map_err(|error| db_error("failed to persist the external backup directory", error))
 }
 
 pub async fn set_app_settings_in_pool(

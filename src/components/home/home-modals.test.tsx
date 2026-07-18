@@ -169,7 +169,7 @@ function createMediaActions(): HomeMediaActionsController {
 function createSettings(): AppSettingsController {
     return {
         settingsOpen: true,
-        settings: { importMode: "copy", libraryPath: "/library", loadRemoteImages: true, checkUpdatesOnStartup: false },
+        settings: { importMode: "copy", libraryPath: "/library", loadRemoteImages: true, checkUpdatesOnStartup: false, externalBackupDir: "" },
         isPreparingSettings: false,
         isMigratingLibraryPath: false,
         openSettings: vi.fn(),

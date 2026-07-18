@@ -308,6 +308,7 @@ pub fn run() {
             commands::logging::log_frontend_error,
             commands::settings::get_app_settings,
             commands::settings::set_app_settings,
+            commands::settings::set_external_backup_dir,
             commands::channels::list_channels,
             commands::channels::find_channel_by_youtube_handle,
             commands::channels::get_channel_by_id,

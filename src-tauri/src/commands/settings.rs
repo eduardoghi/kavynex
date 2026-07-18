@@ -1,12 +1,13 @@
 use tauri::State;
 
 use crate::services::database::{
-    get_app_settings_from_pool, set_app_settings_in_pool, Db, StoredAppSettings,
+    get_app_settings_from_pool, set_app_settings_in_pool, set_external_backup_dir_in_pool, Db,
+    StoredAppSettings,
 };
 use crate::services::library_paths::resolve_existing_library_dir;
 use crate::services::library_recovery;
 use crate::utils::task::run_blocking;
-use crate::AppResult;
+use crate::{AppError, AppErrorCode, AppResult};
 
 #[tauri::command]
 pub async fn get_app_settings(db: State<'_, Db>) -> AppResult<StoredAppSettings> {
@@ -64,6 +65,43 @@ pub async fn set_app_settings(
     .await
 }
 
+/// Rejects a non-empty external backup directory that is not an existing directory. An empty value
+/// is the valid "off" state. Unlike the library path, this directory is only ever *written to* (an
+/// atomic export drops a `kavynex-backup.db` mirror into it); it is never read back through the
+/// asset scope or a delete/move command, so an existing-directory check is the whole requirement.
+fn validate_external_backup_dir(external_backup_dir: &str) -> AppResult<()> {
+    let trimmed = external_backup_dir.trim();
+
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    if std::fs::metadata(trimmed)
+        .map(|metadata| metadata.is_dir())
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    Err(AppError::from_code(
+        AppErrorCode::InvalidInput,
+        "the external backup folder must be an existing directory",
+    ))
+}
+
+#[tauri::command]
+pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResult<()> {
+    let trimmed = path.trim().to_string();
+
+    // Validate off the async runtime: std::fs::metadata touches the filesystem (and can block on a
+    // slow external/network path).
+    let path_for_validation = trimmed.clone();
+    run_blocking(move || validate_external_backup_dir(&path_for_validation)).await?;
+
+    let pool = db.pool().await?;
+    set_external_backup_dir_in_pool(&pool, &trimmed).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,6 +151,29 @@ mod tests {
     }
 
     #[test]
+    fn validate_external_backup_dir_accepts_empty_as_off() {
+        validate_external_backup_dir("").unwrap();
+        validate_external_backup_dir("   ").unwrap();
+    }
+
+    #[test]
+    fn validate_external_backup_dir_accepts_an_existing_directory() {
+        let dir = unique_test_dir("ext-existing");
+        fs::create_dir_all(&dir).unwrap();
+
+        validate_external_backup_dir(&dir.to_string_lossy()).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_external_backup_dir_rejects_a_missing_directory() {
+        let missing = unique_test_dir("ext-missing");
+        let error = validate_external_backup_dir(&missing.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+    }
+
+    #[test]
     fn validate_settings_library_path_rejects_a_file() {
         let dir = unique_test_dir("file");
         fs::create_dir_all(&dir).unwrap();
@@ -132,7 +193,11 @@ mod tests {
 
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![get_app_settings, set_app_settings])
+            .invoke_handler(tauri::generate_handler![
+                get_app_settings,
+                set_app_settings,
+                set_external_backup_dir
+            ])
             .build(mock_context(noop_assets()))
             .unwrap();
 
@@ -200,6 +265,45 @@ mod tests {
                 "loadRemoteImages": true,
                 "checkUpdatesOnStartup": false
             }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidInput.as_str());
+    }
+
+    #[test]
+    fn set_external_backup_dir_persists_and_reads_back_over_ipc() {
+        let dir = unique_test_dir("ext-ipc");
+        fs::create_dir_all(&dir).unwrap();
+
+        let webview = test_webview(memory_db());
+
+        invoke(
+            &webview,
+            "set_external_backup_dir",
+            serde_json::json!({ "path": dir.to_string_lossy() }),
+        )
+        .unwrap();
+
+        let response = invoke(&webview, "get_app_settings", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<serde_json::Value>()
+            .unwrap();
+
+        assert_eq!(response["externalBackupDir"], dir.to_string_lossy().as_ref());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_external_backup_dir_rejects_a_missing_directory_over_ipc() {
+        let missing = unique_test_dir("ext-ipc-missing");
+        let webview = test_webview(memory_db());
+
+        let error = invoke(
+            &webview,
+            "set_external_backup_dir",
+            serde_json::json!({ "path": missing.to_string_lossy() }),
         )
         .unwrap_err();
 

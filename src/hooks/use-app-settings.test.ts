@@ -48,6 +48,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         mockedUseAppSettingsActions.mockReturnValue({
@@ -261,6 +262,7 @@ describe("useAppSettings", () => {
             libraryPath: "   ",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         renderHook(() =>
@@ -279,6 +281,7 @@ describe("useAppSettings", () => {
             libraryPath: "  /library  ",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         renderHook(() =>
@@ -297,6 +300,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         const failure = new Error("scope failure");
@@ -324,6 +328,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         const failure = new Error("migration failure");
@@ -351,6 +356,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            externalBackupDir: "",
         });
 
         renderHook(() =>

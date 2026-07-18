@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     libraryPath: "",
     loadRemoteImages: false,
     checkUpdatesOnStartup: false,
+    externalBackupDir: "",
 };
 
 function cloneDefaultSettings(): AppSettings {
@@ -17,6 +18,7 @@ function cloneDefaultSettings(): AppSettings {
         libraryPath: DEFAULT_SETTINGS.libraryPath,
         loadRemoteImages: DEFAULT_SETTINGS.loadRemoteImages,
         checkUpdatesOnStartup: DEFAULT_SETTINGS.checkUpdatesOnStartup,
+        externalBackupDir: DEFAULT_SETTINGS.externalBackupDir,
     };
 }
 
@@ -42,6 +44,12 @@ function normalizeCheckUpdatesOnStartup(value: string | null | undefined): boole
     return value === "true";
 }
 
+// An absent key (older databases, a fresh install) or a blank value means the external backup is
+// off; a stored path is trimmed the same way the library path is.
+function normalizeExternalBackupDir(value: string | null | undefined): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
 export function getDefaultAppSettings(): AppSettings {
     return cloneDefaultSettings();
 }
@@ -54,6 +62,7 @@ export async function loadStoredSettings(): Promise<AppSettings> {
         libraryPath: normalizeLibraryPath(stored.libraryPath),
         loadRemoteImages: normalizeLoadRemoteImages(stored.loadRemoteImages),
         checkUpdatesOnStartup: normalizeCheckUpdatesOnStartup(stored.checkUpdatesOnStartup),
+        externalBackupDir: normalizeExternalBackupDir(stored.externalBackupDir),
     };
 }
 

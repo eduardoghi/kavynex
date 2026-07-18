@@ -84,6 +84,7 @@ const mockSettingsState = {
         libraryPath: "/library",
         loadRemoteImages: true,
         checkUpdatesOnStartup: false,
+        externalBackupDir: "",
     },
     isPreparingSettings: false,
     isMigratingLibraryPath: false,
