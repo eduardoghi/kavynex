@@ -6,11 +6,14 @@
         "@stryker-mutator/vitest-runner",
         "@stryker-mutator/typescript-checker"
     ],
+    "mutate_comment": "The .ts layers (utils/hooks/use-cases/services) hold the app's logic and are mutation-tested wholesale. Components (.tsx) were previously excluded, but the two that gate a DESTRUCTIVE action - the delete confirmation and the database export/import/restore section - are worth mutating so a test change that stops actually exercising those flows is caught. They are named individually rather than by a src/components/**/*.tsx glob on purpose: a measured isolated run (2026-07-18) scored them at 56.25% (mutants dominated by UI-text/prop-detail that tests reasonably do not assert), so a blanket component glob would drag the aggregate down and pile un-actioned survivors into the report. Their ~34 mutants are a small fraction of the ~4.6k total, so the aggregate score stays ~71.5% (well above the break below); widen this list only after measuring each candidate the same way.",
     "mutate": [
         "src/utils/**/*.ts",
         "src/hooks/**/*.ts",
         "src/use-cases/**/*.ts",
         "src/services/**/*.ts",
+        "src/components/modals/confirm-delete-modal.tsx",
+        "src/components/modals/settings-sections/database-section.tsx",
         "!src/**/*.test.ts",
         "!src/**/*.test.tsx",
         "!src/**/*.spec.ts",
