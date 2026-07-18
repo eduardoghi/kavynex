@@ -1,6 +1,9 @@
 import { Group, Radio, Stack, Title } from "@mantine/core";
 import { Settings2 } from "lucide-react";
 import type { ImportMode } from "../../../types/settings";
+import { toUnionValue } from "../../../utils/guards";
+
+const IMPORT_MODES = ["copy", "move"] as const;
 
 type ImportBehaviorSectionProps = {
     importMode: ImportMode;
@@ -25,7 +28,9 @@ export function ImportBehaviorSection({
                 // programmatically associated with it.
                 aria-label="Import behavior"
                 value={importMode}
-                onChange={(value) => onChangeImportMode(value as ImportMode)}
+                onChange={(value) =>
+                    onChangeImportMode(toUnionValue(value, IMPORT_MODES, importMode))
+                }
             >
                 <Stack gap="xs">
                     <Radio
