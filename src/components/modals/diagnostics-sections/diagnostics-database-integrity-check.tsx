@@ -1,45 +1,10 @@
 import { Box, Code, Group, Stack, Text } from "@mantine/core";
 import { CheckCircle2, XCircle } from "lucide-react";
-import { useState } from "react";
-import { checkDatabaseIntegrity } from "../../../services/database-service";
-import { logError } from "../../../utils/app-logger";
-import { resolveErrorMessage } from "../../../utils/error-message";
+import { useDatabaseIntegrityCheck } from "../../../hooks/use-database-integrity-check";
 import { AppButton } from "../../ui/app-button";
 
-type IntegrityResult =
-    | { status: "ok" }
-    | { status: "problem"; problems: string[]; truncated: boolean }
-    | { status: "error"; message: string };
-
 export function DiagnosticsDatabaseIntegrityCheck(): JSX.Element {
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<IntegrityResult | null>(null);
-
-    async function runCheck(): Promise<void> {
-        setLoading(true);
-        setResult(null);
-
-        try {
-            const report = await checkDatabaseIntegrity();
-            setResult(
-                report.ok
-                    ? { status: "ok" }
-                    : {
-                          status: "problem",
-                          problems: report.problems,
-                          truncated: report.truncated,
-                      }
-            );
-        } catch (error) {
-            logError("diagnostics", "Failed to run the database integrity check.", error);
-            setResult({
-                status: "error",
-                message: resolveErrorMessage(error, "Failed to run the integrity check."),
-            });
-        } finally {
-            setLoading(false);
-        }
-    }
+    const { loading, result, runCheck } = useDatabaseIntegrityCheck();
 
     return (
         <Stack gap="xs">
