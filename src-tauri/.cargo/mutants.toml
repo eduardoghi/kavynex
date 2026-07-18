@@ -43,12 +43,22 @@
 #     and `file_paths_have_same_content` - and that second group is the one this file cares about,
 #     since those are the overwrite-refusal primitives themselves.
 #   - `src/services/library_media.rs` and `src/services/library_cleanup.rs` - content-addressing
-#     and the reference-count-before-unlink decision.
+#     and the reference-count-before-unlink decision. ADDED below after a measured pass
+#     (2026-07-18, cargo-mutants 27.1.0, `--in-place --no-config --file <each>`): 111 mutants, 94
+#     unviable, 14 caught, and 3 initially missed - all three in `execute_plan`'s two early-return
+#     branches (the empty-plan and library-unavailable reports), whose field population the tests
+#     never asserted because that function needs a live `AppHandle`. Those branches were extracted
+#     into the pure `report_for_nothing_deletable` / `report_for_unavailable_library` and covered,
+#     so the glob goes in clean rather than red. (`--in-place` is needed to run cargo-mutants here
+#     at all: the copy mode leaves the repo-root `../shared` parity fixture behind - see
+#     mutation.yml.)
 examine_globs = [
     "src/utils/path.rs",
     "src/services/library_guard.rs",
     "src/services/yt_dlp_url.rs",
     "src/services/binaries.rs",
+    "src/services/library_media.rs",
+    "src/services/library_cleanup.rs",
 ]
 
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the

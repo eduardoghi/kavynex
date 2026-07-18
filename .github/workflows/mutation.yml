@@ -98,5 +98,14 @@ jobs:
             # change its tests did not catch - which fails this scheduled run, the mutation-level
             # counterpart to Stryker for the frontend. The generous per-mutant timeout keeps a
             # mutation-induced infinite loop from being misreported instead of caught.
+            #
+            # `--in-place` is required, not a preference: cargo-mutants' default copies only the
+            # `src-tauri` package into a scratch dir, but the youtube-handle parity test
+            # (utils/validation.rs) `include_str!`s `../shared/youtube-handle-cases.json` from the
+            # repo root - a fixture deliberately shared with the TypeScript side. The copy leaves
+            # that sibling behind, so the unmutated baseline build fails there ("cargo build failed
+            # in an unmutated tree") before a single mutant runs. Testing in the real tree keeps the
+            # `../shared` path resolvable. The CI checkout is disposable, so the in-place caveats
+            # (no parallel copies; a killed run leaves the tree mutated) do not apply here.
             - name: Run Rust mutation testing
-              run: cargo mutants --manifest-path src-tauri/Cargo.toml --no-shuffle --timeout 300
+              run: cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle --timeout 300

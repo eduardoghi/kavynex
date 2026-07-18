@@ -414,15 +414,40 @@ async fn drop_paths_referenced_again(pool: &SqlitePool, plan: &mut ArtifactClean
     plan.deletable = still_deletable;
 }
 
+/// The report for a plan with nothing to delete: only the shared paths the planner already spared
+/// are carried through. Pure so the field it populates stays under test - `execute_plan` itself
+/// needs a live `AppHandle` (the shared pool, the configured library) and cannot run under the
+/// unit-test harness.
+fn report_for_nothing_deletable(plan: ArtifactCleanupPlan) -> ArtifactCleanupReport {
+    ArtifactCleanupReport {
+        skipped_shared_paths: plan.skipped_shared_paths,
+        ..ArtifactCleanupReport::default()
+    }
+}
+
+/// The report for the case where the rows were already committed as deleted but the library
+/// directory cannot be resolved, so no planned file can be located: every deletable path is
+/// reported as failed (possibly orphaned) and the spared shared paths are carried through. Pure
+/// for the same reason as [`report_for_nothing_deletable`], so both fields it populates stay
+/// tested independently of the `AppHandle`-bound `execute_plan`.
+fn report_for_unavailable_library(plan: ArtifactCleanupPlan) -> ArtifactCleanupReport {
+    ArtifactCleanupReport {
+        skipped_shared_paths: plan.skipped_shared_paths,
+        failed_paths: plan
+            .deletable
+            .into_iter()
+            .map(|artifact| artifact.path)
+            .collect(),
+        ..ArtifactCleanupReport::default()
+    }
+}
+
 async fn execute_plan(
     app: &AppHandle,
     mut plan: ArtifactCleanupPlan,
 ) -> AppResult<ArtifactCleanupReport> {
     if plan.deletable.is_empty() {
-        return Ok(ArtifactCleanupReport {
-            skipped_shared_paths: plan.skipped_shared_paths,
-            ..ArtifactCleanupReport::default()
-        });
+        return Ok(report_for_nothing_deletable(plan));
     }
 
     // Re-check each planned unlink against the live database: a row inserted after the deletion
@@ -441,15 +466,7 @@ async fn execute_plan(
                 format!("cannot remove artifacts, library is not available: {error}"),
             );
 
-            return Ok(ArtifactCleanupReport {
-                skipped_shared_paths: plan.skipped_shared_paths,
-                failed_paths: plan
-                    .deletable
-                    .into_iter()
-                    .map(|artifact| artifact.path)
-                    .collect(),
-                ..ArtifactCleanupReport::default()
-            });
+            return Ok(report_for_unavailable_library(plan));
         }
     };
 
@@ -1173,6 +1190,48 @@ mod tests {
         assert!(!library.join("live_chat/a.json.gz").exists());
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn report_for_nothing_deletable_carries_the_shared_paths_through() {
+        // execute_plan's empty-plan early return: nothing is deleted, but the paths the planner
+        // spared as still-shared must survive into the report rather than being dropped.
+        let plan = ArtifactCleanupPlan {
+            deletable: Vec::new(),
+            skipped_shared_paths: vec!["video/shared.mp4".to_string()],
+        };
+
+        let report = report_for_nothing_deletable(plan);
+
+        assert_eq!(report.skipped_shared_paths, vec!["video/shared.mp4"]);
+        assert!(report.deleted_paths.is_empty());
+        assert!(report.failed_paths.is_empty());
+    }
+
+    #[test]
+    fn report_for_unavailable_library_marks_every_deletable_as_failed() {
+        // execute_plan's library-unavailable branch: the rows are already committed as deleted but
+        // no file can be located, so every planned unlink is reported failed (possibly orphaned)
+        // while the spared shared paths still carry through.
+        let plan = ArtifactCleanupPlan {
+            deletable: vec![
+                DeletableArtifact {
+                    kind: ArtifactKind::MediaFile,
+                    path: "video/a.mp4".to_string(),
+                },
+                DeletableArtifact {
+                    kind: ArtifactKind::Thumbnail,
+                    path: "thumbnails/a.jpg".to_string(),
+                },
+            ],
+            skipped_shared_paths: vec!["video/shared.mp4".to_string()],
+        };
+
+        let report = report_for_unavailable_library(plan);
+
+        assert_eq!(report.failed_paths, vec!["video/a.mp4", "thumbnails/a.jpg"]);
+        assert_eq!(report.skipped_shared_paths, vec!["video/shared.mp4"]);
+        assert!(report.deleted_paths.is_empty());
     }
 
     #[test]
