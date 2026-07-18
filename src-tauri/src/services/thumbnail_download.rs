@@ -307,12 +307,24 @@ fn is_disallowed_ipv4(addr: &Ipv4Addr) -> bool {
         || addr.is_unspecified()
         || octets[0] == 0 // 0.0.0.0/8 "this host on this network"
         || (octets[0] == 100 && (64..=127).contains(&octets[1])) // 100.64.0.0/10 CGNAT
+        || (octets[0] == 192 && octets[1] == 0 && octets[2] == 0) // 192.0.0.0/24 IETF protocol assignments
+        || (octets[0] == 198 && (octets[1] == 18 || octets[1] == 19)) // 198.18.0.0/15 benchmarking
         || octets[0] >= 240 // 240.0.0.0/4 reserved
 }
 
 fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
     if let Some(mapped) = addr.to_ipv4_mapped() {
         return is_disallowed_ipv4(&mapped);
+    }
+
+    // The deprecated IPv4-compatible form (::a.b.c.d, without the ffff of a mapped address) embeds
+    // an IPv4 address in the low 32 bits of ::/96. to_ipv4() returns it (and returns None for a
+    // real global IPv6), so ::7f00:1 (= ::127.0.0.1) is judged by the same IPv4 rules rather than
+    // slipping through as "some public v6".
+    if let Some(compatible) = addr.to_ipv4() {
+        if is_disallowed_ipv4(&compatible) {
+            return true;
+        }
     }
 
     let first_segment = addr.segments()[0];
@@ -1121,10 +1133,15 @@ mod tests {
             "0.0.0.0",          // unspecified
             "240.0.0.1",        // reserved
             "224.0.0.1",        // multicast
+            "192.0.0.1",        // 192.0.0.0/24 IETF protocol assignments
+            "198.18.0.1",       // 198.18.0.0/15 benchmarking
+            "198.19.255.255",   // 198.18.0.0/15 benchmarking (upper half)
             "::1",              // ipv6 loopback
             "fe80::1",          // ipv6 link local
             "fc00::1",          // ipv6 unique local
             "::ffff:127.0.0.1", // ipv4-mapped loopback
+            "::7f00:1",         // deprecated ipv4-compatible form of 127.0.0.1
+            "::a01:203",        // deprecated ipv4-compatible form of 10.1.2.3 (private)
         ] {
             assert!(
                 is_disallowed_ip(&ip(blocked)),
