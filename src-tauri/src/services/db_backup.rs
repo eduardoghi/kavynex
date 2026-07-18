@@ -956,14 +956,29 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
             .fetch_optional(&pool)
             .await;
 
-        if let Ok(Some((busy, remaining_frames, _))) = checkpoint {
-            if busy != 0 && remaining_frames > 0 {
+        match checkpoint {
+            Ok(Some((busy, remaining_frames, _))) => {
+                if busy != 0 && remaining_frames > 0 {
+                    pool.close().await;
+
+                    return Err(AppError::from_code(
+                        AppErrorCode::DatabaseImportInvalid,
+                        "the selected database is still in use, so its most recent changes could \
+                         not be read; close the app that has it open and try again",
+                    ));
+                }
+            }
+            // The checkpoint could not be evaluated at all (an I/O error, or no row where the
+            // pragma always returns one). Proceeding would copy the `.db` with no confirmation
+            // that its WAL was folded in, which is exactly the silent recent-commit loss the busy
+            // case above refuses - so refuse here too rather than let the anomaly fall through.
+            Ok(None) | Err(_) => {
                 pool.close().await;
 
                 return Err(AppError::from_code(
                     AppErrorCode::DatabaseImportInvalid,
-                    "the selected database is still in use, so its most recent changes could not \
-                     be read; close the app that has it open and try again",
+                    "the selected database could not be prepared for import, so its most recent \
+                     changes could not be confirmed; try exporting it again and re-importing",
                 ));
             }
         }
