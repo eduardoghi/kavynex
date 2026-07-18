@@ -104,7 +104,21 @@ fn remove_old_library_contents(old_library_dir: &Path) {
         let source_dir = old_library_dir.join(dir_name);
 
         if source_dir.exists() {
-            let _ = fs::remove_dir_all(&source_dir);
+            // A partial failure here (a locked file, an AV scanner, a permission hiccup) leaves
+            // the managed directory behind holding an unknown subset of its files. That is only
+            // reclaimable disk - the new location already holds a full copy - but it must be
+            // logged rather than swallowed: the recovery path keys off the marker target being a
+            // complete copy, not off the old directory looking empty, precisely so a leftover
+            // like this cannot strand the good copy.
+            if let Err(error) = fs::remove_dir_all(&source_dir) {
+                logger::warn(
+                    "library",
+                    format!(
+                        "failed to remove old managed directory '{}' after migration (reclaimable disk left behind): {error}",
+                        logger::redact_path(&source_dir)
+                    ),
+                );
+            }
         }
     }
 
