@@ -56,6 +56,30 @@ export default tseslint.config(
                 { checksVoidReturn: { attributes: false } },
             ],
 
+            // The threat model (SECURITY.md) rests on YouTube-derived text - titles, comments, live
+            // chat, author names - never being rendered as raw HTML: it is always React children,
+            // so React's escaping neutralizes it, which is what keeps the relaxed
+            // `style-src 'unsafe-inline'` acceptable (there is no injection sink for it to abuse).
+            // Nothing enforced that mechanically, so a future dangerouslySetInnerHTML, a direct
+            // innerHTML/outerHTML write, or an eval would silently reopen the sink. These turn that
+            // into a lint failure rather than a convention a reviewer has to remember. Done with
+            // no-restricted-syntax (a core rule) rather than eslint-plugin-react so no dependency is
+            // added to a tree that runs minimumReleaseAge/blockExoticSubdeps.
+            "no-eval": "error",
+            "no-restricted-syntax": [
+                "error",
+                {
+                    selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+                    message:
+                        "Rendering raw HTML reopens the XSS sink the threat model (SECURITY.md) depends on not existing. Render text as React children so React escapes it.",
+                },
+                {
+                    selector: "AssignmentExpression[left.property.name=/^(inner|outer)HTML$/]",
+                    message:
+                        "Assigning innerHTML/outerHTML renders raw HTML and reopens the XSS sink the threat model (SECURITY.md) depends on not existing.",
+                },
+            ],
+
             // Keep every Tauri touchpoint inside the src/lib seam (docs/ARCHITECTURE.md):
             // tauri-client.ts wraps the IPC commands/events with consistent error normalization
             // (invokeCommand/invokeVoid/listenTauri), and tauri-platform.ts re-exports the
