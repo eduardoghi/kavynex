@@ -324,7 +324,9 @@ async fn assert_url_host_is_public(uri: &Uri) -> AppResult<()> {
 
 /// Downloads `url` over HTTPS (or HTTP), follows up to DIRECT_THUMBNAIL_MAX_REDIRECTS
 /// redirects, streams the body with a hard cap of DIRECT_THUMBNAIL_MAX_BYTES, and
-/// validates Content-Type when present. Returns (status, headers, body).
+/// validates Content-Type when present. Returns (status, headers, body). The entire
+/// operation (DNS revalidation, headers, redirects and the body stream) runs under a
+/// single `timeout_secs` deadline, so a slow-drip server cannot stall it under the size cap.
 ///
 /// This uses a hand-rolled hyper client on purpose, rather than `reqwest` (which is already in
 /// the tree transitively via the updater plugin). The reason is the redirect loop below: it
@@ -358,86 +360,92 @@ async fn http_get_image(
         .parse()
         .map_err(|e| AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}")))?;
 
-    for _ in 0..=DIRECT_THUMBNAIL_MAX_REDIRECTS {
-        assert_url_host_is_public(&uri).await?;
+    // Bound the whole operation - DNS revalidation, header exchange, every redirect hop and the
+    // body stream - under a single deadline. The earlier per-request timeout only covered the
+    // header phase, so a server that dribbled the body out slowly could hold the read loop open
+    // indefinitely while staying under the DIRECT_THUMBNAIL_MAX_BYTES cap. This command carries no
+    // cancel flag, so this deadline is the only thing that can end such a stall.
+    timeout(Duration::from_secs(timeout_secs), async move {
+        for _ in 0..=DIRECT_THUMBNAIL_MAX_REDIRECTS {
+            assert_url_host_is_public(&uri).await?;
 
-        let req = hyper::Request::get(uri.clone())
-            .body(Empty::new())
-            .map_err(|e| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    format!("failed to build request: {e}"),
-                )
-            })?;
+            let req = hyper::Request::get(uri.clone())
+                .body(Empty::new())
+                .map_err(|e| {
+                    AppError::from_code(
+                        AppErrorCode::YtDlpThumbnailFailed,
+                        format!("failed to build request: {e}"),
+                    )
+                })?;
 
-        let res = timeout(Duration::from_secs(timeout_secs), client.request(req))
-            .await
-            .map_err(|_| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailTimeout,
-                    "thumbnail download timed out",
-                )
-            })?
-            .map_err(|e| {
+            let res = client.request(req).await.map_err(|e| {
                 AppError::from_code(
                     AppErrorCode::YtDlpThumbnailFailed,
                     format!("thumbnail request failed: {e}"),
                 )
             })?;
 
-        let status = res.status();
+            let status = res.status();
 
-        if status.is_redirection() {
-            match res
-                .headers()
-                .get(http::header::LOCATION)
-                .and_then(|v| v.to_str().ok())
-            {
-                Some(loc) => {
-                    uri = resolve_redirect(&uri, loc)?;
-                    continue;
-                }
-                None => {
-                    return Err(AppError::from_code(
-                        AppErrorCode::YtDlpThumbnailFailed,
-                        format!("redirect without valid Location header (status {status})"),
-                    ));
+            if status.is_redirection() {
+                match res
+                    .headers()
+                    .get(http::header::LOCATION)
+                    .and_then(|v| v.to_str().ok())
+                {
+                    Some(loc) => {
+                        uri = resolve_redirect(&uri, loc)?;
+                        continue;
+                    }
+                    None => {
+                        return Err(AppError::from_code(
+                            AppErrorCode::YtDlpThumbnailFailed,
+                            format!("redirect without valid Location header (status {status})"),
+                        ));
+                    }
                 }
             }
-        }
 
-        let headers = res.headers().clone();
-        let mut body = res.into_body();
-        let mut buffer: Vec<u8> = Vec::new();
+            let headers = res.headers().clone();
+            let mut body = res.into_body();
+            let mut buffer: Vec<u8> = Vec::new();
 
-        while let Some(frame_result) = body.frame().await {
-            let frame = frame_result.map_err(|e| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    format!("failed to read response body: {e}"),
-                )
-            })?;
-            if let Ok(data) = frame.into_data() {
-                if buffer.len() + data.len() > DIRECT_THUMBNAIL_MAX_BYTES {
-                    return Err(AppError::from_code(
+            while let Some(frame_result) = body.frame().await {
+                let frame = frame_result.map_err(|e| {
+                    AppError::from_code(
                         AppErrorCode::YtDlpThumbnailFailed,
-                        format!(
-                            "thumbnail response exceeded {} MiB limit",
-                            DIRECT_THUMBNAIL_MAX_BYTES / (1024 * 1024)
-                        ),
-                    ));
+                        format!("failed to read response body: {e}"),
+                    )
+                })?;
+                if let Ok(data) = frame.into_data() {
+                    if buffer.len() + data.len() > DIRECT_THUMBNAIL_MAX_BYTES {
+                        return Err(AppError::from_code(
+                            AppErrorCode::YtDlpThumbnailFailed,
+                            format!(
+                                "thumbnail response exceeded {} MiB limit",
+                                DIRECT_THUMBNAIL_MAX_BYTES / (1024 * 1024)
+                            ),
+                        ));
+                    }
+                    buffer.extend_from_slice(&data);
                 }
-                buffer.extend_from_slice(&data);
             }
+
+            return Ok((status, headers, buffer));
         }
 
-        return Ok((status, headers, buffer));
-    }
-
-    Err(AppError::from_code(
-        AppErrorCode::YtDlpThumbnailFailed,
-        "too many redirects downloading thumbnail",
-    ))
+        Err(AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            "too many redirects downloading thumbnail",
+        ))
+    })
+    .await
+    .map_err(|_| {
+        AppError::from_code(
+            AppErrorCode::YtDlpThumbnailTimeout,
+            "thumbnail download timed out",
+        )
+    })?
 }
 
 /// Runs `persist_thumbnail_from_source` (full-file SHA-256 hashing plus a copy) on the
