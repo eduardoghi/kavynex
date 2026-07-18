@@ -118,7 +118,6 @@ export function HomeModals({
                 onChangeDownloadComments={addMediaForm.setDownloadComments}
                 onChangeDownloadLiveChat={addMediaForm.setDownloadLiveChat}
                 onChangeCookiesBrowser={addMediaForm.setCookiesBrowser}
-                onChangeCookiesPath={addMediaForm.setCookiesPath}
                 onPickCookiesFile={() => void addMediaForm.pickCookiesFileViaDialog()}
                 onClearCookiesPath={addMediaForm.clearCookiesPath}
                 onChangeSelectedYtDlpFormatId={addMediaForm.setSelectedYtDlpFormatId}

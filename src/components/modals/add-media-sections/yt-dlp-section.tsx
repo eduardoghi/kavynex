@@ -35,7 +35,6 @@ type YtDlpSectionProps = {
     downloadLiveChat: boolean;
     onChangeMediaUrl: (value: string) => void;
     onChangeCookiesBrowser: (value: string) => void;
-    onChangeCookiesPath: (value: string) => void;
     onPickCookiesFile: () => void | Promise<void>;
     onClearCookiesPath: () => void;
     onChangeSelectedYtDlpFormatId: (value: string) => void;
@@ -82,7 +81,6 @@ export function YtDlpSection({
     downloadLiveChat,
     onChangeMediaUrl,
     onChangeCookiesBrowser,
-    onChangeCookiesPath,
     onPickCookiesFile,
     onClearCookiesPath,
     onChangeSelectedYtDlpFormatId,
@@ -130,7 +128,6 @@ export function YtDlpSection({
                         label="Cookies file"
                         placeholder="Choose a cookies.txt file"
                         value={cookiesPath}
-                        onChange={(event) => onChangeCookiesPath(event.currentTarget.value)}
                         leftSection={<FileText size={16} />}
                         readOnly
                         style={{ flex: 1 }}

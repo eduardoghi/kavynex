@@ -55,7 +55,6 @@ type AddMediaModalProps = {
     onChangeDownloadComments: (value: boolean) => void;
     onChangeDownloadLiveChat: (value: boolean) => void;
     onChangeCookiesBrowser: (value: string) => void;
-    onChangeCookiesPath: (value: string) => void;
     onPickCookiesFile: () => void | Promise<void>;
     onClearCookiesPath: () => void;
     onChangeSelectedYtDlpFormatId: (value: string) => void;
@@ -95,7 +94,6 @@ export function AddMediaModal({
     onChangeDownloadComments,
     onChangeDownloadLiveChat,
     onChangeCookiesBrowser,
-    onChangeCookiesPath,
     onPickCookiesFile,
     onClearCookiesPath,
     onChangeSelectedYtDlpFormatId,
@@ -221,7 +219,6 @@ export function AddMediaModal({
                             downloadLiveChat={downloadLiveChat}
                             onChangeMediaUrl={onChangeMediaUrl}
                             onChangeCookiesBrowser={onChangeCookiesBrowser}
-                            onChangeCookiesPath={onChangeCookiesPath}
                             onPickCookiesFile={onPickCookiesFile}
                             onClearCookiesPath={onClearCookiesPath}
                             onChangeSelectedYtDlpFormatId={onChangeSelectedYtDlpFormatId}

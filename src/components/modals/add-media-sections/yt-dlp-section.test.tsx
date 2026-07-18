@@ -21,7 +21,6 @@ function renderYtDlpSection(
             downloadLiveChat={true}
             onChangeMediaUrl={vi.fn()}
             onChangeCookiesBrowser={vi.fn()}
-            onChangeCookiesPath={vi.fn()}
             onPickCookiesFile={vi.fn()}
             onClearCookiesPath={vi.fn()}
             onChangeSelectedYtDlpFormatId={vi.fn()}
