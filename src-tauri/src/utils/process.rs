@@ -47,6 +47,20 @@ pub fn configure_process_group(command: &mut tokio::process::Command) {
 #[cfg(not(unix))]
 pub fn configure_process_group(_command: &mut tokio::process::Command) {}
 
+/// Synchronous counterpart to [`configure_process_group`], for a blocking [`std::process::Command`]
+/// (the external-tool health checks). Puts the child in its own process group so
+/// [`kill_process_tree_blocking`] - which signals the negative process-group id on Unix - reaches
+/// the whole tree, including a `.sh`/`.cmd` shim's own children. No-op on non-Unix, where
+/// `taskkill /T` walks the tree by pid instead.
+#[cfg(unix)]
+pub fn configure_process_group_blocking(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+pub fn configure_process_group_blocking(_command: &mut std::process::Command) {}
+
 /// Kills a spawned child *and* every descendant it created, asynchronously. `yt-dlp` routinely
 /// spawns an `ffmpeg` child (merges, `--convert-thumbnails`), and killing only the direct
 /// child (`Child::kill`/`kill_on_drop`) leaves that grandchild running. On Windows this uses

@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use chrono::{NaiveDate, Utc};
 use tauri::{AppHandle, Manager};
@@ -183,20 +184,94 @@ fn release_age_days(version: &str, today: NaiveDate) -> Option<u32> {
     Some((today - released).num_days().max(0) as u32)
 }
 
+/// How long a `--version` / `-version` health check may run before it is treated as a hung
+/// binary and killed. Generous - the call itself is near-instant, but a cold cache, a slow disk,
+/// or an antivirus scan of the executable can add a few seconds to the spawn - while still bounded,
+/// unlike the previous unbounded `output()`.
+const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// How often the wait below re-checks whether the child has exited. Short enough that the timeout
+/// fires promptly once the deadline passes, long enough not to busy-spin the blocking-pool thread.
+const HEALTH_CHECK_POLL: Duration = Duration::from_millis(50);
+
 fn run_command_and_capture_first_line(
     binary_path: &str,
     args: &[&str],
     error_code: AppErrorCode,
     default_message: &str,
 ) -> AppResult<String> {
-    let mut command = Command::new(binary_path);
-    command.args(args);
-    hide_console(&mut command);
+    run_command_capturing_first_line_within(
+        binary_path,
+        args,
+        error_code,
+        default_message,
+        HEALTH_CHECK_TIMEOUT,
+    )
+}
 
-    let output = command.output().map_err(|e| {
+/// Runs `binary_path args`, returns its first non-empty stdout line, and - unlike a plain
+/// `Command::output()` - gives up after `timeout`, killing the whole process tree. Every other
+/// external-process call site (download, metadata, thumbnail) already bounds its child this way; a
+/// health check, whose entire job is to survive a misbehaving binary, is the last place that should
+/// block a worker thread forever on a hung `.cmd`/`.bat` shim or a wedged executable.
+///
+/// The child's stdout/stderr are piped but only drained after it exits (or is killed). That is safe
+/// for a version banner (a handful of short lines, well under the pipe buffer); a binary that
+/// instead floods the pipe would block on the write, never exit, and correctly hit the timeout.
+fn run_command_capturing_first_line_within(
+    binary_path: &str,
+    args: &[&str],
+    error_code: AppErrorCode,
+    default_message: &str,
+    timeout: Duration,
+) -> AppResult<String> {
+    let mut command = Command::new(binary_path);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_console(&mut command);
+    crate::utils::process::configure_process_group_blocking(&mut command);
+
+    let mut child = command.spawn().map_err(|e| {
         AppError::from_code(
             error_code,
             format!("{default_message}: failed to execute command: {e}"),
+        )
+    })?;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    crate::utils::process::kill_process_tree_blocking(child.id());
+                    let _ = child.wait();
+                    return Err(AppError::from_code(
+                        error_code,
+                        format!(
+                            "{default_message}: timed out after {} seconds",
+                            timeout.as_secs()
+                        ),
+                    ));
+                }
+                std::thread::sleep(HEALTH_CHECK_POLL);
+            }
+            Err(e) => {
+                return Err(AppError::from_code(
+                    error_code,
+                    format!("{default_message}: failed to wait for command: {e}"),
+                ));
+            }
+        }
+    }
+
+    let output = child.wait_with_output().map_err(|e| {
+        AppError::from_code(
+            error_code,
+            format!("{default_message}: failed to read command output: {e}"),
         )
     })?;
 
@@ -441,5 +516,68 @@ mod tests {
         let result = ffmpeg_location_argument(ffmpeg.to_str().unwrap());
 
         assert_eq!(result, bin_dir.to_string_lossy());
+    }
+
+    // A shell that prints one line and exits: stands in for a healthy `yt-dlp --version`.
+    #[cfg(windows)]
+    fn print_line_command() -> (&'static str, Vec<&'static str>) {
+        ("cmd", vec!["/C", "echo tool 1.2.3"])
+    }
+
+    #[cfg(not(windows))]
+    fn print_line_command() -> (&'static str, Vec<&'static str>) {
+        ("sh", vec!["-c", "printf 'tool 1.2.3\\n'"])
+    }
+
+    // A command that runs far longer than any health-check timeout: stands in for a hung binary
+    // (a wedged executable, or a `.cmd`/`.bat` shim that blocks). Killed by the timeout below.
+    #[cfg(windows)]
+    fn hang_command() -> (&'static str, Vec<&'static str>) {
+        ("cmd", vec!["/C", "ping -n 60 127.0.0.1 >nul"])
+    }
+
+    #[cfg(not(windows))]
+    fn hang_command() -> (&'static str, Vec<&'static str>) {
+        ("sh", vec!["-c", "sleep 60"])
+    }
+
+    #[test]
+    fn capture_first_line_returns_the_first_output_line() {
+        let (binary, args) = print_line_command();
+
+        let version = run_command_capturing_first_line_within(
+            binary,
+            &args,
+            AppErrorCode::YtDlpMetadataExecFailed,
+            "health check",
+            Duration::from_secs(20),
+        )
+        .unwrap();
+
+        assert_eq!(version, "tool 1.2.3");
+    }
+
+    #[test]
+    fn capture_first_line_times_out_and_kills_a_hung_binary() {
+        let (binary, args) = hang_command();
+
+        let started = Instant::now();
+        let error = run_command_capturing_first_line_within(
+            binary,
+            &args,
+            AppErrorCode::YtDlpMetadataExecFailed,
+            "health check",
+            Duration::from_millis(300),
+        )
+        .unwrap_err();
+
+        // The whole call must return shortly after the deadline, not run to the child's own
+        // 60-second lifetime - proof the child was killed rather than waited out.
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "health check did not return promptly after the timeout"
+        );
+        assert_eq!(error.code, AppErrorCode::YtDlpMetadataExecFailed.as_str());
+        assert!(error.message.contains("timed out"));
     }
 }
