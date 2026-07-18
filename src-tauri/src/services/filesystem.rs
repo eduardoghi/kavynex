@@ -59,6 +59,24 @@ fn fsync_file(path: &Path) -> AppResult<()> {
     })
 }
 
+/// Flushes the directory entry created by the rename in `copy_file_atomic` to disk. On common
+/// Linux/Unix filesystems a crash right after a rename can otherwise lose the new directory entry
+/// even though the file's own data was already fsynced, so the destination could vanish after a
+/// power loss - the same durability gap already closed for the db-backup and library-migration
+/// commit markers. Best effort and only meaningful on Unix: `std` cannot open a directory as a
+/// `File` on Windows, whose NTFS rename does not need this, so it is a no-op there.
+#[cfg(unix)]
+fn fsync_parent_dir(path: &Path) {
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn fsync_parent_dir(_path: &Path) {}
+
 fn file_paths_have_same_content(left: &Path, right: &Path) -> AppResult<bool> {
     if !left.exists() || !right.exists() {
         return Ok(false);
@@ -154,7 +172,11 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
     }
 
     match fs::rename(&temp_destination, destination) {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            // Make the rename itself durable, not just the file data flushed above.
+            fsync_parent_dir(destination);
+            Ok(())
+        }
         Err(error) => {
             let _ = fs::remove_file(&temp_destination);
 
