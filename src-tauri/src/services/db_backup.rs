@@ -480,6 +480,43 @@ pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {
     }
 }
 
+// How often the background full integrity check runs at most. The automatic paths (open, backup)
+// use `quick_check`, which is fast but shallow: a subtly damaged page can pass it and then be
+// migrated over. A full `integrity_check` catches that, but it reads the whole database, which is
+// why it is deliberately not on the open path (see `services::database::build_pool_at`). This runs
+// it off the startup critical path instead, throttled to once a week so it never becomes a
+// per-launch cost.
+const INTEGRITY_CHECK_MIN_INTERVAL_SECS: u64 = 7 * 24 * 60 * 60;
+
+fn integrity_check_marker_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".integrity-checked")
+}
+
+/// Whether a background full integrity check is due: true when the marker is missing (never run)
+/// or older than [`INTEGRITY_CHECK_MIN_INTERVAL_SECS`]. The marker's mtime records the last check
+/// that passed, so a database that keeps failing is re-checked every launch until it is repaired.
+pub fn integrity_check_is_due(db_path: &Path) -> bool {
+    !is_recent(
+        &integrity_check_marker_path(db_path),
+        INTEGRITY_CHECK_MIN_INTERVAL_SECS,
+    )
+}
+
+/// Records that a full integrity check just passed, so [`integrity_check_is_due`] throttles the
+/// next one for a week. Best effort: a marker that cannot be written only means the check runs
+/// again next launch, which is harmless. Called only after a clean check, never after a failing
+/// one, so a damaged database stays flagged on every launch until it is restored.
+pub fn mark_integrity_check_passed(db_path: &Path) {
+    let marker = integrity_check_marker_path(db_path);
+
+    if let Err(error) = std::fs::File::create(&marker) {
+        logger::warn(
+            "db_integrity",
+            format!("failed to write the integrity-check marker: {error}"),
+        );
+    }
+}
+
 /// Opens `db_path` and runs `quick_check`, returning whether it passes. A file that cannot even
 /// be opened as a database (or fails the check) returns false. Used both to pick a healthy backup
 /// to restore and, in the pool builder, to refuse migrating a database that is already damaged
@@ -1280,6 +1317,22 @@ mod tests {
         let db = dir.join("kavynex.db");
 
         assert!(!backup_database(&db).await.unwrap());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn integrity_check_is_due_until_a_pass_is_marked() {
+        let dir = temp_dir("integrity-due");
+        let db = dir.join("kavynex.db");
+
+        // Never run: due.
+        assert!(integrity_check_is_due(&db));
+
+        // After a clean check is recorded, the throttle suppresses the next one.
+        mark_integrity_check_passed(&db);
+        assert!(integrity_check_marker_path(&db).exists());
+        assert!(!integrity_check_is_due(&db));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

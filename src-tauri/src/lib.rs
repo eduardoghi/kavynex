@@ -24,6 +24,12 @@ const PERIODIC_BACKUP_CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
 // to open the database pool (which the external-mirror step reads its setting from) first.
 const INITIAL_BACKUP_DELAY_SECS: u64 = 60;
 
+// Delay before the background full integrity check runs, keeping it well off the startup critical
+// path (bootstrap, first render, the initial backup pass). The check itself is throttled to once a
+// week (see db_backup::integrity_check_is_due), so this delay only shapes when the occasional run
+// happens, never how often.
+const INTEGRITY_CHECK_STARTUP_DELAY_SECS: u64 = 120;
+
 fn spawn_startup_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         match services::cleanup::cleanup_stale_temp_files_sync(&app_handle) {
@@ -135,6 +141,69 @@ async fn run_external_database_backup(app_handle: &AppHandle, db_path: &Path) {
             format!("external database backup failed: {error}"),
         ),
     }
+}
+
+/// Runs a full `PRAGMA integrity_check` in the background, off the startup critical path and
+/// throttled to once a week. The automatic paths use the fast `quick_check`, which a subtly
+/// damaged page can pass and then be migrated over; this thorough check catches that. On a clean
+/// result the throttle marker is refreshed; on a failing one it is deliberately not, so a damaged
+/// database is re-checked every launch, and the failure is logged prominently (with a pointer to
+/// the Settings > Database restore) rather than left for the user to discover via the manual
+/// Diagnostics check. Best effort throughout: any failure to run the check never affects the app.
+fn spawn_startup_integrity_check(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(INTEGRITY_CHECK_STARTUP_DELAY_SECS)).await;
+
+        let db_path = match services::database::database_path(&app_handle) {
+            Ok(db_path) => db_path,
+            Err(error) => {
+                services::logger::warn(
+                    "db_integrity",
+                    format!("integrity check: failed to resolve database path: {error}"),
+                );
+                return;
+            }
+        };
+
+        if !services::db_backup::integrity_check_is_due(&db_path) {
+            return;
+        }
+
+        // Opening the shared pool here is safe: a database too damaged to open (or one failing
+        // quick_check with a migration pending) fails the open, which the startup recovery flow
+        // already surfaces. This check is for the subtler damage that opens cleanly.
+        let pool = match services::database::shared_pool(&app_handle).await {
+            Ok(pool) => pool,
+            Err(error) => {
+                services::logger::warn(
+                    "db_integrity",
+                    format!("integrity check: failed to open the database pool: {error}"),
+                );
+                return;
+            }
+        };
+
+        match services::db_backup::run_full_integrity_check(&pool).await {
+            Ok(report) if report.ok => {
+                services::db_backup::mark_integrity_check_passed(&db_path);
+                services::logger::info("db_integrity", "background integrity check passed");
+            }
+            Ok(report) => {
+                services::logger::error(
+                    "db_integrity",
+                    format!(
+                        "background integrity check found {} problem(s); the database may be corrupt - open Settings > Database to restore from a backup: {}",
+                        report.problems.len(),
+                        report.problems.join("; ")
+                    ),
+                );
+            }
+            Err(error) => services::logger::warn(
+                "db_integrity",
+                format!("background integrity check could not run: {error}"),
+            ),
+        }
+    });
 }
 
 fn spawn_periodic_backup(app_handle: AppHandle) {
@@ -321,6 +390,7 @@ pub fn run() {
 
             spawn_startup_cleanup(app_handle.clone());
             spawn_startup_library_cleanup(app_handle.clone());
+            spawn_startup_integrity_check(app_handle.clone());
             spawn_periodic_backup(app_handle);
             services::logger::info("app", "application setup finished");
 

@@ -34,6 +34,10 @@ The backup/restore/import machinery in `services/db_backup.rs` also writes sibli
   evidence. Fewer generations than `.bak`: each is a full copy of an already-broken database.
 - `kavynex.db.pre-import` - the database as it was before the last applied import, kept so the
   import can be undone. It persists until the next import replaces it.
+- `kavynex.db.integrity-checked` - an empty marker whose mtime records the last time the background
+  full `integrity_check` passed. It throttles that check to once a week (`db_backup.rs`); the
+  automatic paths use the faster `quick_check`, and this thorough one runs off the startup critical
+  path to catch subtler damage a `quick_check` would pass.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
   (the snapshot being vacuumed, before it is promoted to `.bak`), `.import-staged` /
   `.import-staged.tmp` (an import waiting for the next startup), `.import-applying` (see
