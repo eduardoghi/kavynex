@@ -37,7 +37,7 @@ use crate::services::thumbnail_persist::delete_thumbnail_file_sync;
 /// `BEGIN IMMEDIATE` takes the write lock up front, so the wait happens where `busy_timeout`
 /// does apply and the snapshot is guaranteed writable once acquired.
 const BEGIN_IMMEDIATE: &str = "BEGIN IMMEDIATE";
-use crate::utils::path::absolute_path_from_relative;
+use crate::utils::path::{absolute_path_from_relative, ensure_existing_path_inside_dir};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -289,6 +289,12 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
     let absolute = absolute_path_from_relative(library_dir, relative_path)?;
 
     if absolute.exists() {
+        // Re-resolve symlinks and re-check containment before unlinking, matching the sibling
+        // delete_media_file_sync / delete_thumbnail_file_sync. absolute_path_from_relative only
+        // does a lexical check; an intermediate path component that is itself a symlink pointing
+        // outside the library would otherwise let this remove a file outside the managed tree.
+        ensure_existing_path_inside_dir(&absolute, library_dir)?;
+
         std::fs::remove_file(&absolute).map_err(|e| {
             AppError::from_code(
                 AppErrorCode::RemoveMediaFailed,
@@ -339,15 +345,90 @@ pub fn remove_planned_artifacts_sync(
     report
 }
 
+/// Re-verifies, after the deletion transaction has committed, that each planned artifact is still
+/// unreferenced before it is unlinked from disk.
+///
+/// The "is this file still referenced" decision is made inside the deletion transaction, but the
+/// unlink happens afterwards (the filesystem cannot join a SQLite transaction). A concurrent
+/// import can dedupe onto the same content-addressed file and insert a new row pointing at it in
+/// that gap, which would then be unlinked out from under the new row. This pass drops any path
+/// that became referenced again, shrinking the window to the microseconds between this recount and
+/// the unlink. It cannot close the window entirely - only a per-path lock spanning the count and
+/// the unlink could - but it catches the realistic case where the import landed while the removal
+/// was still being scheduled onto the blocking pool. Best effort: on any recount failure the
+/// committed decision is kept rather than leaking a file or wrongly sparing one.
+async fn drop_paths_referenced_again(pool: &SqlitePool, plan: &mut ArtifactCleanupPlan) {
+    if plan.deletable.is_empty() {
+        return;
+    }
+
+    let mut conn = match pool.acquire().await {
+        Ok(conn) => conn,
+        Err(error) => {
+            logger::warn(
+                "library_cleanup",
+                format!("could not re-verify artifact references before removal: {error}"),
+            );
+            return;
+        }
+    };
+
+    let mut still_deletable = Vec::with_capacity(plan.deletable.len());
+
+    for artifact in std::mem::take(&mut plan.deletable) {
+        let remaining = match artifact.kind {
+            ArtifactKind::MediaFile => {
+                count_media_files_referencing(&mut conn, &artifact.path).await
+            }
+            ArtifactKind::Thumbnail => {
+                count_thumbnails_referencing(&mut conn, &artifact.path).await
+            }
+            ArtifactKind::LiveChat => count_live_chats_referencing(&mut conn, &artifact.path).await,
+        };
+
+        match remaining {
+            Ok(0) => still_deletable.push(artifact),
+            Ok(_) => {
+                logger::info(
+                    "library_cleanup",
+                    format!(
+                        "artifact '{}' became referenced again after the delete committed; keeping it",
+                        artifact.path
+                    ),
+                );
+                plan.skipped_shared_paths.push(artifact.path);
+            }
+            Err(error) => {
+                logger::warn(
+                    "library_cleanup",
+                    format!(
+                        "could not re-verify references for '{}', keeping the committed decision: {error}",
+                        artifact.path
+                    ),
+                );
+                still_deletable.push(artifact);
+            }
+        }
+    }
+
+    plan.deletable = still_deletable;
+}
+
 async fn execute_plan(
     app: &AppHandle,
-    plan: ArtifactCleanupPlan,
+    mut plan: ArtifactCleanupPlan,
 ) -> AppResult<ArtifactCleanupReport> {
     if plan.deletable.is_empty() {
         return Ok(ArtifactCleanupReport {
             skipped_shared_paths: plan.skipped_shared_paths,
             ..ArtifactCleanupReport::default()
         });
+    }
+
+    // Re-check each planned unlink against the live database: a row inserted after the deletion
+    // committed (a concurrent import deduping onto the same content-addressed file) must spare it.
+    if let Ok(pool) = shared_pool(app).await {
+        drop_paths_referenced_again(&pool, &mut plan).await;
     }
 
     let library_dir = match configured_library_dir(app).await {
@@ -615,6 +696,48 @@ mod tests {
 
     fn paths(artifacts: &[DeletableArtifact]) -> Vec<&str> {
         artifacts.iter().map(|item| item.path.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn drop_paths_referenced_again_spares_a_path_referenced_after_the_commit() {
+        // Simulate the race: a plan decided a file was unreferenced, then a concurrent import
+        // inserted a row pointing at the same content-addressed path before the unlink ran.
+        let pool = create_test_pool().await;
+        let channel_id = insert_channel(&pool, "@race", None).await;
+        insert_media(&pool, channel_id, "video/shared.mp4", None, None).await;
+
+        let mut plan = ArtifactCleanupPlan {
+            deletable: vec![DeletableArtifact {
+                kind: ArtifactKind::MediaFile,
+                path: "video/shared.mp4".to_string(),
+            }],
+            skipped_shared_paths: Vec::new(),
+        };
+
+        drop_paths_referenced_again(&pool, &mut plan).await;
+
+        // The path is referenced again, so it must not be unlinked.
+        assert!(plan.deletable.is_empty());
+        assert_eq!(plan.skipped_shared_paths, vec!["video/shared.mp4"]);
+    }
+
+    #[tokio::test]
+    async fn drop_paths_referenced_again_keeps_a_genuinely_unreferenced_path() {
+        let pool = create_test_pool().await;
+
+        let mut plan = ArtifactCleanupPlan {
+            deletable: vec![DeletableArtifact {
+                kind: ArtifactKind::MediaFile,
+                path: "video/gone.mp4".to_string(),
+            }],
+            skipped_shared_paths: Vec::new(),
+        };
+
+        drop_paths_referenced_again(&pool, &mut plan).await;
+
+        // No row references it, so it stays scheduled for removal.
+        assert_eq!(paths(&plan.deletable), vec!["video/gone.mp4"]);
+        assert!(plan.skipped_shared_paths.is_empty());
     }
 
     #[tokio::test]
