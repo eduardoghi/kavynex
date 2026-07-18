@@ -38,7 +38,7 @@ jobs:
               with:
                   # Pinned to the Node major @types/node targets (26), so the code is
                   # type-checked against the same runtime CI uses. Bump both together.
-                  node-version: 26
+                  node-version: 26.5.0
                   cache: pnpm
 
             # Catch a version bumped in only some of package.json/tauri.conf.json/Cargo.toml
