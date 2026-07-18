@@ -332,6 +332,13 @@ most once every 24 hours (checked by the `.bak` file's mtime). It runs:
   asked - the loop only needs to wake often enough that a long session eventually crosses that
   threshold.
 
+These callers are independent (the background startup snapshot and the first periodic tick can
+overlap), so `backup_database` also takes a process-wide lock (`BACKUP_IN_PROGRESS`): the throttle
+alone is mtime-based and only suppresses a second call once the first has finished and refreshed
+`.bak`, so without the lock two concurrent runs could both pass it and race on the shared `.bak.tmp`
+and the rotation chain. A caller that finds the lock held waits, then sees the just-written `.bak`
+via the throttle and returns without a redundant second snapshot.
+
 Before snapshotting, the source database must pass `PRAGMA quick_check` (`is_healthy`); a
 database that fails it is skipped so a corrupt database is never allowed to overwrite a
 good backup. Rotation keeps several generations: before the fresh snapshot is written, the

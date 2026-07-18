@@ -275,6 +275,14 @@ reading the environment during a release build. `minimumReleaseAge` and `blockEx
 a dependency arriving in the first place; nothing in the current workflow removes the exposure
 itself. Rotating the minisign key is the response if a compromise is ever suspected.
 
+One asymmetry is worth stating plainly: the `minimumReleaseAge` cooling-off (refuse a package
+published in the last two days, so a freshly-compromised release is not picked up before the
+community flags it) applies **only to the npm tree**. The Cargo tree has no equivalent - `cargo-deny`
+restricts the *source* (crates.io only), the license and duplicate/wildcard bans, not the *publish
+age* - so a newly-published malicious version of an already-allowed crate is a residual gap on the
+Rust side. What limits it there is the pinned `Cargo.lock` (a bump is a reviewed, deliberate commit,
+never an automatic resolution) plus the same draft-and-publish-by-hand release flow.
+
 ## Reporting a vulnerability
 
 If you find a security issue, please open a
