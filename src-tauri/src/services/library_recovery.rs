@@ -32,8 +32,18 @@ pub fn commit_marker_path(config_dir: &Path) -> PathBuf {
 /// Records the canonical new library path in the commit marker. Written just before the old
 /// directory is removed. Returns the underlying I/O error so the migration can decide to keep
 /// the old directory when the marker cannot be persisted.
+///
+/// `sync_all` matters here, exactly as it does for `db_backup`'s import marker: the window this
+/// guards is a crash moments after the write, and the very next step removes the old library
+/// directory. A marker still sitting in the OS write cache when the machine loses power would be
+/// gone on reboot while the old directory was already emptied - the recovery could not adopt the
+/// new path, and the library would look lost even though the copy at it is complete.
 pub fn write_commit_marker(marker_path: &Path, new_library_path: &str) -> std::io::Result<()> {
-    std::fs::write(marker_path, new_library_path.trim().as_bytes())
+    use std::io::Write;
+
+    let mut file = std::fs::File::create(marker_path)?;
+    file.write_all(new_library_path.trim().as_bytes())?;
+    file.sync_all()
 }
 
 /// Removes the commit marker. Best effort: a failure only leaves a stale marker that the next
