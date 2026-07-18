@@ -9,6 +9,14 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 // (e.g. a hung/misbehaving process writing to stdout/stderr with no newline).
 const MAX_LINE_BYTES: usize = 256 * 1024 * 1024; // 256 MiB
 
+/// A cap for line-oriented output - yt-dlp/ffmpeg progress lines and stderr messages, which are
+/// always short. Fixed-size ring buffers keep the last N such lines for a failure message; without
+/// a per-line bound a misbehaving process emitting one enormous unterminated line would let a
+/// single buffered line (times N) balloon memory far past intent. Distinct from `MAX_LINE_BYTES`,
+/// which is sized for the one multi-MiB JSON line `--dump-single-json` legitimately emits and must
+/// not truncate.
+pub const MAX_PROGRESS_LINE_BYTES: usize = 64 * 1024; // 64 KiB
+
 /// Reads the next `\n`-terminated line from `reader`, decoding it lossily.
 ///
 /// Unlike `AsyncBufReadExt::lines()` (whose `next_line` yields `Err` the moment a line holds
@@ -30,7 +38,9 @@ where
     read_lossy_line_capped(reader, buf, MAX_LINE_BYTES).await
 }
 
-async fn read_lossy_line_capped<R>(
+/// Like [`read_lossy_line`] but with a caller-chosen byte cap, for line-oriented readers that
+/// should bound each line tightly (see [`MAX_PROGRESS_LINE_BYTES`]).
+pub async fn read_lossy_line_capped<R>(
     reader: &mut R,
     buf: &mut Vec<u8>,
     max_bytes: usize,

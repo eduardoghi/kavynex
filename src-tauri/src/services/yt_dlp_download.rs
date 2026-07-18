@@ -36,7 +36,7 @@ use crate::services::yt_dlp_registry::{
 };
 use crate::services::yt_dlp_url::{is_allowed_youtube_url, youtube_ref_for_log};
 use crate::utils::format::codec_is_present;
-use crate::utils::io::read_lossy_line;
+use crate::utils::io::{read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::naming::unique_temp_suffix;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
 use crate::utils::process::hide_console_async;
@@ -89,6 +89,11 @@ enum PendingRedaction {
     FullValue,
     /// Keep the `home:`/`temp:` scope prefix but drop the directory (used for `--paths`).
     PathsValue,
+    /// Reduce a YouTube URL to its video id, dropping playlist/tracking query params (used for
+    /// the URL after the `--` separator). This line is shown in the UI terminal and may be pasted
+    /// into a public bug report, so it gets the same reduction the file log already applies via
+    /// `youtube_ref_for_log`.
+    YoutubeUrl,
 }
 
 /// Redacts a `--paths` value, keeping its `SCOPE:` prefix but dropping the directory. The
@@ -123,6 +128,11 @@ fn redacted_args_for_log(args: &[String]) -> String {
                 pending = PendingRedaction::None;
                 continue;
             }
+            PendingRedaction::YoutubeUrl => {
+                parts.push(youtube_ref_for_log(arg));
+                pending = PendingRedaction::None;
+                continue;
+            }
             PendingRedaction::None => {}
         }
 
@@ -130,6 +140,11 @@ fn redacted_args_for_log(args: &[String]) -> String {
             pending = PendingRedaction::FullValue;
         } else if arg == "--paths" {
             pending = PendingRedaction::PathsValue;
+        } else if arg == "--" {
+            // The URL is the only argument after the `--` separator (see
+            // build_download_command_args); reduce it so the raw pasted URL, with any
+            // playlist/tracking params, never reaches the UI terminal.
+            pending = PendingRedaction::YoutubeUrl;
         }
 
         parts.push(arg.clone());
@@ -530,7 +545,10 @@ pub async fn download_media_from_url_async(
         emit_download_log(
             app,
             &normalized_run_id,
-            format!("Resolving metadata for: {}", normalized_url),
+            format!(
+                "Resolving metadata for: {}",
+                youtube_ref_for_log(&normalized_url)
+            ),
             "system",
         )?;
 
@@ -856,7 +874,9 @@ pub async fn download_media_from_url_async(
             let mut reader = BufReader::new(stdout);
             let mut line_buf: Vec<u8> = Vec::new();
 
-            while let Some(line) = read_lossy_line(&mut reader, &mut line_buf).await {
+            while let Some(line) =
+                read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
+            {
                 last_activity_stdout.store(
                     download_start.elapsed().as_millis() as u64,
                     Ordering::Relaxed,
@@ -871,7 +891,9 @@ pub async fn download_media_from_url_async(
             let mut reader = BufReader::new(stderr);
             let mut line_buf: Vec<u8> = Vec::new();
 
-            while let Some(line) = read_lossy_line(&mut reader, &mut line_buf).await {
+            while let Some(line) =
+                read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
+            {
                 last_activity_stderr.store(
                     download_start.elapsed().as_millis() as u64,
                     Ordering::Relaxed,
@@ -1445,7 +1467,10 @@ mod tests {
         assert!(!logged.contains("alice"));
         assert!(logged.contains("--paths home:<redacted>"));
         assert!(logged.contains("--paths temp:<redacted>"));
-        assert!(logged.contains("-- https://youtube.com/watch?v=x"));
+        // The URL after `--` is reduced to its video id, dropping any playlist/tracking params,
+        // since this line is shown in the UI terminal and may be pasted into a public bug report.
+        assert!(!logged.contains("https://youtube.com/watch?v=x"));
+        assert!(logged.contains("-- youtube.com?v=x"));
     }
 
     #[test]

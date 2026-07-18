@@ -17,7 +17,7 @@ use crate::services::binaries::resolve_yt_dlp_binary_async;
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
-use crate::utils::io::read_lossy_line;
+use crate::utils::io::{read_lossy_line, read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -357,7 +357,12 @@ async fn run_yt_dlp_and_capture_json(
         let mut line_buf: Vec<u8> = Vec::new();
         let mut log_lines: Vec<String> = Vec::new();
 
-        while let Some(line_value) = read_lossy_line(&mut reader, &mut line_buf).await {
+        // stderr carries short log lines only (the JSON payload comes on stdout), so cap each line
+        // tightly: without it a single unterminated line could balloon far past the ring buffer's
+        // intended bound (see MAX_PROGRESS_LINE_BYTES).
+        while let Some(line_value) =
+            read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
+        {
             let line = line_value.trim_end().to_string();
 
             if should_keep_terminal_line(&line) {
