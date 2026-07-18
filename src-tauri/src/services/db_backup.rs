@@ -6,6 +6,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 
 use crate::services::database::SQLITE_BUSY_TIMEOUT_MS;
 use crate::services::logger;
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 // The DB is snapshotted at most once per day so it does not add cost to every launch; any
@@ -535,11 +536,21 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         }
     };
 
-    // Stage the restored file first so the live database is never left missing on failure.
+    // Stage the restored file first so the live database is never left missing on failure. The
+    // copy is a full-file read/write of a possibly large database; run it off the async runtime so
+    // a slow disk (a network share, a cloud-synced folder) never stalls a Tokio worker thread.
     let staged = restore_staging_path(db_path);
     let _ = std::fs::remove_file(&staged);
-    std::fs::copy(&backup, &staged)
-        .map_err(|error| backup_error("failed to stage restored database", error))?;
+    {
+        let copy_source = backup.clone();
+        let copy_dest = staged.clone();
+        run_blocking(move || {
+            std::fs::copy(&copy_source, &copy_dest)
+                .map(|_| ())
+                .map_err(|error| backup_error("failed to stage restored database", error))
+        })
+        .await?;
+    }
 
     // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than
     // overwrite: a second restore (the restored database degraded again) would otherwise discard
@@ -955,8 +966,18 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
     let staged = import_staged_path(db_path);
     let staging_tmp = sibling(db_path, ".import-staged.tmp");
     let _ = std::fs::remove_file(&staging_tmp);
-    std::fs::copy(source_path, &staging_tmp)
-        .map_err(|error| backup_error("failed to stage database import", error))?;
+    // Full-file copy of the (possibly large) source database: run it off the async runtime so a
+    // slow source disk never stalls a Tokio worker thread.
+    {
+        let copy_source = source_path.to_path_buf();
+        let copy_dest = staging_tmp.clone();
+        run_blocking(move || {
+            std::fs::copy(&copy_source, &copy_dest)
+                .map(|_| ())
+                .map_err(|error| backup_error("failed to stage database import", error))
+        })
+        .await?;
+    }
     let _ = std::fs::remove_file(&staged);
     std::fs::rename(&staging_tmp, &staged)
         .map_err(|error| backup_error("failed to stage database import", error))?;
