@@ -21,6 +21,9 @@ export function ImportBehaviorSection({
             </Group>
 
             <Radio.Group
+                // Names the group for assistive tech; the visible <Title> above is not
+                // programmatically associated with it.
+                aria-label="Import behavior"
                 value={importMode}
                 onChange={(value) => onChangeImportMode(value as ImportMode)}
             >

@@ -56,6 +56,9 @@ export function LibraryFolderSection({
             </Group>
 
             <TextInput
+                // Names the field for assistive tech; the visible <Title> above is not
+                // programmatically associated with it.
+                aria-label="Library folder"
                 value={displayWindowsPath(libraryPath)}
                 readOnly
                 placeholder="No library folder selected"
