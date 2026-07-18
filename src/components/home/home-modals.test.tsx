@@ -172,6 +172,7 @@ function createSettings(): AppSettingsController {
         settings: { importMode: "copy", libraryPath: "/library", loadRemoteImages: true, checkUpdatesOnStartup: false, externalBackupDir: "" },
         isPreparingSettings: false,
         isMigratingLibraryPath: false,
+        isSavingExternalBackupDir: false,
         openSettings: vi.fn(),
         closeSettings: vi.fn(),
         setImportMode: vi.fn(),
@@ -179,6 +180,8 @@ function createSettings(): AppSettingsController {
         setCheckUpdatesOnStartup: vi.fn(),
         chooseLibraryPath: vi.fn().mockResolvedValue(undefined),
         openCurrentLibraryPath: vi.fn().mockResolvedValue(undefined),
+        chooseExternalBackupDir: vi.fn().mockResolvedValue(undefined),
+        clearExternalBackupDir: vi.fn().mockResolvedValue(undefined),
     };
 }
 

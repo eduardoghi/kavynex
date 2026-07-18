@@ -19,6 +19,10 @@ function baseProps(overrides: Partial<SectionProps> = {}): SectionProps {
         requestUndoImport: vi.fn(),
         cancelUndoImport: vi.fn(),
         confirmUndoImportAction: vi.fn(),
+        externalBackupDir: "",
+        isSavingExternalBackupDir: false,
+        onChooseExternalBackupDir: vi.fn(),
+        onClearExternalBackupDir: vi.fn(),
         ...overrides,
     };
 }
@@ -113,5 +117,44 @@ describe("DatabaseSection", () => {
         );
 
         expect(screen.getByText("Database exported successfully.")).toBeInTheDocument();
+    });
+
+    it("chooses an external backup folder and offers no turn-off while none is set", () => {
+        const onChooseExternalBackupDir = vi.fn();
+
+        renderWithMantine(
+            <DatabaseSection {...baseProps({ onChooseExternalBackupDir })} />
+        );
+
+        expect(
+            screen.queryByRole("button", { name: /turn off/i })
+        ).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /choose backup folder/i }));
+
+        expect(onChooseExternalBackupDir).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the current external backup folder and can turn it off", () => {
+        const onClearExternalBackupDir = vi.fn();
+
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({
+                    externalBackupDir: "/mnt/backups",
+                    onClearExternalBackupDir,
+                })}
+            />
+        );
+
+        expect(screen.getByDisplayValue("/mnt/backups")).toBeInTheDocument();
+        // With a folder configured, the button flips to "Change backup folder" and a turn-off appears.
+        expect(
+            screen.getByRole("button", { name: /change backup folder/i })
+        ).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /turn off/i }));
+
+        expect(onClearExternalBackupDir).toHaveBeenCalledTimes(1);
     });
 });

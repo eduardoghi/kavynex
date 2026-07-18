@@ -15,6 +15,7 @@ type UseAppSettingsReturn = {
     settings: AppSettings;
     isPreparingSettings: boolean;
     isMigratingLibraryPath: boolean;
+    isSavingExternalBackupDir: boolean;
     openSettings: () => void;
     closeSettings: () => void;
     setImportMode: (mode: ImportMode) => void;
@@ -22,6 +23,8 @@ type UseAppSettingsReturn = {
     setCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
     chooseLibraryPath: () => Promise<void>;
     openCurrentLibraryPath: () => Promise<void>;
+    chooseExternalBackupDir: () => Promise<void>;
+    clearExternalBackupDir: () => Promise<void>;
 };
 
 export function useAppSettings({
@@ -78,6 +81,14 @@ export function useAppSettings({
         await settingsActions.openCurrentLibraryPathAction(settings.libraryPath);
     }, [settings.libraryPath, settingsActions]);
 
+    const chooseExternalBackupDir = useCallback(async (): Promise<void> => {
+        await settingsActions.chooseExternalBackupDirAction();
+    }, [settingsActions]);
+
+    const clearExternalBackupDir = useCallback(async (): Promise<void> => {
+        await settingsActions.clearExternalBackupDirAction();
+    }, [settingsActions]);
+
     useEffect(() => {
         void prepareSettings();
     }, [prepareSettings]);
@@ -109,7 +120,8 @@ export function useAppSettings({
 
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
     // depend on the whole object stop being invalidated on unrelated re-renders.
-    const { isPreparingSettings, isMigratingLibraryPath } = settingsActions;
+    const { isPreparingSettings, isMigratingLibraryPath, isSavingExternalBackupDir } =
+        settingsActions;
 
     return useMemo(
         () => ({
@@ -117,6 +129,7 @@ export function useAppSettings({
             settings,
             isPreparingSettings,
             isMigratingLibraryPath,
+            isSavingExternalBackupDir,
             openSettings,
             closeSettings,
             setImportMode,
@@ -124,12 +137,15 @@ export function useAppSettings({
             setCheckUpdatesOnStartup,
             chooseLibraryPath,
             openCurrentLibraryPath,
+            chooseExternalBackupDir,
+            clearExternalBackupDir,
         }),
         [
             settingsOpen,
             settings,
             isPreparingSettings,
             isMigratingLibraryPath,
+            isSavingExternalBackupDir,
             openSettings,
             closeSettings,
             setImportMode,
@@ -137,6 +153,8 @@ export function useAppSettings({
             setCheckUpdatesOnStartup,
             chooseLibraryPath,
             openCurrentLibraryPath,
+            chooseExternalBackupDir,
+            clearExternalBackupDir,
         ]
     );
 }

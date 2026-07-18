@@ -3,12 +3,14 @@ import type { AppSettings } from "../types/settings";
 import { resolveErrorMessage } from "../utils/error-message";
 import { executeChangeLibraryPath } from "../use-cases/change-library-path";
 import { initializeAppSettings } from "../use-cases/initialize-app-settings";
+import { chooseExternalBackupDirectory } from "../services/database-service";
 import { openLibraryDirectory } from "../services/library-service";
 import { useAsyncFlag } from "./use-async-flag";
 import {
     loadStoredSettings,
     persistSettings,
     updateStoredCheckUpdatesOnStartup,
+    updateStoredExternalBackupDir,
     updateStoredImportMode,
     updateStoredLibraryPath,
     updateStoredLoadRemoteImages,
@@ -23,12 +25,15 @@ type UseAppSettingsActionsOptions = {
 type UseAppSettingsActionsReturn = {
     isPreparingSettings: boolean;
     isMigratingLibraryPath: boolean;
+    isSavingExternalBackupDir: boolean;
     prepareSettings: () => Promise<void>;
     changeLibraryPath: (currentLibraryPath: string) => Promise<void>;
     setImportModeAction: (mode: AppSettings["importMode"]) => void;
     setLoadRemoteImagesAction: (loadRemoteImages: boolean) => void;
     setCheckUpdatesOnStartupAction: (checkUpdatesOnStartup: boolean) => void;
     openCurrentLibraryPathAction: (libraryPath: string) => Promise<void>;
+    chooseExternalBackupDirAction: () => Promise<void>;
+    clearExternalBackupDirAction: () => Promise<void>;
 };
 
 export function useAppSettingsActions({
@@ -37,6 +42,8 @@ export function useAppSettingsActions({
 }: UseAppSettingsActionsOptions): UseAppSettingsActionsReturn {
     const { isRunning: isPreparingSettings, runWithFlag: runPrepareSettings } = useAsyncFlag();
     const { isRunning: isMigratingLibraryPath, runWithFlag: runLibraryPathChange } =
+        useAsyncFlag();
+    const { isRunning: isSavingExternalBackupDir, runWithFlag: runSaveExternalBackupDir } =
         useAsyncFlag();
 
     const prepareSettings = useCallback(async (): Promise<void> => {
@@ -172,14 +179,49 @@ export function useAppSettingsActions({
         [onError]
     );
 
+    const chooseExternalBackupDirAction = useCallback(async (): Promise<void> => {
+        await runSaveExternalBackupDir(async () => {
+            try {
+                const selectedPath = await chooseExternalBackupDirectory();
+
+                if (!selectedPath) {
+                    return;
+                }
+
+                const nextSettings = await updateStoredExternalBackupDir(selectedPath);
+                setSettings(nextSettings);
+            } catch (error) {
+                logError("settings", "Failed to set the external backup folder.", error);
+                onError(
+                    resolveErrorMessage(error, "Failed to set the external backup folder.")
+                );
+            }
+        });
+    }, [onError, runSaveExternalBackupDir, setSettings]);
+
+    const clearExternalBackupDirAction = useCallback(async (): Promise<void> => {
+        await runSaveExternalBackupDir(async () => {
+            try {
+                const nextSettings = await updateStoredExternalBackupDir("");
+                setSettings(nextSettings);
+            } catch (error) {
+                logError("settings", "Failed to turn off the external backup.", error);
+                onError(resolveErrorMessage(error, "Failed to turn off the external backup."));
+            }
+        });
+    }, [onError, runSaveExternalBackupDir, setSettings]);
+
     return {
         isPreparingSettings,
         isMigratingLibraryPath,
+        isSavingExternalBackupDir,
         prepareSettings,
         changeLibraryPath,
         setImportModeAction,
         setLoadRemoteImagesAction,
         setCheckUpdatesOnStartupAction,
         openCurrentLibraryPathAction,
+        chooseExternalBackupDirAction,
+        clearExternalBackupDirAction,
     };
 }

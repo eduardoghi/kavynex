@@ -1,5 +1,5 @@
-import { Alert, Group, Paper, Stack, Text, Title } from "@mantine/core";
-import { Database, Download, Undo2, Upload } from "lucide-react";
+import { Alert, Group, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Database, Download, FolderClock, Undo2, Upload, X } from "lucide-react";
 import type { SettingsController } from "../../../hooks/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
 
@@ -17,7 +17,12 @@ type DatabaseSectionProps = Pick<
     | "requestUndoImport"
     | "cancelUndoImport"
     | "confirmUndoImportAction"
->;
+> & {
+    externalBackupDir: string;
+    isSavingExternalBackupDir: boolean;
+    onChooseExternalBackupDir: () => void;
+    onClearExternalBackupDir: () => void;
+};
 
 export function DatabaseSection({
     databaseBusy,
@@ -32,7 +37,13 @@ export function DatabaseSection({
     requestUndoImport,
     cancelUndoImport,
     confirmUndoImportAction,
+    externalBackupDir,
+    isSavingExternalBackupDir,
+    onChooseExternalBackupDir,
+    onClearExternalBackupDir,
 }: DatabaseSectionProps): JSX.Element {
+    const isBusy = databaseBusy !== "idle";
+
     return (
         <Stack gap="xs">
             <Group gap="sm">
@@ -165,6 +176,54 @@ export function DatabaseSection({
                             <Text size="sm">{databaseMessage.text}</Text>
                         </Alert>
                     )}
+                </Stack>
+            </Paper>
+
+            <Paper withBorder radius="md" p="sm">
+                <Stack gap="sm">
+                    <Group gap="sm">
+                        <FolderClock size={16} />
+                        <Text size="sm" fw={600}>
+                            Automatic external backup
+                        </Text>
+                    </Group>
+
+                    <Text size="sm" c="dimmed">
+                        The automatic backups above live next to the database, on the same disk, so
+                        a drive failure takes them with it. Choose an external folder (another drive
+                        or a network share) and Kavynex copies the database there once a day. Only
+                        the database is copied; back up the library folder separately.
+                    </Text>
+
+                    <TextInput
+                        label="External backup folder"
+                        value={externalBackupDir}
+                        readOnly
+                        placeholder="Off - no external backup folder selected"
+                    />
+
+                    <Group gap="sm">
+                        <AppButton
+                            appVariant="secondary"
+                            leftSection={<FolderClock size={16} />}
+                            onClick={onChooseExternalBackupDir}
+                            loading={isSavingExternalBackupDir}
+                            disabled={isBusy}
+                        >
+                            {externalBackupDir ? "Change backup folder" : "Choose backup folder"}
+                        </AppButton>
+
+                        {externalBackupDir && (
+                            <AppButton
+                                appVariant="ghost"
+                                leftSection={<X size={16} />}
+                                onClick={onClearExternalBackupDir}
+                                disabled={isBusy || isSavingExternalBackupDir}
+                            >
+                                Turn off
+                            </AppButton>
+                        )}
+                    </Group>
                 </Stack>
             </Paper>
         </Stack>

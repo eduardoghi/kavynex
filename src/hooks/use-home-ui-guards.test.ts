@@ -15,6 +15,7 @@ describe("useHomeUiGuards", () => {
             },
             isPreparingSettings: false,
             isMigratingLibraryPath: false,
+            isSavingExternalBackupDir: false,
             openSettings: vi.fn(),
             closeSettings: vi.fn(),
             setImportMode: vi.fn(),
@@ -22,6 +23,8 @@ describe("useHomeUiGuards", () => {
             setCheckUpdatesOnStartup: vi.fn(),
             chooseLibraryPath: vi.fn(),
             openCurrentLibraryPath: vi.fn(),
+            chooseExternalBackupDir: vi.fn(),
+            clearExternalBackupDir: vi.fn(),
             ...overrides,
         };
     }

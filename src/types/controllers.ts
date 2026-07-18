@@ -155,6 +155,7 @@ export type AppSettingsController = {
     settings: AppSettings;
     isPreparingSettings: boolean;
     isMigratingLibraryPath: boolean;
+    isSavingExternalBackupDir: boolean;
     openSettings: () => void;
     closeSettings: () => void;
     setImportMode: (mode: ImportMode) => void;
@@ -162,6 +163,8 @@ export type AppSettingsController = {
     setCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
     chooseLibraryPath: () => Promise<void>;
     openCurrentLibraryPath: () => Promise<void>;
+    chooseExternalBackupDir: () => Promise<void>;
+    clearExternalBackupDir: () => Promise<void>;
 };
 
 export type DiagnosticsController = {

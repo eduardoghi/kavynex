@@ -1,5 +1,6 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
+import { openFileDialog } from "../lib/tauri-platform";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 
@@ -36,6 +37,21 @@ export async function restoreDatabaseFromBackup(): Promise<void> {
  */
 export async function exportDatabase(destinationPath: string): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.EXPORT_DATABASE, { destinationPath });
+}
+
+/**
+ * Opens a directory picker for the automatic external backup folder (Settings > Database).
+ * Returns the chosen path, or null if the dialog was cancelled.
+ */
+export async function chooseExternalBackupDirectory(): Promise<string | null> {
+    const selection = await openFileDialog({ directory: true, multiple: false });
+
+    if (typeof selection !== "string") {
+        return null;
+    }
+
+    const trimmed = selection.trim();
+    return trimmed || null;
 }
 
 /**

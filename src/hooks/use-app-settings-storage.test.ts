@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     getStoredAppSettings,
+    setExternalBackupDir,
     setStoredAppSettings,
 } from "../services/app-settings-command-service";
 import {
@@ -8,6 +9,7 @@ import {
     loadStoredSettings,
     persistSettings,
     updateStoredCheckUpdatesOnStartup,
+    updateStoredExternalBackupDir,
     updateStoredImportMode,
     updateStoredLibraryPath,
     updateStoredLoadRemoteImages,
@@ -16,6 +18,7 @@ import {
 vi.mock("../services/app-settings-command-service", () => ({
     getStoredAppSettings: vi.fn(),
     setStoredAppSettings: vi.fn(),
+    setExternalBackupDir: vi.fn(),
 }));
 
 describe("use-app-settings-storage", () => {
@@ -23,6 +26,7 @@ describe("use-app-settings-storage", () => {
         vi.restoreAllMocks();
 
         vi.mocked(setStoredAppSettings).mockResolvedValue(undefined);
+        vi.mocked(setExternalBackupDir).mockResolvedValue(undefined);
         vi.mocked(getStoredAppSettings).mockResolvedValue({
             importMode: null,
             libraryPath: null,
@@ -283,5 +287,36 @@ describe("use-app-settings-storage", () => {
         });
 
         expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", true, true);
+    });
+
+    it("persists the external backup directory through its own command, not the whole-row write", async () => {
+        vi.mocked(getStoredAppSettings).mockResolvedValue({
+            importMode: "move",
+            libraryPath: "/library",
+            loadRemoteImages: "true",
+            checkUpdatesOnStartup: "true",
+            externalBackupDir: null,
+        });
+
+        const result = await updateStoredExternalBackupDir("  /mnt/backups  ");
+
+        // The path is trimmed and merged into the returned settings.
+        expect(result).toEqual({
+            importMode: "move",
+            libraryPath: "/library",
+            loadRemoteImages: true,
+            checkUpdatesOnStartup: true,
+            externalBackupDir: "/mnt/backups",
+        });
+
+        // It goes through the dedicated command; the whole-row settings write is never touched.
+        expect(setExternalBackupDir).toHaveBeenCalledWith("/mnt/backups");
+        expect(setStoredAppSettings).not.toHaveBeenCalled();
+    });
+
+    it("turns the external backup off with an empty path", async () => {
+        await updateStoredExternalBackupDir("");
+
+        expect(setExternalBackupDir).toHaveBeenCalledWith("");
     });
 });

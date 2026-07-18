@@ -24,6 +24,10 @@ type SettingsModalProps = {
     disableLibraryPathChange: boolean;
     libraryPathChangeDisabledReason: string;
     isMigratingLibraryPath: boolean;
+    externalBackupDir: string;
+    isSavingExternalBackupDir: boolean;
+    onChooseExternalBackupDir: () => void;
+    onClearExternalBackupDir: () => void;
 };
 
 export function SettingsModal({
@@ -42,6 +46,10 @@ export function SettingsModal({
     disableLibraryPathChange,
     libraryPathChangeDisabledReason,
     isMigratingLibraryPath,
+    externalBackupDir,
+    isSavingExternalBackupDir,
+    onChooseExternalBackupDir,
+    onClearExternalBackupDir,
 }: SettingsModalProps): JSX.Element {
     const controller = useSettingsController({ opened, libraryPath });
 
@@ -100,6 +108,10 @@ export function SettingsModal({
                     requestUndoImport={controller.requestUndoImport}
                     cancelUndoImport={controller.cancelUndoImport}
                     confirmUndoImportAction={controller.confirmUndoImportAction}
+                    externalBackupDir={externalBackupDir}
+                    isSavingExternalBackupDir={isSavingExternalBackupDir}
+                    onChooseExternalBackupDir={onChooseExternalBackupDir}
+                    onClearExternalBackupDir={onClearExternalBackupDir}
                 />
 
                 <AppUpdateSection

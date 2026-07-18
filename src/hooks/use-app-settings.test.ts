@@ -60,6 +60,9 @@ describe("useAppSettings", () => {
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
+            isSavingExternalBackupDir: false,
+            chooseExternalBackupDirAction: vi.fn(),
+            clearExternalBackupDirAction: vi.fn(),
         });
 
         mockedRegisterLibraryAssetScope.mockResolvedValue(undefined);
@@ -173,6 +176,9 @@ describe("useAppSettings", () => {
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
+            isSavingExternalBackupDir: false,
+            chooseExternalBackupDirAction: vi.fn(),
+            clearExternalBackupDirAction: vi.fn(),
         });
 
         rerender({ onError: vi.fn() });
@@ -209,6 +215,9 @@ describe("useAppSettings", () => {
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction: nextOpenCurrentLibraryPathAction,
+            isSavingExternalBackupDir: false,
+            chooseExternalBackupDirAction: vi.fn(),
+            clearExternalBackupDirAction: vi.fn(),
         });
 
         rerender({ onError: vi.fn() });
@@ -245,6 +254,9 @@ describe("useAppSettings", () => {
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
+            isSavingExternalBackupDir: false,
+            chooseExternalBackupDirAction: vi.fn(),
+            clearExternalBackupDirAction: vi.fn(),
         });
 
         rerender({ onError: vi.fn() });

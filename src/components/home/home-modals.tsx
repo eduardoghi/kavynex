@@ -176,6 +176,10 @@ export function HomeModals({
                 disableLibraryPathChange={uiGuards.disableLibraryPathChange}
                 libraryPathChangeDisabledReason={uiGuards.libraryPathChangeDisabledReason}
                 isMigratingLibraryPath={settings.isMigratingLibraryPath}
+                externalBackupDir={settings.settings.externalBackupDir}
+                isSavingExternalBackupDir={settings.isSavingExternalBackupDir}
+                onChooseExternalBackupDir={() => void settings.chooseExternalBackupDir()}
+                onClearExternalBackupDir={() => void settings.clearExternalBackupDir()}
             />
 
             <DiagnosticsModal

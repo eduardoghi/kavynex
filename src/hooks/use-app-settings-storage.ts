@@ -1,6 +1,7 @@
 import type { AppSettings, ImportMode } from "../types/settings";
 import {
     getStoredAppSettings,
+    setExternalBackupDir,
     setStoredAppSettings,
 } from "../services/app-settings-command-service";
 
@@ -136,4 +137,19 @@ export function updateStoredCheckUpdatesOnStartup(
     return enqueueSettingsUpdate(() =>
         updateStoredField((current) => ({ ...current, checkUpdatesOnStartup }))
     );
+}
+
+// The external backup directory has its own backend command (not the whole-row write persistSettings
+// does), so this does not go through updateStoredField: it calls the dedicated command and merges the
+// new value into the current settings. Still enqueued so it stays ordered with the other updates and
+// the returned settings reflect a consistent snapshot. An empty string turns the feature off.
+export function updateStoredExternalBackupDir(externalBackupDir: string): Promise<AppSettings> {
+    return enqueueSettingsUpdate(async () => {
+        const current = await loadStoredSettings();
+        const normalized = normalizeExternalBackupDir(externalBackupDir);
+
+        await setExternalBackupDir(normalized);
+
+        return { ...current, externalBackupDir: normalized };
+    });
 }

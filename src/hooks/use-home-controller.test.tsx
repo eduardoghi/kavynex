@@ -88,6 +88,7 @@ const mockSettingsState = {
     },
     isPreparingSettings: false,
     isMigratingLibraryPath: false,
+    isSavingExternalBackupDir: false,
     openSettings: vi.fn(),
     closeSettings: vi.fn(),
     setImportMode: vi.fn(),
@@ -95,6 +96,8 @@ const mockSettingsState = {
     setCheckUpdatesOnStartup: vi.fn(),
     chooseLibraryPath: vi.fn(),
     openCurrentLibraryPath: vi.fn(),
+    chooseExternalBackupDir: vi.fn(),
+    clearExternalBackupDir: vi.fn(),
 };
 
 const mockChannelsState = {

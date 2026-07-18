@@ -76,6 +76,7 @@ export type TauriCommandReturns = {
     check_database_integrity: DatabaseIntegrityReport;
     get_app_settings: StoredAppSettingsPayload;
     set_app_settings: void;
+    set_external_backup_dir: void;
 
     list_channels: Channel[];
     find_channel_by_youtube_handle: Channel | null;

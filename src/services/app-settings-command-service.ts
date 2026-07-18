@@ -29,3 +29,13 @@ export async function setStoredAppSettings(
         checkUpdatesOnStartup,
     });
 }
+
+/**
+ * Persists the external database backup directory. An empty string turns the feature off. Its own
+ * command rather than a field on {@link setStoredAppSettings}, so toggling the backup destination
+ * never has to round-trip the whole settings form. The backend validates the path is an existing
+ * directory.
+ */
+export async function setExternalBackupDir(path: string): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.SET_EXTERNAL_BACKUP_DIR, { path });
+}
