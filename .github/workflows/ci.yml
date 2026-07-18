@@ -17,7 +17,11 @@ concurrency:
 jobs:
     frontend:
         name: Frontend
-        runs-on: ubuntu-latest
+        # Pinned rather than `ubuntu-latest` for the same reason as the rust job below: `-latest`
+        # silently moves to a new OS major (the 2026-07-14 run already saw it happen for macOS).
+        # This job ships nothing, but pinning keeps its toolchain from shifting without a deliberate
+        # bump - the same rule the whole repo follows.
+        runs-on: ubuntu-22.04
         # Same reasoning as the rust job below: never run toward the 6h default.
         timeout-minutes: 30
         steps:
@@ -169,7 +173,8 @@ jobs:
 
     audit:
         name: Cargo audit and deny
-        runs-on: ubuntu-latest
+        # Pinned like the rust job below; see its comment on why `-latest` is avoided repo-wide.
+        runs-on: ubuntu-22.04
         timeout-minutes: 30
         steps:
             - name: Checkout repository
@@ -229,7 +234,9 @@ jobs:
 
     rust-coverage:
         name: "Rust coverage (floor: 60% lines)"
-        runs-on: ubuntu-latest
+        # Pinned like the rust job; see its comment. Coverage is measured on this exact image, so a
+        # silent OS-major jump could move the number for a reason unrelated to the tests.
+        runs-on: ubuntu-22.04
         timeout-minutes: 30
         # A low backstop floor, not a tight per-PR ratchet. This job publishes the per-file
         # coverage table AND fails only if line coverage falls under a deliberately conservative

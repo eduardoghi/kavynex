@@ -18,7 +18,9 @@ concurrency:
 jobs:
     mutation:
         name: Mutation testing
-        runs-on: ubuntu-latest
+        # Pinned rather than `ubuntu-latest`, matching ci.yml's rust job: `-latest` can silently jump
+        # an OS major, which would move a mutation score for a reason unrelated to the tests.
+        runs-on: ubuntu-22.04
         # ~6.2k mutants; a full run measures ~29 minutes on a developer machine, and the 2-vCPU
         # runner is slower, so 60 left no real margin. This is a weekly scheduled run, not a
         # per-PR gate, so a longer wall-clock is fine - and a timeout here would report as a
@@ -49,7 +51,8 @@ jobs:
 
     rust-mutation:
         name: Rust mutation testing
-        runs-on: ubuntu-latest
+        # Pinned like the job above and ci.yml's rust job; see those comments.
+        runs-on: ubuntu-22.04
         # ~175 mutants across the four examined modules, each rebuilt and tested; the 60-minute
         # budget of the frontend job above is too tight for that on the 2-vCPU runner, and this is
         # a weekly scheduled run, not a per-PR gate, so a longer wall-clock is fine.

@@ -39,7 +39,8 @@ jobs:
     # ref already passed ci.yml's identical checks).
     audit:
         name: Cargo audit and deny
-        runs-on: ubuntu-latest
+        # Pinned like the build matrix below; `-latest` can silently jump an OS major mid-release.
+        runs-on: ubuntu-22.04
         timeout-minutes: 60
         # No secrets are needed to read the lockfile; this job never gets the signing key.
         permissions:
@@ -315,7 +316,8 @@ jobs:
     checksums:
         name: Publish checksums
         needs: publish-tauri
-        runs-on: ubuntu-latest
+        # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
+        runs-on: ubuntu-22.04
         timeout-minutes: 60
         permissions:
             contents: write
