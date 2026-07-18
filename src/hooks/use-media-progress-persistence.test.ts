@@ -54,6 +54,35 @@ describe("useMediaProgressPersistence", () => {
         expect(onSave).toHaveBeenCalledWith(7, 25);
     });
 
+    it("does not save when only the onSaveProgress callback identity changes", () => {
+        const element = videoElementAt(30);
+
+        const { rerender, unmount } = renderHook(
+            ({ save }: { save: SaveProgress }) =>
+                useMediaProgressPersistence(
+                    createMedia({ id: 7, progress_seconds: 30 }),
+                    element,
+                    save
+                ),
+            { initialProps: { save: onSave } }
+        );
+
+        onSave.mockClear();
+
+        // A fresh callback identity (the real hook chain rebuilds these) must not trigger the
+        // unmount-only save: re-running that cleanup mid-session was the bug this guards against.
+        const nextSave = vi.fn<SaveProgress>();
+        rerender({ save: nextSave });
+
+        expect(onSave).not.toHaveBeenCalled();
+        expect(nextSave).not.toHaveBeenCalled();
+
+        // The real unmount still flushes exactly once, through the latest callback.
+        unmount();
+        expect(nextSave).toHaveBeenCalledTimes(1);
+        expect(nextSave).toHaveBeenCalledWith(7, 30);
+    });
+
     it("never persists progress for watched media", () => {
         const element = videoElementAt(99);
 
