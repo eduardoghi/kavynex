@@ -211,14 +211,58 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
 /// up pasted into a public bug report, so any occurrence of the path is replaced regardless of
 /// which line it shows up in (the `Command-line config` echo, or any other yt-dlp message that
 /// happens to mention it).
+///
+/// The match is not a bare substring compare. yt-dlp's argv echo prints the path verbatim, but
+/// another message could print it with the separators swapped (yt-dlp normalizes to `/` internally
+/// on Windows) or with a different ASCII casing (Windows paths are case-insensitive). Each of those
+/// full-path forms is redacted. The bare filename is deliberately left alone: it is generic
+/// ("cookies.txt"), appears in benign hint text, and does not reveal the user's profile layout - it
+/// is the directory portion that does.
 pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
-    match cookies_path
+    let Some(path) = cookies_path
         .map(str::trim)
         .filter(|value| !value.is_empty())
-    {
-        Some(path) if line.contains(path) => line.replace(path, "<redacted>"),
-        _ => line.to_string(),
+    else {
+        return line.to_string();
+    };
+
+    // The plausible representations of the same full path: verbatim, and with either separator
+    // convention. Case is handled by the ASCII-insensitive matcher below.
+    let variants = [
+        path.to_string(),
+        path.replace('\\', "/"),
+        path.replace('/', "\\"),
+    ];
+
+    let mut result = line.to_string();
+    for variant in variants {
+        result = replace_ascii_case_insensitive(&result, &variant, "<redacted>");
     }
+    result
+}
+
+/// Replaces every ASCII-case-insensitive occurrence of `needle` in `haystack`. Uses
+/// `to_ascii_lowercase`, which only folds ASCII `A-Z` and so is byte-length preserving: an offset
+/// found in the lowercased copy indexes the original correctly even when the path carries non-ASCII
+/// bytes (a Unicode username), so this never slices a UTF-8 char boundary.
+fn replace_ascii_case_insensitive(haystack: &str, needle: &str, replacement: &str) -> String {
+    if needle.is_empty() {
+        return haystack.to_string();
+    }
+
+    let haystack_lower = haystack.to_ascii_lowercase();
+    let needle_lower = needle.to_ascii_lowercase();
+
+    let mut result = String::with_capacity(haystack.len());
+    let mut cursor = 0;
+    while let Some(offset) = haystack_lower[cursor..].find(&needle_lower) {
+        let start = cursor + offset;
+        result.push_str(&haystack[cursor..start]);
+        result.push_str(replacement);
+        cursor = start + needle.len();
+    }
+    result.push_str(&haystack[cursor..]);
+    result
 }
 
 /// Extracts the value passed to `--cookies` in an argv, so a failure `detail` built from
@@ -1070,6 +1114,35 @@ mod tests {
         let line = "[debug] Command-line config: ['-v', '--cookies-from-browser', 'firefox']";
 
         assert_eq!(redact_cookies_path_from_line(line, None), line);
+    }
+
+    #[test]
+    fn redact_cookies_path_catches_separator_and_case_variants() {
+        // yt-dlp could print the same Windows path with forward slashes (its internal form) or a
+        // different casing; the full path must be redacted in every such form, not only verbatim.
+        let configured = r"C:\Users\Alice\AppData\cookies.txt";
+
+        let forward_slashes = "[debug] loading cookies from C:/Users/Alice/AppData/cookies.txt";
+        let redacted = redact_cookies_path_from_line(forward_slashes, Some(configured));
+        assert!(!redacted.contains("Alice"));
+        assert!(redacted.contains("<redacted>"));
+
+        let lowercased = r"[debug] loading cookies from c:\users\alice\appdata\cookies.txt";
+        let redacted = redact_cookies_path_from_line(lowercased, Some(configured));
+        assert!(!redacted.contains("alice"));
+        assert!(redacted.contains("<redacted>"));
+    }
+
+    #[test]
+    fn redact_cookies_path_leaves_the_generic_filename_alone() {
+        // The bare filename is generic and shows up in benign hint text; only the full path leaks
+        // the profile layout, so a line mentioning just "cookies.txt" must survive untouched.
+        let line = "provide a cookies.txt file from a verified account";
+
+        assert_eq!(
+            redact_cookies_path_from_line(line, Some(r"C:\Users\Alice\cookies.txt")),
+            line
+        );
     }
 
     #[test]
