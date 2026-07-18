@@ -29,6 +29,15 @@ const CORRUPT_ROTATED_GENERATIONS: usize = 2;
 const EXTERNAL_BACKUP_FILE_NAME: &str = "kavynex-backup.db";
 const EXTERNAL_BACKUP_ROTATED_GENERATIONS: usize = 2;
 
+// Serializes `backup_database` so at most one snapshot runs at a time. Two independent schedulers
+// drive it - the pool-init snapshot (services::database) and the periodic loop (lib.rs) - and the
+// is_recent() throttle is mtime-based, so it only suppresses a second call once the first has
+// finished and refreshed `.bak`. While the first is still vacuuming, a second would pass is_recent()
+// too and race it on the shared `.bak.tmp` and the rotate/rename chain, at worst promoting a
+// half-written snapshot or burning a rotated generation. A single static lock is enough: there is
+// one database process-wide and, unlike the pool, this lock holds no state a test needs to inject.
+static BACKUP_IN_PROGRESS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
     let name = db_path
         .file_name()
@@ -266,6 +275,11 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     if !db_path.exists() {
         return Ok(false);
     }
+
+    // Wait for any in-flight backup rather than skipping: once it releases the lock it has already
+    // refreshed `.bak`, so the is_recent() check below then sees it and this caller returns early
+    // without a redundant second vacuum. Waiting (not try_lock) is what makes that de-dup work.
+    let _guard = BACKUP_IN_PROGRESS.lock().await;
 
     let backup = backup_path(db_path);
 
@@ -1216,6 +1230,46 @@ mod tests {
 
         assert!(backup_database(&db).await.unwrap());
         assert!(!backup_database(&db).await.unwrap());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn concurrent_backups_run_one_at_a_time() {
+        // Model the two schedulers firing together (pool-init snapshot + periodic tick): with the
+        // in-progress lock, exactly one call writes the snapshot and the other, once it acquires
+        // the lock, sees the fresh `.bak` via is_recent and skips. Without the lock both would pass
+        // is_recent (neither `.bak` written yet) and fight over the shared `.bak.tmp`, so both would
+        // return true - which this asserts against.
+        let dir = temp_dir("concurrent");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        let (first, second) = tokio::join!(backup_database(&db), backup_database(&db));
+        let first = first.unwrap();
+        let second = second.unwrap();
+
+        assert_ne!(
+            first, second,
+            "one backup must run and the other skip, not both"
+        );
+        assert!(backup_path(&db).exists());
+
+        // The promoted `.bak` must be a whole database, not a half-written `.bak.tmp`.
+        let options = SqliteConnectOptions::new()
+            .filename(backup_path(&db))
+            .create_if_missing(false);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let (value,): (String,) = sqlx::query_as("SELECT v FROM t LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(value, "hello");
+        pool.close().await;
 
         let _ = std::fs::remove_dir_all(&dir);
     }
