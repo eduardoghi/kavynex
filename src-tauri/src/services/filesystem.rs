@@ -59,13 +59,14 @@ fn fsync_file(path: &Path) -> AppResult<()> {
     })
 }
 
-/// Flushes the directory entry created by the rename in `copy_file_atomic` to disk. On common
-/// Linux/Unix filesystems a crash right after a rename can otherwise lose the new directory entry
-/// even though the file's own data was already fsynced, so the destination could vanish after a
-/// power loss - the same durability gap already closed for the db-backup and library-migration
-/// commit markers. Best effort: any failure is ignored.
+/// Flushes the directory entry a create or rename produced to disk. On common Linux/Unix
+/// filesystems a crash right after a create/rename can otherwise lose the new directory entry
+/// even though the file's own data was already fsynced, so the file could vanish after a power
+/// loss. Shared by `copy_file_atomic` and by the db-backup / library-recovery marker writes and
+/// swaps, which need the same directory-entry durability for the files their crash recovery reads.
+/// Best effort: any failure is ignored.
 #[cfg(unix)]
-fn fsync_parent_dir(path: &Path) {
+pub(crate) fn fsync_parent_dir(path: &Path) {
     if let Some(parent) = path.parent() {
         if let Ok(dir) = fs::File::open(parent) {
             let _ = dir.sync_all();
@@ -80,7 +81,7 @@ fn fsync_parent_dir(path: &Path) {
 /// no-op assumed NTFS never needed it, which is not something the code could demonstrate. Best
 /// effort: any failure degrades to the previous no-op behavior and is ignored.
 #[cfg(windows)]
-fn fsync_parent_dir(path: &Path) {
+pub(crate) fn fsync_parent_dir(path: &Path) {
     use std::os::windows::ffi::OsStrExt;
 
     let Some(parent) = path.parent() else {

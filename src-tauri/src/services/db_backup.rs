@@ -409,6 +409,10 @@ pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
 
     std::fs::rename(&staged, db_path)
         .map_err(|error| backup_error("failed to resume an interrupted restore", error))?;
+    // Flush the directory entry so the swap survives a crash right after it; otherwise the next
+    // launch could find the database missing again and re-run this from a staging file that the
+    // rename appeared to consume.
+    crate::services::filesystem::fsync_parent_dir(db_path);
 
     logger::warn(
         "db_backup",
@@ -594,6 +598,8 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
 
     std::fs::rename(&staged, db_path)
         .map_err(|error| backup_error("failed to restore database from backup", error))?;
+    // Flush the directory entry so the restored database is durably in place, not just staged.
+    crate::services::filesystem::fsync_parent_dir(db_path);
 
     logger::info(
         "db_backup",
@@ -632,6 +638,9 @@ fn import_applying_marker_path(db_path: &Path) -> PathBuf {
 
 /// Writes the marker durably. `sync_all` matters here: the window this guards is a process that
 /// dies moments later, so a marker still sitting in the OS write cache would be worthless.
+/// `fsync_parent_dir` flushes the directory entry too: without it a crash right after the create
+/// can lose the entry on common Linux/Unix filesystems even though the bytes were fsynced, so the
+/// marker the recovery in `apply_pending_database_import` reads would be absent on reboot.
 fn write_import_applying_marker(marker: &Path) -> AppResult<()> {
     use std::io::Write;
 
@@ -639,7 +648,9 @@ fn write_import_applying_marker(marker: &Path) -> AppResult<()> {
         .map_err(|error| backup_error("failed to mark the import as in progress", error))?;
     file.write_all(b"import swap in progress\n")
         .and_then(|_| file.sync_all())
-        .map_err(|error| backup_error("failed to mark the import as in progress", error))
+        .map_err(|error| backup_error("failed to mark the import as in progress", error))?;
+    crate::services::filesystem::fsync_parent_dir(marker);
+    Ok(())
 }
 
 /// Exports a consistent, self-contained snapshot of the database to a user-chosen path via
@@ -1065,6 +1076,12 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
 
         return Err(backup_error("failed to apply the imported database", error));
     }
+
+    // The imported database is in place; flush the directory entry so the swap is durable before
+    // the marker is cleared. Clearing the marker before this is fine - a crash in between only
+    // leaves a stale marker with a whole database at `db_path`, which the recovery branch above
+    // rejects because `.pre-import` no longer holds the sole copy.
+    crate::services::filesystem::fsync_parent_dir(db_path);
 
     let _ = std::fs::remove_file(&marker);
 
