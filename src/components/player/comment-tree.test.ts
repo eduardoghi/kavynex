@@ -53,6 +53,24 @@ describe("buildCommentTree", () => {
         expect(tree.map((node) => node.text).sort()).toEqual(["first", "second"]);
     });
 
+    it("keeps a comment whose chain leads into a cycle it is not part of", () => {
+        // A "tadpole": the tail comment (t) points into a b<->c cycle. Every node on that walk
+        // shares the same "never reaches a root" outcome, which the memoized cycle check must
+        // resolve identically whether the walk starts at t, b or c - so t, like b and c, surfaces
+        // at the top level rather than being lost inside the island.
+        const tree = buildCommentTree(
+            [
+                comment({ id: 1, comment_id: "b", parent_comment_id: "c", text: "b" }),
+                comment({ id: 2, comment_id: "c", parent_comment_id: "b", text: "c" }),
+                comment({ id: 3, comment_id: "t", parent_comment_id: "b", text: "tail" }),
+            ],
+            "newest"
+        );
+
+        expect(countCommentsInTree(tree)).toBe(3);
+        expect(tree.map((node) => node.text).sort()).toEqual(["b", "c", "tail"]);
+    });
+
     it("keeps a comment that names itself as its parent", () => {
         const tree = buildCommentTree(
             [comment({ id: 1, comment_id: "a", parent_comment_id: "a", text: "self" })],
