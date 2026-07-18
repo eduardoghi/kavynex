@@ -12,6 +12,7 @@ use hyper::body::Bytes;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use tauri::AppHandle;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::lookup_host;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -31,6 +32,64 @@ use crate::utils::naming::unique_temp_suffix;
 use crate::utils::process::{hide_console_async, read_process_error};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
+
+/// Cap on how much stdout/stderr is retained from a yt-dlp thumbnail/avatar run. These commands
+/// are far less chatty than a full download, but `wait_with_output` would buffer their entire
+/// output unbounded; this keeps memory (and the error detail built from it) bounded while still
+/// draining the pipes fully so the child can exit - a cap that stopped reading would deadlock a
+/// child that outran it.
+const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
+
+/// Drains an async pipe to its end, retaining at most `max_bytes`. Bytes past the cap are read and
+/// discarded rather than left unread, so the child never blocks on a full pipe.
+async fn read_drain_capped_async(
+    stream: Option<impl AsyncRead + Unpin>,
+    max_bytes: usize,
+) -> Vec<u8> {
+    let mut buffer: Vec<u8> = Vec::new();
+
+    let Some(mut stream) = stream else {
+        return buffer;
+    };
+
+    let mut chunk = [0u8; 8192];
+
+    loop {
+        match stream.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(read) => {
+                if buffer.len() < max_bytes {
+                    let take = (max_bytes - buffer.len()).min(read);
+                    buffer.extend_from_slice(&chunk[..take]);
+                }
+            }
+        }
+    }
+
+    buffer
+}
+
+/// `Child::wait_with_output` with each stream capped at `MAX_PROCESS_OUTPUT_BYTES`. Reads both
+/// pipes concurrently with the wait so neither can deadlock the other (mirroring std's own
+/// implementation), but bounded.
+async fn wait_with_capped_output(
+    mut child: tokio::process::Child,
+) -> std::io::Result<std::process::Output> {
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let (status, stdout_buf, stderr_buf) = tokio::join!(
+        child.wait(),
+        read_drain_capped_async(stdout, MAX_PROCESS_OUTPUT_BYTES),
+        read_drain_capped_async(stderr, MAX_PROCESS_OUTPUT_BYTES),
+    );
+
+    Ok(std::process::Output {
+        status: status?,
+        stdout: stdout_buf,
+        stderr: stderr_buf,
+    })
+}
 
 /// Runs a yt-dlp thumbnail/avatar command under the shared timeout, capturing its output.
 ///
@@ -68,7 +127,7 @@ async fn run_thumbnail_yt_dlp_with_timeout(
     tokio::select! {
         output_result = timeout(
             Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            child.wait_with_output(),
+            wait_with_capped_output(child),
         ) => match output_result {
             Ok(result) => result.map_err(|e| {
                 AppError::from_code(

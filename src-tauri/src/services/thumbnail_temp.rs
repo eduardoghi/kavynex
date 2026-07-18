@@ -87,10 +87,38 @@ fn ensure_generated_thumbnail_exists(
 /// for the child's lifetime so the app-exit handler (`lib.rs`) tree-kills it instead of leaving
 /// an orphan. These local-media thumbnail generations run synchronously via `std::process`,
 /// outside the per-download and yt-dlp registries, so they would otherwise be untracked on exit.
+/// Cap on how much stdout/stderr is retained from the local ffmpeg thumbnail run. `wait_with_output`
+/// would buffer its whole output unbounded; this keeps memory bounded while still draining the pipes
+/// fully. Draining (rather than capping-and-stopping) matters here because this path has no timeout
+/// wrapping it, so a child blocked on a full pipe would hang `wait()` forever. Mirrors the async
+/// twin in thumbnail_download.rs.
+const MAX_FFMPEG_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
+
+/// Drains a pipe to its end, retaining at most `max_bytes`; bytes past the cap are read and
+/// discarded rather than left unread.
+fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize) -> Vec<u8> {
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 8192];
+
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => {
+                if buffer.len() < max_bytes {
+                    let take = (max_bytes - buffer.len()).min(read);
+                    buffer.extend_from_slice(&chunk[..take]);
+                }
+            }
+        }
+    }
+
+    buffer
+}
+
 fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::process::Output> {
     hide_console(&mut command);
 
-    let child = command
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -104,11 +132,32 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
     // Tracked for the child's lifetime; the guard unregisters the pid when this function returns.
     let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(child.id()));
 
-    child.wait_with_output().map_err(|e| {
+    // Read stderr on a separate thread while stdout is read here, so neither pipe filling can
+    // deadlock the other (what `wait_with_output` does internally), each capped for memory.
+    let stderr = child.stderr.take();
+    let stderr_handle = std::thread::spawn(move || match stderr {
+        Some(stream) => read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
+        None => Vec::new(),
+    });
+
+    let stdout = match child.stdout.take() {
+        Some(stream) => read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
+        None => Vec::new(),
+    };
+
+    let status = child.wait().map_err(|e| {
         AppError::from_code(
             AppErrorCode::FfmpegExecFailed,
             format!("failed to execute ffmpeg: {e}"),
         )
+    })?;
+
+    let stderr = stderr_handle.join().unwrap_or_default();
+
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
     })
 }
 

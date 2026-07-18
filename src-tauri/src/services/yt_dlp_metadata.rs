@@ -28,6 +28,11 @@ const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
 // Generous: even very large comment sets fit well under this.
 const MAX_YT_DLP_JSON_BYTES: u64 = 128 * 1024 * 1024; // 128 MiB
 
+// Cap on the stderr log lines kept from a metadata/comments/format run and handed to the frontend
+// as `terminal_logs`. `-v` is always passed, so a chatty failure can emit thousands of lines;
+// keep only the most recent, matching yt_dlp_download's stderr ring buffer.
+const MAX_CAPTURED_STDERR_LINES: usize = 100;
+
 /// Reads yt-dlp stdout, keeping the JSON payload line and the useful log lines, but never
 /// buffering more than `max_bytes`. Returns `(json_payload, log_lines, overflowed)`, where
 /// `overflowed` means the output exceeded the cap (and the payload may be truncated).
@@ -83,7 +88,15 @@ pub fn sanitize_filename_component(value: &str) -> String {
         .join("_");
 
     if compact.is_empty() {
-        "media".to_string()
+        return "media".to_string();
+    }
+
+    // yt-dlp reads a leading '-' as an option, so a component that sanitizes to one starting with
+    // '-' is prefixed with '_'. Rare (extractor/id come from yt-dlp's own extractor, not free-form
+    // text), but this mirrors the leading-dash guard in yt_dlp_download::is_valid_format_id and
+    // keeps the value safe wherever the resulting file_prefix feeds an argv position.
+    if compact.starts_with('-') {
+        format!("_{compact}")
     } else {
         compact
     }
@@ -348,6 +361,14 @@ async fn run_yt_dlp_and_capture_json(
             let line = line_value.trim_end().to_string();
 
             if should_keep_terminal_line(&line) {
+                // Bound memory (and the IPC payload these lines become in `terminal_logs`) on a
+                // chatty failure - retry storms, throttling notices - since `-v` is always passed
+                // here. Keep the most recent lines, the same ring-buffer cap the download flow's
+                // stderr uses (yt_dlp_download::MAX_CAPTURED_STDERR_LINES).
+                if log_lines.len() >= MAX_CAPTURED_STDERR_LINES {
+                    log_lines.remove(0);
+                }
+
                 log_lines.push(line);
             }
         }
