@@ -72,6 +72,9 @@ jobs:
               with:
                   toolchain: 1.96.0
 
+            # These apt packages are intentionally unpinned, like ci.yml/release.yml: exact pins on
+            # a hosted image go stale as the archive drops old versions and break the build for a
+            # reason unrelated to this project; they are dev headers, not shipped in any bundle.
             - name: Install Linux dependencies
               run: |
                   sudo apt-get update
