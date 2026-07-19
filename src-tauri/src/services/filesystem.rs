@@ -40,10 +40,11 @@ fn build_temp_destination_path(destination: &Path) -> AppResult<PathBuf> {
 }
 
 /// Flushes a freshly written file's data and metadata to disk. Called before the rename in
-/// `copy_file_atomic` so a power loss cannot leave a truncated or zero-length file at the
-/// destination once the rename has been journalled. The file is opened for writing because
-/// Windows' `FlushFileBuffers` (what `sync_all` maps to) requires a writable handle.
-fn fsync_file(path: &Path) -> AppResult<()> {
+/// `copy_file_atomic` (and by the db-backup staging copies) so a power loss cannot leave a
+/// truncated or zero-length file that a following rename then makes the live file. The file is
+/// opened for writing because Windows' `FlushFileBuffers` (what `sync_all` maps to) requires a
+/// writable handle.
+pub(crate) fn fsync_file(path: &Path) -> AppResult<()> {
     let file = fs::OpenOptions::new().write(true).open(path).map_err(|e| {
         AppError::from_code(
             AppErrorCode::FileCopyFailed,
@@ -227,12 +228,16 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
 
     let temp_destination = build_temp_destination_path(destination)?;
 
-    fs::copy(source, &temp_destination).map_err(|e| {
-        AppError::from_code(
+    if let Err(e) = fs::copy(source, &temp_destination) {
+        // A failed copy (disk full, antivirus, permissions) can still leave a partial temp file
+        // behind. Remove it here, mirroring the fsync/rename error branches below, so a failure
+        // never strands a `.tmp-` scratch file at the destination.
+        let _ = fs::remove_file(&temp_destination);
+        return Err(AppError::from_code(
             AppErrorCode::FileCopyFailed,
             format!("failed to copy file: {e}"),
-        )
-    })?;
+        ));
+    }
 
     // Flush the copied bytes to disk before the rename. The rename is atomic against a
     // process crash, but without this a power loss could leave a truncated or zero-length
@@ -656,6 +661,18 @@ pub fn find_best_matching_file(
     Ok(matches.remove(0))
 }
 
+/// True when a directory entry is a symbolic link, read from the entry's own type without
+/// following it. Recursive directory scans use this to refuse to descend into a symlinked
+/// directory: one pointing at an ancestor (or itself) would otherwise recurse forever, and the
+/// library never creates symlinks of its own, so skipping any it finds loses nothing legitimate
+/// while making a hand-edited or cloud-synced library that contains one safe to walk.
+pub(crate) fn dir_entry_is_symlink(entry: &fs::DirEntry) -> bool {
+    entry
+        .file_type()
+        .map(|file_type| file_type.is_symlink())
+        .unwrap_or(false)
+}
+
 pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
     if !source_dir.exists() {
         return Ok(());
@@ -687,6 +704,12 @@ pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> App
                 format!("failed to read directory entry: {e}"),
             )
         })?;
+
+        // Skip symlinks before any is_dir()/is_file() check (both follow the link): a symlinked
+        // directory would let the recursion escape the tree or loop forever.
+        if dir_entry_is_symlink(&entry) {
+            continue;
+        }
 
         let source_path = entry.path();
         let destination_path = destination_dir.join(entry.file_name());
@@ -737,6 +760,13 @@ pub fn migrate_directory_contents(source_dir: &Path, destination_dir: &Path) -> 
                 format!("failed to read directory entry: {e}"),
             )
         })?;
+
+        // Skip symlinks before any is_dir()/is_file() check (both follow the link): a symlinked
+        // directory would let the recursion escape the tree or loop forever, and it must never be
+        // removed as if it were a real subdirectory of the library being migrated.
+        if dir_entry_is_symlink(&entry) {
+            continue;
+        }
 
         let source_path = entry.path();
         let destination_path = destination_dir.join(entry.file_name());
@@ -804,6 +834,34 @@ mod tests {
         ))
     }
 
+    // Symlink creation is unprivileged on Unix but needs Developer Mode/admin on Windows, so the
+    // cycle-safety test runs on Unix only. The guarded code (`dir_entry_is_symlink`) is
+    // platform-independent; this exercises it where a symlink can always be created.
+    #[cfg(unix)]
+    #[test]
+    fn copy_directory_contents_does_not_follow_a_symlink_cycle() {
+        use std::os::unix::fs::symlink;
+
+        let base = unique_test_dir();
+        let source = base.join("source");
+        let nested = source.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(source.join("real.txt"), b"data").unwrap();
+
+        // A symlink inside the tree pointing back at its own root: following it would recurse
+        // forever. Without the symlink guard this call would overflow the stack rather than return.
+        symlink(&source, nested.join("loop")).unwrap();
+
+        let destination = base.join("destination");
+        copy_directory_contents(&source, &destination).unwrap();
+
+        // The real file is copied; the symlink is skipped, so no `loop` entry is carried over.
+        assert!(destination.join("real.txt").is_file());
+        assert!(!destination.join("nested").join("loop").exists());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
     /// Names of the `.<file>.backup-<suffix>` scratch files `replace_file_safely` creates, so a
     /// test can assert it cleaned up after itself rather than leaving one in the library.
     fn leftover_backup_names(dir: &Path) -> Vec<String> {
@@ -835,7 +893,10 @@ mod tests {
 
         assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
         assert_eq!(fs::read(&destination).unwrap(), b"an existing user file");
-        assert!(source.exists(), "a rejected copy must not consume the source");
+        assert!(
+            source.exists(),
+            "a rejected copy must not consume the source"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -856,7 +917,10 @@ mod tests {
         assert_eq!(fs::read(&destination).unwrap(), b"an existing user file");
         // A move that refused to happen must leave the source in place: removing it here would
         // destroy the only copy of the file the caller asked to move.
-        assert!(source.exists(), "a rejected move must not consume the source");
+        assert!(
+            source.exists(),
+            "a rejected move must not consume the source"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -873,7 +937,10 @@ mod tests {
         replace_file_safely(&source, &destination).unwrap();
 
         assert_eq!(fs::read(&destination).unwrap(), b"fresh content");
-        assert!(!source.exists(), "the source should have been moved, not copied");
+        assert!(
+            !source.exists(),
+            "the source should have been moved, not copied"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -933,7 +1000,10 @@ mod tests {
         assert_eq!(error.code, AppErrorCode::FileMoveFailed.as_str());
         // What actually matters: the destination is back, byte for byte, and no backup is orphaned.
         assert_eq!(fs::read(&destination).unwrap(), b"the original file");
-        assert_eq!(leftover_backup_names(&destination_dir), Vec::<String>::new());
+        assert_eq!(
+            leftover_backup_names(&destination_dir),
+            Vec::<String>::new()
+        );
 
         fs::set_permissions(&source_dir, fs::Permissions::from_mode(0o755)).unwrap();
         let _ = fs::remove_dir_all(&dir);

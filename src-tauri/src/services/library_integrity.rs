@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::services::filesystem::dir_entry_is_symlink;
 use crate::services::logger;
 use crate::AppResult;
 
@@ -190,6 +191,13 @@ fn list_files_relative(dir: &Path, root: &Path) -> Vec<String> {
         };
 
         for entry in entries.flatten() {
+            // Skip symlinks without following them: a symlinked directory pointing at an ancestor
+            // would push its own subtree back onto the stack forever (a DoS reachable through
+            // check_library_integrity). The library never creates symlinks of its own.
+            if dir_entry_is_symlink(&entry) {
+                continue;
+            }
+
             let path = entry.path();
 
             if path.is_dir() {

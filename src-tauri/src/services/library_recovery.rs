@@ -93,6 +93,13 @@ fn dir_contains_a_file(dir: &Path) -> bool {
         };
 
         for entry in entries.flatten() {
+            // Skip symlinks without following them: a symlinked directory cycle would loop here
+            // forever. The library never creates symlinks of its own, and a symlinked file must not
+            // count as a real library file for the populated-library check either.
+            if crate::services::filesystem::dir_entry_is_symlink(&entry) {
+                continue;
+            }
+
             let path = entry.path();
 
             if path.is_file() {

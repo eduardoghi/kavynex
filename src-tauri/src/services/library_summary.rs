@@ -3,6 +3,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::services::filesystem::dir_entry_is_symlink;
 use crate::{AppError, AppErrorCode, AppResult};
 
 // u64 counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs
@@ -70,6 +71,13 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
             )
         })?;
 
+        // Skip symlinks without following them: entry.metadata() below follows the link, so a
+        // symlinked directory pointing at an ancestor would recurse forever (a DoS reachable
+        // through get_library_summary). The library never creates symlinks of its own.
+        if dir_entry_is_symlink(&entry) {
+            continue;
+        }
+
         let entry_path = entry.path();
         let entry_metadata = entry.metadata().map_err(|e| {
             AppError::from_code(
@@ -118,6 +126,12 @@ fn count_files_in_directory(path: &Path) -> AppResult<u64> {
                 format!("failed to read directory entry: {e}"),
             )
         })?;
+
+        // Skip symlinks without following them (see calculate_directory_size): a symlinked
+        // directory cycle would otherwise loop forever here too.
+        if dir_entry_is_symlink(&entry) {
+            continue;
+        }
 
         let entry_path = entry.path();
         let entry_metadata = entry.metadata().map_err(|e| {
