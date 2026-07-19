@@ -282,6 +282,61 @@ mod tests {
     }
 
     #[test]
+    fn insert_media_stores_a_trimmed_youtube_video_id_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        // A padded youtube id must be stored trimmed, so the partial unique index and the id
+        // lookup (both of which compare the column verbatim) see the same value. This pins that
+        // the trim + non-empty filter actually runs: without the filter's `!`, a real id would be
+        // dropped to NULL instead of stored.
+        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
+        body["youtubeVideoId"] = serde_json::json!("  vid123  ");
+
+        invoke(&webview, "insert_media", body).unwrap();
+
+        let page = invoke(
+            &webview,
+            "list_media_page",
+            serde_json::json!({ "channelId": channel_id, "query": default_media_page_query() }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        let items = page["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["youtube_video_id"], "vid123");
+    }
+
+    #[test]
+    fn insert_media_normalizes_a_blank_youtube_video_id_to_null_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        // A whitespace-only youtube id is "no id": it must be stored as NULL, not the empty string
+        // the partial unique index would treat as present (and collide a second blank-id insert
+        // on). With the trim/filter dropped, a blank id would persist as "" instead of NULL.
+        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
+        body["youtubeVideoId"] = serde_json::json!("   ");
+
+        invoke(&webview, "insert_media", body).unwrap();
+
+        let page = invoke(
+            &webview,
+            "list_media_page",
+            serde_json::json!({ "channelId": channel_id, "query": default_media_page_query() }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        let items = page["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items[0]["youtube_video_id"].is_null());
+    }
+
+    #[test]
     fn insert_media_rejects_an_unmanaged_file_path_over_ipc() {
         let webview = test_webview(memory_db());
         let channel_id = seed_channel(&webview);
