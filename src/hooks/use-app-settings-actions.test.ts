@@ -198,6 +198,7 @@ describe("useAppSettingsActions", () => {
         vi.mocked(executeChangeLibraryPath).mockResolvedValueOnce({
             changed: true,
             finalLibraryPath: "/new-library",
+            oldDirectoryRetained: false,
         });
 
         vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce({
@@ -230,6 +231,45 @@ describe("useAppSettingsActions", () => {
             checkUpdatesOnStartup: false,
             externalBackupDir: "",
         });
+        // The old directory was removed normally, so the user is not warned.
+        expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("warns the user when the migration kept the old library directory", async () => {
+        const onError = vi.fn();
+        const setSettings = vi.fn();
+
+        vi.mocked(executeChangeLibraryPath).mockResolvedValueOnce({
+            changed: true,
+            finalLibraryPath: "/new-library",
+            oldDirectoryRetained: true,
+        });
+
+        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce({
+            importMode: "copy",
+            libraryPath: "/new-library",
+            loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
+            externalBackupDir: "",
+        });
+
+        const { result } = renderHook(() =>
+            useAppSettingsActions({
+                onError,
+                setSettings,
+            })
+        );
+
+        await act(async () => {
+            await result.current.changeLibraryPath("/library");
+        });
+
+        // The new library is still applied...
+        expect(setSettings).toHaveBeenCalled();
+        // ...and the user is told a duplicate copy remains in the old folder.
+        expect(onError).toHaveBeenCalledWith(
+            expect.stringContaining("old folder could not be removed automatically")
+        );
     });
 
     it("logs and reports an error when changing the library path fails", async () => {
@@ -269,6 +309,7 @@ describe("useAppSettingsActions", () => {
         vi.mocked(executeChangeLibraryPath).mockResolvedValueOnce({
             changed: false,
             finalLibraryPath: "/library",
+            oldDirectoryRetained: false,
         });
 
         const { result } = renderHook(() =>

@@ -15,6 +15,12 @@ use crate::{AppError, AppErrorCode, AppResult};
 pub struct MigrateLibraryDirectoryResult {
     pub final_library_path: String,
     pub changed: bool,
+    /// True when the migration copied the library to the new location but kept the old directory
+    /// in place instead of removing it - which happens only when the crash-recovery commit marker
+    /// could not be written (removing the old copy would then leave no recoverable path back). The
+    /// copy succeeded and the new library is usable, but a full duplicate of the media remains on
+    /// the old volume with nothing to clean it up automatically, so the frontend surfaces a notice.
+    pub old_directory_retained: bool,
 }
 
 fn library_migration_lock() -> &'static Mutex<()> {
@@ -153,11 +159,14 @@ fn remove_old_library_contents(old_library_dir: &Path) {
 /// marker cannot be written, the old directory is deliberately left intact: reclaiming its disk
 /// is not worth removing the only path back to the library when recovery would be impossible.
 /// `None` (used by tests) keeps the plain copy-then-remove behavior.
+///
+/// Returns `true` when the old directory was deliberately kept (the marker could not be written),
+/// `false` when it was removed as usual, so the caller can surface the retained-copy state.
 fn migrate_library_contents_with_marker(
     old_library_dir: &Path,
     new_library_dir: &Path,
     commit_marker: Option<&Path>,
-) -> AppResult<()> {
+) -> AppResult<bool> {
     copy_library_contents(old_library_dir, new_library_dir)?;
 
     if let Some(marker) = commit_marker {
@@ -171,12 +180,12 @@ fn migrate_library_contents_with_marker(
                     "keeping the old library directory: failed to write the migration commit marker: {error}"
                 ),
             );
-            return Ok(());
+            return Ok(true);
         }
     }
 
     remove_old_library_contents(old_library_dir);
-    Ok(())
+    Ok(false)
 }
 
 /// Lists the top-level entries of `old_library_dir` that are not one of the managed library
@@ -242,6 +251,7 @@ pub fn migrate_library_directory_sync(
         return Ok(MigrateLibraryDirectoryResult {
             final_library_path: canonical_new.to_string_lossy().to_string(),
             changed: true,
+            old_directory_retained: false,
         });
     }
 
@@ -252,6 +262,7 @@ pub fn migrate_library_directory_sync(
         return Ok(MigrateLibraryDirectoryResult {
             final_library_path: canonical_new.to_string_lossy().to_string(),
             changed: true,
+            old_directory_retained: false,
         });
     }
 
@@ -274,6 +285,7 @@ pub fn migrate_library_directory_sync(
         return Ok(MigrateLibraryDirectoryResult {
             final_library_path: canonical_new.to_string_lossy().to_string(),
             changed: false,
+            old_directory_retained: false,
         });
     }
 
@@ -305,12 +317,17 @@ pub fn migrate_library_directory_sync(
     };
 
     match &migration_result {
-        Ok(_) => logger::info(
+        Ok(retained) => logger::info(
             "library",
             format!(
-                "library migration finished successfully from '{}' to '{}'",
+                "library migration finished successfully from '{}' to '{}'{}",
                 logger::redact_path(&canonical_old),
-                logger::redact_path(&canonical_new)
+                logger::redact_path(&canonical_new),
+                if *retained {
+                    " (the old directory was kept because the commit marker could not be written)"
+                } else {
+                    ""
+                }
             ),
         ),
         Err(error) => logger::error(
@@ -326,11 +343,12 @@ pub fn migrate_library_directory_sync(
 
     drop(migration_guard);
 
-    migration_result?;
+    let old_directory_retained = migration_result?;
 
     Ok(MigrateLibraryDirectoryResult {
         final_library_path: canonical_new.to_string_lossy().to_string(),
         changed: true,
+        old_directory_retained,
     })
 }
 
@@ -643,6 +661,8 @@ mod tests {
         .unwrap();
 
         assert!(result.changed);
+        // The marker was written, so phase 2 ran and the old directory was not retained.
+        assert!(!result.old_directory_retained);
         assert!(new_root.join("video").join("a.mp4").exists());
         // The old managed directory is removed (phase 2 ran)...
         assert!(!old_root.join("video").exists());

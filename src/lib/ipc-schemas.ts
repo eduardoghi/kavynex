@@ -49,6 +49,7 @@ import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupRe
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
+import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
 
@@ -175,6 +176,12 @@ const librarySummaryInfoSchema = z.object({
     thumbnail_files: z.number(),
 });
 
+const migrateLibraryDirectoryResultSchema = z.object({
+    final_library_path: z.string(),
+    changed: z.boolean(),
+    old_directory_retained: z.boolean(),
+});
+
 const libraryIntegrityReportSchema = z.object({
     checked_media_files: z.number(),
     missing_media_files: z.number(),
@@ -271,6 +278,8 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     check_external_tools: externalToolsStatusSchema satisfies z.ZodType<ExternalToolsStatus>,
     get_library_summary: librarySummaryInfoSchema satisfies z.ZodType<LibrarySummaryInfo>,
     check_library_integrity: libraryIntegrityReportSchema satisfies z.ZodType<LibraryIntegrityReport>,
+    migrate_library_directory:
+        migrateLibraryDirectoryResultSchema satisfies z.ZodType<MigrateLibraryDirectoryResult>,
     list_live_chat_files: z.array(z.string()),
     cleanup_unreferenced_media_artifacts:
         artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,

@@ -14,6 +14,10 @@ type ExecuteChangeLibraryPathInput = {
 export type ExecuteChangeLibraryPathResult = {
     changed: boolean;
     finalLibraryPath: string;
+    // True when the backend copied the library to the new location but kept the old directory in
+    // place (the crash-recovery commit marker could not be written). The new library works, but a
+    // full duplicate of the media remains on the old volume, so the UI warns the user about it.
+    oldDirectoryRetained: boolean;
 };
 
 function createNonEmptyFolderError(): ClientError {
@@ -39,6 +43,7 @@ export async function executeChangeLibraryPath({
         return {
             changed: false,
             finalLibraryPath: normalizedCurrentLibraryPath,
+            oldDirectoryRetained: false,
         };
     }
 
@@ -48,6 +53,7 @@ export async function executeChangeLibraryPath({
         return {
             changed: false,
             finalLibraryPath: normalizedCurrentLibraryPath,
+            oldDirectoryRetained: false,
         };
     }
 
@@ -61,6 +67,7 @@ export async function executeChangeLibraryPath({
         return {
             changed: false,
             finalLibraryPath: normalizedCurrentLibraryPath,
+            oldDirectoryRetained: false,
         };
     }
 
@@ -74,6 +81,7 @@ export async function executeChangeLibraryPath({
         return {
             changed: true,
             finalLibraryPath: ensuredSelectedPath,
+            oldDirectoryRetained: false,
         };
     }
 
@@ -85,5 +93,6 @@ export async function executeChangeLibraryPath({
     return {
         changed: migrationResult.changed,
         finalLibraryPath: migrationResult.final_library_path,
+        oldDirectoryRetained: migrationResult.old_directory_retained,
     };
 }

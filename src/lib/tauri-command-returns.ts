@@ -26,6 +26,7 @@ import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupRe
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
+import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
 
@@ -36,7 +37,7 @@ export type TauriCommandReturns = {
     resolve_default_library_directory: string;
     ensure_directory_exists: string;
     resolve_existing_directory: string;
-    migrate_library_directory: string;
+    migrate_library_directory: MigrateLibraryDirectoryResult;
     get_library_summary: LibrarySummaryInfo;
     check_library_integrity: LibraryIntegrityReport;
     open_path_in_system: void;

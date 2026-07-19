@@ -35,6 +35,7 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: false,
             finalLibraryPath: "/library",
+            oldDirectoryRetained: false,
         });
         expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
         expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
@@ -51,6 +52,7 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: false,
             finalLibraryPath: "/library",
+            oldDirectoryRetained: false,
         });
     });
 
@@ -64,6 +66,7 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: false,
             finalLibraryPath: "/library",
+            oldDirectoryRetained: false,
         });
         expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
         expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
@@ -83,6 +86,7 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: false,
             finalLibraryPath: "/library",
+            oldDirectoryRetained: false,
         });
     });
 
@@ -93,6 +97,7 @@ describe("executeChangeLibraryPath", () => {
         migrateLibraryDirectoryMock.mockResolvedValueOnce({
             final_library_path: "/new-library",
             changed: true,
+            old_directory_retained: false,
         });
 
         const result = await executeChangeLibraryPath({
@@ -107,6 +112,28 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: true,
             finalLibraryPath: "/new-library",
+            oldDirectoryRetained: false,
+        });
+    });
+
+    it("propagates the retained-old-directory flag from the migration", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce("/new-library");
+        ensureDirectoryExistsMock.mockResolvedValueOnce("/new-library");
+        isDirectoryEmptyMock.mockResolvedValueOnce(true);
+        migrateLibraryDirectoryMock.mockResolvedValueOnce({
+            final_library_path: "/new-library",
+            changed: true,
+            old_directory_retained: true,
+        });
+
+        const result = await executeChangeLibraryPath({
+            currentLibraryPath: "/library",
+        });
+
+        expect(result).toEqual({
+            changed: true,
+            finalLibraryPath: "/new-library",
+            oldDirectoryRetained: true,
         });
     });
 
@@ -124,6 +151,7 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: true,
             finalLibraryPath: "/new-library",
+            oldDirectoryRetained: false,
         });
     });
 
@@ -140,6 +168,7 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: true,
             finalLibraryPath: "/backup-library",
+            oldDirectoryRetained: false,
         });
     });
 
@@ -196,6 +225,7 @@ describe("executeChangeLibraryPath", () => {
         migrateLibraryDirectoryMock.mockResolvedValueOnce({
             final_library_path: "C:\\Users\\bob\\Library",
             changed: true,
+            old_directory_retained: false,
         });
 
         const result = await executeChangeLibraryPath({
@@ -205,6 +235,7 @@ describe("executeChangeLibraryPath", () => {
         expect(result).toEqual({
             changed: true,
             finalLibraryPath: "C:\\Users\\bob\\Library",
+            oldDirectoryRetained: false,
         });
     });
 });

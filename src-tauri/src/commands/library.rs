@@ -66,6 +66,18 @@ pub async fn migrate_library_directory(
     // pointing at the emptied old library (see services::library_recovery).
     let config_dir = app.path().app_config_dir().ok();
 
+    // The commit marker lives next to the database in the config directory. If that cannot be
+    // resolved the migration still runs, but without the crash-recovery marker for this run - a
+    // crash between the copy and the old-directory removal would then not be self-healed on the
+    // next launch. Rare (a failure here implies a deeper host problem), so log it rather than
+    // refusing the migration outright.
+    if config_dir.is_none() {
+        logger::warn(
+            "library",
+            "could not resolve the app config directory; the library migration will run without a crash-recovery commit marker",
+        );
+    }
+
     // Refuse to move the library into (or under) the app config directory, where the database and
     // its backups live: it would nest the managed library tree with the database and defeat the
     // "backups off the library volume" intent. Checked before any copy/remove runs. set_app_settings
