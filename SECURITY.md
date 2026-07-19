@@ -78,6 +78,29 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
     `-R` reveals files and directories alike, so revealing unconditionally costs nothing and
     keeps the command's worst case at "a Finder window opened somewhere unexpected".
 
+##### Accepted residual: these commands are a file-existence oracle
+
+What the constraints above bound is *blast radius* (no write outside the managed tree, no
+file-content read, no SMB reach-out), not the fact that a caller-supplied `path`/`library_path`
+pair is honored at all. Because both arguments come from the caller, a compromised renderer can
+still learn things it should not from the *outcome* of these read-only commands: `open_path_in_system`
+returns `MEDIA_FILE_NOT_FOUND` for an absent path and a different code otherwise, and
+`get_library_summary` / `check_library_integrity` succeed with metadata only when the given directory
+exists - so any of the three can be driven, path by path, as an oracle for whether an arbitrary
+absolute path exists on the machine (and, for the two summary/integrity commands, the filenames under
+the four managed subfolders of any directory named). It is disclosure only - never a write, a
+file-content read, or code execution - and the NTLM/`.app`-launch escalations that would make it
+worse are closed above.
+
+This one is not closed, on purpose: the whole reason these commands take a caller path is to
+preview or reveal a *candidate* folder before it is persisted - onboarding, and the change-library
+flow, both act on a directory that is not (yet) the configured library, so routing them through
+`library_guard` would break the feature the exception exists for. There is no backend signal that
+separates "the user picked this folder in the dialog" from "the renderer invoked this directly," so
+the oracle is inherent to supporting the preview at all. It is recorded here as an accepted residual
+rather than left implicit, in the same spirit as the export-overwrite and updater-rollback residuals
+above.
+
 The security boundary these share is the same one this whole document is about: the Rust
 command layer holds regardless of what the frontend sends. React's default escaping (see
 above) is what keeps the renderer from being compromised in the first place; these
