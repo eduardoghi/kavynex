@@ -125,3 +125,91 @@ describe("PlayerMediaHeader", () => {
         expect(screen.getByText("CHAT REPLAY")).toBeInTheDocument();
     });
 });
+
+// The player header is the densest cluster of icon-only controls in the app, so its controls are
+// the ones most dependent on an accessible name (they have no visible text to fall back on). The
+// project cannot run an automated axe pass (axe-core is MPL-2.0, outside the license allow-list in
+// scripts/check-js-licenses.js), so these role-by-name assertions stand in for that on this screen.
+describe("PlayerMediaHeader accessibility", () => {
+    it("exposes an accessible name for every interactive control", () => {
+        renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube
+                isWatched={false}
+                isLive={false}
+                hasLiveChat={false}
+                isRefreshingComments={false}
+                onOpenInYoutube={vi.fn()}
+                onOpenFileLocation={vi.fn()}
+                onRefreshComments={vi.fn()}
+                onCancelRefreshComments={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        // Icon-only controls: their aria-label is the only accessible name they have.
+        expect(screen.getByRole("button", { name: "Back to library" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+
+        // Text controls: their label is their accessible name.
+        expect(screen.getByRole("button", { name: "Open file location" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Refresh comments" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Mark as watched" })).toBeInTheDocument();
+        expect(
+            screen.getByRole("button", { name: "Open source on YouTube" })
+        ).toBeInTheDocument();
+    });
+
+    it("surfaces a named Cancel control only while a comment refresh is running", () => {
+        const { rerender } = renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                hasLiveChat={false}
+                isRefreshingComments={false}
+                onOpenInYoutube={vi.fn()}
+                onRefreshComments={vi.fn()}
+                onCancelRefreshComments={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        // Nothing to cancel yet, so the control is absent rather than present-but-disabled.
+        expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+
+        rerender(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                hasLiveChat={false}
+                isRefreshingComments
+                onOpenInYoutube={vi.fn()}
+                onRefreshComments={vi.fn()}
+                onCancelRefreshComments={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    });
+});
