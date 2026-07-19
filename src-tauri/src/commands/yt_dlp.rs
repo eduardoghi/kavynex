@@ -14,12 +14,14 @@ pub async fn list_yt_dlp_formats(
     url: String,
     cookies_browser: Option<String>,
     cookies_path: Option<String>,
+    run_id: Option<String>,
 ) -> AppResult<YtDlpFormatsResult> {
     yt_dlp::list_yt_dlp_formats_async(
         &app,
         &url,
         cookies_browser.as_deref(),
         cookies_path.as_deref(),
+        run_id.as_deref(),
     )
     .await
 }
@@ -59,12 +61,14 @@ pub async fn fetch_youtube_comments(
     video_id: String,
     cookies_browser: Option<String>,
     cookies_path: Option<String>,
+    run_id: Option<String>,
 ) -> AppResult<Vec<YtDlpComment>> {
     yt_dlp::fetch_youtube_comments_async(
         &app,
         &video_id,
         cookies_browser.as_deref(),
         cookies_path.as_deref(),
+        run_id.as_deref(),
     )
     .await
 }

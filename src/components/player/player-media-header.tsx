@@ -10,6 +10,7 @@ import {
     MessageSquareMore,
     Radio,
     RotateCcw,
+    X,
 } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 
@@ -30,6 +31,7 @@ type PlayerMediaHeaderProps = {
     onOpenInYoutube: () => void | Promise<void>;
     onOpenFileLocation?: () => void | Promise<void>;
     onRefreshComments?: () => void | Promise<void>;
+    onCancelRefreshComments?: () => void | Promise<void>;
     onMarkWatched: () => void | Promise<void>;
     onMarkUnwatched: () => void | Promise<void>;
     onBack: () => void;
@@ -66,6 +68,7 @@ export function PlayerMediaHeader({
     onOpenInYoutube,
     onOpenFileLocation,
     onRefreshComments,
+    onCancelRefreshComments,
     onMarkWatched,
     onMarkUnwatched,
     onBack,
@@ -200,6 +203,20 @@ export function PlayerMediaHeader({
                         loading={isRefreshingComments}
                     >
                         Refresh comments
+                    </Button>
+                )}
+
+                {/* A comment backup can run for minutes; while one is in flight, offer an explicit
+                    Cancel that stops the yt-dlp process on the backend instead of only waiting it
+                    out. Shown alongside the (loading) Refresh button, not in place of it. */}
+                {onCancelRefreshComments && isRefreshingComments && (
+                    <Button
+                        variant="light"
+                        color="red"
+                        leftSection={<X size={16} />}
+                        onClick={() => void onCancelRefreshComments()}
+                    >
+                        Cancel
                     </Button>
                 )}
 

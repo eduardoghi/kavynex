@@ -27,7 +27,7 @@ import {
     validateMediaId,
 } from "./media-input-service";
 import { createAppError } from "../utils/app-error";
-import { fetchYouTubeComments } from "./media-download-service";
+import { commentsRefreshRunId, fetchYouTubeComments } from "./media-download-service";
 import { replaceMediaCommentsInBackend } from "./media-comments-service";
 import { logError } from "../utils/app-logger";
 
@@ -242,7 +242,11 @@ export async function refreshMediaComments(
     const fetchedComments = await fetchYouTubeComments(
         normalizedVideoId,
         cookiesBrowser,
-        cookiesPath
+        cookiesPath,
+        // Register the run so the player's "Cancel" can abort this backup (up to a few minutes)
+        // promptly. Deterministic in the media id so the caller can cancel it without threading a
+        // generated run id back through React state.
+        commentsRefreshRunId(mediaId)
     );
     const comments = normalizeFetchedComments(fetchedComments);
 

@@ -4,6 +4,7 @@ import { useYtDlpFormatLoader } from "./use-yt-dlp-format-loader";
 
 vi.mock("../services/media-download-service", () => ({
     listYtDlpFormats: vi.fn(),
+    cancelMediaDownload: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { listYtDlpFormats } from "../services/media-download-service";
@@ -1181,7 +1182,8 @@ describe("useYtDlpFormatLoader - command building", () => {
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             "chrome",
-            "/home/user/cookies.txt"
+            "/home/user/cookies.txt",
+            "format-loader"
         );
     });
 
@@ -1199,7 +1201,8 @@ describe("useYtDlpFormatLoader - command building", () => {
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             "firefox",
-            null
+            null,
+            "format-loader"
         );
     });
 
@@ -1215,7 +1218,8 @@ describe("useYtDlpFormatLoader - command building", () => {
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             null,
-            null
+            null,
+            "format-loader"
         );
     });
 
@@ -1229,7 +1233,8 @@ describe("useYtDlpFormatLoader - command building", () => {
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             null,
-            null
+            null,
+            "format-loader"
         );
     });
 

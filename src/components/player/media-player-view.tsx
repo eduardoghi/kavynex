@@ -30,6 +30,7 @@ type MediaPlayerViewProps = {
     onOpenInYoutube: () => void | Promise<void>;
     onOpenFileLocation?: () => void | Promise<void>;
     onRefreshComments?: () => void | Promise<void>;
+    onCancelRefreshComments?: () => void | Promise<void>;
     onMarkWatched: () => void | Promise<void>;
     onMarkUnwatched: () => void | Promise<void>;
     onSaveProgress: (mediaId: number, progressSeconds: number) => void | Promise<void>;
@@ -50,6 +51,7 @@ export function MediaPlayerView({
     onOpenInYoutube,
     onOpenFileLocation,
     onRefreshComments,
+    onCancelRefreshComments,
     onMarkWatched,
     onMarkUnwatched,
     onSaveProgress,
@@ -259,6 +261,7 @@ export function MediaPlayerView({
                     onOpenInYoutube={onOpenInYoutube}
                     onOpenFileLocation={onOpenFileLocation}
                     onRefreshComments={onRefreshComments}
+                    onCancelRefreshComments={onCancelRefreshComments}
                     isRefreshingComments={isRefreshingComments}
                     onMarkWatched={onMarkWatched}
                     onMarkUnwatched={onMarkUnwatched}

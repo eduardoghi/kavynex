@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { listYtDlpFormats } from "../services/media-download-service";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { cancelMediaDownload, listYtDlpFormats } from "../services/media-download-service";
 import type { MediaType, YtDlpFormatOption } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
@@ -55,6 +55,11 @@ export function useYtDlpFormatLoader({
     const [isLoadingYtDlpFormats, setIsLoadingYtDlpFormats] = useState(false);
     const [resolvedYoutubeVideoId, setResolvedYoutubeVideoId] = useState<string | null>(null);
 
+    // Mirrors isLoadingYtDlpFormats without adding it to resetYtDlpFormats's dependencies, so the
+    // reset below can tell whether a backend probe is actually in flight (and therefore worth
+    // cancelling) without recreating the callback on every load toggle.
+    const isLoadingRef = useRef(false);
+
     // Guards against a stale format response overwriting state after the URL changed (or was
     // reset) while yt-dlp was running - otherwise the formats/selection for an old URL could
     // repopulate over the current one, and that selection feeds the real download command.
@@ -67,6 +72,15 @@ export function useYtDlpFormatLoader({
     const resetYtDlpFormats = useCallback((): void => {
         // Invalidate any in-flight load so its response cannot repopulate the cleared state.
         requestGuard.invalidate();
+
+        // If a backend probe is actually running (URL changed or the modal closed mid-load), cancel
+        // it so yt-dlp is stopped promptly instead of running to its metadata timeout. Best effort:
+        // the run may have already finished (cancelMediaDownload then rejects with "not active"),
+        // which is harmless here.
+        if (isLoadingRef.current) {
+            void cancelMediaDownload(FORMAT_LOADER_RUN_ID).catch(() => undefined);
+        }
+
         setYtDlpFormats([]);
         setSelectedYtDlpFormatIdState("");
         setResolvedYoutubeVideoId(null);
@@ -105,6 +119,7 @@ export function useYtDlpFormatLoader({
 
         const requestId = requestGuard.begin();
 
+        isLoadingRef.current = true;
         setIsLoadingYtDlpFormats(true);
 
         const commandParts = [
@@ -135,7 +150,10 @@ export function useYtDlpFormatLoader({
             const result = await listYtDlpFormats(
                 url,
                 cookiesBrowser || null,
-                cookiesPath || null
+                cookiesPath || null,
+                // Register the probe so a reset (URL change / modal close) can cancel it on the
+                // backend, not only discard its response on the client.
+                FORMAT_LOADER_RUN_ID
             );
 
             // A newer request (or a reset from a URL change) superseded this one; discard the
@@ -207,6 +225,7 @@ export function useYtDlpFormatLoader({
             onTerminalLog?.(`ERROR: ${message}`);
             throw error;
         } finally {
+            isLoadingRef.current = false;
             setIsLoadingYtDlpFormats(false);
             onTerminalStop?.();
         }

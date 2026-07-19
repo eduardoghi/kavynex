@@ -217,6 +217,7 @@ export default function Home(): JSX.Element {
                                         onOpenInYoutube={playerActions.openInYoutube}
                                         onOpenFileLocation={playerActions.openFileLocation}
                                         onRefreshComments={playerActions.refreshComments}
+                                        onCancelRefreshComments={playerActions.cancelRefreshComments}
                                         onMarkWatched={playerActions.markActiveAsWatched}
                                         onMarkUnwatched={playerActions.markActiveAsUnwatched}
                                         onSaveProgress={playerActions.saveProgress}

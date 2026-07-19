@@ -49,6 +49,7 @@ type MockOptions = {
     homeMediaActions: MockHomeMediaActions;
     onError: (message: string) => void;
     refreshComments: (media: MediaRow) => Promise<void>;
+    cancelRefreshComments: (mediaId: number) => Promise<void>;
     commentsInFlight: ReadonlySet<number>;
     libraryPath: string;
 };
@@ -69,6 +70,7 @@ function createDefaultOptions(overrides?: {
     homeMediaActions?: MockHomeMediaActions;
     onError?: (message: string) => void;
     refreshComments?: (media: MediaRow) => Promise<void>;
+    cancelRefreshComments?: (mediaId: number) => Promise<void>;
     commentsInFlight?: ReadonlySet<number>;
     libraryPath?: string;
 }): MockOptions {
@@ -87,6 +89,9 @@ function createDefaultOptions(overrides?: {
         refreshComments:
             overrides?.refreshComments ??
             vi.fn<(media: MediaRow) => Promise<void>>().mockResolvedValue(undefined),
+        cancelRefreshComments:
+            overrides?.cancelRefreshComments ??
+            vi.fn<(mediaId: number) => Promise<void>>().mockResolvedValue(undefined),
         commentsInFlight: overrides?.commentsInFlight ?? new Set<number>(),
         libraryPath: overrides?.libraryPath ?? "/library",
     };

@@ -9,10 +9,24 @@ function normalizeCookiesPath(value: string | null | undefined): string | null {
     return normalized ? normalized : null;
 }
 
+function normalizeRunId(value: string | null | undefined): string | null {
+    const normalized = value?.trim() ?? "";
+    return normalized ? normalized : null;
+}
+
+// The run id under which a comment refresh for `mediaId` is registered on the backend, so a
+// separate "cancel" click can target that exact run. Derived deterministically from the media id
+// (rather than a random id threaded through React state) so the caller and the canceller agree on
+// it without extra plumbing.
+export function commentsRefreshRunId(mediaId: number): string {
+    return `comments-refresh-${mediaId}`;
+}
+
 export async function listYtDlpFormats(
     url: string,
     cookiesBrowser?: string | null,
-    cookiesPath?: string | null
+    cookiesPath?: string | null,
+    runId?: string | null
 ): Promise<YtDlpFormatsResult> {
     const normalizedUrl = url.trim();
 
@@ -29,6 +43,9 @@ export async function listYtDlpFormats(
         url: normalizedUrl,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),
+        // Optional: when set, the backend registers the run so cancelMediaDownload(runId) can abort
+        // a slow format probe instead of it running to the yt-dlp timeout.
+        runId: normalizeRunId(runId),
     });
 }
 
@@ -90,7 +107,8 @@ export async function cancelMediaDownload(runId: string): Promise<void> {
 export async function fetchYouTubeComments(
     youtubeVideoId: string,
     cookiesBrowser?: string | null,
-    cookiesPath?: string | null
+    cookiesPath?: string | null,
+    runId?: string | null
 ): Promise<YtDlpComment[]> {
     const normalizedVideoId = youtubeVideoId.trim();
 
@@ -102,5 +120,8 @@ export async function fetchYouTubeComments(
         videoId: normalizedVideoId,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),
+        // Optional: when set, the backend registers the run so cancelMediaDownload(runId) can abort
+        // a comment backup (which can run for minutes) instead of it running to the yt-dlp timeout.
+        runId: normalizeRunId(runId),
     });
 }

@@ -117,6 +117,7 @@ describe("useHomeUiGuards", () => {
             markAsWatched: vi.fn(),
             markAsUnwatched: vi.fn(),
             refreshComments: vi.fn(),
+            cancelRefreshComments: vi.fn(),
             editTitle: vi.fn(),
             saveMediaProgress: vi.fn(),
 

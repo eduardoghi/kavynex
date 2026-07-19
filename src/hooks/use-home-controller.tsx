@@ -80,6 +80,7 @@ export function useHomeController(): HomeController {
         homeMediaActions,
         onError: errorState.showError,
         refreshComments: mediaLibrary.refreshComments,
+        cancelRefreshComments: mediaLibrary.cancelRefreshComments,
         commentsInFlight: mediaLibrary.commentsInFlight,
         libraryPath,
     });

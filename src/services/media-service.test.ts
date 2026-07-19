@@ -37,6 +37,7 @@ vi.mock("./media-metadata-service", () => ({
 
 vi.mock("./media-download-service", () => ({
     fetchYouTubeComments: vi.fn(),
+    commentsRefreshRunId: (mediaId: number) => `comments-refresh-${mediaId}`,
 }));
 
 vi.mock("./media-comments-service", () => ({
@@ -669,7 +670,12 @@ describe("media-service", () => {
 
         const result = await refreshMediaComments(10, "abc", "edge");
 
-        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge", null);
+        expect(fetchYouTubeComments).toHaveBeenCalledWith(
+            "abc",
+            "edge",
+            null,
+            "comments-refresh-10"
+        );
         expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(10, [fetchedComment]);
         expect(result).toEqual({ updated: true, totalComments: 1 });
     });

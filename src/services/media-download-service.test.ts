@@ -47,6 +47,7 @@ describe("media-download-service", () => {
             url: "https://youtube.com/watch?v=abc",
             cookiesBrowser: null,
             cookiesPath: null,
+            runId: null,
         });
     });
 

@@ -143,6 +143,7 @@ function createMedia(): MediaLibraryController {
         markAsWatched: vi.fn().mockResolvedValue(undefined),
         markAsUnwatched: vi.fn().mockResolvedValue(undefined),
         refreshComments: vi.fn().mockResolvedValue(undefined),
+        cancelRefreshComments: vi.fn().mockResolvedValue(undefined),
         editTitle: vi.fn().mockResolvedValue(undefined),
         openMediaFileLocation: vi.fn().mockResolvedValue(undefined),
         openMediaSourceInYoutube: vi.fn().mockResolvedValue(undefined),

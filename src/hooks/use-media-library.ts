@@ -206,6 +206,7 @@ export function useMediaLibrary({
         markAsWatched: mediaActions.markAsWatched,
         markAsUnwatched: mediaActions.markAsUnwatched,
         refreshComments: mediaActions.refreshComments,
+        cancelRefreshComments: mediaActions.cancelRefreshComments,
         editTitle: mediaActions.editTitle,
         openMediaFileLocation: mediaActions.openMediaFileLocation,
         openMediaSourceInYoutube: mediaActions.openMediaSourceInYoutube,

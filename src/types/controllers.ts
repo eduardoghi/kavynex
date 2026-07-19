@@ -97,6 +97,7 @@ export type MediaLibraryController = {
     markAsWatched: (mediaId: number) => Promise<void>;
     markAsUnwatched: (mediaId: number) => Promise<void>;
     refreshComments: (media: MediaRow) => Promise<void>;
+    cancelRefreshComments: (mediaId: number) => Promise<void>;
     editTitle: (media: MediaRow, title: string) => Promise<void>;
     openMediaFileLocation: (media: MediaRow) => Promise<void>;
     openMediaSourceInYoutube: (media: MediaRow) => Promise<void>;
@@ -220,6 +221,7 @@ export type HomePlayerActionsController = {
     closePlayer: (progressSeconds?: number) => Promise<void>;
     openFileLocation: () => Promise<void>;
     refreshComments: () => Promise<void>;
+    cancelRefreshComments: () => Promise<void>;
     isRefreshingComments: boolean;
 };
 

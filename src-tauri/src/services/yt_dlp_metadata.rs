@@ -15,6 +15,7 @@ use crate::models::yt_dlp::{
 };
 use crate::services::binaries::resolve_yt_dlp_binary_async;
 use crate::services::yt_dlp_cookies::append_auth_args;
+use crate::services::yt_dlp_registry::{register_download_run, DownloadRunReleaseGuard};
 use crate::services::yt_dlp_url::{is_allowed_youtube_url, youtube_ref_for_log};
 use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
 use crate::utils::io::{read_lossy_line, read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
@@ -533,6 +534,23 @@ async fn run_yt_dlp_and_capture_json(
     Ok((json_payload, stdout_logs, stderr_logs))
 }
 
+/// Optionally registers a cancellable run so `cancel_media_download(run_id)` can abort a standalone
+/// metadata/format/comment fetch, mirroring the download flow. Returns the cancel flag to hand to
+/// `run_yt_dlp_and_capture_json` and a release guard that unregisters the run when dropped. An
+/// empty/absent run_id means the caller opted out of cancellation, so the flag is `None` and the
+/// fetch runs uninterruptibly to completion or timeout as before.
+fn optional_cancellable_run(
+    run_id: Option<&str>,
+) -> AppResult<(Option<Arc<AtomicBool>>, Option<DownloadRunReleaseGuard>)> {
+    match run_id.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(run_id) => {
+            let flag = register_download_run(run_id)?;
+            Ok((Some(flag), Some(DownloadRunReleaseGuard::new(run_id))))
+        }
+        None => Ok((None, None)),
+    }
+}
+
 pub async fn fetch_yt_dlp_metadata(
     yt_dlp: &str,
     url: &str,
@@ -580,6 +598,7 @@ async fn fetch_yt_dlp_metadata_with_comments(
     url: &str,
     cookies_browser: Option<&str>,
     cookies_path: Option<&str>,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<YtDlpMetadata> {
     let mut args = vec![
         "-v".to_string(),
@@ -607,7 +626,7 @@ async fn fetch_yt_dlp_metadata_with_comments(
         "yt-dlp comments request timed out",
         "failed to execute yt-dlp comments command",
         "yt-dlp could not load YouTube comments for this media.",
-        None,
+        cancel,
     )
     .await?;
 
@@ -696,6 +715,7 @@ pub async fn fetch_youtube_comments_async(
     video_id: &str,
     cookies_browser: Option<&str>,
     cookies_path: Option<&str>,
+    run_id: Option<&str>,
 ) -> AppResult<Vec<YtDlpComment>> {
     let normalized_video_id = video_id.trim();
 
@@ -716,8 +736,19 @@ pub async fn fetch_youtube_comments_async(
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let url = format!("https://www.youtube.com/watch?v={}", normalized_video_id);
 
-    let metadata =
-        fetch_yt_dlp_metadata_with_comments(&yt_dlp, &url, cookies_browser, cookies_path).await?;
+    // Register the run (when a run_id was supplied) so the frontend can cancel this comment backup -
+    // which can run for up to YT_DLP_COMMENTS_TIMEOUT_SECS - promptly, instead of waiting it out. The
+    // guard unregisters the run when this function returns.
+    let (cancel_flag, _run_release_guard) = optional_cancellable_run(run_id)?;
+
+    let metadata = fetch_yt_dlp_metadata_with_comments(
+        &yt_dlp,
+        &url,
+        cookies_browser,
+        cookies_path,
+        cancel_flag,
+    )
+    .await?;
 
     let reported_comment_count = metadata.comment_count;
 
@@ -745,6 +776,7 @@ pub async fn list_yt_dlp_formats_async(
     url: &str,
     cookies_browser: Option<&str>,
     cookies_path: Option<&str>,
+    run_id: Option<&str>,
 ) -> AppResult<YtDlpFormatsResult> {
     let normalized_url = url.trim().to_string();
 
@@ -763,6 +795,11 @@ pub async fn list_yt_dlp_formats_async(
     }
 
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+
+    // Register the run (when a run_id was supplied) so the frontend can cancel a slow format probe
+    // promptly instead of waiting out YT_DLP_METADATA_TIMEOUT_SECS. The guard unregisters the run
+    // when this function returns.
+    let (cancel_flag, _run_release_guard) = optional_cancellable_run(run_id)?;
 
     let mut args = vec![
         "-v".to_string(),
@@ -786,7 +823,7 @@ pub async fn list_yt_dlp_formats_async(
         "yt-dlp metadata request timed out",
         "failed to execute yt-dlp metadata command",
         "yt-dlp could not load media information for this URL.",
-        None,
+        cancel_flag,
     )
     .await?;
 

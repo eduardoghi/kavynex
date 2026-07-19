@@ -8,6 +8,10 @@ import { useAsyncFlag } from "./use-async-flag";
 import { usePerIdAsyncFlag } from "./use-per-id-async-flag";
 import { logError } from "../utils/app-logger";
 import { openExternalUrl, openFileLocation } from "../services/library-service";
+import {
+    cancelMediaDownload,
+    commentsRefreshRunId,
+} from "../services/media-download-service";
 import { refreshMediaComments, updateMediaTitle } from "../services/media-service";
 import { buildYoutubeWatchUrl } from "../utils/youtube";
 import { useMemoObject } from "./use-memo-object";
@@ -39,6 +43,7 @@ type UseMediaActionsReturn = {
     markAsWatched: (mediaId: number) => Promise<void>;
     markAsUnwatched: (mediaId: number) => Promise<void>;
     refreshComments: (media: MediaRow) => Promise<void>;
+    cancelRefreshComments: (mediaId: number) => Promise<void>;
     editTitle: (media: MediaRow, title: string) => Promise<void>;
     openMediaFileLocation: (media: MediaRow) => Promise<void>;
     openMediaSourceInYoutube: (media: MediaRow) => Promise<void>;
@@ -302,6 +307,23 @@ export function useMediaActions({
         ]
     );
 
+    const cancelRefreshComments = useCallback(
+        async (mediaId: number): Promise<void> => {
+            // The comment backup was registered under this deterministic run id (see
+            // media-service.refreshMediaComments), so cancelling it just signals that run. Best
+            // effort: if it already finished, cancelMediaDownload rejects with "not active", which
+            // is expected here and not surfaced to the user.
+            try {
+                await cancelMediaDownload(commentsRefreshRunId(mediaId));
+            } catch (error) {
+                logError("media-actions", "Failed to cancel the comment refresh.", error, {
+                    mediaId,
+                });
+            }
+        },
+        []
+    );
+
     const editTitle = useCallback(
         async (media: MediaRow, title: string): Promise<void> => {
             await runUpdateTitleAction(async () => {
@@ -389,6 +411,7 @@ export function useMediaActions({
         markAsWatched,
         markAsUnwatched,
         refreshComments,
+        cancelRefreshComments,
         editTitle,
         openMediaFileLocation,
         openMediaSourceInYoutube,
