@@ -3,12 +3,16 @@ use std::path::Path;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
+use crate::constants::LIBRARY_DIR_LIVE_CHAT;
 use crate::services::library_guard::configured_library_dir;
 use crate::services::live_chat_storage::{
     compress_existing_live_chat_files, list_live_chat_relative_paths, migrate_live_chat_files,
     stream_live_chat_lines, LIVE_CHAT_STREAM_BATCH_LINES,
 };
-use crate::utils::path::absolute_path_from_relative;
+use crate::utils::path::{
+    absolute_path_from_relative, ensure_existing_path_inside_dir,
+    ensure_relative_path_in_managed_dir,
+};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -26,9 +30,15 @@ pub enum LiveChatStreamEvent {
 
 /// Resolves a library-relative path to an absolute path inside the library and streams the live
 /// chat replay (gunzipped) to `emit`, one batch of lines at a time. Extracted from the command so
-/// the resolve-then-stream glue - including its rejection of `..`/absolute paths via
-/// `absolute_path_from_relative` - can be unit-tested without a Tauri `AppHandle`/`Channel`, which
-/// the command needs and the IPC mock cannot host.
+/// the resolve-then-stream glue can be unit-tested without a Tauri `AppHandle`/`Channel`, which the
+/// command needs and the IPC mock cannot host.
+///
+/// Two containment checks run before the file is touched, matching the sibling media/thumbnail
+/// paths: the relative path is scoped to the `live_chat/` subtree (so this command cannot be
+/// repointed at a video/audio/thumbnail file), and `ensure_existing_path_inside_dir` re-resolves
+/// symlinks and re-checks containment (`absolute_path_from_relative` only rejects `..`/absolute
+/// components lexically, so an intermediate symlink component pointing outside the library would
+/// otherwise let this read a file outside the managed tree).
 fn stream_live_chat_relative_sync<F>(
     library_dir: &Path,
     relative_path: &str,
@@ -38,7 +48,9 @@ fn stream_live_chat_relative_sync<F>(
 where
     F: FnMut(Vec<String>) -> AppResult<()>,
 {
+    ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_LIVE_CHAT)?;
     let absolute = absolute_path_from_relative(library_dir, relative_path)?;
+    ensure_existing_path_inside_dir(&absolute, library_dir)?;
     stream_live_chat_lines(&absolute, batch_lines, emit)
 }
 
@@ -46,9 +58,19 @@ where
 /// chat replay file if it exists (a missing file is a no-op). Extracted for the same reason as
 /// [`read_live_chat_relative_sync`]; the caller holds the library read guard.
 fn delete_live_chat_relative_sync(library_dir: &Path, relative_path: &str) -> AppResult<()> {
+    // Scope to the live_chat/ subtree so this delete cannot be repointed at a video/audio/thumbnail
+    // file (the raw relative_path comes straight from IPC).
+    ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_LIVE_CHAT)?;
+
     let absolute = absolute_path_from_relative(library_dir, relative_path)?;
 
     if absolute.exists() {
+        // Re-resolve symlinks and re-check containment before unlinking, matching
+        // delete_media_file_sync / delete_thumbnail_file_sync: absolute_path_from_relative only does
+        // a lexical check, so an intermediate symlink component pointing outside the library would
+        // otherwise let this remove a file outside the managed tree.
+        ensure_existing_path_inside_dir(&absolute, library_dir)?;
+
         std::fs::remove_file(&absolute).map_err(|e| {
             AppError::from_code(
                 AppErrorCode::RemoveMediaFailed,
@@ -274,6 +296,35 @@ mod tests {
         assert!(outside.exists());
 
         let _ = fs::remove_file(&outside);
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn stream_live_chat_relative_sync_rejects_a_non_live_chat_managed_path() {
+        // A path inside the library but outside live_chat/ (a real media file) must be rejected:
+        // the command must not double as a reader for arbitrary library files.
+        let library = unique_library_dir("read-scope");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::write(library.join("video").join("media.mp4"), b"data").unwrap();
+
+        let error = collect_relative(&library, "video/media.mp4").unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn delete_live_chat_relative_sync_rejects_a_non_live_chat_managed_path() {
+        // The delete must not be repointable at a video/audio/thumbnail file.
+        let library = unique_library_dir("delete-scope");
+        fs::create_dir_all(library.join("video")).unwrap();
+        let file = library.join("video").join("media.mp4");
+        fs::write(&file, b"data").unwrap();
+
+        let error = delete_live_chat_relative_sync(&library, "video/media.mp4").unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+        assert!(file.exists(), "a non-live-chat file must not be deleted");
+
         let _ = fs::remove_dir_all(&library);
     }
 }

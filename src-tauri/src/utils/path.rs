@@ -178,6 +178,30 @@ pub fn ensure_managed_library_relative_path(value: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Like [`ensure_managed_library_relative_path`], but requires the path to be rooted at one
+/// specific managed subdirectory rather than any of them. Used by the live chat commands, whose
+/// `relative_path` arrives raw over IPC: `sanitize_relative_path_strict` alone rejects `..`/absolute
+/// paths but not a sibling managed directory, so without this a "stream/delete a live chat file"
+/// call could be pointed at a video/audio/thumbnail file instead of the `live_chat/` tree it is
+/// meant for.
+pub fn ensure_relative_path_in_managed_dir(value: &str, expected_dir: &str) -> AppResult<()> {
+    let sanitized = sanitize_relative_path_strict(value)?;
+
+    let first_component = sanitized
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str());
+
+    if first_component != Some(expected_dir) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidRelativePath,
+            "path must be inside the expected managed library directory",
+        ));
+    }
+
+    Ok(())
+}
+
 pub fn ensure_existing_path_inside_dir(path: &Path, base_dir: &Path) -> AppResult<()> {
     if !path.exists() {
         return Err(AppError::from_code(
