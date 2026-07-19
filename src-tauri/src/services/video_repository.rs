@@ -783,6 +783,39 @@ mod tests {
         }
     }
 
+    /// The media-comments read (`list_media_comments_by_media_id`) filters `video_id = ?` and sorts
+    /// `id ASC`. Pin that it is served by `idx_video_comments_video_id` without a sort: the index
+    /// stores `(video_id, rowid)`, and `id` is the rowid alias, so a fixed `video_id` walks the
+    /// matching rows already in `id` order. This mirrors the sort-index pin above for the other hot
+    /// ordered read, so a dropped/renamed index or a reordered clause fails a test rather than
+    /// quietly reintroducing a full sort on a video with many comments.
+    #[tokio::test]
+    async fn media_comments_query_is_served_by_its_index() {
+        let pool = schema_pool().await;
+
+        let plan: Vec<String> = sqlx::query_as::<_, (i64, i64, i64, String)>(
+            "EXPLAIN QUERY PLAN SELECT id FROM video_comments \
+             WHERE video_id = 1 ORDER BY id ASC LIMIT 50",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("explain media comments query")
+        .into_iter()
+        .map(|(_, _, _, detail)| detail)
+        .collect();
+
+        let detail = plan.join(" | ");
+
+        assert!(
+            detail.contains("idx_video_comments_video_id"),
+            "media comments query should use idx_video_comments_video_id, plan was: {detail}"
+        );
+        assert!(
+            !detail.contains("USE TEMP B-TREE"),
+            "media comments query should not sort rows the index already orders, plan was: {detail}"
+        );
+    }
+
     async fn create_test_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
