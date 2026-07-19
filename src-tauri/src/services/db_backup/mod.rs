@@ -425,6 +425,13 @@ async fn database_schema_version(db_path: &Path) -> Option<i64> {
 /// The restored file is staged and renamed into place so a failure never leaves the live
 /// database missing. The caller must ensure the pool is not already open before calling.
 pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
+    // Serialize against backup_database, which rotates and rewrites the same `.bak` family this
+    // function reads. The periodic backup scheduler starts at launch, and a restore runs during that
+    // same window (it is only reachable after the pool failed to open), so without sharing this lock
+    // a rotation in flight could make a candidate vanish between backup_candidates' exists() filter
+    // and the quick_check/copy on it - failing a recovery exactly when it matters most.
+    let _guard = BACKUP_IN_PROGRESS.lock().await;
+
     let mut chosen: Option<PathBuf> = None;
     let mut skipped_newer_schema = false;
 
@@ -475,8 +482,12 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         let copy_dest = staged.clone();
         run_blocking(move || {
             std::fs::copy(&copy_source, &copy_dest)
-                .map(|_| ())
-                .map_err(|error| backup_error("failed to stage restored database", error))
+                .map_err(|error| backup_error("failed to stage restored database", error))?;
+            // Flush the staged bytes to disk before the rename below. The rename is atomic against a
+            // process crash, but without this a power loss could leave a truncated staged file that
+            // the rename then makes the live database - and resume_interrupted_restore would finish
+            // that rename on the next launch, trusting the staged file. This matches copy_file_atomic.
+            crate::services::filesystem::fsync_file(&copy_dest)
         })
         .await?;
     }
@@ -819,14 +830,48 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
         let copy_dest = staging_tmp.clone();
         run_blocking(move || {
             std::fs::copy(&copy_source, &copy_dest)
-                .map(|_| ())
-                .map_err(|error| backup_error("failed to stage database import", error))
+                .map_err(|error| backup_error("failed to stage database import", error))?;
+            // Flush the copied bytes before the rename below. Only the `.db` file is carried across;
+            // apply_pending_database_import swaps this staged file in on the next startup without
+            // re-reading its source, so a power loss that left it truncated must not survive the
+            // rename into `.import-staged`.
+            crate::services::filesystem::fsync_file(&copy_dest)
         })
         .await?;
     }
     let _ = std::fs::remove_file(&staged);
     std::fs::rename(&staging_tmp, &staged)
         .map_err(|error| backup_error("failed to stage database import", error))?;
+    // Make the staged slot's directory entry durable, so a crash after this cannot lose the rename
+    // and leave a `.import-staged.tmp` the next launch would ignore.
+    crate::services::filesystem::fsync_parent_dir(&staged);
+
+    Ok(())
+}
+
+/// Restores a `.pre-import` snapshot that an interrupted import stranded as the only copy of the
+/// database, when its staged file is gone so the normal swap can never consume it. Removes any empty
+/// `db_path` the pool may have created on an earlier launch (a rename onto an existing file fails on
+/// Windows), renames the snapshot back into place, makes it durable and clears the marker. Trusts
+/// the same invariant the swap path does: a marker with a `.pre-import` behind it means `db_path`
+/// holds no real data.
+fn recover_stranded_pre_import(db_path: &Path, pre_import: &Path, marker: &Path) -> AppResult<()> {
+    logger::warn(
+        "db_backup",
+        "an interrupted import left the pre-import snapshot as the only database copy and its staged \
+         file is gone; restoring the snapshot rather than starting with an empty database",
+    );
+
+    let _ = std::fs::remove_file(sibling(db_path, "-wal"));
+    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
+    let _ = std::fs::remove_file(db_path);
+
+    std::fs::rename(pre_import, db_path).map_err(|error| {
+        backup_error("failed to restore the stranded pre-import snapshot", error)
+    })?;
+
+    crate::services::filesystem::fsync_parent_dir(db_path);
+    let _ = std::fs::remove_file(marker);
 
     Ok(())
 }
@@ -838,13 +883,21 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
 /// whether an import was applied.
 pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     let staged = import_staged_path(db_path);
-
-    if !staged.exists() {
-        return Ok(false);
-    }
-
     let pre_import = pre_import_path(db_path);
     let marker = import_applying_marker_path(db_path);
+
+    if !staged.exists() {
+        // Normally there is nothing to apply. But a marker with a `.pre-import` behind it means an
+        // earlier run died mid-swap and `.pre-import` holds the only copy of the database. The main
+        // path below handles that when the staged file is still present; if the staged file was
+        // additionally lost in that window, this early return would let the pool create an empty
+        // database over the stranded snapshot. Restore it here instead so that cannot happen.
+        if marker.exists() && pre_import.exists() {
+            recover_stranded_pre_import(db_path, &pre_import, &marker)?;
+        }
+
+        return Ok(false);
+    }
 
     // A marker left behind by an earlier run means that run died between the move-aside and the
     // swap below, or that its rollback failed. `.pre-import` then holds the only copy of the
@@ -1457,6 +1510,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_stranded_pre_import_is_restored_when_the_staged_file_is_gone() {
+        // The same failed-swap state as the test above, but the staged import file was additionally
+        // lost in that window (external deletion, disk trouble on that file). With no staged file the
+        // normal swap can never run, so a bare early return would let the pool create an empty
+        // database over `.pre-import` - the only remaining copy of the library. Recovery must instead
+        // salvage the snapshot.
+        let dir = temp_dir("stranded-pre-import");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("incoming.db");
+        seed_kavynex_db(&source, "imported").await;
+        stage_database_import(&db, &source).await.unwrap();
+
+        // Failed swap: marker written, database moved aside into `.pre-import`.
+        write_import_applying_marker(&import_applying_marker_path(&db)).unwrap();
+        std::fs::rename(&db, pre_import_path(&db)).unwrap();
+        // Then the staged file is lost and the pool created an empty interim database in its place.
+        std::fs::remove_file(import_staged_path(&db)).unwrap();
+        seed_kavynex_db(&db, "empty interim database").await;
+
+        // No import is applied (the staged file is gone), but the snapshot is salvaged: the real
+        // library is back at db_path, the undo copy is consumed, and the marker is cleared.
+        assert!(!apply_pending_database_import(&db).unwrap());
+        assert_eq!(read_video_title(&db).await, "current");
+        assert!(!pre_import_path(&db).exists());
+        assert!(!import_applying_marker_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn a_marker_with_no_snapshot_behind_it_never_skips_the_move_aside() {
         // The other half of the marker's contract, and the one that decides whether it is safe to
         // act on at all: the marker only means "`.pre-import` holds the user's database" because
@@ -1856,10 +1941,12 @@ mod tests {
             .await
             .unwrap();
 
-        sqlx::query("CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)")
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
         sqlx::query(sqlx::AssertSqlSafe(videos_ddl))
             .execute(&pool)
             .await
@@ -2315,7 +2402,9 @@ mod tests {
                 .connect_with(options)
                 .await
                 .unwrap();
-            crate::services::db_schema::ensure_schema(&pool).await.unwrap();
+            crate::services::db_schema::ensure_schema(&pool)
+                .await
+                .unwrap();
             sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
                 .execute(&pool)
                 .await
@@ -2372,7 +2461,10 @@ mod tests {
         // a list of problems, or a flat SQLITE_CORRUPT on the pragma itself. Both are integrity
         // answers and both have to arrive as one - never as "the check could not run", which reads
         // as the tool breaking rather than the database being broken.
-        assert!(!report.ok, "the damaged database must not be reported sound");
+        assert!(
+            !report.ok,
+            "the damaged database must not be reported sound"
+        );
         assert!(
             !report.problems.is_empty(),
             "what SQLite reported has to reach the caller, not just the fact that it failed"

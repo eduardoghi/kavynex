@@ -8,6 +8,7 @@ use super::{
     backup_error, escape_sql_literal, is_healthy, is_recent, open, rotate_generations, sibling,
     BACKUP_MIN_INTERVAL_SECS,
 };
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// The current external mirror is generation 0 (`kavynex-backup.db`); `pub(super)` so the parent
@@ -60,15 +61,20 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
         return Err(backup_error("failed to export database", error));
     }
 
-    // The snapshot is confirmed good; only now is any previous export at dest_path replaced.
-    // The caller's save dialog has already confirmed the overwrite.
-    let _ = std::fs::remove_file(dest_path);
-    std::fs::rename(&staging, dest_path).map_err(|error| {
-        let _ = std::fs::remove_file(&staging);
-        backup_error("failed to finalize database export", error)
-    })?;
-
-    Ok(())
+    // The snapshot is confirmed good; only now is any previous export at dest_path replaced. These
+    // are filesystem calls on a possibly slow/removable/network destination, so run them off the
+    // async runtime, consistent with the rest of the app's blocking IO. The caller's save dialog
+    // has already confirmed the overwrite.
+    let staging_final = staging.clone();
+    let dest = dest_path.to_path_buf();
+    run_blocking(move || {
+        let _ = std::fs::remove_file(&dest);
+        std::fs::rename(&staging_final, &dest).map_err(|error| {
+            let _ = std::fs::remove_file(&staging_final);
+            backup_error("failed to finalize database export", error)
+        })
+    })
+    .await
 }
 
 pub(super) fn external_backup_path(dir: &Path) -> PathBuf {
@@ -105,16 +111,27 @@ pub async fn mirror_database_to_external_dir(
         return Ok(false);
     }
 
-    if !external_dir.is_dir() {
-        // The chosen directory is gone (drive unplugged, share offline). Not something to surface
-        // on every background tick: skip and try again next time.
-        return Ok(false);
-    }
-
     let current = external_backup_path(external_dir);
 
-    if is_recent(&current, BACKUP_MIN_INTERVAL_SECS) {
-        return Ok(false);
+    // The directory probe and the throttle's mtime read both touch the external target, which may
+    // be an unplugged drive or an offline share - exactly the IO that can stall for seconds. Run
+    // them (and the staging remove, rotate and promote below) off the async runtime so a slow
+    // target never holds a Tokio worker thread.
+    {
+        let external_dir = external_dir.to_path_buf();
+        let current = current.clone();
+        let should_skip = run_blocking(move || {
+            // The chosen directory is gone (drive unplugged, share offline), or a fresh mirror was
+            // already written within the throttle window. Either way, skip quietly this tick.
+            Ok::<bool, AppError>(
+                !external_dir.is_dir() || is_recent(&current, BACKUP_MIN_INTERVAL_SECS),
+            )
+        })
+        .await?;
+
+        if should_skip {
+            return Ok(false);
+        }
     }
 
     // Export to a fresh staging file inside the external directory first, so a failed export (a
@@ -123,23 +140,34 @@ pub async fn mirror_database_to_external_dir(
     // generation 0. This is stricter than backup_database's rotate-then-write, on purpose: an
     // external/removable target fails far more often than the app's own config volume.
     let staged = external_dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
-    let _ = std::fs::remove_file(&staged);
+    {
+        let staged = staged.clone();
+        run_blocking(move || {
+            let _ = std::fs::remove_file(&staged);
+            Ok::<(), AppError>(())
+        })
+        .await?;
+    }
 
     export_database(db_path, &staged).await?;
 
-    rotate_generations(
-        external_dir,
-        EXTERNAL_BACKUP_ROTATED_GENERATIONS,
-        generation_external_backup_path,
-    );
+    let external_dir = external_dir.to_path_buf();
+    run_blocking(move || {
+        rotate_generations(
+            &external_dir,
+            EXTERNAL_BACKUP_ROTATED_GENERATIONS,
+            generation_external_backup_path,
+        );
 
-    if let Err(error) = std::fs::rename(&staged, &current) {
-        let _ = std::fs::remove_file(&staged);
-        return Err(backup_error(
-            "failed to promote the external database backup",
-            error,
-        ));
-    }
+        if let Err(error) = std::fs::rename(&staged, &current) {
+            let _ = std::fs::remove_file(&staged);
+            return Err(backup_error(
+                "failed to promote the external database backup",
+                error,
+            ));
+        }
 
-    Ok(true)
+        Ok(true)
+    })
+    .await
 }
