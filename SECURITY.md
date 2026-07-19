@@ -51,7 +51,20 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
 - `import_media_file`, `generate_temporary_thumbnail` - **writes are content-addressed
   and extension-gated**: the destination filename is derived from the file's own SHA-256
   and an allowed media/image extension, so a hostile source path cannot choose where the
-  output lands inside the managed tree.
+  output lands inside the managed tree. The *source* path, though, is deliberately
+  caller-supplied (the pre-import preview and import have to reach a file the user picked
+  anywhere on disk, before it is in the library), which carries one residual worth stating:
+  `generate_temporary_thumbnail` runs FFmpeg on that source and writes a single preview
+  frame into the app cache directory, which is authorized in the asset scope - so a
+  compromised frontend could drive it, path by path, to disclose one still frame (or the
+  embedded cover art) of any media-extension file on disk, never one the user selected. It
+  is disclosure only - never a write outside the managed tree, an arbitrary-file *content*
+  read of a non-media file, or code execution - and it is bounded further: the source is
+  rejected up front if it is a UNC/network location
+  (`services/thumbnail_temp.rs::validate_source_media_path`), closing the NTLM-leak
+  escalation the same way `open_path_in_system` does. Scoping the source to the library is
+  not possible without breaking the preview, so this is recorded as an accepted residual in
+  the same spirit as the file-existence oracle below.
 - `export_database` - the destination is **extension-gated** to `.db`/`.sqlite`/
   `.sqlite3` (`commands/database.rs::validate_export_destination`) so the exported
   database cannot be written over an arbitrary file such as a document or a key, and it is
