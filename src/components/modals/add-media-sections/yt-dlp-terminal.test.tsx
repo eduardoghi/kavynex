@@ -43,7 +43,9 @@ describe("YtDlpTerminal", () => {
         );
 
         expect(screen.getByText("running")).toBeInTheDocument();
-        expect(screen.getByText("Downloading...")).toBeInTheDocument();
+        // The latest line is rendered both in the scrollback and in the hidden live region below,
+        // so it appears more than once by design.
+        expect(screen.getAllByText("Downloading...").length).toBeGreaterThan(0);
     });
 
     it("shows ready state when logs exist and process is not running", () => {
@@ -57,7 +59,7 @@ describe("YtDlpTerminal", () => {
         );
 
         expect(screen.getByText("ready")).toBeInTheDocument();
-        expect(screen.getByText("Done")).toBeInTheDocument();
+        expect(screen.getAllByText("Done").length).toBeGreaterThan(0);
     });
 
     it("renders error log line", () => {
@@ -70,22 +72,27 @@ describe("YtDlpTerminal", () => {
             />
         );
 
-        expect(screen.getByText("ERROR: download failed")).toBeInTheDocument();
+        expect(screen.getAllByText("ERROR: download failed").length).toBeGreaterThan(0);
     });
 
-    it("exposes the log region for screen readers", () => {
+    it("announces only the latest line while keeping the full log present", () => {
         renderWithMantine(
             <YtDlpTerminal
                 opened
                 visible
-                ytDlpLogs={["Downloading..."]}
+                ytDlpLogs={["Downloading...", "[download] 5%"]}
                 isYtDlpRunning={false}
             />
         );
 
-        const logRegion = screen.getByRole("log", { name: "yt-dlp output" });
+        // Only the most recent line lives in the polite live region, so appending a line announces
+        // just that delta rather than re-announcing the whole (up to 500-line) scrollback.
+        const liveRegion = screen.getByRole("log", { name: "yt-dlp latest output" });
+        expect(liveRegion).toHaveAttribute("aria-live", "polite");
+        expect(liveRegion).toHaveTextContent("[download] 5%");
+        expect(liveRegion).not.toHaveTextContent("Downloading...");
 
-        expect(logRegion).toHaveAttribute("aria-live", "polite");
-        expect(logRegion).toContainElement(screen.getByText("Downloading..."));
+        // The earlier line is not announced again, but stays rendered in the browsable scrollback.
+        expect(screen.getByText("Downloading...")).toBeInTheDocument();
     });
 });

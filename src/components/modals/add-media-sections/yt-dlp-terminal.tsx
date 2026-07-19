@@ -1,4 +1,4 @@
-import { Badge, Box, Group, ScrollArea, Text, rem } from "@mantine/core";
+import { Badge, Box, Group, ScrollArea, Text, VisuallyHidden, rem } from "@mantine/core";
 import { useEffect, useRef } from "react";
 
 type YtDlpTerminalProps = {
@@ -40,8 +40,19 @@ export function YtDlpTerminal({
         return null;
     }
 
+    // Screen readers announce changes to a live region, and the scrollback below is not one: it
+    // holds up to 500 lines and its whole subtree is replaced on every append, so making it live
+    // would re-announce far more than the new line during an active download. Instead this hidden
+    // region carries only the most recent line, so assistive tech announces just that delta while
+    // the scrollback stays a normal, browsable region.
+    const latestLine = ytDlpLogs[ytDlpLogs.length - 1] ?? "";
+
     return (
         <Box>
+            <VisuallyHidden role="log" aria-live="polite" aria-label="yt-dlp latest output">
+                {latestLine}
+            </VisuallyHidden>
+
             <Group justify="space-between" mb="xs">
                 <Text fw={800}>Integrated terminal</Text>
 
@@ -65,8 +76,6 @@ export function YtDlpTerminal({
             >
                 <ScrollArea h={320} offsetScrollbars viewportRef={terminalViewportRef}>
                     <Box
-                        role="log"
-                        aria-live="polite"
                         aria-label="yt-dlp output"
                         style={{
                             padding: rem(14),
