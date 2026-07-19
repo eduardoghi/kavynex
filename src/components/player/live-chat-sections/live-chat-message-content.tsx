@@ -40,13 +40,21 @@ export function renderMessageContent(message: LiveChatMessageItem): JSX.Element 
 
     return (
         <>
-            {message.message_parts.map((part, index) =>
-                part.type === "emoji" ? (
-                    <EmojiImage key={index} url={part.url} label={part.label} />
+            {message.message_parts.map((part, index) => {
+                // The parts of a single message never reorder, but the same emoji or text can
+                // repeat within one message, so key by position and content together rather than
+                // by the bare array index.
+                const key =
+                    part.type === "emoji"
+                        ? `${index}:emoji:${part.url}`
+                        : `${index}:text:${part.text}`;
+
+                return part.type === "emoji" ? (
+                    <EmojiImage key={key} url={part.url} label={part.label} />
                 ) : (
-                    <span key={index}>{part.text}</span>
-                )
-            )}
+                    <span key={key}>{part.text}</span>
+                );
+            })}
         </>
     );
 }
