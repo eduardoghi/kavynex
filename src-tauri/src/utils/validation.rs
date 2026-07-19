@@ -46,14 +46,31 @@ fn is_valid_youtube_handle(value: &str) -> bool {
     false
 }
 
-/// Rejects an empty/blank channel name. The DB `CHECK (TRIM(name) <> '')` enforces this too,
-/// but mapping it here gives the frontend the catalogued `INVALID_CHANNEL_NAME` code instead
-/// of a raw SQLite constraint error.
+/// True when `value` contains a control character (`\n`, `\r`, `\t`, and the rest of the C0/C1
+/// range). These never appear in a legitimate channel name or media title, and rejecting them here
+/// keeps a value that could forge a log line (an embedded newline) from ever being persisted -
+/// defense in depth mirroring `commands::logging::sanitize_log_text`, which strips the same
+/// characters at the other boundary. The database `CHECK`s cannot express this.
+fn contains_control_char(value: &str) -> bool {
+    value.chars().any(|c| c.is_control())
+}
+
+/// Rejects an empty/blank channel name, or one carrying control characters. The DB
+/// `CHECK (TRIM(name) <> '')` enforces the non-blank part too, but mapping it here gives the
+/// frontend the catalogued `INVALID_CHANNEL_NAME` code instead of a raw SQLite constraint error,
+/// and the control-character rejection is something the database cannot express.
 pub fn ensure_valid_channel_name(name: &str) -> AppResult<()> {
     if name.trim().is_empty() {
         return Err(AppError::from_code(
             AppErrorCode::InvalidChannelName,
             "channel name is required",
+        ));
+    }
+
+    if contains_control_char(name) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidChannelName,
+            "channel name must not contain control characters",
         ));
     }
 
@@ -80,6 +97,13 @@ pub fn ensure_valid_media_title(title: &str) -> AppResult<()> {
         return Err(AppError::from_code(
             AppErrorCode::InvalidMediaTitle,
             "media title is required",
+        ));
+    }
+
+    if contains_control_char(title) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidMediaTitle,
+            "media title must not contain control characters",
         ));
     }
 
@@ -168,7 +192,10 @@ mod tests {
             );
         }
 
-        for handle in cases["invalid"].as_array().expect("invalid must be an array") {
+        for handle in cases["invalid"]
+            .as_array()
+            .expect("invalid must be an array")
+        {
             let handle = handle.as_str().expect("each case must be a string");
             assert!(
                 !is_valid_youtube_handle(handle),
@@ -189,10 +216,28 @@ mod tests {
     }
 
     #[test]
+    fn channel_name_rejects_embedded_control_characters() {
+        // A name that is non-blank but carries a newline/carriage-return/tab (a log-forging value)
+        // must be rejected, not just an all-blank one.
+        for name in ["Chan\nnel", "Chan\rnel", "Chan\tnel", "Chan\u{7}nel"] {
+            let error = ensure_valid_channel_name(name).unwrap_err();
+            assert_eq!(error.code, AppErrorCode::InvalidChannelName.as_str());
+        }
+    }
+
+    #[test]
     fn media_title_requires_non_blank() {
         ensure_valid_media_title("A title").unwrap();
 
         for title in ["", "   "] {
+            let error = ensure_valid_media_title(title).unwrap_err();
+            assert_eq!(error.code, AppErrorCode::InvalidMediaTitle.as_str());
+        }
+    }
+
+    #[test]
+    fn media_title_rejects_embedded_control_characters() {
+        for title in ["A\ntitle", "A\rtitle", "A\ttitle", "A\u{7}title"] {
             let error = ensure_valid_media_title(title).unwrap_err();
             assert_eq!(error.code, AppErrorCode::InvalidMediaTitle.as_str());
         }
