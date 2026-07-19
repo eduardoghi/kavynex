@@ -33,10 +33,17 @@
 #     filename the following rename discards, a guard that short-circuits to the same value, a `!=`
 #     that only picks which line gets logged).
 #
-# Worth widening next, once measured and triaged the same way:
-#   - `src/services/db_backup.rs` - backup/restore/export/import, the most destructive operations in
-#     the app. Not yet measured; do the `--no-config --file src/services/db_backup/mod.rs` pass,
-#     sort the survivors into kill/exclude, and only then add the glob so the weekly run stays green.
+# `src/services/db_backup/mod.rs` - backup/restore/export/import, the most destructive operations
+# in the app. ADDED below after triaging its survivors.
+#     Measured 2026-07-19 (`--no-config --file`): 137 mutants, 14 missed. Most were off-by-one and
+#     boundary checks the existing tests skirted: the restore/import schema-version gates (a `>=`
+#     that would refuse a current-version backup or every normalized database), the backup-status
+#     timestamp (a fixed sentinel vs the file's real mtime), the throttle constant, and the
+#     apply-pending recovery guard (an `AND` weakened to `OR` would revert a leftover undo snapshot
+#     on every launch). Those are now covered by tests. The remainder are excluded below: the
+#     is_recent exact-second equality boundary (no deterministic input hits it) and the WAL-busy
+#     import branch (needs a second connection holding a lock to force busy=1 with frames left,
+#     which a unit test cannot arrange deterministically).
 #   - `src/services/library_media.rs` and `src/services/library_cleanup.rs` - content-addressing
 #     and the reference-count-before-unlink decision. ADDED below after a measured pass
 #     (2026-07-18, cargo-mutants 27.1.0, `--in-place --no-config --file <each>`): 111 mutants, 94
@@ -55,6 +62,7 @@ examine_globs = [
     "src/services/library_media.rs",
     "src/services/library_cleanup.rs",
     "src/services/filesystem.rs",
+    "src/services/db_backup/mod.rs",
 ]
 
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the
@@ -127,4 +135,16 @@ exclude_re = [
     # extension is an empty string, which Path::extension never yields (a trailing-dot name has no
     # extension). The `with false`/`delete !` variants are killed by the migration extension test.
     'replace match guard !ext.trim\(\).is_empty\(\) with true in alternative_destination_path',
+    # db_backup/mod.rs survivors that no unit test can deterministically kill (triaged 2026-07-19).
+    # is_recent compares `age < interval`; the `<`/`<=` boundary differs only when the file's age is
+    # exactly the interval to the second, which the real clock advancing between set and read never
+    # lets a test hit.
+    'replace < with <= in is_recent',
+    # The WAL-checkpoint "still in use" branch (busy != 0 && frames > 0): forcing a busy checkpoint
+    # with frames left needs a second connection holding a lock on the source during the import,
+    # which no deterministic unit test can arrange. The valid (busy == 0) path is exercised by the
+    # import tests.
+    'replace && with \|\| in stage_database_import',
+    'replace != with == in stage_database_import',
+    'replace > with (==|<|>=) in stage_database_import',
 ]

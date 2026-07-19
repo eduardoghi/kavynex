@@ -1872,6 +1872,141 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[tokio::test]
+    async fn restore_accepts_a_backup_at_the_current_schema_version() {
+        // The boundary of the newer-schema refusal: a backup stamped at exactly SCHEMA_VERSION is
+        // this build's own and must be restored, not skipped. Pins the `>` in the version gate
+        // against a `>=` that would refuse a current-version backup and fail the recovery.
+        let dir = temp_dir("restore-current-schema");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+        assert!(backup_database(&db).await.unwrap());
+
+        let options = SqliteConnectOptions::new().filename(backup_path(&db));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        std::fs::write(&db, b"corrupt db").unwrap();
+
+        restore_database_from_backup(&db)
+            .await
+            .expect("a backup at the current schema version must be restored");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn import_accepts_a_normalized_current_schema_database() {
+        // A v>=11 database whose rows are all normalized (unnormalized == 0) is a valid import and
+        // must be accepted. Pins the `> 0` count check against a `>= 0`, which - being true for
+        // every count - would reject every modern database as if its titles were never computed.
+        let dir = temp_dir("import-normalized-current");
+        let db = dir.join("kavynex.db");
+        let source = dir.join("incoming.db");
+
+        let options = SqliteConnectOptions::new()
+            .filename(&source)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        for ddl in [
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
+             title_normalized TEXT, file_path TEXT, media_type TEXT, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+             UNIQUE (channel_id, file_path))",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+             FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+            // A single fully-normalized row, so COUNT(title_normalized IS NULL) is zero.
+            "INSERT INTO videos (title, title_normalized) VALUES ('clip', 'clip')",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        stage_database_import(&db, &source)
+            .await
+            .expect("a normalized current-schema database must import");
+        assert!(import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn backup_status_reports_the_snapshot_modified_time() {
+        // The reported timestamp must be the backup file's real mtime, not a fixed sentinel: a
+        // freshly written snapshot is far more recent than the epoch, so a mutant returning Some(0)
+        // or Some(1) is caught by requiring a plausibly-recent value.
+        let dir = temp_dir("backup-status-mtime");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+        assert!(backup_database(&db).await.unwrap());
+
+        let status = database_backup_status(&db);
+        assert!(status.available);
+        // 2020-01-01 in ms; any real backup taken now is well past it, epoch-based sentinels are not.
+        assert!(
+            status
+                .backed_up_at_ms
+                .is_some_and(|ms| ms > 1_577_836_800_000),
+            "backup timestamp must be the file's real mtime, got {:?}",
+            status.backed_up_at_ms
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn backup_min_interval_is_twenty_four_hours() {
+        // Pin the throttle window's value so an accidental change to the `24 * 60 * 60` arithmetic
+        // (which nothing else asserts exactly) is caught.
+        assert_eq!(BACKUP_MIN_INTERVAL_SECS, 86_400);
+    }
+
+    #[tokio::test]
+    async fn apply_pending_does_not_revert_a_leftover_undo_snapshot() {
+        // After a completed import, `.pre-import` persists as the undo snapshot with no marker and
+        // no staged file. On the next startup apply_pending must do nothing - a mutant recovering on
+        // `marker OR pre_import` (instead of AND) would restore that snapshot over the live database
+        // on every launch, silently reverting the user's data.
+        let dir = temp_dir("apply-leftover-pre-import");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "live").await;
+        seed_kavynex_db(&pre_import_path(&db), "old undo").await;
+
+        assert!(!apply_pending_database_import(&db).unwrap());
+
+        assert_eq!(read_video_title(&db).await, "live");
+        assert!(
+            pre_import_path(&db).exists(),
+            "a leftover undo snapshot must be left untouched"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn filetime_set(path: &Path, time: SystemTime) {
         let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
         file.set_modified(time).unwrap();
