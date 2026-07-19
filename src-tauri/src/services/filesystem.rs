@@ -1097,7 +1097,10 @@ mod tests {
 
         assert_eq!(find_latest_matching_file(&dir, "media_x").unwrap(), file);
         assert_eq!(find_unique_matching_file(&dir, "media_x").unwrap(), file);
-        assert_eq!(find_best_matching_file(&dir, "media_x", None).unwrap(), file);
+        assert_eq!(
+            find_best_matching_file(&dir, "media_x", None).unwrap(),
+            file
+        );
 
         let _ = fs::remove_dir_all(dir);
     }
