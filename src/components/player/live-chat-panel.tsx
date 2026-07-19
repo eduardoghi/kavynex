@@ -258,15 +258,29 @@ export function LiveChatPanel({
                                 )}
                         </AsyncStatusRegion>
 
-                        {!isLoadingLiveChat &&
-                            inlineMessages.length > 0 &&
-                            inlineMessages.map((message) => (
-                                <LiveChatItem
-                                    key={liveChatItemKey(message)}
-                                    message={message}
-                                    shellBorder={shellBorder}
-                                />
-                            ))}
+                        {/* role="log" plus a polite live region announces each replay message to
+                            a screen reader as playback reveals it, without interrupting - the
+                            accessible equivalent of watching them scroll in. Kept always mounted
+                            (not gated on message count) so the region exists before the first
+                            addition, which assistive tech needs to announce it. Volume is bounded
+                            by playback time, not the whole replay at once, and "polite" queues
+                            rather than interrupts, so a busy moment stays usable. */}
+                        <Stack
+                            gap="md"
+                            role="log"
+                            aria-live="polite"
+                            aria-relevant="additions"
+                            aria-label="Live chat messages"
+                        >
+                            {!isLoadingLiveChat &&
+                                inlineMessages.map((message) => (
+                                    <LiveChatItem
+                                        key={liveChatItemKey(message)}
+                                        message={message}
+                                        shellBorder={shellBorder}
+                                    />
+                                ))}
+                        </Stack>
                     </Stack>
                 </Box>
             </Stack>
