@@ -18,9 +18,7 @@ import {
     formatPublishedAtForDisplay,
 } from "../../utils/published-date";
 import { toUnionValue } from "../../utils/guards";
-
-// Stable no-op for the locked modal's onClose, so it is not a fresh function every render.
-const NOOP = (): void => {};
+import { useModalLock } from "../../hooks/use-modal-lock";
 
 type AddMediaModalProps = {
     opened: boolean;
@@ -113,6 +111,8 @@ export function AddMediaModal({
         isYtDlpRunning ||
         isCancellingYtDlp;
 
+    const modalLock = useModalLock(isModalLocked, onClose);
+
     const canSubmit = isUrlMode
         ? mediaUrl.trim() !== "" && selectedYtDlpFormatId.trim() !== ""
         : mediaPath.trim() !== "";
@@ -144,15 +144,12 @@ export function AddMediaModal({
     return (
         <Modal
             opened={opened}
-            onClose={isModalLocked ? NOOP : onClose}
+            {...modalLock}
             title={<Text fw={900}>Import media</Text>}
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
             size={760}
-            closeOnClickOutside={!isModalLocked}
-            closeOnEscape={!isModalLocked}
-            withCloseButton={!isModalLocked}
             zIndex={300}
         >
             <form

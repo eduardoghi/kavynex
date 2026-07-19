@@ -1,7 +1,7 @@
 import { Modal, Stack } from "@mantine/core";
 import { useSettingsController } from "../../hooks/use-settings-controller";
+import { useModalLock } from "../../hooks/use-modal-lock";
 import type { ImportMode } from "../../types/settings";
-import { NOOP } from "../../utils/noop";
 import { AppUpdateSection } from "./settings-sections/app-update-section";
 import { DatabaseSection } from "./settings-sections/database-section";
 import { ImportBehaviorSection } from "./settings-sections/import-behavior-section";
@@ -65,16 +65,15 @@ export function SettingsModal({
     const isModalLocked =
         controller.databaseBusy !== "idle" || isMigratingLibraryPath || isUpdateInProgress;
 
+    const modalLock = useModalLock(isModalLocked, onClose);
+
     return (
         <Modal
             opened={opened}
-            onClose={isModalLocked ? NOOP : onClose}
+            {...modalLock}
             title="Settings"
             size="lg"
             centered
-            closeOnClickOutside={!isModalLocked}
-            closeOnEscape={!isModalLocked}
-            withCloseButton={!isModalLocked}
         >
             <Stack gap="lg">
                 <ImportBehaviorSection
