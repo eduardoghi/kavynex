@@ -24,7 +24,7 @@ codebase re-implements or overrides.
 
 Alongside `kavynex.db`, SQLite's WAL mode (see `docs/DATABASE.md`) creates sidecar files
 `kavynex.db-wal` and `kavynex.db-shm` in the same directory while the app is running.
-The backup/restore/import machinery in `services/db_backup.rs` also writes siblings here:
+The backup/restore/import machinery in `services/db_backup/` also writes siblings here:
 
 - `kavynex.db.bak` plus `kavynex.db.bak.1` .. `kavynex.db.bak.6` - the rotated automatic
   snapshots (`BACKUP_ROTATED_GENERATIONS` = 6, so up to seven exist). More than one is kept
@@ -35,7 +35,7 @@ The backup/restore/import machinery in `services/db_backup.rs` also writes sibli
 - `kavynex.db.pre-import` - the database as it was before the last applied import, kept so the
   import can be undone. It persists until the next import replaces it.
 - `kavynex.db.integrity-checked` - an empty marker whose mtime records the last time the background
-  full `integrity_check` passed. It throttles that check to once a week (`db_backup.rs`); the
+  full `integrity_check` passed. It throttles that check to once a week (`db_backup/integrity.rs`); the
   automatic paths use the faster `quick_check`, and this thorough one runs off the startup critical
   path to catch subtler damage a `quick_check` would pass.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
@@ -55,11 +55,11 @@ written after the move-aside rather than before it.
 
 See `docs/DATABASE.md` for the rotation, restore and import rules these files follow - the
 counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in
-`db_backup.rs`, which is what to read if this list and the code ever disagree.
+`db_backup/mod.rs`, which is what to read if this list and the code ever disagree.
 
 All of the snapshots above sit on the same volume as the live database, so a disk failure takes
 them with it. The **optional** external backup (Settings > Database) addresses that: when a folder
-is configured (`external_backup_dir` in `app_settings`), `db_backup.rs::mirror_database_to_external_dir`
+is configured (`external_backup_dir` in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir`
 writes `kavynex-backup.db` there once a day, rotated as `kavynex-backup.db.1` /
 `kavynex-backup.db.2` (`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the same atomic
 `export_database`. Only the database is mirrored - the media files are not - and the folder is left

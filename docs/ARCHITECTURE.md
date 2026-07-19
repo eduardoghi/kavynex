@@ -41,7 +41,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   domain services (`library_media.rs`, `library_migration.rs`, `library_cleanup.rs`,
   `thumbnail_persist.rs`, `thumbnail_download.rs`, `yt_dlp_download.rs`,
   `yt_dlp_metadata.rs`, `yt_dlp_cookies.rs`, `yt_dlp_url.rs`, `live_chat_storage.rs`,
-  `db_schema.rs`, `db_backup.rs`, `database.rs`, `binaries.rs`, `cleanup.rs`, `logger.rs`).
+  `db_schema.rs`, `db_backup/`, `database.rs`, `binaries.rs`, `cleanup.rs`, `logger.rs`).
   All schema/query code lives here, never in `commands/`.
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
   across services:
@@ -170,7 +170,7 @@ seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` p
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail_persist.rs`, `services/thumbnail_download.rs`, `services/thumbnail_temp.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts` |
 | Database schema/migrations | `services/db_schema.rs` | - |
-| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup.rs` | `services/database-service.ts` |
+| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library_summary.rs`, `services/library_cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/use-app-settings*.ts` |

@@ -3,8 +3,8 @@
 Kavynex stores its structured data in a single SQLite database file, `kavynex.db`, opened
 through `sqlx`. Everything schema-related lives in `src-tauri/src/services/db_schema.rs`;
 everything about the connection (WAL, timeouts, foreign keys) lives in
-`src-tauri/src/services/database.rs`; backup/restore/export/import lives in
-`src-tauri/src/services/db_backup.rs`. See `docs/DIRECTORIES.md` for exactly where the
+`src-tauri/src/services/database.rs`; backup/restore/export/import lives in the
+`src-tauri/src/services/db_backup/` module. See `docs/DIRECTORIES.md` for exactly where the
 database file and its backups live on disk.
 
 ## Schema
@@ -275,7 +275,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   `SCHEMA_VERSION` this build knows about, `ensure_schema` returns an error instead of
   touching anything - an older build can never silently downgrade or corrupt a database
   produced by a newer one. The same check exists on the import path
-  (`validate_import_source` in `db_backup.rs`) so importing a database from a newer
+  (`validate_import_source` in `db_backup/mod.rs`) so importing a database from a newer
   Kavynex version is rejected up front.
 
 ## Connection settings
@@ -312,7 +312,9 @@ state (rather than a process-wide static) also lets tests inject an in-memory po
 
 ## Backup, restore, export, import
 
-All four operations are implemented in `db_backup.rs`.
+All four operations are implemented in the `db_backup/` module: the shared machinery, restore and
+import in `mod.rs`, the throttled full integrity check in `integrity.rs`, and the user-triggered
+export and the external mirror in `external.rs`.
 
 ### Automatic backup (`backup_database`)
 
@@ -460,6 +462,7 @@ live connection pool is a singleton that cannot be reopened mid-session:
 - `src-tauri/src/services/db_schema.rs` - schema DDL, migrations, `SCHEMA_VERSION`.
 - `src-tauri/src/services/database.rs` - pool creation, connection options, app settings
   key/value helpers.
-- `src-tauri/src/services/db_backup.rs` - backup, restore, export, import.
+- `src-tauri/src/services/db_backup/` - backup, restore and import (`mod.rs`), the throttled
+  integrity check (`integrity.rs`), and export and the external mirror (`external.rs`).
 - `src-tauri/src/commands/database.rs` - the Tauri commands exposing these operations.
 - `src/services/database-service.ts` - the frontend service calling those commands.
