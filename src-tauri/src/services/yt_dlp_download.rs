@@ -237,11 +237,14 @@ fn destination_placement_lock(path: &Path) -> Arc<std::sync::Mutex<()>> {
     lock
 }
 
+/// Returns the final path and whether an already-catalogued file was kept (the fresh download
+/// was discarded). The caller surfaces the second value to the user, since otherwise a re-download
+/// of the same video+format silently keeps the old bytes with no visible signal.
 fn place_downloaded_file(
     downloaded_temp: &Path,
     media_dir: &Path,
     library_dir: &Path,
-) -> AppResult<PathBuf> {
+) -> AppResult<(PathBuf, bool)> {
     let file_name = downloaded_temp.file_name().ok_or_else(|| {
         AppError::from_code(
             AppErrorCode::InvalidDownloadedFile,
@@ -265,11 +268,15 @@ fn place_downloaded_file(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    if !final_destination.exists() {
+    // A single existence check under the placement lock: whether it existed decides both that the
+    // fresh bytes are discarded and what the caller reports to the user.
+    let kept_existing = final_destination.exists();
+
+    if !kept_existing {
         replace_file_safely(downloaded_temp, &final_destination)?;
     }
 
-    Ok(final_destination)
+    Ok((final_destination, kept_existing))
 }
 
 /// Runs `place_downloaded_file` (a cross-device move can fall back to a full `fs::copy` of a
@@ -279,7 +286,7 @@ async fn place_downloaded_file_async(
     downloaded_temp: PathBuf,
     media_dir: PathBuf,
     library_dir: PathBuf,
-) -> AppResult<PathBuf> {
+) -> AppResult<(PathBuf, bool)> {
     run_blocking(move || place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)).await
 }
 
@@ -1092,8 +1099,21 @@ pub async fn download_media_from_url_async(
                     )
                 })?;
 
-        let final_destination =
+        let (final_destination, kept_existing) =
             place_downloaded_file_async(downloaded_temp, media_dir, library_dir.clone()).await?;
+
+        if kept_existing {
+            // The destination already held a file for this exact video+format, so the fresh
+            // download was discarded to avoid replacing already-catalogued bytes (see
+            // place_downloaded_file). Tell the user, instead of finishing silently as if the new
+            // bytes had been stored.
+            emit_download_log(
+                app,
+                &normalized_run_id,
+                "A file for this video and format already existed in the library; kept the existing copy and discarded the new download.",
+                "system",
+            )?;
+        }
 
         let live_chat_file_path = if download_live_chat {
             if let Some(temp_live_chat_file) = find_live_chat_temp_file(&temp_dir, &file_prefix) {
@@ -1305,8 +1325,10 @@ mod tests {
         let temp_file = base.join("source.mp4");
         fs::write(&temp_file, b"fresh-download").unwrap();
 
-        let final_path = place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+        let (final_path, kept_existing) =
+            place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
 
+        assert!(!kept_existing, "a free destination must place the fresh file");
         assert_eq!(final_path, media_dir.join("source.mp4"));
         assert_eq!(fs::read(&final_path).unwrap(), b"fresh-download");
 
@@ -1327,8 +1349,13 @@ mod tests {
         let temp_file = base.join("source.mp4");
         fs::write(&temp_file, b"re-encoded-variant").unwrap();
 
-        let final_path = place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+        let (final_path, kept_existing) =
+            place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
 
+        assert!(
+            kept_existing,
+            "an existing destination must be reported as kept so the caller can notify the user"
+        );
         assert_eq!(final_path, existing);
         // The stored bytes must be untouched; the fresh download is discarded.
         assert_eq!(fs::read(&existing).unwrap(), b"already-catalogued");
