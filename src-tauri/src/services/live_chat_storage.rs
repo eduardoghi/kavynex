@@ -6,7 +6,7 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
-use crate::services::filesystem::replace_file_safely;
+use crate::services::filesystem::{fsync_file, replace_file_safely};
 use crate::{AppError, AppErrorCode, AppResult};
 
 #[derive(Debug, Default, Clone)]
@@ -329,6 +329,11 @@ pub fn compress_file_to(src: &Path, dest: &Path) -> AppResult<()> {
     let temp = temp_sibling_path(dest)?;
     fs::write(&temp, &compressed)
         .map_err(|e| compress_error("failed to write compressed live chat", e))?;
+    // Flush the temp before the same-volume rename in replace_file_safely: without it a crash could
+    // leave a truncated file that the rename then makes the live one. Mirrors copy_file_atomic's
+    // fsync-before-rename; the source is only removed after this returns Ok, so a failure just leaves
+    // the pre-existing file for a retry.
+    fsync_file(&temp)?;
     replace_file_safely(&temp, dest)?;
 
     let _ = fs::remove_file(src);
@@ -357,6 +362,10 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
     let temp = temp_sibling_path(path)?;
     fs::write(&temp, &compressed)
         .map_err(|e| compress_error("failed to write compressed live chat", e))?;
+    // Flush the temp before the same-volume rename in replace_file_safely, so a crash cannot leave a
+    // truncated file that the rename promotes over the original. The round trip above already proved
+    // the bytes decompress, so this only adds durability, not a new failure mode.
+    fsync_file(&temp)?;
     replace_file_safely(&temp, path)?;
 
     Ok(true)
