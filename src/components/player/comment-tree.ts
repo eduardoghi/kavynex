@@ -279,3 +279,28 @@ export function countCommentsInTree(nodes: CommentTreeNode[]): number {
         return total + 1 + countCommentsInTree(node.replies);
     }, 0);
 }
+
+// One comment plus the depth it sits at, produced by flattening a tree into a linear list.
+export type FlatCommentRow = {
+    node: CommentTreeNode;
+    level: number;
+};
+
+// Flattens a comment tree into a pre-order linear list, tagging each node with its depth. The
+// search view renders this (rather than a recursive component tree) so it can virtualize the rows:
+// a broad query that matches thousands of comments then only ever mounts the handful in the
+// viewport, instead of building the whole matching subtree at once. Depth is carried so each row can
+// still be indented to show the reply hierarchy.
+export function flattenCommentTree(nodes: CommentTreeNode[], level = 0): FlatCommentRow[] {
+    const rows: FlatCommentRow[] = [];
+
+    for (const node of nodes) {
+        rows.push({ node, level });
+
+        if (node.replies.length > 0) {
+            rows.push(...flattenCommentTree(node.replies, level + 1));
+        }
+    }
+
+    return rows;
+}

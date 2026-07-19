@@ -18,10 +18,12 @@ import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
 import { AsyncStatusRegion } from "../common/async-status-region";
 import { CommentItem } from "./comment-item";
+import { CommentSearchResults } from "./comment-search-results";
 import {
     buildCommentTree,
     countCommentsInTree,
     filterCommentTree,
+    flattenCommentTree,
     normalizeSearchValue,
     sortCommentTree,
     type CommentSortMode,
@@ -113,6 +115,15 @@ export function CommentsPanel({
     );
 
     const remainingThreadCount = filteredCommentTree.length - visibleCommentTree.length;
+
+    // While searching, every match is shown (no thread/reply caps), so the tree is flattened and
+    // handed to the virtualized results list - which mounts only the rows near the viewport, so a
+    // broad query matching thousands of comments never builds them all at once. Only computed when a
+    // search is active; the browse view keeps its capped, recursive rendering below.
+    const searchResultRows = useMemo(
+        () => (normalizedCommentSearch ? flattenCommentTree(filteredCommentTree) : []),
+        [normalizedCommentSearch, filteredCommentTree]
+    );
 
     // The backend caps how many comments a single media loads at once (a defensive ceiling for a
     // pathologically large backup). comments_count is the number of rows actually stored, so fewer
@@ -271,30 +282,37 @@ export function CommentsPanel({
                         )}
                 </AsyncStatusRegion>
 
-                {!isLoadingComments && filteredCommentTree.length > 0 && (
-                    <Stack gap="lg">
-                        {visibleCommentTree.map((comment) => (
-                            <CommentItem
-                                key={`${comment.id}-${comment.comment_id ?? "comment"}`}
-                                comment={comment}
-                                shellBorder={shellBorder}
-                                forceExpandReplies={Boolean(normalizedCommentSearch)}
-                            />
-                        ))}
+                {!isLoadingComments &&
+                    filteredCommentTree.length > 0 &&
+                    (normalizedCommentSearch ? (
+                        // Search: show every match, virtualized (no thread/reply caps).
+                        <CommentSearchResults rows={searchResultRows} shellBorder={shellBorder} />
+                    ) : (
+                        // Browse: progressive disclosure, capped and revealed on demand.
+                        <Stack gap="lg">
+                            {visibleCommentTree.map((comment) => (
+                                <CommentItem
+                                    key={`${comment.id}-${comment.comment_id ?? "comment"}`}
+                                    comment={comment}
+                                    shellBorder={shellBorder}
+                                />
+                            ))}
 
-                        {remainingThreadCount > 0 && (
-                            <Button
-                                variant="light"
-                                color="gray"
-                                onClick={() =>
-                                    setVisibleThreadCount((current) => current + LOAD_MORE_STEP)
-                                }
-                            >
-                                {UI_TEXT.comments.loadMore} ({remainingThreadCount})
-                            </Button>
-                        )}
-                    </Stack>
-                )}
+                            {remainingThreadCount > 0 && (
+                                <Button
+                                    variant="light"
+                                    color="gray"
+                                    onClick={() =>
+                                        setVisibleThreadCount(
+                                            (current) => current + LOAD_MORE_STEP
+                                        )
+                                    }
+                                >
+                                    {UI_TEXT.comments.loadMore} ({remainingThreadCount})
+                                </Button>
+                            )}
+                        </Stack>
+                    ))}
             </Stack>
         </Paper>
     );

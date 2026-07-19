@@ -4,6 +4,7 @@ import {
     buildCommentTree,
     countCommentsInTree,
     filterCommentTree,
+    flattenCommentTree,
     formatCommentPublishedAt,
     matchesCommentSearch,
     normalizeSearchValue,
@@ -199,6 +200,40 @@ describe("filterCommentTree", () => {
 
         expect(filtered.map((node) => node.comment_id)).toEqual(["c1"]);
         expect(filtered[0]!.replies).toHaveLength(0);
+    });
+});
+
+describe("flattenCommentTree", () => {
+    it("flattens a tree into a pre-order list tagging each node with its depth", () => {
+        const tree = buildCommentTree(
+            [
+                comment({ id: 1, comment_id: "c1", text: "root one" }),
+                comment({ id: 2, comment_id: "c2", parent_comment_id: "c1", text: "reply" }),
+                comment({
+                    id: 3,
+                    comment_id: "c3",
+                    parent_comment_id: "c2",
+                    text: "nested reply",
+                }),
+                comment({ id: 4, comment_id: "c4", text: "root two" }),
+            ],
+            "oldest"
+        );
+
+        const rows = flattenCommentTree(tree);
+
+        // Pre-order: each subtree is fully emitted before the next sibling, and depth increases by
+        // one per level.
+        expect(rows.map((row) => [row.node.comment_id, row.level])).toEqual([
+            ["c1", 0],
+            ["c2", 1],
+            ["c3", 2],
+            ["c4", 0],
+        ]);
+    });
+
+    it("returns an empty list for an empty tree", () => {
+        expect(flattenCommentTree([])).toEqual([]);
     });
 });
 

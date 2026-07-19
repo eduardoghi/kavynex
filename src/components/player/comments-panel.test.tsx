@@ -6,6 +6,23 @@ import { renderWithMantine } from "../../test/test-utils";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
 
+// The search view (CommentSearchResults) virtualizes its rows. jsdom gives the scroll container no
+// height, so the real virtualizer would render nothing; mock it to yield every row (as the media
+// grid test does) so search assertions can see the matches.
+vi.mock("@tanstack/react-virtual", () => ({
+    useVirtualizer: vi.fn(({ count }: { count: number }) => ({
+        getTotalSize: () => count * 140,
+        getVirtualItems: () =>
+            Array.from({ length: count }, (_, index) => ({
+                index,
+                key: index,
+                start: index * 140,
+            })),
+        measureElement: vi.fn(),
+        measure: vi.fn(),
+    })),
+}));
+
 function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
     return {
         id: 1,
@@ -124,6 +141,47 @@ describe("CommentsPanel", () => {
         // After the debounce, only the matching thread remains.
         expect(screen.queryByText("banana bread")).not.toBeInTheDocument();
         expect(screen.getByText("apple pie")).toBeInTheDocument();
+    });
+
+    it("shows every match when searching, past the browse thread cap and with no load-more", () => {
+        // 35 matching top-level threads - more than the browse view's 30-thread cap. Search must
+        // surface all of them (the point of searching the whole comment set), so the 35th is present
+        // and there is no "load more" gate; the virtualized results list is what makes rendering all
+        // of them safe.
+        const comments = Array.from({ length: 35 }, (_, index) =>
+            comment({
+                id: index + 1,
+                comment_id: `c${index}`,
+                text: `needle comment ${index}`,
+            })
+        );
+
+        renderWithMantine(
+            <CommentsPanel
+                comments={comments}
+                hasComments
+                commentsCount={comments.length}
+                isLoadingComments={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        act(() => {
+            fireEvent.change(screen.getByLabelText(UI_TEXT.comments.searchLabel), {
+                target: { value: "needle" },
+            });
+        });
+
+        act(() => {
+            vi.advanceTimersByTime(200);
+        });
+
+        // The 35th match is rendered even though it is past the 30-thread browse cap...
+        expect(screen.getByText("needle comment 34")).toBeInTheDocument();
+        // ...and search does not gate results behind a "load more" button.
+        expect(
+            screen.queryByText(new RegExp(UI_TEXT.comments.loadMore))
+        ).not.toBeInTheDocument();
     });
 
     it("offers to fetch comments in the empty state for a YouTube-sourced media", () => {
