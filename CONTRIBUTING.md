@@ -96,6 +96,35 @@ to fail the build if the checked-in bindings are stale. Never hand-edit a file u
 `src/types/generated/` - change the Rust type instead and rerun the command above. See
 `docs/ARCHITECTURE.md` for where these types fit in the IPC boundary.
 
+## Frontend hook conventions
+
+The controller hooks under `src/hooks/` follow a small set of rules that keep the media grid and the
+player from re-rendering on unrelated state changes. They are enforced by convention (and by
+`eslint-plugin-react-hooks`), not by a dedicated lint rule, so they are collected here as the single
+reference the inline comments point back to. A new hook that ignores them will usually still work,
+just slower - the failure mode is extra renders, not a crash, which is exactly why it is easy to let
+drift in unnoticed.
+
+- **Return a reference-stable controller.** Build a hook's return value with `useMemoObject({...})`
+  (`src/hooks/use-memo-object.ts`) rather than a bare object literal, so its identity only changes
+  when one of its fields does. A fresh object every render invalidates every consumer that depends
+  on the whole controller.
+- **Depend on the specific stable fields, not the whole controller object.** When a hook receives
+  another controller as input, destructure the individual fields it needs off it and list *those* in
+  the `useCallback`/`useEffect`/`useMemo` dependency arrays - never the per-render controller object
+  itself, whose identity changes every render and would recreate the callback (and, transitively,
+  every per-card handler derived from it) on any unrelated change. `use-home-media-actions.ts` and
+  `use-home-player-actions.ts` are the reference examples.
+- **Do not reach for `eslint-disable react-hooks/exhaustive-deps`.** The destructure-stable-fields
+  rule above is what lets the dependency arrays stay honest without it. The few genuine exceptions
+  (`use-memo-object.ts`, `use-media-progress-persistence.ts`, `add-media-modal.tsx`) each carry a
+  comment explaining why the omission is correct; a new one needs the same justification, not a bare
+  disable.
+- **Keep the latest value in a ref when a callback must read it without depending on it.** When a
+  callback needs the current value of something that changes often (e.g. the active media) but must
+  not be recreated when it changes, mirror it into a ref updated in an effect and read the ref inside
+  the callback - see the `activeMediaRef` pattern in `use-media-actions.ts`.
+
 ## Release flow
 
 1. Bump the version everywhere it needs to match (`package.json`, `src-tauri/tauri.conf.json`,
