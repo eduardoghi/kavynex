@@ -151,6 +151,12 @@ function MediaCardComponent({
     // new one shows it rather than staying on the placeholder. Keying state to a value is cheaper
     // and less error-prone here than an effect: the grid keys cards by media id, so this only has
     // to cover the same card getting a new thumbnail.
+    //
+    // This is deliberately React's "adjust state directly during render" pattern (the set-state
+    // call runs during render, React re-renders immediately before committing), NOT a useEffect.
+    // Do not "fix" it into an effect: an effect would render one frame with the stale thumbFailed
+    // (a flash of the broken-image placeholder) before resetting. See
+    // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
     const [thumbFailed, setThumbFailed] = useState(false);
     const [thumbFailedFor, setThumbFailedFor] = useState(thumbSrc);
 
