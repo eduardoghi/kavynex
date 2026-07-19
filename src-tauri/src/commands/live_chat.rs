@@ -71,6 +71,13 @@ pub async fn stream_live_chat_file(
 ) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
 
+    // Deliberately does NOT take library_lock::library_read_guard(), unlike delete/migrate above.
+    // That gate serializes writes and deletes against a migration's copy/remove phase, because
+    // only those can lose data (a file written into the old tree between copy and remove). A pure
+    // read cannot: the worst a concurrent migration does to it is move the file mid-read, which
+    // surfaces as a LiveChatFileUnreadable error, never corruption. Holding a read guard for the
+    // whole streamed read would instead block a migration for the entire duration of a (possibly
+    // large) replay, which is worse than the transient error it would prevent. See services::library_lock.
     run_blocking(move || {
         stream_live_chat_relative_sync(
             &library_dir,
