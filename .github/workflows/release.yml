@@ -83,8 +83,48 @@ jobs:
             - name: Check licenses, sources and bans
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
 
+    # The production JS advisory, license and lint gates run in their own job that publish-tauri
+    # `needs`, so every build leg is blocked until they pass - symmetric with the `audit` (Rust)
+    # job above. Previously these ran inside publish-tauri gated to the Ubuntu leg, which failed
+    # only that leg: with fail-fast off, the Windows and macOS legs would still build, sign and
+    # upload their installers to the draft before the Ubuntu failure was even visible. These checks
+    # are platform-independent (they read the lockfile / run ESLint), so one Ubuntu run gates all
+    # four build legs. The frontend test suite stays in publish-tauri instead of moving here,
+    # because it is not fully platform-independent (ICU date formatting) and is worth running on
+    # each target.
+    frontend-audit:
+        name: Frontend audit
+        runs-on: ubuntu-22.04
+        timeout-minutes: 30
+        permissions:
+            contents: read
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+            - name: Setup Node.js
+              uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+              with:
+                  node-version: 26.5.0
+                  cache: pnpm
+
+            - name: Install frontend dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Audit production JS dependencies
+              run: pnpm run advisories:check
+
+            - name: Check production JS licenses
+              run: pnpm licenses:check
+
+            - name: Lint
+              run: pnpm lint
+
     publish-tauri:
-        needs: audit
+        needs: [audit, frontend-audit]
         permissions:
             contents: write
             # Build provenance attestation (actions/attest-build-provenance): id-token mints
@@ -174,6 +214,14 @@ jobs:
                   components: rustfmt, clippy
                   targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+            # These apt packages are deliberately not version-pinned, unlike the Rust toolchain,
+            # Node and the runner image. Exact apt pins on a GitHub-hosted image are brittle: the
+            # archive supersedes old versions and drops them, so a pinned `pkg=version` starts
+            # failing the moment the image refreshes, turning a green build red for a reason
+            # unrelated to this project. The cost of leaving them free is bounded: these are the
+            # Linux WebKit/GTK dev headers used to build against, dynamically linked at runtime
+            # against the end user's own system libraries, so they are not shipped inside the
+            # bundle and cannot change what a user actually runs.
             - name: Install Linux dependencies
               if: matrix.platform == 'ubuntu-22.04'
               run: |
@@ -216,29 +264,10 @@ jobs:
             - name: Install frontend dependencies
               run: pnpm install --frozen-lockfile
 
-            # The release is dispatched manually, so an advisory published after the last CI
-            # run on the chosen ref would otherwise ship unaudited. Re-run the same production
-            # JS audit CI gates on, before building the binaries. Platform-independent (it reads
-            # the lockfile and queries osv.dev), so it runs once on Ubuntu rather than on all four
-            # matrix targets - four concurrent runs would only multiply the chance of a transient
-            # osv.dev failure taking a build leg down with it.
-            - name: Audit production JS dependencies
-              if: matrix.platform == 'ubuntu-22.04'
-              run: pnpm run advisories:check
-
-            # Mirror ci.yml's license gate for the same reason as every other check duplicated
-            # here: the release is dispatched manually, so nothing guarantees the chosen ref ever
-            # went through CI. Platform-independent, so it runs once on Ubuntu.
-            - name: Check production JS licenses
-              if: matrix.platform == 'ubuntu-22.04'
-              run: pnpm licenses:check
-
-            # Mirror ci.yml's lint gate so a manually dispatched release cannot ship on a
-            # commit with an ESLint violation that never went through CI. Platform-independent,
-            # so it runs once on Ubuntu rather than on every matrix target.
-            - name: Lint
-              if: matrix.platform == 'ubuntu-22.04'
-              run: pnpm lint
+            # The JS advisory, license and lint gates run in the separate `frontend-audit` job that
+            # this job `needs`, so they block every build leg before any binary is signed - see that
+            # job for why they were moved out of here. The frontend tests stay below because, unlike
+            # those three, they are not fully platform-independent.
 
             # `test:coverage` rather than a plain run, mirroring ci.yml: the coverage floors live
             # in vitest.config.ts and are only enforced when coverage is collected, so running
