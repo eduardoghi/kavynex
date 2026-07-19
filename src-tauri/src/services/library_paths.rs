@@ -53,6 +53,16 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
 /// extended-length form (see [`to_extended_length_path`]). Shared by the helpers below so every
 /// filesystem call they make on a caller-supplied path is long-path-safe. A no-op beyond the
 /// trim on other platforms.
+///
+/// Deliberately does NOT reject a UNC / network path here (unlike `services::library_guard` and
+/// `services::library::resolve_path_inside_library`, which do): these helpers sit on the
+/// library-selection path (onboarding and change-library both call `ensure_directory_exists`/
+/// `resolve_existing_directory`/`is_directory_empty` on the candidate folder), and a library kept
+/// on a network share is a supported configuration (SECURITY.md - it only loses the
+/// "reveal in file manager" convenience). Rejecting network paths here would break choosing such a
+/// library. The NTLM-hash-leak concern that motivates the rejection elsewhere is bounded here
+/// because the path always comes from a native folder picker the user drove, not from an
+/// unattended IPC caller redirecting a delete/move at an arbitrary host.
 fn library_input_path(path: &str) -> PathBuf {
     to_extended_length_path(PathBuf::from(path.trim()))
 }
