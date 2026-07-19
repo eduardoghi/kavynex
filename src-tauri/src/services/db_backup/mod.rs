@@ -952,7 +952,18 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
         if let Err(error) = write_import_applying_marker(&marker) {
             // Nothing is in flight for a marker to describe: put the database back so the next run
             // sees an ordinary pending import rather than a half-applied one.
-            let _ = std::fs::rename(&pre_import, db_path);
+            if let Err(rollback_error) = std::fs::rename(&pre_import, db_path) {
+                // Both the marker write and the rollback failed, so the database now lives only in
+                // `.pre-import` with nothing pointing there (the marker never got written). Log
+                // prominently so the snapshot can be restored by hand rather than the next launch
+                // silently creating an empty database via `create_if_missing`.
+                logger::error(
+                    "db_backup",
+                    format!(
+                        "database import rollback failed after a marker-write error; the previous database is preserved at the .pre-import snapshot beside kavynex.db and must be restored by hand: {rollback_error}"
+                    ),
+                );
+            }
 
             return Err(error);
         }
