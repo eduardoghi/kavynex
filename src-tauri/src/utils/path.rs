@@ -14,7 +14,7 @@ pub fn extension_from_path(path: &Path) -> String {
 /// True for a segment that names a Windows reserved device (CON, PRN, AUX, NUL, COM0-9,
 /// LPT0-9), with or without an extension - Windows treats `CON`, `CON.txt`, etc. as the device.
 /// Checked on every platform so a library synced from Windows behaves the same everywhere.
-fn is_windows_reserved_name(segment: &str) -> bool {
+pub(crate) fn is_windows_reserved_name(segment: &str) -> bool {
     let stem = segment.split('.').next().unwrap_or(segment).trim();
 
     if matches!(

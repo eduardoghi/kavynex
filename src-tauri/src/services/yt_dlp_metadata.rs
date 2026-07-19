@@ -95,10 +95,21 @@ pub fn sanitize_filename_component(value: &str) -> String {
     // '-' is prefixed with '_'. Rare (extractor/id come from yt-dlp's own extractor, not free-form
     // text), but this mirrors the leading-dash guard in yt_dlp_download::is_valid_format_id and
     // keeps the value safe wherever the resulting file_prefix feeds an argv position.
-    if compact.starts_with('-') {
+    let guarded = if compact.starts_with('-') {
         format!("_{compact}")
     } else {
         compact
+    };
+
+    // A component that sanitizes to a Windows reserved device name (CON, NUL, COM1, ...) would make
+    // the resulting file unusable on Windows. In practice the download filename joins three such
+    // components as extractor_id_formatid, so a bare reserved stem is not normally reachable, but
+    // prefix it with '_' as defense in depth - mirroring the leading-dash guard above and the
+    // reserved-name rejection in utils::path::sanitize_relative_path_strict.
+    if crate::utils::path::is_windows_reserved_name(&guarded) {
+        format!("_{guarded}")
+    } else {
+        guarded
     }
 }
 
@@ -958,6 +969,20 @@ mod tests {
                 sanitize_filename_component(id)
             );
         }
+    }
+
+    #[test]
+    fn sanitize_filename_component_prefixes_windows_reserved_names() {
+        // A component that sanitizes to a reserved device name is prefixed with '_' so the joined
+        // filename is usable on Windows, with or without an extension.
+        assert_eq!(sanitize_filename_component("CON"), "_CON");
+        assert_eq!(sanitize_filename_component("nul"), "_nul");
+        assert_eq!(sanitize_filename_component("com1"), "_com1");
+        assert_eq!(sanitize_filename_component("LPT9.txt"), "_LPT9.txt");
+
+        // A component that merely contains a reserved substring is a real name, left untouched.
+        assert_eq!(sanitize_filename_component("console"), "console");
+        assert_eq!(sanitize_filename_component("com10"), "com10");
     }
 
     #[test]
