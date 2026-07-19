@@ -18,30 +18,25 @@
 
 # Test *only* these files (globs are relative to this package root, src-tauri/).
 #
-# Worth widening next, in this order, but each needs its own measured run before it is added -
-# a surviving mutant fails the scheduled job, so a glob added on faith turns the gate red weekly
-# instead of proving anything:
-#   - `src/services/filesystem.rs` - the atomic copy/replace primitives, whose job is to refuse to
-#     overwrite differing content and to restore the original when a replace fails. A flipped
-#     comparison there does not fail loudly; it silently overwrites a file in the user's library.
+# `src/services/filesystem.rs` - the atomic copy/replace primitives (whose job is to refuse to
+# overwrite differing content and to restore the original when a replace fails) and the
+# file-matching helpers. ADDED below after triaging its survivors.
+#     Measured 2026-07-17 (`--no-config --file`): 121 mutants, 34 missed. Re-measured 2026-07-18 after
+#     the symlink-cycle/temp-cleanup changes: 131 mutants, 43 missed. The matching helpers
+#     (`find_latest_matching_file`, `find_unique_matching_file`, `find_best_matching_file`,
+#     `clean_matching_files_in_dir`) held most of the killable ones - the existing preference test
+#     picked the preferred file only because it was also the newest, so a flipped preference
+#     comparison slipped through; the rest were prefix-named-subdirectory and non-directory cases the
+#     filters guard but no test exercised. Those are now covered by tests. The remainder are excluded
+#     below with a reason each: boundary functions (EXDEV detection, directory fsync), cfg-split
+#     bodies, error-recovery branches a unit test cannot force, and equivalent mutants (a temp
+#     filename the following rename discards, a guard that short-circuits to the same value, a `!=`
+#     that only picks which line gets logged).
 #
-#     MEASURED (2026-07-17, cargo-mutants 27.1.0, `--no-config --file src/services/filesystem.rs`):
-#     121 mutants in 15m - 31 caught, 34 missed, 56 unviable. Two things follow, and they point the
-#     opposite way from what this note used to assume:
-#       * The CI time budget is not the obstacle. 15m against this job's 120m limit leaves room even
-#         once it runs alongside the current scope.
-#       * The 34 survivors are. Adding the glob today fails the weekly run on its first firing.
-#     They are not all test gaps, which is what makes this a real piece of work rather than a
-#     mechanical one: some are equivalent mutants that no test can kill. `replace || with && in
-#     file_paths_have_same_content` (line 63) is one - with `&&`, a missing file falls through to the
-#     `is_file()` guard below, which returns the same `Ok(false)` the existence guard would have.
-#     Each survivor has to be read and sorted into "kill it with a test" or "exclude it as
-#     equivalent, with the reason written down" before the glob goes in.
-#     Where they sit: the matching helpers (`find_latest_matching_file`, `find_best_matching_file`,
-#     `find_unique_matching_file`, `clean_matching_files_in_dir`) hold about half; the rest are in
-#     `replace_file_safely`, `move_or_copy_file`, `copy_file_atomic`, `alternative_destination_path`
-#     and `file_paths_have_same_content` - and that second group is the one this file cares about,
-#     since those are the overwrite-refusal primitives themselves.
+# Worth widening next, once measured and triaged the same way:
+#   - `src/services/db_backup.rs` - backup/restore/export/import, the most destructive operations in
+#     the app. Not yet measured; do the `--no-config --file src/services/db_backup/mod.rs` pass,
+#     sort the survivors into kill/exclude, and only then add the glob so the weekly run stays green.
 #   - `src/services/library_media.rs` and `src/services/library_cleanup.rs` - content-addressing
 #     and the reference-count-before-unlink decision. ADDED below after a measured pass
 #     (2026-07-18, cargo-mutants 27.1.0, `--in-place --no-config --file <each>`): 111 mutants, 94
@@ -59,6 +54,7 @@ examine_globs = [
     "src/services/binaries.rs",
     "src/services/library_media.rs",
     "src/services/library_cleanup.rs",
+    "src/services/filesystem.rs",
 ]
 
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the
@@ -101,4 +97,34 @@ exclude_re = [
     # always errors and an empty string never equals a non-empty one, so the fallback compare
     # yields the same false. No input distinguishes it, so no test can kill it.
     'replace \|\| with && in paths_refer_to_same_location',
+    # filesystem.rs boundary/cfg/equivalent survivors (triaged 2026-07-18; see the note above).
+    # EXDEV detection is cfg-split (unix errno 18 / windows 17) and needs a real cross-device rename
+    # to exercise; the name also matches the match-guard mutants in move_or_copy_file that call it.
+    'is_cross_device_error',
+    # Directory-entry fsync: cfg-split (unix File::sync_all / windows FlushFileBuffers), best-effort,
+    # and its only effect - flushing the dir entry - is invisible to any functional test.
+    'fsync_parent_dir',
+    # Equivalent: with `&&`, a missing or non-file path still returns Ok(false), because the next
+    # guard (or the hash of a non-file) yields the same result; the directory-vs-file case it defends
+    # has no caller. Covers both the exists() and is_file() guards.
+    'replace \|\| with && in file_paths_have_same_content',
+    # Equivalent: only changes the internal temp filename, which the following rename discards.
+    'delete ! in build_temp_destination_path',
+    # The failed-rename recovery branch in copy_file_atomic, reachable only when the temp->dest
+    # rename itself fails - which a unit test cannot force deterministically.
+    'replace && with \|\| in copy_file_atomic',
+    # The backup-vanished race branch in replace_file_safely: needs the destination to disappear
+    # between the exists check and the rename, which no deterministic test can arrange.
+    'error.kind\(\) == ErrorKind::NotFound.* in replace_file_safely',
+    'replace == with != in replace_file_safely',
+    # Equivalent: this `!=` gates only an eprintln diagnostic during migration - no observable change.
+    'replace != with == in migrate_directory_contents',
+    # The symlink-cycle test is cfg(unix) (creating a symlink on Windows needs privilege), so this
+    # mutant survives only on a non-unix measurement; the ubuntu CI gate's unix test kills it. Its
+    # `-> true` counterpart stays in scope (a plain copy test catches it on every platform).
+    'replace dir_entry_is_symlink -> bool with false',
+    # Equivalent: the ext guard in alternative_destination_path only differs from `true` when the
+    # extension is an empty string, which Path::extension never yields (a trailing-dot name has no
+    # extension). The `with false`/`delete !` variants are killed by the migration extension test.
+    'replace match guard !ext.trim\(\).is_empty\(\) with true in alternative_destination_path',
 ]

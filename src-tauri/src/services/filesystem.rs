@@ -1063,6 +1063,125 @@ mod tests {
     }
 
     #[test]
+    fn find_best_matching_file_prefers_the_extension_over_a_newer_non_preferred_file() {
+        // The existing preference test writes the preferred file last, so recency alone would pick
+        // it too - which lets a flipped preference comparison slip through. Make the preferred file
+        // the *older* one so preference has to beat recency, pinning that comparison.
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let png = dir.join("thumb_x.png");
+        let jpg = dir.join("thumb_x.jpg");
+        fs::write(&png, b"png").unwrap(); // preferred, but older
+        sleep(Duration::from_millis(20));
+        fs::write(&jpg, b"jpg").unwrap(); // newer, not preferred
+
+        let found = find_best_matching_file(&dir, "thumb_x.", Some("png")).unwrap();
+        assert_eq!(found.file_name().unwrap().to_string_lossy(), "thumb_x.png");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn matching_helpers_ignore_a_prefix_named_subdirectory() {
+        // A subdirectory whose name starts with the prefix is not a "matching file": the filters
+        // pair starts_with(prefix) with is_file(). The directory is made *newer* than the file, so
+        // a filter that dropped the is_file() half (matching the directory too) would return or
+        // count it - each helper must still resolve to the file.
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("media_x.mp4");
+        fs::write(&file, b"real").unwrap();
+        sleep(Duration::from_millis(20));
+        fs::create_dir_all(dir.join("media_x_dir")).unwrap();
+
+        assert_eq!(find_latest_matching_file(&dir, "media_x").unwrap(), file);
+        assert_eq!(find_unique_matching_file(&dir, "media_x").unwrap(), file);
+        assert_eq!(find_best_matching_file(&dir, "media_x", None).unwrap(), file);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn matching_helpers_reject_a_non_directory_path() {
+        // A path that exists but is a file must come back as the catalogued MatchingFileNotFound,
+        // not an attempt to read it as a directory (which would surface a different error).
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("not_a_dir");
+        fs::write(&file, b"x").unwrap();
+
+        for result in [
+            find_latest_matching_file(&file, "x"),
+            find_unique_matching_file(&file, "x"),
+            find_best_matching_file(&file, "x", None),
+        ] {
+            let error = result.expect_err("a file path is not a searchable directory");
+            assert_eq!(error.code, AppErrorCode::MatchingFileNotFound.as_str());
+        }
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn find_latest_matching_file_returns_the_most_recent_match() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let older = dir.join("run_a.log");
+        let newer = dir.join("run_b.log");
+        fs::write(&older, b"a").unwrap();
+        sleep(Duration::from_millis(20));
+        fs::write(&newer, b"b").unwrap();
+
+        assert_eq!(find_latest_matching_file(&dir, "run_").unwrap(), newer);
+        assert!(find_latest_matching_file(&dir, "none_").is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn find_unique_matching_file_distinguishes_none_one_and_many() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        // None: the catalogued not-found code, not a silent success.
+        let none = find_unique_matching_file(&dir, "only_").unwrap_err();
+        assert_eq!(none.code, AppErrorCode::MatchingFileNotFound.as_str());
+
+        // Exactly one: returned.
+        let one = dir.join("only_1.txt");
+        fs::write(&one, b"1").unwrap();
+        assert_eq!(find_unique_matching_file(&dir, "only_").unwrap(), one);
+
+        // Two: the distinct multiple-match error, never a quiet pick of one.
+        fs::write(dir.join("only_2.txt"), b"2").unwrap();
+        let many = find_unique_matching_file(&dir, "only_").unwrap_err();
+        assert_eq!(many.code, AppErrorCode::MultipleMatchingFilesFound.as_str());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn clean_matching_files_in_dir_removes_only_prefix_matches() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let matching = dir.join("tmp_a");
+        let other = dir.join("keep_b");
+        fs::write(&matching, b"a").unwrap();
+        fs::write(&other, b"b").unwrap();
+
+        clean_matching_files_in_dir(&dir, "tmp_").unwrap();
+
+        assert!(!matching.exists(), "a prefix match must be removed");
+        assert!(other.exists(), "a non-matching file must be left alone");
+
+        // A missing directory is a no-op, not an error.
+        clean_matching_files_in_dir(&unique_test_dir(), "tmp_").unwrap();
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn copy_file_atomic_writes_destination_with_source_content() {
         let dir = unique_test_dir();
         fs::create_dir_all(&dir).unwrap();
@@ -1219,7 +1338,18 @@ mod tests {
         assert!(destination_dir.join("same_name.txt").exists());
         assert_eq!(migrated_variants.len(), 1);
 
-        let migrated_content = fs::read(migrated_variants.remove(0)).unwrap();
+        let migrated = migrated_variants.remove(0);
+        // The alternative name preserves the original extension, so the migrated copy stays a usable
+        // .txt rather than an extension-less file (pins the ext guard in alternative_destination_path).
+        assert!(
+            migrated
+                .file_name()
+                .and_then(|v| v.to_str())
+                .is_some_and(|name| name.ends_with(".txt")),
+            "migrated variant must keep the .txt extension: {migrated:?}"
+        );
+
+        let migrated_content = fs::read(&migrated).unwrap();
         assert_eq!(migrated_content, b"source-content");
 
         let _ = fs::remove_dir_all(source_dir);
