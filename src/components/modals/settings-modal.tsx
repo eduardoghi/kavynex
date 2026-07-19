@@ -54,9 +54,16 @@ export function SettingsModal({
     const controller = useSettingsController({ opened, libraryPath });
 
     // Locks the modal (no Esc, click-outside or close button) while a destructive database
-    // operation or a library migration is in progress, so the user cannot dismiss it mid-flight
-    // and lose visibility into an error, or trigger an app relaunch behind a closed modal.
-    const isModalLocked = controller.databaseBusy !== "idle" || isMigratingLibraryPath;
+    // operation, a library migration, or an app update check/download is in progress, so the user
+    // cannot dismiss it mid-flight and lose visibility into an error - or, for the update, close the
+    // modal and keep working only for installAppUpdate to relaunch the whole app by surprise when
+    // the download finishes. Keeping the modal open until the update resolves means the relaunch is
+    // never a surprise.
+    const isUpdateInProgress =
+        controller.appUpdateStatus === "checking" ||
+        controller.appUpdateStatus === "downloading";
+    const isModalLocked =
+        controller.databaseBusy !== "idle" || isMigratingLibraryPath || isUpdateInProgress;
 
     return (
         <Modal
