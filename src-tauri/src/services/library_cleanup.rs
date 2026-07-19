@@ -450,13 +450,21 @@ async fn execute_plan(
         return Ok(report_for_nothing_deletable(plan));
     }
 
+    // Resolve the library directory first, before the recount below, so the recount is the last
+    // await before the blocking unlink is scheduled. The window this race is about is the gap
+    // between "the file is still unreferenced" and the unlink; keeping any other await (the library
+    // resolution here) out of that gap shrinks it to the unavoidable run_blocking handoff. The
+    // resolution's own result is only consumed after the recount, so this reordering leaves the
+    // reporting on every path (including the library-unavailable one) exactly as it was.
+    let library_dir = configured_library_dir(app).await;
+
     // Re-check each planned unlink against the live database: a row inserted after the deletion
     // committed (a concurrent import deduping onto the same content-addressed file) must spare it.
     if let Ok(pool) = shared_pool(app).await {
         drop_paths_referenced_again(&pool, &mut plan).await;
     }
 
-    let library_dir = match configured_library_dir(app).await {
+    let library_dir = match library_dir {
         Ok(dir) => dir,
         Err(error) => {
             // The rows are already committed as deleted; without a configured library the
