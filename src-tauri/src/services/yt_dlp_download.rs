@@ -45,6 +45,13 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
+
+/// Upper bound on the frontend-supplied `run_id`. The legitimate value is a `crypto.randomUUID()`
+/// (36 chars); this cap leaves generous room while stopping a compromised frontend from driving an
+/// arbitrarily long value into the download temp-directory name (`{run_id}-{suffix}`), where it
+/// could otherwise blow past filesystem path-length limits. The backend is the trust boundary, so
+/// it validates rather than assuming the run id is well-formed.
+const MAX_RUN_ID_LEN: usize = 128;
 // A download that produces no output AND whose temp files stop growing for this long is
 // treated as hung (dead network, deadlocked ffmpeg) and killed. Output alone is not a
 // sufficient liveness signal: a large ffmpeg merge/remux can run for minutes writing to the
@@ -160,6 +167,18 @@ fn redacted_args_for_log(args: &[String]) -> String {
 /// on top of `resolve_format_has_video`, which additionally requires the id to match a real
 /// format from the fetched metadata: since that metadata is attacker-influenced (it comes from
 /// the video being downloaded), the id is filtered by character class before it is trusted.
+/// True for a well-formed run id: non-empty, within [`MAX_RUN_ID_LEN`], and made only of the
+/// characters a UUID (or a hex/dash fallback) uses. It becomes part of a temp-directory name, so
+/// restricting it to `[A-Za-z0-9._-]` also keeps a path separator or other filesystem-significant
+/// character out of that name regardless of what the frontend sends.
+fn is_valid_run_id(run_id: &str) -> bool {
+    !run_id.is_empty()
+        && run_id.len() <= MAX_RUN_ID_LEN
+        && run_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
 fn is_valid_format_id(format_id: &str) -> bool {
     format_id.split('+').all(|part| {
         !part.is_empty()
@@ -400,6 +419,13 @@ fn validate_download_inputs(
         return Err(AppError::from_code(
             AppErrorCode::InvalidRunId,
             "run_id is empty",
+        ));
+    }
+
+    if !is_valid_run_id(&run_id) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidRunId,
+            "run_id is too long or contains unexpected characters",
         ));
     }
 
@@ -995,7 +1021,17 @@ pub async fn download_media_from_url_async(
                 // killing it, check whether the temp files are still growing: if so it is
                 // progressing, so record the growth as activity and keep waiting. Only a stretch
                 // with neither output nor file growth is treated as a real stall.
-                let current_temp_size = total_matching_file_size(&temp_dir, &file_prefix);
+                // Off the async runtime: read_dir is blocking I/O, and the project's convention
+                // (utils::task) is that no synchronous filesystem work runs on a Tokio worker.
+                // A join failure defaults to 0 (no growth observed), which is the safe direction -
+                // it lets the stall be confirmed rather than masking a genuinely hung download.
+                let temp_dir_probe = temp_dir.clone();
+                let file_prefix_probe = file_prefix.clone();
+                let current_temp_size = crate::utils::task::run_blocking(move || {
+                    Ok(total_matching_file_size(&temp_dir_probe, &file_prefix_probe))
+                })
+                .await
+                .unwrap_or(0);
 
                 if current_temp_size > last_observed_temp_size {
                     last_observed_temp_size = current_temp_size;
@@ -1328,7 +1364,10 @@ mod tests {
         let (final_path, kept_existing) =
             place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
 
-        assert!(!kept_existing, "a free destination must place the fresh file");
+        assert!(
+            !kept_existing,
+            "a free destination must place the fresh file"
+        );
         assert_eq!(final_path, media_dir.join("source.mp4"));
         assert_eq!(fs::read(&final_path).unwrap(), b"fresh-download");
 
@@ -1456,6 +1495,29 @@ mod tests {
         ] {
             assert!(!is_valid_format_id(id), "should reject: {id}");
         }
+    }
+
+    #[test]
+    fn validate_download_inputs_rejects_a_too_long_or_malformed_run_id() {
+        // A legitimate run_id is a short UUID; the backend still bounds length and charset so a
+        // compromised frontend cannot drive an arbitrarily long or path-significant value into the
+        // download temp-directory name.
+        let long_run_id = "a".repeat(MAX_RUN_ID_LEN + 1);
+
+        for run_id in [long_run_id.as_str(), "run/../etc", "run id", "run\\x"] {
+            let error =
+                validate_download_inputs("https://youtube.com/watch?v=x", "/lib", run_id, "137")
+                    .unwrap_err();
+            assert_eq!(
+                error.code,
+                AppErrorCode::InvalidRunId.as_str(),
+                "run_id: {run_id:?}"
+            );
+        }
+
+        // A real UUID-shaped run id is accepted (charset and length both within bounds).
+        assert!(is_valid_run_id("3f2504e0-4f89-41d3-9a0c-0305e82c3301"));
+        assert!(is_valid_run_id(&"a".repeat(MAX_RUN_ID_LEN)));
     }
 
     #[test]
