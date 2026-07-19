@@ -1,14 +1,20 @@
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::future::Future;
+use std::io;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use http::Uri;
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
+use hyper_util::client::legacy::connect::dns::Name;
+use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use tauri::AppHandle;
@@ -16,6 +22,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::lookup_host;
 use tokio::process::Command;
 use tokio::time::timeout;
+use tower_service::Service;
 
 use crate::models::yt_dlp::YtDlpMetadata;
 use crate::services::binaries::{
@@ -327,7 +334,40 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
         }
     }
 
-    let first_segment = addr.segments()[0];
+    let segments = addr.segments();
+
+    // 6to4 (2002::/16) embeds an IPv4 in bits 16..48 (segments 1 and 2); NAT64 (64:ff9b::/96)
+    // embeds it in the low 32 bits (segments 6 and 7). Neither is decoded by
+    // to_ipv4()/to_ipv4_mapped above, so a AAAA record in one of these forms could smuggle a
+    // private/loopback IPv4 past the checks. Extract the embedded address and re-check it by the
+    // same IPv4 rules; a genuinely public embedded address is left allowed.
+    if segments[0] == 0x2002 {
+        let embedded = Ipv4Addr::new(
+            (segments[1] >> 8) as u8,
+            (segments[1] & 0xff) as u8,
+            (segments[2] >> 8) as u8,
+            (segments[2] & 0xff) as u8,
+        );
+
+        if is_disallowed_ipv4(&embedded) {
+            return true;
+        }
+    }
+
+    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+        let embedded = Ipv4Addr::new(
+            (segments[6] >> 8) as u8,
+            (segments[6] & 0xff) as u8,
+            (segments[7] >> 8) as u8,
+            (segments[7] & 0xff) as u8,
+        );
+
+        if is_disallowed_ipv4(&embedded) {
+            return true;
+        }
+    }
+
+    let first_segment = segments[0];
 
     addr.is_loopback()
         || addr.is_unspecified()
@@ -393,6 +433,49 @@ async fn assert_url_host_is_public(uri: &Uri) -> AppResult<()> {
     Ok(())
 }
 
+/// The DNS resolver the thumbnail HTTP client connects through. It resolves the host and drops
+/// every private/loopback/reserved address before returning, so the connection can only ever dial
+/// a public IP. Because HttpConnector dials exactly what this resolver returns, the address that is
+/// validated *is* the address that is dialed - which is what `assert_url_host_is_public`, running as
+/// a separate pre-connection check, cannot guarantee on its own: between that check and the
+/// connector's own resolution an attacker controlling the host's DNS could rebind a public answer to
+/// an internal one. Pinning resolution here closes that window. The pre-check is still run first for
+/// a clear early error and because HttpConnector skips the resolver for an IP-literal host (which the
+/// pre-check does cover).
+#[derive(Clone)]
+struct PublicOnlyResolver;
+
+impl Service<Name> for PublicOnlyResolver {
+    type Response = std::vec::IntoIter<SocketAddr>;
+    type Error = io::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, io::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, name: Name) -> Self::Future {
+        let host = name.as_str().to_string();
+
+        Box::pin(async move {
+            // Port 0: HttpConnector overrides it with the request URI's port (set_port).
+            let allowed: Vec<SocketAddr> = lookup_host((host.as_str(), 0))
+                .await?
+                .filter(|addr| !is_disallowed_ip(&addr.ip()))
+                .collect();
+
+            if allowed.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "host resolves only to private, loopback or reserved addresses",
+                ));
+            }
+
+            Ok(allowed.into_iter())
+        })
+    }
+}
+
 /// Downloads `url` over HTTPS (or HTTP), follows up to DIRECT_THUMBNAIL_MAX_REDIRECTS
 /// redirects, streams the body with a hard cap of DIRECT_THUMBNAIL_MAX_BYTES, and
 /// validates Content-Type when present. Returns (status, headers, body). The entire
@@ -413,6 +496,11 @@ async fn http_get_image(
     url: &str,
     timeout_secs: u64,
 ) -> AppResult<(http::StatusCode, http::HeaderMap, Vec<u8>)> {
+    let mut http_connector = HttpConnector::new_with_resolver(PublicOnlyResolver);
+    // Required so the connector accepts the `https` scheme. hyper-rustls sets this on the default
+    // connector its own `build()` produces; a wrapped connector must set it explicitly.
+    http_connector.enforce_http(false);
+
     let connector = hyper_rustls::HttpsConnectorBuilder::new()
         .with_provider_and_platform_verifier(rustls::crypto::ring::default_provider())
         .map_err(|e| {
@@ -423,7 +511,7 @@ async fn http_get_image(
         })?
         .https_or_http()
         .enable_http1()
-        .build();
+        .wrap_connector(http_connector);
 
     let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
 
@@ -675,6 +763,30 @@ fn looks_like_supported_image(bytes: &[u8]) -> bool {
     false
 }
 
+/// Resolves the library directory and creates the fresh temp subdirectory a thumbnail/avatar run
+/// writes into. Both steps are blocking filesystem work (`ensure_library_dir` canonicalizes,
+/// `create_dir_all` touches disk), so callers invoke this through `run_blocking` off the async
+/// runtime - matching the convention the rest of the app follows for filesystem calls. Returns the
+/// canonical library directory and the created temp directory.
+fn prepare_thumbnail_dirs(
+    app: AppHandle,
+    library_path: String,
+    temp_dir_name: String,
+) -> AppResult<(PathBuf, PathBuf)> {
+    let library_dir = ensure_library_dir(&library_path)?;
+    let thumb_temp_root = yt_dlp_thumb_temp_dir(&app)?;
+    let thumb_temp_dir = thumb_temp_root.join(temp_dir_name);
+
+    fs::create_dir_all(&thumb_temp_dir).map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::CreateTempThumbDirFailed,
+            format!("failed to create temporary thumbnail directory: {e}"),
+        )
+    })?;
+
+    Ok((library_dir, thumb_temp_dir))
+}
+
 pub async fn download_thumbnail_from_url_async(
     app: &AppHandle,
     url: &str,
@@ -696,18 +808,12 @@ pub async fn download_thumbnail_from_url_async(
         ));
     }
 
-    let library_dir = ensure_library_dir(library_path)?;
-    let thumb_temp_root = yt_dlp_thumb_temp_dir(app)?;
-
-    let temp_dir_name = unique_temp_suffix();
-    let thumb_temp_dir = thumb_temp_root.join(temp_dir_name);
-
-    fs::create_dir_all(&thumb_temp_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateTempThumbDirFailed,
-            format!("failed to create temporary thumbnail directory: {e}"),
-        )
-    })?;
+    let (library_dir, thumb_temp_dir) = {
+        let app = app.clone();
+        let library_path = library_path.to_string();
+        let temp_dir_name = unique_temp_suffix();
+        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
+    };
 
     let result = async {
         if let Some(ext) = direct_image_extension(&normalized_url) {
@@ -882,18 +988,12 @@ pub async fn download_thumbnail_for_media_async(
         return Ok(None);
     }
 
-    let library_dir = ensure_library_dir(library_path)?;
-    let thumb_temp_root = yt_dlp_thumb_temp_dir(app)?;
-
-    let temp_dir_name = format!("media-thumb-{}", unique_temp_suffix());
-    let thumb_temp_dir = thumb_temp_root.join(temp_dir_name);
-
-    fs::create_dir_all(&thumb_temp_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateTempThumbDirFailed,
-            format!("failed to create temporary thumbnail directory: {e}"),
-        )
-    })?;
+    let (library_dir, thumb_temp_dir) = {
+        let app = app.clone();
+        let library_path = library_path.to_string();
+        let temp_dir_name = format!("media-thumb-{}", unique_temp_suffix());
+        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
+    };
 
     let result = async {
         let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
@@ -971,22 +1071,17 @@ pub async fn download_channel_avatar_from_handle_async(
     library_path: &str,
 ) -> AppResult<String> {
     let normalized_url = normalize_channel_handle_to_url(youtube_handle)?;
-    let library_dir = ensure_library_dir(library_path)?;
+
+    let (library_dir, thumb_temp_dir) = {
+        let app = app.clone();
+        let library_path = library_path.to_string();
+        let temp_dir_name = format!("channel-avatar-{}", unique_temp_suffix());
+        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
+    };
 
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
-
-    let thumb_temp_root = yt_dlp_thumb_temp_dir(app)?;
-    let temp_dir_name = format!("channel-avatar-{}", unique_temp_suffix());
-    let thumb_temp_dir = thumb_temp_root.join(temp_dir_name);
-
-    fs::create_dir_all(&thumb_temp_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateTempThumbDirFailed,
-            format!("failed to create temporary channel avatar directory: {e}"),
-        )
-    })?;
 
     let result = async {
         let file_prefix = "channel_avatar";
@@ -1142,6 +1237,10 @@ mod tests {
             "::ffff:127.0.0.1", // ipv4-mapped loopback
             "::7f00:1",         // deprecated ipv4-compatible form of 127.0.0.1
             "::a01:203",        // deprecated ipv4-compatible form of 10.1.2.3 (private)
+            "2002:7f00:0001::", // 6to4 wrapping 127.0.0.1 (loopback)
+            "2002:c0a8:0001::", // 6to4 wrapping 192.168.0.1 (private)
+            "64:ff9b::7f00:1",  // nat64 wrapping 127.0.0.1 (loopback)
+            "64:ff9b::a01:203", // nat64 wrapping 10.1.2.3 (private)
         ] {
             assert!(
                 is_disallowed_ip(&ip(blocked)),
@@ -1157,12 +1256,30 @@ mod tests {
             "1.1.1.1",
             "142.250.72.238",
             "2606:4700:4700::1111",
+            "2002:0808:0808::",   // 6to4 wrapping the public 8.8.8.8 stays allowed
+            "64:ff9b::0808:0808", // nat64 wrapping the public 8.8.8.8 stays allowed
         ] {
             assert!(
                 !is_disallowed_ip(&ip(allowed)),
                 "{allowed} should be allowed"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn public_only_resolver_rejects_a_host_that_resolves_to_loopback() {
+        // localhost resolves to 127.0.0.1/::1 on every platform, so the resolver must return an
+        // error rather than any address - this is what pins the connection away from a rebind to an
+        // internal target. Exercises the real resolve+filter path offline.
+        let mut resolver = PublicOnlyResolver;
+        let name = "localhost".parse::<Name>().expect("valid dns name");
+
+        let result = Service::call(&mut resolver, name).await;
+
+        assert!(
+            result.is_err(),
+            "localhost resolves only to loopback and must be rejected"
+        );
     }
 
     #[tokio::test]

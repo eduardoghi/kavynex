@@ -57,6 +57,11 @@ http-body-util = { version = "0.1", default-features = false }
 http = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 hyper = { version = "1", default-features = false }
+# The `Service<Name>` trait hyper-util's HttpConnector takes as a custom DNS resolver. Used by the
+# thumbnail downloader's SSRF guard to pin resolution to public addresses (see
+# services/thumbnail_download.rs). Already present transitively via hyper-util; pinned here as a
+# direct dependency because the code names the trait.
+tower-service = "0.3"
 ts-rs = "12.0.1"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
