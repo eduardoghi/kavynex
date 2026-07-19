@@ -1175,10 +1175,18 @@ pub async fn download_media_from_url_async(
                 // synchronous compress returns, never held across an await.
                 {
                     let _library_guard = crate::services::library_lock::library_read_guard();
-                    crate::services::live_chat_storage::compress_file_to(
-                        &temp_live_chat_file,
-                        &final_live_chat_destination,
-                    )?;
+
+                    // Never overwrite an already-stored replay, matching place_downloaded_file's
+                    // "keep the catalogued bytes" rule for the main media file. The name is
+                    // deterministic per video+run, so an existing file is the same replay; without
+                    // this guard compress_file_to (via replace_file_safely) would silently discard
+                    // it on a re-download.
+                    if !final_live_chat_destination.exists() {
+                        crate::services::live_chat_storage::compress_file_to(
+                            &temp_live_chat_file,
+                            &final_live_chat_destination,
+                        )?;
+                    }
                 }
 
                 Some(build_live_chat_relative_path(Path::new(
