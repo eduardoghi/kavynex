@@ -83,7 +83,6 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const [isYtDlpRunning, setIsYtDlpRunning] = useState(false);
 
     const currentRunIdRef = useRef("");
-    const listenersRegisteredRef = useRef(false);
 
     const appendLogs = useCallback((...lines: string[]): void => {
         setYtDlpLogs((current) => {
@@ -143,13 +142,13 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         [appendLogs]
     );
 
+    // Registers the yt-dlp event listeners once. The dependencies are stable (appendLogs is
+    // useCallback([]); finalizeRun only depends on it), so this effect runs on mount and cleans up on
+    // unmount, never re-running in between. React always runs the cleanup before re-running an effect
+    // (including StrictMode's mount/unmount/mount in dev), and `isDisposed` plus the unlisteners list
+    // are what make that safe: a listener whose async registration resolves after disposal is
+    // unlistened immediately, so no duplicate registration outlives a remount.
     useEffect(() => {
-        if (listenersRegisteredRef.current) {
-            return;
-        }
-
-        listenersRegisteredRef.current = true;
-
         let isDisposed = false;
         const unlisteners: UnlistenFn[] = [];
 
@@ -286,8 +285,6 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
             for (const unlisten of unlisteners) {
                 unlisten();
             }
-
-            listenersRegisteredRef.current = false;
         };
     }, [appendLogs, finalizeRun]);
 
