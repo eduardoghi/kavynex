@@ -12,6 +12,7 @@ import type {
 } from "./media";
 import type { AppSettings, ImportMode } from "./settings";
 import type { MediaQueryFilters } from "../utils/media-library-filters";
+import type { YtDlpLogLine } from "../hooks/use-yt-dlp-events";
 
 export type AddMediaFormController = {
     sourceMode: MediaSourceMode;
@@ -85,7 +86,7 @@ export type MediaLibraryController = {
     commentsInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
     isCancellingYtDlp: boolean;
-    ytDlpLogs: string[];
+    ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     addMediaForm: AddMediaFormController;
     mediaPlayer: MediaPlayerController;

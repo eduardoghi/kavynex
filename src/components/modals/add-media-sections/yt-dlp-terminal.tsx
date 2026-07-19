@@ -1,10 +1,11 @@
 import { Badge, Box, Group, ScrollArea, Text, VisuallyHidden, rem } from "@mantine/core";
 import { useEffect, useRef } from "react";
+import type { YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
 
 type YtDlpTerminalProps = {
     opened: boolean;
     visible: boolean;
-    ytDlpLogs: string[];
+    ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
 };
 
@@ -45,7 +46,7 @@ export function YtDlpTerminal({
     // would re-announce far more than the new line during an active download. Instead this hidden
     // region carries only the most recent line, so assistive tech announces just that delta while
     // the scrollback stays a normal, browsable region.
-    const latestLine = ytDlpLogs[ytDlpLogs.length - 1] ?? "";
+    const latestLine = ytDlpLogs[ytDlpLogs.length - 1]?.text ?? "";
 
     return (
         <Box>
@@ -88,14 +89,14 @@ export function YtDlpTerminal({
                         }}
                     >
                         {ytDlpLogs.length > 0 ? (
-                            ytDlpLogs.map((line, index) => (
+                            ytDlpLogs.map((line) => (
                                 <Text
-                                    key={`${index}-${line}`}
+                                    key={line.id}
                                     component="div"
-                                    c={line.startsWith("ERROR:") ? "red.4" : "gray.3"}
+                                    c={line.text.startsWith("ERROR:") ? "red.4" : "gray.3"}
                                     style={{ fontFamily: "inherit" }}
                                 >
-                                    {line || " "}
+                                    {line.text || " "}
                                 </Text>
                             ))
                         ) : (

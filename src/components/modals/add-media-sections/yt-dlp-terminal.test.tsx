@@ -1,7 +1,14 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { YtDlpTerminal } from "./yt-dlp-terminal";
+import type { YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
 import { renderWithMantine } from "../../../test/test-utils";
+
+// The terminal keys rows on a stable per-line id (see YtDlpLogLine); the ids are arbitrary here, so
+// number them positionally.
+function logs(...texts: string[]): YtDlpLogLine[] {
+    return texts.map((text, index) => ({ id: index, text }));
+}
 
 describe("YtDlpTerminal", () => {
     it("returns null when not visible", () => {
@@ -37,7 +44,7 @@ describe("YtDlpTerminal", () => {
             <YtDlpTerminal
                 opened
                 visible
-                ytDlpLogs={["Downloading..."]}
+                ytDlpLogs={logs("Downloading...")}
                 isYtDlpRunning
             />
         );
@@ -53,7 +60,7 @@ describe("YtDlpTerminal", () => {
             <YtDlpTerminal
                 opened
                 visible
-                ytDlpLogs={["Done"]}
+                ytDlpLogs={logs("Done")}
                 isYtDlpRunning={false}
             />
         );
@@ -67,7 +74,7 @@ describe("YtDlpTerminal", () => {
             <YtDlpTerminal
                 opened
                 visible
-                ytDlpLogs={["ERROR: download failed"]}
+                ytDlpLogs={logs("ERROR: download failed")}
                 isYtDlpRunning={false}
             />
         );
@@ -80,7 +87,7 @@ describe("YtDlpTerminal", () => {
             <YtDlpTerminal
                 opened
                 visible
-                ytDlpLogs={["Downloading...", "[download] 5%"]}
+                ytDlpLogs={logs("Downloading...", "[download] 5%")}
                 isYtDlpRunning={false}
             />
         );

@@ -12,6 +12,7 @@ import { LocalMediaSection } from "./add-media-sections/local-media-section";
 import { ThumbnailSection } from "./add-media-sections/thumbnail-section";
 import { YtDlpSection } from "./add-media-sections/yt-dlp-section";
 import { YtDlpTerminal } from "./add-media-sections/yt-dlp-terminal";
+import type { YtDlpLogLine } from "../../hooks/use-yt-dlp-events";
 import {
     applyPublishedAtMask,
     displayDateToIso,
@@ -40,7 +41,7 @@ type AddMediaModalProps = {
     loading?: boolean;
     isCancellingYtDlp?: boolean;
 
-    ytDlpLogs: string[];
+    ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     ytDlpFormats: YtDlpFormatOption[];
     selectedYtDlpFormatId: string;

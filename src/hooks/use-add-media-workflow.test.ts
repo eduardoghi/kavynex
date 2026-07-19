@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import type { useAddMediaForm } from "./use-add-media-form";
 import { useAddMediaWorkflow } from "./use-add-media-workflow";
+import type { YtDlpLogLine } from "./use-yt-dlp-events";
 
 vi.mock("../services", () => ({
     cancelMediaDownload: vi.fn(),
@@ -36,7 +37,7 @@ type MockAddMediaForm = {
 };
 
 type MockYtDlpEvents = {
-    ytDlpLogs: string[];
+    ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     currentRunIdRef: { current: string };
     startRun: ReturnType<typeof vi.fn>;

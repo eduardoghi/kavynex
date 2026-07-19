@@ -12,8 +12,15 @@ import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
 
+// One terminal line plus a stable, monotonic id assigned when the line is first appended. The id
+// is what the terminal keys its rows on: the scrollback is trimmed from the front at
+// MAX_YT_DLP_LOG_LINES, which shifts every array index, so an index-derived key would change
+// underneath React and remount the whole 500-row scrollback on each new line past the cap. A per-line
+// id never changes once assigned, so React reuses each row and only the genuinely new one mounts.
+export type YtDlpLogLine = { id: number; text: string };
+
 type UseYtDlpEventsReturn = {
-    ytDlpLogs: string[];
+    ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     currentRunIdRef: React.RefObject<string>;
     startRun: (runId: string, commandPreview: string) => void;
@@ -51,35 +58,53 @@ function isProgressLine(line: string): boolean {
     );
 }
 
-function appendProcessedLogs(current: string[], incoming: string[]): string[] {
+// Wraps plain text lines as YtDlpLogLine, numbering them from `startId`. Used to seed a fresh
+// session (the command preview / header), where the log starts empty so ids begin at 0.
+function toLogLines(texts: string[], startId = 0): YtDlpLogLine[] {
+    return texts.map((text, index) => ({ id: startId + index, text }));
+}
+
+// The next id to assign. Ids are monotonic and only ever appended at the tail, so the last line
+// carries the highest one; deriving from it (rather than a mutable counter) keeps this function
+// pure - safe to re-run under StrictMode - and survives the front-trim below, since a line's id
+// never changes once assigned.
+function nextLogId(lines: YtDlpLogLine[]): number {
+    const lastLine = lines[lines.length - 1];
+    return lastLine ? lastLine.id + 1 : 0;
+}
+
+function appendProcessedLogs(current: YtDlpLogLine[], incoming: string[]): YtDlpLogLine[] {
     const next = [...current];
+    let id = nextLogId(current);
 
     for (const rawLine of incoming) {
-        const line = rawLine.replace(/\t/g, "    ");
-
-        if (!line && next[next.length - 1] === "") {
-            continue;
-        }
-
+        const text = rawLine.replace(/\t/g, "    ");
         const lastLine = next[next.length - 1];
 
-        if (line === lastLine) {
+        if (!text && lastLine?.text === "") {
             continue;
         }
 
-        if (isProgressLine(line) && lastLine && isProgressLine(lastLine)) {
-            next[next.length - 1] = line;
+        if (text === lastLine?.text) {
             continue;
         }
 
-        next.push(line);
+        if (isProgressLine(text) && lastLine && isProgressLine(lastLine.text)) {
+            // Collapse consecutive progress lines by updating the last one in place, keeping its id
+            // so React updates that row rather than remounting it.
+            next[next.length - 1] = { id: lastLine.id, text };
+            continue;
+        }
+
+        next.push({ id, text });
+        id += 1;
     }
 
     return next.slice(-MAX_YT_DLP_LOG_LINES);
 }
 
 export function useYtDlpEvents(): UseYtDlpEventsReturn {
-    const [ytDlpLogs, setYtDlpLogs] = useState<string[]>([]);
+    const [ytDlpLogs, setYtDlpLogs] = useState<YtDlpLogLine[]>([]);
     const [isYtDlpRunning, setIsYtDlpRunning] = useState(false);
 
     const currentRunIdRef = useRef("");
@@ -115,13 +140,13 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
     const startRun = useCallback((runId: string, commandPreview: string): void => {
         currentRunIdRef.current = runId;
-        setYtDlpLogs([commandPreview, ""]);
+        setYtDlpLogs(toLogLines([commandPreview, ""]));
         setIsYtDlpRunning(true);
     }, []);
 
     const startManualSession = useCallback((runId: string, header: string): void => {
         currentRunIdRef.current = runId;
-        setYtDlpLogs([header, ""]);
+        setYtDlpLogs(toLogLines([header, ""]));
         setIsYtDlpRunning(true);
     }, []);
 
