@@ -149,12 +149,22 @@ const INDEX_DDLS: &[(&str, &str)] = &[
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)"),
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)"),
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)"),
-    // Moves the "no duplicate (video_id, comment_id)" invariant out of application code
-    // (media_comments::dedupe_comments_by_id) and into the schema. Partial so the many replies
-    // yt-dlp leaves without an id (comment_id NULL/blank) stay legitimately distinct rows,
-    // mirroring idx_videos_channel_youtube_video_id_unique.
-    ("video_comments", "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''"),
 ];
+
+// The partial UNIQUE index enforcing "no duplicate (video_id, comment_id)". Deliberately kept OUT
+// of INDEX_DDLS: unlike every other index there, building it can fail on real data. A database
+// created before this invariant lived in the schema (v10) may already hold a duplicate the unique
+// build rejects, so it must be created only by apply_migration_10 - which collapses duplicates
+// first - and never by the baseline / index-only loops that run before v10. apply_baseline_schema's
+// loop runs for every legacy database (user_version below the baseline), so keeping this index in
+// INDEX_DDLS made the baseline try to build it against un-deduped rows: the build failed, the whole
+// baseline transaction rolled back, and the database was left permanently unopenable, with the
+// migration meant to dedupe it never reached. Partial so the many replies yt-dlp leaves without an
+// id (comment_id NULL/blank) stay legitimately distinct rows, mirroring
+// idx_videos_channel_youtube_video_id_unique (which is safe in INDEX_DDLS because it predates any
+// data that could violate it - there is no later migration that first had to dedupe videos).
+const COMMENT_UNIQUE_INDEX_TABLE: &str = "video_comments";
+const COMMENT_UNIQUE_INDEX_DDL: &str = "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''";
 
 // Every trigger, paired with the table it belongs to (same shape as INDEX_DDLS). These backport
 // the videos live-chat CHECK to databases whose `videos` table predates it: a table created by an
@@ -585,8 +595,10 @@ async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
     // (video_id, comment_id, id) so the one-time cleanup answers MIN(id) per group from the index
     // instead of full-scanning and sorting video_comments - which, on a user with a large comment
     // history, would otherwise make this startup migration noticeably slow. The real partial unique
-    // index cannot stand in for it here: it is created by the INDEX_DDLS loop only after the
-    // duplicates it would reject are gone. The temp index is dropped again before the loop runs.
+    // index cannot stand in for it here: it is created below (COMMENT_UNIQUE_INDEX_DDL) only after
+    // the duplicates it would reject are gone. It lives outside INDEX_DDLS precisely so the baseline
+    // loop, which runs before this migration, never attempts it against un-deduped data. The temp
+    // index is dropped again before the real index is built.
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_video_comments_dedup_tmp \
          ON video_comments (video_id, comment_id, id)",
@@ -622,6 +634,14 @@ async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
             .await
             .map_err(|error| db_error("failed to create index", error))?;
     }
+
+    // Now that duplicates are collapsed, build the real partial unique index. It is created here,
+    // not by the INDEX_DDLS loop above and not by the baseline, so it is only ever built against
+    // already-deduped data (see COMMENT_UNIQUE_INDEX_DDL for why that ordering is load-bearing).
+    sqlx::query(COMMENT_UNIQUE_INDEX_DDL)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to create the comment unique index", error))?;
 
     set_user_version(&mut tx, 10).await?;
 
@@ -981,6 +1001,21 @@ async fn apply_table_rebuilds_in_transaction(
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to recreate index after rebuild", error))?;
+    }
+
+    // The comment unique index lives outside INDEX_DDLS (see COMMENT_UNIQUE_INDEX_DDL), so recreate
+    // it explicitly when its table was rebuilt. Safe unconditionally here: a rebuild only runs well
+    // after v10, so no duplicate the index forbids can remain.
+    if rebuilt_tables.contains(COMMENT_UNIQUE_INDEX_TABLE) {
+        sqlx::query(COMMENT_UNIQUE_INDEX_DDL)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| {
+                db_error(
+                    "failed to recreate the comment unique index after rebuild",
+                    error,
+                )
+            })?;
     }
 
     // Dropping a table also drops its triggers, so recreate the rebuilt tables' triggers the same
@@ -1982,7 +2017,8 @@ mod tests {
         let pool = memory_pool().await;
         ensure_schema(&pool).await.unwrap();
 
-        // A fresh database already has the index from the baseline.
+        // A fresh database already has the index once migration 10 has run (it is no longer built
+        // by the baseline - see COMMENT_UNIQUE_INDEX_DDL).
         let (fresh,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM sqlite_master
              WHERE type = 'index' AND name = 'idx_video_comments_video_comment_unique'",
@@ -2088,6 +2124,131 @@ mod tests {
         assert!(
             dup.is_err(),
             "the unique index must reject a duplicate (video_id, comment_id)"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_schema_recovers_a_legacy_database_with_duplicate_comments() {
+        // Regression for the baseline path (the CRITICAL that migration_10_collapses_... does not
+        // cover: that test seeds the duplicate at user_version 9, so only apply_migration_10 runs).
+        // A pre-versioned database (user_version below the baseline) that already holds a duplicate
+        // (video_id, comment_id) pair must still open. When the unique index lived in the shared
+        // INDEX_DDLS array, apply_baseline_schema - which runs for every such database - tried to
+        // build it against the un-deduped rows, failed, rolled the whole baseline back (leaving
+        // user_version at 0), and the database could never be opened again, with apply_migration_10's
+        // dedupe never reached.
+        let pool = memory_pool().await;
+
+        // A legacy schema as an old app version would leave it: the four core tables, no unique
+        // index on video_comments yet, and no versioned marker (user_version stays 0).
+        sqlx::query(
+            "CREATE TABLE channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                youtube_handle TEXT NOT NULL,
+                avatar_path TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE videos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                thumbnail_path TEXT,
+                media_type TEXT NOT NULL DEFAULT 'video',
+                youtube_video_id TEXT,
+                watched_at TEXT,
+                published_at TEXT,
+                duration_seconds INTEGER,
+                progress_seconds INTEGER NOT NULL DEFAULT 0,
+                has_comments INTEGER NOT NULL DEFAULT 0,
+                comments_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE (channel_id, file_path)
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE video_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL,
+                comment_id TEXT,
+                parent_comment_id TEXT,
+                author_name TEXT NOT NULL,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'Chan', '@chan')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, file_path, media_type)
+             VALUES (1, 1, 'V', 'video/v.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // Two rows sharing (video_id, comment_id): exactly what a pre-v10 database could hold.
+        sqlx::query(
+            "INSERT INTO video_comments (id, video_id, comment_id, author_name, text)
+             VALUES (1, 1, 'c1', 'A', 'first'), (2, 1, 'c1', 'A', 'dup')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // A pre-versioned database is below the baseline; this is what forces the baseline path.
+        sqlx::query("PRAGMA user_version = 0")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Must succeed (collapse the duplicate, then build the index) rather than fail the baseline
+        // index build and roll back.
+        ensure_schema(&pool).await.unwrap();
+
+        let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+
+        // The duplicate was collapsed to the lowest id, and the invariant now holds.
+        let (comments,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM video_comments WHERE video_id = 1 AND comment_id = 'c1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(comments, 1, "the duplicate comment must be collapsed");
+
+        assert!(
+            object_exists(&pool, "index", "idx_video_comments_video_comment_unique").await,
+            "the comment unique index must exist after the migration"
         );
     }
 
