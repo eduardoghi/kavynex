@@ -593,6 +593,13 @@ pub async fn update_media_progress(
     Ok(())
 }
 
+// These three artifact reference-count helpers are test-only on purpose. The production delete
+// paths do the same count *inside* the same `BEGIN IMMEDIATE` transaction that removes the row
+// (see services::library_cleanup), which is what makes the count-then-act atomic. Standalone
+// versions like these are a check-then-act race waiting to happen if a future caller reaches for
+// them instead, so they are gated to `#[cfg(test)]` - compiling them out of production builds means
+// no such caller can exist, while the SQL stays exercised by the tests below.
+#[cfg(test)]
 pub async fn count_media_using_thumbnail_outside_media(
     pool: &SqlitePool,
     thumbnail_path: &str,
@@ -609,6 +616,7 @@ pub async fn count_media_using_thumbnail_outside_media(
     Ok(total)
 }
 
+#[cfg(test)]
 pub async fn count_media_using_file_path_outside_media(
     pool: &SqlitePool,
     file_path: &str,
@@ -625,6 +633,7 @@ pub async fn count_media_using_file_path_outside_media(
     Ok(total)
 }
 
+#[cfg(test)]
 pub async fn count_media_using_live_chat_outside_media(
     pool: &SqlitePool,
     live_chat_file_path: &str,
