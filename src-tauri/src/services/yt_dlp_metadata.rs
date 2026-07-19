@@ -15,7 +15,7 @@ use crate::models::yt_dlp::{
 };
 use crate::services::binaries::resolve_yt_dlp_binary_async;
 use crate::services::yt_dlp_cookies::append_auth_args;
-use crate::services::yt_dlp_url::is_allowed_youtube_url;
+use crate::services::yt_dlp_url::{is_allowed_youtube_url, youtube_ref_for_log};
 use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
 use crate::utils::io::{read_lossy_line, read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::process::hide_console_async;
@@ -239,6 +239,25 @@ pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&st
         result = replace_ascii_case_insensitive(&result, &variant, "<redacted>");
     }
     result
+}
+
+/// Sanitizes a yt-dlp `-v` log line before it reaches the frontend/file log: redacts the cookies
+/// file path (see [`redact_cookies_path_from_line`]) and reduces the full pasted URL to the same
+/// privacy-preserving reference the download flow logs (`youtube_ref_for_log`), so playlist and
+/// tracking parameters do not survive into a log a user might paste into a public issue.
+pub(crate) fn redact_sensitive_from_line(
+    line: &str,
+    cookies_path: Option<&str>,
+    url: &str,
+) -> String {
+    let redacted = redact_cookies_path_from_line(line, cookies_path);
+    let url = url.trim();
+
+    if url.is_empty() {
+        return redacted;
+    }
+
+    redacted.replace(url, &youtube_ref_for_log(url))
 }
 
 /// Replaces every ASCII-case-insensitive occurrence of `needle` in `haystack`. Uses
@@ -760,10 +779,14 @@ pub async fn list_yt_dlp_formats_async(
     )
     .await?;
 
-    // These logs are returned to the frontend below (`terminal_logs`); the cookies file path
-    // must not survive into them (see `redact_cookies_path_from_line`).
+    // These logs are returned to the frontend below (`terminal_logs`); neither the cookies file
+    // path nor the full pasted URL may survive into them. yt-dlp's `-v` mode echoes the whole argv
+    // (the `[debug] Command-line config: [...]` line), so the URL with its playlist/tracking
+    // parameters would otherwise reach a log the user might paste into a public issue. Reduce it to
+    // the same privacy-preserving reference the download flow logs (`youtube_ref_for_log`), matching
+    // that flow's `redacted_args_for_log`.
     for line in stdout_logs.iter_mut().chain(stderr_logs.iter_mut()) {
-        *line = redact_cookies_path_from_line(line, cookies_path);
+        *line = redact_sensitive_from_line(line, cookies_path, &normalized_url);
     }
 
     let metadata: YtDlpMetadata = serde_json::from_str(&json_payload).map_err(|e| {
@@ -918,8 +941,9 @@ pub fn normalize_download_metadata(
 mod tests {
     use super::{
         comments_extraction_looks_incomplete, cookies_path_from_args, is_valid_youtube_video_id,
-        read_capped_json_stdout, redact_cookies_path_from_line, resolve_youtube_video_id,
-        run_yt_dlp_and_capture_json, sanitize_filename_component, sanitize_identifier_component,
+        read_capped_json_stdout, redact_cookies_path_from_line, redact_sensitive_from_line,
+        resolve_youtube_video_id, run_yt_dlp_and_capture_json, sanitize_filename_component,
+        sanitize_identifier_component,
     };
     use crate::AppErrorCode;
 
@@ -1142,6 +1166,33 @@ mod tests {
         assert_eq!(
             redact_cookies_path_from_line(line, Some(r"C:\Users\Alice\cookies.txt")),
             line
+        );
+    }
+
+    #[test]
+    fn redact_sensitive_reduces_the_full_url_to_a_video_reference() {
+        // yt-dlp's -v echo prints the whole argv, including the pasted URL with its playlist and
+        // tracking parameters. The sanitized line must keep only the video reference and still
+        // redact the cookies path, matching the download flow's redaction.
+        let line = "[debug] Command-line config: ['--cookies', 'C:\\Users\\Alice\\cookies.txt', '--', 'https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s']";
+
+        let redacted = redact_sensitive_from_line(
+            line,
+            Some(r"C:\Users\Alice\cookies.txt"),
+            "https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s",
+        );
+
+        assert!(
+            redacted.contains("www.youtube.com?v=abc123"),
+            "url should be reduced to its video reference: {redacted}"
+        );
+        assert!(
+            !redacted.contains("list=PLxyz"),
+            "playlist/tracking params must not survive: {redacted}"
+        );
+        assert!(
+            !redacted.contains(r"C:\Users\Alice\cookies.txt"),
+            "cookies path must still be redacted: {redacted}"
         );
     }
 
