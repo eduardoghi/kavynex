@@ -41,16 +41,14 @@ async fn read_capped_json_stdout<R>(reader: R, max_bytes: u64) -> (String, Vec<S
 where
     R: AsyncRead + Unpin,
 {
-    // `+ 1` so reading exactly `max_bytes + 1` reveals the real output exceeded the cap.
+    // `+ 1` so a stream that reaches exactly `max_bytes + 1` bytes reveals the real output exceeded
+    // the cap.
     let mut reader = BufReader::new(reader.take(max_bytes + 1));
     let mut line_buf: Vec<u8> = Vec::new();
     let mut json_payload = String::new();
     let mut log_lines: Vec<String> = Vec::new();
-    let mut total_bytes: u64 = 0;
 
     while let Some(line_value) = read_lossy_line(&mut reader, &mut line_buf).await {
-        total_bytes += line_value.len() as u64 + 1;
-
         let line = line_value.trim_end().to_string();
 
         if line.trim().is_empty() {
@@ -64,7 +62,13 @@ where
         }
     }
 
-    (json_payload, log_lines, total_bytes > max_bytes)
+    // The `Take` limit hits 0 exactly when the stream delivered all `max_bytes + 1` allowed bytes,
+    // i.e. the real output exceeded `max_bytes`. This is an exact signal, unlike summing decoded
+    // line lengths, which drifts from the raw byte count on CRLF line endings or on invalid UTF-8
+    // replaced by the (multi-byte) U+FFFD.
+    let overflowed = reader.get_ref().limit() == 0;
+
+    (json_payload, log_lines, overflowed)
 }
 
 type NormalizedDownloadMetadata = (String, String, String, Option<String>, Option<String>);
