@@ -25,8 +25,12 @@ pub async fn delete_media_with_artifacts(
 pub async fn update_media_title(db: State<'_, Db>, media_id: i64, title: String) -> AppResult<()> {
     ensure_valid_media_title(&title)?;
 
+    // Store the trimmed title: validation checks the trimmed form, so persist that rather than a
+    // padded value.
+    let title = title.trim();
+
     let pool = db.pool().await?;
-    repo::update_media_title(&pool, media_id, &title).await
+    repo::update_media_title(&pool, media_id, title).await
 }
 
 /// Returns one filtered, sorted, windowed page of a channel's media (plus the total match
@@ -99,14 +103,24 @@ pub async fn insert_media(
         ensure_managed_library_relative_path(path)?;
     }
 
+    // Store the normalized (trimmed) text: validation checks the trimmed form, and the partial
+    // unique index on `youtube_video_id` compares the stored column verbatim, so a padded value
+    // would dodge the dedupe. A blank youtube id is "no id", so normalize a whitespace-only value
+    // to NULL rather than storing an empty string the index would treat as present.
+    let title = title.trim();
+    let media_type = media_type.trim();
+    let youtube_video_id = youtube_video_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
     let pool = db.pool().await?;
     repo::insert_media(
         &pool,
         channel_id,
-        &title,
+        title,
         &file_path,
         thumbnail_path.as_deref(),
-        &media_type,
+        media_type,
         youtube_video_id.as_deref(),
         published_at.as_deref(),
         duration_seconds,

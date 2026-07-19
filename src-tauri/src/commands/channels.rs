@@ -59,8 +59,15 @@ pub async fn insert_channel(
         ensure_managed_library_relative_path(path)?;
     }
 
+    // Persist the trimmed values, not the raw arguments. Validation checks the trimmed form, but
+    // the UNIQUE index and `find_channel_by_youtube_handle` compare the stored column verbatim, so
+    // storing a padded " @handle" would let a whitespace-only duplicate slip past both and hide
+    // the channel from its own handle lookup.
+    let name = name.trim();
+    let youtube_handle = youtube_handle.trim();
+
     let pool = db.pool().await?;
-    repo::insert_channel(&pool, &name, &youtube_handle, avatar_path.as_deref()).await
+    repo::insert_channel(&pool, name, youtube_handle, avatar_path.as_deref()).await
 }
 
 #[tauri::command]
@@ -73,8 +80,13 @@ pub async fn update_channel_name_and_handle(
     ensure_valid_channel_name(&name)?;
     ensure_valid_youtube_handle(&youtube_handle)?;
 
+    // Store the trimmed values so the UNIQUE index and handle lookup stay consistent (see
+    // insert_channel).
+    let name = name.trim();
+    let youtube_handle = youtube_handle.trim();
+
     let pool = db.pool().await?;
-    repo::update_channel_name_and_handle(&pool, channel_id, &name, &youtube_handle).await
+    repo::update_channel_name_and_handle(&pool, channel_id, name, youtube_handle).await
 }
 
 /// Updates a channel's avatar and removes the previous avatar file when nothing else (a

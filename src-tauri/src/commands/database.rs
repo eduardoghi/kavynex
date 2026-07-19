@@ -106,7 +106,13 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
 /// backup, which lives next to the live database).
 #[tauri::command]
 pub async fn export_database(app: AppHandle, destination_path: String) -> AppResult<()> {
-    validate_export_destination(&destination_path)?;
+    // Trim once and validate, check containment and write against the *same* path. Previously the
+    // extension and containment checks ran on the trimmed path while the write used the raw one, so
+    // a padded destination could be gated on one path and written to another - a validate-here /
+    // act-there gap in a function whose whole job is to gate a destructive overwrite.
+    let destination_path = destination_path.trim();
+
+    validate_export_destination(destination_path)?;
 
     // Refuse an export aimed inside the app's own config directory, where the live database and
     // every backup generation live: replacing one of those with an export is a data-loss path the
@@ -118,7 +124,7 @@ pub async fn export_database(app: AppHandle, destination_path: String) -> AppRes
         )
     })?;
 
-    if destination_is_inside_dir(Path::new(destination_path.trim()), &config_dir) {
+    if destination_is_inside_dir(Path::new(destination_path), &config_dir) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidTargetPath,
             "the export cannot be written into the app's own data directory, which holds the live database and its backups",
@@ -126,7 +132,7 @@ pub async fn export_database(app: AppHandle, destination_path: String) -> AppRes
     }
 
     let path = database_path(&app)?;
-    db_backup::export_database(&path, Path::new(&destination_path)).await
+    db_backup::export_database(&path, Path::new(destination_path)).await
 }
 
 /// Validates and stages a user-provided database file for import. The swap is applied on the
