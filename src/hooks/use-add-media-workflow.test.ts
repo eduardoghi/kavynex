@@ -189,7 +189,9 @@ describe("useAddMediaWorkflow", () => {
             })
         );
 
-        expect(onReloadMedia).toHaveBeenCalledWith(10);
+        // reloadMedia reloads the currently selected channel from its own ref; it is called with
+        // no argument.
+        expect(onReloadMedia).toHaveBeenCalledWith();
         expect(mockResetForm).toHaveBeenCalled();
         expect(result.current.isAddingMedia).toBe(false);
         expect(result.current.addMediaOpen).toBe(false);
@@ -897,7 +899,7 @@ describe("useAddMediaWorkflow", () => {
                 onProgress: expect.any(Function),
             })
         );
-        expect(onReloadMedia).toHaveBeenCalledWith(20);
+        expect(onReloadMedia).toHaveBeenCalledWith();
         expect(onError).not.toHaveBeenCalled();
     });
 

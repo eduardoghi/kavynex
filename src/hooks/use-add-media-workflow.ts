@@ -26,7 +26,10 @@ type UseAddMediaWorkflowOptions = {
     // channel rather than the error modal (the same split useMediaActions makes for "no comments
     // were found").
     onNotice: (message: string) => void;
-    onReloadMedia: (channelId?: number | null) => Promise<void>;
+    // Reloads the current channel's media list. Takes no channel argument on purpose: the wired
+    // implementation (useChannelMediaList.reloadMedia) always reloads the currently selected
+    // channel from its own ref, so a passed id would be silently ignored.
+    onReloadMedia: () => Promise<void>;
 };
 
 type UseAddMediaWorkflowReturn = {
@@ -178,7 +181,7 @@ export function useAddMediaWorkflow({
                     }
                 );
 
-                await onReloadMedia(selectedChannelId);
+                await onReloadMedia();
                 await addMediaForm.resetForm();
 
                 setAddMediaOpen(false);
