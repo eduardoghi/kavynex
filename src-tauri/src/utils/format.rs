@@ -43,7 +43,7 @@ pub fn is_allowed_media_extension(ext: &str) -> bool {
 pub fn is_allowed_thumbnail_extension(ext: &str) -> bool {
     matches!(
         normalize_extension(ext).as_str(),
-        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "avif"
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "avif" | "gif"
     )
 }
 
@@ -94,11 +94,15 @@ mod tests {
     fn is_allowed_thumbnail_extension_accepts_only_image_types() {
         // The allow_asset_file command uses this to decide what can be authorized for the
         // asset protocol, so a non-image extension must be rejected.
-        for ext in ["png", "jpg", "jpeg", "webp", "bmp", "avif", ".PNG", "JPG"] {
+        for ext in [
+            "png", "jpg", "jpeg", "webp", "bmp", "avif", "gif", ".PNG", "JPG",
+        ] {
             assert!(is_allowed_thumbnail_extension(ext), "should allow {ext}");
         }
 
-        for ext in ["txt", "exe", "mp4", "svg", "gif", ""] {
+        // svg stays rejected: it can carry script and must never be authorized for the asset
+        // protocol. gif is now accepted (a raster image, safe as an <img> source).
+        for ext in ["txt", "exe", "mp4", "svg", ""] {
             assert!(!is_allowed_thumbnail_extension(ext), "should reject {ext}");
         }
     }

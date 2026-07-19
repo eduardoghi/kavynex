@@ -180,6 +180,7 @@ const ALLOWED_THUMBNAIL_CONTENT_TYPES: &[&str] = &[
     "image/webp",
     "image/bmp",
     "image/avif",
+    "image/gif",
 ];
 
 /// What a thumbnail fetch is pointed at, which decides how yt-dlp treats playlists.
@@ -360,6 +361,23 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
             (segments[6] & 0xff) as u8,
             (segments[7] >> 8) as u8,
             (segments[7] & 0xff) as u8,
+        );
+
+        if is_disallowed_ipv4(&embedded) {
+            return true;
+        }
+    }
+
+    // Teredo (2001:0000::/32) tunnels IPv4 through IPv6: the peer IPv4 sits XOR-obfuscated (with
+    // all-ones) in the low 32 bits (segments 6 and 7). Recover and re-check it by the same IPv4
+    // rules, matching the 6to4/NAT64 handling above, so a Teredo AAAA cannot smuggle a
+    // private/loopback IPv4 past the guard on a host with a Teredo tunnel active.
+    if segments[0] == 0x2001 && segments[1] == 0x0000 {
+        let embedded = Ipv4Addr::new(
+            ((segments[6] >> 8) as u8) ^ 0xff,
+            ((segments[6] & 0xff) as u8) ^ 0xff,
+            ((segments[7] >> 8) as u8) ^ 0xff,
+            ((segments[7] & 0xff) as u8) ^ 0xff,
         );
 
         if is_disallowed_ipv4(&embedded) {
@@ -724,6 +742,10 @@ fn direct_image_extension(url: &str) -> Option<&'static str> {
 
     if normalized.ends_with(".avif") {
         return Some("avif");
+    }
+
+    if normalized.ends_with(".gif") {
+        return Some("gif");
     }
 
     None
@@ -1241,6 +1263,11 @@ mod tests {
             "2002:c0a8:0001::", // 6to4 wrapping 192.168.0.1 (private)
             "64:ff9b::7f00:1",  // nat64 wrapping 127.0.0.1 (loopback)
             "64:ff9b::a01:203", // nat64 wrapping 10.1.2.3 (private)
+            // teredo (2001:0000::/32) with the client IPv4 XOR-obfuscated in the low 32 bits:
+            // 80ff:fffe = 0x80fffffe = 0x7f000001 ^ 0xffffffff = 127.0.0.1 (loopback).
+            "2001:0:0:0:0:0:80ff:fffe",
+            // c0a8:0001 xored: 3f57:fffe = 0x3f57fffe ^ 0xffffffff = 0xc0a80001 = 192.168.0.1.
+            "2001:0:0:0:0:0:3f57:fffe",
         ] {
             assert!(
                 is_disallowed_ip(&ip(blocked)),
@@ -1258,6 +1285,8 @@ mod tests {
             "2606:4700:4700::1111",
             "2002:0808:0808::",   // 6to4 wrapping the public 8.8.8.8 stays allowed
             "64:ff9b::0808:0808", // nat64 wrapping the public 8.8.8.8 stays allowed
+            // teredo wrapping the public 8.8.8.8 stays allowed: f7f7:f7f7 = 0x08080808 ^ all-ones.
+            "2001:0:0:0:0:0:f7f7:f7f7",
         ] {
             assert!(
                 !is_disallowed_ip(&ip(allowed)),
