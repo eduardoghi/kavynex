@@ -72,7 +72,13 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
         std::fs::rename(&staging_final, &dest).map_err(|error| {
             let _ = std::fs::remove_file(&staging_final);
             backup_error("failed to finalize database export", error)
-        })
+        })?;
+
+        // Flush the directory entry so a crash right after the rename cannot leave the promoted
+        // export unwritten, silently reverting to no file (or an older one) at the destination.
+        // Best effort, mirroring the db-backup swaps.
+        crate::services::filesystem::fsync_parent_dir(&dest);
+        Ok(())
     })
     .await
 }
@@ -166,6 +172,12 @@ pub async fn mirror_database_to_external_dir(
                 error,
             ));
         }
+
+        // Flush the external directory entry so a crash (or a drive pulled) right after the rename
+        // cannot lose the freshly promoted mirror - the very copy that exists to survive a failure
+        // of the app's own volume. The rotation renames above share this directory, so one flush
+        // covers them. Best effort, like the on-volume snapshot.
+        crate::services::filesystem::fsync_parent_dir(&current);
 
         Ok(true)
     })

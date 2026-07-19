@@ -242,6 +242,13 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         return Err(backup_error("failed to store database backup", error));
     }
 
+    // Flush the directory entry so a crash right after the rename cannot lose it. The rotation
+    // renames above live in the same directory, so this one flush covers the whole `.bak` family;
+    // without it an unclean shutdown could silently revert to a rotated generation. Mirrors the
+    // fsync the restore/import swaps already do (see resume_interrupted_restore / apply_pending_
+    // database_import). Best effort, like those.
+    crate::services::filesystem::fsync_parent_dir(&backup);
+
     Ok(true)
 }
 
