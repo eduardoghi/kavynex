@@ -86,6 +86,49 @@ describe("LiveChatPanel", () => {
         expect(screen.getByRole("img", { name: "Super Sticker" })).toBeInTheDocument();
     });
 
+    it("announces additions in the live region during ordinary playback", () => {
+        const message = makeChatMessage();
+
+        renderWithMantine(
+            <LiveChatPanel
+                liveChatMessages={[message]}
+                visibleLiveChatMessages={[message]}
+                activePin={null}
+                isLoadingLiveChat={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        // Default (and steady-state playback): the log region politely announces each message as
+        // it scrolls in.
+        expect(screen.getByRole("log", { name: "Live chat messages" })).toHaveAttribute(
+            "aria-live",
+            "polite"
+        );
+    });
+
+    it("suppresses live-region announcements while a seek is in progress", () => {
+        const message = makeChatMessage();
+
+        renderWithMantine(
+            <LiveChatPanel
+                liveChatMessages={[message]}
+                visibleLiveChatMessages={[message]}
+                activePin={null}
+                isLoadingLiveChat={false}
+                announceAdditions={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        // During a seek the whole visible window is replaced at once; the region must go silent so
+        // a screen reader is not flooded with up to 200 "new" messages that are really a jump.
+        expect(screen.getByRole("log", { name: "Live chat messages" })).toHaveAttribute(
+            "aria-live",
+            "off"
+        );
+    });
+
     it("shows the load error instead of the empty state when a read fails", () => {
         renderWithMantine(
             <LiveChatPanel

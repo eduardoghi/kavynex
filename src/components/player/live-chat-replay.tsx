@@ -30,6 +30,10 @@ export function LiveChatReplay({
     shellBorder,
 }: LiveChatReplayProps): JSX.Element {
     const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+    // Whether the chat live region should announce newly revealed messages to a screen reader.
+    // On during ordinary playback; turned off across a seek / new-video load, where the whole
+    // visible window is replaced at once (see the handlers below).
+    const [announceAdditions, setAnnounceAdditions] = useState(true);
 
     useEffect(() => {
         if (!playerElement) {
@@ -43,8 +47,8 @@ export function LiveChatReplay({
             setCurrentPlaybackTime(playerElement.currentTime || 0);
         };
 
-        // Throttle the high-frequency timeupdate stream, but sync immediately on the
-        // discrete events (seek, play, pause, metadata) so scrubbing stays responsive.
+        // Throttle the high-frequency timeupdate stream. This is ordinary forward playback, where
+        // messages scroll in one at a time, so re-enable live-region announcements here.
         const handleTimeUpdate = (): void => {
             const now = performance.now();
 
@@ -53,27 +57,48 @@ export function LiveChatReplay({
             }
 
             lastSyncedAt = now;
+            setAnnounceAdditions(true);
             applyCurrentTime();
         };
 
-        const handleImmediate = (): void => {
+        // A seek or a new-video load replaces most or all of the (up to 200) visible messages in a
+        // single commit. Announcing that swap would flood the screen reader with a burst of "new"
+        // messages that is really a jump, not live chat activity - so suppress announcements across
+        // it. The next incremental timeupdate re-enables them, so only genuine playback additions
+        // past the seek point are ever announced.
+        const handleSeekOrReload = (): void => {
+            lastSyncedAt = performance.now();
+            setAnnounceAdditions(false);
+            applyCurrentTime();
+        };
+
+        // play/pause do not jump the playback position, so they only need a resync, never a change
+        // to the announcement state.
+        const handlePlaybackStateChange = (): void => {
             lastSyncedAt = performance.now();
             applyCurrentTime();
         };
 
-        const immediateEvents = ["seeking", "seeked", "play", "pause", "loadedmetadata"] as const;
+        const seekOrReloadEvents = ["seeking", "seeked", "loadedmetadata"] as const;
+        const playbackStateEvents = ["play", "pause"] as const;
 
         applyCurrentTime();
 
         playerElement.addEventListener("timeupdate", handleTimeUpdate);
-        for (const eventName of immediateEvents) {
-            playerElement.addEventListener(eventName, handleImmediate);
+        for (const eventName of seekOrReloadEvents) {
+            playerElement.addEventListener(eventName, handleSeekOrReload);
+        }
+        for (const eventName of playbackStateEvents) {
+            playerElement.addEventListener(eventName, handlePlaybackStateChange);
         }
 
         return () => {
             playerElement.removeEventListener("timeupdate", handleTimeUpdate);
-            for (const eventName of immediateEvents) {
-                playerElement.removeEventListener(eventName, handleImmediate);
+            for (const eventName of seekOrReloadEvents) {
+                playerElement.removeEventListener(eventName, handleSeekOrReload);
+            }
+            for (const eventName of playbackStateEvents) {
+                playerElement.removeEventListener(eventName, handlePlaybackStateChange);
             }
         };
     }, [playerElement]);
@@ -106,6 +131,7 @@ export function LiveChatReplay({
             activePin={activePin}
             isLoadingLiveChat={isLoadingLiveChat}
             error={error}
+            announceAdditions={announceAdditions}
             shellBorder={shellBorder}
         />
     );

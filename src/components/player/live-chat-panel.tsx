@@ -24,6 +24,11 @@ type LiveChatPanelProps = {
     // A user-facing message when the replay file could not be read. When set, the panel shows it
     // instead of the "no messages" empty state, so a failed read is not reported as an empty chat.
     error?: string | null;
+    // Whether newly revealed messages should be announced by the screen-reader live region. True
+    // during ordinary playback (each message scrolls in, one at a time); the parent sets it false
+    // around a seek, where the whole visible window is replaced at once and announcing up to 200
+    // "new" messages would flood the speech queue with a jump that is not live activity.
+    announceAdditions?: boolean;
     shellBorder: string;
 };
 
@@ -116,6 +121,7 @@ export function LiveChatPanel({
     activePin,
     isLoadingLiveChat,
     error = null,
+    announceAdditions = true,
     shellBorder,
 }: LiveChatPanelProps): JSX.Element {
     const scrollViewportRef = useRef<HTMLDivElement | null>(null);
@@ -268,7 +274,7 @@ export function LiveChatPanel({
                         <Stack
                             gap="md"
                             role="log"
-                            aria-live="polite"
+                            aria-live={announceAdditions ? "polite" : "off"}
                             aria-relevant="additions"
                             aria-label="Live chat messages"
                         >
