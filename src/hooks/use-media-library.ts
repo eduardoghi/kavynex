@@ -7,22 +7,8 @@ import { useChannelMediaList } from "./use-channel-media-list";
 import { useMediaActions } from "./use-media-actions";
 import { useMediaPlayer } from "./use-media-player";
 import { saveMediaProgress as persistMediaProgress } from "../services/media-service";
+import { updateItemById } from "../utils/update-item-by-id";
 import { useMemoObject } from "./use-memo-object";
-
-function updateProgressInMemory(
-    item: MediaRow,
-    mediaId: number,
-    progressSeconds: number
-): MediaRow {
-    if (item.id !== mediaId) {
-        return item;
-    }
-
-    return {
-        ...item,
-        progress_seconds: progressSeconds,
-    };
-}
 
 type UseMediaLibraryOptions = {
     libraryPath: string;
@@ -93,7 +79,10 @@ export function useMediaLibrary({
         (mediaId: number, safeProgressSeconds: number): void => {
             setMediaItems((currentItems) =>
                 currentItems.map((item) =>
-                    updateProgressInMemory(item, mediaId, safeProgressSeconds)
+                    updateItemById(item, mediaId, (current) => ({
+                        ...current,
+                        progress_seconds: safeProgressSeconds,
+                    }))
                 )
             );
         },
@@ -156,7 +145,10 @@ export function useMediaLibrary({
                     return item;
                 }
 
-                return updateProgressInMemory(item, item.id, nextProgress);
+                return updateItemById(item, item.id, (current) => ({
+                    ...current,
+                    progress_seconds: nextProgress,
+                }));
             })
         );
     }, [mediaPlayer.activeMedia, setMediaItems]);

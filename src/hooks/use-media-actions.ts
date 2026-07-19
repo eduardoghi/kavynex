@@ -14,6 +14,7 @@ import {
 } from "../services/media-download-service";
 import { refreshMediaComments, updateMediaTitle } from "../services/media-service";
 import { buildYoutubeWatchUrl } from "../utils/youtube";
+import { updateItemById } from "../utils/update-item-by-id";
 import { useMemoObject } from "./use-memo-object";
 
 type UseMediaActionsOptions = {
@@ -48,18 +49,6 @@ type UseMediaActionsReturn = {
     openMediaFileLocation: (media: MediaRow) => Promise<void>;
     openMediaSourceInYoutube: (media: MediaRow) => Promise<void>;
 };
-
-function updateMediaItem(
-    item: MediaRow,
-    mediaId: number,
-    updater: (item: MediaRow) => MediaRow
-): MediaRow {
-    if (item.id !== mediaId) {
-        return item;
-    }
-
-    return updater(item);
-}
 
 export function useMediaActions({
     libraryPath,
@@ -267,7 +256,7 @@ export function useMediaActions({
 
                     setMediaItems((currentItems) =>
                         currentItems.map((item) =>
-                            updateMediaItem(item, media.id, (currentItem) => ({
+                            updateItemById(item, media.id, (currentItem) => ({
                                 ...currentItem,
                                 has_comments: result.totalComments > 0 ? 1 : 0,
                                 comments_count: result.totalComments,
@@ -334,7 +323,7 @@ export function useMediaActions({
 
                     setMediaItems((currentItems) =>
                         currentItems.map((item) =>
-                            updateMediaItem(item, media.id, (currentItem) => ({
+                            updateItemById(item, media.id, (currentItem) => ({
                                 ...currentItem,
                                 title: normalizedTitle,
                             }))
