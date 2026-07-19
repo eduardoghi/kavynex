@@ -92,6 +92,16 @@ pub fn sanitize_filename_component(value: &str) -> String {
         return "media".to_string();
     }
 
+    // A component made only of dots ('.', '..', ...) is path-significant: as a bare path segment it
+    // means the current/parent directory. Every current call site concatenates this into a longer
+    // string rather than using it as a lone `Path` component, so no traversal is reachable today,
+    // but returning it verbatim would make any future `dir.join(sanitize_filename_component(x))` a
+    // traversal. Map it to the same neutral placeholder as the empty case - defense in depth,
+    // mirroring the leading-dash and reserved-name guards below.
+    if compact.chars().all(|ch| ch == '.') {
+        return "media".to_string();
+    }
+
     // yt-dlp reads a leading '-' as an option, so a component that sanitizes to one starting with
     // '-' is prefixed with '_'. Rare (extractor/id come from yt-dlp's own extractor, not free-form
     // text), but this mirrors the leading-dash guard in yt_dlp_download::is_valid_format_id and
@@ -1020,6 +1030,23 @@ mod tests {
         // A component that merely contains a reserved substring is a real name, left untouched.
         assert_eq!(sanitize_filename_component("console"), "console");
         assert_eq!(sanitize_filename_component("com10"), "com10");
+    }
+
+    #[test]
+    fn sanitize_filename_component_maps_dot_only_values_to_a_neutral_name() {
+        // A value that sanitizes to only dots ('.', '..', '...') is path-significant as a bare
+        // segment; it must never survive as itself, so a future `join` of the result can never
+        // walk the directory tree. Mapped to the same placeholder as the empty case.
+        for value in [".", "..", "...", " .. ", "..\\"] {
+            assert_eq!(
+                sanitize_filename_component(value),
+                "media",
+                "{value:?} should sanitize to the neutral placeholder"
+            );
+        }
+
+        // A dot that is part of a real name (an extension) is untouched.
+        assert_eq!(sanitize_filename_component("clip.mp4"), "clip.mp4");
     }
 
     #[test]
