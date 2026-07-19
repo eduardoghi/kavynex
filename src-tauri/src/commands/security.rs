@@ -20,6 +20,31 @@ fn allow_directory_in_asset_scope(app: &AppHandle, dir: &Path) -> AppResult<()> 
         })
 }
 
+/// Grants `primary` in the asset-protocol scope via `grant`, then best-effort also grants its
+/// canonical (`\\?\`) form when that differs, logging a warning if the second grant fails rather
+/// than dropping it silently. Shared by the directory and file registration paths, which differ
+/// only in the grant closure; `subject` names the target in the warning ("library path" / "asset
+/// file"). The primary grant's failure is propagated; only the canonical retry is best-effort.
+fn grant_path_with_canonical<F>(primary: &Path, subject: &str, grant: F) -> AppResult<()>
+where
+    F: Fn(&Path) -> AppResult<()>,
+{
+    grant(primary)?;
+
+    if let Ok(canonical) = std::fs::canonicalize(primary) {
+        if canonical != primary {
+            if let Err(error) = grant(&canonical) {
+                logger::warn(
+                    "asset_scope",
+                    format!("failed to authorize canonical {subject} in asset scope: {error}"),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Authorizes the asset protocol to read files inside the user's library directory.
 ///
 /// The requested path is never trusted on its own: it must match the library path
@@ -48,26 +73,9 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
     // run them off the async runtime's worker threads, consistent with other commands
     // (e.g. commands/library.rs, commands/thumbnail.rs).
     run_blocking(move || {
-        let path = Path::new(&trimmed);
-        allow_directory_in_asset_scope(&app, path)?;
-
-        if let Ok(canonical) = std::fs::canonicalize(path) {
-            if canonical != path {
-                // Best effort: the primary grant above already succeeded; this only covers the
-                // extended-length (`\\?\`) variant the frontend may request. Log a failure
-                // instead of dropping it silently, mirroring the other best-effort scope paths.
-                if let Err(error) = allow_directory_in_asset_scope(&app, &canonical) {
-                    logger::warn(
-                        "asset_scope",
-                        format!(
-                            "failed to authorize canonical library path in asset scope: {error}"
-                        ),
-                    );
-                }
-            }
-        }
-
-        Ok(())
+        grant_path_with_canonical(Path::new(&trimmed), "library path", |dir| {
+            allow_directory_in_asset_scope(&app, dir)
+        })
     })
     .await
 }
@@ -121,27 +129,16 @@ pub async fn allow_asset_file(app: AppHandle, path: String) -> AppResult<()> {
     run_blocking(move || {
         validate_asset_file_for_preview(&trimmed)?;
 
-        app.asset_protocol_scope()
-            .allow_file(&trimmed)
-            .map_err(|error| {
-                AppError::from_code(
-                    AppErrorCode::AssetScopeRegisterFailed,
-                    format!("failed to allow file in asset scope: {error}"),
-                )
-            })?;
-
-        if let Ok(canonical) = std::fs::canonicalize(&trimmed) {
-            // Best effort: the exact path was authorized above; this only covers its canonical
-            // (`\\?\`) form. Log a failure instead of dropping it silently, like the other paths.
-            if let Err(error) = app.asset_protocol_scope().allow_file(&canonical) {
-                logger::warn(
-                    "asset_scope",
-                    format!("failed to authorize canonical asset file in asset scope: {error}"),
-                );
-            }
-        }
-
-        Ok(())
+        grant_path_with_canonical(Path::new(&trimmed), "asset file", |file| {
+            app.asset_protocol_scope()
+                .allow_file(file)
+                .map_err(|error| {
+                    AppError::from_code(
+                        AppErrorCode::AssetScopeRegisterFailed,
+                        format!("failed to allow file in asset scope: {error}"),
+                    )
+                })
+        })
     })
     .await
 }
