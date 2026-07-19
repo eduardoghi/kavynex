@@ -150,6 +150,19 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
 fn fsync_parent_dir(_path: &Path) {}
 
 fn file_paths_have_same_content(left: &Path, right: &Path) -> AppResult<bool> {
+    file_paths_have_same_content_using(left, right, None)
+}
+
+/// Like [`file_paths_have_same_content`], but reuses a precomputed SHA-256 of `left` when the
+/// caller already has it (e.g. a content-addressed import whose destination name was derived from
+/// this same hash), so a large `left` file is not hashed a second time. The size check still runs
+/// first, and `right` is always hashed, so a `right` file whose bytes no longer match its name
+/// (a corrupt library file) is still caught.
+fn file_paths_have_same_content_using(
+    left: &Path,
+    right: &Path,
+    left_hash: Option<&str>,
+) -> AppResult<bool> {
     if !left.exists() || !right.exists() {
         return Ok(false);
     }
@@ -176,7 +189,12 @@ fn file_paths_have_same_content(left: &Path, right: &Path) -> AppResult<bool> {
         return Ok(false);
     }
 
-    Ok(file_hash(left)? == file_hash(right)?)
+    let left_digest = match left_hash {
+        Some(hash) => hash.to_string(),
+        None => file_hash(left)?,
+    };
+
+    Ok(left_digest == file_hash(right)?)
 }
 
 pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
@@ -276,6 +294,28 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
 }
 
 pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
+    move_or_copy_file_using(source, destination, None)
+}
+
+/// Like [`move_or_copy_file`], but reuses a precomputed SHA-256 of `source` for the
+/// identical-content check taken when the destination already exists. A caller that has just
+/// hashed `source` to derive a content-addressed destination name (the media import) can pass that
+/// hash here instead of paying for a second full-file hash of a possibly multi-GB file. All the
+/// safety of the plain variant is kept: the same-file guard, the size pre-check, and the hash of
+/// the destination (so a corrupt destination whose bytes no longer match its name is still caught).
+pub fn move_or_copy_file_with_known_source_hash(
+    source: &Path,
+    destination: &Path,
+    source_hash: &str,
+) -> AppResult<()> {
+    move_or_copy_file_using(source, destination, Some(source_hash))
+}
+
+fn move_or_copy_file_using(
+    source: &Path,
+    destination: &Path,
+    source_hash: Option<&str>,
+) -> AppResult<()> {
     if !source.exists() {
         return Err(AppError::from_code(
             AppErrorCode::SourceFileNotFound,
@@ -317,7 +357,9 @@ pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
     })?;
 
     if destination.exists() {
-        if destination.is_file() && file_paths_have_same_content(source, destination)? {
+        if destination.is_file()
+            && file_paths_have_same_content_using(source, destination, source_hash)?
+        {
             fs::remove_file(source).map_err(|e| {
                 AppError::from_code(
                     AppErrorCode::SourceFileRemoveFailed,

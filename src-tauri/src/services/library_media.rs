@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::models::yt_dlp::ImportMode;
-use crate::services::filesystem::{copy_file_atomic, move_or_copy_file};
+use crate::services::filesystem::{copy_file_atomic, move_or_copy_file_with_known_source_hash};
 use crate::services::library_paths::{ensure_library_dir, resolve_existing_library_dir};
 use crate::services::logger;
 use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extension};
@@ -90,11 +90,13 @@ pub fn import_media_file_sync(
             }
         }
         ImportMode::Move => {
-            // Always go through move_or_copy_file, even when the destination already exists: it
+            // Always go through the move helper, even when the destination already exists: it
             // no-ops if the source already IS the destination, and otherwise removes the
             // (identical-by-hash) redundant source. Skipping on "destination exists" would leave
-            // the source behind, so a Move would not actually free it.
-            move_or_copy_file(&source, &destination)?;
+            // the source behind, so a Move would not actually free it. Pass the hash we already
+            // computed above so the identical-content check does not re-hash the (possibly
+            // multi-GB) source a second time.
+            move_or_copy_file_with_known_source_hash(&source, &destination, &hash)?;
         }
     }
 
