@@ -6,6 +6,7 @@
 //! `hide_console*` helpers are no-ops on non-Windows platforms.
 
 use std::process::Stdio;
+use std::time::{Duration, Instant};
 
 use crate::{AppError, AppErrorCode};
 
@@ -15,6 +16,37 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// How often [`wait_for_cancel`] re-checks the cancel flag. Short enough that a user cancel
 /// aborts a bounded wait promptly, long enough not to busy-spin.
 const CANCEL_POLL_INTERVAL_MS: u64 = 200;
+
+/// How long the process-tree kill waits for the killer itself (`taskkill`/`kill`) before giving
+/// up. The killer is normally near-instant, but it can wedge (an AV/EDR hook, a target stuck in
+/// an uninterruptible wait), and both call sites must never block on it: the download-cancel path
+/// runs inside the async wait loop, and the app-exit sweep runs synchronously on the event-loop
+/// thread, where a hung killer would stop the app from closing at all.
+const KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How often the blocking bounded wait polls the killer child. Short enough that the deadline
+/// fires promptly, long enough not to busy-spin the calling thread.
+const KILL_WAIT_POLL: Duration = Duration::from_millis(50);
+
+/// Waits for a spawned killer child to exit, but gives up after [`KILL_WAIT_TIMEOUT`]. Returning
+/// early leaves the killer running detached, which is acceptable: the signal it carries has
+/// already been delivered to the target tree, and the caller must not block on the killer's own
+/// bookkeeping.
+fn wait_child_bounded_blocking(mut child: std::process::Child) {
+    let deadline = Instant::now() + KILL_WAIT_TIMEOUT;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    return;
+                }
+                std::thread::sleep(KILL_WAIT_POLL);
+            }
+        }
+    }
+}
 
 /// Suppresses the console window for a synchronous [`std::process::Command`].
 #[cfg(windows)]
@@ -76,7 +108,8 @@ pub async fn kill_process_tree(pid: u32) {
     hide_console_async(&mut command);
 
     if let Ok(mut child) = command.spawn() {
-        let _ = child.wait().await;
+        // Bound the wait on the killer itself so a hung taskkill cannot stall the caller.
+        let _ = tokio::time::timeout(KILL_WAIT_TIMEOUT, child.wait()).await;
     }
 }
 
@@ -90,7 +123,8 @@ pub async fn kill_process_tree(pid: u32) {
         .stderr(Stdio::null())
         .spawn()
     {
-        let _ = child.wait().await;
+        // Bound the wait on the killer itself so a hung kill cannot stall the caller.
+        let _ = tokio::time::timeout(KILL_WAIT_TIMEOUT, child.wait()).await;
     }
 }
 
@@ -102,7 +136,8 @@ pub async fn kill_process_tree(pid: u32) {
         .stderr(Stdio::null())
         .spawn()
     {
-        let _ = child.wait().await;
+        // Bound the wait on the killer itself so a hung kill cannot stall the caller.
+        let _ = tokio::time::timeout(KILL_WAIT_TIMEOUT, child.wait()).await;
     }
 }
 
@@ -117,27 +152,39 @@ pub fn kill_process_tree_blocking(pid: u32) {
         .stderr(Stdio::null());
     hide_console(&mut command);
 
-    let _ = command.status();
+    // Spawn and wait with a bound rather than `status()`: the app-exit sweep calls this on the
+    // event-loop thread, where a hung taskkill would block shutdown indefinitely.
+    if let Ok(child) = command.spawn() {
+        wait_child_bounded_blocking(child);
+    }
 }
 
 #[cfg(unix)]
 pub fn kill_process_tree_blocking(pid: u32) {
     let process_group = format!("-{pid}");
 
-    let _ = std::process::Command::new("kill")
+    // Spawn and wait with a bound rather than `status()`, for the same reason as the Windows
+    // variant above: a hung kill must not block the app-exit sweep.
+    if let Ok(child) = std::process::Command::new("kill")
         .args(["-9", process_group.as_str()])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status();
+        .spawn()
+    {
+        wait_child_bounded_blocking(child);
+    }
 }
 
 #[cfg(not(any(target_os = "windows", unix)))]
 pub fn kill_process_tree_blocking(pid: u32) {
-    let _ = std::process::Command::new("kill")
+    if let Ok(child) = std::process::Command::new("kill")
         .args(["-9", &pid.to_string()])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status();
+        .spawn()
+    {
+        wait_child_bounded_blocking(child);
+    }
 }
 
 /// Resolves as soon as `cancel` is observed set. When `cancel` is `None` it never resolves,
