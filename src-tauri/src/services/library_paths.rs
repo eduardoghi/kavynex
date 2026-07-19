@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
@@ -145,6 +145,25 @@ pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
     reject_filesystem_root(&canonical_dir)?;
 
     Ok(canonical_dir)
+}
+
+/// Whether `library_path` resolves to `protected_dir` or a directory inside it, comparing canonical
+/// paths so a symlink or a `..`-laden path cannot dodge the check. Used to keep the library out of
+/// the app's own config directory, where `kavynex.db` and every backup generation live: pointing the
+/// library there would run library maintenance (which removes managed subdirectories) in the same
+/// tree as the database and defeat the "backups off the library volume" intent. A path that cannot
+/// be canonicalized is treated as *not* inside (fail open); callers validate existence separately,
+/// so this only decides containment for a directory that does resolve.
+pub fn library_path_is_inside_dir(library_path: &str, protected_dir: &Path) -> bool {
+    let candidate = library_input_path(library_path);
+
+    let (Ok(canonical_candidate), Ok(canonical_protected)) =
+        (candidate.canonicalize(), protected_dir.canonicalize())
+    else {
+        return false;
+    };
+
+    canonical_candidate.starts_with(&canonical_protected)
 }
 
 pub fn resolve_default_library_directory_sync(app: &AppHandle) -> AppResult<String> {

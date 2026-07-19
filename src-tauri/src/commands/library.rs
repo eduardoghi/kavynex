@@ -64,11 +64,24 @@ pub async fn migrate_library_directory(
     // the migration records the new path in a commit marker next to the database just before
     // it removes the old directory; get_app_settings adopts it if the app restarts still
     // pointing at the emptied old library (see services::library_recovery).
-    let commit_marker = app
-        .path()
-        .app_config_dir()
-        .ok()
-        .map(|config_dir| crate::services::library_recovery::commit_marker_path(&config_dir));
+    let config_dir = app.path().app_config_dir().ok();
+
+    // Refuse to move the library into (or under) the app config directory, where the database and
+    // its backups live: it would nest the managed library tree with the database and defeat the
+    // "backups off the library volume" intent. Checked before any copy/remove runs. set_app_settings
+    // enforces the same on the persistence path; this covers the destructive move flow.
+    if let Some(config_dir) = config_dir.as_deref() {
+        if library_paths::library_path_is_inside_dir(&new_library_path, config_dir) {
+            return Err(crate::AppError::from_code(
+                crate::AppErrorCode::InvalidLibraryPath,
+                "the library folder cannot be inside the application data directory",
+            ));
+        }
+    }
+
+    let commit_marker = config_dir
+        .as_deref()
+        .map(crate::services::library_recovery::commit_marker_path);
 
     let result =
         verify_library_path_then_blocking(&app, old_library_path, move |old_library_path| {
