@@ -132,7 +132,8 @@ async fn run_external_database_backup(app_handle: &AppHandle, db_path: &Path) {
         return;
     }
 
-    match services::db_backup::mirror_database_to_external_dir(db_path, Path::new(external_dir)).await
+    match services::db_backup::mirror_database_to_external_dir(db_path, Path::new(external_dir))
+        .await
     {
         Ok(true) => services::logger::info("db_backup", "external database backup written"),
         Ok(false) => {}

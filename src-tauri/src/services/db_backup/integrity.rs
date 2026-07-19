@@ -39,7 +39,9 @@ const SQLITE_CORRUPT_CODE: &str = "11";
 /// reached the database (a pool timeout, a decode error) has none.
 fn sqlite_error_code(error: &sqlx::Error) -> Option<String> {
     match error {
-        sqlx::Error::Database(database_error) => database_error.code().map(|code| code.into_owned()),
+        sqlx::Error::Database(database_error) => {
+            database_error.code().map(|code| code.into_owned())
+        }
         _ => None,
     }
 }
@@ -52,7 +54,10 @@ fn sqlite_error_code(error: &sqlx::Error) -> Option<String> {
 /// threw away everything SQLite had to say about the damage, leaving the UI with a bare "there is
 /// a problem" and the user with nothing to act on or report.
 pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIntegrityReport> {
-    let rows: Vec<(String,)> = match sqlx::query_as("PRAGMA integrity_check").fetch_all(pool).await {
+    let rows: Vec<(String,)> = match sqlx::query_as("PRAGMA integrity_check")
+        .fetch_all(pool)
+        .await
+    {
         Ok(rows) => rows,
         // Past a certain amount of damage SQLite gives up on the pragma itself and fails the query
         // with SQLITE_CORRUPT instead of listing what is wrong. That is still an answer - the most

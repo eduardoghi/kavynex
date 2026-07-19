@@ -166,18 +166,24 @@ const INDEX_DDLS: &[(&str, &str)] = &[
 // future table rebuild recreates the rebuilt table's triggers from this list, exactly as it does
 // its indexes.
 const TRIGGER_DDLS: &[(&str, &str)] = &[
-    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_live_chat_requires_path_insert \
+    (
+        "videos",
+        "CREATE TRIGGER IF NOT EXISTS trg_videos_live_chat_requires_path_insert \
         BEFORE INSERT ON videos \
         WHEN NEW.has_live_chat <> 0 AND NEW.live_chat_file_path IS NULL \
         BEGIN \
             SELECT RAISE(ABORT, 'has_live_chat is set but live_chat_file_path is null'); \
-        END"),
-    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_live_chat_requires_path_update \
+        END",
+    ),
+    (
+        "videos",
+        "CREATE TRIGGER IF NOT EXISTS trg_videos_live_chat_requires_path_update \
         BEFORE UPDATE ON videos \
         WHEN NEW.has_live_chat <> 0 AND NEW.live_chat_file_path IS NULL \
         BEGIN \
             SELECT RAISE(ABORT, 'has_live_chat is set but live_chat_file_path is null'); \
-        END"),
+        END",
+    ),
     // title_normalized is the accent/case-folded copy of `title` that the library search matches
     // against and the title sort orders by. A NULL there is invisible rather than loud: `LIKE`
     // never matches it, so the media silently disappears from every title search while still
@@ -186,18 +192,24 @@ const TRIGGER_DDLS: &[(&str, &str)] = &[
     // introducing one. The column itself stays nullable: it is added to pre-v11 databases by
     // ALTER TABLE, which cannot add a NOT NULL column without inventing a default for the rows
     // already there, and v11 is what backfills them.
-    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_title_normalized_not_null_insert \
+    (
+        "videos",
+        "CREATE TRIGGER IF NOT EXISTS trg_videos_title_normalized_not_null_insert \
         BEFORE INSERT ON videos \
         WHEN NEW.title_normalized IS NULL \
         BEGIN \
             SELECT RAISE(ABORT, 'title_normalized is null'); \
-        END"),
-    ("videos", "CREATE TRIGGER IF NOT EXISTS trg_videos_title_normalized_not_null_update \
+        END",
+    ),
+    (
+        "videos",
+        "CREATE TRIGGER IF NOT EXISTS trg_videos_title_normalized_not_null_update \
         BEFORE UPDATE ON videos \
         WHEN NEW.title_normalized IS NULL \
         BEGIN \
             SELECT RAISE(ABORT, 'title_normalized is null'); \
-        END"),
+        END",
+    ),
 ];
 
 /// Additive columns for the videos table. Fresh databases already get these from the
@@ -266,7 +278,10 @@ pub(crate) async fn table_has_unique_index_on(
     let mut by_index: std::collections::BTreeMap<String, Vec<(i64, String)>> =
         std::collections::BTreeMap::new();
     for (index_name, seqno, column) in rows {
-        by_index.entry(index_name).or_default().push((seqno, column));
+        by_index
+            .entry(index_name)
+            .or_default()
+            .push((seqno, column));
     }
 
     for index_columns in by_index.values_mut() {

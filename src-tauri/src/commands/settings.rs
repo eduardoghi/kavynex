@@ -290,7 +290,10 @@ mod tests {
             .deserialize::<serde_json::Value>()
             .unwrap();
 
-        assert_eq!(response["externalBackupDir"], dir.to_string_lossy().as_ref());
+        assert_eq!(
+            response["externalBackupDir"],
+            dir.to_string_lossy().as_ref()
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

@@ -1,4 +1,3 @@
-
 fn normalize_extension(value: &str) -> String {
     value.trim().trim_start_matches('.').to_lowercase()
 }

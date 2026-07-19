@@ -113,7 +113,11 @@ mod tests {
         ];
 
         let unique: std::collections::HashSet<&PathBuf> = dirs.iter().collect();
-        assert_eq!(unique.len(), dirs.len(), "temp directories must be distinct");
+        assert_eq!(
+            unique.len(),
+            dirs.len(),
+            "temp directories must be distinct"
+        );
     }
 
     #[test]

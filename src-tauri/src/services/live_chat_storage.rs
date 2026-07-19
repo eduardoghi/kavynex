@@ -493,13 +493,19 @@ mod tests {
         let plain = dir.join("plain.json");
         fs::write(&plain, b"{\"a\":1}\n{\"b\":2}\n").unwrap();
         let (lines, _) = collect_streamed_lines(&plain, 500).unwrap();
-        assert_eq!(lines, vec!["{\"a\":1}".to_string(), "{\"b\":2}".to_string()]);
+        assert_eq!(
+            lines,
+            vec!["{\"a\":1}".to_string(), "{\"b\":2}".to_string()]
+        );
 
         // Gzip replay: transparently gunzipped while streaming, same result.
         let gz = dir.join("compressed.json");
         fs::write(&gz, gzip_compress(b"{\"a\":1}\n{\"b\":2}\n").unwrap()).unwrap();
         let (lines, _) = collect_streamed_lines(&gz, 500).unwrap();
-        assert_eq!(lines, vec!["{\"a\":1}".to_string(), "{\"b\":2}".to_string()]);
+        assert_eq!(
+            lines,
+            vec!["{\"a\":1}".to_string(), "{\"b\":2}".to_string()]
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
