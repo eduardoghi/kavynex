@@ -1,5 +1,9 @@
 # ts-rs writes these with LF; pin LF so the CI drift check is stable across platforms.
 src/types/generated/*.ts text eol=lf
 
+# Rust sources are authored with LF; pin it so a checkout on Windows does not reintroduce a
+# CRLF working-tree drift (the `cargo fmt --check` and diff stay stable across platforms).
+*.rs text eol=lf
+
 # SQLite migration fixtures are binary blobs; never apply text/EOL normalization to them.
 *.sqlite binary
