@@ -15,7 +15,7 @@ import { useMemoObject } from "./use-memo-object";
 type UseYtDlpEventsReturn = {
     ytDlpLogs: string[];
     isYtDlpRunning: boolean;
-    currentRunIdRef: React.MutableRefObject<string>;
+    currentRunIdRef: React.RefObject<string>;
     startRun: (runId: string, commandPreview: string) => void;
     startManualSession: (runId: string, header: string) => void;
     appendManualLog: (line: string) => void;
