@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 
 use crate::services::database::{get_app_settings_from_pool, shared_pool};
+use crate::utils::path::is_network_path;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -49,6 +50,16 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
     let configured = configured.trim();
 
     if requested.is_empty() || configured.is_empty() {
+        return false;
+    }
+
+    // A network (UNC) `requested` path forces an SMB/NTLM handshake the moment it is canonicalized
+    // on Windows (see utils::path::is_network_path). Refuse it *before* the canonicalize below when
+    // the configured library is local - a caller-supplied UNC aimed at a local library is the
+    // NTLM-leak vector, and the guard's whole job is to hold against a hostile IPC path. A library
+    // the user deliberately put on a share (configured is itself a network path) keeps working, so
+    // this never regresses a legitimately network-hosted library.
+    if is_network_path(requested) && !is_network_path(configured) {
         return false;
     }
 
@@ -183,6 +194,30 @@ mod tests {
         ));
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn same_location_rejects_a_network_requested_path_against_a_local_library() {
+        // A caller-supplied UNC (in any spelling, including the mixed separators Windows still
+        // resolves to a share) must never match a local configured library, and must be refused
+        // before the canonicalize that would trigger the SMB/NTLM handshake.
+        let library = unique_test_dir("local-library");
+        fs::create_dir_all(&library).unwrap();
+        let library_str = library.to_string_lossy().to_string();
+
+        for requested in [
+            r"\\evil\share",
+            "//evil/share",
+            r"/\evil\share",
+            r"\/evil\share",
+        ] {
+            assert!(
+                !paths_refer_to_same_location(requested, &library_str),
+                "network requested path should not match a local library: {requested}"
+            );
+        }
+
+        let _ = fs::remove_dir_all(&library);
     }
 
     #[test]

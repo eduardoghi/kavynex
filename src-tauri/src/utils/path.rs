@@ -37,6 +37,31 @@ fn is_windows_reserved_name(segment: &str) -> bool {
     false
 }
 
+/// True for a UNC / network location (`\\host\share`, `//host/share`, the verbatim UNC form
+/// `\\?\UNC\...`, and the mixed-separator spellings `/\host\share` / `\/host\share` that Windows
+/// also resolves to a UNC path). Merely canonicalizing or opening one of these on Windows makes
+/// the OS reach out to `host` over SMB and authenticate, leaking the user's NTLM hash to whoever
+/// controls that host - so callers must reject network paths *before* any filesystem call
+/// (`canonicalize`, `exists`, `read_dir`, `create_dir_all`) touches them.
+///
+/// Separators are normalized to `\` first so a mixed spelling cannot slip past a literal prefix
+/// match (`/\host\share` and `\/host\share` both resolve to `\\host\share` on Windows). The device
+/// namespace (`\\.\`) and the verbatim *disk* form (`\\?\C:\...`) are local and return false.
+/// Checked on every platform so a library synced from Windows behaves the same everywhere.
+pub fn is_network_path(value: &str) -> bool {
+    let normalized = value.trim_start().replace('/', "\\");
+
+    if let Some(rest) = normalized.strip_prefix(r"\\?\") {
+        return rest.starts_with("UNC\\") || rest.starts_with("unc\\");
+    }
+
+    if normalized.starts_with(r"\\.\") {
+        return false;
+    }
+
+    normalized.starts_with(r"\\")
+}
+
 pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
     let trimmed = value.trim();
 
@@ -346,6 +371,33 @@ mod tests {
             std::process::id(),
             nanos
         ))
+    }
+
+    #[test]
+    fn is_network_path_flags_unc_forward_slash_and_mixed_separator_shares() {
+        for value in [
+            r"\\server\share",
+            r"\\server\share\clip.mp4",
+            "//server/share",
+            r"\\?\UNC\server\share", // verbatim UNC is still a network share
+            // Mixed separators that Windows normalizes to a UNC path; a literal `\\`/`//` prefix
+            // match misses these, which is exactly the bypass this normalization closes.
+            r"/\server\share",
+            r"\/server\share",
+            "  \\\\server\\share  ", // surrounding whitespace is trimmed before the check
+        ] {
+            assert!(is_network_path(value), "should flag: {value}");
+        }
+
+        for value in [
+            r"C:\Users\me\video.mp4",
+            "/home/me/video.mp4",
+            "video/clip.mp4",
+            r"\\?\C:\Users\me\video.mp4", // extended-length local path, not a network share
+            r"\\.\PhysicalDrive0",        // device namespace, local
+        ] {
+            assert!(!is_network_path(value), "should not flag: {value}");
+        }
     }
 
     #[test]

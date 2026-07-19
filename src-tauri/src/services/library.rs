@@ -9,32 +9,12 @@ pub use crate::services::library_summary::LibrarySummaryInfo;
 use std::path::PathBuf;
 
 use crate::services::library_summary::summarize_library;
+use crate::utils::path::is_network_path;
 use crate::{AppError, AppErrorCode, AppResult};
 
 pub fn get_library_summary_sync(library_path: &str) -> AppResult<LibrarySummaryInfo> {
     let library_dir = resolve_existing_library_dir(library_path)?;
     summarize_library(&library_dir)
-}
-
-/// True for a UNC / network location (`\\host\share` or `//host/share`). Merely
-/// canonicalizing or opening one of these on Windows makes the OS reach out to `host` over
-/// SMB and authenticate, which leaks the user's NTLM hash to whoever controls that host - so
-/// a network path must be rejected *before* any filesystem call touches it, not after.
-fn is_network_path(value: &str) -> bool {
-    let value = value.trim_start();
-
-    // Windows verbatim prefix: `\\?\UNC\...` is a network share, but `\\?\C:\...` (and the
-    // `\\.\` device namespace) are local, so those must not be treated as network even though
-    // they start with two backslashes.
-    if let Some(rest) = value.strip_prefix(r"\\?\") {
-        return rest.starts_with("UNC\\") || rest.starts_with("unc\\");
-    }
-
-    if value.starts_with(r"\\.\") {
-        return false;
-    }
-
-    value.starts_with(r"\\") || value.starts_with("//")
 }
 
 /// Resolves `path` relative to `library_path` (or as-is if absolute), verifies that
@@ -308,23 +288,20 @@ mod tests {
     }
 
     #[test]
-    fn is_network_path_flags_unc_and_forward_slash_shares() {
-        for value in [
+    fn resolve_path_inside_library_rejects_network_bases_including_mixed_separators() {
+        // The network-path guard must fire before any canonicalize reaches the SMB stack. The
+        // mixed-separator forms (`/\host\share`, `\/host\share`) are the ones a literal `\\`/`//`
+        // prefix match missed; Windows resolves them to a UNC path all the same. `is_network_path`
+        // is exercised exhaustively in utils::path; here it is pinned at this call site.
+        for base in [
             r"\\server\share",
-            r"\\server\share\clip.mp4",
             "//server/share",
-            r"\\?\UNC\server\share", // verbatim UNC is still a network share
+            r"/\server\share",
+            r"\/server\share",
         ] {
-            assert!(is_network_path(value), "should flag: {value}");
-        }
-
-        for value in [
-            r"C:\Users\me\video.mp4",
-            "/home/me/video.mp4",
-            "video/clip.mp4",
-            r"\\?\C:\Users\me\video.mp4", // extended-length local path, not a network share
-        ] {
-            assert!(!is_network_path(value), "should not flag: {value}");
+            let error = resolve_path_inside_library("clip.mp4", Some(base))
+                .expect_err(&format!("network base should be rejected: {base}"));
+            assert_eq!(error.code, AppErrorCode::InvalidMediaPath.as_str());
         }
     }
 
@@ -336,8 +313,8 @@ mod tests {
         // which describes their library rather than their disk.
         let library = make_temp_library("missing-file-code");
 
-        let error = resolve_path_inside_library("gone.mp4", Some(library.to_str().unwrap()))
-            .unwrap_err();
+        let error =
+            resolve_path_inside_library("gone.mp4", Some(library.to_str().unwrap())).unwrap_err();
 
         assert_eq!(error.code, AppErrorCode::MediaFileNotFound.as_str());
 
