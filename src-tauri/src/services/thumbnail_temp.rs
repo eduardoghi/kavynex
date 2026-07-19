@@ -9,7 +9,7 @@ use crate::services::binaries::resolve_ffmpeg_binary;
 use crate::services::temp_paths::thumbs_temp_dir;
 use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extension};
 use crate::utils::hash::file_hash;
-use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path};
+use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path, is_network_path};
 use crate::utils::process::{
     configure_process_group_blocking, hide_console, kill_process_tree_blocking, read_process_error,
 };
@@ -33,7 +33,21 @@ fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<Path
 }
 
 fn validate_source_media_path(path: &str) -> AppResult<PathBuf> {
-    let source_path = PathBuf::from(path.trim());
+    let trimmed = path.trim();
+
+    // Reject a UNC/network source before any filesystem call touches it: this command takes a
+    // caller-supplied path (the pre-import preview needs to reach a file the user picked anywhere on
+    // disk), so a compromised frontend could otherwise hand it `\\host\share\...` and make merely
+    // stat-ing it trigger an SMB/NTLM handshake that leaks the user's hash to `host`. Mirrors the
+    // same guard in services::library::resolve_path_inside_library / open_path_in_system.
+    if is_network_path(trimmed) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidSourceMedia,
+            "source media path must not be a network location",
+        ));
+    }
+
+    let source_path = PathBuf::from(trimmed);
 
     if !source_path.exists() {
         return Err(AppError::from_code(
