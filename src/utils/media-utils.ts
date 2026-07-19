@@ -14,7 +14,12 @@ const AUDIO_EXTENSIONS = new Set([
     "aiff",
 ]);
 
-const THUMBNAIL_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "bmp", "avif"]);
+// The image file types Kavynex accepts for a thumbnail or channel avatar, in the order shown in
+// the file picker. Both the thumbnail classification below and the avatar/thumbnail picker filter
+// (pickImageFilePath in utils/pick-image-file.ts) derive from this one list so they cannot drift.
+export const IMAGE_FILE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "bmp", "avif"] as const;
+
+const THUMBNAIL_EXTENSIONS = new Set<string>(IMAGE_FILE_EXTENSIONS);
 
 // Hoisted module-level so formatDateValue/formatCreatedAt do not rebuild an Intl.DateTimeFormat
 // on every call - construction is comparatively expensive and these formatters have no per-call

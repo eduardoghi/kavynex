@@ -1,7 +1,7 @@
-import { openFileDialog } from "../lib/tauri-platform";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Channel, ChannelAvatarMode } from "../types/media";
 import { findSelectedChannel } from "../utils/controller-helpers";
+import { pickImageFilePath } from "../utils/pick-image-file";
 import { useChannelActions } from "./use-channel-actions";
 import { useMemoObject } from "./use-memo-object";
 
@@ -155,22 +155,7 @@ export function useChannels({
 
     const pickChannelAvatarViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selection = await openFileDialog({
-                multiple: false,
-                directory: false,
-                filters: [
-                    {
-                        name: "Images",
-                        extensions: ["png", "jpg", "jpeg", "webp", "bmp", "avif"],
-                    },
-                ],
-            });
-
-            if (typeof selection !== "string") {
-                return;
-            }
-
-            const normalizedPath = selection.trim();
+            const normalizedPath = await pickImageFilePath();
 
             if (!normalizedPath) {
                 return;
@@ -244,22 +229,7 @@ export function useChannels({
     const updateChannelAvatarFromFile = useCallback(
         async (channel: Channel): Promise<void> => {
             try {
-                const selection = await openFileDialog({
-                    multiple: false,
-                    directory: false,
-                    filters: [
-                        {
-                            name: "Images",
-                            extensions: ["png", "jpg", "jpeg", "webp", "bmp", "avif"],
-                        },
-                    ],
-                });
-
-                if (typeof selection !== "string") {
-                    return;
-                }
-
-                const normalizedPath = selection.trim();
+                const normalizedPath = await pickImageFilePath();
 
                 if (!normalizedPath) {
                     return;
