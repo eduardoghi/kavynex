@@ -121,20 +121,35 @@ pub async fn mirror_database_to_external_dir(
     }
 
     let current = external_backup_path(external_dir);
+    let staged = external_dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
 
     // The directory probe and the throttle's mtime read both touch the external target, which may
     // be an unplugged drive or an offline share - exactly the IO that can stall for seconds. Run
-    // them (and the staging remove, rotate and promote below) off the async runtime so a slow
-    // target never holds a Tokio worker thread.
+    // them (and the rotate and promote below) off the async runtime so a slow target never holds
+    // a Tokio worker thread.
     {
         let external_dir = external_dir.to_path_buf();
         let current = current.clone();
+        let staged = staged.clone();
         let should_skip = run_blocking(move || {
-            // The chosen directory is gone (drive unplugged, share offline), or a fresh mirror was
-            // already written within the throttle window. Either way, skip quietly this tick.
-            Ok::<bool, AppError>(
-                !external_dir.is_dir() || is_recent(&current, BACKUP_MIN_INTERVAL_SECS),
-            )
+            if !external_dir.is_dir() {
+                // The chosen directory is gone (drive unplugged, share offline); skip quietly.
+                return Ok::<bool, AppError>(true);
+            }
+
+            // A staged file with no promoted mirror beside it is the leftover of a failed
+            // promotion below, and the rotation had already emptied generation 0 when it was
+            // written - so it is the newest good copy, not scrap. Adopt it as the mirror before
+            // consulting the throttle: deleting it up front (as this function once did) combined
+            // with a second failure of the same flaky target could leave the directory with no
+            // current copy at all. A leftover next to an intact mirror needs no cleanup here -
+            // export_database only ever replaces it atomically with a verified fresh export.
+            if !current.exists() && staged.exists() {
+                let _ = std::fs::rename(&staged, &current);
+            }
+
+            // A fresh mirror was already written (or just adopted) within the throttle window.
+            Ok::<bool, AppError>(is_recent(&current, BACKUP_MIN_INTERVAL_SECS))
         })
         .await?;
 
@@ -148,16 +163,6 @@ pub async fn mirror_database_to_external_dir(
     // fresh copy is complete are the older generations rotated up and it is promoted into
     // generation 0. This is stricter than backup_database's rotate-then-write, on purpose: an
     // external/removable target fails far more often than the app's own config volume.
-    let staged = external_dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
-    {
-        let staged = staged.clone();
-        run_blocking(move || {
-            let _ = std::fs::remove_file(&staged);
-            Ok::<(), AppError>(())
-        })
-        .await?;
-    }
-
     export_database(db_path, &staged).await?;
 
     let external_dir = external_dir.to_path_buf();
@@ -172,8 +177,10 @@ pub async fn mirror_database_to_external_dir(
             // Leave the freshly exported, quick-check-passed staged file in place rather than
             // deleting it: rotate_generations above already emptied generation 0, so discarding the
             // replacement here would throw away the newest good copy on a failure of the exact
-            // (removable/network) target this module is meant to be careful with. Mirrors
-            // backup_database, which keeps its `.bak.tmp` as a last-resort restore candidate.
+            // (removable/network) target this module is meant to be careful with. Nothing on the
+            // restore path reads this file automatically (unlike backup_database's `.bak.tmp`,
+            // which is a last-resort restore candidate); instead, the next mirror run adopts it
+            // as the current mirror while the directory is still missing one.
             return Err(backup_error(
                 "failed to promote the external database backup (the fresh copy was kept)",
                 error,

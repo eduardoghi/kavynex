@@ -1271,6 +1271,61 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[tokio::test]
+    async fn mirror_adopts_a_recent_stranded_staged_copy_instead_of_deleting_it() {
+        let dir = temp_dir("ext-adopt-src");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        // A failed promotion leaves the staged file as the only copy in the directory: the
+        // rotation already consumed generation 0 before the rename failed.
+        let external = temp_dir("ext-adopt-dest");
+        let staged = external.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
+        std::fs::write(&staged, b"stranded").unwrap();
+
+        // The stranded copy is fresh, so after adoption the throttle applies: no new export.
+        assert!(!mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+
+        let current = external_backup_path(&external);
+        assert_eq!(std::fs::read(&current).unwrap(), b"stranded");
+        assert!(!staged.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&external);
+    }
+
+    #[tokio::test]
+    async fn mirror_rotates_a_stale_stranded_staged_copy_behind_a_fresh_export() {
+        let dir = temp_dir("ext-adopt-stale-src");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        let external = temp_dir("ext-adopt-stale-dest");
+        let staged = external.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
+        std::fs::write(&staged, b"stranded-old").unwrap();
+        let old = SystemTime::now() - std::time::Duration::from_secs(BACKUP_MIN_INTERVAL_SECS * 2);
+        filetime_set(&staged, old);
+
+        // Past the throttle window the adopted copy is refreshed, but never thrown away: it is
+        // rotated up as a generation while the fresh export becomes the current mirror.
+        assert!(mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+
+        let current = external_backup_path(&external);
+        assert_eq!(read_single_value(&current).await, "hello");
+        assert_eq!(
+            std::fs::read(generation_external_backup_path(&external, 1)).unwrap(),
+            b"stranded-old"
+        );
+        assert!(!staged.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&external);
+    }
+
     #[test]
     fn external_backup_generations_rotate_up() {
         let dir = temp_dir("ext-rotate");
