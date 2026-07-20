@@ -144,7 +144,26 @@ pub async fn delete_live_chat_file(app: AppHandle, relative_path: String) -> App
         // Serialize against a concurrent library migration (see services::library_lock).
         let _library_guard = crate::services::library_lock::library_read_guard();
 
-        delete_live_chat_relative_sync(&library_dir, &relative_path)
+        delete_live_chat_relative_sync(&library_dir, &relative_path).map_err(|error| {
+            // The database reference above is already cleared, so a failed unlink must say so:
+            // a bare "failed to remove" reads as "nothing happened, retry the delete", when the
+            // entry is in fact gone and the file (if still present) is an orphan for the library
+            // diagnostics to reconcile. Only the unlink failure is reworded - a containment
+            // rejection happens before anything is touched and keeps its own error.
+            if error.code == AppErrorCode::RemoveMediaFailed.as_str() {
+                AppError::from_code(
+                    AppErrorCode::RemoveMediaFailed,
+                    format!(
+                        "the live chat entry was removed from the library, but its file could \
+                         not be deleted and was left behind - run Diagnostics to clean it up \
+                         ({})",
+                        error.message
+                    ),
+                )
+            } else {
+                error
+            }
+        })
     })
     .await
 }
