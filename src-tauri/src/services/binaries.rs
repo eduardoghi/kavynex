@@ -541,6 +541,31 @@ mod tests {
         ("sh", vec!["-c", "sleep 60"])
     }
 
+    // A command that exits non-zero writing only to stderr: stands in for a binary that failed
+    // its health check with a diagnostic message. Used to pin that the failure detail surfaces the
+    // child's stderr rather than a generic fallback.
+    #[cfg(windows)]
+    fn fail_with_stderr_command() -> (&'static str, Vec<&'static str>) {
+        ("cmd", vec!["/C", "echo boom 1>&2 & exit 1"])
+    }
+
+    #[cfg(not(windows))]
+    fn fail_with_stderr_command() -> (&'static str, Vec<&'static str>) {
+        ("sh", vec!["-c", "echo boom 1>&2; exit 1"])
+    }
+
+    // A command that exits non-zero writing only to stdout (empty stderr): exercises the fallback
+    // from stderr to stdout in the failure-detail selection.
+    #[cfg(windows)]
+    fn fail_with_stdout_command() -> (&'static str, Vec<&'static str>) {
+        ("cmd", vec!["/C", "echo out & exit 1"])
+    }
+
+    #[cfg(not(windows))]
+    fn fail_with_stdout_command() -> (&'static str, Vec<&'static str>) {
+        ("sh", vec!["-c", "echo out; exit 1"])
+    }
+
     #[test]
     fn capture_first_line_returns_the_first_output_line() {
         let (binary, args) = print_line_command();
@@ -555,6 +580,52 @@ mod tests {
         .unwrap();
 
         assert_eq!(version, "tool 1.2.3");
+    }
+
+    #[test]
+    fn capture_first_line_surfaces_stderr_in_the_error_on_a_failed_command() {
+        let (binary, args) = fail_with_stderr_command();
+
+        let error = run_command_capturing_first_line_within(
+            binary,
+            &args,
+            AppErrorCode::YtDlpMetadataExecFailed,
+            "health check",
+            Duration::from_secs(20),
+        )
+        .unwrap_err();
+
+        // A non-zero exit surfaces the child's stderr in the failure detail, preferred over stdout
+        // and over the generic "unknown execution failure" fallback.
+        assert_eq!(error.code, AppErrorCode::YtDlpMetadataExecFailed.as_str());
+        assert!(
+            error.message.contains("boom"),
+            "stderr should reach the error detail; message was: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn capture_first_line_falls_back_to_stdout_when_stderr_is_empty_on_a_failed_command() {
+        let (binary, args) = fail_with_stdout_command();
+
+        let error = run_command_capturing_first_line_within(
+            binary,
+            &args,
+            AppErrorCode::YtDlpMetadataExecFailed,
+            "health check",
+            Duration::from_secs(20),
+        )
+        .unwrap_err();
+
+        // With empty stderr, the detail falls back to the child's stdout rather than the generic
+        // "unknown execution failure".
+        assert_eq!(error.code, AppErrorCode::YtDlpMetadataExecFailed.as_str());
+        assert!(
+            error.message.contains("out"),
+            "stdout should reach the error detail when stderr is empty; message was: {}",
+            error.message
+        );
     }
 
     #[test]

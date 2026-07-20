@@ -221,6 +221,20 @@ mod tests {
     }
 
     #[test]
+    fn same_location_matches_two_identical_network_paths() {
+        // A library the user deliberately put on a share must still match itself: the network-path
+        // guard only rejects a network `requested` aimed at a *local* configured library (the
+        // NTLM-leak vector), never a genuinely network-hosted one. Without this case the guard's
+        // `!is_network_path(configured)` condition is only ever exercised against a local library,
+        // where inverting it changes nothing (the string fallback rejects a mismatch either way).
+        // The share does not exist, so this resolves through the trimmed-string fallback the
+        // canonicalize failure drops to (on Linux, where the mutation gate runs, canonicalize
+        // treats the UNC as a plain non-existent filename, so no network lookup happens).
+        let unc = r"\\evil\share";
+        assert!(paths_refer_to_same_location(unc, unc));
+    }
+
+    #[test]
     fn same_location_rejects_empty_inputs() {
         assert!(!paths_refer_to_same_location("", "/library"));
         assert!(!paths_refer_to_same_location("/library", "   "));
