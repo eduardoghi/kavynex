@@ -97,6 +97,20 @@ to fail the build if the checked-in bindings are stale. Never hand-edit a file u
 `src/types/generated/` - change the Rust type instead and rerun the command above. See
 `docs/ARCHITECTURE.md` for where these types fit in the IPC boundary.
 
+### Field naming on IPC types
+
+A **new** type crossing the IPC boundary uses camelCase field names on the wire: put
+`#[serde(rename_all = "camelCase")]` on the struct/enum so the generated TypeScript reads
+naturally on the frontend (`StoredAppSettingsPayload` and `MediaPageQuery` are the reference
+examples). Do not mix per-field `#[serde(rename = ...)]` with unrenamed siblings on the same
+type.
+
+Many existing types (`Channel`, `MediaRow`, the yt-dlp event payloads, ...) predate this rule
+and expose raw snake_case; the frontend consumes them as generated, so nothing is broken.
+Migrating one is a deliberate, self-contained change - add the attribute, regenerate the
+bindings, and update every frontend usage and test fixture in the same commit - not something
+to do in passing while touching a type for another reason.
+
 ## Frontend hook conventions
 
 The controller hooks under `src/hooks/` follow a small set of rules that keep the media grid and the
