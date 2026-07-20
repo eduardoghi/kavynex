@@ -23,7 +23,6 @@
     "version:bump": "node scripts/bump-version.js"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
     "@mantine/core": "^9.4.1",
     "@mantine/hooks": "^9.4.1",
     "@tanstack/react-virtual": "^3.14.6",
@@ -32,7 +31,6 @@
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "~2.10.1",
-    "@tauri-apps/plugin-window-state": "^2.4.1",
     "lucide-react": "^1.24.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
