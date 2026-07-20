@@ -184,6 +184,48 @@ describe("CommentsPanel", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("excludes context-only thread parents from the results count and marks them in the list", () => {
+        // "needle" only matches the reply; the root is retained purely as thread context and must
+        // not inflate "Showing N results" or read as an unmarked match in the list.
+        renderWithMantine(
+            <CommentsPanel
+                comments={[
+                    comment({ id: 1, comment_id: "c1", text: "hello world" }),
+                    comment({
+                        id: 2,
+                        comment_id: "c2",
+                        parent_comment_id: "c1",
+                        text: "needle reply",
+                    }),
+                ]}
+                hasComments
+                commentsCount={2}
+                isLoadingComments={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        act(() => {
+            fireEvent.change(screen.getByLabelText(UI_TEXT.comments.searchLabel), {
+                target: { value: "needle" },
+            });
+        });
+
+        act(() => {
+            vi.advanceTimersByTime(200);
+        });
+
+        expect(
+            screen.getByText(`${UI_TEXT.comments.resultsShowing} 1 ${UI_TEXT.comments.resultsFor}`, {
+                exact: false,
+            })
+        ).toBeInTheDocument();
+        expect(screen.getByText("needle reply")).toBeInTheDocument();
+        // The context-only parent is still shown (for thread context) but labeled as such.
+        expect(screen.getByText("hello world")).toBeInTheDocument();
+        expect(screen.getByText(UI_TEXT.comments.contextLabel)).toBeInTheDocument();
+    });
+
     it("offers to fetch comments in the empty state for a YouTube-sourced media", () => {
         const onFetchComments = vi.fn();
 

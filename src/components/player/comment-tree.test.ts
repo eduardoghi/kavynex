@@ -201,6 +201,21 @@ describe("filterCommentTree", () => {
         expect(filtered.map((node) => node.comment_id)).toEqual(["c1"]);
         expect(filtered[0]!.replies).toHaveLength(0);
     });
+
+    it("tags a retained non-matching parent as context-only, and the real match as not", () => {
+        // c1 ("hello world") does not match "reply" itself - it is only kept so c2 ("a reply")
+        // reads in its thread context. Only c2 is a real search result.
+        const filtered = filterCommentTree(tree, "reply");
+
+        expect(filtered[0]!.isContextOnly).toBe(true);
+        expect(filtered[0]!.replies[0]!.isContextOnly).toBe(false);
+    });
+
+    it("does not tag a matching root as context-only even when its replies are pruned", () => {
+        const filtered = filterCommentTree(tree, "hello");
+
+        expect(filtered[0]!.isContextOnly).toBe(false);
+    });
 });
 
 describe("flattenCommentTree", () => {
@@ -259,6 +274,23 @@ describe("countCommentsInTree", () => {
         );
 
         expect(countCommentsInTree(tree)).toBe(4);
+    });
+
+    it("excludes context-only parents retained by filterCommentTree from the count", () => {
+        // Only c2 matches "reply"; c1 is retained solely as thread context and must not be
+        // counted as a search result (the bug: a search that surfaced one match used to report
+        // "Showing 2 results").
+        const tree = buildCommentTree(
+            [
+                comment({ id: 1, comment_id: "c1", text: "hello world" }),
+                comment({ id: 2, comment_id: "c2", parent_comment_id: "c1", text: "a reply" }),
+            ],
+            "likes"
+        );
+
+        const filtered = filterCommentTree(tree, "reply");
+
+        expect(countCommentsInTree(filtered)).toBe(1);
     });
 });
 

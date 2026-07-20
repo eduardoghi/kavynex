@@ -1,9 +1,14 @@
 import { useRef } from "react";
-import { Box, rem } from "@mantine/core";
+import { Badge, Box, rem } from "@mantine/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
 import { CommentContent } from "./comment-content";
 import type { FlatCommentRow } from "./comment-tree";
+
+// A context-only row (see comment-tree.filterCommentTree) is a thread ancestor kept only so a
+// real match below it still reads in context - it is not itself a search result. Dimming it and
+// labeling it keeps that distinction visible instead of letting it read as one more match.
+const CONTEXT_ONLY_OPACITY = 0.55;
 
 // The scroll area the results live in. Virtualization needs a bounded, scrollable container (the
 // same shape the media grid uses), so a comment search - unlike the naturally-growing browse view -
@@ -102,8 +107,23 @@ export function CommentSearchResults({
                                     paddingLeft: row.level > 0 ? rem(14) : 0,
                                     borderLeft:
                                         row.level > 0 ? `1px solid ${shellBorder}` : undefined,
+                                    opacity: row.node.isContextOnly
+                                        ? CONTEXT_ONLY_OPACITY
+                                        : undefined,
                                 }}
                             >
+                                {row.node.isContextOnly && (
+                                    <Badge
+                                        size="xs"
+                                        radius="sm"
+                                        variant="light"
+                                        color="gray"
+                                        mb={4}
+                                    >
+                                        {UI_TEXT.comments.contextLabel}
+                                    </Badge>
+                                )}
+
                                 <CommentContent
                                     comment={row.node}
                                     shellBorder={shellBorder}

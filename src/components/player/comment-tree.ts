@@ -5,6 +5,11 @@ import { formatPublishedDate } from "../../utils/media-utils";
 
 export type CommentTreeNode = MediaCommentRow & {
     replies: CommentTreeNode[];
+    // Set only by filterCommentTree, and only true for a node that does not itself match the
+    // active search but is kept to show thread context for a matching descendant. Undefined
+    // (falsy) everywhere else - the build/sort output and every node in the non-search browse
+    // tree - so callers that never filter never have to think about it.
+    isContextOnly?: boolean;
 };
 
 export type CommentSortMode = "likes" | "newest" | "oldest";
@@ -252,6 +257,11 @@ export function sortCommentTree(
         }));
 }
 
+// Keeps a non-matching parent in the result when one of its descendants matches, so the match
+// still reads in its thread context instead of floating with no idea who it replied to. That
+// retained parent is not itself a search result, so it is tagged `isContextOnly: true` - callers
+// that count or list "results" (countCommentsInTree, the flat search list) must read that flag
+// rather than treating every node this returns as a match.
 export function filterCommentTree(nodes: CommentTreeNode[], query: string): CommentTreeNode[] {
     if (!query) {
         return nodes;
@@ -267,6 +277,7 @@ export function filterCommentTree(nodes: CommentTreeNode[], query: string): Comm
             nextNodes.push({
                 ...node,
                 replies: filteredReplies,
+                isContextOnly: !matchesSelf,
             });
         }
     }
@@ -274,9 +285,13 @@ export function filterCommentTree(nodes: CommentTreeNode[], query: string): Comm
     return nextNodes;
 }
 
+// Counts only the nodes that are themselves matches, not the context-only parents
+// filterCommentTree retains to show a match's thread. A tree that was never filtered (build/sort
+// output) never sets isContextOnly, so this still counts every node there, as before.
 export function countCommentsInTree(nodes: CommentTreeNode[]): number {
     return nodes.reduce((total, node) => {
-        return total + 1 + countCommentsInTree(node.replies);
+        const selfCount = node.isContextOnly ? 0 : 1;
+        return total + selfCount + countCommentsInTree(node.replies);
     }, 0);
 }
 

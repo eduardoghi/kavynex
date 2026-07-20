@@ -98,6 +98,7 @@ export const UI_TEXT = {
         replies: "replies",
         resultsShowing: "Showing",
         resultsFor: "result(s) for",
+        contextLabel: "Context",
         loadMore: "Load more comments",
         truncatedNoticePrefix: "Showing the first",
         truncatedNoticeMiddle: "of",
