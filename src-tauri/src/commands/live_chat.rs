@@ -127,10 +127,18 @@ pub async fn stream_live_chat_file(
     .await
 }
 
-/// Deletes a live chat replay file from the library, if it exists.
+/// Deletes a live chat replay file from the library, if it exists, and clears the live-chat columns
+/// on the video row that referenced it.
 #[tauri::command]
 pub async fn delete_live_chat_file(app: AppHandle, relative_path: String) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
+    let pool = crate::services::database::shared_pool(&app).await?;
+
+    // Clear the referencing row's live-chat columns before removing the file. A crash between the
+    // two steps then leaves only an orphaned file (which the library diagnostics reconcile), never a
+    // row flagged has_live_chat = 1 pointing at a deleted file - a path-without-file state the v13
+    // CHECK constraint does not catch.
+    crate::services::video_repository::clear_live_chat_reference(&pool, relative_path.trim()).await?;
 
     run_blocking(move || {
         // Serialize against a concurrent library migration (see services::library_lock).

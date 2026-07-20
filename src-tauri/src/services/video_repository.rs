@@ -434,6 +434,30 @@ pub async fn media_exists_for_channel_and_youtube_id(
     Ok(exists != 0)
 }
 
+/// Clears the live-chat columns on any video row that references `relative_path`. Used by the
+/// standalone delete-live-chat command so removing a replay file never leaves a row flagged
+/// `has_live_chat = 1` pointing at a file that no longer exists - a state the v13 CHECK constraint
+/// (flag-without-path) does not catch. Setting both columns keeps the row consistent with that
+/// CHECK (`has_live_chat = 0 OR live_chat_file_path IS NOT NULL`).
+pub async fn clear_live_chat_reference(pool: &SqlitePool, relative_path: &str) -> AppResult<()> {
+    let normalized = relative_path.trim();
+
+    if normalized.is_empty() {
+        return Ok(());
+    }
+
+    sqlx::query(
+        "UPDATE videos SET has_live_chat = 0, live_chat_file_path = NULL \
+         WHERE live_chat_file_path = ?",
+    )
+    .bind(normalized)
+    .execute(pool)
+    .await
+    .map_err(|error| db_error("failed to clear live chat reference", error))?;
+
+    Ok(())
+}
+
 /// Inserts a media row and returns its id, or returns the id of the existing row when the same
 /// `(channel_id, file_path)` is already registered.
 ///
@@ -868,6 +892,43 @@ mod tests {
             !detail.contains("SCAN videos"),
             "media existence pre-check should not scan the whole videos table, plan was: {detail}"
         );
+    }
+
+    #[tokio::test]
+    async fn clear_live_chat_reference_clears_the_columns_on_the_referencing_row() {
+        let pool = create_test_pool().await;
+
+        let id = insert_media(
+            &pool,
+            1,
+            "Live stream",
+            "video/live.mp4",
+            None,
+            "video",
+            Some("yt-live"),
+            None,
+            None,
+            true,
+            Some("live_chat/live.live_chat.json.gz"),
+        )
+        .await
+        .unwrap();
+
+        clear_live_chat_reference(&pool, "live_chat/live.live_chat.json.gz")
+            .await
+            .unwrap();
+
+        // The row must be left consistent with the has_live_chat/live_chat_file_path CHECK: the flag
+        // off and the path null, so a deleted replay file never leaves a dangling reference.
+        let (has_live_chat, live_chat_path): (i64, Option<String>) =
+            sqlx::query_as("SELECT has_live_chat, live_chat_file_path FROM videos WHERE id = ?")
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert_eq!(has_live_chat, 0);
+        assert_eq!(live_chat_path, None);
     }
 
     async fn create_test_pool() -> SqlitePool {
