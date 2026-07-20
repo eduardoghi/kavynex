@@ -1173,7 +1173,7 @@ pub async fn download_media_from_url_async(
                 // transparently decompresses them. Serialize this library write against a
                 // concurrent migration (see library_lock); the guard is dropped as soon as the
                 // synchronous compress returns, never held across an await.
-                {
+                let kept_existing_live_chat = {
                     let _library_guard = crate::services::library_lock::library_read_guard();
 
                     // Never overwrite an already-stored replay, matching place_downloaded_file's
@@ -1181,12 +1181,27 @@ pub async fn download_media_from_url_async(
                     // deterministic per video+run, so an existing file is the same replay; without
                     // this guard compress_file_to (via replace_file_safely) would silently discard
                     // it on a re-download.
-                    if !final_live_chat_destination.exists() {
+                    if final_live_chat_destination.exists() {
+                        true
+                    } else {
                         crate::services::live_chat_storage::compress_file_to(
                             &temp_live_chat_file,
                             &final_live_chat_destination,
                         )?;
+                        false
                     }
+                };
+
+                if kept_existing_live_chat {
+                    // Same visibility rule as the kept-existing media log above: keeping the
+                    // stored replay is correct, but doing it silently reads as "the fresh replay
+                    // was saved" when it was discarded.
+                    emit_download_log(
+                        app,
+                        &normalized_run_id,
+                        "A live chat replay for this video already existed in the library; kept the existing copy and discarded the new one.",
+                        "system",
+                    )?;
                 }
 
                 Some(build_live_chat_relative_path(Path::new(
