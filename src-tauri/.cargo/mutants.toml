@@ -54,6 +54,12 @@
 #     so the glob goes in clean rather than red. (`--in-place` is needed to run cargo-mutants here
 #     at all: the copy mode leaves the repo-root `../shared` parity fixture behind - see
 #     mutation.yml.)
+# `src/commands/live_chat.rs` - the one command module that re-implements the containment
+# pattern (scope-to-live_chat/ plus symlink re-check) rather than delegating to library_guard,
+# so its logic deserves the same mutation gate as the guard itself. ADDED after a measured pass
+# (2026-07-20, `--in-place --no-config --file`): 32 mutants, 31 unviable (the AppHandle command
+# glue does not build under mutation), 1 viable and caught - the unlink-rewording code gate,
+# extracted into the pure `reword_unlink_error_after_reference_clear` so a test could pin it.
 examine_globs = [
     "src/utils/path.rs",
     "src/services/library_guard.rs",
@@ -63,6 +69,7 @@ examine_globs = [
     "src/services/library_cleanup.rs",
     "src/services/filesystem.rs",
     "src/services/db_backup/mod.rs",
+    "src/commands/live_chat.rs",
 ]
 
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the
