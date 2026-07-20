@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     extractLiveChatPins,
     getActiveLiveChatPinFromPins,
@@ -34,6 +34,12 @@ export function LiveChatReplay({
     // On during ordinary playback; turned off across a seek / new-video load, where the whole
     // visible window is replaced at once (see the handlers below).
     const [announceAdditions, setAnnounceAdditions] = useState(true);
+    // True from a "seeking" event until its matching "seeked" fires. Some engines emit a
+    // timeupdate in that window - mid-scrub, before the seek has actually settled - and
+    // handleTimeUpdate must not treat that as ordinary playback and re-enable announcements while
+    // the seek is still in flight: doing so let up to ~200 messages announce as a burst once the
+    // seek finally landed, because announcements were back on before the jump happened.
+    const isSeekingRef = useRef(false);
 
     useEffect(() => {
         if (!playerElement) {
@@ -42,13 +48,16 @@ export function LiveChatReplay({
         }
 
         let lastSyncedAt = 0;
+        isSeekingRef.current = false;
 
         const applyCurrentTime = (): void => {
             setCurrentPlaybackTime(playerElement.currentTime || 0);
         };
 
         // Throttle the high-frequency timeupdate stream. This is ordinary forward playback, where
-        // messages scroll in one at a time, so re-enable live-region announcements here.
+        // messages scroll in one at a time, so re-enable live-region announcements here - unless a
+        // seek is still in flight (isSeekingRef), in which case this is a stray mid-scrub event
+        // that must not flip announcements back on before the seek actually settles.
         const handleTimeUpdate = (): void => {
             const now = performance.now();
 
@@ -57,7 +66,11 @@ export function LiveChatReplay({
             }
 
             lastSyncedAt = now;
-            setAnnounceAdditions(true);
+
+            if (!isSeekingRef.current) {
+                setAnnounceAdditions(true);
+            }
+
             applyCurrentTime();
         };
 
@@ -72,6 +85,26 @@ export function LiveChatReplay({
             applyCurrentTime();
         };
 
+        // Marks a seek as in flight, so a stray timeupdate mid-scrub cannot re-enable
+        // announcements before the seek settles (see isSeekingRef above).
+        const handleSeekStart = (): void => {
+            isSeekingRef.current = true;
+            handleSeekOrReload();
+        };
+
+        // The seek has settled - clear the in-flight flag so the next ordinary timeupdate can
+        // re-enable announcements as usual.
+        const handleSeekEnd = (): void => {
+            isSeekingRef.current = false;
+            handleSeekOrReload();
+        };
+
+        // A fresh video load is never mid-seek.
+        const handleReload = (): void => {
+            isSeekingRef.current = false;
+            handleSeekOrReload();
+        };
+
         // play/pause do not jump the playback position, so they only need a resync, never a change
         // to the announcement state.
         const handlePlaybackStateChange = (): void => {
@@ -79,24 +112,23 @@ export function LiveChatReplay({
             applyCurrentTime();
         };
 
-        const seekOrReloadEvents = ["seeking", "seeked", "loadedmetadata"] as const;
         const playbackStateEvents = ["play", "pause"] as const;
 
         applyCurrentTime();
 
         playerElement.addEventListener("timeupdate", handleTimeUpdate);
-        for (const eventName of seekOrReloadEvents) {
-            playerElement.addEventListener(eventName, handleSeekOrReload);
-        }
+        playerElement.addEventListener("seeking", handleSeekStart);
+        playerElement.addEventListener("seeked", handleSeekEnd);
+        playerElement.addEventListener("loadedmetadata", handleReload);
         for (const eventName of playbackStateEvents) {
             playerElement.addEventListener(eventName, handlePlaybackStateChange);
         }
 
         return () => {
             playerElement.removeEventListener("timeupdate", handleTimeUpdate);
-            for (const eventName of seekOrReloadEvents) {
-                playerElement.removeEventListener(eventName, handleSeekOrReload);
-            }
+            playerElement.removeEventListener("seeking", handleSeekStart);
+            playerElement.removeEventListener("seeked", handleSeekEnd);
+            playerElement.removeEventListener("loadedmetadata", handleReload);
             for (const eventName of playbackStateEvents) {
                 playerElement.removeEventListener(eventName, handlePlaybackStateChange);
             }
