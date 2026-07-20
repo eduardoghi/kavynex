@@ -133,15 +133,25 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
         .map_err(|error| backup_error("failed to open database for backup", error))
 }
 
+/// True when `modified` is within `min_interval_secs` of `now`. Extracted as a pure function so the
+/// backward-clock branch can be tested without setting a file mtime into the future. A `modified`
+/// timestamp in the future relative to `now` (the system clock moved backward - an NTP correction,
+/// RTC drift) is treated as recent, so a backward clock cannot defeat the once-a-day throttle shared
+/// by backup_database, the external mirror and the integrity check and trigger a burst of spurious
+/// runs. Worst case is one skipped run until the clock catches back up, never data loss.
+fn duration_is_recent(now: SystemTime, modified: SystemTime, min_interval_secs: u64) -> bool {
+    match now.duration_since(modified) {
+        Ok(age) => age.as_secs() < min_interval_secs,
+        Err(_) => true,
+    }
+}
+
 fn is_recent(path: &Path, min_interval_secs: u64) -> bool {
     let Ok(modified) = std::fs::metadata(path).and_then(|meta| meta.modified()) else {
         return false;
     };
 
-    match SystemTime::now().duration_since(modified) {
-        Ok(age) => age.as_secs() < min_interval_secs,
-        Err(_) => false,
-    }
+    duration_is_recent(SystemTime::now(), modified, min_interval_secs)
 }
 
 async fn is_healthy(pool: &SqlitePool) -> bool {
@@ -1036,6 +1046,22 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("kavynex_dbbak_{label}_{nanos}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn duration_is_recent_classifies_recent_stale_and_backward_clock() {
+        let now = UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let interval = 60;
+
+        // Within the interval -> recent.
+        assert!(duration_is_recent(now, now - Duration::from_secs(1), interval));
+        // Older than the interval -> not recent.
+        assert!(!duration_is_recent(now, now - Duration::from_secs(120), interval));
+        // Exactly at the interval -> not recent (strict `<`).
+        assert!(!duration_is_recent(now, now - Duration::from_secs(60), interval));
+        // Modified in the future (the clock moved backward) -> treated as recent, so the throttle
+        // holds instead of firing a burst of spurious backups.
+        assert!(duration_is_recent(now, now + Duration::from_secs(60), interval));
     }
 
     async fn seed_db(path: &Path) {
