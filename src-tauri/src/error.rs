@@ -364,6 +364,24 @@ impl AppError {
         Self::with_details(code, message, details)
     }
 
+    /// Wraps a filesystem error with the failing path's final component in `details`, so a log
+    /// line or bug report says *which* file or directory the OS refused ("Access is denied" alone
+    /// is a guessing game once video/, audio/, thumbnails/ and two library roots are in play).
+    /// Only the redacted final component is included - a full path embeds the user's profile
+    /// directory, which must not leak into a pasted error message (see logger::redact_path).
+    pub fn fs_error(
+        code: AppErrorCode,
+        message: &str,
+        path: impl AsRef<std::path::Path>,
+        error: &std::io::Error,
+    ) -> Self {
+        Self::with_details(
+            code,
+            format!("{message}: {error}"),
+            format!("path: {}", crate::services::logger::redact_path(path)),
+        )
+    }
+
     pub fn internal(message: impl Into<String>) -> Self {
         Self::from_code(AppErrorCode::AppError, message)
     }

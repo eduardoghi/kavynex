@@ -46,9 +46,11 @@ fn format_bytes(bytes: u64) -> String {
 
 fn calculate_directory_size(path: &Path) -> AppResult<u64> {
     let metadata = fs::metadata(path).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::ReadDirEntryFailed,
-            format!("failed to read directory metadata: {e}"),
+            "failed to read directory metadata",
+            path,
+            &e,
         )
     })?;
 
@@ -59,15 +61,19 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
     let mut total_bytes = 0u64;
 
     for entry in fs::read_dir(path).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::ReadDirEntryFailed,
-            format!("failed to read directory entries: {e}"),
+            "failed to read directory entries",
+            path,
+            &e,
         )
     })? {
         let entry = entry.map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirEntryFailed,
-                format!("failed to read directory entry: {e}"),
+                "failed to read directory entry",
+                path,
+                &e,
             )
         })?;
 
@@ -80,9 +86,11 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
 
         let entry_path = entry.path();
         let entry_metadata = entry.metadata().map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirEntryFailed,
-                format!("failed to read entry metadata: {e}"),
+                "failed to read entry metadata",
+                &entry_path,
+                &e,
             )
         })?;
 
@@ -102,9 +110,11 @@ fn count_files_in_directory(path: &Path) -> AppResult<u64> {
     }
 
     let metadata = fs::metadata(path).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::ReadDirEntryFailed,
-            format!("failed to read directory metadata: {e}"),
+            "failed to read directory metadata",
+            path,
+            &e,
         )
     })?;
 
@@ -115,15 +125,19 @@ fn count_files_in_directory(path: &Path) -> AppResult<u64> {
     let mut total_files = 0u64;
 
     for entry in fs::read_dir(path).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::ReadDirEntryFailed,
-            format!("failed to read directory entries: {e}"),
+            "failed to read directory entries",
+            path,
+            &e,
         )
     })? {
         let entry = entry.map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirEntryFailed,
-                format!("failed to read directory entry: {e}"),
+                "failed to read directory entry",
+                path,
+                &e,
             )
         })?;
 
@@ -135,9 +149,11 @@ fn count_files_in_directory(path: &Path) -> AppResult<u64> {
 
         let entry_path = entry.path();
         let entry_metadata = entry.metadata().map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirEntryFailed,
-                format!("failed to read entry metadata: {e}"),
+                "failed to read entry metadata",
+                &entry_path,
+                &e,
             )
         })?;
 

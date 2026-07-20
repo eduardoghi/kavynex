@@ -46,16 +46,20 @@ fn build_temp_destination_path(destination: &Path) -> AppResult<PathBuf> {
 /// writable handle.
 pub(crate) fn fsync_file(path: &Path) -> AppResult<()> {
     let file = fs::OpenOptions::new().write(true).open(path).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::FileCopyFailed,
-            format!("failed to open copied file to flush it: {e}"),
+            "failed to open copied file to flush it",
+            path,
+            &e,
         )
     })?;
 
     file.sync_all().map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::FileCopyFailed,
-            format!("failed to flush copied file to disk: {e}"),
+            "failed to flush copied file to disk",
+            path,
+            &e,
         )
     })
 }
@@ -172,16 +176,20 @@ fn file_paths_have_same_content_using(
     }
 
     let left_metadata = fs::metadata(left).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::SourceMetadataFailed,
-            format!("failed to read left file metadata: {e}"),
+            "failed to read left file metadata",
+            left,
+            &e,
         )
     })?;
 
     let right_metadata = fs::metadata(right).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::DestinationMetadataFailed,
-            format!("failed to read right file metadata: {e}"),
+            "failed to read right file metadata",
+            right,
+            &e,
         )
     })?;
 
@@ -220,9 +228,11 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
     })?;
 
     fs::create_dir_all(parent).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateDestinationParentFailed,
-            format!("failed to create destination parent directory: {e}"),
+            "failed to create destination parent directory",
+            parent,
+            &e,
         )
     })?;
 
@@ -251,9 +261,11 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
         // behind. Remove it here, mirroring the fsync/rename error branches below, so a failure
         // never strands a `.tmp-` scratch file at the destination.
         let _ = fs::remove_file(&temp_destination);
-        return Err(AppError::from_code(
+        return Err(AppError::fs_error(
             AppErrorCode::FileCopyFailed,
-            format!("failed to copy file: {e}"),
+            "failed to copy file",
+            &temp_destination,
+            &e,
         ));
     }
 
@@ -279,15 +291,19 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
                     return Ok(());
                 }
 
-                return Err(AppError::from_code(
+                return Err(AppError::fs_error(
                     AppErrorCode::DestinationAlreadyExists,
-                    format!("destination file already exists: {error}"),
+                    "destination file already exists",
+                    destination,
+                    &error,
                 ));
             }
 
-            Err(AppError::from_code(
+            Err(AppError::fs_error(
                 AppErrorCode::FileRenameFailed,
-                format!("failed to finalize copied file: {error}"),
+                "failed to finalize copied file",
+                destination,
+                &error,
             ))
         }
     }
@@ -350,9 +366,11 @@ fn move_or_copy_file_using(
     })?;
 
     fs::create_dir_all(parent).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateDestinationParentFailed,
-            format!("failed to create destination parent directory: {e}"),
+            "failed to create destination parent directory",
+            parent,
+            &e,
         )
     })?;
 
@@ -361,11 +379,11 @@ fn move_or_copy_file_using(
             && file_paths_have_same_content_using(source, destination, source_hash)?
         {
             fs::remove_file(source).map_err(|e| {
-                AppError::from_code(
+                AppError::fs_error(
                     AppErrorCode::SourceFileRemoveFailed,
-                    format!(
-                        "failed to remove source file after detecting identical destination: {e}"
-                    ),
+                    "failed to remove source file after detecting identical destination",
+                    source,
+                    &e,
                 )
             })?;
 
@@ -384,17 +402,21 @@ fn move_or_copy_file_using(
             copy_file_atomic(source, destination)?;
 
             fs::remove_file(source).map_err(|e| {
-                AppError::from_code(
+                AppError::fs_error(
                     AppErrorCode::SourceFileRemoveFailed,
-                    format!("failed to remove source file after copy: {e}"),
+                    "failed to remove source file after copy",
+                    source,
+                    &e,
                 )
             })?;
 
             Ok(())
         }
-        Err(error) => Err(AppError::from_code(
+        Err(error) => Err(AppError::fs_error(
             AppErrorCode::FileMoveFailed,
-            format!("failed to move file: {error}"),
+            "failed to move file",
+            destination,
+            &error,
         )),
     }
 }
@@ -422,9 +444,11 @@ pub fn replace_file_safely(source: &Path, destination: &Path) -> AppResult<()> {
     })?;
 
     fs::create_dir_all(parent).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateDestinationParentFailed,
-            format!("failed to create destination parent directory: {e}"),
+            "failed to create destination parent directory",
+            parent,
+            &e,
         )
     })?;
 
@@ -456,9 +480,11 @@ pub fn replace_file_safely(source: &Path, destination: &Path) -> AppResult<()> {
             return move_or_copy_file(source, destination);
         }
         Err(error) => {
-            return Err(AppError::from_code(
+            return Err(AppError::fs_error(
                 AppErrorCode::DestinationBackupFailed,
-                format!("failed to create destination backup before replace: {error}"),
+                "failed to create destination backup before replace",
+                &backup_path,
+                &error,
             ));
         }
     }
@@ -499,15 +525,19 @@ pub fn clean_matching_files_in_dir(dir: &Path, prefix: &str) -> AppResult<()> {
     }
 
     for entry in fs::read_dir(dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::ReadDirFailed,
-            format!("failed to read directory: {e}"),
+            "failed to read directory",
+            dir,
+            &e,
         )
     })? {
         let entry = entry.map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirEntryFailed,
-                format!("failed to read directory entry: {e}"),
+                "failed to read directory entry",
+                dir,
+                &e,
             )
         })?;
 
@@ -569,9 +599,11 @@ pub fn find_latest_matching_file(dir: &Path, prefix: &str) -> AppResult<PathBuf>
 
     fs::read_dir(dir)
         .map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirFailed,
-                format!("failed to read directory: {e}"),
+                "failed to read directory",
+                dir,
+                &e,
             )
         })?
         .filter_map(|entry| entry.ok().map(|e| e.path()))
@@ -602,9 +634,11 @@ pub fn find_unique_matching_file(dir: &Path, prefix: &str) -> AppResult<PathBuf>
 
     let mut matches: Vec<PathBuf> = fs::read_dir(dir)
         .map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirFailed,
-                format!("failed to read directory: {e}"),
+                "failed to read directory",
+                dir,
+                &e,
             )
         })?
         .filter_map(|entry| entry.ok().map(|e| e.path()))
@@ -651,9 +685,11 @@ pub fn find_best_matching_file(
 
     let mut matches: Vec<PathBuf> = fs::read_dir(dir)
         .map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirFailed,
-                format!("failed to read directory: {e}"),
+                "failed to read directory",
+                dir,
+                &e,
             )
         })?
         .filter_map(|entry| entry.ok().map(|e| e.path()))
@@ -728,22 +764,28 @@ pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> App
     }
 
     fs::create_dir_all(destination_dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateDirectoryFailed,
-            format!("failed to create directory: {e}"),
+            "failed to create directory",
+            destination_dir,
+            &e,
         )
     })?;
 
     for entry in fs::read_dir(source_dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::ReadDirFailed,
-            format!("failed to read directory: {e}"),
+            "failed to read directory",
+            source_dir,
+            &e,
         )
     })? {
         let entry = entry.map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirEntryFailed,
-                format!("failed to read directory entry: {e}"),
+                "failed to read directory entry",
+                source_dir,
+                &e,
             )
         })?;
 
@@ -784,22 +826,28 @@ pub fn migrate_directory_contents(source_dir: &Path, destination_dir: &Path) -> 
     }
 
     fs::create_dir_all(destination_dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateDirectoryFailed,
-            format!("failed to create directory: {e}"),
+            "failed to create directory",
+            destination_dir,
+            &e,
         )
     })?;
 
     for entry in fs::read_dir(source_dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::ReadDirFailed,
-            format!("failed to read directory: {e}"),
+            "failed to read directory",
+            source_dir,
+            &e,
         )
     })? {
         let entry = entry.map_err(|e| {
-            AppError::from_code(
+            AppError::fs_error(
                 AppErrorCode::ReadDirEntryFailed,
-                format!("failed to read directory entry: {e}"),
+                "failed to read directory entry",
+                source_dir,
+                &e,
             )
         })?;
 

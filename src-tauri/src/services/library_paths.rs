@@ -93,16 +93,20 @@ pub fn ensure_library_dir(path: &str) -> AppResult<PathBuf> {
     }
 
     fs::create_dir_all(&library_dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateLibraryDirFailed,
-            format!("failed to create library directory: {e}"),
+            "failed to create library directory",
+            &library_dir,
+            &e,
         )
     })?;
 
     let canonical_dir = library_dir.canonicalize().map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CanonicalizeLibraryPathFailed,
-            format!("failed to canonicalize library path: {e}"),
+            "failed to canonicalize library path",
+            &library_dir,
+            &e,
         )
     })?;
 
@@ -136,9 +140,11 @@ pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
     }
 
     let canonical_dir = library_dir.canonicalize().map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CanonicalizeLibraryPathFailed,
-            format!("failed to canonicalize library path: {e}"),
+            "failed to canonicalize library path",
+            &library_dir,
+            &e,
         )
     })?;
 
@@ -176,16 +182,20 @@ pub fn resolve_default_library_directory_sync(app: &AppHandle) -> AppResult<Stri
 
     let library_dir = video_dir.join("Kavynex Library");
     fs::create_dir_all(&library_dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateDefaultLibraryDirFailed,
-            format!("failed to create default library directory: {e}"),
+            "failed to create default library directory",
+            &library_dir,
+            &e,
         )
     })?;
 
     let canonical_dir = library_dir.canonicalize().map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CanonicalizeLibraryPathFailed,
-            format!("failed to canonicalize default library directory: {e}"),
+            "failed to canonicalize default library directory",
+            &library_dir,
+            &e,
         )
     })?;
 
@@ -203,16 +213,20 @@ pub fn ensure_directory_exists_sync(path: &str) -> AppResult<String> {
     }
 
     fs::create_dir_all(&dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CreateDirectoryFailed,
-            format!("failed to create directory: {e}"),
+            "failed to create directory",
+            &dir,
+            &e,
         )
     })?;
 
     let canonical_dir = dir.canonicalize().map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CanonicalizeDirectoryFailed,
-            format!("failed to canonicalize directory path: {e}"),
+            "failed to canonicalize directory path",
+            &dir,
+            &e,
         )
     })?;
 
@@ -244,9 +258,11 @@ pub fn resolve_existing_directory_sync(path: &str) -> AppResult<String> {
     }
 
     let canonical_dir = dir.canonicalize().map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::CanonicalizeDirectoryFailed,
-            format!("failed to canonicalize directory path: {e}"),
+            "failed to canonicalize directory path",
+            &dir,
+            &e,
         )
     })?;
 
@@ -278,9 +294,11 @@ pub fn is_directory_empty_sync(path: &str) -> AppResult<bool> {
     }
 
     let mut entries = fs::read_dir(&dir).map_err(|e| {
-        AppError::from_code(
+        AppError::fs_error(
             AppErrorCode::InvalidDirectoryPath,
-            format!("failed to read directory entries: {e}"),
+            "failed to read directory entries",
+            &dir,
+            &e,
         )
     })?;
 
