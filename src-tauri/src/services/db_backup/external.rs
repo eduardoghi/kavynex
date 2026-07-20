@@ -68,7 +68,10 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
     let staging_final = staging.clone();
     let dest = dest_path.to_path_buf();
     run_blocking(move || {
-        let _ = std::fs::remove_file(&dest);
+        // rename overwrites an existing target atomically on both Windows and Unix, so the previous
+        // export is never pre-deleted: a rename that then fails (a locked file, an AV/indexer hold, a
+        // removable/network destination going away) must not leave the user with neither the old
+        // export nor the new one. This matches rotate_generations, which relies on the same overwrite.
         std::fs::rename(&staging_final, &dest).map_err(|error| {
             let _ = std::fs::remove_file(&staging_final);
             backup_error("failed to finalize database export", error)
@@ -166,9 +169,13 @@ pub async fn mirror_database_to_external_dir(
         );
 
         if let Err(error) = std::fs::rename(&staged, &current) {
-            let _ = std::fs::remove_file(&staged);
+            // Leave the freshly exported, quick-check-passed staged file in place rather than
+            // deleting it: rotate_generations above already emptied generation 0, so discarding the
+            // replacement here would throw away the newest good copy on a failure of the exact
+            // (removable/network) target this module is meant to be careful with. Mirrors
+            // backup_database, which keeps its `.bak.tmp` as a last-resort restore candidate.
             return Err(backup_error(
-                "failed to promote the external database backup",
+                "failed to promote the external database backup (the fresh copy was kept)",
                 error,
             ));
         }
