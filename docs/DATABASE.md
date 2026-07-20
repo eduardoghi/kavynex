@@ -48,6 +48,10 @@ CREATE TABLE videos (
     has_live_chat INTEGER NOT NULL DEFAULT 0,
     live_chat_file_path TEXT CHECK (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) <> ''),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    -- has_live_chat is set only when a live_chat_file_path is stored, so a row flagged as having a
+    -- live chat with no path is a corruption the write path can never produce. One-directional on
+    -- purpose: the flag clear while a path is present is harmless. Added by the v13 migration.
+    CHECK (has_live_chat = 0 OR live_chat_file_path IS NOT NULL),
     FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
     UNIQUE (channel_id, file_path)
 )
@@ -109,7 +113,8 @@ CREATE TABLE app_settings (
 
 A generic key/value table, upserted via `INSERT ... ON CONFLICT(key) DO UPDATE`. The keys it
 holds are whatever `StoredAppSettings` in `database.rs` defines - currently `import_mode`,
-`library_path`, `load_remote_images` and `check_updates_on_startup`. Read them from there
+`library_path`, `load_remote_images`, `check_updates_on_startup` and `external_backup_dir` (the
+optional off-volume mirror directory, see "External database mirror" below). Read them from there
 rather than trusting a count here: adding a setting is a one-line change on that struct, and
 this document is not what stops the two from drifting.
 
@@ -392,9 +397,36 @@ flow, which by definition follows a failed open).
 A user-triggered `VACUUM INTO` snapshot to a user-chosen destination path (via a save
 dialog). Refuses to export a database that fails `quick_check`. The destination is *not*
 cleared first: `VACUUM INTO` cannot write over an existing file, so the snapshot goes to a
-`.export-staging` sibling and only once it succeeds is any previous file at the destination
-replaced. That ordering is the point - exporting over last month's export must not destroy it
-before knowing the new one is good.
+`.export-staging` sibling and only once it succeeds is it renamed onto the destination
+(the rename overwrites atomically). That ordering is the point - exporting over last month's
+export must not destroy it before knowing the new one is good.
+
+### External database mirror (`mirror_database_to_external_dir`)
+
+An optional daily mirror of the database into a user-chosen directory (Settings > Database >
+external backup folder, stored as the `external_backup_dir` setting). It exists to answer the
+"backups on the same volume as the database" problem: `backup_database`'s `.bak` generations sit
+next to `kavynex.db` in the app config directory, so a disk failure that takes that volume takes
+every snapshot with it. The mirror is the off-volume copy that survives it. Only the database is
+copied - the media files are far larger and live under the library directory, which the user backs
+up separately.
+
+- **Throttled** to once every 24 hours, exactly like `.bak`, via the mirror file's mtime.
+- **Written via `export_database`** into a `kavynex-backup.db.new` staging file, then the older
+  generations are rotated (`kavynex-backup.db` -> `.1` -> `.2`, keeping
+  `EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2) and the staged file is renamed onto
+  `kavynex-backup.db`. Because it goes through `export_database`, a source that fails `quick_check`
+  is refused, so a corrupt database never overwrites a good mirror. If the final promotion fails
+  (a removable/network target pulled mid-write), the freshly exported `.new` file is kept, not
+  deleted, so the newest good copy is never thrown away.
+- **Skipped quietly** when the chosen directory does not exist (external drive unplugged, share
+  offline) rather than recreated: a recreated folder at a path that now resolves to a different
+  device would silently write the backup to the wrong place.
+- **Validated at the setting boundary** (`set_external_backup_dir`): the directory must exist and
+  must not be inside the app config directory - pointing the off-volume backup at the very
+  directory it exists to outlive would silently defeat its purpose.
+- **Best effort**, wired from `lib.rs`'s periodic backup loop alongside `backup_database`; any
+  failure is logged and never stops the loop.
 
 ### Import (`stage_database_import` / `apply_pending_database_import`)
 
