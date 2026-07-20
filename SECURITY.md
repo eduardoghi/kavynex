@@ -114,6 +114,18 @@ the oracle is inherent to supporting the preview at all. It is recorded here as 
 rather than left implicit, in the same spirit as the export-overwrite and updater-rollback residuals
 above.
 
+##### Accepted residual: a move-import hashes the source once
+
+`import_media_file` in move mode hashes the source file up front and reuses that hash through
+the duplicate check, so when the destination already holds identical content the source is
+deleted based on a hash computed slightly earlier
+(`services/filesystem.rs::move_or_copy_file_with_known_source_hash`). A writer that changes the
+source to different same-size content inside that in-process window would see the changed file
+deleted as an "already-imported duplicate". No such concurrent writer exists in the app's
+single-user desktop model - the import is user-triggered on a file the user just picked - and
+re-hashing immediately before the delete would only narrow, not close, the window (the classic
+TOCTOU shape). Recorded as an accepted residual rather than left implicit.
+
 The security boundary these share is the same one this whole document is about: the Rust
 command layer holds regardless of what the frontend sends. React's default escaping (see
 above) is what keeps the renderer from being compromised in the first place; these
@@ -186,9 +198,10 @@ origin, where no CSP header is injected, so only a packaged build exercises this
 #### The one relaxed directive: `style-src 'unsafe-inline'`
 
 Every other directive in the CSP is strict, so this one is worth stating rather than leaving to be
-noticed. Mantine styles components through Emotion, a CSS-in-JS library: it injects a `<style>`
-element at runtime and sets inline `style` attributes, both of which a strict `style-src` blocks.
-Removing the token does not harden the app, it renders it unusable.
+noticed. Mantine styles components at runtime: it sets inline `style` attributes (per-component
+CSS variables, positioning for overlays/popovers) and injects `<style>` elements for its runtime
+styles, both of which a strict `style-src` blocks. Removing the token does not harden the app, it
+renders it unusable.
 
 What keeps the cost low is that it is `style-src` and not `script-src`. `script-src` is not relaxed
 - it inherits `default-src 'self'`, so no inline script runs, and `object-src 'none'`, `base-uri
