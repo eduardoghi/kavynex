@@ -305,7 +305,7 @@ jobs:
             - name: Verify generated TS bindings are up to date
               if: matrix.platform == 'ubuntu-22.04'
               run: |
-                  cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings
+                  cargo test --manifest-path src-tauri/Cargo.toml --locked --lib export_bindings
                   git diff --exit-code -- src/types/generated
 
             - name: Build frontend
