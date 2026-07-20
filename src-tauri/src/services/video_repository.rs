@@ -156,6 +156,13 @@ pub struct MediaPageQuery {
 /// and defeat the point of paginating.
 const MAX_MEDIA_PAGE_LIMIT: i64 = 500;
 
+/// Upper bound on the search term length. The only caller is the app's own frontend, but the
+/// backend is the trust boundary (the same reason the import mode and download inputs are validated
+/// server-side), so the term that becomes a LIKE pattern is bounded here too: an unbounded term
+/// would let a compromised frontend drive a pathologically long scan. Generous - real titles, which
+/// this searches, are far shorter.
+const MAX_SEARCH_TERM_CHARS: usize = 200;
+
 /// Upper bound on how many comments a single media loads at once. Comments are threaded on the
 /// client, which needs them all in one shot, so this is not a page size but a defensive ceiling: a
 /// video with a pathologically large comment backup would otherwise pull every row into memory,
@@ -302,7 +309,10 @@ pub async fn list_media_page(
     let limit = query.limit.clamp(1, MAX_MEDIA_PAGE_LIMIT);
     let offset = query.offset.max(0);
 
-    let normalized_search = normalize_search_text(&query.search);
+    // Bound the term length before it becomes a LIKE pattern (defense in depth at the trust
+    // boundary; the frontend already sends short terms). See MAX_SEARCH_TERM_CHARS.
+    let bounded_search: String = query.search.chars().take(MAX_SEARCH_TERM_CHARS).collect();
+    let normalized_search = normalize_search_text(&bounded_search);
     let search_pattern = (!normalized_search.is_empty())
         .then(|| format!("%{}%", escape_like_pattern(&normalized_search)));
 
@@ -486,7 +496,10 @@ pub async fn insert_media(
         // above, so a surfacing unique violation can only be the (channel_id, youtube_video_id)
         // index: the same YouTube video already registered for this channel under a different
         // path. Map it to the same friendly code the frontend pre-check raises, closing the
-        // check-then-act race with a consistent message instead of a raw SQLite error.
+        // check-then-act race with a consistent message instead of a raw SQLite error. This is a
+        // closed-world assumption over the unique indexes on `videos` (see db_schema::INDEX_DDLS):
+        // a new unique constraint added there would surface here mislabeled as this error, so the
+        // two must be kept in sync.
         if is_unique_violation(&error) {
             return AppError::from_code(
                 AppErrorCode::VideoAlreadyExistsForChannel,
@@ -822,6 +835,38 @@ mod tests {
         assert!(
             !detail.contains("USE TEMP B-TREE"),
             "media comments query should not sort rows the index already orders, plan was: {detail}"
+        );
+    }
+
+    /// The URL-add pre-check (`media_exists_for_channel_and_youtube_id`) filters
+    /// `channel_id = ? AND youtube_video_id = ?`. The partial unique index's `TRIM(...) <> ''`
+    /// predicate cannot be proven from `= ?`, so the planner cannot use that index and falls back to
+    /// another - which must still be an index search, never a full scan of the channel's videos. Pin
+    /// that here so a schema change that leaves this pre-check scanning the table fails loudly.
+    #[tokio::test]
+    async fn media_existence_pre_check_is_served_by_an_index() {
+        let pool = schema_pool().await;
+
+        let plan: Vec<String> = sqlx::query_as::<_, (i64, i64, i64, String)>(
+            "EXPLAIN QUERY PLAN \
+             SELECT EXISTS(SELECT 1 FROM videos WHERE channel_id = 1 AND youtube_video_id = 'abc')",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("explain media existence pre-check")
+        .into_iter()
+        .map(|(_, _, _, detail)| detail)
+        .collect();
+
+        let detail = plan.join(" | ");
+
+        assert!(
+            detail.contains("USING INDEX") || detail.contains("USING COVERING INDEX"),
+            "media existence pre-check should be served by an index, plan was: {detail}"
+        );
+        assert!(
+            !detail.contains("SCAN videos"),
+            "media existence pre-check should not scan the whole videos table, plan was: {detail}"
         );
     }
 
