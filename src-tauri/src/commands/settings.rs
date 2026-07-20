@@ -88,38 +88,61 @@ pub async fn set_app_settings(
     .await
 }
 
-/// Rejects a non-empty external backup directory that is not an existing directory. An empty value
-/// is the valid "off" state. Unlike the library path, this directory is only ever *written to* (an
-/// atomic export drops a `kavynex-backup.db` mirror into it); it is never read back through the
-/// asset scope or a delete/move command, so an existing-directory check is the whole requirement.
-fn validate_external_backup_dir(external_backup_dir: &str) -> AppResult<()> {
+/// Rejects a non-empty external backup directory that is not an existing directory, or that is
+/// nested inside the app config directory. An empty value is the valid "off" state. The mirror is
+/// only ever *written to* (an atomic export drops a `kavynex-backup.db` mirror into it), so it is
+/// never read back through the asset scope or a delete/move command - but the whole point of the
+/// mirror is to survive a failure of the config volume (where the database and every on-volume
+/// `.bak` generation live), so it must not sit inside that directory either.
+fn validate_external_backup_dir(external_backup_dir: &str, config_dir: Option<&Path>) -> AppResult<()> {
     let trimmed = external_backup_dir.trim();
 
     if trimmed.is_empty() {
         return Ok(());
     }
 
-    if std::fs::metadata(trimmed)
+    if !std::fs::metadata(trimmed)
         .map(|metadata| metadata.is_dir())
         .unwrap_or(false)
     {
-        return Ok(());
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidInput,
+            "the external backup folder must be an existing directory",
+        ));
     }
 
-    Err(AppError::from_code(
-        AppErrorCode::InvalidInput,
-        "the external backup folder must be an existing directory",
-    ))
+    // Refuse a mirror directory inside (or equal to) the app config directory. Pointing the
+    // "off-volume" backup at the very directory it exists to outlive would silently defeat the
+    // disaster-recovery intent: the daily mirror would write kavynex-backup.db next to the live
+    // database, with no error or warning. Mirrors the containment check set_app_settings applies
+    // to the library path, and the guard the manual export command already runs.
+    if let Some(config_dir) = config_dir {
+        if library_path_is_inside_dir(trimmed, config_dir) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidInput,
+                "the external backup folder cannot be inside the application data directory",
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResult<()> {
     let trimmed = path.trim().to_string();
 
+    // The database file lives directly in the app config directory, so its parent is that directory
+    // (the same derivation set_app_settings uses); the external mirror must not be nested inside it.
+    let config_dir = db.path().parent().map(Path::to_path_buf);
+
     // Validate off the async runtime: std::fs::metadata touches the filesystem (and can block on a
     // slow external/network path).
     let path_for_validation = trimmed.clone();
-    run_blocking(move || validate_external_backup_dir(&path_for_validation)).await?;
+    run_blocking(move || {
+        validate_external_backup_dir(&path_for_validation, config_dir.as_deref())
+    })
+    .await?;
 
     let pool = db.pool().await?;
     set_external_backup_dir_in_pool(&pool, &trimmed).await
@@ -203,8 +226,8 @@ mod tests {
 
     #[test]
     fn validate_external_backup_dir_accepts_empty_as_off() {
-        validate_external_backup_dir("").unwrap();
-        validate_external_backup_dir("   ").unwrap();
+        validate_external_backup_dir("", None).unwrap();
+        validate_external_backup_dir("   ", None).unwrap();
     }
 
     #[test]
@@ -212,7 +235,7 @@ mod tests {
         let dir = unique_test_dir("ext-existing");
         fs::create_dir_all(&dir).unwrap();
 
-        validate_external_backup_dir(&dir.to_string_lossy()).unwrap();
+        validate_external_backup_dir(&dir.to_string_lossy(), None).unwrap();
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -220,8 +243,37 @@ mod tests {
     #[test]
     fn validate_external_backup_dir_rejects_a_missing_directory() {
         let missing = unique_test_dir("ext-missing");
-        let error = validate_external_backup_dir(&missing.to_string_lossy()).unwrap_err();
+        let error = validate_external_backup_dir(&missing.to_string_lossy(), None).unwrap_err();
         assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+    }
+
+    #[test]
+    fn validate_external_backup_dir_rejects_a_directory_inside_the_config_dir() {
+        // The external mirror exists to survive a failure of the config volume, so a directory
+        // nested in the app config directory (where the database and its backups live) must be
+        // refused - otherwise the "off-volume" backup would silently sit on the same volume.
+        let config_dir = unique_test_dir("ext-config");
+        let inside = config_dir.join("backups");
+        fs::create_dir_all(&inside).unwrap();
+
+        let error =
+            validate_external_backup_dir(&inside.to_string_lossy(), Some(&config_dir)).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+
+        let _ = fs::remove_dir_all(&config_dir);
+    }
+
+    #[test]
+    fn validate_external_backup_dir_accepts_a_directory_outside_the_config_dir() {
+        let config_dir = unique_test_dir("ext-config-sibling");
+        let outside = unique_test_dir("ext-outside");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+
+        validate_external_backup_dir(&outside.to_string_lossy(), Some(&config_dir)).unwrap();
+
+        let _ = fs::remove_dir_all(&config_dir);
+        let _ = fs::remove_dir_all(&outside);
     }
 
     #[test]
