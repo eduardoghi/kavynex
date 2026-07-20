@@ -248,14 +248,18 @@ export async function refreshMediaComments(
         // generated run id back through React state.
         commentsRefreshRunId(mediaId)
     );
-    const comments = normalizeFetchedComments(fetchedComments);
-
+    // Guard the payload shape before normalizing it: normalizeFetchedComments maps over the value,
+    // so a non-array would throw a raw TypeError there instead of this friendly AppError. The IPC
+    // seam already validates this against a zod array schema, so this is defense in depth that must
+    // still run first to mean anything.
     if (!Array.isArray(fetchedComments)) {
         throw createAppError(
             "INVALID_YOUTUBE_COMMENTS_PAYLOAD",
             "The comment refresh returned an invalid payload."
         );
     }
+
+    const comments = normalizeFetchedComments(fetchedComments);
 
     // Genuinely zero comments (the backend already turns "the video has comments but none
     // could be retrieved" into an error). Keep the saved comments untouched and report that
