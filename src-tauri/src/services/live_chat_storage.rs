@@ -320,11 +320,32 @@ fn temp_sibling_path(path: &Path) -> AppResult<PathBuf> {
     Ok(path.with_file_name(format!("{}.gztmp", file_name.to_string_lossy())))
 }
 
+/// Gzip-compresses `data` and verifies the round trip (decompressing back to the original bytes)
+/// before returning the compressed buffer. Both compression call sites remove or overwrite the only
+/// on-disk copy of the source afterwards, so a bad compression that silently changed the bytes must
+/// be caught here, before the original is gone.
+fn compress_verified(data: &[u8]) -> AppResult<Vec<u8>> {
+    let compressed = gzip_compress(data)?;
+    let restored = gzip_decompress(&compressed)?;
+
+    if restored != data {
+        return Err(AppError::from_code(
+            AppErrorCode::LiveChatCompressFailed,
+            "gzip round trip verification failed",
+        ));
+    }
+
+    Ok(compressed)
+}
+
 /// Compresses `src` and writes the gzip result to `dest` atomically. Used when moving a
-/// freshly downloaded live chat file into app storage. Removes `src` on success.
+/// freshly downloaded live chat file into app storage. Verifies the gzip round trip before removing
+/// `src` on success, so a bad compression can never lose the only copy of a just-downloaded replay.
 pub fn compress_file_to(src: &Path, dest: &Path) -> AppResult<()> {
     let data = fs::read(src).map_err(|e| compress_error("failed to read live chat source", e))?;
-    let compressed = gzip_compress(&data)?;
+    // This is the one call site where `src` is the only copy of a just-downloaded replay (a finished
+    // livestream may no longer be re-fetchable), so verify the round trip before it is removed below.
+    let compressed = compress_verified(&data)?;
 
     let temp = temp_sibling_path(dest)?;
     fs::write(&temp, &compressed)
@@ -349,15 +370,7 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
     }
 
     let data = fs::read(path).map_err(|e| compress_error("failed to read live chat file", e))?;
-    let compressed = gzip_compress(&data)?;
-    let restored = gzip_decompress(&compressed)?;
-
-    if restored != data {
-        return Err(AppError::from_code(
-            AppErrorCode::LiveChatCompressFailed,
-            "gzip round trip verification failed",
-        ));
-    }
+    let compressed = compress_verified(&data)?;
 
     let temp = temp_sibling_path(path)?;
     fs::write(&temp, &compressed)
