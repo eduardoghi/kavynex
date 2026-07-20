@@ -72,14 +72,27 @@ describe("bumpVersion", () => {
         expect(error).toHaveBeenCalled();
     });
 
-    it("returns 1 when the Cargo.toml version line is missing", () => {
+    it("returns 1 when the Cargo.toml version line is missing, and leaves the other two files untouched", () => {
         const files = baseFiles();
-        files["Cargo.toml"] = `[package]\nname = "kavynex"\nedition = "2021"\n`;
+        // src-tauri/Cargo.toml is checked out CRLF in the real repo; use \r\n here too so the
+        // regex is exercised against the same line endings the script actually reads on disk.
+        files["Cargo.toml"] = `[package]\r\nname = "kavynex"\r\nedition = "2021"\r\n`;
+        const cargoTomlBefore = files["Cargo.toml"];
+        const packageJsonBefore = files["package.json"];
+        const tauriConfBefore = files["tauri.conf.json"];
 
-        const { exitCode, error } = run({ newVersion: "1.2.0", files });
+        const { exitCode, files: after, error } = run({ newVersion: "1.2.0", files });
 
         expect(exitCode).toBe(1);
         expect(error).toHaveBeenCalledWith(expect.stringContaining("version line not found"));
+        // The Cargo.toml regex check must run before any file is written, so a mismatch here
+        // leaves package.json and tauri.conf.json exactly as they were - no partial bump left
+        // behind for a caller to clean up.
+        expect(after["package.json"]).toBe(packageJsonBefore);
+        expect(after["tauri.conf.json"]).toBe(tauriConfBefore);
+        expect(after["Cargo.toml"]).toBe(cargoTomlBefore);
+        expect(JSON.parse(after["package.json"]).version).toBe("1.1.1");
+        expect(JSON.parse(after["tauri.conf.json"]).version).toBe("1.1.1");
     });
 
     it("returns 1 when cargo update fails after rewriting the version files", () => {

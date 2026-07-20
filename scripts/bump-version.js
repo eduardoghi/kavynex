@@ -23,20 +23,20 @@ export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpd
         return 1;
     }
 
+    // Read and validate every target before writing anything, so a failure partway through (the
+    // Cargo.toml regex not matching, say) never leaves some files bumped and others untouched
+    // with no rollback. Only once every target below is known-good do the writes below happen.
+
     // package.json
     const pkgPath = join(root, "package.json");
     const pkg = JSON.parse(readFile(pkgPath));
     const oldVersion = pkg.version;
     pkg.version = newVersion;
-    writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-    log(`package.json     ${oldVersion} -> ${newVersion}`);
 
     // src-tauri/tauri.conf.json
     const tauriConfPath = join(root, "src-tauri", "tauri.conf.json");
     const tauriConf = JSON.parse(readFile(tauriConfPath));
     tauriConf.version = newVersion;
-    writeFile(tauriConfPath, JSON.stringify(tauriConf, null, 4) + "\n");
-    log(`tauri.conf.json  ${oldVersion} -> ${newVersion}`);
 
     // src-tauri/Cargo.toml - only the [package] version line (full X.Y.Z semver) is touched.
     const cargoPath = join(root, "src-tauri", "Cargo.toml");
@@ -46,6 +46,14 @@ export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpd
         error("Cargo.toml: version line not found - update manually");
         return 1;
     }
+
+    // Every target validated above - now write them all.
+    writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+    log(`package.json     ${oldVersion} -> ${newVersion}`);
+
+    writeFile(tauriConfPath, JSON.stringify(tauriConf, null, 4) + "\n");
+    log(`tauri.conf.json  ${oldVersion} -> ${newVersion}`);
+
     writeFile(cargoPath, updatedCargo);
     log(`Cargo.toml       ${oldVersion} -> ${newVersion}`);
 
