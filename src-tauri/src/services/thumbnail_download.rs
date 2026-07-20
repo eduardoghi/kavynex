@@ -977,7 +977,13 @@ pub async fn download_thumbnail_from_url_async(
     }
     .await;
 
-    let _ = fs::remove_dir_all(&thumb_temp_dir);
+    // Small (an image or two), but still filesystem IO on a possibly slow disk: offload the
+    // recursive removal to the blocking pool like the download temp-dir cleanup does.
+    let _ = run_blocking(move || {
+        let _ = fs::remove_dir_all(&thumb_temp_dir);
+        Ok::<(), AppError>(())
+    })
+    .await;
 
     result
 }
@@ -1082,7 +1088,13 @@ pub async fn download_thumbnail_for_media_async(
     }
     .await;
 
-    let _ = fs::remove_dir_all(&thumb_temp_dir);
+    // Small (an image or two), but still filesystem IO on a possibly slow disk: offload the
+    // recursive removal to the blocking pool like the download temp-dir cleanup does.
+    let _ = run_blocking(move || {
+        let _ = fs::remove_dir_all(&thumb_temp_dir);
+        Ok::<(), AppError>(())
+    })
+    .await;
 
     result
 }
@@ -1142,7 +1154,13 @@ pub async fn download_channel_avatar_from_handle_async(
     }
     .await;
 
-    let _ = fs::remove_dir_all(&thumb_temp_dir);
+    // Small (an image or two), but still filesystem IO on a possibly slow disk: offload the
+    // recursive removal to the blocking pool like the download temp-dir cleanup does.
+    let _ = run_blocking(move || {
+        let _ = fs::remove_dir_all(&thumb_temp_dir);
+        Ok::<(), AppError>(())
+    })
+    .await;
 
     result
 }
