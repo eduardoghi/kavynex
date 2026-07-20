@@ -68,14 +68,19 @@ struct PreparedComment {
 /// Dedupes the payload, drops comments whose text is blank, and normalizes every field into the
 /// row shape persisted below, preserving insertion order.
 fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
-    dedupe_comments_by_id(comments)
+    // Drop blank-text comments before deduping by id. Dedup keeps the first occurrence of a repeated
+    // comment_id, so a payload whose first occurrence has blank text and a later one has real content
+    // would otherwise keep the blank one here and then drop it, silently losing the real comment.
+    // Filtering first makes the real comment the first occurrence dedup sees.
+    let non_blank: Vec<YtDlpComment> = comments
         .into_iter()
-        .filter_map(|comment| {
-            let text = comment.text.trim().to_owned();
+        .filter(|comment| !comment.text.trim().is_empty())
+        .collect();
 
-            if text.is_empty() {
-                return None;
-            }
+    dedupe_comments_by_id(non_blank)
+        .into_iter()
+        .map(|comment| {
+            let text = comment.text.trim().to_owned();
 
             let author_name = {
                 let trimmed = comment.author_name.trim();
@@ -86,7 +91,7 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
                 }
             };
 
-            Some(PreparedComment {
+            PreparedComment {
                 comment_id: normalize_optional_text(&comment.comment_id),
                 parent_comment_id: normalize_optional_text(&comment.parent_comment_id),
                 author_name,
@@ -104,7 +109,7 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
                 is_edited: i64::from(comment.is_edited),
                 time_text: normalize_optional_text(&comment.time_text),
                 published_at: normalize_optional_text(&comment.published_at),
-            })
+            }
         })
         .collect()
 }
@@ -175,7 +180,7 @@ async fn replace_media_comments_in_pool(
             query_builder.build().execute(&mut *tx).await?;
         }
 
-        sqlx::query(
+        let update_result = sqlx::query(
             r#"
             UPDATE videos
             SET has_comments = ?,
@@ -189,12 +194,25 @@ async fn replace_media_comments_in_pool(
         .execute(&mut *tx)
         .await?;
 
-        Ok::<u64, sqlx::Error>(inserted_count)
+        Ok::<(u64, u64), sqlx::Error>((inserted_count, update_result.rows_affected()))
     }
     .await;
 
     match result {
-        Ok(inserted_count) => {
+        Ok((inserted_count, updated_rows)) => {
+            // With no comments to insert, the video_comments foreign key that maps a vanished media
+            // row to MediaNotFound never fires (the insert loop is skipped), so a media deleted
+            // concurrently while its zero-length comment fetch was finishing is detected here
+            // instead: the UPDATE matched no row. Roll back and report it, mirroring the non-empty
+            // path's foreign-key handling below.
+            if updated_rows == 0 {
+                let _ = tx.rollback().await;
+                return Err(AppError::from_code(
+                    AppErrorCode::MediaNotFound,
+                    "the media no longer exists",
+                ));
+            }
+
             tx.commit()
                 .await
                 .map_err(|error| sqlite_error("failed to commit comments transaction", error))?;
@@ -419,6 +437,51 @@ mod tests {
         let error = replace_media_comments_in_pool(&pool, 999, vec![sample_comment("orphan")])
             .await
             .expect_err("insert against a missing media must fail");
+
+        assert_eq!(error.code, AppErrorCode::MediaNotFound.as_str());
+    }
+
+    #[tokio::test]
+    async fn replace_media_comments_keeps_the_real_comment_behind_a_blank_duplicate_id() {
+        let pool = create_test_pool().await;
+
+        // Two entries share comment_id "c1": the first is blank, the second has real content. The
+        // blank one must not win the dedup and then be dropped, silently losing the real comment.
+        let inserted = replace_media_comments_in_pool(
+            &pool,
+            1,
+            vec![
+                comment_with_id("   ", Some("c1")),
+                comment_with_id("the real comment", Some("c1")),
+            ],
+        )
+        .await
+        .expect("replace comments");
+
+        let (kept_text,): (String,) =
+            sqlx::query_as("SELECT text FROM video_comments WHERE comment_id = 'c1'")
+                .fetch_one(&pool)
+                .await
+                .expect("read kept comment");
+
+        assert_eq!(inserted, 1);
+        assert_eq!(kept_text, "the real comment");
+    }
+
+    #[tokio::test]
+    async fn replace_media_comments_maps_a_missing_media_with_zero_comments_to_media_not_found() {
+        let pool = create_test_pool().await;
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .expect("enable foreign keys");
+
+        // media id 999 has no `videos` row and there are no comments to insert, so the foreign-key
+        // path never fires - the missing row is caught by the UPDATE matching no row instead. A
+        // false success here would report "nothing updated" for a media that no longer exists.
+        let error = replace_media_comments_in_pool(&pool, 999, Vec::new())
+            .await
+            .expect_err("replacing comments on a missing media must fail even with zero comments");
 
         assert_eq!(error.code, AppErrorCode::MediaNotFound.as_str());
     }
