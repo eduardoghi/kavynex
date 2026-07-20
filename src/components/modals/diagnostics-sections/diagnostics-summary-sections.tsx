@@ -1,6 +1,6 @@
 import { Box, Group, Paper, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { Cpu, HardDrive, MessagesSquare, Wrench } from "lucide-react";
-import type { DiagnosticsSummary } from "../../../types/diagnostics";
+import type { DiagnosticsSummary, ExternalToolStatus } from "../../../types/diagnostics";
 import { DiagnosticsDatabaseIntegrityCheck } from "./diagnostics-database-integrity-check";
 import { DiagnosticsMetricCard } from "./diagnostics-metric-card";
 import {
@@ -40,6 +40,37 @@ function DiagnosticsExamplesList({
                     </Text>
                 ))}
             </Stack>
+        </Paper>
+    );
+}
+
+type ToolStatusCardProps = {
+    name: string;
+    tool: ExternalToolStatus;
+};
+
+// One external-tool status card (name, version, path, health badge). Both the yt-dlp and ffmpeg
+// cards are the same shape reading a different `externalTools.*` field, so they share this rather
+// than repeating the markup.
+function ToolStatusCard({ name, tool }: ToolStatusCardProps): JSX.Element {
+    return (
+        <Paper withBorder radius="md" p="sm">
+            <Group justify="space-between" align="flex-start">
+                <Box style={{ minWidth: 0, flex: 1 }}>
+                    <Text fw={700}>{name}</Text>
+                    <Text size="sm" c="dimmed">
+                        {tool.version || "Version unavailable"}
+                    </Text>
+                    <Text size="xs" c="dimmed" mt={4} lineClamp={1}>
+                        {tool.path || "Path unavailable"}
+                    </Text>
+                </Box>
+
+                <StatusBadge
+                    color={tool.healthy ? "green" : "yellow"}
+                    label={tool.healthy ? "Available" : "Unavailable"}
+                />
+            </Group>
         </Paper>
     );
 }
@@ -126,59 +157,8 @@ export function DiagnosticsSummarySections({
                     </Group>
 
                     <Stack gap="sm">
-                        <Paper withBorder radius="md" p="sm">
-                            <Group justify="space-between" align="flex-start">
-                                <Box style={{ minWidth: 0, flex: 1 }}>
-                                    <Text fw={700}>yt-dlp</Text>
-                                    <Text size="sm" c="dimmed">
-                                        {diagnostics.externalTools.yt_dlp.version || "Version unavailable"}
-                                    </Text>
-                                    <Text size="xs" c="dimmed" mt={4} lineClamp={1}>
-                                        {diagnostics.externalTools.yt_dlp.path || "Path unavailable"}
-                                    </Text>
-                                </Box>
-
-                                <StatusBadge
-                                    color={
-                                        diagnostics.externalTools.yt_dlp.healthy
-                                            ? "green"
-                                            : "yellow"
-                                    }
-                                    label={
-                                        diagnostics.externalTools.yt_dlp.healthy
-                                            ? "Available"
-                                            : "Unavailable"
-                                    }
-                                />
-                            </Group>
-                        </Paper>
-
-                        <Paper withBorder radius="md" p="sm">
-                            <Group justify="space-between" align="flex-start">
-                                <Box style={{ minWidth: 0, flex: 1 }}>
-                                    <Text fw={700}>ffmpeg</Text>
-                                    <Text size="sm" c="dimmed">
-                                        {diagnostics.externalTools.ffmpeg.version || "Version unavailable"}
-                                    </Text>
-                                    <Text size="xs" c="dimmed" mt={4} lineClamp={1}>
-                                        {diagnostics.externalTools.ffmpeg.path || "Path unavailable"}
-                                    </Text>
-                                </Box>
-
-                                <StatusBadge
-                                    color={
-                                        diagnostics.externalTools.ffmpeg.healthy
-                                            ? "green"
-                                            : "yellow"
-                                    }
-                                    label={
-                                        diagnostics.externalTools.ffmpeg.healthy
-                                            ? "Available"
-                                            : "Unavailable"
-                                    }
-                                />
-                            </Group>
-                        </Paper>
+                        <ToolStatusCard name="yt-dlp" tool={diagnostics.externalTools.yt_dlp} />
+                        <ToolStatusCard name="ffmpeg" tool={diagnostics.externalTools.ffmpeg} />
                     </Stack>
                 </Paper>
 
