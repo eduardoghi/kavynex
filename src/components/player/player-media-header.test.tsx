@@ -79,6 +79,73 @@ describe("PlayerMediaHeader", () => {
         expect(onOpenInYoutube).toHaveBeenCalledTimes(1);
     });
 
+    it("shows loading feedback on the watched/unwatched buttons while a toggle is in flight", () => {
+        // Mirrors the Refresh comments button's loading pattern (isRefreshingComments): before
+        // this, clicking Mark as watched/unwatched gave no visual feedback while the request was
+        // in flight.
+        const { unmount } = renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                hasLiveChat={false}
+                isUpdatingWatchedStatus
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: /mark as watched/i })).toBeDisabled();
+
+        unmount();
+
+        const { rerender } = renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched
+                isLive={false}
+                hasLiveChat={false}
+                isUpdatingWatchedStatus
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: /mark as unwatched/i })).toBeDisabled();
+
+        rerender(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched
+                isLive={false}
+                hasLiveChat={false}
+                isUpdatingWatchedStatus={false}
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: /mark as unwatched/i })).not.toBeDisabled();
+    });
+
     it("shows the live and chat replay badges only for a live media that has a chat replay", () => {
         // These badges were dead for as long as they existed: the props defaulted to false and the
         // only caller never passed them, so nothing rendered and nothing failed. Pin both states.

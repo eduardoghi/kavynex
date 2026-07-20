@@ -28,15 +28,18 @@ vi.mock("./media-card", () => ({
         media,
         onOpen,
         onRequestDelete,
+        isWatchedActionInFlight,
     }: {
         media: { title: string };
         onOpen: (media: unknown) => void;
         onRequestDelete: (media: unknown) => void;
+        isWatchedActionInFlight?: boolean;
     }) => (
         <div>
             <span>{media.title}</span>
             <button onClick={() => onOpen(media)}>open</button>
             <button onClick={() => onRequestDelete(media)}>delete</button>
+            {isWatchedActionInFlight && <span>watched action in flight</span>}
         </div>
     ),
 }));
@@ -95,6 +98,29 @@ describe("MediaGrid", () => {
 
         expect(screen.getByText("Video A")).toBeInTheDocument();
         expect(screen.getByText("Audio B")).toBeInTheDocument();
+    });
+
+    it("resolves watchedActionInFlight per card by media id", () => {
+        renderWithMantine(
+            <MediaGrid
+                items={[
+                    createMedia({ id: 1, title: "Video A" }),
+                    createMedia({ id: 2, title: "Video B" }),
+                ]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+                watchedActionInFlight={new Set([1])}
+            />
+        );
+
+        const cards = screen.getAllByText("watched action in flight");
+
+        // Only the card for media id 1 is busy - the other row must not read as in flight too.
+        expect(cards).toHaveLength(1);
     });
 
     it("scrolls to a focused media once and clears the request", () => {

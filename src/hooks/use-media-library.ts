@@ -181,6 +181,7 @@ export function useMediaLibrary({
         isAddingMedia: addMediaWorkflow.isAddingMedia,
         isDeletingMedia: mediaActions.isDeletingMedia,
         commentsInFlight: mediaActions.commentsInFlight,
+        watchedActionInFlight: mediaActions.watchedActionInFlight,
         isUpdatingTitle: mediaActions.isUpdatingTitle,
         isCancellingYtDlp: addMediaWorkflow.isCancellingYtDlp,
 

@@ -201,6 +201,59 @@ describe("MediaCard", () => {
         expect(screen.getByText("Video")).toBeInTheDocument();
     });
 
+    it("disables the watch/unwatch menu item while that card's toggle is in flight", async () => {
+        // Before this, clicking Mark as watched/unwatched from the card menu gave no feedback and
+        // a second click while the first was still in flight was silently ignored.
+        const media = createMedia({
+            title: "Video A",
+            watched_at: null,
+        });
+
+        renderWithMantine(
+            <MediaCard
+                media={media}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                isWatchedActionInFlight
+            />
+        );
+
+        fireEvent.click(screen.getByLabelText(/actions for video a/i));
+
+        expect(
+            await screen.findByRole("menuitem", { name: /mark as watched/i })
+        ).toBeDisabled();
+    });
+
+    it("keeps the watch/unwatch menu item enabled when no toggle is in flight", async () => {
+        const media = createMedia({
+            title: "Video A",
+            watched_at: null,
+        });
+
+        renderWithMantine(
+            <MediaCard
+                media={media}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByLabelText(/actions for video a/i));
+
+        expect(
+            await screen.findByRole("menuitem", { name: /mark as watched/i })
+        ).not.toBeDisabled();
+    });
+
     it("requests delete from menu", async () => {
         const media = createMedia({
             title: "Video A",

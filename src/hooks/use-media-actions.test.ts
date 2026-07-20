@@ -29,11 +29,17 @@ vi.mock("../services/media-service", () => ({
     updateMediaTitle: vi.fn(),
 }));
 
+vi.mock("../services/media-download-service", () => ({
+    cancelMediaDownload: vi.fn(),
+    commentsRefreshRunId: (mediaId: number) => `comments-refresh-${mediaId}`,
+}));
+
 import { executeDeleteMedia } from "../use-cases/delete-media";
 import { executeMarkMediaWatched } from "../use-cases/mark-media-watched";
 import { executeMarkMediaUnwatched } from "../use-cases/mark-media-unwatched";
 import { openExternalUrl, openFileLocation } from "../services/library-service";
 import { refreshMediaComments, updateMediaTitle } from "../services/media-service";
+import { cancelMediaDownload } from "../services/media-download-service";
 
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
     return {
@@ -177,6 +183,47 @@ describe("useMediaActions", () => {
             mediaId: 2,
             updateMediaItems: setMediaItems,
         });
+    });
+
+    it("exposes the media id as in flight while a watched toggle is running", async () => {
+        // Before this, the in-flight set the guard already tracked internally was discarded, so a
+        // caller had no way to render loading/disabled feedback for the toggle in progress.
+        const mediaPlayer = createMediaPlayer();
+
+        let resolveWatched: (() => void) | undefined;
+        vi.mocked(executeMarkMediaWatched).mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    resolveWatched = () => resolve("2026-03-31T20:00:00.000Z");
+                })
+        );
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        expect(result.current.watchedActionInFlight.has(1)).toBe(false);
+
+        let markPromise: Promise<void>;
+        act(() => {
+            markPromise = result.current.markAsWatched(1);
+        });
+
+        expect(result.current.watchedActionInFlight.has(1)).toBe(true);
+
+        await act(async () => {
+            resolveWatched?.();
+            await markPromise;
+        });
+
+        expect(result.current.watchedActionInFlight.has(1)).toBe(false);
     });
 
     it("still guards a repeated watched toggle on the same media", async () => {
@@ -362,6 +409,94 @@ describe("useMediaActions", () => {
             has_comments: 1,
             comments_count: 12,
         });
+    });
+
+    it("cancels a comment refresh without reporting anything on success", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(cancelMediaDownload).mockResolvedValue(undefined);
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        await act(async () => {
+            await result.current.cancelRefreshComments(1);
+        });
+
+        expect(cancelMediaDownload).toHaveBeenCalledWith("comments-refresh-1");
+        expect(onError).not.toHaveBeenCalled();
+        expect(onNotice).not.toHaveBeenCalled();
+    });
+
+    it("quietly ignores an INVALID_RUN_ID cancel failure (the refresh already finished)", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(cancelMediaDownload).mockRejectedValue({
+            code: "INVALID_RUN_ID",
+            message: "run_id 'comments-refresh-1' is not active",
+        });
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        await act(async () => {
+            await result.current.cancelRefreshComments(1);
+        });
+
+        // Best effort: the run finished before the cancel reached it, which is not worth
+        // reporting to the user.
+        expect(onNotice).not.toHaveBeenCalled();
+        expect(onError).not.toHaveBeenCalled();
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a notice when the cancel genuinely fails to reach the backend", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(cancelMediaDownload).mockRejectedValue({
+            code: "APP_ERROR",
+            message: "boom",
+        });
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        await act(async () => {
+            await result.current.cancelRefreshComments(1);
+        });
+
+        // A real failure to cancel used to be swallowed silently (only logged), leaving the user
+        // to believe Cancel worked while the backup kept running. It must not become a blocking
+        // error either - this is a notice, not onError.
+        expect(onNotice).toHaveBeenCalledWith(
+            "Could not confirm the comment refresh was cancelled. It may still be running in the background."
+        );
+        expect(onError).not.toHaveBeenCalled();
+        expect(consoleErrorSpy).toHaveBeenCalled();
     });
 
     it("edits title and updates active player state", async () => {

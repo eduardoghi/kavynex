@@ -177,6 +177,7 @@ const mockMediaLibrary = {
     isAddingMedia: false,
     isDeletingMedia: false,
     commentsInFlight: new Set<number>(),
+    watchedActionInFlight: new Set<number>(),
     isUpdatingTitle: false,
     isCancellingYtDlp: false,
 
@@ -290,6 +291,7 @@ const mockHomeMediaActions = {
     confirmDeleteChannel: vi.fn(),
     markAsWatched: vi.fn(),
     markAsUnwatched: vi.fn(),
+    watchedActionInFlight: new Set<number>(),
     editMediaTitle: vi.fn(),
     saveMediaProgress: vi.fn(),
 };
@@ -300,6 +302,7 @@ const mockPlayerActions = {
     refreshComments: vi.fn(),
     cancelRefreshComments: vi.fn(),
     isRefreshingComments: false,
+    isUpdatingWatchedStatus: false,
     markActiveAsWatched: vi.fn(),
     markActiveAsUnwatched: vi.fn(),
     saveProgress: vi.fn(),

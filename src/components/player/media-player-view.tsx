@@ -26,6 +26,7 @@ type MediaPlayerViewProps = {
     isWatched: boolean;
     libraryPath: string;
     isRefreshingComments?: boolean;
+    isUpdatingWatchedStatus?: boolean;
     loadRemoteImages?: boolean;
     onOpenInYoutube: () => void | Promise<void>;
     onOpenFileLocation?: () => void | Promise<void>;
@@ -47,6 +48,7 @@ export function MediaPlayerView({
     isWatched,
     libraryPath,
     isRefreshingComments = false,
+    isUpdatingWatchedStatus = false,
     loadRemoteImages = false,
     onOpenInYoutube,
     onOpenFileLocation,
@@ -263,6 +265,7 @@ export function MediaPlayerView({
                     onRefreshComments={onRefreshComments}
                     onCancelRefreshComments={onCancelRefreshComments}
                     isRefreshingComments={isRefreshingComments}
+                    isUpdatingWatchedStatus={isUpdatingWatchedStatus}
                     onMarkWatched={onMarkWatched}
                     onMarkUnwatched={onMarkUnwatched}
                     onBack={() => {

@@ -61,6 +61,9 @@ type SelectedChannelLibrarySectionProps = {
     onRequestDeleteMedia: (media: MediaRow) => void;
     onMarkWatched?: (media: MediaRow) => void;
     onMarkUnwatched?: (media: MediaRow) => void;
+    // See MediaLibraryController.watchedActionInFlight - passed through to disable a card's own
+    // watch/unwatch menu item while that row's toggle is in flight.
+    watchedActionInFlight?: ReadonlySet<number>;
     onOpenFileLocation?: (media: MediaRow) => void;
     onOpenSourceInYoutube?: (media: MediaRow) => void;
     onEditTitle?: (media: MediaRow) => void;
@@ -91,6 +94,7 @@ export function SelectedChannelLibrarySection({
     onRequestDeleteMedia,
     onMarkWatched,
     onMarkUnwatched,
+    watchedActionInFlight,
     onOpenFileLocation,
     onOpenSourceInYoutube,
     onEditTitle,
@@ -359,6 +363,7 @@ export function SelectedChannelLibrarySection({
                 onRequestDelete={onRequestDeleteMedia}
                 onMarkWatched={onMarkWatched}
                 onMarkUnwatched={onMarkUnwatched}
+                watchedActionInFlight={watchedActionInFlight}
                 onOpenFileLocation={onOpenFileLocation}
                 onOpenSourceInYoutube={onOpenSourceInYoutube}
                 onEditTitle={onEditTitle}

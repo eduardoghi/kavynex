@@ -39,6 +39,10 @@ type MediaCardProps = {
     onOpenSourceInYoutube?: (media: MediaRow) => void;
     onMarkWatched?: (media: MediaRow) => void;
     onMarkUnwatched?: (media: MediaRow) => void;
+    // True while this card's own watched/unwatched toggle is in flight (see
+    // MediaLibraryController.watchedActionInFlight), so the menu action disables instead of
+    // silently doing nothing on a second click while the first is still running.
+    isWatchedActionInFlight?: boolean;
     onEditTitle?: (media: MediaRow) => void;
 };
 
@@ -139,6 +143,7 @@ function MediaCardComponent({
     onOpenSourceInYoutube,
     onMarkWatched,
     onMarkUnwatched,
+    isWatchedActionInFlight = false,
     onEditTitle,
 }: MediaCardProps): JSX.Element {
     const isAudio = media.media_type === "audio";
@@ -342,6 +347,7 @@ function MediaCardComponent({
                                 <Menu.Item
                                     leftSection={<Eye size={16} />}
                                     onClick={() => onMarkWatched(media)}
+                                    disabled={isWatchedActionInFlight}
                                 >
                                     Mark as watched
                                 </Menu.Item>
@@ -351,6 +357,7 @@ function MediaCardComponent({
                                 <Menu.Item
                                     leftSection={<RotateCcw size={16} />}
                                     onClick={() => onMarkUnwatched(media)}
+                                    disabled={isWatchedActionInFlight}
                                 >
                                     Mark as unwatched
                                 </Menu.Item>

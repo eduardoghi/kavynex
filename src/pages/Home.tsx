@@ -213,6 +213,9 @@ export default function Home(): JSX.Element {
                                         isWatched={controller.playerPanelState.isWatched}
                                         libraryPath={controller.libraryPath}
                                         isRefreshingComments={playerActions.isRefreshingComments}
+                                        isUpdatingWatchedStatus={
+                                            playerActions.isUpdatingWatchedStatus
+                                        }
                                         loadRemoteImages={settings.settings.loadRemoteImages}
                                         onOpenInYoutube={playerActions.openInYoutube}
                                         onOpenFileLocation={playerActions.openFileLocation}
@@ -268,6 +271,9 @@ export default function Home(): JSX.Element {
                                         onRequestDeleteMedia={media.requestDeleteMedia}
                                         onMarkWatched={handleMarkWatched}
                                         onMarkUnwatched={handleMarkUnwatched}
+                                        watchedActionInFlight={
+                                            controller.mediaActions.watchedActionInFlight
+                                        }
                                         onOpenFileLocation={handleOpenFileLocation}
                                         onOpenSourceInYoutube={handleOpenSourceInYoutube}
                                         onEditTitle={handleEditTitle}

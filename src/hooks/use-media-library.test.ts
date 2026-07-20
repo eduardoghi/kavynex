@@ -32,6 +32,7 @@ vi.mock("./use-media-actions", () => ({
         mediaToDelete: null,
         isDeletingMedia: false,
         commentsInFlight: new Set<number>(),
+        watchedActionInFlight: new Set<number>(),
         isUpdatingTitle: false,
         requestDeleteMedia: vi.fn(),
         confirmDeleteMedia: vi.fn(),

@@ -84,6 +84,10 @@ export type MediaLibraryController = {
     // retried it, so the two have to be per media together: guarding one row while marking every
     // row busy just moves the silent no-op into the UI.
     commentsInFlight: ReadonlySet<number>;
+    // The media ids currently being marked watched/unwatched, per id rather than one shared flag,
+    // for the same reason as commentsInFlight: guarding one row must not read as every row being
+    // busy.
+    watchedActionInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
     isCancellingYtDlp: boolean;
     ytDlpLogs: YtDlpLogLine[];
@@ -210,6 +214,9 @@ export type HomeMediaActionsController = {
     confirmDeleteChannel: () => Promise<void>;
     markAsWatched: (mediaId: number) => Promise<void>;
     markAsUnwatched: (mediaId: number) => Promise<void>;
+    // See MediaLibraryController.watchedActionInFlight - passed through unchanged so the grid can
+    // disable a card's watch/unwatch action while that row's own toggle is in flight.
+    watchedActionInFlight: ReadonlySet<number>;
     editMediaTitle: (media: MediaRow, title: string) => Promise<void>;
     saveMediaProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
 };
@@ -224,6 +231,9 @@ export type HomePlayerActionsController = {
     refreshComments: () => Promise<void>;
     cancelRefreshComments: () => Promise<void>;
     isRefreshingComments: boolean;
+    // Resolved against the media on screen (like isRefreshingComments), true while a
+    // markActiveAsWatched/markActiveAsUnwatched call for it is in flight.
+    isUpdatingWatchedStatus: boolean;
 };
 
 export type HomePlayerPanelState = {

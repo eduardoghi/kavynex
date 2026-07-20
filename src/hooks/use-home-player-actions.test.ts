@@ -41,6 +41,7 @@ type MockMediaPlayer = {
 type MockHomeMediaActions = {
     markAsWatched: (mediaId: number) => Promise<void>;
     markAsUnwatched: (mediaId: number) => Promise<void>;
+    watchedActionInFlight: ReadonlySet<number>;
     saveMediaProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
 };
 
@@ -54,10 +55,13 @@ type MockOptions = {
     libraryPath: string;
 };
 
-function createHomeMediaActions(): MockHomeMediaActions {
+function createHomeMediaActions(
+    watchedActionInFlight: ReadonlySet<number> = new Set<number>()
+): MockHomeMediaActions {
     return {
         markAsWatched: vi.fn<(mediaId: number) => Promise<void>>().mockResolvedValue(undefined),
         markAsUnwatched: vi.fn<(mediaId: number) => Promise<void>>().mockResolvedValue(undefined),
+        watchedActionInFlight,
         saveMediaProgress: vi
             .fn<(mediaId: number, progressSeconds: number) => Promise<void>>()
             .mockResolvedValue(undefined),
@@ -276,6 +280,62 @@ describe("useHomePlayerActions", () => {
         const { result } = renderHook(() => useHomePlayerActions(options));
 
         expect(result.current.isRefreshingComments).toBe(false);
+    });
+
+    describe("isUpdatingWatchedStatus", () => {
+        it("starts as false", () => {
+            const options = createDefaultOptions();
+
+            const { result } = renderHook(() => useHomePlayerActions(options));
+
+            expect(result.current.isUpdatingWatchedStatus).toBe(false);
+        });
+
+        it("reports in flight only for the media it is showing", () => {
+            const activeMedia = createMediaRow({ id: 7 });
+
+            const { result } = renderHook(() =>
+                useHomePlayerActions(
+                    createDefaultOptions({
+                        activeMedia,
+                        homeMediaActions: createHomeMediaActions(new Set([7])),
+                    })
+                )
+            );
+
+            expect(result.current.isUpdatingWatchedStatus).toBe(true);
+        });
+
+        it("does not report in flight when another media's toggle is running", () => {
+            // Same reasoning as isRefreshingComments: the header buttons render `loading` from
+            // this, so a shared flag would leave the media on screen looking busy (and its own
+            // toggle disabled) for a toggle left running on a media the user navigated away from.
+            const activeMedia = createMediaRow({ id: 7 });
+
+            const { result } = renderHook(() =>
+                useHomePlayerActions(
+                    createDefaultOptions({
+                        activeMedia,
+                        homeMediaActions: createHomeMediaActions(new Set([42])),
+                    })
+                )
+            );
+
+            expect(result.current.isUpdatingWatchedStatus).toBe(false);
+        });
+
+        it("is false when there is no active media", () => {
+            const { result } = renderHook(() =>
+                useHomePlayerActions(
+                    createDefaultOptions({
+                        activeMedia: null,
+                        homeMediaActions: createHomeMediaActions(new Set([7])),
+                    })
+                )
+            );
+
+            expect(result.current.isUpdatingWatchedStatus).toBe(false);
+        });
     });
 
     describe("openFileLocation", () => {

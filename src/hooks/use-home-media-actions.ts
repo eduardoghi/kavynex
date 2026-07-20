@@ -28,6 +28,7 @@ export function useHomeMediaActions({
         confirmDeleteMedia: confirmDeleteMediaAction,
         markAsWatched: markAsWatchedAction,
         markAsUnwatched: markAsUnwatchedAction,
+        watchedActionInFlight,
         editTitle,
         saveMediaProgress: saveMediaProgressAction,
     } = mediaLibrary;
@@ -99,6 +100,7 @@ export function useHomeMediaActions({
         confirmDeleteChannel,
         markAsWatched,
         markAsUnwatched,
+        watchedActionInFlight,
         editMediaTitle,
         saveMediaProgress,
     });

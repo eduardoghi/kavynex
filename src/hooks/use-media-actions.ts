@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaRow } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
+import { parseAppError } from "../utils/app-error";
+import { INVALID_RUN_ID_ERROR_CODE } from "../constants/error-codes";
 import { executeDeleteMedia } from "../use-cases/delete-media";
 import { executeMarkMediaWatched } from "../use-cases/mark-media-watched";
 import { executeMarkMediaUnwatched } from "../use-cases/mark-media-unwatched";
@@ -37,6 +39,11 @@ type UseMediaActionsReturn = {
     mediaToDelete: MediaRow | null;
     isDeletingMedia: boolean;
     commentsInFlight: ReadonlySet<number>;
+    // The media ids currently being marked watched/unwatched, for the same reason commentsInFlight
+    // is per id rather than one shared flag: markAsWatched/markAsUnwatched are guarded by
+    // usePerIdAsyncFlag (see runWatchedActionFor below), and a caller that renders a busy state for
+    // one row must resolve it against that row's id, not "something is in flight".
+    watchedActionInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
     requestDeleteMedia: (media: MediaRow) => void;
     confirmDeleteMedia: () => Promise<void>;
@@ -69,7 +76,7 @@ export function useMediaActions({
     // busy state for it, so the click just vanished. Keying by media id keeps the re-entrancy
     // guard where it belongs - one row cannot be toggled twice concurrently - while leaving
     // independent rows independent.
-    const { runFor: runWatchedActionFor } = usePerIdAsyncFlag();
+    const { inFlight: watchedActionInFlight, runFor: runWatchedActionFor } = usePerIdAsyncFlag();
 
     // Refreshing comments is per media for the same reason: the player's Back button is live while
     // a refresh is in flight, so opening another media and refreshing it is an ordinary sequence,
@@ -300,17 +307,27 @@ export function useMediaActions({
         async (mediaId: number): Promise<void> => {
             // The comment backup was registered under this deterministic run id (see
             // media-service.refreshMediaComments), so cancelling it just signals that run. Best
-            // effort: if it already finished, cancelMediaDownload rejects with "not active", which
-            // is expected here and not surfaced to the user.
+            // effort: if it already finished, cancelMediaDownload rejects with INVALID_RUN_ID (the
+            // registry no longer has this run), which is expected here and not surfaced to the
+            // user. Any other failure means the cancel signal did not reach the still-running
+            // backup - quietly logging that (the old behavior) left the user believing Cancel
+            // worked while the download kept running, so it gets a non-blocking notice instead.
             try {
                 await cancelMediaDownload(commentsRefreshRunId(mediaId));
             } catch (error) {
+                if (parseAppError(error).code === INVALID_RUN_ID_ERROR_CODE) {
+                    return;
+                }
+
                 logError("media-actions", "Failed to cancel the comment refresh.", error, {
                     mediaId,
                 });
+                onNotice(
+                    "Could not confirm the comment refresh was cancelled. It may still be running in the background."
+                );
             }
         },
-        []
+        [onNotice]
     );
 
     const editTitle = useCallback(
@@ -393,6 +410,7 @@ export function useMediaActions({
         mediaToDelete,
         isDeletingMedia,
         commentsInFlight,
+        watchedActionInFlight,
         isUpdatingTitle,
         requestDeleteMedia,
         confirmDeleteMedia,

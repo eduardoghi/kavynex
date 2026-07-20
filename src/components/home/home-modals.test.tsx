@@ -125,6 +125,7 @@ function createMedia(): MediaLibraryController {
         isAddingMedia: false,
         isDeletingMedia: false,
         commentsInFlight: new Set<number>(),
+        watchedActionInFlight: new Set<number>(),
         isUpdatingTitle: false,
         isCancellingYtDlp: false,
         ytDlpLogs: [],
@@ -162,6 +163,7 @@ function createMediaActions(): HomeMediaActionsController {
         confirmDeleteChannel: vi.fn().mockResolvedValue(undefined),
         markAsWatched: vi.fn().mockResolvedValue(undefined),
         markAsUnwatched: vi.fn().mockResolvedValue(undefined),
+        watchedActionInFlight: new Set<number>(),
         editMediaTitle: vi.fn().mockResolvedValue(undefined),
         saveMediaProgress: vi.fn().mockResolvedValue(undefined),
     };

@@ -16,7 +16,10 @@ type UseHomePlayerActionsOptions = {
     >;
     homeMediaActions: Pick<
         HomeMediaActionsController,
-        "markAsWatched" | "markAsUnwatched" | "saveMediaProgress"
+        | "markAsWatched"
+        | "markAsUnwatched"
+        | "watchedActionInFlight"
+        | "saveMediaProgress"
     >;
     onError: (message: string) => void;
     // The single implementation of the comment-refresh rule (result handling, the neutral
@@ -56,6 +59,7 @@ export function useHomePlayerActions({
     const {
         markAsWatched: markAsWatchedAction,
         markAsUnwatched: markAsUnwatchedAction,
+        watchedActionInFlight,
         saveMediaProgress,
     } = homeMediaActions;
 
@@ -169,6 +173,11 @@ export function useHomePlayerActions({
         // Resolved against the media on screen, so a refresh still running on one the user
         // navigated away from does not report this one as busy.
         isRefreshingComments: activeMedia ? commentsInFlight.has(activeMedia.id) : false,
+        // Same resolution as isRefreshingComments: a watched/unwatched toggle left running on a
+        // media the user navigated away from must not mark the one on screen busy.
+        isUpdatingWatchedStatus: activeMedia
+            ? watchedActionInFlight.has(activeMedia.id)
+            : false,
         markActiveAsWatched,
         markActiveAsUnwatched,
         saveProgress,

@@ -28,6 +28,10 @@ type PlayerMediaHeaderProps = {
     isLive: boolean;
     hasLiveChat: boolean;
     isRefreshingComments?: boolean;
+    // True while this media's own watched/unwatched toggle is in flight - mirrors
+    // isRefreshingComments so the buttons below show the same loading feedback pattern as the
+    // Refresh comments button.
+    isUpdatingWatchedStatus?: boolean;
     onOpenInYoutube: () => void | Promise<void>;
     onOpenFileLocation?: () => void | Promise<void>;
     onRefreshComments?: () => void | Promise<void>;
@@ -67,6 +71,7 @@ export function PlayerMediaHeader({
     isLive,
     hasLiveChat,
     isRefreshingComments = false,
+    isUpdatingWatchedStatus = false,
     onOpenInYoutube,
     onOpenFileLocation,
     onRefreshComments,
@@ -228,6 +233,7 @@ export function PlayerMediaHeader({
                         color="gray"
                         leftSection={<RotateCcw size={16} />}
                         onClick={() => void onMarkUnwatched()}
+                        loading={isUpdatingWatchedStatus}
                     >
                         Mark as unwatched
                     </Button>
@@ -237,6 +243,7 @@ export function PlayerMediaHeader({
                         color="green"
                         leftSection={<Eye size={16} />}
                         onClick={() => void onMarkWatched()}
+                        loading={isUpdatingWatchedStatus}
                     >
                         Mark as watched
                     </Button>

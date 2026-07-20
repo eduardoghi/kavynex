@@ -32,6 +32,9 @@ type MediaGridProps = {
     onOpenSourceInYoutube?: (media: MediaRow) => void;
     onMarkWatched?: (media: MediaRow) => void;
     onMarkUnwatched?: (media: MediaRow) => void;
+    // See MediaLibraryController.watchedActionInFlight - resolved per card below so a card only
+    // shows its own watch/unwatch action as busy while that row's toggle is in flight.
+    watchedActionInFlight?: ReadonlySet<number>;
     onEditTitle?: (media: MediaRow) => void;
 };
 
@@ -78,6 +81,7 @@ export function MediaGrid({
     onOpenSourceInYoutube,
     onMarkWatched,
     onMarkUnwatched,
+    watchedActionInFlight,
     onEditTitle,
 }: MediaGridProps): JSX.Element {
     const hasItems = items.length > 0;
@@ -362,6 +366,11 @@ export function MediaGrid({
                                                         onOpenSourceInYoutube={onOpenSourceInYoutube}
                                                         onMarkWatched={onMarkWatched}
                                                         onMarkUnwatched={onMarkUnwatched}
+                                                        isWatchedActionInFlight={
+                                                            watchedActionInFlight?.has(
+                                                                media.id
+                                                            ) ?? false
+                                                        }
                                                         onEditTitle={onEditTitle}
                                                     />
                                                 </Box>

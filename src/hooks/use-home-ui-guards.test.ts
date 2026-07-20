@@ -44,6 +44,7 @@ describe("useHomeUiGuards", () => {
             isAddingMedia: false,
             isDeletingMedia: false,
             commentsInFlight: new Set<number>(),
+            watchedActionInFlight: new Set<number>(),
             isUpdatingTitle: false,
             isCancellingYtDlp: false,
 
