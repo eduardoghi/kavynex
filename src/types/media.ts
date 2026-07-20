@@ -18,6 +18,7 @@ export type { YtDlpComment } from "./generated/YtDlpComment";
 export type { YtDlpFormat } from "./generated/YtDlpFormat";
 export type { YtDlpFormatsResult } from "./generated/YtDlpFormatsResult";
 export type { DownloadedMediaResult } from "./generated/DownloadedMediaResult";
+export type { LiveChatStreamEvent } from "./generated/LiveChatStreamEvent";
 
 // What the format picker renders, as opposed to what the backend reports.
 //

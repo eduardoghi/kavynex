@@ -30,6 +30,7 @@ import type { AppErrorShape } from "../utils/app-error";
 import type {
     Channel,
     DownloadedMediaResult,
+    LiveChatStreamEvent,
     MediaCommentRow,
     MediaRow,
     YtDlpComment,
@@ -349,14 +350,15 @@ export const IPC_EVENT_SCHEMAS = {
 } as const;
 
 // The streamed live chat protocol on the `Channel`: a run of `batch` events carrying raw JSON
-// lines, ended by a single `done`. Mirrors LiveChatStreamEvent on the Rust side
-// (commands/live_chat.rs).
+// lines, ended by a single `done`. The `satisfies` check ties this schema to the generated
+// LiveChatStreamEvent binding, so a change to the Rust enum (commands/live_chat.rs) fails to
+// compile here instead of silently desyncing the wire shape.
 export const liveChatStreamEventSchema = z.union([
     z.object({ kind: z.literal("batch"), lines: z.array(z.string()) }),
     z.object({ kind: z.literal("done") }),
-]);
+]) satisfies z.ZodType<LiveChatStreamEvent>;
 
-export type LiveChatStreamEvent = z.infer<typeof liveChatStreamEventSchema>;
+export type { LiveChatStreamEvent };
 
 // Validates an event/channel payload against `schema`. Returns the parsed value on success, or
 // `null` on a mismatch after logging the specific fields that failed. Unlike `validateIpcResult`

@@ -20,9 +20,12 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// slice of raw JSON lines, terminated by a single `done` event. The frontend resolves its read
 /// only on `done`, never merely when the command returns - channel messages and the invoke
 /// response travel independently, so resolving on the return could race the last in-flight batch.
-/// The `kind` tag and camelCase variant names match the TS union in `lib/tauri-client.ts`.
-#[derive(Clone, serde::Serialize)]
+/// The generated binding (`src/types/generated/LiveChatStreamEvent.ts`) is what the frontend's
+/// zod schema in `lib/ipc-schemas.ts` is checked against, so a change here fails `tsc` there
+/// instead of silently desyncing the wire shape.
+#[derive(Clone, serde::Serialize, ts_rs::TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
 pub enum LiveChatStreamEvent {
     Batch { lines: Vec<String> },
     Done,
