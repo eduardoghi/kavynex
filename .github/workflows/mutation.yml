@@ -109,5 +109,40 @@ jobs:
             # in an unmutated tree") before a single mutant runs. Testing in the real tree keeps the
             # `../shared` path resolvable. The CI checkout is disposable, so the in-place caveats
             # (no parallel copies; a killed run leaves the tree mutated) do not apply here.
+            #
+            # No explicit `--locked` here, unlike every other cargo invocation in this repo: it is
+            # already covered by `additional_cargo_args = ["--locked"]` in
+            # src-tauri/.cargo/mutants.toml, which cargo-mutants applies to every cargo check/test
+            # invocation it runs. Verified locally (cargo-mutants 27.1.0, the version pinned
+            # above): passing `--cargo-arg=--locked` here as well fails the run with "the argument
+            # '--locked' cannot be used multiple times", confirming it is already applied.
             - name: Run Rust mutation testing
               run: cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle --timeout 300
+
+    # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
+    # signal - mirrors scheduled-audit.yml's alert-on-failure job for the same reason. Open (or
+    # comment on) a tracking issue so a failing mutation run is visible in the repository itself.
+    # Runs only when a job above actually failed, and only on the schedule/dispatch this workflow
+    # already runs on.
+    alert-on-failure:
+        name: Open an issue on failure
+        needs: [mutation, rust-mutation]
+        if: failure()
+        runs-on: ubuntu-22.04
+        timeout-minutes: 10
+        permissions:
+            issues: write
+        steps:
+            - name: Open or update the tracking issue
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="Scheduled mutation testing failed"
+                  BODY="The weekly scheduled mutation testing run failed - a mutant survived, a test regressed, or the run itself errored. Review the run and shore up the affected tests: $RUN_URL"
+                  EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+                  if [ -n "$EXISTING" ]; then
+                      gh issue comment "$EXISTING" --body "$BODY"
+                  else
+                      gh issue create --title "$TITLE" --body "$BODY"
+                  fi
