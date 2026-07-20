@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import type { MediaRow } from "../../types/media";
-import { NOOP } from "../../utils/noop";
+import { useModalLock } from "../../hooks/use-modal-lock";
 
 type EditMediaTitleModalProps = {
     media: MediaRow | null;
@@ -35,17 +35,16 @@ export function EditMediaTitleModal({
         onSave(media, trimmedTitle);
     };
 
+    const modalLock = useModalLock(loading, onClose);
+
     return (
         <Modal
             opened={media !== null}
-            onClose={loading ? NOOP : onClose}
             title={<Text fw={900}>Edit title</Text>}
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
-            closeOnClickOutside={!loading}
-            closeOnEscape={!loading}
-            withCloseButton={!loading}
+            {...modalLock}
         >
             <form
                 onSubmit={(event) => {

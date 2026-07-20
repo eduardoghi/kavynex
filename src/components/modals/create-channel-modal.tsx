@@ -8,7 +8,7 @@ import {
     TextInput,
 } from "@mantine/core";
 import type { ChannelAvatarMode } from "../../types/media";
-import { NOOP } from "../../utils/noop";
+import { useModalLock } from "../../hooks/use-modal-lock";
 import { toUnionValue } from "../../utils/guards";
 
 type CreateChannelModalProps = {
@@ -63,17 +63,16 @@ export function CreateChannelModal({
         onCreate();
     };
 
+    const modalLock = useModalLock(loading, onClose);
+
     return (
         <Modal
             opened={opened}
-            onClose={loading ? NOOP : onClose}
             title={<Text fw={900}>{title}</Text>}
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
-            closeOnClickOutside={!loading}
-            closeOnEscape={!loading}
-            withCloseButton={!loading}
+            {...modalLock}
         >
             <form
                 onSubmit={(event) => {

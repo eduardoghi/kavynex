@@ -1,7 +1,7 @@
 import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { NOOP } from "../../utils/noop";
+import { useModalLock } from "../../hooks/use-modal-lock";
 
 type ConfirmDeleteModalProps = {
     opened: boolean;
@@ -32,17 +32,16 @@ export function ConfirmDeleteModal({
     confirmIcon = <Trash2 size={18} />,
     loading = false,
 }: ConfirmDeleteModalProps): JSX.Element {
+    const modalLock = useModalLock(loading, onClose);
+
     return (
         <Modal
             opened={opened}
-            onClose={loading ? NOOP : onClose}
             title={title}
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
-            closeOnClickOutside={!loading}
-            closeOnEscape={!loading}
-            withCloseButton={!loading}
+            {...modalLock}
         >
             <form
                 onSubmit={(event) => {
