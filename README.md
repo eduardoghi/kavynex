@@ -149,6 +149,16 @@ most up-to-date Windows 10 installs already have it. If the window fails to open
 blank, install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 and try again.
 
+### Kavynex reports a corrupted database
+
+This is handled automatically and nothing is silently lost. On the next launch Kavynex restores
+the database from the most recent healthy snapshot (it keeps several daily `.bak` generations, and
+an off-volume mirror if you configured one in Settings > Database). The broken file is preserved
+next to the database as `kavynex.db.corrupt` rather than deleted, so it can still be inspected. See
+`docs/DATABASE.md` for the full backup/restore model and `docs/DIRECTORIES.md` for where these files
+live. If the library ever looks incomplete after a restore, run Diagnostics to reconcile the
+database against the files on disk.
+
 ### Where logs live
 
 Kavynex writes a rolling log file in addition to stderr. On the current platform's app

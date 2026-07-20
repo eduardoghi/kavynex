@@ -10,8 +10,9 @@ See also `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/DIRECTORIES.md`, and
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) - match the version the CI/release workflows pin (see
-  `.github/workflows/`), so local builds and CI agree
+- [Node.js](https://nodejs.org/) - match the range pinned in `package.json`'s `engines.node`
+  field (currently `>=26 <27`; `.nvmrc` pins the exact patch the CI/release workflows use), so
+  local builds and CI agree
 - [pnpm](https://pnpm.io/) - match the `pnpm/action-setup` major those workflows pin
 - [Rust](https://www.rust-lang.org/), via [rustup](https://rustup.rs/). The exact
   toolchain is pinned in `rust-toolchain.toml` (`1.96.0`, with `rustfmt` and `clippy`) -
