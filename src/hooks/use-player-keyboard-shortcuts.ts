@@ -16,8 +16,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
     );
 }
 
-// Wires the player's global keyboard shortcuts (Space play/pause, arrows seek, M mute, F
-// fullscreen) to whatever element `playerElementRef` currently points at. The handler reads the
+// Wires the player's global keyboard shortcuts (Space play/pause, left/right seek, up/down volume,
+// M mute, F fullscreen) to whatever element `playerElementRef` currently points at. The handler reads the
 // ref fresh on every keypress, so it is subscribed once for the player's lifetime rather than
 // re-subscribing per media. Shortcuts are suppressed while typing in a form field or while a
 // modal is open on top of the player. Extracted from MediaPlayerView to keep the (sizeable)
@@ -94,6 +94,17 @@ export function usePlayerKeyboardShortcuts(
                     if (Number.isFinite(element.duration)) {
                         element.currentTime = Math.min(element.duration, element.currentTime + 5);
                     }
+                    break;
+                case "ArrowUp":
+                    // Raising the volume also unmutes, matching how a raised volume implies the
+                    // user wants to hear it (and how the native/YouTube players behave).
+                    event.preventDefault();
+                    element.muted = false;
+                    element.volume = Math.min(1, element.volume + 0.05);
+                    break;
+                case "ArrowDown":
+                    event.preventDefault();
+                    element.volume = Math.max(0, element.volume - 0.05);
                     break;
                 case "KeyM":
                     event.preventDefault();

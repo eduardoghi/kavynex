@@ -50,6 +50,8 @@ const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     { keys: ["Space"], label: "Play / Pause" },
     { keys: ["←"], label: "Seek back 5s" },
     { keys: ["→"], label: "Seek forward 5s" },
+    { keys: ["↑"], label: "Volume up" },
+    { keys: ["↓"], label: "Volume down" },
     { keys: ["M"], label: "Mute / Unmute" },
     { keys: ["F"], label: "Fullscreen", videoOnly: true },
 ];

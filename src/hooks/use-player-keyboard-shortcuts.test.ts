@@ -26,6 +26,10 @@ function pressSpace(): void {
     document.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", bubbles: true }));
 }
 
+function pressKey(code: string): void {
+    document.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true }));
+}
+
 // Lets the microtask the Space handler kicks off (`void togglePlayback()`) settle, so a
 // rejection surfaces as an unhandled rejection rather than after the assertion.
 async function flush(): Promise<void> {
@@ -82,6 +86,29 @@ describe("usePlayerKeyboardShortcuts", () => {
         await flush();
 
         expect(player.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("raises the volume and unmutes on ArrowUp, lowers it on ArrowDown", () => {
+        const player = { volume: 0.5, muted: true, paused: false, play: vi.fn(), pause: vi.fn() };
+        const ref = { current: player as unknown as HTMLMediaElement };
+        renderHook(() => usePlayerKeyboardShortcuts(ref));
+
+        pressKey("ArrowUp");
+        expect(player.muted).toBe(false);
+        expect(player.volume).toBeCloseTo(0.55);
+
+        pressKey("ArrowDown");
+        expect(player.volume).toBeCloseTo(0.5);
+    });
+
+    it("clamps the volume to at most 1 on ArrowUp", () => {
+        const player = { volume: 0.98, muted: false, paused: false, play: vi.fn(), pause: vi.fn() };
+        const ref = { current: player as unknown as HTMLMediaElement };
+        renderHook(() => usePlayerKeyboardShortcuts(ref));
+
+        pressKey("ArrowUp");
+        pressKey("ArrowUp");
+        expect(player.volume).toBe(1);
     });
 
     it("ignores Space while typing in a form field", async () => {
