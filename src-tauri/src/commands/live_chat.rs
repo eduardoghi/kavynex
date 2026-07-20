@@ -130,6 +130,28 @@ pub async fn stream_live_chat_file(
     .await
 }
 
+/// Rewords a failed unlink after the database reference was already cleared: a bare "failed to
+/// remove" reads as "nothing happened, retry the delete", when the entry is in fact gone and the
+/// file (if still present) is an orphan for the library diagnostics to reconcile. Only the unlink
+/// failure is reworded - a containment rejection happens before anything is touched and keeps its
+/// own error. Extracted from the command so the code gate is unit-testable (the command itself
+/// needs an AppHandle the IPC mock cannot host).
+fn reword_unlink_error_after_reference_clear(error: AppError) -> AppError {
+    if error.code == AppErrorCode::RemoveMediaFailed.as_str() {
+        AppError::from_code(
+            AppErrorCode::RemoveMediaFailed,
+            format!(
+                "the live chat entry was removed from the library, but its file could \
+                 not be deleted and was left behind - run Diagnostics to clean it up \
+                 ({})",
+                error.message
+            ),
+        )
+    } else {
+        error
+    }
+}
+
 /// Deletes a live chat replay file from the library, if it exists, and clears the live-chat columns
 /// on the video row that referenced it.
 #[tauri::command]
@@ -147,26 +169,8 @@ pub async fn delete_live_chat_file(app: AppHandle, relative_path: String) -> App
         // Serialize against a concurrent library migration (see services::library_lock).
         let _library_guard = crate::services::library_lock::library_read_guard();
 
-        delete_live_chat_relative_sync(&library_dir, &relative_path).map_err(|error| {
-            // The database reference above is already cleared, so a failed unlink must say so:
-            // a bare "failed to remove" reads as "nothing happened, retry the delete", when the
-            // entry is in fact gone and the file (if still present) is an orphan for the library
-            // diagnostics to reconcile. Only the unlink failure is reworded - a containment
-            // rejection happens before anything is touched and keeps its own error.
-            if error.code == AppErrorCode::RemoveMediaFailed.as_str() {
-                AppError::from_code(
-                    AppErrorCode::RemoveMediaFailed,
-                    format!(
-                        "the live chat entry was removed from the library, but its file could \
-                         not be deleted and was left behind - run Diagnostics to clean it up \
-                         ({})",
-                        error.message
-                    ),
-                )
-            } else {
-                error
-            }
-        })
+        delete_live_chat_relative_sync(&library_dir, &relative_path)
+            .map_err(reword_unlink_error_after_reference_clear)
     })
     .await
 }
@@ -327,6 +331,32 @@ mod tests {
 
         let _ = fs::remove_file(&outside);
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_failed_unlink_is_reworded_after_the_reference_was_cleared() {
+        let error = AppError::from_code(
+            AppErrorCode::RemoveMediaFailed,
+            "failed to remove live chat file: access denied",
+        );
+
+        let reworded = reword_unlink_error_after_reference_clear(error);
+        assert_eq!(reworded.code, AppErrorCode::RemoveMediaFailed.as_str());
+        assert!(
+            reworded.message.contains("was removed from the library"),
+            "the message must say the reference is already gone: {}",
+            reworded.message
+        );
+        assert!(reworded.message.contains("access denied"));
+    }
+
+    #[test]
+    fn a_containment_rejection_keeps_its_own_error() {
+        let error = AppError::from_code(AppErrorCode::InvalidRelativePath, "path escapes library");
+
+        let unchanged = reword_unlink_error_after_reference_clear(error);
+        assert_eq!(unchanged.code, AppErrorCode::InvalidRelativePath.as_str());
+        assert_eq!(unchanged.message, "path escapes library");
     }
 
     #[test]
