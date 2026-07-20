@@ -325,7 +325,10 @@ pub fn run() {
             // Apply a database import staged by the import command before the pool can open.
             // The connection pool is a process-wide singleton that cannot be swapped
             // in-process, so the actual file swap is deferred to this pre-open point. A
-            // failure is logged but must not stop the app from starting.
+            // failed restore/import is logged but must not stop the app from starting; a
+            // database *path* that cannot be resolved at all is fatal instead - without it
+            // `Db` is never managed and every database-backed command would fail, leaving
+            // the app an open but dead shell with no explanation.
             match services::database::database_path(&app_handle) {
                 Ok(db_path) => {
                     // Register the database in managed state before any command can run, so pool
@@ -361,10 +364,10 @@ pub fn run() {
                         ),
                     }
                 }
-                Err(error) => services::logger::warn(
-                    "app",
-                    format!("failed to resolve database path for import check: {error}"),
-                ),
+                Err(error) => fail_startup(&format!(
+                    "failed to resolve the database directory (check permissions and free \
+                     space on the app config volume): {error}"
+                )),
             }
 
             // Authorize the app cache directory in the asset protocol scope so temporary
