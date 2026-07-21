@@ -195,7 +195,14 @@ mod tests {
                 insert_media,
                 update_media_title,
                 list_media_page,
-                mark_media_as_watched
+                mark_media_as_watched,
+                mark_media_as_unwatched,
+                update_media_progress,
+                find_media_by_channel_and_file_path,
+                media_exists_for_channel_and_youtube_id,
+                list_media_comments_by_media_id,
+                get_media_repository_stats,
+                list_media_integrity_references
             ])
             .build(mock_context(noop_assets()))
             .unwrap();
@@ -232,6 +239,38 @@ mod tests {
             "isLive": false,
             "liveChatFilePath": null
         })
+    }
+
+    fn insert_media_row(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        channel_id: i64,
+        file_path: &str,
+    ) -> i64 {
+        invoke(
+            webview,
+            "insert_media",
+            insert_media_body(channel_id, file_path),
+        )
+        .unwrap()
+        .deserialize::<Option<i64>>()
+        .unwrap()
+        .expect("media id")
+    }
+
+    fn first_media_item(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        channel_id: i64,
+    ) -> serde_json::Value {
+        let page = invoke(
+            webview,
+            "list_media_page",
+            serde_json::json!({ "channelId": channel_id, "query": default_media_page_query() }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        page["items"].as_array().unwrap()[0].clone()
     }
 
     fn default_media_page_query() -> serde_json::Value {
@@ -434,5 +473,165 @@ mod tests {
             !watched_at.trim().is_empty(),
             "a watched timestamp should be returned"
         );
+    }
+
+    #[test]
+    fn find_media_by_channel_and_file_path_returns_the_row_or_null_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+        insert_media_row(&webview, channel_id, "video/media_x.mp4");
+
+        let found = invoke(
+            &webview,
+            "find_media_by_channel_and_file_path",
+            serde_json::json!({ "channelId": channel_id, "filePath": "video/media_x.mp4" }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+        assert_eq!(found["file_path"], "video/media_x.mp4");
+
+        // A path this channel never stored resolves to null, not an error.
+        let missing = invoke(
+            &webview,
+            "find_media_by_channel_and_file_path",
+            serde_json::json!({ "channelId": channel_id, "filePath": "video/nope.mp4" }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+        assert!(missing.is_null());
+    }
+
+    #[test]
+    fn media_exists_for_channel_and_youtube_id_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+
+        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
+        body["youtubeVideoId"] = serde_json::json!("vid123");
+        invoke(&webview, "insert_media", body).unwrap();
+
+        let exists = invoke(
+            &webview,
+            "media_exists_for_channel_and_youtube_id",
+            serde_json::json!({ "channelId": channel_id, "youtubeVideoId": "vid123" }),
+        )
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap();
+        assert!(exists);
+
+        let absent = invoke(
+            &webview,
+            "media_exists_for_channel_and_youtube_id",
+            serde_json::json!({ "channelId": channel_id, "youtubeVideoId": "other" }),
+        )
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap();
+        assert!(!absent);
+    }
+
+    #[test]
+    fn list_media_comments_by_media_id_is_empty_for_a_fresh_media_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+        let media_id = insert_media_row(&webview, channel_id, "video/media_x.mp4");
+
+        let comments = invoke(
+            &webview,
+            "list_media_comments_by_media_id",
+            serde_json::json!({ "mediaId": media_id }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        assert_eq!(comments.as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn mark_media_as_unwatched_clears_the_watched_timestamp_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+        let media_id = insert_media_row(&webview, channel_id, "video/media_x.mp4");
+
+        invoke(
+            &webview,
+            "mark_media_as_watched",
+            serde_json::json!({ "mediaId": media_id }),
+        )
+        .unwrap();
+        assert!(!first_media_item(&webview, channel_id)["watched_at"].is_null());
+
+        invoke(
+            &webview,
+            "mark_media_as_unwatched",
+            serde_json::json!({ "mediaId": media_id }),
+        )
+        .unwrap();
+        assert!(first_media_item(&webview, channel_id)["watched_at"].is_null());
+    }
+
+    #[test]
+    fn update_media_progress_persists_the_position_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+        let media_id = insert_media_row(&webview, channel_id, "video/media_x.mp4");
+
+        invoke(
+            &webview,
+            "update_media_progress",
+            serde_json::json!({ "mediaId": media_id, "progressSeconds": 87 }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            first_media_item(&webview, channel_id)["progress_seconds"],
+            87
+        );
+    }
+
+    #[test]
+    fn get_media_repository_stats_counts_inserted_media_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+        insert_media_row(&webview, channel_id, "video/media_a.mp4");
+        insert_media_row(&webview, channel_id, "video/media_b.mp4");
+
+        let stats = invoke(
+            &webview,
+            "get_media_repository_stats",
+            serde_json::json!({}),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        assert_eq!(stats["total_media"], 2);
+        assert_eq!(stats["total_video_media"], 2);
+        assert_eq!(stats["total_audio_media"], 0);
+    }
+
+    #[test]
+    fn list_media_integrity_references_returns_the_stored_file_paths_over_ipc() {
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+        insert_media_row(&webview, channel_id, "video/media_x.mp4");
+
+        let references = invoke(
+            &webview,
+            "list_media_integrity_references",
+            serde_json::json!({}),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        let references = references.as_array().unwrap();
+        assert_eq!(references.len(), 1);
+        assert_eq!(references[0]["file_path"], "video/media_x.mp4");
+        assert_eq!(references[0]["channel_id"], channel_id);
     }
 }

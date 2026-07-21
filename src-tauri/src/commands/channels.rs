@@ -260,4 +260,100 @@ mod tests {
 
         assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
     }
+
+    #[test]
+    fn get_channel_by_id_returns_the_channel_or_null_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        let id = invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({ "name": "Chan", "youtubeHandle": "@chan", "avatarPath": null }),
+        )
+        .unwrap()
+        .deserialize::<i64>()
+        .unwrap();
+
+        let found = invoke(
+            &webview,
+            "get_channel_by_id",
+            serde_json::json!({ "channelId": id }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        assert_eq!(found["id"], id);
+        assert_eq!(found["youtube_handle"], "@chan");
+        assert_eq!(found["name"], "Chan");
+
+        // A row id that was never inserted resolves to null, not an error.
+        let missing = invoke(
+            &webview,
+            "get_channel_by_id",
+            serde_json::json!({ "channelId": id + 999 }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+        assert!(missing.is_null());
+    }
+
+    #[test]
+    fn update_channel_name_and_handle_persists_the_new_values_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        let id = invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({ "name": "Old", "youtubeHandle": "@old", "avatarPath": null }),
+        )
+        .unwrap()
+        .deserialize::<i64>()
+        .unwrap();
+
+        invoke(
+            &webview,
+            "update_channel_name_and_handle",
+            serde_json::json!({ "channelId": id, "name": "New", "youtubeHandle": "@new" }),
+        )
+        .unwrap();
+
+        let found = invoke(
+            &webview,
+            "get_channel_by_id",
+            serde_json::json!({ "channelId": id }),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        assert_eq!(found["name"], "New");
+        assert_eq!(found["youtube_handle"], "@new");
+    }
+
+    #[test]
+    fn update_channel_name_and_handle_rejects_a_malformed_handle_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        let id = invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({ "name": "Chan", "youtubeHandle": "@chan", "avatarPath": null }),
+        )
+        .unwrap()
+        .deserialize::<i64>()
+        .unwrap();
+
+        // The same handle-format guard insert_channel applies also runs on update, at the write
+        // boundary rather than only in the frontend.
+        let error = invoke(
+            &webview,
+            "update_channel_name_and_handle",
+            serde_json::json!({ "channelId": id, "name": "Chan", "youtubeHandle": "plainname" }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidYoutubeHandle.as_str());
+    }
 }
