@@ -1,0 +1,21 @@
+{
+    "_comment": "Shared accept/reject fixture for a yt-dlp format id: a concrete format id, optionally `+`-combined for a merged video+audio selection. Asserted from both sides so the two independent validators cannot drift apart: TypeScript isValidYtDlpFormatId (src/services/yt-dlp-format-rules.ts, src/services/yt-dlp-format-rules.test.ts) and Rust is_valid_format_id (src-tauri/src/services/yt_dlp_download/mod.rs). The frontend's buildMergedFormats synthesizes the `<video>+<audio>` merged selector, and the backend re-validates every format id it receives against this exact rule (is_valid_format_id) before resolving it against the fetched metadata (resolve_format_has_video). This fixture pins that the shape the frontend builds is the shape the backend accepts, so a change to one side's rule that the other did not follow fails a test rather than surfacing as a raw backend error after the round trip. Add a case to both sides at once by editing this one file.",
+    "valid": [
+        "137",
+        "140",
+        "137+140",
+        "233-drc",
+        "sb0",
+        "hls_1080"
+    ],
+    "invalid": [
+        "",
+        "-x",
+        "137+",
+        "+140",
+        "137++140",
+        "137 140",
+        "a|b",
+        "$(x)"
+    ]
+}

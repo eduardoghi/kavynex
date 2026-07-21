@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { describe, expect, it } from "vitest";
 import type { YtDlpFormat } from "../types/media";
 import {
@@ -5,6 +7,7 @@ import {
     buildMergedFormats,
     inferPreferredFormatId,
     inferSelectedMediaType,
+    isValidYtDlpFormatId,
 } from "./yt-dlp-format-rules";
 
 // The backend's shape, which carries no label - buildMergedFormats is what adds one.
@@ -184,5 +187,54 @@ describe("inferSelectedMediaType", () => {
     it("falls back to the first format, then to video", () => {
         expect(inferSelectedMediaType([format({ media_type: "audio" })], "missing")).toBe("audio");
         expect(inferSelectedMediaType([], "anything")).toBe("video");
+    });
+});
+
+// The backend has its own copy of this rule (is_valid_format_id in
+// src-tauri/src/services/yt_dlp_download/mod.rs) that rejects a malformed format id regardless of
+// what this client check lets through. The two are independent implementations that must agree on
+// every id: buildMergedFormats builds the `<video>+<audio>` selector, and if the two rules drifted a
+// selector this side produced could come back as a raw backend error instead of the resolved
+// download. Both sides assert against the same shared fixture so a divergence fails a test here (and
+// the mirrored one in yt_dlp_download/mod.rs) rather than reaching a user. Add a case to
+// shared/yt-dlp-format-id-cases.json and both checks pick it up.
+describe("isValidYtDlpFormatId shared parity fixture", () => {
+    // Resolved from the repo root (vitest's cwd), matching the youtube-handle parity test.
+    const fixture = JSON.parse(
+        readFileSync(resolve(process.cwd(), "shared/yt-dlp-format-id-cases.json"), "utf-8")
+    ) as { valid: string[]; invalid: string[] };
+
+    it.each(fixture.valid)("accepts %j", (id) => {
+        expect(isValidYtDlpFormatId(id)).toBe(true);
+    });
+
+    it.each(fixture.invalid)("rejects %j", (id) => {
+        expect(isValidYtDlpFormatId(id)).toBe(false);
+    });
+});
+
+describe("buildMergedFormats produces backend-valid format ids", () => {
+    it("every synthesized selector passes isValidYtDlpFormatId", () => {
+        // Real yt-dlp format ids (alphanumeric plus `.`/`_`/`-`). buildMergedFormats joins a
+        // video-only id and the preferred audio id with `+`; this pins that whatever it builds is a
+        // selector the backend's is_valid_format_id accepts, so a change to the construction that
+        // produced an invalid id would fail here instead of after the IPC round trip.
+        const formats = [
+            format({ format_id: "137", has_video: true, has_audio: false }),
+            format({ format_id: "hls_1080", has_video: true, has_audio: false }),
+            format({ format_id: "248", has_video: true, has_audio: false, ext: "webm" }),
+            format({ format_id: "233-drc", has_video: false, has_audio: true, ext: "m4a" }),
+            // A native (already-muxed) format is passed through unchanged; it must be valid too.
+            format({ format_id: "18", has_video: true, has_audio: true }),
+        ];
+
+        const options = buildMergedFormats(formats);
+
+        expect(options.length).toBeGreaterThan(0);
+        // At least one genuinely merged (`+`-combined) selector was synthesized.
+        expect(options.some((option) => option.format_id.includes("+"))).toBe(true);
+        for (const option of options) {
+            expect(isValidYtDlpFormatId(option.format_id)).toBe(true);
+        }
     });
 });

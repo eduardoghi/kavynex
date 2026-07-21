@@ -20,9 +20,7 @@ use crate::services::library_paths::ensure_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
 use crate::services::thumbnail_download::download_thumbnail_for_media_async;
-use crate::services::yt_dlp_cookies::{
-    normalize_cookies_browser, normalize_cookies_path,
-};
+use crate::services::yt_dlp_cookies::{normalize_cookies_browser, normalize_cookies_path};
 use crate::services::yt_dlp_events::{
     emit_download_cancelled, emit_download_error, emit_download_finished, emit_download_log,
     emit_download_log_infallible,
@@ -1330,17 +1328,39 @@ mod tests {
     }
 
     #[test]
-    fn is_valid_format_id_accepts_real_ids_and_rejects_selectors() {
-        // Concrete yt-dlp format ids, including hyphenated and `+`-combined ones.
-        for id in ["137", "140", "137+140", "233-drc", "sb0", "hls_1080"] {
-            assert!(is_valid_format_id(id), "should accept: {id}");
+    fn is_valid_format_id_matches_the_shared_fixture() {
+        // The frontend's buildMergedFormats (src/services/yt-dlp-format-rules.ts) synthesizes the
+        // merged `<video>+<audio>` selector this rule then validates, and TypeScript has its own copy
+        // of the rule (isValidYtDlpFormatId) so it can flag a bad selector before the round trip. The
+        // two are independent implementations that must agree on every id: a drift would let a
+        // selector the frontend built come back as a raw backend error instead of being caught up
+        // front. Both sides assert against the same shared cases (see
+        // src/services/yt-dlp-format-rules.test.ts), so a change to either rule that the other did not
+        // follow fails a test here rather than surfacing to a user.
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/yt-dlp-format-id-cases.json"
+        ));
+        let cases: serde_json::Value =
+            serde_json::from_str(raw).expect("the shared fixture must be valid JSON");
+
+        for id in cases["valid"].as_array().expect("valid must be an array") {
+            let id = id.as_str().expect("each case must be a string");
+            assert!(
+                is_valid_format_id(id),
+                "the shared fixture marks {id:?} valid but Rust rejects it"
+            );
         }
 
-        // Empty parts, a leading `-`, and anything outside the safe class are rejected.
-        for id in [
-            "", "-x", "137+", "+140", "137++140", "137 140", "a|b", "$(x)",
-        ] {
-            assert!(!is_valid_format_id(id), "should reject: {id}");
+        for id in cases["invalid"]
+            .as_array()
+            .expect("invalid must be an array")
+        {
+            let id = id.as_str().expect("each case must be a string");
+            assert!(
+                !is_valid_format_id(id),
+                "the shared fixture marks {id:?} invalid but Rust accepts it"
+            );
         }
     }
 

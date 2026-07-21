@@ -27,6 +27,21 @@ function normalizeFormatId(value: string | null | undefined): string {
     return value?.trim() ?? "";
 }
 
+// Mirrors the backend's `is_valid_format_id` (src-tauri/src/services/yt_dlp_download/mod.rs): a
+// concrete yt-dlp format id, optionally `+`-combined for a merged video+audio selection, where every
+// part is non-empty, does not start with `-` (so the value after `-f` can never be read as a flag),
+// and is made only of ASCII alphanumerics plus `.`/`_`/`-`. `buildMergedFormats` synthesizes the
+// `<video>+<audio>` selector this describes, and the backend re-validates it with the same rule
+// before resolving it - the two are kept from drifting apart by shared/yt-dlp-format-id-cases.json,
+// asserted on both sides (see the parity test). Note the leading-`-` guard is separate from the
+// character class on purpose: `-` is a legal *inner* character (`233-drc`), so the class alone would
+// accept a leading one.
+export function isValidYtDlpFormatId(formatId: string): boolean {
+    return formatId
+        .split("+")
+        .every((part) => part.length > 0 && !part.startsWith("-") && /^[A-Za-z0-9._-]+$/.test(part));
+}
+
 function isDrcFormat(format: YtDlpFormat): boolean {
     return normalizeFormatId(format.format_id).toLowerCase().endsWith("-drc");
 }
