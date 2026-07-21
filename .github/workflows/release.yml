@@ -111,6 +111,11 @@ jobs:
                   node-version: 26.5.0
                   cache: pnpm
 
+            # Re-gate the Node version pin here too: the release is dispatched by hand, so nothing
+            # guarantees the chosen ref went through ci.yml's identical check.
+            - name: Verify Node version consistency
+              run: node scripts/verify-node-version.js
+
             - name: Install frontend dependencies
               run: pnpm install --frozen-lockfile
 

@@ -46,6 +46,11 @@ jobs:
             - name: Verify version consistency
               run: node scripts/verify-release-version.js
 
+            # Catch a Node version bumped in .nvmrc but not the workflows (or vice versa) here,
+            # rather than silently building/testing against a different runtime than local dev.
+            - name: Verify Node version consistency
+              run: node scripts/verify-node-version.js
+
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
 
