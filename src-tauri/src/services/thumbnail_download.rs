@@ -1201,6 +1201,47 @@ mod tests {
     }
 
     #[test]
+    fn split_url_path_strips_query_and_fragment() {
+        // The direct-image extension check reads the path only, so a `.png` before a `?query` or
+        // `#fragment` must still be seen. Pins that both are stripped (and that the whole value is
+        // not replaced with a constant).
+        assert_eq!(split_url_path("a/b.png"), "a/b.png");
+        assert_eq!(split_url_path("a/b.png?w=200&h=200"), "a/b.png");
+        assert_eq!(split_url_path("a/b.png#frag"), "a/b.png");
+        assert_eq!(split_url_path("a/b.png?w=200#frag"), "a/b.png");
+        assert_eq!(
+            split_url_path("no-query-or-fragment"),
+            "no-query-or-fragment"
+        );
+    }
+
+    #[test]
+    fn direct_image_extension_maps_each_supported_extension() {
+        // Every branch returns the matching extension for an http(s) URL, case-insensitively and
+        // through a query string. A non-image path and a non-http(s) URL both return None.
+        for (url, expected) in [
+            ("https://cdn.example/pic.png", Some("png")),
+            ("http://cdn.example/pic.jpg", Some("jpg")),
+            ("https://cdn.example/pic.jpeg", Some("jpeg")),
+            ("https://cdn.example/pic.WEBP", Some("webp")),
+            ("https://cdn.example/pic.bmp", Some("bmp")),
+            ("https://cdn.example/pic.avif", Some("avif")),
+            ("https://cdn.example/pic.gif", Some("gif")),
+            // The extension is read from the path, so a trailing query does not hide it.
+            ("https://cdn.example/pic.png?width=200", Some("png")),
+            // Not an image path.
+            ("https://cdn.example/document.txt", None),
+            ("https://cdn.example/no-extension", None),
+            // Not http(s): the scheme gate returns None before any extension is considered, so the
+            // yt-dlp fallback (which re-validates the host) handles it instead of the direct fetch.
+            ("ftp://cdn.example/pic.png", None),
+            ("file:///pic.png", None),
+        ] {
+            assert_eq!(direct_image_extension(url), expected, "url: {url}");
+        }
+    }
+
+    #[test]
     fn normalize_channel_handle_builds_youtube_url_from_handle() {
         assert_eq!(
             normalize_channel_handle_to_url("@Hardwareunboxed").unwrap(),
@@ -1271,6 +1312,9 @@ mod tests {
             "192.0.0.1",        // 192.0.0.0/24 IETF protocol assignments
             "198.18.0.1",       // 198.18.0.0/15 benchmarking
             "198.19.255.255",   // 198.18.0.0/15 benchmarking (upper half)
+            "192.0.2.1",        // 192.0.2.0/24 documentation (is_documentation)
+            "0.1.2.3",          // 0.0.0.0/8 but not the unspecified address itself
+            "ff02::1",          // ipv6 multicast (not caught by the mapped/compatible branches)
             "::1",              // ipv6 loopback
             "fe80::1",          // ipv6 link local
             "fc00::1",          // ipv6 unique local
@@ -1279,8 +1323,15 @@ mod tests {
             "::a01:203",        // deprecated ipv4-compatible form of 10.1.2.3 (private)
             "2002:7f00:0001::", // 6to4 wrapping 127.0.0.1 (loopback)
             "2002:c0a8:0001::", // 6to4 wrapping 192.168.0.1 (private)
-            "64:ff9b::7f00:1",  // nat64 wrapping 127.0.0.1 (loopback)
-            "64:ff9b::a01:203", // nat64 wrapping 10.1.2.3 (private)
+            // 6to4/nat64/teredo wrapping 172.16.5.4, whose second octet (16) is what places it in
+            // 172.16.0.0/12: pins the embedded-address byte extraction, since corrupting that octet
+            // (e.g. masking it to 255) would push the embedded IP out of the private range and let
+            // the tunnelled address through.
+            "2002:ac10:0504::",         // 6to4 wrapping 172.16.5.4 (private)
+            "64:ff9b::ac10:0504",       // nat64 wrapping 172.16.5.4 (private)
+            "2001:0:0:0:0:0:53ef:fafb", // teredo wrapping 172.16.5.4: 53ef:fafb = 0xac100504 ^ all-ones
+            "64:ff9b::7f00:1",          // nat64 wrapping 127.0.0.1 (loopback)
+            "64:ff9b::a01:203",         // nat64 wrapping 10.1.2.3 (private)
             // teredo (2001:0000::/32) with the client IPv4 XOR-obfuscated in the low 32 bits:
             // 80ff:fffe = 0x80fffffe = 0x7f000001 ^ 0xffffffff = 127.0.0.1 (loopback).
             "2001:0:0:0:0:0:80ff:fffe",
@@ -1300,9 +1351,22 @@ mod tests {
             "8.8.8.8",
             "1.1.1.1",
             "142.250.72.238",
+            // Public addresses that sit just outside a named range, so each range check has to
+            // require its full condition rather than a single octet. These pin the AND/OR structure
+            // of is_disallowed_ipv4 (a weakened `&&`/`||` would misclassify one of them):
+            "8.100.0.1", // second octet in the CGNAT 64..=127 window but first octet is not 100
+            "100.0.0.1", // first octet 100 but second octet outside the CGNAT window
+            "192.0.1.1", // starts 192.0 but third octet is not 0, so not 192.0.0.0/24
+            "192.1.0.1", // 192 but second octet is not 0, so not 192.0.0.0/24
+            "8.18.0.1",  // second octet 18 but first octet is not 198, so not benchmarking
+            "198.0.0.1", // first octet 198 but second octet is neither 18 nor 19
             "2606:4700:4700::1111",
             "2002:0808:0808::",   // 6to4 wrapping the public 8.8.8.8 stays allowed
             "64:ff9b::0808:0808", // nat64 wrapping the public 8.8.8.8 stays allowed
+            // A public, non-Teredo 2001: address: the Teredo prefix is 2001:0000::/32, so this must
+            // not be decoded as Teredo. Pins the `segments[0] == 0x2001 && segments[1] == 0x0000`
+            // conjunction - a weakened `&&` would treat it as Teredo and re-check a bogus embedded IP.
+            "2001:4860:4860::8888",
             // teredo wrapping the public 8.8.8.8 stays allowed: f7f7:f7f7 = 0x08080808 ^ all-ones.
             "2001:0:0:0:0:0:f7f7:f7f7",
         ] {
