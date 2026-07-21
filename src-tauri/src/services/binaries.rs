@@ -25,6 +25,18 @@ fn is_executable_file(path: &Path) -> bool {
     path.is_file()
 }
 
+/// True for a PATHEXT entry that names a batch shim (`.bat`/`.cmd`). Launching one routes through
+/// `cmd.exe`, which historically reopened argument injection (CVE-2024-24576, "BatBadBut"): even
+/// with the process spawned as an argv array, `cmd.exe` re-parses the command line. yt-dlp and
+/// ffmpeg both ship as real executables, so a `.bat`/`.cmd` on PATH is an unusual wrapper worth
+/// refusing outright rather than trusting the compiler's argument-quoting fix to hold on every
+/// build. `.com`/`.exe` (real executables) still resolve. The entry includes its leading dot.
+#[cfg(windows)]
+fn is_batch_shim_extension(ext: &str) -> bool {
+    let normalized = ext.trim().trim_start_matches('.').to_ascii_uppercase();
+    matches!(normalized.as_str(), "BAT" | "CMD")
+}
+
 #[cfg(not(any(unix, windows)))]
 fn is_executable_file(path: &Path) -> bool {
     path.is_file()
@@ -42,8 +54,10 @@ fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String
     // let a malicious yt-dlp.exe/ffmpeg.exe planted in the process CWD win over the real one
     // on PATH (arbitrary code execution).
     //
-    // PATHEXT is honored so a bare candidate like "yt-dlp" still resolves to "yt-dlp.exe" or
-    // a ".cmd"/".bat" shim, matching how the shell would find it.
+    // PATHEXT is honored so a bare candidate like "yt-dlp" still resolves to "yt-dlp.exe",
+    // matching how the shell would find it - except that `.bat`/`.cmd` shims are skipped
+    // (see is_batch_shim_extension for why), so a real `.exe` alongside a shim still resolves
+    // while a lone shim does not.
     let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
 
     for candidate in candidates {
@@ -59,6 +73,10 @@ fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String
 
             if Path::new(candidate).extension().is_none() {
                 for ext in pathext.split(';').filter(|value| !value.is_empty()) {
+                    if is_batch_shim_extension(ext) {
+                        continue;
+                    }
+
                     let with_ext = dir.join(format!("{candidate}{ext}"));
                     if is_executable_file(&with_ext) {
                         return Some(with_ext.to_string_lossy().to_string());
@@ -456,6 +474,26 @@ mod tests {
         assert!(found.to_lowercase().ends_with("kavynex-fake-tool.exe"));
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_batch_shim_extension_flags_only_bat_and_cmd() {
+        // The batch shims that route through cmd.exe (CVE-2024-24576, "BatBadBut") are refused, in
+        // any casing and with or without the leading dot; real executables are not.
+        for shim in [".BAT", ".bat", ".CMD", ".cmd", "BAT", "cmd", "  .Bat  "] {
+            assert!(
+                is_batch_shim_extension(shim),
+                "{shim} should be treated as a batch shim"
+            );
+        }
+
+        for real in [".EXE", ".exe", ".COM", ".com", "EXE", "com", ""] {
+            assert!(
+                !is_batch_shim_extension(real),
+                "{real} should not be treated as a batch shim"
+            );
+        }
     }
 
     #[test]

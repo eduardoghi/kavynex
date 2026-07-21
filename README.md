@@ -127,8 +127,9 @@ the rest of the checks CI runs.
 Kavynex does not bundle yt-dlp or FFmpeg. It resolves both binaries by searching the
 directories listed in your `PATH` environment variable (never the current working
 directory, so a file dropped next to the app cannot shadow the real binary). On Windows
-it also honors `PATHEXT`, so a bare `yt-dlp` on PATH can resolve to `yt-dlp.exe`, a
-`.cmd`, or a `.bat` shim. If both lookups fail, it falls back to an optional
+it also honors `PATHEXT`, so a bare `yt-dlp` on PATH resolves to `yt-dlp.exe` (batch
+shims - `.bat`/`.cmd` - are deliberately skipped, so install yt-dlp and ffmpeg as real
+executables rather than wrapper scripts). If both lookups fail, it falls back to an optional
 `tools/yt-dlp(.exe)` and `tools/ffmpeg(.exe)` inside the app's data directory, so a
 portable install can be dropped there instead of PATH.
 

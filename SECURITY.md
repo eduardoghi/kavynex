@@ -164,6 +164,15 @@ launching a malicious `yt-dlp.exe`/`ffmpeg.exe` planted next to a downloaded fil
 directory search order included the CWD. See the README's Troubleshooting section for
 the (documented, opt-in) fallback to a `tools/` folder inside the app data directory.
 
+On Windows the `PATHEXT` expansion additionally **skips `.bat`/`.cmd` shims**: launching a
+batch file routes through `cmd.exe`, which re-parses the command line and historically reopened
+argument injection (CVE-2024-24576, "BatBadBut") even when the process is spawned as an argv array.
+The pinned Rust toolchain (`rust-toolchain.toml`) already carries the compiler-side fix, but yt-dlp
+and ffmpeg both ship as real executables, so a batch shim on `PATH` is refused outright rather than
+resting the guarantee on the compiler version holding across every build. A real `.exe`/`.com`
+alongside the shim still resolves; a lone shim resolves to nothing and surfaces the normal
+"not found" guidance.
+
 ### Asset-protocol scope
 
 The webview loads local files (video/audio/thumbnails) through Tauri's `asset:` protocol
