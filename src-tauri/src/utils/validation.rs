@@ -13,6 +13,18 @@
 
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// Upper bound (in Unicode scalar values) on a stored channel name. A real YouTube channel name is
+/// well under this; the ceiling exists only so a malformed metadata response or a hand-edited import
+/// cannot persist a megabyte-scale value. The database `CHECK`s enforce non-blankness but express no
+/// length limit, so this is the only ceiling on what gets stored.
+const MAX_CHANNEL_NAME_CHARS: usize = 200;
+
+/// Upper bound (in Unicode scalar values) on a stored media title. Generous next to a real title
+/// (YouTube caps its own at ~100) so a legitimately long local-file title still imports, while still
+/// bounding an adversarial/malformed value that would otherwise also inflate `title_normalized` and
+/// the cost of the search LIKE-scan it backs.
+const MAX_MEDIA_TITLE_CHARS: usize = 500;
+
 /// True for a normalized YouTube handle, mirroring `isValidNormalizedYoutubeHandle` in
 /// `src/utils/youtube.ts`: either `@<name>` where `<name>` is non-empty and made only of
 /// ASCII alphanumerics plus `.`/`_`/`-`, or a `channel/`, `c/` or `user/` prefix (case
@@ -74,6 +86,13 @@ pub fn ensure_valid_channel_name(name: &str) -> AppResult<()> {
         ));
     }
 
+    if name.chars().count() > MAX_CHANNEL_NAME_CHARS {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidChannelName,
+            "channel name is too long",
+        ));
+    }
+
     Ok(())
 }
 
@@ -104,6 +123,13 @@ pub fn ensure_valid_media_title(title: &str) -> AppResult<()> {
         return Err(AppError::from_code(
             AppErrorCode::InvalidMediaTitle,
             "media title must not contain control characters",
+        ));
+    }
+
+    if title.chars().count() > MAX_MEDIA_TITLE_CHARS {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidMediaTitle,
+            "media title is too long",
         ));
     }
 
@@ -223,6 +249,32 @@ mod tests {
             let error = ensure_valid_channel_name(name).unwrap_err();
             assert_eq!(error.code, AppErrorCode::InvalidChannelName.as_str());
         }
+    }
+
+    #[test]
+    fn channel_name_rejects_an_over_length_value() {
+        // At the ceiling is accepted; one scalar over is rejected. Guards against a malformed
+        // metadata response or hand-edited import persisting a megabyte-scale name.
+        ensure_valid_channel_name(&"a".repeat(MAX_CHANNEL_NAME_CHARS)).unwrap();
+
+        let error = ensure_valid_channel_name(&"a".repeat(MAX_CHANNEL_NAME_CHARS + 1)).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidChannelName.as_str());
+    }
+
+    #[test]
+    fn media_title_rejects_an_over_length_value() {
+        ensure_valid_media_title(&"a".repeat(MAX_MEDIA_TITLE_CHARS)).unwrap();
+
+        let error = ensure_valid_media_title(&"a".repeat(MAX_MEDIA_TITLE_CHARS + 1)).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidMediaTitle.as_str());
+    }
+
+    #[test]
+    fn length_limits_count_scalar_values_not_bytes() {
+        // The cap is in Unicode scalar values, so a multi-byte character counts once. A title of
+        // MAX multi-byte chars (well over MAX bytes) must still be accepted.
+        ensure_valid_media_title(&"e".repeat(MAX_MEDIA_TITLE_CHARS)).unwrap();
+        ensure_valid_media_title(&"\u{e9}".repeat(MAX_MEDIA_TITLE_CHARS)).unwrap();
     }
 
     #[test]

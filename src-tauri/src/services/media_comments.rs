@@ -5,6 +5,24 @@ use sqlx::{QueryBuilder, SqlitePool};
 use crate::models::yt_dlp::YtDlpComment;
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// Upper bound (in Unicode scalar values) on a stored comment body. yt-dlp comment text is bounded
+/// in practice (YouTube caps a comment at ~10k characters), so a value past this is a malformed or
+/// adversarial response. The text is truncated rather than the whole batch rejected: a comment
+/// backup is bulk, best-effort data, and losing every other comment over one oversized entry would
+/// be the worse failure. There is no length `CHECK` on the column, so this is the only ceiling.
+const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
+
+/// Returns `value` unchanged when it is within `max_chars`, otherwise its first `max_chars` scalar
+/// values. Truncation is on a character boundary (never mid-scalar), so the result is always valid
+/// UTF-8.
+fn truncate_to_chars(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_owned();
+    }
+
+    value.chars().take(max_chars).collect()
+}
+
 fn normalize_optional_text(value: &Option<String>) -> Option<String> {
     value
         .as_deref()
@@ -80,7 +98,7 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
     dedupe_comments_by_id(non_blank)
         .into_iter()
         .map(|comment| {
-            let text = comment.text.trim().to_owned();
+            let text = truncate_to_chars(comment.text.trim(), MAX_COMMENT_TEXT_CHARS);
 
             let author_name = {
                 let trimmed = comment.author_name.trim();
@@ -331,6 +349,29 @@ mod tests {
             time_text: Some("1 day ago".to_string()),
             published_at: Some("2026-01-01".to_string()),
         }
+    }
+
+    #[test]
+    fn truncate_to_chars_caps_only_over_length_values() {
+        assert_eq!(truncate_to_chars("short", 16_000), "short");
+        assert_eq!(truncate_to_chars("abcdef", 3), "abc");
+        // On a character boundary, not a byte one: a 4-scalar multi-byte string capped at 2 keeps
+        // two whole characters rather than slicing one in half.
+        assert_eq!(
+            truncate_to_chars("\u{e9}\u{e9}\u{e9}\u{e9}", 2),
+            "\u{e9}\u{e9}"
+        );
+    }
+
+    #[test]
+    fn prepare_comment_rows_truncates_over_length_text() {
+        // A comment far longer than the ceiling is kept (not dropped) but capped, so one oversized
+        // entry cannot bloat a row while the rest of the batch still imports.
+        let long = "a".repeat(MAX_COMMENT_TEXT_CHARS + 500);
+        let rows = prepare_comment_rows(vec![sample_comment(&long)]);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].text.chars().count(), MAX_COMMENT_TEXT_CHARS);
     }
 
     #[test]
