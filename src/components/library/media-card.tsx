@@ -51,13 +51,14 @@ const MEDIA_THUMBNAIL_HEIGHT = 158;
 const MEDIA_TITLE_HEIGHT = 44;
 const MEDIA_FOOTER_HEIGHT = 28;
 
-// Style objects that never depend on the card's props or state, hoisted to module scope so they
-// are allocated once instead of rebuilt on every render. Only the delta that reacts to
-// isActive/isWatched (the root card and the thumbnail border) stays inline below. The media-type
-// badge reacts only to isAudio, which is a boolean, so both of its variants are hoisted too and
-// picked below rather than rebuilt each render. This component is memoized and re-renders whenever
-// its own primitive props flip (e.g. the active-media id changes), so avoiding the per-render
-// allocation compounds across a virtualized grid of cards.
+// Style values that never depend on the card's props or state, hoisted to module scope so they
+// are built once instead of on every render. Truly only the delta that reacts to state stays
+// inline below: the media-type badge reacts only to isAudio (a boolean), so both of its variants
+// are fully hoisted and picked between; the root card and the thumbnail container keep their static
+// base here (ROOT_CARD_BASE_STYLE / THUMBNAIL_CONTAINER_BASE_STYLE) and spread only the few
+// properties that react to isActive/isWatched/shellBorder over it. This component is memoized and
+// re-renders whenever its own primitive props flip (e.g. the active-media id changes), so avoiding
+// the per-render work compounds across a virtualized grid of cards.
 const THUMBNAIL_IMG_STYLE: CSSProperties = {
     width: "100%",
     height: "100%",
@@ -151,6 +152,38 @@ const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
     fontWeight: 800,
 };
 
+// The static base of the root card. Only the four properties that react to isActive/isWatched
+// (background, borderColor, boxShadow, transform) are spread over this inline below; the rest -
+// including the rem() height and the long transition string - is built once here instead of on
+// every render.
+const ROOT_CARD_BASE_STYLE: CSSProperties = {
+    height: rem(MEDIA_CARD_HEIGHT),
+    cursor: "pointer",
+    outline: "none",
+    transition:
+        "transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+};
+
+// The static base of the thumbnail container. Only the `border` (which reacts to isActive and the
+// shellBorder prop) is spread over this inline below; the three rem() sizes and the multi-layer
+// gradient background are built once here.
+const THUMBNAIL_CONTAINER_BASE_STYLE: CSSProperties = {
+    height: rem(MEDIA_THUMBNAIL_HEIGHT),
+    minHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
+    maxHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
+    borderRadius: rem(14),
+    overflow: "hidden",
+    position: "relative",
+    background:
+        "radial-gradient(220px 130px at 55% 35%, rgba(168,85,247,0.28), transparent 60%)," +
+        "radial-gradient(260px 160px at 35% 65%, rgba(59,130,246,0.22), transparent 65%)," +
+        "linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.52))",
+    flexShrink: 0,
+};
+
 function MediaCardComponent({
     media,
     libraryPath,
@@ -205,8 +238,7 @@ function MediaCardComponent({
             radius="xl"
             p="sm"
             style={{
-                height: rem(MEDIA_CARD_HEIGHT),
-                cursor: "pointer",
+                ...ROOT_CARD_BASE_STYLE,
                 background: isActive
                     ? "linear-gradient(180deg, rgba(124,92,255,0.16), rgba(14,165,233,0.06))"
                     : isWatched
@@ -217,32 +249,16 @@ function MediaCardComponent({
                     : isWatched
                     ? "rgba(34,197,94,0.28)"
                     : shellBorder,
-                outline: "none",
                 boxShadow: isActive
                     ? "0 0 0 1px rgba(124,92,255,0.24), 0 18px 42px rgba(80,50,180,0.22)"
                     : "0 12px 32px rgba(0,0,0,0.12)",
                 transform: isActive ? "translateY(-2px)" : "none",
-                transition:
-                    "transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease",
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
             }}
         >
             <Box
                 style={{
-                    height: rem(MEDIA_THUMBNAIL_HEIGHT),
-                    minHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
-                    maxHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
-                    borderRadius: rem(14),
-                    overflow: "hidden",
-                    position: "relative",
-                    background:
-                        "radial-gradient(220px 130px at 55% 35%, rgba(168,85,247,0.28), transparent 60%)," +
-                        "radial-gradient(260px 160px at 35% 65%, rgba(59,130,246,0.22), transparent 65%)," +
-                        "linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.52))",
+                    ...THUMBNAIL_CONTAINER_BASE_STYLE,
                     border: `1px solid ${isActive ? "rgba(124,92,255,0.52)" : shellBorder}`,
-                    flexShrink: 0,
                 }}
             >
                 {thumbSrc && !thumbFailed ? (
