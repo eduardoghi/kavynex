@@ -214,6 +214,14 @@ jobs:
                   components: rustfmt, clippy
                   targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+            # No Rust build cache here, deliberately - and unlike ci.yml, whose Rust jobs use
+            # Swatinem/rust-cache. These are the bytes that get minisign-signed and provenance-
+            # attested below, so the release compiles the whole dependency tree from source on every
+            # run rather than restoring a cache: a poisoned or stale cache entry could otherwise
+            # influence a signed artifact without leaving a trace. The 90-minute job timeout already
+            # accommodates the cold compile - build time is not the constraint that matters on the
+            # job that holds the signing key.
+
             # These apt packages are deliberately not version-pinned, unlike the Rust toolchain,
             # Node and the runner image. Exact apt pins on a GitHub-hosted image are brittle: the
             # archive supersedes old versions and drops them, so a pinned `pkg=version` starts
