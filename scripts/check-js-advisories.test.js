@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
     chunk,
     collectPackages,
+    cvss3BaseScore,
     isBlockingAdvisory,
+    severityFromCvssScore,
     severityOf,
 } from "./check-js-advisories.js";
 
@@ -67,16 +69,65 @@ describe("chunk", () => {
     });
 });
 
+// A network-worst-case RCE vector, whose CVSS 3.1 base score is a documented 9.8 (CRITICAL). Used
+// to pin the calculator against a known value rather than trusting the formula transcription.
+const RCE_VECTOR = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H";
+
+describe("cvss3BaseScore", () => {
+    it("computes the documented base score for a known vector", () => {
+        expect(cvss3BaseScore(RCE_VECTOR)).toBe(9.8);
+        // A scope-changed, lower-impact vector (CVSS 3.0 spelling) still parses.
+        expect(cvss3BaseScore("CVSS:3.0/AV:N/AC:H/PR:L/UI:R/S:C/C:L/I:L/A:N")).toBeGreaterThan(0);
+    });
+
+    it("returns null for anything that is not a CVSS 3.x base vector", () => {
+        // A v2 vector, a (future) v4 vector, a vector missing a required metric, an unknown metric
+        // value, and non-strings all yield null so the caller fails closed rather than guessing.
+        expect(cvss3BaseScore("AV:N/AC:L/Au:N/C:P/I:P/A:P")).toBeNull();
+        expect(cvss3BaseScore("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H")).toBeNull();
+        expect(cvss3BaseScore("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H")).toBeNull();
+        expect(cvss3BaseScore("CVSS:3.1/AV:X/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")).toBeNull();
+        expect(cvss3BaseScore("")).toBeNull();
+        expect(cvss3BaseScore(undefined)).toBeNull();
+    });
+});
+
+describe("severityFromCvssScore", () => {
+    it("maps a score to its GHSA/OSV band at the boundaries", () => {
+        expect(severityFromCvssScore(9.0)).toBe("CRITICAL");
+        expect(severityFromCvssScore(8.9)).toBe("HIGH");
+        expect(severityFromCvssScore(7.0)).toBe("HIGH");
+        expect(severityFromCvssScore(6.9)).toBe("MODERATE");
+        expect(severityFromCvssScore(4.0)).toBe("MODERATE");
+        expect(severityFromCvssScore(3.9)).toBe("LOW");
+        expect(severityFromCvssScore(0)).toBe("NONE");
+    });
+});
+
 describe("severityOf", () => {
     it("upper-cases a declared severity string", () => {
         expect(severityOf({ database_specific: { severity: "high" } })).toBe("HIGH");
         expect(severityOf({ database_specific: { severity: "Critical" } })).toBe("CRITICAL");
     });
 
-    it("reports UNKNOWN when severity is absent or not a string", () => {
+    it("falls back to the top-level CVSS vector when there is no declared severity", () => {
+        // The exact gap this closes: an advisory carrying its severity only as a CVSS vector in the
+        // top-level `severity` array, with no database_specific.severity, must still be classified
+        // rather than read as UNKNOWN.
+        expect(
+            severityOf({
+                severity: [{ type: "CVSS_V3", score: RCE_VECTOR }],
+            })
+        ).toBe("CRITICAL");
+    });
+
+    it("reports UNKNOWN only when neither a label nor a parseable CVSS vector is present", () => {
         expect(severityOf({})).toBe("UNKNOWN");
         expect(severityOf({ database_specific: {} })).toBe("UNKNOWN");
         expect(severityOf({ database_specific: { severity: 3 } })).toBe("UNKNOWN");
+        expect(severityOf({ severity: [{ type: "CVSS_V2", score: "AV:N/AC:L/Au:N/C:P/I:P/A:P" }] })).toBe(
+            "UNKNOWN"
+        );
     });
 });
 
@@ -86,10 +137,21 @@ describe("isBlockingAdvisory", () => {
         expect(isBlockingAdvisory({ database_specific: { severity: "critical" } })).toBe(true);
     });
 
-    it("does not block a lower or unknown severity", () => {
+    it("blocks a high/critical advisory declared only via a CVSS vector", () => {
+        expect(isBlockingAdvisory({ severity: [{ type: "CVSS_V3", score: RCE_VECTOR }] })).toBe(true);
+    });
+
+    it("does not block a lower severity", () => {
         expect(isBlockingAdvisory({ database_specific: { severity: "MODERATE" } })).toBe(false);
         expect(isBlockingAdvisory({ database_specific: { severity: "LOW" } })).toBe(false);
-        expect(isBlockingAdvisory({})).toBe(false);
+    });
+
+    it("fails closed on an advisory whose severity cannot be determined", () => {
+        // The whole point of the fix: a live advisory with no usable severity signal must block
+        // (surface for a human) rather than pass silently the way a bare database_specific lookup
+        // would let it.
+        expect(isBlockingAdvisory({})).toBe(true);
+        expect(isBlockingAdvisory({ database_specific: { severity: 3 } })).toBe(true);
     });
 
     it("never blocks a withdrawn advisory, even a critical one", () => {
