@@ -40,6 +40,12 @@ export function useMediaPlayer({
         [activeMedia]
     );
 
+    // These two are cheap primitive derivations (one string compare, one trimmed-truthiness check),
+    // left un-memoized on purpose. Unlike activeSrc/activeThumbSrc above - whose values are consumed
+    // as effect/render inputs where a fresh identity matters - these are booleans, and the whole
+    // returned object goes through useMemoObject below, which keeps a stable object identity as long
+    // as each field is shallow-equal. Wrapping a boolean compare in useMemo would add indirection
+    // without changing what consumers observe.
     const canOpenInYoutube = activeYoutubeUrl !== "";
     const activeIsWatched = Boolean(activeMedia?.watched_at?.trim());
 
