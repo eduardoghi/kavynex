@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import type { MediaPlayerController } from "../types/controllers";
 import type { MediaRow } from "../types/media";
 import { resolveStoredPath, fileSrcFromAbsolutePath } from "../utils/media-utils";
@@ -17,35 +17,21 @@ export function useMediaPlayer({
     const [viewMode, setViewMode] = useState<"library" | "player">("library");
     const [activeMedia, setActiveMediaState] = useState<MediaRow | null>(null);
 
-    const activeIsAudio = useMemo(() => {
-        if (!activeMedia) {
-            return false;
-        }
-
-        return activeMedia.media_type === "audio";
-    }, [activeMedia]);
-
-    const activeSrc = useMemo(() => {
-        const absolutePath = resolveStoredPath(activeMedia?.file_path ?? null, libraryPath);
-        return fileSrcFromAbsolutePath(absolutePath);
-    }, [activeMedia, libraryPath]);
-
-    const activeThumbSrc = useMemo(() => {
-        const absolutePath = resolveStoredPath(activeMedia?.thumbnail_path ?? null, libraryPath);
-        return fileSrcFromAbsolutePath(absolutePath);
-    }, [activeMedia, libraryPath]);
-
-    const activeYoutubeUrl = useMemo(
-        () => buildYoutubeWatchUrl(activeMedia?.youtube_video_id ?? ""),
-        [activeMedia]
+    // Every field below is a pure, cheap derivation off activeMedia/libraryPath, computed plainly
+    // rather than each wrapped in its own useMemo. The whole returned object goes through
+    // useMemoObject below, which keeps a stable controller identity as long as every field is
+    // shallow-equal to the previous render - and these are all primitives (strings/booleans),
+    // compared by value, so recomputing one to the same value on an unrelated re-render leaves that
+    // identity unchanged. Per-field memoization of a primitive would only cache the compute, not
+    // affect what any consumer observes, so it is left out to keep the derivations uniform.
+    const activeIsAudio = activeMedia?.media_type === "audio";
+    const activeSrc = fileSrcFromAbsolutePath(
+        resolveStoredPath(activeMedia?.file_path ?? null, libraryPath)
     );
-
-    // These two are cheap primitive derivations (one string compare, one trimmed-truthiness check),
-    // left un-memoized on purpose. Unlike activeSrc/activeThumbSrc above - whose values are consumed
-    // as effect/render inputs where a fresh identity matters - these are booleans, and the whole
-    // returned object goes through useMemoObject below, which keeps a stable object identity as long
-    // as each field is shallow-equal. Wrapping a boolean compare in useMemo would add indirection
-    // without changing what consumers observe.
+    const activeThumbSrc = fileSrcFromAbsolutePath(
+        resolveStoredPath(activeMedia?.thumbnail_path ?? null, libraryPath)
+    );
+    const activeYoutubeUrl = buildYoutubeWatchUrl(activeMedia?.youtube_video_id ?? "");
     const canOpenInYoutube = activeYoutubeUrl !== "";
     const activeIsWatched = Boolean(activeMedia?.watched_at?.trim());
 
