@@ -252,6 +252,23 @@ one (the old artifacts stay validly signed under the old key); the mitigations t
 GitHub account controls and not tampering with an already-published release. It is recorded here
 rather than left implicit because "the update is signed" reads as stronger than it is.
 
+#### Windows install mode and automatic relaunch
+
+On Windows the updater runs the downloaded installer in `passive` mode (`installMode`,
+`tauri.conf.json`): the NSIS installer shows a minimal progress bar and proceeds without a wizard
+click, and once it finishes the app calls `relaunch()` itself (`src/services/app-update-service.ts`).
+So the full sequence - signature-verified download, install, restart - completes from the single
+click the user makes on "Download and install update"; there is no second "install now?" prompt in
+between. This is deliberate rather than an oversight. The trust decision has already been made by
+then: the artifact's minisign signature is verified before the installer runs (see above), so the
+bytes being installed are the key holder's, and a second confirmation would gate a step that is
+already cryptographically gated. `passive` (rather than the fully silent `quiet`) is chosen so the
+install still shows progress and cannot run entirely invisibly, and the update path is only ever
+entered from an explicit user action - never a background auto-install (the optional startup check
+only *surfaces a notice*, it does not download or install). It is recorded here because every other
+security-relevant default in Kavynex has its reasoning written down, and "installs and relaunches
+from one click" is the kind of behavior a reviewer should find explained rather than infer.
+
 ### Installers are unsigned by design
 
 Kavynex's installers (the `.exe`/`.msi` on Windows, the `.dmg` on macOS, the
