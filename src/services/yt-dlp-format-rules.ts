@@ -7,6 +7,16 @@
 // adds the merged video+audio entries YouTube does not serve as a single format, and every
 // entry carries a label built here. The backend deliberately sends no label or order, because
 // it cannot produce either for a row it never emitted.
+//
+// One value this module produces does cross back to the backend and is a shared contract with it:
+// the merged `format_id` string `<video_id>+<audio_id>` (see buildMergedFormats). That `+` join is
+// yt-dlp's own selector syntax, and the backend re-validates every id it receives against it -
+// `is_valid_format_id` (charset, non-empty `+`-separated parts) and `resolve_format_has_video`
+// (each part must resolve to a real format from the fetched metadata) in
+// `src-tauri/src/services/yt_dlp_download.rs`. So a compromised/garbled selector is rejected there,
+// not trusted. What has no compile-time or schema guard is the *semantics*: if yt-dlp ever changed
+// how `+` merges, this construction and those two Rust checks would have to move together, and
+// nothing but this note and the round-trip tests (yt-dlp-format-rules.test.ts) would flag the drift.
 import type { MediaType, YtDlpFormat, YtDlpFormatOption } from "../types/media";
 
 type ExtendedYtDlpFormat = YtDlpFormatOption & {
@@ -342,6 +352,8 @@ export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormatOption[] 
                   const videoFormatId = normalizeFormatId(videoFormat.format_id);
 
                   return {
+                      // The `+` selector is a contract re-validated by the backend; see the
+                      // module header for is_valid_format_id / resolve_format_has_video.
                       format_id: `${videoFormatId}+${preferredAudioId}`,
                       display_name: buildCompactLabel("merged", videoFormat, preferredAudioExt),
                       ext: videoFormat.ext || preferredAudio.ext || "mp4",
