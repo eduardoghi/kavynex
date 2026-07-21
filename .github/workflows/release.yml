@@ -346,9 +346,63 @@ jobs:
                       src-tauri/target/**/release/bundle/**/*.rpm
                       src-tauri/target/**/release/bundle/**/*.app.tar.gz
 
+    # A CycloneDX SBOM (Software Bill of Materials) of the Rust dependency tree that goes into the
+    # shipped binary, published as a release asset. It is generated from the committed Cargo.lock, so
+    # it lists the exact crate versions a downloader received - the machine-readable answer to "does
+    # this release contain crate X at version Y?" when an advisory lands later. Kept in its own job,
+    # out of publish-tauri, for the same reason as the audit job: `cargo install` compiles a
+    # third-party tool (and its build scripts) on the runner, which must never run on the leg that
+    # holds the signing key. The JS build-time tree is deliberately not included here - it is bundled
+    # into the frontend assets rather than being a native dependency of the binary, and is already
+    # advisory/license-gated by the frontend-audit job and pinned in pnpm-lock.yaml.
+    sbom:
+        name: Publish SBOM
+        needs: publish-tauri
+        # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
+        runs-on: ubuntu-22.04
+        timeout-minutes: 30
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Install Rust toolchain
+              # Pinned to match the build (keep in sync with rust-toolchain.toml).
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.96.0
+
+            # Pin the tool version (keep in sync when bumping), same reasoning as the cargo-audit /
+            # cargo-deny pins in the audit job: an unpinned `cargo install` builds whatever the latest
+            # release is at dispatch time, so the code executing on the runner is not what this
+            # repository last reviewed.
+            - name: Install cargo-cyclonedx
+              run: cargo install cargo-cyclonedx@0.5.9 --locked
+
+            # Generates the SBOM from the committed Cargo.lock (metadata only, no compile), then
+            # uploads it to the draft *before* the checksums job runs, so its hash is covered by
+            # SHA256SUMS.txt and its presence is enforced by that job's asset-completeness check.
+            - name: Generate and upload the SBOM
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  cargo cyclonedx --manifest-path src-tauri/Cargo.toml --format json
+                  # cargo-cyclonedx writes <crate>.cdx.json next to the manifest it processed; there
+                  # is one package here. Locate it rather than hard-coding the derived name.
+                  SBOM=$(find src-tauri -maxdepth 2 -name '*.cdx.json' | head -n1)
+                  if [ -z "$SBOM" ]; then
+                      echo "::error::cargo-cyclonedx produced no .cdx.json file" >&2
+                      exit 1
+                  fi
+                  cp "$SBOM" "kavynex_${VERSION}_sbom.cdx.json"
+                  gh release upload "v$VERSION" "kavynex_${VERSION}_sbom.cdx.json" --clobber
+
     checksums:
         name: Publish checksums
-        needs: publish-tauri
+        needs: [publish-tauri, sbom]
         # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-22.04
         timeout-minutes: 60
@@ -409,6 +463,7 @@ jobs:
                       "kavynex_${VERSION}_amd64.deb.sig" \
                       "kavynex-${VERSION}-1.x86_64.rpm" \
                       "kavynex-${VERSION}-1.x86_64.rpm.sig" \
+                      "kavynex_${VERSION}_sbom.cdx.json" \
                       "latest.json" \
                       "SHA256SUMS.txt" \
                   ; do

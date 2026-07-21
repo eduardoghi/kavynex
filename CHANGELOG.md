@@ -33,6 +33,8 @@ the full set (hundreds of fixes, refactors and test/CI improvements not listed i
 - Robustness: a root error boundary that persists frontend crashes to the app log, zod validation of
   IPC responses and event payloads, single-instance focus instead of a second window, rotating file
   logs with cookie-path masking, and a warning when the installed yt-dlp is old.
+- Supply chain: each release now publishes a CycloneDX SBOM of the Rust dependency tree, covered by
+  SHA256SUMS.txt and the release asset-completeness check.
 
 ### Changed
 

@@ -327,6 +327,24 @@ gh attestation verify <installer-file> --repo eduardoghi/kavynex
 
 A successful check confirms the file was built by this repository's release workflow.
 
+### Software Bill of Materials (SBOM)
+
+Every release also publishes a CycloneDX SBOM (`kavynex_<version>_sbom.cdx.json`,
+`.github/workflows/release.yml`'s `sbom` job) of the Rust dependency tree that goes into the
+shipped binary. It is generated with `cargo-cyclonedx` from the committed `Cargo.lock`, so it lists
+the exact crate versions a given release contains - the machine-readable answer to "does this
+release ship crate X at version Y?" when an advisory lands after the fact, without recompiling or
+walking the dependency graph by hand. Its hash is part of `SHA256SUMS.txt` and its presence is
+enforced by the `checksums` job's asset-completeness check, so a release missing it fails loudly
+rather than shipping silently.
+
+The SBOM covers the *native* dependency tree only. The frontend's build-time npm tree is bundled
+into the webview assets rather than being a runtime dependency of the binary, and is already
+advisory- and license-gated (`frontend-audit` job, `scripts/check-js-advisories.js` /
+`scripts/check-js-licenses.js`) and pinned in `pnpm-lock.yaml`. Like `SHA256SUMS.txt` and the
+provenance attestation, the SBOM applies from the first release published after it was added, not
+retroactively (see "When these three controls started applying" above).
+
 ### Accepted risk: the signing key is present while dependencies build
 
 The release workflow's build step (`.github/workflows/release.yml`, `tauri-apps/tauri-action`)
