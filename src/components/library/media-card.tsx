@@ -53,10 +53,11 @@ const MEDIA_FOOTER_HEIGHT = 28;
 
 // Style objects that never depend on the card's props or state, hoisted to module scope so they
 // are allocated once instead of rebuilt on every render. Only the delta that reacts to
-// isActive/isWatched/isAudio (the root card, the thumbnail border and the media-type badge)
-// stays inline below. This component is memoized and re-renders whenever its own primitive props
-// flip (e.g. the active-media id changes), so avoiding the per-render allocation compounds across
-// a virtualized grid of cards.
+// isActive/isWatched (the root card and the thumbnail border) stays inline below. The media-type
+// badge reacts only to isAudio, which is a boolean, so both of its variants are hoisted too and
+// picked below rather than rebuilt each render. This component is memoized and re-renders whenever
+// its own primitive props flip (e.g. the active-media id changes), so avoiding the per-render
+// allocation compounds across a virtualized grid of cards.
 const THUMBNAIL_IMG_STYLE: CSSProperties = {
     width: "100%",
     height: "100%",
@@ -130,6 +131,24 @@ const COMMENTS_BADGE_STYLE: CSSProperties = {
     color: "rgba(255,255,255,0.74)",
     fontWeight: 700,
     paddingInline: rem(8),
+};
+
+// The media-type badge only ever takes one of two forms (audio/video), so both are hoisted and
+// selected by isAudio at render time instead of rebuilding the object each render.
+const MEDIA_TYPE_BADGE_STYLE_AUDIO: CSSProperties = {
+    flexShrink: 0,
+    background: "rgba(249,115,22,0.13)",
+    borderColor: "rgba(249,115,22,0.34)",
+    color: "rgb(253,186,116)",
+    fontWeight: 800,
+};
+
+const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
+    flexShrink: 0,
+    background: "rgba(59,130,246,0.13)",
+    borderColor: "rgba(59,130,246,0.34)",
+    color: "rgb(147,197,253)",
+    fontWeight: 800,
 };
 
 function MediaCardComponent({
@@ -412,19 +431,11 @@ function MediaCardComponent({
 
                         <Badge
                             variant="outline"
-                            style={{
-                                flexShrink: 0,
-                                background: isAudio
-                                    ? "rgba(249,115,22,0.13)"
-                                    : "rgba(59,130,246,0.13)",
-                                borderColor: isAudio
-                                    ? "rgba(249,115,22,0.34)"
-                                    : "rgba(59,130,246,0.34)",
-                                color: isAudio
-                                    ? "rgb(253,186,116)"
-                                    : "rgb(147,197,253)",
-                                fontWeight: 800,
-                            }}
+                            style={
+                                isAudio
+                                    ? MEDIA_TYPE_BADGE_STYLE_AUDIO
+                                    : MEDIA_TYPE_BADGE_STYLE_VIDEO
+                            }
                         >
                             {isAudio ? UI_TEXT.library.mediaTypeAudio : UI_TEXT.library.mediaTypeVideo}
                         </Badge>
