@@ -34,6 +34,23 @@ import { AppButton } from "../ui/app-button";
 // controlled and responsive.
 const LIBRARY_SEARCH_DEBOUNCE_MS = 200;
 
+// The per-card actions the grid exposes on each media row. Grouped into one object rather than
+// passed as eight separate props (most of them optional callbacks) so the section's contract stays
+// legible and a caller cannot silently drop one to `undefined` by mistyping its name - the whole
+// object is required, and a missing field on it is a type error.
+export type MediaCardActions = {
+    onOpenMedia: (media: MediaRow) => void;
+    onRequestDeleteMedia: (media: MediaRow) => void;
+    onMarkWatched?: (media: MediaRow) => void;
+    onMarkUnwatched?: (media: MediaRow) => void;
+    // See MediaLibraryController.watchedActionInFlight - passed through to disable a card's own
+    // watch/unwatch menu item while that row's toggle is in flight.
+    watchedActionInFlight?: ReadonlySet<number>;
+    onOpenFileLocation?: (media: MediaRow) => void;
+    onOpenSourceInYoutube?: (media: MediaRow) => void;
+    onEditTitle?: (media: MediaRow) => void;
+};
+
 type SelectedChannelLibrarySectionProps = {
     selectedChannel: Channel;
     itemCountLabel: string;
@@ -57,16 +74,7 @@ type SelectedChannelLibrarySectionProps = {
     shellSurface: string;
     onAddMedia: () => void;
     onBack: () => void;
-    onOpenMedia: (media: MediaRow) => void;
-    onRequestDeleteMedia: (media: MediaRow) => void;
-    onMarkWatched?: (media: MediaRow) => void;
-    onMarkUnwatched?: (media: MediaRow) => void;
-    // See MediaLibraryController.watchedActionInFlight - passed through to disable a card's own
-    // watch/unwatch menu item while that row's toggle is in flight.
-    watchedActionInFlight?: ReadonlySet<number>;
-    onOpenFileLocation?: (media: MediaRow) => void;
-    onOpenSourceInYoutube?: (media: MediaRow) => void;
-    onEditTitle?: (media: MediaRow) => void;
+    cardActions: MediaCardActions;
 };
 
 export function SelectedChannelLibrarySection({
@@ -90,14 +98,7 @@ export function SelectedChannelLibrarySection({
     shellSurface,
     onAddMedia,
     onBack,
-    onOpenMedia,
-    onRequestDeleteMedia,
-    onMarkWatched,
-    onMarkUnwatched,
-    watchedActionInFlight,
-    onOpenFileLocation,
-    onOpenSourceInYoutube,
-    onEditTitle,
+    cardActions,
 }: SelectedChannelLibrarySectionProps): JSX.Element {
     const avatarSrc = fileSrcFromStoredPath(selectedChannel.avatar_path, libraryPath);
 
@@ -359,14 +360,14 @@ export function SelectedChannelLibrarySection({
                         ? UI_TEXT.library.emptyDescription
                         : UI_TEXT.library.noResultsDescription
                 }
-                onOpen={onOpenMedia}
-                onRequestDelete={onRequestDeleteMedia}
-                onMarkWatched={onMarkWatched}
-                onMarkUnwatched={onMarkUnwatched}
-                watchedActionInFlight={watchedActionInFlight}
-                onOpenFileLocation={onOpenFileLocation}
-                onOpenSourceInYoutube={onOpenSourceInYoutube}
-                onEditTitle={onEditTitle}
+                onOpen={cardActions.onOpenMedia}
+                onRequestDelete={cardActions.onRequestDeleteMedia}
+                onMarkWatched={cardActions.onMarkWatched}
+                onMarkUnwatched={cardActions.onMarkUnwatched}
+                watchedActionInFlight={cardActions.watchedActionInFlight}
+                onOpenFileLocation={cardActions.onOpenFileLocation}
+                onOpenSourceInYoutube={cardActions.onOpenSourceInYoutube}
+                onEditTitle={cardActions.onEditTitle}
             />
         </Stack>
     );

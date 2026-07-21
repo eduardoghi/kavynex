@@ -82,8 +82,10 @@ function makeProps(
         shellSurface: "rgba(255,255,255,0.03)",
         onAddMedia: vi.fn(),
         onBack: vi.fn(),
-        onOpenMedia: vi.fn(),
-        onRequestDeleteMedia: vi.fn(),
+        cardActions: {
+            onOpenMedia: vi.fn(),
+            onRequestDeleteMedia: vi.fn(),
+        },
         ...overrides,
     };
 }

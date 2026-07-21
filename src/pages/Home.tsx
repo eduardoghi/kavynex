@@ -237,16 +237,17 @@ export default function Home(): JSX.Element {
                                         shellSurface={viewState.shellSurface}
                                         onAddMedia={() => media.setAddMediaOpen(true)}
                                         onBack={() => channels.setSelectedChannelId(null)}
-                                        onOpenMedia={media.mediaPlayer.openPlayer}
-                                        onRequestDeleteMedia={media.requestDeleteMedia}
-                                        onMarkWatched={handleMarkWatched}
-                                        onMarkUnwatched={handleMarkUnwatched}
-                                        watchedActionInFlight={
-                                            controller.mediaActions.watchedActionInFlight
-                                        }
-                                        onOpenFileLocation={handleOpenFileLocation}
-                                        onOpenSourceInYoutube={handleOpenSourceInYoutube}
-                                        onEditTitle={titleEditing.handleEditTitle}
+                                        cardActions={{
+                                            onOpenMedia: media.mediaPlayer.openPlayer,
+                                            onRequestDeleteMedia: media.requestDeleteMedia,
+                                            onMarkWatched: handleMarkWatched,
+                                            onMarkUnwatched: handleMarkUnwatched,
+                                            watchedActionInFlight:
+                                                controller.mediaActions.watchedActionInFlight,
+                                            onOpenFileLocation: handleOpenFileLocation,
+                                            onOpenSourceInYoutube: handleOpenSourceInYoutube,
+                                            onEditTitle: titleEditing.handleEditTitle,
+                                        }}
                                     />
                                 </Box>
                             )}
