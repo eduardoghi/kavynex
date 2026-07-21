@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
     AppShell,
     Box,
@@ -19,7 +19,8 @@ import { ChannelSidebar } from "../components/layout/channel-sidebar";
 import { MediaPlayerView } from "../components/player/media-player-view";
 import { UI_TEXT } from "../constants/ui-text";
 import { useHomeController } from "../hooks/use-home-controller";
-import type { DiagnosticsMediaTarget } from "../types/diagnostics";
+import { useHomeDiagnosticsFocus } from "../hooks/use-home-diagnostics-focus";
+import { useHomeMediaTitleEditing } from "../hooks/use-home-media-title-editing";
 import type { MediaRow } from "../types/media";
 
 export default function Home(): JSX.Element {
@@ -38,47 +39,20 @@ export default function Home(): JSX.Element {
 
     // Stable handlers so the memoized MediaCard is not re-rendered by unrelated state
     // changes. Each depends only on the underlying controller action it calls.
-    const { editMediaTitle, markAsWatched, markAsUnwatched } = controller.mediaActions;
+    const { markAsWatched, markAsUnwatched } = controller.mediaActions;
     const { openMediaFileLocation, openMediaSourceInYoutube } = media;
 
-    const [editTitleMedia, setEditTitleMedia] = useState<MediaRow | null>(null);
-    const [isSavingTitle, setIsSavingTitle] = useState(false);
+    // The two page-local flows that own state (the edit-title modal, the Diagnostics jump-to-media
+    // focus) live in their own hooks rather than inline here, so this component stays presentation +
+    // wiring. See use-home-media-title-editing / use-home-diagnostics-focus.
+    const titleEditing = useHomeMediaTitleEditing({
+        editMediaTitle: controller.mediaActions.editMediaTitle,
+    });
 
-    // Set when the user clicks a "missing media" path in Diagnostics: the target channel is
-    // selected and the grid, once that channel's media has loaded, scrolls to and highlights the
-    // card, then clears this. A media whose file is missing still has its row, so it is listed in
-    // the grid (just not playable).
-    const [focusMediaId, setFocusMediaId] = useState<number | null>(null);
-
-    const { closeDiagnostics } = controller.diagnostics;
-    const { setSelectedChannelId } = channels;
-
-    const handleOpenDiagnosticsMedia = useCallback(
-        (target: DiagnosticsMediaTarget): void => {
-            closeDiagnostics();
-            setSelectedChannelId(target.channelId);
-            setFocusMediaId(target.mediaId);
-        },
-        [closeDiagnostics, setSelectedChannelId]
-    );
-
-    const handleFocusMediaHandled = useCallback((): void => {
-        setFocusMediaId(null);
-    }, []);
-
-    const handleSaveMediaTitle = useCallback(
-        async (item: MediaRow, title: string): Promise<void> => {
-            setIsSavingTitle(true);
-
-            try {
-                await editMediaTitle(item, title);
-                setEditTitleMedia(null);
-            } finally {
-                setIsSavingTitle(false);
-            }
-        },
-        [editMediaTitle]
-    );
+    const diagnosticsFocus = useHomeDiagnosticsFocus({
+        closeDiagnostics: controller.diagnostics.closeDiagnostics,
+        setSelectedChannelId: channels.setSelectedChannelId,
+    });
 
     const handleMarkWatched = useCallback(
         (item: MediaRow) => void markAsWatched(item.id),
@@ -99,10 +73,6 @@ export default function Home(): JSX.Element {
         (item: MediaRow) => void openMediaSourceInYoutube(item),
         [openMediaSourceInYoutube]
     );
-
-    const handleEditTitle = useCallback((item: MediaRow) => {
-        setEditTitleMedia(item);
-    }, []);
 
     return (
         <Box
@@ -260,8 +230,8 @@ export default function Home(): JSX.Element {
                                         onApplyQuery={media.applyMediaQuery}
                                         onLoadMore={media.loadMoreMedia}
                                         activeMediaId={media.mediaPlayer.activeMedia?.id ?? null}
-                                        focusMediaId={focusMediaId}
-                                        onFocusMediaHandled={handleFocusMediaHandled}
+                                        focusMediaId={diagnosticsFocus.focusMediaId}
+                                        onFocusMediaHandled={diagnosticsFocus.handleFocusMediaHandled}
                                         libraryPath={controller.libraryPath}
                                         shellBorder={viewState.shellBorder}
                                         shellSurface={viewState.shellSurface}
@@ -276,7 +246,7 @@ export default function Home(): JSX.Element {
                                         }
                                         onOpenFileLocation={handleOpenFileLocation}
                                         onOpenSourceInYoutube={handleOpenSourceInYoutube}
-                                        onEditTitle={handleEditTitle}
+                                        onEditTitle={titleEditing.handleEditTitle}
                                     />
                                 </Box>
                             )}
@@ -292,14 +262,14 @@ export default function Home(): JSX.Element {
                         error={controller.error}
                         databaseRecovery={controller.databaseRecovery}
                         uiGuards={controller.uiGuards}
-                        onOpenDiagnosticsMedia={handleOpenDiagnosticsMedia}
+                        onOpenDiagnosticsMedia={diagnosticsFocus.handleOpenDiagnosticsMedia}
                     />
 
                     <EditMediaTitleModal
-                        media={editTitleMedia}
-                        loading={isSavingTitle}
-                        onClose={() => setEditTitleMedia(null)}
-                        onSave={(item, title) => void handleSaveMediaTitle(item, title)}
+                        media={titleEditing.editTitleMedia}
+                        loading={titleEditing.isSavingTitle}
+                        onClose={titleEditing.closeEditTitle}
+                        onSave={(item, title) => void titleEditing.handleSaveMediaTitle(item, title)}
                     />
                 </AppShell.Main>
             </AppShell>
