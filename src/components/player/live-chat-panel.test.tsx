@@ -1,9 +1,26 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { LiveChatPanel, liveChatItemKey } from "./live-chat-panel";
+import { describe, expect, it, vi } from "vitest";
+import { LiveChatPanel, liveChatAnnouncement, liveChatItemKey } from "./live-chat-panel";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
 import { RemoteImagesProvider } from "./remote-images-context";
 import { renderWithMantine } from "../../test/test-utils";
+
+// The virtualized inline list only mounts rows near the viewport, and jsdom has no layout, so the
+// real virtualizer would render nothing here. Mock it to yield every row (same approach as the media
+// grid and comments panel tests) so a test can assert on a specific message's content.
+vi.mock("@tanstack/react-virtual", () => ({
+    useVirtualizer: vi.fn(({ count }: { count: number }) => ({
+        getTotalSize: () => count * 72,
+        getVirtualItems: () =>
+            Array.from({ length: count }, (_, index) => ({
+                index,
+                key: index,
+                start: index * 72,
+            })),
+        measureElement: vi.fn(),
+        measure: vi.fn(),
+    })),
+}));
 
 function makeChatMessage(overrides: Partial<LiveChatMessageItem> = {}): LiveChatMessageItem {
     return {
@@ -53,6 +70,30 @@ describe("liveChatItemKey", () => {
         const second = makeChatMessage();
 
         expect(liveChatItemKey(first)).not.toBe(liveChatItemKey(second));
+    });
+});
+
+describe("liveChatAnnouncement", () => {
+    it("joins the author, paid amount and text for the screen-reader region", () => {
+        const message = makeChatMessage({
+            author_name: "Buyer",
+            amount_text: "$5.00",
+            message_text: "thanks!",
+        });
+
+        expect(liveChatAnnouncement(message)).toBe("Buyer: $5.00 thanks!");
+    });
+
+    it("falls back to just the author when there is no amount or text", () => {
+        // A sticker carries no message text and may have no parsed amount; the announcement is still
+        // meaningful (who it was from) rather than an empty string.
+        const sticker = makeChatMessage({
+            author_name: "Buyer",
+            amount_text: null,
+            message_text: "",
+        });
+
+        expect(liveChatAnnouncement(sticker)).toBe("Buyer");
     });
 });
 
