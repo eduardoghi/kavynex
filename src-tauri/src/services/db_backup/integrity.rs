@@ -2,6 +2,9 @@
 //!
 //! The automatic paths (open, backup) use the fast, shallow `quick_check` (see the shared helpers
 //! in the parent module); this is the thorough check a subtly damaged page can otherwise slip past.
+//!
+//! Tests live in the parent module's `mod tests`, which reaches the test-only internals here
+//! (`integrity_check_marker_path`, `MAX_INTEGRITY_PROBLEMS`) through the parent's `#[cfg(test)] use`.
 
 use std::path::{Path, PathBuf};
 

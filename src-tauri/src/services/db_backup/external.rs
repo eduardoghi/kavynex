@@ -1,6 +1,10 @@
 //! The user-triggered export and the once-a-day mirror of the database into a user-chosen external
 //! directory (Settings > Database), so a disk failure that takes the app config directory does not
 //! take every on-volume `.bak` snapshot with it.
+//!
+//! Tests live in the parent module's `mod tests`, which reaches the test-only internals here
+//! (`external_backup_path`, `generation_external_backup_path`, `EXTERNAL_BACKUP_FILE_NAME`,
+//! `EXTERNAL_BACKUP_ROTATED_GENERATIONS`) through the parent's `#[cfg(test)] use`.
 
 use std::path::{Path, PathBuf};
 
