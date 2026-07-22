@@ -18,33 +18,12 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
     const [thumbPath, setThumbPath] = useState("");
     const [isGeneratingThumb, setIsGeneratingThumb] = useState(false);
 
+    // Guards against a stale async result overwriting a newer one: every generate/reset bumps this,
+    // and a settled request only applies its result when its id still matches. This is what makes a
+    // setState after unmount harmless too - React 18+ dropped the unmounted-setState warning and
+    // treats the call as a no-op, so no mount-tracking ref is needed on top of the id check.
     const thumbGenerationIdRef = useRef(0);
     const currentTempThumbRef = useRef("");
-    const isMountedRef = useRef(true);
-
-    useEffect(() => {
-        isMountedRef.current = true;
-
-        return () => {
-            isMountedRef.current = false;
-        };
-    }, []);
-
-    const safeSetThumbPath = useCallback((value: string): void => {
-        if (!isMountedRef.current) {
-            return;
-        }
-
-        setThumbPath(value);
-    }, []);
-
-    const safeSetIsGeneratingThumb = useCallback((value: boolean): void => {
-        if (!isMountedRef.current) {
-            return;
-        }
-
-        setIsGeneratingThumb(value);
-    }, []);
 
     const cleanupTempThumb = useCallback(async (path?: string | null): Promise<void> => {
         const normalizedPath = path?.trim() ?? "";
@@ -84,9 +63,9 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
             }
 
             currentTempThumbRef.current = normalizedNextPath;
-            safeSetThumbPath(normalizedNextPath);
+            setThumbPath(normalizedNextPath);
         },
-        [cleanupTempThumb, safeSetThumbPath]
+        [cleanupTempThumb]
     );
 
     const setManualThumbPath = useCallback(
@@ -95,16 +74,16 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
             const previousTempPath = currentTempThumbRef.current.trim();
 
             thumbGenerationIdRef.current += 1;
-            safeSetIsGeneratingThumb(false);
+            setIsGeneratingThumb(false);
 
             if (previousTempPath) {
                 await cleanupTempThumb(previousTempPath);
             }
 
             currentTempThumbRef.current = "";
-            safeSetThumbPath(normalizedNextPath);
+            setThumbPath(normalizedNextPath);
         },
-        [cleanupTempThumb, safeSetIsGeneratingThumb, safeSetThumbPath]
+        [cleanupTempThumb]
     );
 
     const generateThumbForMedia = useCallback(
@@ -116,7 +95,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
             }
 
             const requestId = ++thumbGenerationIdRef.current;
-            safeSetIsGeneratingThumb(true);
+            setIsGeneratingThumb(true);
 
             try {
                 const generatedPath = await generateTemporaryThumbnail(normalizedPath);
@@ -138,26 +117,21 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
                     }
 
                     currentTempThumbRef.current = "";
-                    safeSetThumbPath("");
+                    setThumbPath("");
                 }
             } finally {
                 if (requestId === thumbGenerationIdRef.current) {
-                    safeSetIsGeneratingThumb(false);
+                    setIsGeneratingThumb(false);
                 }
             }
         },
-        [
-            cleanupTempThumb,
-            replaceGeneratedTempThumb,
-            safeSetIsGeneratingThumb,
-            safeSetThumbPath,
-        ]
+        [cleanupTempThumb, replaceGeneratedTempThumb]
     );
 
     const resetThumbState = useCallback(async (): Promise<void> => {
         thumbGenerationIdRef.current += 1;
-        safeSetIsGeneratingThumb(false);
-        safeSetThumbPath("");
+        setIsGeneratingThumb(false);
+        setThumbPath("");
 
         const currentTempThumb = currentTempThumbRef.current;
         currentTempThumbRef.current = "";
@@ -165,7 +139,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
         if (currentTempThumb) {
             await cleanupTempThumb(currentTempThumb);
         }
-    }, [cleanupTempThumb, safeSetIsGeneratingThumb, safeSetThumbPath]);
+    }, [cleanupTempThumb]);
 
     // Memoized so this hook's return keeps a stable identity across renders. Its consumer
     // (use-add-media-form) lists the whole object as a useCallback dependency, so an unstable
