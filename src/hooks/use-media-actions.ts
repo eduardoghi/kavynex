@@ -70,6 +70,17 @@ export function useMediaActions({
 
     const { isRunning: isDeletingMedia, runWithFlag: runDeleteAction } = useAsyncFlag();
 
+    // Mirror the delete flag into a ref so requestDeleteMedia/closeDeleteMediaModal can check the
+    // re-entrancy guard without depending on `isDeletingMedia`, which flips false->true->false
+    // around every delete. Both callbacks flow down to onRequestDelete on every (memoized)
+    // MediaCard, so recreating them on each delete would re-render the whole virtualized grid - the
+    // exact churn media-card.tsx's memoization comment says it avoids. Same activeMediaRef pattern
+    // used just below for the active media.
+    const isDeletingMediaRef = useRef(isDeletingMedia);
+    useEffect(() => {
+        isDeletingMediaRef.current = isDeletingMedia;
+    }, [isDeletingMedia]);
+
     // Watched updates are guarded per media row, not by one shared flag. A single flag made the
     // second of two quick toggles on *different* cards a silent no-op: useAsyncFlag's runWithFlag
     // returns undefined without throwing when it is already running, and no component renders a
@@ -101,26 +112,23 @@ export function useMediaActions({
     // them directly instead of on the per-render mediaPlayer object.
     const { activeMedia, setActiveMedia, closePlayer } = mediaPlayer;
 
-    const requestDeleteMedia = useCallback(
-        (media: MediaRow): void => {
-            if (isDeletingMedia) {
-                return;
-            }
+    const requestDeleteMedia = useCallback((media: MediaRow): void => {
+        if (isDeletingMediaRef.current) {
+            return;
+        }
 
-            setMediaToDelete(media);
-            setConfirmDeleteMediaOpen(true);
-        },
-        [isDeletingMedia]
-    );
+        setMediaToDelete(media);
+        setConfirmDeleteMediaOpen(true);
+    }, []);
 
     const closeDeleteMediaModal = useCallback((): void => {
-        if (isDeletingMedia) {
+        if (isDeletingMediaRef.current) {
             return;
         }
 
         setConfirmDeleteMediaOpen(false);
         setMediaToDelete(null);
-    }, [isDeletingMedia]);
+    }, []);
 
     const closePlayerIfActive = useCallback(
         (mediaId: number): void => {
