@@ -60,6 +60,14 @@
 # (2026-07-20, `--in-place --no-config --file`): 32 mutants, 31 unviable (the AppHandle command
 # glue does not build under mutation), 1 viable and caught - the unlink-rewording code gate,
 # extracted into the pure `reword_unlink_error_after_reference_clear` so a test could pin it.
+# `src/services/ssrf_guard.rs` - the pure IP-classification SSRF guard behind the thumbnail/avatar
+# downloader (loopback/private/link-local/reserved, including IPv4-mapped/compatible and
+# 6to4/NAT64/Teredo tunnel-embedded addresses). Extracted from `thumbnail_download.rs` into its own
+# module so the classifier can be gated without dragging in the downloader's untestable async network
+# code. ADDED after a measured pass (2026-07-21, `--in-place --no-config --file`): 73 mutants, 3
+# unviable, 70 caught, 0 missed. The tunnel decoders were split into pure functions pinned by an
+# exact-value test - that is what kills the shift/mask/XOR operator mutants a classification-only test
+# had let survive, since many wrong octets still land in the same allow/deny band.
 examine_globs = [
     "src/utils/path.rs",
     "src/services/library_guard.rs",
@@ -69,6 +77,7 @@ examine_globs = [
     "src/services/library_cleanup.rs",
     "src/services/filesystem.rs",
     "src/services/db_backup/mod.rs",
+    "src/services/ssrf_guard.rs",
     "src/commands/live_chat.rs",
 ]
 
