@@ -19,6 +19,7 @@ pub mod live_chat_storage;
 pub mod logger;
 pub mod media_comments;
 pub mod process_registry;
+pub mod ssrf_guard;
 pub mod temp_paths;
 pub mod thumbnail;
 pub mod thumbnail_download;
