@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 
 use crate::services::database::{get_app_settings_from_pool, shared_pool};
+use crate::services::logger;
 use crate::utils::path::is_network_path;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -103,6 +104,21 @@ pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) ->
             AppErrorCode::InvalidLibraryPath,
             "requested path does not match the configured library directory",
         ));
+    }
+
+    // The match above compares canonical paths, but falls back to exact-string equality when a
+    // path cannot be canonicalized - typically because the library lives on a drive that is
+    // currently offline. That fallback grants the match without confirming canonical containment,
+    // so record when acceptance rested on it. It leaves the degraded check observable in the log
+    // rather than silent; the request is still only accepted when the strings match exactly. The
+    // two paths are equal here (they just matched), so canonicalizing the requested one is enough
+    // to tell the fallback branch apart from the canonical one.
+    if std::fs::canonicalize(trimmed).is_err() {
+        logger::warn(
+            "library_guard",
+            "accepted the library path by exact-string match; it could not be canonicalized (the \
+             library directory may be offline), so canonical containment was not confirmed",
+        );
     }
 
     Ok(())
