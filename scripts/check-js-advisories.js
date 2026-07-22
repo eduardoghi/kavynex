@@ -32,6 +32,13 @@ const BLOCKING_SEVERITIES = new Set(["HIGH", "CRITICAL"]);
 // cheaply and the request stays well inside any body limit.
 const QUERY_BATCH_SIZE = 100;
 
+// Bound each OSV request. Without this a stalled endpoint - a TCP/TLS hang rather than a quick
+// error - would hold the read open until the CI job's own timeout (tens of minutes) killed it,
+// failing the whole run for a reason unrelated to the code under review. A slow network still gets
+// generous room; only a genuine stall trips it, and it fails fast with a message that names the
+// outage rather than looking like an advisory was found.
+const OSV_REQUEST_TIMEOUT_MS = 15_000;
+
 function readInstalledPackages(scope) {
     // `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to spawn
     // `.bat`/`.cmd` without one (CVE-2024-27980); CI runs on Linux and takes the shell-free path.
@@ -86,8 +93,29 @@ export function chunk(items, size) {
     return batches;
 }
 
+// `fetch` under a per-request deadline. On a timeout, `fetch` rejects with a `TimeoutError`
+// DOMException; it is remapped to a plain Error that names the outage, so the gate's failure reads
+// as "osv.dev unreachable" rather than being mistaken for an advisory.
+async function fetchWithTimeout(url, options) {
+    try {
+        return await fetch(url, {
+            ...options,
+            signal: AbortSignal.timeout(OSV_REQUEST_TIMEOUT_MS),
+        });
+    } catch (error) {
+        if (error instanceof Error && error.name === "TimeoutError") {
+            throw new Error(
+                `${url} did not respond within ${OSV_REQUEST_TIMEOUT_MS} ms; ` +
+                    "osv.dev appears unreachable (this is a network/service failure, not an advisory)"
+            );
+        }
+
+        throw error;
+    }
+}
+
 async function postJson(url, body) {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -101,7 +129,7 @@ async function postJson(url, body) {
 }
 
 async function getJson(url) {
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
 
     if (!response.ok) {
         throw new Error(`${url} responded with ${response.status}`);
