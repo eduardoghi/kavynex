@@ -57,10 +57,24 @@ const MAX_RUN_ID_LEN: usize = 128;
 // check in the wait loop). This stays generous so a slow-but-progressing download or merge
 // is never killed by mistake.
 const YT_DLP_STALL_TIMEOUT_SECS: u64 = 300;
+// Absolute ceiling on a single download's wall-clock time, independent of progress. The stall
+// detector above only fires on the *absence* of progress; a pathological or hostile source that
+// dribbles just enough bytes to keep resetting the stall timer could otherwise keep a yt-dlp/ffmpeg
+// process alive forever. This backstop bounds that. It is set very generously so it never truncates
+// a legitimate large single-video download on a slow link (yt-dlp runs with --no-playlist, so this
+// is always one video), only a run that is effectively never going to finish.
+const YT_DLP_MAX_RUNTIME_SECS: u64 = 12 * 60 * 60;
 
 /// True when the child has produced no output for longer than the stall threshold.
 fn download_is_stalled(now_ms: u64, last_activity_ms: u64, threshold_ms: u64) -> bool {
     now_ms.saturating_sub(last_activity_ms) > threshold_ms
+}
+
+/// True when the run has been going longer than the absolute cap, regardless of progress. This is
+/// the backstop the stall detector cannot provide (see [`YT_DLP_MAX_RUNTIME_SECS`]). Kept a pure
+/// function so the boundary can be pinned by a unit test without running a real download.
+fn download_exceeded_runtime(elapsed_ms: u64, max_ms: u64) -> bool {
+    elapsed_ms > max_ms
 }
 
 /// Sums the byte sizes of the files in `dir` whose name starts with `prefix`. The stall
@@ -112,11 +126,33 @@ fn redact_paths_value(value: &str) -> String {
     }
 }
 
+/// Maps a flag whose following value is sensitive to how that value must be redacted. Centralized
+/// so a path-carrying flag is a single edit here rather than a new branch in the loop below - the
+/// shape of gap that previously let `--ffmpeg-location` leak the app-cache path (and with it the OS
+/// username) into a line shown in the UI and pasted into public bug reports. Any flag whose value is
+/// an absolute local path belongs here.
+fn redaction_for_flag(flag: &str) -> PendingRedaction {
+    match flag {
+        // Both carry an absolute path under the per-user profile: the cookies file location, and
+        // the ffmpeg binary's parent directory - which falls back to `<app_data_dir>/tools`, i.e.
+        // exactly the `C:\Users\<name>\AppData\...` layout the `--paths` redaction exists to hide.
+        "--cookies" | "--ffmpeg-location" => PendingRedaction::FullValue,
+        "--paths" => PendingRedaction::PathsValue,
+        // The URL is the only argument after the `--` separator (see build_download_command_args);
+        // reduce it so the raw pasted URL, with any playlist/tracking params, never reaches the UI
+        // terminal.
+        "--" => PendingRedaction::YoutubeUrl,
+        _ => PendingRedaction::None,
+    }
+}
+
 /// Joins yt-dlp args for display, redacting values that can leak local filesystem paths. The
-/// value after `--cookies` reveals the cookies file location, and each `--paths` value carries
-/// the temp directory under the user's app cache; both would expose the username/profile layout
-/// in a log line that is shown in the app and may be pasted into a public bug report.
-/// `--cookies-from-browser` (a browser name, not a path) is left intact.
+/// value after `--cookies` reveals the cookies file location, `--ffmpeg-location` carries the
+/// ffmpeg directory (which can sit under the app cache), and each `--paths` value carries the
+/// temp directory under the user's app cache; all would expose the username/profile layout in a
+/// log line that is shown in the app and may be pasted into a public bug report.
+/// `--cookies-from-browser` (a browser name, not a path) is left intact. Which flags are treated
+/// as sensitive lives in `redaction_for_flag`, so this loop never has to be touched to cover a new one.
 fn redacted_args_for_log(args: &[String]) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(args.len());
     let mut pending = PendingRedaction::None;
@@ -141,16 +177,7 @@ fn redacted_args_for_log(args: &[String]) -> String {
             PendingRedaction::None => {}
         }
 
-        if arg == "--cookies" {
-            pending = PendingRedaction::FullValue;
-        } else if arg == "--paths" {
-            pending = PendingRedaction::PathsValue;
-        } else if arg == "--" {
-            // The URL is the only argument after the `--` separator (see
-            // build_download_command_args); reduce it so the raw pasted URL, with any
-            // playlist/tracking params, never reaches the UI terminal.
-            pending = PendingRedaction::YoutubeUrl;
-        }
+        pending = redaction_for_flag(arg);
 
         parts.push(arg.clone());
     }
@@ -825,10 +852,23 @@ pub async fn download_media_from_url_async(
 
         let mut cancel_requested = false;
         let mut stalled = false;
+        let mut timed_out = false;
         let mut last_observed_temp_size: u64 = 0;
 
         let status = loop {
             let user_cancelled = cancel_flag.load(Ordering::SeqCst);
+
+            // Absolute run-time backstop, checked before the stall logic so a slow-drip run that
+            // keeps resetting the stall timer is still stopped once it crosses the ceiling.
+            if !timed_out
+                && !user_cancelled
+                && download_exceeded_runtime(
+                    download_start.elapsed().as_millis() as u64,
+                    YT_DLP_MAX_RUNTIME_SECS * 1000,
+                )
+            {
+                timed_out = true;
+            }
 
             if !stalled
                 && !user_cancelled
@@ -866,7 +906,7 @@ pub async fn download_media_from_url_async(
                 }
             }
 
-            if (user_cancelled || stalled) && !cancel_requested {
+            if (user_cancelled || stalled || timed_out) && !cancel_requested {
                 cancel_requested = true;
 
                 if let Some(pid) = child_pid {
@@ -912,6 +952,20 @@ pub async fn download_media_from_url_async(
         } else {
             String::new()
         };
+
+        // The absolute run-time cap is reported before the stall/cancel/exit classification: a run
+        // killed for exceeding it comes back with cancel_requested set and a non-success status, so
+        // classify_download_termination would otherwise report it as a plain cancel. It gets its own
+        // message so the cause is clear rather than looking like a user cancel.
+        if timed_out {
+            let message = "yt-dlp download exceeded the maximum allowed run time and was stopped";
+            emit_download_error(app, &normalized_run_id, message);
+
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadTimeout,
+                message,
+            ));
+        }
 
         match classify_download_termination(
             stalled,
@@ -1470,6 +1524,18 @@ mod tests {
     }
 
     #[test]
+    fn download_exceeded_runtime_only_past_the_cap() {
+        let max = YT_DLP_MAX_RUNTIME_SECS * 1000;
+
+        // Past the cap -> exceeded.
+        assert!(download_exceeded_runtime(max + 1, max));
+        // Exactly at the cap -> not yet.
+        assert!(!download_exceeded_runtime(max, max));
+        // Well under the cap -> not exceeded.
+        assert!(!download_exceeded_runtime(0, max));
+    }
+
+    #[test]
     fn total_matching_file_size_sums_only_prefixed_files() {
         let dir = unique_temp_dir("stall-size");
         fs::create_dir_all(&dir).unwrap();
@@ -1493,6 +1559,8 @@ mod tests {
     #[test]
     fn redacted_args_for_log_redacts_cookies_file_but_not_browser() {
         let args = vec![
+            "--ffmpeg-location".to_string(),
+            "C:\\Users\\alice\\AppData\\Roaming\\com.kavynex.app\\tools".to_string(),
             "--cookies".to_string(),
             "/home/user/.config/cookies.txt".to_string(),
             "--cookies-from-browser".to_string(),
@@ -1509,6 +1577,9 @@ mod tests {
 
         assert!(!logged.contains("/home/user/.config/cookies.txt"));
         assert!(logged.contains("--cookies <redacted>"));
+        // The ffmpeg directory can fall back to <app_data_dir>/tools, which embeds the OS
+        // username, so its value is dropped just like the cookies path.
+        assert!(logged.contains("--ffmpeg-location <redacted>"));
         // The browser name is not sensitive and stays intact.
         assert!(logged.contains("--cookies-from-browser firefox"));
         // The temp directory (which embeds the OS username) is dropped, but the scope prefix is
