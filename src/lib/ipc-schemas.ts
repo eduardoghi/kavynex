@@ -341,12 +341,22 @@ const ytDlpTerminalEventSchema = z.object({
     suggested_title: z.string().nullable(),
 }) satisfies z.ZodType<YtDlpTerminalEvent>;
 
+// Payload of the database-integrity-failed event. This is a frontend-owned contract (the backend
+// emits a plain serde struct, not a ts-rs-exported type), so there is no generated type to tie it
+// to with `satisfies`; the shape is trivial and validated here all the same.
+const databaseIntegrityFailedEventSchema = z.object({
+    problems: z.array(z.string()),
+});
+
+export type DatabaseIntegrityFailedEvent = z.infer<typeof databaseIntegrityFailedEventSchema>;
+
 export const IPC_EVENT_SCHEMAS = {
     ytDlpLog: ytDlpLogEventSchema,
     ytDlpFinished: ytDlpFinishedEventSchema,
     // The error and cancelled events carry the same payload shape as a failed event.
     ytDlpFailed: ytDlpFailedEventSchema,
     ytDlpTerminal: ytDlpTerminalEventSchema,
+    databaseIntegrityFailed: databaseIntegrityFailedEventSchema,
 } as const;
 
 // The streamed live chat protocol on the `Channel`: a run of `batch` events carrying raw JSON

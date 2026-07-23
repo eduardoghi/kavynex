@@ -19,3 +19,8 @@ pub const EVENT_YT_DLP_ERROR: &str = "yt-dlp-error";
 pub const EVENT_YT_DLP_FINISHED: &str = "yt-dlp-finished";
 pub const EVENT_YT_DLP_CANCELLED: &str = "yt-dlp-cancelled";
 pub const EVENT_YT_DLP_TERMINAL: &str = "yt-dlp-terminal";
+
+// Emitted when the background full integrity check finds the database may be corrupt, so the
+// frontend can surface it proactively instead of leaving it buried in the log file. Payload:
+// `{ "problems": [..] }`.
+pub const EVENT_DATABASE_INTEGRITY_FAILED: &str = "database-integrity-failed";

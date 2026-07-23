@@ -14,6 +14,7 @@ import { useHomePlayerActions } from "./use-home-player-actions";
 import { useHomeLibraryPanel } from "./use-home-library-panel";
 import { useHomePlayerPanel } from "./use-home-player-panel";
 import { useStartupUpdateCheck } from "./use-startup-update-check";
+import { useDatabaseIntegrityAlert } from "./use-database-integrity-alert";
 
 export function useHomeController(): HomeController {
     const errorState = useErrorModal();
@@ -53,6 +54,12 @@ export function useHomeController(): HomeController {
     useStartupUpdateCheck({
         enabled: settingsState.settings.checkUpdatesOnStartup,
         onUpdateAvailable: errorState.showNotice,
+    });
+
+    // Surfaces a proactive warning if the background full integrity check reports the database may
+    // be corrupt, instead of leaving that failure only in the log file.
+    useDatabaseIntegrityAlert({
+        onIntegrityFailure: errorState.showError,
     });
 
     const uiGuards = useHomeUiGuards({

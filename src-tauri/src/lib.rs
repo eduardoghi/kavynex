@@ -10,11 +10,21 @@ pub use error::{AppError, AppErrorCode, AppResult};
 use std::path::Path;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 // How often the in-session backup check below wakes up. `backup_database` itself throttles
 // the actual snapshot to once per 24h, so this only needs to be frequent enough that a
 // long-running session eventually crosses that threshold - it does not create extra backups.
+/// Payload of the [`EVENT_DATABASE_INTEGRITY_FAILED`](crate::constants::EVENT_DATABASE_INTEGRITY_FAILED)
+/// event: the list of problems the background full integrity check reported. Frontend-owned contract
+/// (validated there with a zod schema), so it is a plain serde struct rather than a ts-rs-exported
+/// type - the frontend only needs the shape, not a generated binding.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DatabaseIntegrityFailedEvent {
+    problems: Vec<String>,
+}
+
 const PERIODIC_BACKUP_CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 // The first backup pass runs after this short delay rather than a full interval, so a session
@@ -197,6 +207,17 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
                         report.problems.len(),
                         report.problems.join("; ")
                     ),
+                );
+
+                // Push it to the frontend too, so the user is told proactively (a banner pointing at
+                // Settings > Database) instead of the failure only living in the log file. Fire and
+                // forget: an emit failure (no window yet) must not affect anything, and the log line
+                // above already recorded the problem regardless.
+                let _ = app_handle.emit(
+                    crate::constants::EVENT_DATABASE_INTEGRITY_FAILED,
+                    DatabaseIntegrityFailedEvent {
+                        problems: report.problems.clone(),
+                    },
                 );
             }
             Err(error) => services::logger::warn(
