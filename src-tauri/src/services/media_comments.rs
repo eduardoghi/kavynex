@@ -9,8 +9,11 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// in practice (YouTube caps a comment at ~10k characters), so a value past this is a malformed or
 /// adversarial response. The text is truncated rather than the whole batch rejected: a comment
 /// backup is bulk, best-effort data, and losing every other comment over one oversized entry would
-/// be the worse failure. There is no length `CHECK` on the column, so this is the only ceiling.
-const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
+/// be the worse failure. The database also enforces this ceiling now (a `CHECK` on fresh installs, a
+/// trigger on ones whose table predates it - see db_schema), so an out-of-band writer cannot store
+/// an unbounded value; this app-side truncation keeps the normal write path from ever tripping it.
+/// The two must stay in sync - a db_schema test pins the DDL value against this constant.
+pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 
 /// Returns `value` unchanged when it is within `max_chars`, otherwise its first `max_chars` scalar
 /// values. Truncation is on a character boundary (never mid-scalar), so the result is always valid

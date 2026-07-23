@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 13;
+pub(crate) const SCHEMA_VERSION: i64 = 14;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -133,6 +133,13 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     // but still additive (no table rebuild) - see apply_migration_13.
     if current_version < 13 {
         apply_migration_13(pool).await?;
+    }
+
+    // v14: enforces the comment-body length ceiling on databases whose video_comments table predates
+    // the CHECK. Truncates any already-over-length row, then adds the enforcement triggers. Additive
+    // (no table rebuild), same shape as v13 - see apply_migration_14.
+    if current_version < 14 {
+        apply_migration_14(pool).await?;
     }
 
     // Each migration is guarded by version and transactional (it stamps the new
@@ -266,6 +273,59 @@ async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
     }
 
     set_user_version(&mut tx, 13).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
+/// v14: brings the comment-body length ceiling to databases whose `video_comments` table predates
+/// it. Such a table already exists, so the `CHECK` added to VIDEO_COMMENTS_TABLE_DDL never reached it
+/// (CREATE TABLE IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table without
+/// rebuilding it). Rather than rebuild the comments table just to add a CHECK, this truncates any row
+/// that already exceeds the ceiling and installs BEFORE INSERT/UPDATE triggers that reject future
+/// ones - the same additive strategy as v13.
+///
+/// The truncation is non-destructive beyond the overflow itself: it keeps the first
+/// `MAX_COMMENT_TEXT_CHARS` characters (`substr` uses character semantics on a TEXT value), the same
+/// cap the app's own write path already applies (media_comments::truncate_to_chars), so a comment
+/// stored by the app is never affected - only an out-of-band/oversized row is. It must run before the
+/// triggers, which fire only on new writes and would otherwise leave a pre-existing over-length row
+/// in place. The repair, the trigger creation and the version stamp share one transaction, so a crash
+/// leaves the database fully at v13 or fully at v14. The TRIGGER_DDLS list is re-run in full (every
+/// statement is `IF NOT EXISTS`), so the v13 triggers are untouched and only the two new comment ones
+/// are created.
+async fn apply_migration_14(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    let repaired: u64 = sqlx::query(
+        "UPDATE video_comments SET text = substr(text, 1, 16000) WHERE LENGTH(text) > 16000",
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| db_error("failed to truncate over-length comment text", error))?
+    .rows_affected();
+
+    if repaired > 0 {
+        crate::services::logger::warn(
+            "db_schema",
+            format!("v14: truncated {repaired} over-length comment(s) to the maximum length"),
+        );
+    }
+
+    for &(_, ddl) in TRIGGER_DDLS {
+        sqlx::query(ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to create trigger", error))?;
+    }
+
+    set_user_version(&mut tx, 14).await?;
 
     tx.commit()
         .await
@@ -830,6 +890,60 @@ mod tests {
         }
     }
 
+    #[test]
+    fn video_comments_text_check_literal_matches_the_app_cap() {
+        // The DDL and the migration both hardcode the ceiling (a CHECK/trigger literal cannot
+        // interpolate a Rust constant), so pin them against the app-side truncation cap here: if one
+        // moves without the other, the schema and the write path would silently disagree.
+        let cap = crate::services::media_comments::MAX_COMMENT_TEXT_CHARS;
+        assert_eq!(cap, 16_000);
+        assert!(
+            VIDEO_COMMENTS_TABLE_DDL.contains(&format!("LENGTH(text) <= {cap}")),
+            "the video_comments DDL must enforce the same ceiling as MAX_COMMENT_TEXT_CHARS"
+        );
+    }
+
+    #[tokio::test]
+    async fn video_comments_check_rejects_over_length_text() {
+        let pool = memory_pool().await;
+        ensure_schema(&pool).await.unwrap();
+
+        let cap = crate::services::media_comments::MAX_COMMENT_TEXT_CHARS;
+
+        // Parent channel + video for the FK; the rejected insert must fail on the length CHECK, not
+        // on a missing parent.
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type) \
+             VALUES (1, 1, 'T', 't', 'video/a.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Exactly at the cap is accepted.
+        sqlx::query("INSERT INTO video_comments (video_id, author_name, text) VALUES (1, 'A', ?)")
+            .bind("a".repeat(cap))
+            .execute(&pool)
+            .await
+            .expect("a comment at the ceiling should be accepted");
+
+        // One over the cap is rejected by the CHECK.
+        let rejected = sqlx::query(
+            "INSERT INTO video_comments (video_id, author_name, text) VALUES (1, 'A', ?)",
+        )
+        .bind("a".repeat(cap + 1))
+        .execute(&pool)
+        .await;
+        assert!(
+            rejected.is_err(),
+            "a comment longer than the ceiling must be rejected"
+        );
+    }
+
     #[tokio::test]
     async fn introspection_helpers_see_the_videos_constraints() {
         // Backs the import-validation helpers against the real schema: the (channel_id, file_path)
@@ -875,9 +989,10 @@ mod tests {
         let pool = memory_pool().await;
 
         // A videos table as an older app version left it: the live-chat columns are present but
-        // there is no CHECK and no trigger. Stamped at v12 so ensure_schema runs only migration_13
-        // over this hand-built table (baseline and 8..12 are skipped for current_version >= their
-        // targets), which is exactly the pre-CHECK database this migration must reach.
+        // there is no CHECK and no trigger. Stamped at v12 so ensure_schema runs migration_13 (and
+        // then the additive migration_14) over this hand-built table (baseline and 8..12 are skipped
+        // for current_version >= their targets), which is exactly the pre-CHECK database migration_13
+        // must reach.
         sqlx::query("CREATE TABLE channels (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, youtube_handle TEXT)")
             .execute(&pool)
             .await
@@ -894,6 +1009,14 @@ mod tests {
                 FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
                 UNIQUE (channel_id, file_path) \
             )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // A real database always carries video_comments too; include it so the additive v14 migration
+        // (which installs the comment-length triggers on this table) has a table to attach them to.
+        sqlx::query(
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER NOT NULL, author_name TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         )
         .execute(&pool)
         .await
@@ -1066,8 +1189,11 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        // Includes the `text` column a real video_comments table has always carried, so the v14
+        // migration (which truncates over-length comment bodies and installs the length triggers)
+        // reaches a realistic table rather than a stub missing the column it operates on.
         sqlx::query(
-            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER NOT NULL, comment_id TEXT, parent_comment_id TEXT, FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER NOT NULL, comment_id TEXT, parent_comment_id TEXT, author_name TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         )
         .execute(&pool)
         .await

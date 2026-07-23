@@ -51,7 +51,12 @@ pub(super) const VIDEO_COMMENTS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS vi
     author_handle TEXT,
     author_channel_id TEXT,
     author_thumbnail TEXT,
-    text TEXT NOT NULL,
+    -- Ceiling on a stored comment body, mirrored from media_comments::MAX_COMMENT_TEXT_CHARS (the
+    -- app-side truncation ceiling). LENGTH counts characters on a TEXT value, matching that
+    -- character cap. On a fresh database this CHECK is the primary guard; databases whose table
+    -- predates it get the equivalent trigger via migration v14 (see db_schema). Keep the literal in
+    -- sync with the constant - a db_schema test pins it.
+    text TEXT NOT NULL CHECK (LENGTH(text) <= 16000),
     like_count INTEGER NOT NULL DEFAULT 0,
     reply_count INTEGER NOT NULL DEFAULT 0,
     is_author_uploader INTEGER NOT NULL DEFAULT 0,
@@ -208,6 +213,27 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
         WHEN NEW.title_normalized IS NULL \
         BEGIN \
             SELECT RAISE(ABORT, 'title_normalized is null'); \
+        END",
+    ),
+    // Enforce the comment-body length ceiling on databases whose video_comments table predates the
+    // CHECK (the CHECK in VIDEO_COMMENTS_TABLE_DDL only reaches fresh installs). Same 16000-char
+    // ceiling as media_comments::MAX_COMMENT_TEXT_CHARS; installed by migration v14.
+    (
+        "video_comments",
+        "CREATE TRIGGER IF NOT EXISTS trg_video_comments_text_length_insert \
+        BEFORE INSERT ON video_comments \
+        WHEN LENGTH(NEW.text) > 16000 \
+        BEGIN \
+            SELECT RAISE(ABORT, 'comment text exceeds the maximum length'); \
+        END",
+    ),
+    (
+        "video_comments",
+        "CREATE TRIGGER IF NOT EXISTS trg_video_comments_text_length_update \
+        BEFORE UPDATE ON video_comments \
+        WHEN LENGTH(NEW.text) > 16000 \
+        BEGIN \
+            SELECT RAISE(ABORT, 'comment text exceeds the maximum length'); \
         END",
     ),
 ];
