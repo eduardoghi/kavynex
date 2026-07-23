@@ -123,6 +123,22 @@ pub(crate) fn is_unique_violation(error: &sqlx::Error) -> bool {
     }
 }
 
+/// The raw driver message for a SQLite database error, if it carries one. For a constraint
+/// violation this is text like `UNIQUE constraint failed: videos.youtube_video_id`, which lets a
+/// caller tell *which* constraint fired instead of assuming it - so a unique violation can be mapped
+/// to the right domain error rather than blanket-labeled. Returns `None` for a non-database error
+/// (a pool/IO error), which carries no such message.
+pub(crate) fn database_error_message(error: &sqlx::Error) -> Option<String> {
+    use sqlx::error::DatabaseError;
+
+    match error {
+        sqlx::Error::Database(database_error) => {
+            Some(DatabaseError::message(database_error.as_ref()).to_string())
+        }
+        _ => None,
+    }
+}
+
 /// True when a sqlx error is a SQLite FOREIGN KEY constraint violation, so an insert against a
 /// no-longer-existing parent row (e.g. a channel deleted concurrently) can be mapped to a
 /// friendly domain error instead of surfacing the raw SQL message.
@@ -175,8 +191,22 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
             ));
         }
 
+        // The pre-migration snapshot is the only rollback point once schema DDL runs, so a real
+        // backup failure must block the migration rather than proceed unprotected. A throttled or
+        // skipped backup returns Ok(false) - a recent snapshot already predates this migration, so
+        // that case is fine; only an Err (disk full, permission denied, a failed VACUUM) is fatal.
+        // A brand-new database (first run, no file yet) never reaches here as an Err either:
+        // backup_database returns Ok(false) immediately when the file is missing, so first-run setup
+        // is not blocked. The frontend's startup recovery flow handles this AppError the same way it
+        // handles the quick_check gate above - by offering a restore from the last healthy backup.
         if let Err(error) = crate::services::db_backup::backup_database(path).await {
-            crate::services::logger::warn("db_backup", format!("database backup failed: {error}"));
+            return Err(AppError::from_code_with_details(
+                AppErrorCode::AppError,
+                "could not snapshot the database before a pending schema migration; free up disk \
+                 space and check permissions on the app config directory, then restart - or restore \
+                 from a backup in Settings > Database",
+                error.to_string(),
+            ));
         }
     }
 

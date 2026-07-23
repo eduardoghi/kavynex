@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use ts_rs::TS;
 
-use crate::services::database::{db_error, is_foreign_key_violation, is_unique_violation};
+use crate::services::database::{
+    database_error_message, db_error, is_foreign_key_violation, is_unique_violation,
+};
 use crate::utils::text::normalize_search_text;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -333,14 +335,18 @@ pub async fn insert_media(
     .await
     .map_err(|error| {
         // The (channel_id, file_path) conflict is absorbed by the no-op ON CONFLICT DO UPDATE
-        // above, so a surfacing unique violation can only be the (channel_id, youtube_video_id)
-        // index: the same YouTube video already registered for this channel under a different
-        // path. Map it to the same friendly code the frontend pre-check raises, closing the
-        // check-then-act race with a consistent message instead of a raw SQLite error. This is a
-        // closed-world assumption over the unique indexes on `videos` (see db_schema::INDEX_DDLS):
-        // a new unique constraint added there would surface here mislabeled as this error, so the
-        // two must be kept in sync.
-        if is_unique_violation(&error) {
+        // above, so a surfacing unique violation is expected to be the (channel_id,
+        // youtube_video_id) index: the same YouTube video already registered for this channel under
+        // a different path. Confirm that from the failing constraint's own message rather than
+        // assuming it - the previous code mapped *any* unique violation to this error, so a unique
+        // constraint added to `videos` later (see db_schema::INDEX_DDLS) would have been mislabeled
+        // as "already saved". A violation that does not name youtube_video_id falls through to the
+        // generic db_error below instead of lying about the cause.
+        if is_unique_violation(&error)
+            && database_error_message(&error)
+                .map(|message| message.contains("youtube_video_id"))
+                .unwrap_or(false)
+        {
             return AppError::from_code(
                 AppErrorCode::VideoAlreadyExistsForChannel,
                 "this video is already saved for this channel",
