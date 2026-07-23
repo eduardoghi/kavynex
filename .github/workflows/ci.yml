@@ -198,15 +198,15 @@ jobs:
             - name: Run tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
-            # The two yt-dlp process-kill tests are #[ignore]d because they hang only on GitHub's
-            # Ubuntu runner (see CONTRIBUTING.md); the default `cargo test` above therefore
-            # skips them everywhere. They pass on Windows and macOS, so run them there by name (not
-            # a blanket `--ignored`, which would also re-run the fixture-regeneration test) to keep
-            # the kill/timeout/cancel path - a security and correctness control - under CI coverage
-            # on those platforms. The short per-step timeout means a future hang fails diagnosably
-            # instead of wedging the job; Linux CI coverage of this path stays an accepted gap.
-            - name: Run ignored process-kill tests (Windows and macOS only)
-              if: matrix.platform != 'ubuntu-26.04'
+            # The two yt-dlp process-kill tests are #[ignore]d because they historically hung on
+            # GitHub's Ubuntu runner (see CONTRIBUTING.md); the default `cargo test` above therefore
+            # skips them everywhere. Run them explicitly by name (not a blanket `--ignored`, which
+            # would also re-run the fixture-regeneration test) to keep the kill/timeout/cancel path -
+            # a security and correctness control - under CI coverage. They pass on Windows and macOS;
+            # this also runs them on the newer ubuntu-26.04 runner to check whether the reaping hang
+            # seen on ubuntu-22.04 is gone there. The short per-step timeout means a hang fails
+            # diagnosably in 5 minutes instead of wedging the job.
+            - name: Run ignored process-kill tests
               timeout-minutes: 5
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked run_and_capture_kills_the_child -- --ignored --test-threads=1
 
