@@ -106,7 +106,8 @@ async function fetchWithTimeout(url, options) {
         if (error instanceof Error && error.name === "TimeoutError") {
             throw new Error(
                 `${url} did not respond within ${OSV_REQUEST_TIMEOUT_MS} ms; ` +
-                    "osv.dev appears unreachable (this is a network/service failure, not an advisory)"
+                    "osv.dev appears unreachable (this is a network/service failure, not an advisory)",
+                { cause: error }
             );
         }
 
