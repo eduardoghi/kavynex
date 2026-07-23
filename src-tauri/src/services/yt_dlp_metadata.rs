@@ -1070,13 +1070,8 @@ mod tests {
         assert!(other_collider.starts_with("a_b_"));
     }
 
-    // Ignored on CI: this spawns a real child process (`sleep`) and exercises the kill path.
-    // It passes locally, on macOS and on Windows, and in a plain Linux container - but on
-    // GitHub's Ubuntu runner the kill/reap await never completes (even a tokio::time
-    // timeout around it does not fire there), so the test hangs and wedges the whole run. The
-    // behaviour is not reproducible off that runner. Run it deliberately with `--ignored`.
+    // Spawns a real child process (`sleep`/`ping`) and exercises the kill/timeout path.
     #[tokio::test]
-    #[ignore = "spawns a real child; hangs only on GitHub's ubuntu CI runner (run with --ignored)"]
     async fn run_and_capture_kills_the_child_and_reports_timeout_when_it_expires() {
         // A slow command that would outlive the 1s timeout by far; the call must come
         // back with the timeout error instead of waiting for it (the child is killed).
@@ -1107,10 +1102,8 @@ mod tests {
         assert_eq!(error.code, AppErrorCode::YtDlpMetadataTimeout.as_str());
     }
 
-    // Ignored on CI for the same reason as the timeout test above: it spawns a real child and
-    // the kill/reap path hangs only on GitHub's Ubuntu runner. Run with `--ignored`.
+    // Spawns a real child process and exercises the kill/cancel path.
     #[tokio::test]
-    #[ignore = "spawns a real child; hangs only on GitHub's ubuntu CI runner (run with --ignored)"]
     async fn run_and_capture_kills_the_child_and_reports_cancellation_when_flagged() {
         use std::sync::atomic::AtomicBool;
         use std::sync::Arc;
