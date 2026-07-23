@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import {
     ActionIcon,
     Avatar,
@@ -11,28 +10,15 @@ import {
     Title,
     Tooltip,
 } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
 import { ArrowDownAZ, ArrowLeft, ArrowUpAZ, Search, Video } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
-import {
-    buildMediaQueryFilters,
-    type MediaQueryFilters,
-    type MediaTypeFilter,
-    type PublicationDateFilter,
-    type SortCategory,
-    type SortDirection,
-    type WatchedFilter,
-} from "../../utils/media-library-filters";
+import type { MediaQueryFilters } from "../../utils/media-library-filters";
+import { useChannelLibraryFilters } from "../../hooks/use-channel-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
 import { toUnionValue } from "../../utils/guards";
 import { AppButton } from "../ui/app-button";
-
-// Debounce the search before it drives the (O(n log n) filter+sort) memo, so typing in a
-// large library does not re-filter and re-sort on every keystroke. The input itself stays
-// controlled and responsive.
-const LIBRARY_SEARCH_DEBOUNCE_MS = 200;
 
 // The per-card actions the grid exposes on each media row. Grouped into one object rather than
 // passed as eight separate props (most of them optional callbacks) so the section's contract stays
@@ -102,60 +88,23 @@ export function SelectedChannelLibrarySection({
 }: SelectedChannelLibrarySectionProps): JSX.Element {
     const avatarSrc = fileSrcFromStoredPath(selectedChannel.avatar_path, libraryPath);
 
-    const [searchValue, setSearchValue] = useState("");
-    const [debouncedSearchValue] = useDebouncedValue(searchValue, LIBRARY_SEARCH_DEBOUNCE_MS);
-    const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaTypeFilter>("all");
-    const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>("all");
-    const [publicationDateFilter, setPublicationDateFilter] =
-        useState<PublicationDateFilter>("all");
-    const [sortCategory, setSortCategory] = useState<SortCategory>("publication_date");
-    const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-
-    // The filter/sort/search selections are pushed to the backend, which returns the matching
-    // page (and total). Debounced search keeps typing from firing a query per keystroke.
-    const queryFilters = useMemo<MediaQueryFilters>(
-        () =>
-            buildMediaQueryFilters({
-                searchValue: debouncedSearchValue,
-                mediaTypeFilter,
-                watchedFilter,
-                publicationDateFilter,
-                sortCategory,
-                sortDirection,
-            }),
-        [
-            debouncedSearchValue,
-            mediaTypeFilter,
-            watchedFilter,
-            publicationDateFilter,
-            sortCategory,
-            sortDirection,
-        ]
-    );
-
-    // A Diagnostics jump names one specific media, but these selections are local state and this
-    // section is only remounted when the *channel* changes. Jumping to a media in the already
-    // selected channel while a filter excluded it left the grid paging to the end of the list and
-    // giving up silently - no scroll, no highlight, no message, just a modal that closed and
-    // nothing happening. Clear the selections so the target is in the result set. Sort is left
-    // alone: ordering cannot exclude a row.
-    useEffect(() => {
-        if (focusMediaId === null) {
-            return;
-        }
-
-        setSearchValue("");
-        setMediaTypeFilter("all");
-        setWatchedFilter("all");
-        setPublicationDateFilter("all");
-    }, [focusMediaId]);
-
-    // Load the first page whenever the query changes (and once on mount). The section is
-    // remounted per channel, so mounting with the default filters loads the newly selected
-    // channel's first page.
-    useEffect(() => {
-        onApplyQuery(queryFilters);
-    }, [onApplyQuery, queryFilters]);
+    // Filter/sort/search state and the backend query it drives live in a dedicated hook so this
+    // component stays presentational; see use-channel-library-filters for the debounce and the
+    // focus-jump reset behavior.
+    const {
+        searchValue,
+        setSearchValue,
+        mediaTypeFilter,
+        setMediaTypeFilter,
+        watchedFilter,
+        setWatchedFilter,
+        publicationDateFilter,
+        setPublicationDateFilter,
+        sortCategory,
+        setSortCategory,
+        sortDirection,
+        setSortDirection,
+    } = useChannelLibraryFilters({ focusMediaId, onApplyQuery });
 
     // "showing <loaded> of <total matching the filters>". With no filter active, total is the
     // whole channel; with a filter, it is the filtered match count.
