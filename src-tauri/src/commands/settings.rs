@@ -94,7 +94,10 @@ pub async fn set_app_settings(
 /// never read back through the asset scope or a delete/move command - but the whole point of the
 /// mirror is to survive a failure of the config volume (where the database and every on-volume
 /// `.bak` generation live), so it must not sit inside that directory either.
-fn validate_external_backup_dir(external_backup_dir: &str, config_dir: Option<&Path>) -> AppResult<()> {
+fn validate_external_backup_dir(
+    external_backup_dir: &str,
+    config_dir: Option<&Path>,
+) -> AppResult<()> {
     let trimmed = external_backup_dir.trim();
 
     if trimmed.is_empty() {
@@ -139,10 +142,8 @@ pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResu
     // Validate off the async runtime: std::fs::metadata touches the filesystem (and can block on a
     // slow external/network path).
     let path_for_validation = trimmed.clone();
-    run_blocking(move || {
-        validate_external_backup_dir(&path_for_validation, config_dir.as_deref())
-    })
-    .await?;
+    run_blocking(move || validate_external_backup_dir(&path_for_validation, config_dir.as_deref()))
+        .await?;
 
     let pool = db.pool().await?;
     set_external_backup_dir_in_pool(&pool, &trimmed).await

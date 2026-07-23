@@ -612,14 +612,30 @@ mod tests {
         let interval = 60;
 
         // Within the interval -> recent.
-        assert!(duration_is_recent(now, now - Duration::from_secs(1), interval));
+        assert!(duration_is_recent(
+            now,
+            now - Duration::from_secs(1),
+            interval
+        ));
         // Older than the interval -> not recent.
-        assert!(!duration_is_recent(now, now - Duration::from_secs(120), interval));
+        assert!(!duration_is_recent(
+            now,
+            now - Duration::from_secs(120),
+            interval
+        ));
         // Exactly at the interval -> not recent (strict `<`).
-        assert!(!duration_is_recent(now, now - Duration::from_secs(60), interval));
+        assert!(!duration_is_recent(
+            now,
+            now - Duration::from_secs(60),
+            interval
+        ));
         // Modified in the future (the clock moved backward) -> treated as recent, so the throttle
         // holds instead of firing a burst of spurious backups.
-        assert!(duration_is_recent(now, now + Duration::from_secs(60), interval));
+        assert!(duration_is_recent(
+            now,
+            now + Duration::from_secs(60),
+            interval
+        ));
     }
 
     async fn seed_db(path: &Path) {
