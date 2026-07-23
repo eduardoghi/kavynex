@@ -11,6 +11,7 @@ import {
     formatDuration,
     formatPublishedDate,
     initials,
+    isMediaWatched,
     isThumbnailFile,
     joinNormalizedPath,
     mediaTypeFromFile,
@@ -469,6 +470,19 @@ describe("media-utils", () => {
 
             expect(path.length).toBeGreaterThan(60);
             expect(shortPath(path)).toBe(`.../${fileName}`);
+        });
+    });
+
+    describe("isMediaWatched", () => {
+        it("treats a real timestamp as watched", () => {
+            expect(isMediaWatched({ watched_at: "2026-03-31T12:00:00.000Z" })).toBe(true);
+        });
+
+        it("treats null, undefined and a whitespace-only value as not watched", () => {
+            expect(isMediaWatched({ watched_at: null })).toBe(false);
+            expect(isMediaWatched(null)).toBe(false);
+            expect(isMediaWatched(undefined)).toBe(false);
+            expect(isMediaWatched({ watched_at: "   " })).toBe(false);
         });
     });
 });

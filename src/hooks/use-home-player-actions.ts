@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { openFileLocation } from "../services";
 import { resolveErrorMessage } from "../utils/error-message";
+import { isMediaWatched } from "../utils/media-utils";
 import type { MediaRow } from "../types/media";
 import type {
     HomePlayerActionsController,
@@ -156,7 +157,7 @@ export function useHomePlayerActions({
             // and must not overwrite the saved position with 0. The player view persists
             // progress on its own (periodically and on unmount), so those paths still keep the
             // latest position.
-            if (progressSeconds !== undefined && activeMedia && !activeMedia.watched_at) {
+            if (progressSeconds !== undefined && activeMedia && !isMediaWatched(activeMedia)) {
                 await saveMediaProgress(activeMedia.id, progressSeconds);
             }
 

@@ -26,7 +26,12 @@ import {
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
-import { fileSrcFromStoredPath, formatDuration, formatPublishedDate } from "../../utils/media-utils";
+import {
+    fileSrcFromStoredPath,
+    formatDuration,
+    formatPublishedDate,
+    isMediaWatched,
+} from "../../utils/media-utils";
 
 type MediaCardProps = {
     media: MediaRow;
@@ -199,7 +204,7 @@ function MediaCardComponent({
     onEditTitle,
 }: MediaCardProps): JSX.Element {
     const isAudio = media.media_type === "audio";
-    const isWatched = Boolean(media.watched_at?.trim());
+    const isWatched = isMediaWatched(media);
     const isLive = Boolean(media.is_live);
     const hasLiveChat = Boolean(media.has_live_chat);
     const thumbSrc = fileSrcFromStoredPath(media.thumbnail_path, libraryPath);

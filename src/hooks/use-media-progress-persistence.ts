@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MediaRow } from "../types/media";
+import { isMediaWatched } from "../utils/media-utils";
 
 // timeupdate fires ~4x/second; persist at most this often so a crash, a force-close, or the
 // updater relaunch never loses more than a few seconds of watch position. The exact position
@@ -31,7 +32,7 @@ export function useMediaProgressPersistence(
         const currentMedia = mediaRef.current;
 
         // Watched media intentionally resets to 0 and must not be rewound by a late save.
-        if (!currentMedia || currentMedia.watched_at) {
+        if (!currentMedia || isMediaWatched(currentMedia)) {
             return;
         }
 
@@ -49,7 +50,7 @@ export function useMediaProgressPersistence(
     // Seed the last-known position from the stored progress so an early close (before the
     // first timeupdate) re-saves the same value instead of overwriting it with 0.
     useEffect(() => {
-        lastProgressRef.current = media?.watched_at ? 0 : (media?.progress_seconds ?? 0);
+        lastProgressRef.current = isMediaWatched(media) ? 0 : (media?.progress_seconds ?? 0);
         // eslint-disable-next-line react-hooks/exhaustive-deps -- seeded once per media; progress/watched are read intentionally at seed time
     }, [media?.id]);
 

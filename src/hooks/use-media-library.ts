@@ -8,6 +8,7 @@ import { useMediaActions } from "./use-media-actions";
 import { useMediaPlayer } from "./use-media-player";
 import { saveMediaProgress as persistMediaProgress } from "../services/media-service";
 import { updateItemById } from "../utils/update-item-by-id";
+import { isMediaWatched } from "../utils/media-utils";
 import { useMemoObject } from "./use-memo-object";
 
 type UseMediaLibraryOptions = {
@@ -141,7 +142,7 @@ export function useMediaLibrary({
             currentItems.map((item) => {
                 const nextProgress = overrides.get(item.id);
 
-                if (nextProgress === undefined || item.watched_at) {
+                if (nextProgress === undefined || isMediaWatched(item)) {
                     return item;
                 }
 

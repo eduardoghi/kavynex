@@ -115,6 +115,17 @@ export function fileSrcFromPath(path: string | null): string | null {
     return convertFileSrc(toAssetPath(normalized));
 }
 
+// Whether a media item counts as watched. The rule lives in one place so the handful of call sites
+// that need it (cards, player, progress persistence, home actions) cannot drift: a whitespace-only
+// `watched_at` is treated as unwatched, since a real ISO timestamp is the only "watched" marker the
+// backend writes. Accepts a structural shape so it works with both a full MediaRow and the player's
+// nullable active-media value.
+export function isMediaWatched(
+    media: { watched_at: string | null } | null | undefined
+): boolean {
+    return Boolean(media?.watched_at?.trim());
+}
+
 export function initials(value: string): string {
     const parts = value
         .trim()

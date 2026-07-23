@@ -3,7 +3,12 @@ import { Alert, Box, Button, Group, Paper, Stack, Text, rem } from "@mantine/cor
 import { AlertTriangle, ArrowLeft, FolderOpen, PlayCircle } from "lucide-react";
 import type { MediaRow } from "../../types/media";
 import { logError } from "../../utils/app-logger";
-import { formatCreatedAt, formatPublishedDate, shortPath } from "../../utils/media-utils";
+import {
+    formatCreatedAt,
+    formatPublishedDate,
+    isMediaWatched,
+    shortPath,
+} from "../../utils/media-utils";
 import { useMediaProgressPersistence } from "../../hooks/use-media-progress-persistence";
 import { useMediaComments } from "../../hooks/use-media-comments";
 import { useMediaLiveChat } from "../../hooks/use-media-live-chat";
@@ -228,7 +233,7 @@ export function MediaPlayerView({
             publishedLabel={publishedLabel}
             createdLabel={kavynexCreatedLabel}
             filePathLabel={filePathLabel}
-            progressSeconds={media?.watched_at ? 0 : (media?.progress_seconds ?? 0)}
+            progressSeconds={isMediaWatched(media) ? 0 : (media?.progress_seconds ?? 0)}
             onPlayerElementChange={setAudioElement}
             onPlaybackError={handlePlaybackError}
             onPlaybackRecovered={handlePlaybackRecovered}
@@ -239,7 +244,7 @@ export function MediaPlayerView({
             mediaSrc={mediaSrc}
             thumbnailSrc={thumbnailSrc}
             shellBorder={shellBorder}
-            progressSeconds={media?.watched_at ? 0 : (media?.progress_seconds ?? 0)}
+            progressSeconds={isMediaWatched(media) ? 0 : (media?.progress_seconds ?? 0)}
             onPlayerElementChange={setVideoElement}
             onPlaybackError={handlePlaybackError}
             onPlaybackRecovered={handlePlaybackRecovered}

@@ -12,6 +12,10 @@ vi.mock("../utils/media-utils", () => ({
         return `${libraryPath}/${storedPath}`;
     }),
     fileSrcFromAbsolutePath: vi.fn((path: string | null) => (path ? `file://${path}` : "")),
+    // Mirrors the real helper's trimmed semantics so the "whitespace-only watched_at" test stays
+    // meaningful under the mock.
+    isMediaWatched: (media: { watched_at: string | null } | null | undefined) =>
+        Boolean(media?.watched_at?.trim()),
 }));
 
 vi.mock("../services/library-service", () => ({

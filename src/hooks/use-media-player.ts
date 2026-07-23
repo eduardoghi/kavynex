@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { MediaPlayerController } from "../types/controllers";
 import type { MediaRow } from "../types/media";
-import { resolveStoredPath, fileSrcFromAbsolutePath } from "../utils/media-utils";
+import { resolveStoredPath, fileSrcFromAbsolutePath, isMediaWatched } from "../utils/media-utils";
 import { buildYoutubeWatchUrl } from "../utils/youtube";
 import { openExternalUrl } from "../services/library-service";
 import { logError } from "../utils/app-logger";
@@ -33,7 +33,7 @@ export function useMediaPlayer({
     );
     const activeYoutubeUrl = buildYoutubeWatchUrl(activeMedia?.youtube_video_id ?? "");
     const canOpenInYoutube = activeYoutubeUrl !== "";
-    const activeIsWatched = Boolean(activeMedia?.watched_at?.trim());
+    const activeIsWatched = isMediaWatched(activeMedia);
 
     const openPlayer = useCallback((media: MediaRow): void => {
         setActiveMediaState(media);
