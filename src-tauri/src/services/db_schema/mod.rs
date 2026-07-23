@@ -159,6 +159,13 @@ async fn apply_index_only_migration(pool: &SqlitePool, target_version: i64) -> A
         .await
         .map_err(|error| db_error("failed to begin schema migration", error))?;
 
+    // INDEX_DDLS includes indexes on title_normalized (and the other additive columns), which v11
+    // is what adds. A database stamped at v7/v8/v9 by a build that predated those columns reaches
+    // this loop before v11 runs, so ensure any missing additive column exists first - otherwise the
+    // CREATE INDEX below fails with "no such column". Idempotent (guarded per column) and a no-op
+    // once the columns are present (e.g. the v12 caller, which runs after v11).
+    ensure_videos_additive_columns(&mut tx).await?;
+
     for &(_, ddl) in INDEX_DDLS {
         sqlx::query(ddl)
             .execute(&mut *tx)
@@ -317,6 +324,11 @@ async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
         .execute(&mut *tx)
         .await
         .map_err(|error| db_error("failed to drop temporary dedup index", error))?;
+
+    // Same reason as apply_index_only_migration: INDEX_DDLS indexes title_normalized, a column v11
+    // adds. A database reaching v10 without it (stamped 7..10 by a pre-v11 build) would fail the
+    // CREATE INDEX below, so add any missing additive column before building the indexes.
+    ensure_videos_additive_columns(&mut tx).await?;
 
     for &(_, ddl) in INDEX_DDLS {
         sqlx::query(ddl)
@@ -1009,6 +1021,90 @@ mod tests {
             rejected_null_update.is_err(),
             "the trigger must reject clearing title_normalized on update"
         );
+    }
+
+    #[tokio::test]
+    async fn migrates_a_v9_database_that_predates_title_normalized() {
+        // Reproduces the real upgrade failure a database stamped at v9 by a build that predated the
+        // v11 `title_normalized` column hits: ensure_schema skips the baseline (9 >= 7) and the
+        // v8/v9 migrations, so the column is never added before apply_migration_10 runs the full
+        // INDEX_DDLS - which includes indexes ON title_normalized. Without the additive-column guard
+        // in that loop the CREATE INDEX fails with "no such column: title_normalized" and the
+        // database can no longer be opened. The tables carry every column the migration's indexes
+        // reference (minus title_normalized), matching what a v9 build actually left on disk.
+        let pool = memory_pool().await;
+
+        sqlx::query(
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, youtube_handle TEXT, avatar_path TEXT)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE videos ( \
+                id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                channel_id INTEGER NOT NULL, \
+                title TEXT NOT NULL, \
+                file_path TEXT NOT NULL, \
+                thumbnail_path TEXT, \
+                media_type TEXT NOT NULL, \
+                youtube_video_id TEXT, \
+                watched_at TEXT, \
+                published_at TEXT, \
+                duration_seconds INTEGER, \
+                progress_seconds INTEGER NOT NULL DEFAULT 0, \
+                has_comments INTEGER NOT NULL DEFAULT 0, \
+                comments_count INTEGER NOT NULL DEFAULT 0, \
+                is_live INTEGER NOT NULL DEFAULT 0, \
+                has_live_chat INTEGER NOT NULL DEFAULT 0, \
+                live_chat_file_path TEXT, \
+                created_at TEXT NOT NULL DEFAULT (datetime('now')), \
+                FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+                UNIQUE (channel_id, file_path) \
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER NOT NULL, comment_id TEXT, parent_comment_id TEXT, FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        // An accented title, so the backfill is pinned to the real normalizer rather than to
+        // anything a plain lower() would also satisfy.
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, file_path, media_type) \
+             VALUES (1, 1, 'Ação  Válida', 'video/a.mp4', 'video')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("PRAGMA user_version = 9")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // The upgrade that used to fail at "no such column: title_normalized".
+        ensure_schema(&pool).await.unwrap();
+        assert_eq!(read_user_version(&pool).await.unwrap(), SCHEMA_VERSION);
+
+        // The column now exists and the pre-existing row was backfilled with the real normalizer.
+        let (normalized,): (Option<String>,) =
+            sqlx::query_as("SELECT title_normalized FROM videos WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(normalized.as_deref(), Some("acao valida"));
     }
 
     #[tokio::test]
