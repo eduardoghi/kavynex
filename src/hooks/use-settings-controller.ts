@@ -12,6 +12,7 @@ import { parseAppError } from "../utils/app-error";
 import { logError } from "../utils/app-logger";
 import { useAppUpdate, type AppUpdateStatus } from "./use-app-update";
 import { useMemoObject } from "./use-memo-object";
+import { useRequestGuard } from "./use-request-guard";
 
 const EMPTY_LIBRARY_SUMMARY: LibrarySummaryInfo = {
     total_bytes: 0,
@@ -81,13 +82,13 @@ export function useSettingsController({
         installUpdate,
     } = useAppUpdate();
 
-    const summaryRequestIdRef = useRef(0);
+    const summaryGuard = useRequestGuard();
     const lastLoadedLibraryPathRef = useRef("");
 
     const loadLibrarySummary = useCallback(
         async (targetLibraryPath: string): Promise<void> => {
             const normalizedLibraryPath = targetLibraryPath.trim();
-            const requestId = ++summaryRequestIdRef.current;
+            const requestId = summaryGuard.begin();
 
             if (!normalizedLibraryPath) {
                 lastLoadedLibraryPathRef.current = "";
@@ -107,14 +108,14 @@ export function useSettingsController({
             try {
                 const summary = await getLibrarySummary(normalizedLibraryPath);
 
-                if (requestId !== summaryRequestIdRef.current) {
+                if (!summaryGuard.isCurrent(requestId)) {
                     return;
                 }
 
                 lastLoadedLibraryPathRef.current = normalizedLibraryPath;
                 setLibrarySummary(summary);
             } catch (error) {
-                if (requestId !== summaryRequestIdRef.current) {
+                if (!summaryGuard.isCurrent(requestId)) {
                     return;
                 }
 
@@ -126,12 +127,12 @@ export function useSettingsController({
                 setLibrarySummary(EMPTY_LIBRARY_SUMMARY);
                 setLibrarySummaryError("Could not load library summary.");
             } finally {
-                if (requestId === summaryRequestIdRef.current) {
+                if (summaryGuard.isCurrent(requestId)) {
                     setIsLoadingLibrarySummary(false);
                 }
             }
         },
-        []
+        [summaryGuard]
     );
 
     const refreshLibrarySummary = useCallback(async (): Promise<void> => {
@@ -258,7 +259,7 @@ export function useSettingsController({
 
     useEffect(() => {
         if (!opened) {
-            summaryRequestIdRef.current += 1;
+            summaryGuard.invalidate();
             lastLoadedLibraryPathRef.current = "";
             setLibrarySummary(EMPTY_LIBRARY_SUMMARY);
             setLibrarySummaryError("");
@@ -303,7 +304,7 @@ export function useSettingsController({
         return () => {
             cancelled = true;
         };
-    }, [opened, libraryPath, loadLibrarySummary]);
+    }, [opened, libraryPath, loadLibrarySummary, summaryGuard]);
 
     // Memoized for a stable identity across renders, matching every sibling controller hook. Not
     // load-bearing today (settings-modal destructures individual fields), but it keeps this hook

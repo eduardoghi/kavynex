@@ -6,6 +6,7 @@ import type { ImportMode } from "../types/settings";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
+import { useRequestGuard } from "./use-request-guard";
 
 type UseDiagnosticsOptions = {
     libraryPath: string;
@@ -22,13 +23,13 @@ export function useDiagnostics({
     const [diagnosticsSummary, setDiagnosticsSummary] = useState<DiagnosticsSummary | null>(null);
     const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
 
-    const latestRequestIdRef = useRef(0);
+    const requestGuard = useRequestGuard();
     const hasLoadedSinceOpenRef = useRef(false);
     const previousLibraryPathRef = useRef(libraryPath);
     const previousImportModeRef = useRef(importMode);
 
     const loadDiagnostics = useCallback(async (): Promise<void> => {
-        const requestId = ++latestRequestIdRef.current;
+        const requestId = requestGuard.begin();
         setIsLoadingDiagnostics(true);
 
         try {
@@ -37,13 +38,13 @@ export function useDiagnostics({
                 importMode,
             });
 
-            if (requestId !== latestRequestIdRef.current) {
+            if (!requestGuard.isCurrent(requestId)) {
                 return;
             }
 
             setDiagnosticsSummary(summary);
         } catch (error) {
-            if (requestId !== latestRequestIdRef.current) {
+            if (!requestGuard.isCurrent(requestId)) {
                 return;
             }
 
@@ -55,11 +56,11 @@ export function useDiagnostics({
             });
             onError(resolveErrorMessage(error, "Failed to load diagnostics."));
         } finally {
-            if (requestId === latestRequestIdRef.current) {
+            if (requestGuard.isCurrent(requestId)) {
                 setIsLoadingDiagnostics(false);
             }
         }
-    }, [importMode, libraryPath, onError]);
+    }, [importMode, libraryPath, onError, requestGuard]);
 
     const openDiagnostics = useCallback(async (): Promise<void> => {
         setDiagnosticsOpen(true);
@@ -71,12 +72,12 @@ export function useDiagnostics({
     }, [importMode, libraryPath, loadDiagnostics]);
 
     const closeDiagnostics = useCallback((): void => {
-        latestRequestIdRef.current += 1;
+        requestGuard.invalidate();
         hasLoadedSinceOpenRef.current = false;
         setDiagnosticsOpen(false);
         setIsLoadingDiagnostics(false);
         setDiagnosticsSummary(null);
-    }, []);
+    }, [requestGuard]);
 
     const reloadDiagnostics = useCallback(async (): Promise<void> => {
         hasLoadedSinceOpenRef.current = true;

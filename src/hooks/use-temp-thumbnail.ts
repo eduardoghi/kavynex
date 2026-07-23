@@ -5,6 +5,7 @@ import {
 } from "../services/thumbnail-service";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
+import { useRequestGuard } from "./use-request-guard";
 
 type UseTempThumbnailReturn = {
     thumbPath: string;
@@ -18,11 +19,12 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
     const [thumbPath, setThumbPath] = useState("");
     const [isGeneratingThumb, setIsGeneratingThumb] = useState(false);
 
-    // Guards against a stale async result overwriting a newer one: every generate/reset bumps this,
-    // and a settled request only applies its result when its id still matches. This is what makes a
-    // setState after unmount harmless too - React 18+ dropped the unmounted-setState warning and
-    // treats the call as a no-op, so no mount-tracking ref is needed on top of the id check.
-    const thumbGenerationIdRef = useRef(0);
+    // Guards against a stale async result overwriting a newer one: every generate begins a new
+    // request and every reset invalidates the in-flight one, and a settled request only applies its
+    // result when its id is still current. This is what makes a setState after unmount harmless too -
+    // React 18+ dropped the unmounted-setState warning and treats the call as a no-op, so no
+    // mount-tracking ref is needed on top of the id check.
+    const thumbGenerationGuard = useRequestGuard();
     const currentTempThumbRef = useRef("");
 
     const cleanupTempThumb = useCallback(async (path?: string | null): Promise<void> => {
@@ -73,7 +75,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
             const normalizedNextPath = nextPath.trim();
             const previousTempPath = currentTempThumbRef.current.trim();
 
-            thumbGenerationIdRef.current += 1;
+            thumbGenerationGuard.invalidate();
             setIsGeneratingThumb(false);
 
             if (previousTempPath) {
@@ -83,7 +85,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
             currentTempThumbRef.current = "";
             setThumbPath(normalizedNextPath);
         },
-        [cleanupTempThumb]
+        [cleanupTempThumb, thumbGenerationGuard]
     );
 
     const generateThumbForMedia = useCallback(
@@ -94,13 +96,13 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
                 return;
             }
 
-            const requestId = ++thumbGenerationIdRef.current;
+            const requestId = thumbGenerationGuard.begin();
             setIsGeneratingThumb(true);
 
             try {
                 const generatedPath = await generateTemporaryThumbnail(normalizedPath);
 
-                if (requestId !== thumbGenerationIdRef.current) {
+                if (!thumbGenerationGuard.isCurrent(requestId)) {
                     await cleanupTempThumb(generatedPath);
                     return;
                 }
@@ -109,7 +111,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
             } catch (error) {
                 logError("temp-thumbnail", "Failed to generate the temporary thumbnail.", error);
 
-                if (requestId === thumbGenerationIdRef.current) {
+                if (thumbGenerationGuard.isCurrent(requestId)) {
                     const currentTempThumb = currentTempThumbRef.current.trim();
 
                     if (currentTempThumb) {
@@ -120,16 +122,16 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
                     setThumbPath("");
                 }
             } finally {
-                if (requestId === thumbGenerationIdRef.current) {
+                if (thumbGenerationGuard.isCurrent(requestId)) {
                     setIsGeneratingThumb(false);
                 }
             }
         },
-        [cleanupTempThumb, replaceGeneratedTempThumb]
+        [cleanupTempThumb, replaceGeneratedTempThumb, thumbGenerationGuard]
     );
 
     const resetThumbState = useCallback(async (): Promise<void> => {
-        thumbGenerationIdRef.current += 1;
+        thumbGenerationGuard.invalidate();
         setIsGeneratingThumb(false);
         setThumbPath("");
 
@@ -139,7 +141,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
         if (currentTempThumb) {
             await cleanupTempThumb(currentTempThumb);
         }
-    }, [cleanupTempThumb]);
+    }, [cleanupTempThumb, thumbGenerationGuard]);
 
     // Memoized so this hook's return keeps a stable identity across renders. Its consumer
     // (use-add-media-form) lists the whole object as a useCallback dependency, so an unstable
