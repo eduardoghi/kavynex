@@ -27,7 +27,7 @@ jobs:
         timeout-minutes: 120
         steps:
             - name: Checkout repository
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
             # No version input: the pnpm version comes from package.json's packageManager
             # field, so CI and local Corepack install the same pinned pnpm.
@@ -63,7 +63,7 @@ jobs:
             CARGO_PROFILE_TEST_DEBUG: "0"
         steps:
             - name: Checkout repository
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
             - name: Install Rust toolchain
               # Pin the exact toolchain (keep in sync with rust-toolchain.toml), matching ci.yml.
