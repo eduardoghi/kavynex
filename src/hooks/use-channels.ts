@@ -3,6 +3,8 @@ import type { Channel, ChannelAvatarMode } from "../types/media";
 import { findSelectedChannel } from "../utils/controller-helpers";
 import { pickImageFilePath } from "../utils/pick-image-file";
 import { useChannelActions } from "./use-channel-actions";
+import { useCreateChannelForm } from "./use-create-channel-form";
+import { useEditChannelForm } from "./use-edit-channel-form";
 import { useMemoObject } from "./use-memo-object";
 
 type UseChannelsOptions = {
@@ -59,6 +61,11 @@ type UseChannelsReturn = {
     closeDeleteChannelModal: () => void;
 };
 
+// Composition root for the channel sidebar. It owns the channel list, the selection and the
+// delete flow, and composes the create- and edit-channel form state from useCreateChannelForm /
+// useEditChannelForm rather than flattening every field into this one hook. The create/save/delete
+// calls stay here because they need the channel actions (useChannelActions); the forms own only
+// their own fields. The returned shape stays flat so consumers are unchanged.
 export function useChannels({
     libraryPath,
     onError,
@@ -67,21 +74,12 @@ export function useChannels({
     const [channels, setChannels] = useState<Channel[]>([]);
     const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
 
-    const [createChannelOpen, setCreateChannelOpenState] = useState(false);
-    const [newChannelName, setNewChannelName] = useState("");
-    const [newYoutubeHandle, setNewYoutubeHandle] = useState("");
-    const [newChannelAvatarMode, setNewChannelAvatarMode] =
-        useState<ChannelAvatarMode>("none");
-    const [newChannelAvatarPath, setNewChannelAvatarPath] = useState("");
-
-    const [editChannelOpen, setEditChannelOpenState] = useState(false);
-    const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
-    const [editChannelName, setEditChannelName] = useState("");
-    const [editYoutubeHandle, setEditYoutubeHandle] = useState("");
-
     const [confirmDeleteChannelOpen, setConfirmDeleteChannelOpen] = useState(false);
     const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null);
     const [updatingChannelAvatarId, setUpdatingChannelAvatarId] = useState<number | null>(null);
+
+    const createForm = useCreateChannelForm({ onError });
+    const editForm = useEditChannelForm();
 
     const previousLibraryPathRef = useRef(libraryPath);
     const hasLoadedInitialRef = useRef(false);
@@ -93,20 +91,20 @@ export function useChannels({
         selectedChannelId,
         setChannels,
         setSelectedChannelId,
-        setNewChannelName,
-        setNewYoutubeHandle,
-        setNewChannelAvatarMode,
-        setNewChannelAvatarPath,
+        setNewChannelName: createForm.setNewChannelName,
+        setNewYoutubeHandle: createForm.setNewYoutubeHandle,
+        setNewChannelAvatarMode: createForm.setNewChannelAvatarMode,
+        setNewChannelAvatarPath: createForm.setNewChannelAvatarPath,
         setUpdatingChannelAvatarId,
         channelToDelete,
         setChannelToDelete,
         setConfirmDeleteChannelOpen,
     });
 
-    // Destructure the stable fields off the per-render channelActions controller object so
-    // the callbacks and effects below can depend on them directly. This keeps the dependency
-    // arrays honest (no eslint-disable) while still not depending on the whole object, whose
-    // identity changes every render.
+    // Destructure the stable fields off the per-render channelActions controller object so the
+    // callbacks and effects below can depend on them directly. This keeps the dependency arrays
+    // honest (no eslint-disable) while still not depending on the whole object, whose identity
+    // changes every render.
     const {
         createChannelAction,
         updateChannelIdentityAction,
@@ -114,63 +112,27 @@ export function useChannels({
         loadChannels,
     } = channelActions;
 
+    // The form fields and controls the callbacks/effects below and the return object read; pulled off
+    // the two composed form controllers here so the rest of the hook is agnostic to where they live.
+    const {
+        resetCreateChannelForm,
+        closeCreateChannelForm,
+        newChannelName,
+        newYoutubeHandle,
+        newChannelAvatarMode,
+        newChannelAvatarPath,
+    } = createForm;
+    const {
+        resetEditChannelForm,
+        closeEditChannelForm,
+        editingChannel,
+        editChannelName,
+        editYoutubeHandle,
+    } = editForm;
+
     const selectedChannel = useMemo(() => {
         return findSelectedChannel(channels, selectedChannelId);
     }, [channels, selectedChannelId]);
-
-    const resetCreateChannelForm = useCallback((): void => {
-        setNewChannelName("");
-        setNewYoutubeHandle("");
-        setNewChannelAvatarMode("none");
-        setNewChannelAvatarPath("");
-    }, []);
-
-    const resetEditChannelForm = useCallback((): void => {
-        setEditingChannel(null);
-        setEditChannelName("");
-        setEditYoutubeHandle("");
-    }, []);
-
-    const setCreateChannelOpen = useCallback(
-        (value: boolean): void => {
-            setCreateChannelOpenState(value);
-
-            if (!value) {
-                resetCreateChannelForm();
-            }
-        },
-        [resetCreateChannelForm]
-    );
-
-    const setEditChannelOpen = useCallback(
-        (value: boolean): void => {
-            setEditChannelOpenState(value);
-
-            if (!value) {
-                resetEditChannelForm();
-            }
-        },
-        [resetEditChannelForm]
-    );
-
-    const pickChannelAvatarViaDialog = useCallback(async (): Promise<void> => {
-        try {
-            const normalizedPath = await pickImageFilePath();
-
-            if (!normalizedPath) {
-                return;
-            }
-
-            setNewChannelAvatarMode("manual");
-            setNewChannelAvatarPath(normalizedPath);
-        } catch {
-            onError("Failed to select avatar file.");
-        }
-    }, [onError]);
-
-    const clearNewChannelAvatarPath = useCallback((): void => {
-        setNewChannelAvatarPath("");
-    }, []);
 
     const createChannel = useCallback(async (): Promise<void> => {
         const created = await createChannelAction(
@@ -181,7 +143,7 @@ export function useChannels({
         );
 
         if (created) {
-            setCreateChannelOpenState(false);
+            closeCreateChannelForm();
         }
     }, [
         createChannelAction,
@@ -189,14 +151,8 @@ export function useChannels({
         newChannelAvatarPath,
         newChannelName,
         newYoutubeHandle,
+        closeCreateChannelForm,
     ]);
-
-    const requestEditChannel = useCallback((channel: Channel): void => {
-        setEditingChannel(channel);
-        setEditChannelName(channel.name);
-        setEditYoutubeHandle(channel.youtube_handle);
-        setEditChannelOpenState(true);
-    }, []);
 
     const saveEditedChannel = useCallback(async (): Promise<void> => {
         if (!editingChannel) {
@@ -210,7 +166,7 @@ export function useChannels({
         );
 
         if (saved) {
-            setEditChannelOpenState(false);
+            closeEditChannelForm();
             resetEditChannelForm();
         }
     }, [
@@ -218,6 +174,7 @@ export function useChannels({
         editChannelName,
         editYoutubeHandle,
         editingChannel,
+        closeEditChannelForm,
         resetEditChannelForm,
     ]);
 
@@ -235,11 +192,7 @@ export function useChannels({
                     return;
                 }
 
-                await updateChannelAvatarAction(
-                    channel,
-                    "manual",
-                    normalizedPath
-                );
+                await updateChannelAvatarAction(channel, "manual", normalizedPath);
             } catch {
                 onError("Failed to select avatar file.");
             }
@@ -292,11 +245,18 @@ export function useChannels({
         setUpdatingChannelAvatarId(null);
         resetCreateChannelForm();
         resetEditChannelForm();
-        setCreateChannelOpenState(false);
-        setEditChannelOpenState(false);
+        closeCreateChannelForm();
+        closeEditChannelForm();
 
         void loadChannels();
-    }, [loadChannels, libraryPath, resetCreateChannelForm, resetEditChannelForm]);
+    }, [
+        loadChannels,
+        libraryPath,
+        resetCreateChannelForm,
+        resetEditChannelForm,
+        closeCreateChannelForm,
+        closeEditChannelForm,
+    ]);
 
     useEffect(() => {
         if (
@@ -308,14 +268,11 @@ export function useChannels({
     }, [channels, selectedChannelId]);
 
     useEffect(() => {
-        if (
-            editingChannel &&
-            !channels.some((channel) => channel.id === editingChannel.id)
-        ) {
+        if (editingChannel && !channels.some((channel) => channel.id === editingChannel.id)) {
             resetEditChannelForm();
-            setEditChannelOpenState(false);
+            closeEditChannelForm();
         }
-    }, [channels, editingChannel, resetEditChannelForm]);
+    }, [channels, editingChannel, resetEditChannelForm, closeEditChannelForm]);
 
     const isEditingChannel = channelActions.isEditingChannel;
     const isLoadingChannels = channelActions.isLoadingChannels;
@@ -329,27 +286,27 @@ export function useChannels({
         selectedChannelId,
         selectedChannel,
 
-        createChannelOpen,
-        setCreateChannelOpen,
+        createChannelOpen: createForm.createChannelOpen,
+        setCreateChannelOpen: createForm.setCreateChannelOpen,
         newChannelName,
-        setNewChannelName,
+        setNewChannelName: createForm.setNewChannelName,
         newYoutubeHandle,
-        setNewYoutubeHandle,
+        setNewYoutubeHandle: createForm.setNewYoutubeHandle,
         newChannelAvatarMode,
-        setNewChannelAvatarMode,
+        setNewChannelAvatarMode: createForm.setNewChannelAvatarMode,
         newChannelAvatarPath,
-        setNewChannelAvatarPath,
-        pickChannelAvatarViaDialog,
-        clearNewChannelAvatarPath,
+        setNewChannelAvatarPath: createForm.setNewChannelAvatarPath,
+        pickChannelAvatarViaDialog: createForm.pickChannelAvatarViaDialog,
+        clearNewChannelAvatarPath: createForm.clearNewChannelAvatarPath,
 
-        editChannelOpen,
-        setEditChannelOpen,
+        editChannelOpen: editForm.editChannelOpen,
+        setEditChannelOpen: editForm.setEditChannelOpen,
         editingChannel,
         editChannelName,
-        setEditChannelName,
+        setEditChannelName: editForm.setEditChannelName,
         editYoutubeHandle,
-        setEditYoutubeHandle,
-        requestEditChannel,
+        setEditYoutubeHandle: editForm.setEditYoutubeHandle,
+        requestEditChannel: editForm.requestEditChannel,
         saveEditedChannel,
         isEditingChannel,
 
