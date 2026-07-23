@@ -9,7 +9,7 @@ use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extensi
 use crate::utils::hash::file_hash;
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir, ensure_path_parent_inside_dir,
-    extension_from_path, relative_path_from_base,
+    extension_from_path, is_network_path, relative_path_from_base,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -18,7 +18,24 @@ pub fn import_media_file_sync(
     mode: ImportMode,
     library_path: &str,
 ) -> AppResult<String> {
-    let source = PathBuf::from(path.trim());
+    let trimmed = path.trim();
+
+    // Reject a UNC / network source before any filesystem call touches it. The source is
+    // caller-supplied (the user picks a file anywhere on disk), and in Move mode the original is
+    // removed - so a `\\host\share` source would both make Windows authenticate to `host` over SMB
+    // (leaking the NTLM hash) and let a delete land on a network file. The picker never yields such a
+    // path for a normal selection; this closes the value a compromised frontend could inject. It does
+    // not make Move safe against an arbitrary *local* source a compromised renderer names - that is
+    // inherent to importing a user-picked file and is the subject of the separate path-authority
+    // hardening - but it removes the network/NTLM angle here, matching the thumbnail source guard.
+    if is_network_path(trimmed) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidSourceMedia,
+            "network locations are not allowed as an import source",
+        ));
+    }
+
+    let source = PathBuf::from(trimmed);
 
     if !source.exists() {
         return Err(AppError::from_code(
@@ -202,6 +219,17 @@ mod tests {
         assert_eq!(error.code, AppErrorCode::UnsupportedMediaExtension.as_str());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn import_media_file_sync_rejects_a_unc_network_source() {
+        // A UNC source must be rejected before any exists/hash/remove touches the SMB stack, so a
+        // Move can never delete a network file or leak the NTLM hash. Checked ahead of the
+        // extension gate, so a media extension does not matter.
+        for unc in [r"\\server\share\clip.mp4", "//server/share/clip.mp4"] {
+            let error = import_media_file_sync(unc, ImportMode::Move, "/library").unwrap_err();
+            assert_eq!(error.code, AppErrorCode::InvalidSourceMedia.as_str());
+        }
     }
 
     #[test]
