@@ -105,9 +105,6 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 allowAvatarEditing={false}
                 onChangeChannelName={channels.setEditChannelName}
                 onChangeYoutubeHandle={channels.setEditYoutubeHandle}
-                onChangeAvatarMode={() => {}}
-                onPickAvatar={() => {}}
-                onClearAvatar={() => {}}
                 onCreate={() => void channels.saveEditedChannel()}
             />
 

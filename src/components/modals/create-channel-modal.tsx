@@ -24,9 +24,12 @@ type CreateChannelModalProps = {
     allowAvatarEditing?: boolean;
     onChangeChannelName: (value: string) => void;
     onChangeYoutubeHandle: (value: string) => void;
-    onChangeAvatarMode: (value: ChannelAvatarMode) => void;
-    onPickAvatar: () => void;
-    onClearAvatar: () => void;
+    // Avatar handlers are only used when `allowAvatarEditing` is true (the avatar section is not
+    // rendered otherwise), so they are optional: the edit-channel reuse of this modal omits them
+    // instead of passing no-ops.
+    onChangeAvatarMode?: (value: ChannelAvatarMode) => void;
+    onPickAvatar?: () => void;
+    onClearAvatar?: () => void;
     onCreate: () => void;
 };
 
@@ -110,7 +113,7 @@ export function CreateChannelModal({
                             <SegmentedControl
                                 value={avatarMode}
                                 onChange={(value) =>
-                                    onChangeAvatarMode(
+                                    onChangeAvatarMode?.(
                                         toUnionValue(
                                             value,
                                             ["none", "manual", "youtube"] as const,
