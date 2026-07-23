@@ -13,3 +13,8 @@ minimumReleaseAge: 2880
 
 overrides:
   qs: 6.15.2
+  # Force the transitive fast-uri (pulled by ajv, a dev/build-only dependency) to the release that
+  # fixes CVE-2026-16221 / GHSA-v2hh-gcrm-f6hx (host confusion via a literal backslash authority
+  # delimiter). ajv declares a 3.x range, so this stays on that line - a patch over the 3.1.3 it
+  # otherwise resolves. Never shipped in the app (dev scope), but it clears the open Dependabot alert.
+  fast-uri: 3.1.4
