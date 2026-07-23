@@ -186,7 +186,6 @@ specific to this project:
   performance optimization is committed as `refactor`, not `perf`.
 - Dependency updates (e.g. bumping a package or crate version) are committed as `build`,
   never `chore`.
-- Never add a `Co-Authored-By` trailer.
 
 Examples from this repository's history:
 
