@@ -288,10 +288,14 @@ jobs:
         # floor - a guard against a catastrophic regression (a new module landing with no tests, a
         # mass test deletion), never a percentage chase. The frontend has tight coverage floors
         # (vitest.config.ts, ~89% lines) and broad Stryker mutation testing; the Rust side - the
-        # actual trust boundary - has `cargo test` (pass/fail) plus cargo-mutants scoped to four
-        # security-critical modules (src-tauri/.cargo/mutants.toml). This adds the missing safety
-        # net over the other ~45 files under services/ and commands/ (db_backup.rs,
-        # thumbnail_download.rs, the live chat path, the command wrappers).
+        # actual trust boundary - has `cargo test` (pass/fail) plus cargo-mutants scoped to the ten
+        # security-critical modules in src-tauri/.cargo/mutants.toml's examine_globs (path
+        # containment, the library-path guard, the yt-dlp host allow-list, external-binary
+        # resolution, content-addressing/cleanup, the atomic filesystem primitives, the db_backup
+        # core, the SSRF address guard, and the live-chat command). This adds the missing safety net
+        # over the many other files under services/ and commands/ the mutation scope does not reach
+        # (the yt-dlp download/metadata orchestration, the thumbnail downloader, the repositories,
+        # the db_backup import/external/integrity submodules, and most command wrappers).
         #
         # The floor is set low on purpose to avoid the flaky-threshold trap this job previously
         # warned about: local readings sit around 73% lines / 77% regions, but coverage is measured
