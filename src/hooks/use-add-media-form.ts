@@ -195,6 +195,15 @@ export function useAddMediaForm({
         return normalizeSelectedPath(selection);
     }, []);
 
+    // Invalidating the resolved yt-dlp formats and clearing the terminal always go together: any
+    // change to an input that affects the fetched result (the URL, cookies, the source mode) makes
+    // the previously loaded formats stale. Kept as one callback so the many call sites below cannot
+    // drift - a site doing one reset but forgetting the other was the duplication this removes.
+    const resetYtDlpSelectionState = useCallback((): void => {
+        ytDlpState.resetYtDlpFormats();
+        ytDlpTerminal?.resetYtDlpState(true);
+    }, [ytDlpState, ytDlpTerminal]);
+
     const pickCookiesFileViaDialog = useCallback(async (): Promise<void> => {
         try {
             const selectedPath = await pickSinglePathFromDialog();
@@ -209,18 +218,16 @@ export function useAddMediaForm({
 
             setCookiesBrowserState("manual");
             setCookiesPathState(selectedPath);
-            ytDlpState.resetYtDlpFormats();
-            ytDlpTerminal?.resetYtDlpState(true);
+            resetYtDlpSelectionState();
         } catch (error) {
             reportError("add-media-form", "Failed to select cookies file.", error);
         }
-    }, [pickSinglePathFromDialog, reportError, ytDlpState, ytDlpTerminal]);
+    }, [pickSinglePathFromDialog, reportError, resetYtDlpSelectionState]);
 
     const clearCookiesPath = useCallback((): void => {
         setCookiesPathState("");
-        ytDlpState.resetYtDlpFormats();
-        ytDlpTerminal?.resetYtDlpState(true);
-    }, [ytDlpState, ytDlpTerminal]);
+        resetYtDlpSelectionState();
+    }, [resetYtDlpSelectionState]);
 
     const setSourceMode = useCallback(
         async (value: MediaSourceMode): Promise<void> => {
@@ -229,15 +236,14 @@ export function useAddMediaForm({
             }
 
             formState.setSourceModeState(value);
-            ytDlpState.resetYtDlpFormats();
-            ytDlpTerminal?.resetYtDlpState(true);
+            resetYtDlpSelectionState();
             setDownloadComments(true);
             setDownloadLiveChat(true);
             setCookiesBrowserState("");
             setCookiesPathState("");
             await thumbnailState.resetThumbState();
         },
-        [formState, thumbnailState, ytDlpState, ytDlpTerminal]
+        [formState, thumbnailState, resetYtDlpSelectionState]
     );
 
     const setMediaUrl = useCallback(
@@ -245,13 +251,12 @@ export function useAddMediaForm({
             formState.setMediaUrlState(value);
 
             if (formState.state.sourceMode === "yt-dlp") {
-                ytDlpState.resetYtDlpFormats();
-                ytDlpTerminal?.resetYtDlpState(true);
+                resetYtDlpSelectionState();
                 formState.setPublishedAtState("");
                 formState.setMediaTypeState("video");
             }
         },
-        [formState, ytDlpState, ytDlpTerminal]
+        [formState, resetYtDlpSelectionState]
     );
 
     const setTitle = useCallback(
@@ -278,19 +283,17 @@ export function useAddMediaForm({
                 setCookiesPathState("");
             }
 
-            ytDlpState.resetYtDlpFormats();
-            ytDlpTerminal?.resetYtDlpState(true);
+            resetYtDlpSelectionState();
         },
-        [ytDlpState, ytDlpTerminal]
+        [resetYtDlpSelectionState]
     );
 
     const setCookiesPath = useCallback(
         (value: string): void => {
             setCookiesPathState(value.trim());
-            ytDlpState.resetYtDlpFormats();
-            ytDlpTerminal?.resetYtDlpState(true);
+            resetYtDlpSelectionState();
         },
-        [ytDlpState, ytDlpTerminal]
+        [resetYtDlpSelectionState]
     );
 
     const loadYtDlpFormats = useCallback(async (): Promise<void> => {
@@ -335,14 +338,13 @@ export function useAddMediaForm({
 
     const resetForm = useCallback(async (): Promise<void> => {
         formState.resetFormState();
-        ytDlpState.resetYtDlpFormats();
-        ytDlpTerminal?.resetYtDlpState(true);
+        resetYtDlpSelectionState();
         setDownloadComments(true);
         setDownloadLiveChat(true);
         setCookiesBrowserState("");
         setCookiesPathState("");
         await thumbnailState.resetThumbState();
-    }, [formState, thumbnailState, ytDlpState, ytDlpTerminal]);
+    }, [formState, thumbnailState, resetYtDlpSelectionState]);
 
     // Destructure the sub-state fields the returned object exposes so the memo below can depend
     // on them directly (honest dependency array, no eslint-disable).
