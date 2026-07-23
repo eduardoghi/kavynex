@@ -33,7 +33,7 @@ importers:
         specifier: ^2.3.1
         version: 2.3.1
       '@tauri-apps/plugin-updater':
-        specifier: ~2.10.1
+        specifier: ^2.10.1
         version: 2.10.1
       lucide-react:
         specifier: ^1.24.0
