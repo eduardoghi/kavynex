@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 // Release gate: fails when package.json, tauri.conf.json and Cargo.toml disagree on the
 // app version, so a partial bump can never produce mislabeled binaries.
 

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 // Release gate: fails when the updater manifest on the draft release does not offer a signed
 // artifact for every platform.
 //
