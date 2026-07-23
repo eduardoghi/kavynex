@@ -64,7 +64,7 @@ unless you `cd src-tauri` first):
 > (`run_and_capture_kills_the_child_and_reports_cancellation_when_flagged` and
 > `..._reports_timeout_when_it_expires`) exercise the yt-dlp kill path. They pass locally, on
 > macOS, on Windows, and in a plain Linux container, but hang **only** on GitHub's
-> `ubuntu-22.04` runner - there the kill/reap `await` never completes and not even a
+> Ubuntu runner - there the kill/reap `await` never completes and not even a
 > `tokio::time` timeout around it fires, so `cargo test` never exits and wedges the whole
 > Ubuntu job (a job timeout/cancel then leaves no log, which makes it painful to diagnose).
 > Both are `#[ignore]`d; run them deliberately with

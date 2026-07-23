@@ -1072,7 +1072,7 @@ mod tests {
 
     // Ignored on CI: this spawns a real child process (`sleep`) and exercises the kill path.
     // It passes locally, on macOS and on Windows, and in a plain Linux container - but on
-    // GitHub's ubuntu-22.04 runner the kill/reap await never completes (even a tokio::time
+    // GitHub's Ubuntu runner the kill/reap await never completes (even a tokio::time
     // timeout around it does not fire there), so the test hangs and wedges the whole run. The
     // behaviour is not reproducible off that runner. Run it deliberately with `--ignored`.
     #[tokio::test]
@@ -1108,7 +1108,7 @@ mod tests {
     }
 
     // Ignored on CI for the same reason as the timeout test above: it spawns a real child and
-    // the kill/reap path hangs only on GitHub's ubuntu-22.04 runner. Run with `--ignored`.
+    // the kill/reap path hangs only on GitHub's Ubuntu runner. Run with `--ignored`.
     #[tokio::test]
     #[ignore = "spawns a real child; hangs only on GitHub's ubuntu CI runner (run with --ignored)"]
     async fn run_and_capture_kills_the_child_and_reports_cancellation_when_flagged() {
