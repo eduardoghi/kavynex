@@ -24,6 +24,20 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_METADATA_TIMEOUT_SECS: u64 = 60;
 const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
+
+// Bounds how many standalone yt-dlp JSON runs (metadata, format listing, comments) execute at once.
+// Each buffers up to MAX_YT_DLP_JSON_BYTES of stdout and spawns its own yt-dlp/ffmpeg process tree,
+// so without a cap a compromised or buggy frontend firing these in a tight loop could exhaust memory
+// and process handles. The main download path does not go through here (it has its own spawn and is
+// bounded by the per-run registry), so gating this shared choke point does not throttle real
+// downloads - only the metadata-style probes. Generous enough that normal interactive use (loading
+// formats for a video, fetching its comments) never queues.
+const MAX_CONCURRENT_STANDALONE_RUNS: usize = 4;
+
+// A single process-wide semaphore: there is one app, and unlike the pool it holds no state a test
+// needs to inject. `acquire()` on it only errors if it is closed, which never happens for a 'static.
+static STANDALONE_RUN_SEMAPHORE: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_STANDALONE_RUNS);
 // Cap on how much yt-dlp stdout is buffered. `--dump-single-json` (with `--write-comments`)
 // emits the whole payload as one line, so an extreme video could otherwise allocate GBs.
 // Generous: even very large comment sets fit well under this.
@@ -402,6 +416,14 @@ async fn run_yt_dlp_and_capture_json(
     failed_message: &str,
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<(String, Vec<String>, Vec<String>)> {
+    // Bound concurrent standalone runs (see STANDALONE_RUN_SEMAPHORE). Held for the whole function -
+    // spawn through wait - so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers
+    // queue here rather than each spawning a process and buffering up to 128 MiB.
+    let _permit = STANDALONE_RUN_SEMAPHORE
+        .acquire()
+        .await
+        .expect("the standalone-run semaphore is a 'static and is never closed");
+
     let mut command = Command::new(yt_dlp);
     command
         .args(args)
