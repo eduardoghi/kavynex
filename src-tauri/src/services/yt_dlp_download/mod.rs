@@ -65,6 +65,20 @@ const YT_DLP_STALL_TIMEOUT_SECS: u64 = 300;
 // is always one video), only a run that is effectively never going to finish.
 const YT_DLP_MAX_RUNTIME_SECS: u64 = 12 * 60 * 60;
 
+// Bounds how many media downloads run at once. Each spawns a yt-dlp/ffmpeg process tree that is
+// CPU-, disk- and network-heavy, so without a cap a compromised or buggy frontend firing many
+// distinct run ids could saturate the machine (the per-run registry only rejects a *duplicate* run
+// id, not a burst of unique ones). Separate from the standalone metadata/comment cap in
+// yt_dlp_metadata: a download's own metadata pre-fetch takes a standalone permit, so gating both on
+// one semaphore could deadlock. A small limit keeps a couple of downloads progressing without
+// thrashing.
+const MAX_CONCURRENT_DOWNLOADS: usize = 2;
+
+// One process-wide semaphore; `acquire()` on it only errors if it is closed, which never happens for
+// a 'static.
+static DOWNLOAD_SEMAPHORE: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_DOWNLOADS);
+
 /// True when the child has produced no output for longer than the stall threshold.
 fn download_is_stalled(now_ms: u64, last_activity_ms: u64, threshold_ms: u64) -> bool {
     now_ms.saturating_sub(last_activity_ms) > threshold_ms
@@ -432,6 +446,14 @@ pub async fn download_media_from_url_async(
     // to be the only place `unregister_download_run` was reached, so without this guard an
     // early failure there would leak the run_id in the process-global registry for good.
     let _run_release_guard = DownloadRunReleaseGuard::new(&normalized_run_id);
+
+    // Wait for a download slot (see DOWNLOAD_SEMAPHORE). Acquired after the run is registered, so a
+    // queued download is still cancellable - the wait loop below observes the cancel flag as soon as
+    // it starts - and held until this function returns, so the slot covers the whole run.
+    let _download_permit = DOWNLOAD_SEMAPHORE
+        .acquire()
+        .await
+        .expect("the download semaphore is a 'static and is never closed");
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
