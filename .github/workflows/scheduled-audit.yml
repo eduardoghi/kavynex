@@ -24,7 +24,7 @@ jobs:
         name: JS advisories (osv.dev)
         # Pinned rather than `-latest` for the same reason as every other job in the repo: `-latest`
         # silently moves to a new OS major (the 2026-07-14 run already saw it for macOS).
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 30
         steps:
             - name: Checkout repository
@@ -64,7 +64,7 @@ jobs:
 
     rust-advisories:
         name: Cargo audit and deny
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 30
         steps:
             - name: Checkout repository
@@ -105,7 +105,7 @@ jobs:
         name: Open an issue on failure
         needs: [js-advisories, rust-advisories]
         if: failure()
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
             issues: write

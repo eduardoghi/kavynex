@@ -40,7 +40,7 @@ jobs:
     audit:
         name: Cargo audit and deny
         # Pinned like the build matrix below; `-latest` can silently jump an OS major mid-release.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 60
         # No secrets are needed to read the lockfile; this job never gets the signing key.
         permissions:
@@ -94,7 +94,7 @@ jobs:
     # each target.
     frontend-audit:
         name: Frontend audit
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 30
         permissions:
             contents: read
@@ -141,7 +141,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                # Pinned images, like ubuntu-22.04 already was, rather than the `-latest` aliases.
+                # Pinned images, like ubuntu-26.04 already was, rather than the `-latest` aliases.
                 # `-latest` moves to a new major OS whenever GitHub decides, which is not a
                 # theoretical worry here: the 2026-07-14 run resolved `macos-latest` to
                 # macos-26-arm64 while the runner-images README still documented it as macOS 15.
@@ -156,7 +156,7 @@ jobs:
                     - platform: macos-26
                       args: --target x86_64-apple-darwin
 
-                    - platform: ubuntu-22.04
+                    - platform: ubuntu-26.04
                       args: ""
 
                     - platform: windows-2025
@@ -236,10 +236,10 @@ jobs:
             # against the end user's own system libraries, so they are not shipped inside the
             # bundle and cannot change what a user actually runs.
             - name: Install Linux dependencies
-              if: matrix.platform == 'ubuntu-22.04'
+              if: matrix.platform == 'ubuntu-26.04'
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
             - name: Verify version consistency
               run: node scripts/verify-release-version.js
@@ -308,7 +308,7 @@ jobs:
             # cancel path passing where it can run. Filtered by name to avoid the fixture-
             # regeneration test; short per-step timeout so a hang fails diagnosably.
             - name: Run ignored process-kill tests (Windows and macOS only)
-              if: matrix.platform != 'ubuntu-22.04'
+              if: matrix.platform != 'ubuntu-26.04'
               timeout-minutes: 5
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked run_and_capture_kills_the_child -- --ignored --test-threads=1
 
@@ -316,7 +316,7 @@ jobs:
             # checked-in TypeScript bindings out of sync with the Rust types they are generated
             # from. Ubuntu only, matching ci.yml; the check is platform-independent.
             - name: Verify generated TS bindings are up to date
-              if: matrix.platform == 'ubuntu-22.04'
+              if: matrix.platform == 'ubuntu-26.04'
               run: |
                   cargo test --manifest-path src-tauri/Cargo.toml --locked --lib export_bindings
                   git diff --exit-code -- src/types/generated
@@ -372,7 +372,7 @@ jobs:
         name: Publish SBOM
         needs: publish-tauri
         # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 30
         permissions:
             contents: write
@@ -417,7 +417,7 @@ jobs:
         name: Publish checksums
         needs: [publish-tauri, sbom]
         # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 60
         permissions:
             contents: write

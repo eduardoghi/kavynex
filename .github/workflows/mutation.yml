@@ -20,7 +20,7 @@ jobs:
         name: Mutation testing
         # Pinned rather than `ubuntu-latest`, matching ci.yml's rust job: `-latest` can silently jump
         # an OS major, which would move a mutation score for a reason unrelated to the tests.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         # Generous timeout: a full mutation run is long, and this is a weekly scheduled run rather
         # than a per-PR gate, so a longer wall-clock is fine. A too-tight timeout would also report
         # as a failure indistinguishable from a real mutation-score regression.
@@ -51,7 +51,7 @@ jobs:
     rust-mutation:
         name: Rust mutation testing
         # Pinned like the job above and ci.yml's rust job; see those comments.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         # Generous timeout for the same reason as the frontend job above: cargo-mutants rebuilds and
         # tests the tree once per mutant, so a full run is long, and this weekly scheduled run can
         # afford the wall-clock.
@@ -77,7 +77,7 @@ jobs:
             - name: Install Linux dependencies
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf lld
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf lld
                   # Link with lld instead of the slow default ld.bfd, mirroring ci.yml's Rust job.
                   echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
 
@@ -128,7 +128,7 @@ jobs:
         name: Open an issue on failure
         needs: [mutation, rust-mutation]
         if: failure()
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
             issues: write

@@ -21,7 +21,7 @@ jobs:
         # silently moves to a new OS major (the 2026-07-14 run already saw it happen for macOS).
         # This job ships nothing, but pinning keeps its toolchain from shifting without a deliberate
         # bump - the same rule the whole repo follows.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         # Same reasoning as the rust job below: never run toward the 6h default.
         timeout-minutes: 30
         steps:
@@ -142,7 +142,7 @@ jobs:
                 # silently moves to a new major OS (the 2026-07-14 run already resolved
                 # `macos-latest` to macos-26-arm64), and CI is only worth anything here if it tests
                 # on what the release actually builds on.
-                platform: [ubuntu-22.04, windows-2025, macos-26]
+                platform: [ubuntu-26.04, windows-2025, macos-26]
         runs-on: ${{ matrix.platform }}
         # Never let a job run toward the 6h default: a hang fails in bounded time.
         timeout-minutes: 30
@@ -173,10 +173,10 @@ jobs:
             # WebKit/GTK dev headers built against and dynamically linked at runtime against the
             # user's own system libraries, never shipped in the bundle.
             - name: Install Linux dependencies
-              if: matrix.platform == 'ubuntu-22.04'
+              if: matrix.platform == 'ubuntu-26.04'
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf lld
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf lld
                   # Link with lld instead of the slow default ld.bfd (Linux only; macOS/Windows
                   # already use fast linkers). Scoped to this job via $GITHUB_ENV.
                   echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
@@ -199,19 +199,19 @@ jobs:
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
             # The two yt-dlp process-kill tests are #[ignore]d because they hang only on GitHub's
-            # ubuntu-22.04 runner (see CONTRIBUTING.md); the default `cargo test` above therefore
+            # Ubuntu runner (see CONTRIBUTING.md); the default `cargo test` above therefore
             # skips them everywhere. They pass on Windows and macOS, so run them there by name (not
             # a blanket `--ignored`, which would also re-run the fixture-regeneration test) to keep
             # the kill/timeout/cancel path - a security and correctness control - under CI coverage
             # on those platforms. The short per-step timeout means a future hang fails diagnosably
             # instead of wedging the job; Linux CI coverage of this path stays an accepted gap.
             - name: Run ignored process-kill tests (Windows and macOS only)
-              if: matrix.platform != 'ubuntu-22.04'
+              if: matrix.platform != 'ubuntu-26.04'
               timeout-minutes: 5
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked run_and_capture_kills_the_child -- --ignored --test-threads=1
 
             - name: Verify generated TS bindings are up to date
-              if: matrix.platform == 'ubuntu-22.04'
+              if: matrix.platform == 'ubuntu-26.04'
               run: |
                   cargo test --manifest-path src-tauri/Cargo.toml --locked --lib export_bindings
                   git diff --exit-code -- src/types/generated
@@ -219,7 +219,7 @@ jobs:
     audit:
         name: Cargo audit and deny
         # Pinned like the rust job below; see its comment on why `-latest` is avoided repo-wide.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 30
         steps:
             - name: Checkout repository
@@ -281,7 +281,7 @@ jobs:
         name: "Rust coverage (floor: 60% lines)"
         # Pinned like the rust job; see its comment. Coverage is measured on this exact image, so a
         # silent OS-major jump could move the number for a reason unrelated to the tests.
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 30
         # A low backstop floor, not a tight per-PR ratchet. This job publishes the per-file
         # coverage table AND fails only if line coverage falls under a deliberately conservative
@@ -325,7 +325,7 @@ jobs:
               # pins on a hosted image go stale and break the build; they are not shipped anyway).
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
             - name: Cache Rust build
               uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
