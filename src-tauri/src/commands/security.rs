@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
@@ -45,6 +45,19 @@ where
     Ok(())
 }
 
+/// The subdirectories of `library_root` whose files the asset protocol may serve: only the managed
+/// media/thumbnail/live-chat trees the app writes itself (`video/`, `audio/`, `thumbnails/`,
+/// `live_chat/`), never the library root. Every path the app legitimately reproduces is
+/// content-addressed under one of these, so confining the grant to them keeps `convertFileSrc` from
+/// reaching an unrelated file the user's chosen library folder happens to hold (a document, a photo)
+/// - which granting the root recursively would expose.
+pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
+    crate::constants::MANAGED_LIBRARY_DIRS
+        .iter()
+        .map(|managed| library_root.join(managed))
+        .collect()
+}
+
 /// Authorizes the asset protocol to read files inside the user's library directory.
 ///
 /// The requested path is never trusted on its own: it must match the library path
@@ -53,6 +66,11 @@ where
 /// `convertFileSrc`, would become an arbitrary local-file read primitive rendered inside
 /// the webview. Only the directory the user actually configured as their library can be
 /// authorized here.
+///
+/// Within that library, only the four managed subdirectories are granted, not the root
+/// (see [`managed_asset_scope_dirs`]): the app only ever serves content-addressed files
+/// from those, so authorizing the whole root recursively would needlessly expose any other
+/// file the chosen library folder contains.
 ///
 /// The asset protocol scope is in-memory and does not persist across restarts, so this
 /// is called on startup (after settings load) and whenever the library path changes.
@@ -73,9 +91,28 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
     // run them off the async runtime's worker threads, consistent with other commands
     // (e.g. commands/library.rs, commands/thumbnail.rs).
     run_blocking(move || {
-        grant_path_with_canonical(Path::new(&trimmed), "library path", |dir| {
-            allow_directory_in_asset_scope(&app, dir)
-        })
+        for managed_dir in managed_asset_scope_dirs(Path::new(&trimmed)) {
+            // Create the subdirectory first so its canonical (`\\?\`) form resolves and can be
+            // granted alongside the plain form. Best effort: a subdir that cannot be created is
+            // skipped (the import/download paths create it on demand), rather than failing the
+            // whole registration and leaving the library unusable.
+            if let Err(error) = std::fs::create_dir_all(&managed_dir) {
+                logger::warn(
+                    "asset_scope",
+                    format!(
+                        "failed to create managed directory {} for the asset scope: {error}",
+                        managed_dir.display()
+                    ),
+                );
+                continue;
+            }
+
+            grant_path_with_canonical(&managed_dir, "library subdirectory", |dir| {
+                allow_directory_in_asset_scope(&app, dir)
+            })?;
+        }
+
+        Ok(())
     })
     .await
 }
@@ -168,6 +205,21 @@ mod tests {
     // the mock runtime; these cover the gate that decides what allow_asset_file will ever
     // authorize. The library-path guard behind register_library_asset_scope is covered by
     // services::library_guard's paths_refer_to_same_location tests.
+
+    #[test]
+    fn managed_asset_scope_dirs_are_the_four_managed_subdirs_never_the_root() {
+        let root = Path::new("/library");
+        let dirs = managed_asset_scope_dirs(root);
+
+        // Exactly the four managed subdirectories the app serves, and never the root itself:
+        // granting the root recursively is what would expose unrelated files in the chosen folder.
+        assert_eq!(dirs.len(), 4);
+        assert!(dirs.contains(&root.join("video")));
+        assert!(dirs.contains(&root.join("audio")));
+        assert!(dirs.contains(&root.join("thumbnails")));
+        assert!(dirs.contains(&root.join("live_chat")));
+        assert!(!dirs.contains(&root.to_path_buf()));
+    }
 
     #[test]
     fn validate_asset_file_rejects_an_empty_path() {

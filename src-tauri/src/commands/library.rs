@@ -19,11 +19,24 @@ use crate::AppResult;
 /// `convertFileSrc` for the rest of the session. Best effort: a failure only leaves the stale
 /// grant in place (the pre-existing behavior) and must not fail the migration itself.
 fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
-    if let Err(error) = app.asset_protocol_scope().forbid_directory(dir, true) {
-        logger::warn(
-            "asset_scope",
-            format!("failed to revoke old library directory from asset scope: {error}"),
-        );
+    // register_library_asset_scope grants the four managed subdirectories, not the root, so forbid
+    // the same set here. A forbid always wins over an allow, closing the window where a file that
+    // later lands in the old library's managed trees would still be readable through convertFileSrc.
+    for managed_dir in
+        crate::commands::security::managed_asset_scope_dirs(std::path::Path::new(dir))
+    {
+        if let Err(error) = app
+            .asset_protocol_scope()
+            .forbid_directory(&managed_dir, true)
+        {
+            logger::warn(
+                "asset_scope",
+                format!(
+                    "failed to revoke old library subdirectory {} from asset scope: {error}",
+                    managed_dir.display()
+                ),
+            );
+        }
     }
 }
 
