@@ -96,8 +96,21 @@ export function useAddMediaWorkflow({
     const { ytDlpLogs, isYtDlpRunning, resetYtDlpState, startRun, appendManualLog, markStopped } =
         ytDlpEvents;
 
+    // addMedia reads the form's field values only when the user clicks add, never during render, so
+    // mirror the per-render form controller into a ref and read it live inside the callback. That
+    // keeps addMedia from depending on addMediaForm - a fresh object every render - which was
+    // recreating the callback (and, through the memoized controller it feeds, its consumers) on
+    // every keystroke. Same "read the latest value off a ref" pattern as activeMediaRef in
+    // use-media-actions.ts (see CONTRIBUTING.md's hook conventions).
+    const addMediaFormRef = useRef(addMediaForm);
+    useEffect(() => {
+        addMediaFormRef.current = addMediaForm;
+    }, [addMediaForm]);
+
     const addMedia = useCallback(async (): Promise<void> => {
-        const validation = validateAddMediaForm(addMediaForm, selectedChannelId, {
+        const form = addMediaFormRef.current;
+
+        const validation = validateAddMediaForm(form, selectedChannelId, {
             isCancellingYtDlp,
             isYtDlpRunning,
         });
@@ -122,8 +135,8 @@ export function useAddMediaWorkflow({
         await runAddMedia(async () => {
             try {
                 const { cookiesBrowser, cookiesPath } = resolveCookiesSource(
-                    addMediaForm.cookiesBrowser,
-                    addMediaForm.cookiesPath
+                    form.cookiesBrowser,
+                    form.cookiesPath
                 );
 
                 let ytDlpRunId = "";
@@ -131,12 +144,12 @@ export function useAddMediaWorkflow({
 
                 if (sourceMode === "yt-dlp") {
                     ytDlpRunId = generateYtDlpRunId();
-                    ytDlpFormatId = addMediaForm.selectedYtDlpFormatId.trim();
+                    ytDlpFormatId = form.selectedYtDlpFormatId.trim();
 
                     startRun(
                         ytDlpRunId,
                         buildYtDlpCommandPreview(
-                            addMediaForm.mediaUrl,
+                            form.mediaUrl,
                             cookiesBrowser,
                             cookiesPath,
                             ytDlpFormatId
@@ -144,13 +157,13 @@ export function useAddMediaWorkflow({
                     );
 
                     appendManualLog(
-                        addMediaForm.downloadComments
+                        form.downloadComments
                             ? "Comments: enabled"
                             : "Comments: disabled"
                     );
 
                     appendManualLog(
-                        addMediaForm.downloadLiveChat
+                        form.downloadLiveChat
                             ? "Live chat: enabled"
                             : "Live chat: disabled"
                     );
@@ -163,7 +176,7 @@ export function useAddMediaWorkflow({
                 }
 
                 await createMedia(
-                    buildCreateMediaInput(addMediaForm, {
+                    buildCreateMediaInput(form, {
                         channelId: selectedChannelId,
                         sourceMode,
                         sourceValue,
@@ -182,7 +195,7 @@ export function useAddMediaWorkflow({
                 );
 
                 await onReloadMedia();
-                await addMediaForm.resetForm();
+                await form.resetForm();
 
                 setAddMediaOpen(false);
             } catch (error) {
@@ -199,15 +212,14 @@ export function useAddMediaWorkflow({
 
                 logError("add-media", "Failed to add media.", error, {
                     selectedChannelId,
-                    sourceMode: addMediaForm.sourceMode,
+                    sourceMode: form.sourceMode,
                     libraryPath,
-                    cookiesBrowser: addMediaForm.cookiesBrowser,
+                    cookiesBrowser: form.cookiesBrowser,
                 });
                 onError(resolveErrorMessage(error, "Failed to add media."));
             }
         });
     }, [
-        addMediaForm,
         appendManualLog,
         importMode,
         isCancellingYtDlp,
