@@ -45,7 +45,7 @@ export function AppHeader({
                         <img src={appIconSrc} width={28} height={28} alt="Kavynex" />
                     </Box>
 
-                    <Group gap={6} align="baseline">
+                    <Group gap={10} align="baseline">
                         <Text fw={950} size="lg" lh={1}>
                             Kavynex
                         </Text>
