@@ -68,3 +68,12 @@ tauri-plugin-updater = "2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
+
+[profile.release]
+# Strip symbols and local build paths from the shipped binary (it is a public download), and enable
+# link-time optimization. codegen-units = 1 trades build time for a smaller, faster binary, which
+# also keeps the updater artifact lean. panic stays "unwind" (the default): a GUI/webview app is
+# better off recovering from a panic than aborting the whole process.
+strip = true
+lto = "thin"
+codegen-units = 1
