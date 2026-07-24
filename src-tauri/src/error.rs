@@ -405,3 +405,61 @@ impl fmt::Display for AppError {
 impl std::error::Error for AppError {}
 
 pub type AppResult<T> = Result<T, AppError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fs_error_redacts_the_path_to_its_final_component() {
+        // fs_error is the one place that wires logger::redact_path into an AppError's `details`.
+        // redact_path itself is tested in services::logger; this pins the integration, so a
+        // regression that passes the raw `path` instead of the redacted one is caught here rather
+        // than silently leaking the user's profile directory into a pasted error string.
+        let io_error =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Access is denied");
+
+        let error = AppError::fs_error(
+            AppErrorCode::CreateMediaDirFailed,
+            "failed to create media directory",
+            "/home/alice/Kavynex Library/video/clip.mp4",
+            &io_error,
+        );
+
+        assert_eq!(error.code, AppErrorCode::CreateMediaDirFailed.as_str());
+        // The user-facing message carries the human message and the OS error, never the path.
+        assert!(error.message.contains("failed to create media directory"));
+        assert!(error.message.contains("Access is denied"));
+
+        // details holds only the redacted final component, prefixed with "path: ".
+        assert_eq!(error.details.as_deref(), Some("path: clip.mp4"));
+
+        // The middle segments (which embed the profile/library name) must never survive: this is
+        // the assertion a raw-path mutant fails.
+        let details = error.details.unwrap();
+        assert!(!details.contains("alice"));
+        assert!(!details.contains("Kavynex Library"));
+    }
+
+    #[test]
+    fn fs_error_redacts_a_windows_style_path() {
+        // redact_path splits on both `/` and `\` on every platform, so a path synced from Windows
+        // is redacted the same way even when this test runs on Unix.
+        let io_error = std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "The system cannot find the file",
+        );
+
+        let error = AppError::fs_error(
+            AppErrorCode::RemoveThumbnailFailed,
+            "failed to remove thumbnail",
+            r"C:\Users\alice\Kavynex Library\thumbnails\thumb_abc.jpg",
+            &io_error,
+        );
+
+        assert_eq!(error.details.as_deref(), Some("path: thumb_abc.jpg"));
+        let details = error.details.unwrap();
+        assert!(!details.contains("alice"));
+        assert!(!details.contains(r"C:\"));
+    }
+}
