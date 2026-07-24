@@ -61,9 +61,20 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
 
     ensure_path_parent_inside_dir(&destination, library_dir)?;
 
-    if !destination.exists() {
+    // On a fresh write, re-hash the written file and correct its name if the source changed between
+    // the hash above and the copy (see verify_content_addressed_write). An already-present
+    // destination wrote nothing, so it keeps its (already content-verified) name without a re-hash.
+    let destination = if destination.exists() {
+        destination
+    } else {
         copy_file_atomic(source, &destination)?;
-    }
+        crate::services::filesystem::verify_content_addressed_write(
+            &destination,
+            &hash,
+            "thumb",
+            &ext,
+        )?
+    };
 
     relative_path_from_base(library_dir, &destination)
 }

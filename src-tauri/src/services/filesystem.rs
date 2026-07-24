@@ -421,6 +421,64 @@ fn move_or_copy_file_using(
     }
 }
 
+/// Re-reads a freshly written content-addressed file and confirms its real SHA-256 matches
+/// `expected_hash` - the hash the destination name was built from. That name is computed from a
+/// hash of the *source* taken before the copy/move, so a source changed in that window (a file
+/// another process was still finalizing, an edit mid-import) would leave the library holding a
+/// file whose name no longer describes its content, silently breaking the content-addressed
+/// dedup/cleanup invariant everything else relies on. When they differ, the file is renamed to
+/// `<prefix>_<actual_hash>.<ext>` so the name is truthful again - or, if a file already sits at
+/// that corrected name (the real content was stored before), the mis-named fresh copy is dropped
+/// in favor of it. Returns the final path (unchanged in the overwhelmingly common matching case).
+///
+/// This costs a second full-file read, so callers gate it on a genuinely fresh write, never the
+/// dedup/skip paths: the guarantee is worth one extra hash on a user-initiated import, not on
+/// every no-op re-import of already-stored content.
+pub(crate) fn verify_content_addressed_write(
+    written: &Path,
+    expected_hash: &str,
+    prefix: &str,
+    ext: &str,
+) -> AppResult<PathBuf> {
+    let actual_hash = file_hash(written)?;
+
+    if actual_hash == expected_hash {
+        return Ok(written.to_path_buf());
+    }
+
+    let parent = written.parent().ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::InvalidDestinationPath,
+            "written file has no parent directory",
+        )
+    })?;
+
+    let corrected = parent.join(format!("{prefix}_{actual_hash}.{ext}"));
+
+    if corrected == *written {
+        return Ok(corrected);
+    }
+
+    if corrected.exists() {
+        // The real content was already stored under its correct name; discard the mis-named copy
+        // rather than overwriting the catalogued bytes. Best effort - a failed remove only leaks a
+        // reclaimable file, never the correct copy.
+        let _ = fs::remove_file(written);
+        return Ok(corrected);
+    }
+
+    fs::rename(written, &corrected).map_err(|e| {
+        AppError::fs_error(
+            AppErrorCode::FileRenameFailed,
+            "failed to rename a content-addressed file to its verified hash",
+            &corrected,
+            &e,
+        )
+    })?;
+
+    Ok(corrected)
+}
+
 pub fn replace_file_safely(source: &Path, destination: &Path) -> AppResult<()> {
     if !source.exists() {
         return Err(AppError::from_code(
@@ -931,6 +989,75 @@ mod tests {
             nanos,
             seq
         ))
+    }
+
+    #[test]
+    fn verify_content_addressed_write_keeps_a_matching_name() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let content = b"the real bytes";
+        let scratch = dir.join("scratch");
+        fs::write(&scratch, content).unwrap();
+        let hash = file_hash(&scratch).unwrap();
+        let _ = fs::remove_file(&scratch);
+
+        let written = dir.join(format!("media_{hash}.mp4"));
+        fs::write(&written, content).unwrap();
+
+        // The name already matches the content, so nothing moves.
+        let result = verify_content_addressed_write(&written, &hash, "media", "mp4").unwrap();
+        assert_eq!(result, written);
+        assert!(written.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verify_content_addressed_write_corrects_a_name_built_from_a_stale_hash() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        // The name was built from a hash of the source taken before the write, but the bytes that
+        // actually landed differ (a source changed in the TOCTOU window).
+        let written = dir.join("media_stalehash.mp4");
+        fs::write(&written, b"the bytes that actually landed").unwrap();
+        let actual = file_hash(&written).unwrap();
+
+        let result = verify_content_addressed_write(&written, "stalehash", "media", "mp4").unwrap();
+
+        let corrected = dir.join(format!("media_{actual}.mp4"));
+        assert_eq!(result, corrected);
+        assert!(corrected.exists(), "the file must be renamed to its real hash");
+        assert!(!written.exists(), "the mis-named file must be gone");
+        assert_eq!(fs::read(&corrected).unwrap(), b"the bytes that actually landed");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verify_content_addressed_write_drops_a_mis_named_copy_when_the_correct_name_exists() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        let content = b"already-catalogued bytes";
+        let mis_named = dir.join("media_stalehash.mp4");
+        fs::write(&mis_named, content).unwrap();
+        let actual = file_hash(&mis_named).unwrap();
+
+        // The real content was already stored under its correct name before this fresh, mis-named
+        // copy landed, so the mis-named one is dropped rather than overwriting the catalogued bytes.
+        let correct = dir.join(format!("media_{actual}.mp4"));
+        fs::write(&correct, content).unwrap();
+
+        let result =
+            verify_content_addressed_write(&mis_named, "stalehash", "media", "mp4").unwrap();
+
+        assert_eq!(result, correct);
+        assert!(!mis_named.exists(), "the redundant mis-named copy must be dropped");
+        assert!(correct.exists());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     // Symlink creation is unprivileged on Unix but needs Developer Mode/admin on Windows, so the

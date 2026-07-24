@@ -90,9 +90,15 @@ pub fn import_media_file_sync(
         ),
     );
 
+    // Whether the content-addressed destination already held this content before the transfer.
+    // Captured up front so the post-write hash verification below runs only on a genuinely fresh
+    // write, never on a dedup/skip path (which writes nothing and would only re-hash a possibly
+    // multi-GB file for no reason).
+    let destination_existed = destination.exists();
+
     match mode {
         ImportMode::Copy => {
-            if destination.exists() {
+            if destination_existed {
                 // The content-addressed destination already holds this exact content, so there
                 // is nothing to copy and the source is left untouched (Copy semantics).
                 logger::info(
@@ -116,6 +122,21 @@ pub fn import_media_file_sync(
             move_or_copy_file_with_known_source_hash(&source, &destination, &hash)?;
         }
     }
+
+    // A fresh write's name was built from a hash of the source taken before the transfer, so a
+    // source changed in that window could leave the name describing the wrong content. Re-hash the
+    // written file and correct the name if they differ. A `destination_existed` path wrote nothing
+    // (Copy skip, Move dedup, or Move source==destination no-op), so it is not re-hashed.
+    let destination = if destination_existed {
+        destination
+    } else {
+        crate::services::filesystem::verify_content_addressed_write(
+            &destination,
+            &hash,
+            "media",
+            &ext,
+        )?
+    };
 
     let relative_path = relative_path_from_base(&library_dir, &destination)?;
 
