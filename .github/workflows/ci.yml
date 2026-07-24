@@ -348,3 +348,39 @@ jobs:
                       echo '```'
                   } >> "$GITHUB_STEP_SUMMARY"
                   exit "$status"
+
+    workflow-lint:
+        name: Workflow lint (actionlint)
+        # Pinned like every other job here; see the frontend job's comment on why `-latest` is
+        # avoided repo-wide.
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            # Static-check the workflow YAML themselves: actionlint validates syntax, ${{ }}
+            # expression types and undefined contexts, matrix/glob shapes and deprecated features,
+            # and runs shellcheck over every `run:` script - the class of mistake these large,
+            # hand-maintained workflows (release.yml is ~500 lines of bash-in-YAML) would otherwise
+            # only surface as a failed run. Unknown-runner-label false positives for the pinned
+            # images (ubuntu-26.04/macos-26) are silenced in .github/actionlint.yaml; shellcheck is
+            # preinstalled on the runner and auto-detected.
+            #
+            # Installed at a pinned version via `go install` (Go ships on the image) rather than a
+            # curl|bash bootstrap or an unpinned marketplace wrapper, matching the repo-wide rule
+            # that the tool executing here is a version this project chose, not whatever released
+            # today. No extra token permissions are needed: it reads files and exits non-zero.
+            - name: Install actionlint
+              run: |
+                  go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+                  # `go install` drops the binary in GOPATH/bin, which is not on PATH by default;
+                  # add it so the next step can call `actionlint` directly. GITHUB_PATH changes apply
+                  # to subsequent steps, not this one.
+                  echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+            # actionlint globs .github/workflows/*.yml itself, so no path argument is needed. Run on
+            # every push/PR rather than gating on workflow-file changes: it takes seconds, and every
+            # other job in this file runs unconditionally too.
+            - name: Run actionlint
+              run: actionlint -color

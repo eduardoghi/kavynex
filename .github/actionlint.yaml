@@ -1,0 +1,13 @@
+# actionlint configuration.
+#
+# The workflows deliberately pin to the newest GitHub-hosted runner images (see the "-latest
+# silently moves to a new OS major" rationale in ci.yml/release.yml). actionlint's built-in label
+# database lags GitHub, so it flags every `runs-on: ubuntu-26.04`/`macos-26` as an unknown label.
+# Registering the images actually in use here silences those false positives while still catching a
+# genuinely mistyped label (anything not listed stays an error). These are GitHub-hosted images, not
+# self-hosted runners; `self-hosted-runner.labels` is simply actionlint's mechanism for teaching it
+# labels it does not yet recognize. Drop an entry once actionlint's built-in database includes it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - macos-26
