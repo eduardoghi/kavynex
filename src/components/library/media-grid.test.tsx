@@ -58,10 +58,10 @@ describe("MediaGrid", () => {
             />
         );
 
-        expect(screen.getByText("Loading media")).toBeInTheDocument();
-        // The shared LoadingStateCard exposes role="status" so a screen reader announces the
-        // load, matching the comments/live-chat panels.
+        // The skeleton grid is decorative; the status region wrapping it carries the
+        // visually-hidden "Loading media" text so a screen reader still announces the load.
         expect(screen.getByRole("status")).toBeInTheDocument();
+        expect(screen.getByText("Loading media")).toBeInTheDocument();
     });
 
     it("shows empty state", () => {

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Card, Group, Stack, Text, Title } from "@mantine/core";
+import { Box, Card, Group, Stack, Text, Title, VisuallyHidden } from "@mantine/core";
 import { useElementSize, useWindowEvent } from "@mantine/hooks";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
 import { useGridScrollRestoration } from "../../hooks/use-grid-scroll-restoration";
-import { LoadingStateCard } from "../common/loading-state-card";
+import { MediaGridSkeleton } from "./media-grid-skeleton";
 import { MediaCard, MEDIA_CARD_HEIGHT } from "./media-card";
 
 type MediaGridProps = {
@@ -241,10 +241,10 @@ export function MediaGrid({
             </Group>
 
             {loading && (
-                <LoadingStateCard
-                    message={UI_TEXT.library.loading}
-                    shellBorder={shellBorder}
-                />
+                <Box role="status">
+                    <VisuallyHidden>{UI_TEXT.library.loading}</VisuallyHidden>
+                    <MediaGridSkeleton shellBorder={shellBorder} />
+                </Box>
             )}
 
             {!loading && !hasItems && (
