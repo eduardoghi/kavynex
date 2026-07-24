@@ -77,6 +77,19 @@ describe("findLatestJsonProblems", () => {
         expect(problems.some((problem) => problem.startsWith("linux-x86_64: url"))).toBe(true);
     });
 
+    it("flags a platform pointing at a prior release's asset (right repo, wrong version segment)", () => {
+        // A stale entry from v1.1.0 merged into this v1.2.0 release: correct repo prefix and a
+        // still-valid signature, but the URL's version segment is the old one. The top-level
+        // version reads correct, so only a per-entry version check catches it - without which the
+        // updater would serve the old, validly-signed binary under the new version number.
+        const manifest = completeManifest("1.2.0");
+        manifest.platforms["windows-x86_64"].url = `${PREFIX}v1.1.0/kavynex_1.1.0_x64-setup.exe`;
+
+        const problems = findLatestJsonProblems(manifest, "1.2.0", PREFIX);
+        expect(problems.some((problem) => problem.startsWith("windows-x86_64: url"))).toBe(true);
+        expect(problems.some((problem) => problem.includes(`${PREFIX}v1.2.0/`))).toBe(true);
+    });
+
     it("skips the url-prefix check when no prefix is supplied", () => {
         const manifest = completeManifest();
         manifest.platforms["windows-x86_64"].url = "https://elsewhere.example/x.exe";

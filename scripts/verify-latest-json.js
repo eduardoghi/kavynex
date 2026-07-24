@@ -74,6 +74,17 @@ export function findLatestJsonProblems(manifest, expectedVersion, expectedUrlPre
             problems.push(
                 `${platform}: url ${JSON.stringify(entry.url)} is not under ${expectedUrlPrefix}`
             );
+        } else if (expectedUrlPrefix && !url.startsWith(`${expectedUrlPrefix}v${expectedVersion}/`)) {
+            // The repo prefix matches but the version segment does not: each build leg merges its
+            // own platform entry into the one latest.json on the draft release, so a merge race or
+            // partial failure could leave a platform pointing at a *previous* release's asset. That
+            // asset keeps a valid minisign signature forever, so the client would accept it and
+            // serve an older binary under this release's (higher) version number. `manifest.version`
+            // is only checked at the top level, so the top can read correct while a platform's URL
+            // is stale. Requiring the `v<version>/` segment per entry closes that window.
+            problems.push(
+                `${platform}: url ${JSON.stringify(entry.url)} is not under ${expectedUrlPrefix}v${expectedVersion}/`
+            );
         }
     }
 
