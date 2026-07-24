@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { Update } from "../lib/tauri-platform";
+import { useMemoObject } from "./use-memo-object";
 import {
     checkAppUpdate,
     installAppUpdate,
@@ -81,12 +82,14 @@ export function useAppUpdate(): UseAppUpdateReturn {
         }
     }, [update]);
 
-    return {
+    // Reference-stable so the controller keeps the shared convention (see use-memo-object): a
+    // consumer that depends on the whole object does not churn on every render.
+    return useMemoObject({
         status,
         updateInfo,
         progress,
         errorMessage,
         checkForUpdate,
         installUpdate
-    };
+    });
 }
