@@ -81,11 +81,17 @@ jobs:
                   # Link with lld instead of the slow default ld.bfd, mirroring ci.yml's Rust job.
                   echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
 
+            # cache-on-failure is deliberately off here (unlike a normal build job): this job runs
+            # cargo-mutants with `--in-place`, and a job-timeout kill (SIGKILL) can leave the working
+            # tree mutated mid-run. Saving a cache derived from that mutated tree on a failed/cancelled
+            # run is the one interaction worth avoiding; a fresh checkout would re-fingerprint and
+            # rebuild the changed files next run, but not persisting a failure-run cache removes the
+            # question entirely. A successful run still caches normally.
             - name: Cache Rust build
               uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
               with:
                   workspaces: src-tauri
-                  cache-on-failure: "true"
+                  cache-on-failure: "false"
 
             # Pin the tool version, like ci.yml/release.yml do for cargo-audit and cargo-deny: an
             # unpinned `cargo install` builds whatever the latest release happens to be on the day
