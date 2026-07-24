@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMemoObject } from "./use-memo-object";
 import type { MediaCommentRow, MediaRow } from "../types/media";
 import { listMediaComments } from "../services/media-service";
 import { logError } from "../utils/app-logger";
@@ -81,5 +82,5 @@ export function useMediaComments(
         };
     }, [media?.has_comments, media?.id, isRefreshingComments]);
 
-    return { comments, isLoadingComments, error };
+    return useMemoObject({ comments, isLoadingComments, error });
 }

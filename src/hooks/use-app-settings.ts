@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useMemoObject } from "./use-memo-object";
 import type { AppSettings, ImportMode } from "../types/settings";
 import { useAppSettingsActions } from "./use-app-settings-actions";
 import { getDefaultAppSettings } from "./use-app-settings-storage";
@@ -118,43 +119,26 @@ export function useAppSettings({
         });
     }, [settings.libraryPath]);
 
-    // Memoized so the controller object keeps a stable identity across renders. Consumers that
-    // depend on the whole object stop being invalidated on unrelated re-renders.
+    // Reference-stable controller (its identity only changes when a field does), via useMemoObject
+    // rather than a hand-maintained useMemo dependency array - so adding a field here can never
+    // silently omit it from the deps and leave the memo stale.
     const { isPreparingSettings, isMigratingLibraryPath, isSavingExternalBackupDir } =
         settingsActions;
 
-    return useMemo(
-        () => ({
-            settingsOpen,
-            settings,
-            isPreparingSettings,
-            isMigratingLibraryPath,
-            isSavingExternalBackupDir,
-            openSettings,
-            closeSettings,
-            setImportMode,
-            setLoadRemoteImages,
-            setCheckUpdatesOnStartup,
-            chooseLibraryPath,
-            openCurrentLibraryPath,
-            chooseExternalBackupDir,
-            clearExternalBackupDir,
-        }),
-        [
-            settingsOpen,
-            settings,
-            isPreparingSettings,
-            isMigratingLibraryPath,
-            isSavingExternalBackupDir,
-            openSettings,
-            closeSettings,
-            setImportMode,
-            setLoadRemoteImages,
-            setCheckUpdatesOnStartup,
-            chooseLibraryPath,
-            openCurrentLibraryPath,
-            chooseExternalBackupDir,
-            clearExternalBackupDir,
-        ]
-    );
+    return useMemoObject({
+        settingsOpen,
+        settings,
+        isPreparingSettings,
+        isMigratingLibraryPath,
+        isSavingExternalBackupDir,
+        openSettings,
+        closeSettings,
+        setImportMode,
+        setLoadRemoteImages,
+        setCheckUpdatesOnStartup,
+        chooseLibraryPath,
+        openCurrentLibraryPath,
+        chooseExternalBackupDir,
+        clearExternalBackupDir,
+    });
 }

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useMemoObject } from "./use-memo-object";
 import type { Channel, ChannelAvatarMode } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { useAsyncFlag } from "./use-async-flag";
@@ -345,7 +346,7 @@ export function useChannelActions({
         setSelectedChannelId,
     ]);
 
-    return {
+    return useMemoObject({
         isLoadingChannels,
         isCreatingChannel,
         isDeletingChannel,
@@ -356,5 +357,5 @@ export function useChannelActions({
         updateChannelIdentityAction,
         updateChannelAvatarAction,
         confirmDeleteChannelAction,
-    };
+    });
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMemoObject } from "./use-memo-object";
 import type { MediaRow } from "../types/media";
 import {
     readLiveChatMessagesFromFile,
@@ -77,5 +78,5 @@ export function useMediaLiveChat(
         };
     }, [libraryPath, media?.has_live_chat, media?.id, media?.live_chat_file_path]);
 
-    return { liveChatMessages, isLoadingLiveChat, error };
+    return useMemoObject({ liveChatMessages, isLoadingLiveChat, error });
 }

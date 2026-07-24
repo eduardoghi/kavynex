@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useMemoObject } from "./use-memo-object";
 import type { HomeController } from "../types/controllers";
 import { useChannels } from "./use-channels";
 import { useMediaLibrary } from "./use-media-library";
@@ -126,7 +127,9 @@ export function useHomeController(): HomeController {
         [settingsState, homeActions.chooseLibraryPath]
     );
 
-    return {
+    // Reference-stable controller, per the hook conventions in CONTRIBUTING.md: its identity only
+    // changes when one of its (already individually memoized) slices does, rather than every render.
+    return useMemoObject({
         channels: channelsState,
         media: mediaLibrary,
         settings,
@@ -140,5 +143,5 @@ export function useHomeController(): HomeController {
         viewState,
         libraryPanelState,
         libraryPath,
-    };
+    });
 }

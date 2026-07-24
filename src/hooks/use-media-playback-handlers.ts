@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { SyntheticEvent } from "react";
+import { useMemoObject } from "./use-memo-object";
 
 type UseMediaPlaybackHandlersOptions = {
     progressSeconds: number;
@@ -45,5 +46,5 @@ export function useMediaPlaybackHandlers<T extends HTMLMediaElement = HTMLMediaE
         onPlaybackRecovered?.();
     }, [onPlaybackRecovered]);
 
-    return { handleLoadedMetadata, handleError, handleCanPlay };
+    return useMemoObject({ handleLoadedMetadata, handleError, handleCanPlay });
 }
