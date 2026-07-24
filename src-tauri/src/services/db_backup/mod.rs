@@ -1628,6 +1628,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn import_rejects_a_live_chat_flag_with_no_stored_path() {
+        // A database stamped at v13+ (so the swap would skip the migration that enforces it) with a
+        // row flagged has_live_chat = 1 but no live_chat_file_path violates the invariant an import
+        // cannot repair, and must be refused rather than swapped in - mirroring the title_normalized
+        // gate for the sibling invariant from the same migration.
+        let dir = temp_dir("import-live-chat-flag-no-path");
+        let db = dir.join("kavynex.db");
+        let source = dir.join("incoming.db");
+
+        let options = SqliteConnectOptions::new()
+            .filename(&source)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        for ddl in [
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
+             title_normalized TEXT, file_path TEXT, media_type TEXT, has_live_chat INTEGER, \
+             live_chat_file_path TEXT, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+             UNIQUE (channel_id, file_path))",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+             FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+            // Flagged as having a live chat, but with no path behind it: the exact state the
+            // invariant rejects.
+            "INSERT INTO videos (title, title_normalized, has_live_chat, live_chat_file_path) \
+             VALUES ('clip', 'clip', 1, NULL)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let error = stage_database_import(&db, &source)
+            .await
+            .expect_err("a live-chat flag with no stored path must be refused");
+        assert_eq!(
+            error.code,
+            crate::AppErrorCode::DatabaseImportInvalid.as_str()
+        );
+        assert!(!import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn backup_status_reports_the_snapshot_modified_time() {
         // The reported timestamp must be the backup file's real mtime, not a fixed sentinel: a
         // freshly written snapshot is far more recent than the epoch, so a mutant returning Some(0)

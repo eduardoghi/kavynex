@@ -198,6 +198,46 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         }
     }
 
+    // The same reasoning applies to v13's live-chat row invariant (`has_live_chat` set implies a
+    // stored `live_chat_file_path`). It is a CHECK on a fresh table and a pair of triggers on an
+    // upgraded one, but an import replaces the whole file, so no write ever fires and neither
+    // enforces it against pre-existing rows. A database stamped at v13 or later claims to satisfy it
+    // already, so `ensure_schema` skips the migration that would repair it; a violating row would
+    // then sit in the library flagged as having a live chat with no file behind it - a state
+    // `get_media_repository_stats` already tracks as an inconsistency. Refuse it here, exactly as
+    // the `title_normalized` check above does for the sibling invariant from the same migration.
+    //
+    // Gate on the columns actually being present: like `title_normalized` they are not in the
+    // REQUIRED_COLUMNS spot-check, so a minimal look-alike stamped at a high version can reach here
+    // without them, and querying a missing column would error the inspection rather than judge the
+    // invariant.
+    if user_version >= 13 {
+        let has_flag =
+            crate::services::db_schema::table_has_column(pool, "videos", "has_live_chat")
+                .await
+                .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+        let has_path =
+            crate::services::db_schema::table_has_column(pool, "videos", "live_chat_file_path")
+                .await
+                .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+        if has_flag && has_path {
+            let (flagged_without_path,): (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM videos WHERE has_live_chat <> 0 AND (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) = '')",
+            )
+            .fetch_one(pool)
+            .await
+            .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+            if flagged_without_path > 0 {
+                return Err(AppError::from_code(
+                    AppErrorCode::DatabaseImportInvalid,
+                    "the selected database has media flagged as having a live chat with no stored file, so that live chat could never be opened",
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 
