@@ -278,7 +278,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
   any dangling reference the rebuild introduced. This path is implemented and tested but
-  unused as of `SCHEMA_VERSION 13` - no migration has needed it yet - kept ready so the
+  unused as of `SCHEMA_VERSION 14` - no migration has needed it yet - kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
   transaction that also stamps the new `user_version`, so a crash mid-migration leaves the
