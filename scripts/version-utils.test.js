@@ -33,6 +33,20 @@ describe("parseCargoVersion", () => {
     it("does not match a non-plain-semver version (e.g. a pre-release)", () => {
         expect(parseCargoVersion('version = "1.1.1-beta"\n')).toBeNull();
     });
+
+    it("reads the [package] version even when a dependency sub-table precedes it", () => {
+        // A bare ^version regex would return the first version line anywhere, so a
+        // [dependencies.foo] block placed before [package] would hijack it. Scoping to the
+        // [package] table is what keeps the app version correct regardless of table order.
+        const reordered = `[dependencies.foo]
+version = "9.9.9"
+
+[package]
+name = "kavynex"
+version = "1.1.1"
+`;
+        expect(parseCargoVersion(reordered)).toBe("1.1.1");
+    });
 });
 
 describe("replaceCargoVersion", () => {
@@ -47,6 +61,21 @@ describe("replaceCargoVersion", () => {
 
     it("returns null when there is no version line to replace", () => {
         expect(replaceCargoVersion('[package]\nname = "kavynex"\n', "2.0.0")).toBeNull();
+    });
+
+    it("rewrites only the [package] version when a dependency sub-table precedes it", () => {
+        const reordered = `[dependencies.foo]
+version = "9.9.9"
+
+[package]
+name = "kavynex"
+version = "1.1.1"
+`;
+        const updated = replaceCargoVersion(reordered, "2.0.0");
+
+        expect(updated).toContain('version = "2.0.0"');
+        expect(updated).toContain('version = "9.9.9"');
+        expect(updated).not.toContain('version = "1.1.1"');
     });
 });
 
