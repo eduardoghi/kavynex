@@ -68,6 +68,23 @@
 # unviable, 70 caught, 0 missed. The tunnel decoders were split into pure functions pinned by an
 # exact-value test - that is what kills the shift/mask/XOR operator mutants a classification-only test
 # had let survive, since many wrong octets still land in the same allow/deny band.
+# `src/services/db_backup/import.rs`, `external.rs` and `integrity.rs` - the rest of the
+# backup/restore/export/import/mirror machinery, the most destructive operations in the app. Joined
+# to `mod.rs` (already in scope) by widening the entry to the directory glob `db_backup/*.rs`, so a
+# future submodule split cannot silently fall out of scope. ADDED after a measured pass (2026-07-24,
+# `--in-place --no-config --file <each>`): 108 mutants, 42 unviable, 49 caught, 17 missed. Five of the
+# missed were the WAL-busy `stage_database_import` branch already excluded below; the rest were killed
+# by new tests in the parent's `mod tests` - the live-chat import invariant's zero-violation and
+# missing-`live_chat_file_path`-column cases, the intact-mirror no-clobber case, and the one-week
+# integrity throttle - except the `run_full_integrity_check` operator survivors, which need a corrupt
+# database returning a *controlled* number of problem rows and are excluded below.
+# `src/services/yt_dlp_download/command.rs` - the pure yt-dlp download planning: request validation,
+# the argv builder (with the `--` separator that stops the URL being read as a flag), and the
+# terminal-outcome classifier - the command-injection defense-in-depth layer. ADDED after a measured
+# pass (2026-07-24): 12 mutants, 5 unviable, 7 caught, 0 missed; its existing tests already kill every
+# viable mutant. Scoped to `command.rs`, not the whole `yt_dlp_download` directory: `mod.rs` is the
+# async process-spawning orchestration a unit test cannot drive (like the excluded binaries.rs
+# boundary functions).
 examine_globs = [
     "src/utils/path.rs",
     "src/services/library_guard.rs",
@@ -76,7 +93,8 @@ examine_globs = [
     "src/services/library_media.rs",
     "src/services/library_cleanup.rs",
     "src/services/filesystem.rs",
-    "src/services/db_backup/mod.rs",
+    "src/services/db_backup/*.rs",
+    "src/services/yt_dlp_download/command.rs",
     "src/services/ssrf_guard.rs",
     "src/commands/live_chat.rs",
 ]
@@ -163,4 +181,15 @@ exclude_re = [
     'replace && with \|\| in stage_database_import',
     'replace != with == in stage_database_import',
     'replace > with (==|<|>=) in stage_database_import',
+    # run_full_integrity_check (integrity.rs) survivors that need a corrupt database returning a
+    # *controlled* number of problem rows, which no deterministic unit test can force. The
+    # damaged-database test that exists returns a multi-row result, where these operators are
+    # equivalent: `let ok = rows.len() == 1 && rows[0].0 == "ok"` would only be weakened by an `||`
+    # when the pragma returns a *single* non-"ok" row (a corruption shape that cannot be produced on
+    # demand), and `truncated: rows.len() > problems.len()` differs only when SQLite returns more than
+    # MAX_INTEGRITY_PROBLEMS rows (again a specific, unforceable corruption). The one-week throttle
+    # interval itself is not excluded - it is covered by
+    # integrity_check_is_not_due_within_the_weekly_throttle_window.
+    'replace && with \|\| in run_full_integrity_check',
+    'replace > with (==|<|>=) in run_full_integrity_check',
 ]

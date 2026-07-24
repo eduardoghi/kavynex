@@ -1684,6 +1684,165 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn import_accepts_a_live_chat_flag_with_a_stored_path() {
+        // The mirror of the reject test above: a v13+ database whose live-chat invariant holds - a
+        // flagged row has its stored path, an unflagged row is fine - has zero violating rows and
+        // must import. Pins the `flagged_without_path > 0` count check against a `>= 0`, which, being
+        // true for every count, would reject every valid modern database as if its live chats had no
+        // files. The reject test uses a violating row (count >= 1), where `> 0` and `>= 0` agree, so
+        // only this zero-count case tells them apart.
+        let dir = temp_dir("import-live-chat-flag-with-path");
+        let db = dir.join("kavynex.db");
+        let source = dir.join("incoming.db");
+
+        let options = SqliteConnectOptions::new()
+            .filename(&source)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        for ddl in [
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
+             title_normalized TEXT, file_path TEXT, media_type TEXT, has_live_chat INTEGER, \
+             live_chat_file_path TEXT, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+             UNIQUE (channel_id, file_path))",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+             FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+            // A flagged row with a real path, and an unflagged row: both satisfy the invariant, so
+            // the flagged-without-path count is zero.
+            "INSERT INTO videos (title, title_normalized, has_live_chat, live_chat_file_path) \
+             VALUES ('clip', 'clip', 1, 'live_chat/clip.live_chat.json.gz')",
+            "INSERT INTO videos (title, title_normalized, has_live_chat, live_chat_file_path) \
+             VALUES ('other', 'other', 0, NULL)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        stage_database_import(&db, &source)
+            .await
+            .expect("a live-chat flag with a stored path must import");
+        assert!(import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn import_accepts_a_v13_database_that_lacks_the_live_chat_path_column() {
+        // The live-chat invariant is only checked when *both* has_live_chat and live_chat_file_path
+        // columns exist (neither is in the required-columns spot-check, so a minimal look-alike
+        // stamped at a high version can reach the check without them). A database that has
+        // has_live_chat but not live_chat_file_path must import, because the invariant query would
+        // reference a column that is not there. Pins the `has_flag && has_path` guard against an
+        // `||`, which would enter the block and error on the missing column instead of skipping it.
+        let dir = temp_dir("import-live-chat-no-path-column");
+        let db = dir.join("kavynex.db");
+        let source = dir.join("incoming.db");
+
+        let options = SqliteConnectOptions::new()
+            .filename(&source)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        for ddl in [
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+            // has_live_chat is present, live_chat_file_path deliberately is not.
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
+             title_normalized TEXT, file_path TEXT, media_type TEXT, has_live_chat INTEGER, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+             UNIQUE (channel_id, file_path))",
+            "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+             FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+            "INSERT INTO videos (title, title_normalized, has_live_chat) VALUES ('clip', 'clip', 0)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        stage_database_import(&db, &source)
+            .await
+            .expect("a database without the live_chat_file_path column must import");
+        assert!(import_staged_path(&db).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn mirror_keeps_an_intact_recent_mirror_and_ignores_a_leftover_staged_copy() {
+        // The counterpart to mirror_adopts_a_recent_stranded_staged_copy: when the current mirror is
+        // already present (and recent), a leftover staged file beside it must be ignored, never
+        // renamed over the intact mirror. Adoption only fires when current is *missing*; pins the
+        // `!current.exists() && staged.exists()` guard against an `||`, which would clobber the good
+        // mirror with the leftover staged copy.
+        let dir = temp_dir("ext-intact-src");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        let external = temp_dir("ext-intact-dest");
+        let current = external_backup_path(&external);
+        let staged = external.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
+        std::fs::write(&current, b"intact-mirror").unwrap();
+        std::fs::write(&staged, b"leftover-staged").unwrap();
+
+        // The current mirror is fresh, so the throttle skips a new export; the assertion is about
+        // which bytes survive, not whether an export ran.
+        assert!(!mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+
+        // The intact mirror is preserved and the leftover staged copy was not adopted over it.
+        assert_eq!(std::fs::read(&current).unwrap(), b"intact-mirror");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&external);
+    }
+
+    #[test]
+    fn integrity_check_is_not_due_within_the_weekly_throttle_window() {
+        // A marker aged three days is well inside the one-week throttle, so a background check is not
+        // due. Pins INTEGRITY_CHECK_MIN_INTERVAL_SECS = 7 * 24 * 60 * 60: any of its `*` operators
+        // mutated to `+`/`/` collapses the interval to a few seconds (or zero), which would make a
+        // three-day-old marker read as due.
+        let dir = temp_dir("integrity-throttle");
+        let db = dir.join("kavynex.db");
+        let marker = integrity_check_marker_path(&db);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, b"").unwrap();
+        let three_days_ago = SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 60 * 60);
+        filetime_set(&marker, three_days_ago);
+
+        assert!(
+            !integrity_check_is_due(&db),
+            "a three-day-old marker is within the one-week throttle, so a check is not due"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn backup_status_reports_the_snapshot_modified_time() {
         // The reported timestamp must be the backup file's real mtime, not a fixed sentinel: a
         // freshly written snapshot is far more recent than the epoch, so a mutant returning Some(0)
