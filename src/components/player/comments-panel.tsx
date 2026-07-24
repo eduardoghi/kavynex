@@ -29,6 +29,7 @@ import {
     type CommentSortMode,
 } from "./comment-tree";
 import { toUnionValue } from "../../utils/guards";
+import { formatCount } from "../../utils/pluralize";
 
 // Cap how many top-level comment threads are mounted at once so media with thousands of
 // comments does not build an unbounded DOM. More threads are revealed on demand.
@@ -165,7 +166,7 @@ export function CommentsPanel({
                             <Text fw={900}>{UI_TEXT.comments.title}</Text>
                             <Text size="sm" c="dimmed">
                                 {hasComments
-                                    ? `${commentsCount ?? comments.length} ${UI_TEXT.comments.savedWithMedia}`
+                                    ? `${formatCount(commentsCount ?? comments.length, "comment")} ${UI_TEXT.comments.savedWithMedia}`
                                     : UI_TEXT.comments.none}
                             </Text>
                             {isCommentLoadTruncated && (
@@ -226,7 +227,8 @@ export function CommentsPanel({
 
                         {normalizedCommentSearch && (
                             <Text size="sm" c="dimmed" role="status" aria-live="polite">
-                                {UI_TEXT.comments.resultsShowing} {filteredCommentsCount}{" "}
+                                {UI_TEXT.comments.resultsShowing}{" "}
+                                {formatCount(filteredCommentsCount, "result")}{" "}
                                 {UI_TEXT.comments.resultsFor} “{commentSearchValue.trim()}”
                             </Text>
                         )}

@@ -23,7 +23,7 @@ describe("useHomeLibraryPanel", () => {
         );
 
         expect(result.current.showSelectedChannelPanel).toBe(true);
-        expect(result.current.itemCountLabel).toBe("0 item(s)");
+        expect(result.current.itemCountLabel).toBe("0 items");
         expect(result.current.disableAddMedia).toBe(false);
     });
 

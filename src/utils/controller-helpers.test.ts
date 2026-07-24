@@ -64,8 +64,9 @@ describe("controller-helpers", () => {
     });
 
     it("builds item count label", () => {
-        expect(buildItemCountLabel([])).toBe("0 item(s)");
-        expect(buildItemCountLabel([createMediaRow()])).toBe("1 item(s)");
+        expect(buildItemCountLabel([])).toBe("0 items");
+        expect(buildItemCountLabel([createMediaRow()])).toBe("1 item");
+        expect(buildItemCountLabel([createMediaRow(), createMediaRow()])).toBe("2 items");
     });
 
     it("checks selected channel existence", () => {

@@ -347,21 +347,33 @@ export function buildDiagnosticsIssues(
         );
     }
 
-    if (input.mediaRepositoryStats.total_media_with_live_chat_flag_but_no_path > 0) {
+    const liveChatFlagWithoutPath =
+        input.mediaRepositoryStats.total_media_with_live_chat_flag_but_no_path;
+    if (liveChatFlagWithoutPath > 0) {
+        const subject =
+            liveChatFlagWithoutPath === 1
+                ? "1 media item has"
+                : `${liveChatFlagWithoutPath} media items have`;
         issues.push({
             code: "LIVE_CHAT_FLAG_WITHOUT_PATH",
             severity: "warning",
             title: "Some media items are marked with live chat but have no file path",
-            description: `${input.mediaRepositoryStats.total_media_with_live_chat_flag_but_no_path} media item(s) have live chat enabled in the database but no saved file path.`,
+            description: `${subject} live chat enabled in the database but no saved file path.`,
         });
     }
 
-    if (input.mediaRepositoryStats.total_media_with_live_chat_path_but_not_live > 0) {
+    const liveChatOnNonLive =
+        input.mediaRepositoryStats.total_media_with_live_chat_path_but_not_live;
+    if (liveChatOnNonLive > 0) {
+        const subject =
+            liveChatOnNonLive === 1
+                ? "1 media item is"
+                : `${liveChatOnNonLive} media items are`;
         issues.push({
             code: "LIVE_CHAT_ON_NON_LIVE_MEDIA",
             severity: "info",
             title: "Some non-live media items have a live chat file linked",
-            description: `${input.mediaRepositoryStats.total_media_with_live_chat_path_but_not_live} media item(s) are not marked as live but still have a live chat replay file linked.`,
+            description: `${subject} not marked as live but still have a live chat replay file linked.`,
         });
     }
 

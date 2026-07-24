@@ -14,6 +14,7 @@ import { ArrowDownAZ, ArrowLeft, ArrowUpAZ, Search, Video } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
+import { formatCount } from "../../utils/pluralize";
 import type { MediaQueryFilters } from "../../utils/media-library-filters";
 import { useChannelLibraryFilters } from "../../hooks/use-channel-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
@@ -108,7 +109,7 @@ export function SelectedChannelLibrarySection({
 
     // "showing <loaded> of <total matching the filters>". With no filter active, total is the
     // whole channel; with a filter, it is the filtered match count.
-    const filteredCountLabel = `${UI_TEXT.library.showing} ${mediaItems.length} ${UI_TEXT.library.of} ${total} ${UI_TEXT.home.itemCountSuffix}`;
+    const filteredCountLabel = `${UI_TEXT.library.showing} ${mediaItems.length} ${UI_TEXT.library.of} ${formatCount(total, "item")}`;
 
     return (
         <Stack gap="lg">

@@ -216,9 +216,12 @@ describe("CommentsPanel", () => {
         });
 
         expect(
-            screen.getByText(`${UI_TEXT.comments.resultsShowing} 1 ${UI_TEXT.comments.resultsFor}`, {
-                exact: false,
-            })
+            screen.getByText(
+                `${UI_TEXT.comments.resultsShowing} 1 result ${UI_TEXT.comments.resultsFor}`,
+                {
+                    exact: false,
+                }
+            )
         ).toBeInTheDocument();
         expect(screen.getByText("needle reply")).toBeInTheDocument();
         // The context-only parent is still shown (for thread context) but labeled as such.

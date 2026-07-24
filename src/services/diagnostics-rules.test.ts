@@ -439,7 +439,7 @@ describe("buildDiagnosticsIssues", () => {
                 severity: "warning",
                 title: "Some media items are marked with live chat but have no file path",
                 description:
-                    "1 media item(s) have live chat enabled in the database but no saved file path.",
+                    "1 media item has live chat enabled in the database but no saved file path.",
             },
         ]);
     });
@@ -454,7 +454,7 @@ describe("buildDiagnosticsIssues", () => {
                 severity: "info",
                 title: "Some non-live media items have a live chat file linked",
                 description:
-                    "6 media item(s) are not marked as live but still have a live chat replay file linked.",
+                    "6 media items are not marked as live but still have a live chat replay file linked.",
             },
         ]);
     });

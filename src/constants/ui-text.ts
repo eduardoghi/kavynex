@@ -7,7 +7,6 @@ export const UI_TEXT = {
         selectChannelPrompt: "Select a channel from the sidebar to see its library.",
         addMedia: "Add media",
         back: "Back",
-        itemCountSuffix: "item(s)",
         emptyCards: {
             channels: {
                 title: "1) Channels",
@@ -77,7 +76,7 @@ export const UI_TEXT = {
     comments: {
         title: "Saved comments",
         none: "No saved comments for this media",
-        savedWithMedia: "comment(s) saved with this media",
+        savedWithMedia: "saved with this media",
         sortLabel: "Sort by",
         searchLabel: "Search comments",
         searchPlaceholder: "Search by author, @handle, or text...",
@@ -97,7 +96,7 @@ export const UI_TEXT = {
         reply: "reply",
         replies: "replies",
         resultsShowing: "Showing",
-        resultsFor: "result(s) for",
+        resultsFor: "for",
         contextLabel: "Context",
         loadMore: "Load more comments",
         truncatedNoticePrefix: "Showing the first",
