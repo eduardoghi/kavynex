@@ -48,6 +48,16 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// child that outran it.
 const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
+/// Bounds how many thumbnail/avatar yt-dlp runs execute at once. Each spawns a yt-dlp + ffmpeg
+/// process tree (`--convert-thumbnails png`), so a burst - a bulk import, a retry loop, or a
+/// compromised frontend firing the thumbnail/avatar commands - could otherwise spawn an unbounded
+/// number of process trees and exhaust CPU/handles. The download flow (`DOWNLOAD_SEMAPHORE`) and the
+/// metadata/comment/format runs (`STANDALONE_RUN_SEMAPHORE`) each have their own bound; this is the
+/// third yt-dlp spawn site and gets its own.
+const MAX_CONCURRENT_THUMBNAIL_RUNS: usize = 4;
+static THUMBNAIL_RUN_SEMAPHORE: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_THUMBNAIL_RUNS);
+
 /// Drains an async pipe to its end, retaining at most `max_bytes`. Bytes past the cap are read and
 /// discarded rather than left unread, so the child never blocks on a full pipe.
 async fn read_drain_capped_async(
@@ -112,6 +122,14 @@ async fn run_thumbnail_yt_dlp_with_timeout(
     exec_message: &str,
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<std::process::Output> {
+    // Bound concurrent thumbnail/avatar runs (see THUMBNAIL_RUN_SEMAPHORE). Held for the whole
+    // function - spawn through wait - so a burst queues here rather than each spawning a yt-dlp +
+    // ffmpeg tree at once.
+    let _permit = THUMBNAIL_RUN_SEMAPHORE
+        .acquire()
+        .await
+        .expect("the thumbnail-run semaphore is a 'static and is never closed");
+
     // Any early return still reaps the direct child; the tree kill below covers the ffmpeg
     // grandchild that `kill_on_drop` does not reach.
     command.kill_on_drop(true);
