@@ -539,10 +539,14 @@ async fn run_yt_dlp_and_capture_json(
 
     if !status.success() {
         let detail = select_best_error_detail(&stdout_logs, &stderr_logs, failed_message);
-        // The detail is embedded in the returned AppError, which is serialized to the frontend
-        // and written to the file log; redact the cookies path so a cookie-related failure
-        // cannot leak it (the success path redacts the same way before returning terminal_logs).
-        let detail = redact_cookies_path_from_line(&detail, cookies_path_from_args(args));
+        // The detail is embedded in the returned AppError, which is serialized to the frontend and
+        // written to the file log. yt-dlp's `-v` mode echoes the whole argv (the
+        // `[debug] Command-line config: [...]` line), so besides the cookies path this line can
+        // carry the full pasted URL with its playlist/tracking parameters. Redact both, matching the
+        // success path's terminal_logs redaction: the `--` separator means the URL is always the
+        // last argument.
+        let url = args.last().map(String::as_str).unwrap_or_default();
+        let detail = redact_sensitive_from_line(&detail, cookies_path_from_args(args), url);
 
         return Err(AppError::from_code_with_details(
             failed_code,
