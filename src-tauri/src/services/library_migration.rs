@@ -35,6 +35,17 @@ fn library_migration_lock() -> &'static Mutex<()> {
 /// without overwriting), so re-running safely completes the copy. Any top-level entry that is
 /// not a managed directory means the folder holds unrelated user content and is rejected, so a
 /// crash mid-migration no longer wedges the retry with an opaque "not empty" error.
+/// True for a file the OS itself drops into any folder the user merely browsed to in
+/// Finder/Explorer (macOS `.DS_Store`, Windows `Thumbs.db`/`desktop.ini`). The user never put
+/// these there, so a destination holding only them is still effectively empty and must not be
+/// rejected as "not empty". Matched case-insensitively, since Windows filenames are.
+fn is_ignorable_os_entry(name: &str) -> bool {
+    const IGNORABLE_OS_FILES: [&str; 3] = [".ds_store", "thumbs.db", "desktop.ini"];
+
+    let normalized = name.trim().to_ascii_lowercase();
+    IGNORABLE_OS_FILES.contains(&normalized.as_str())
+}
+
 fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
     let entries = fs::read_dir(path).map_err(|e| {
         AppError::from_code(
@@ -54,7 +65,10 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
         let name = entry.file_name().to_string_lossy().to_string();
         let is_managed_dir = entry.path().is_dir() && MANAGED_LIBRARY_DIRS.contains(&name.as_str());
 
-        if !is_managed_dir {
+        // A managed subdirectory (a previous, interrupted migration to resume) and an OS-generated
+        // file (which the user did not put there) are both allowed; anything else is unrelated user
+        // content and rejected, so a real non-empty folder is never migrated into.
+        if !is_managed_dir && !is_ignorable_os_entry(&name) {
             return Err(AppError::from_code(
                 AppErrorCode::InvalidLibraryMigration,
                 "the selected library folder must be empty (or contain only a previous, interrupted Kavynex migration); choose an empty folder to continue",
@@ -674,6 +688,37 @@ mod tests {
         let _ = fs::remove_dir_all(&old_root);
         let _ = fs::remove_dir_all(&new_root);
         let _ = fs::remove_file(&marker);
+    }
+
+    #[test]
+    fn is_ignorable_os_entry_matches_only_os_generated_files() {
+        for name in [".DS_Store", ".ds_store", "Thumbs.db", "thumbs.db", "desktop.ini", " Desktop.ini "] {
+            assert!(is_ignorable_os_entry(name), "{name} should be ignorable");
+        }
+
+        for name in ["video", "notes.txt", "my.DS_Store.mp4", "thumbs.db.bak", ".ds_storex"] {
+            assert!(!is_ignorable_os_entry(name), "{name} should not be ignorable");
+        }
+    }
+
+    #[test]
+    fn migrate_library_directory_sync_ignores_os_generated_files_in_destination() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        // A folder the user just browsed to in Finder/Explorer commonly already holds a `.DS_Store`
+        // or `Thumbs.db` the OS created. It must still count as an empty, migratable destination.
+        let new_root = unique_test_dir("os-files-dest");
+        fs::create_dir_all(&new_root).unwrap();
+        fs::write(new_root.join(".DS_Store"), b"os junk").unwrap();
+        fs::write(new_root.join("Thumbs.db"), b"os junk").unwrap();
+
+        let result =
+            migrate_library_directory_sync("   ", new_root.to_string_lossy().as_ref(), None)
+                .unwrap();
+
+        assert!(result.changed);
+
+        let _ = fs::remove_dir_all(new_root);
     }
 
     #[test]
