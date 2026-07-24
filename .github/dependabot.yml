@@ -13,6 +13,14 @@ updates:
       schedule:
           interval: weekly
       open-pull-requests-limit: 10
+      # Wait out a version's first days on the registry before opening a bump PR, so a freshly
+      # published (possibly compromised) release is not picked up before the ecosystem has had a
+      # chance to flag it. This is the Dependabot-native, source-agnostic cooling-off: pnpm's
+      # minimumReleaseAge (pnpm-workspace.yaml) only guards a pnpm install, and the Cargo tree had
+      # no equivalent at all, so this closes that asymmetry by applying the same gate to all three
+      # ecosystems here.
+      cooldown:
+          default-days: 5
       # Dependency bumps are committed as `build:` per CONTRIBUTING.md, so the message
       # survives a squash-merge without violating the commit convention.
       commit-message:
@@ -30,6 +38,10 @@ updates:
       schedule:
           interval: weekly
       open-pull-requests-limit: 10
+      # The Cargo tree has no publish-age gate of its own (cargo-deny restricts source/license, not
+      # age), so this cooldown is the only cooling-off it gets - see the npm block above.
+      cooldown:
+          default-days: 5
       commit-message:
           prefix: "build"
       groups:
@@ -45,6 +57,10 @@ updates:
       schedule:
           interval: weekly
       open-pull-requests-limit: 10
+      # Same cooling-off for action bumps: an action is pinned by SHA, but a freshly tagged release
+      # a bump would repoint to still benefits from a few days on the registry first.
+      cooldown:
+          default-days: 5
       commit-message:
           prefix: "build"
       groups:
