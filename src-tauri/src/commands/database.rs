@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager, State};
 
@@ -62,6 +62,50 @@ fn destination_is_inside_dir(destination: &Path, protected_dir: &Path) -> bool {
     }
 }
 
+/// Validates a caller-provided export destination and returns the exact path the export must be
+/// written to.
+///
+/// Extracted from `export_database` as a pure function (the caller resolves `config_dir` from the
+/// `AppHandle` first) so the ordering it enforces is unit-testable without a live app: trim once,
+/// then the extension gate, then the app-config-dir containment refusal - all against the *same*
+/// trimmed path, and the returned `PathBuf` is that same path. That single-path invariant is the
+/// point: the earlier inline version gated the extension/containment on the trimmed path while the
+/// write used the raw one, so a padded destination could be validated on one path and written to
+/// another - a validate-here/act-there gap in a function whose whole job is to gate a destructive
+/// overwrite.
+fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppResult<PathBuf> {
+    let trimmed = destination_path.trim();
+
+    validate_export_destination(trimmed)?;
+
+    // Refuse an export aimed inside the app's own config directory, where the live database and
+    // every backup generation live: replacing one of those with an export is a data-loss path the
+    // shared `.db` extension would otherwise let through (see destination_is_inside_dir).
+    if destination_is_inside_dir(Path::new(trimmed), config_dir) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "the export cannot be written into the app's own data directory, which holds the live database and its backups",
+        ));
+    }
+
+    Ok(PathBuf::from(trimmed))
+}
+
+/// The guard `restore_database_from_backup` applies before touching the database file: a restore
+/// renames the live database aside, so it must never run while the pool is open (which would be
+/// operating on a file being renamed underneath). Extracted so both branches are unit-testable
+/// without a live pool; `is_open` is `Db::is_initialized`, re-read under the restore lock.
+fn ensure_closed_before_restore(is_open: bool) -> AppResult<()> {
+    if is_open {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseAlreadyOpen,
+            "the database is already open; restart the app before restoring from backup",
+        ));
+    }
+
+    Ok(())
+}
+
 /// Initializes the shared database pool (creating and migrating the schema on first
 /// call) and confirms the database is reachable. Called by the frontend on startup so
 /// database initialization errors surface to the user before any feature runs.
@@ -100,12 +144,7 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
     // recovery entry and this command acquiring the lock.
     let _open_guard = db.restore_guard().await;
 
-    if db.is_initialized() {
-        return Err(AppError::from_code(
-            AppErrorCode::DatabaseAlreadyOpen,
-            "the database is already open; restart the app before restoring from backup",
-        ));
-    }
+    ensure_closed_before_restore(db.is_initialized())?;
 
     let path = database_path(&app)?;
     db_backup::restore_database_from_backup(&path).await
@@ -116,17 +155,9 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
 /// backup, which lives next to the live database).
 #[tauri::command]
 pub async fn export_database(app: AppHandle, destination_path: String) -> AppResult<()> {
-    // Trim once and validate, check containment and write against the *same* path. Previously the
-    // extension and containment checks ran on the trimmed path while the write used the raw one, so
-    // a padded destination could be gated on one path and written to another - a validate-here /
-    // act-there gap in a function whose whole job is to gate a destructive overwrite.
-    let destination_path = destination_path.trim();
-
-    validate_export_destination(destination_path)?;
-
-    // Refuse an export aimed inside the app's own config directory, where the live database and
-    // every backup generation live: replacing one of those with an export is a data-loss path the
-    // shared `.db` extension would otherwise let through (see destination_is_inside_dir).
+    // The AppHandle-bound half: resolve the app config directory the containment guard needs. The
+    // validation ordering and the single-path invariant then live in the pure
+    // prepare_export_destination (unit-tested), which returns the exact path the write uses.
     let config_dir = app.path().app_config_dir().map_err(|error| {
         AppError::from_code(
             AppErrorCode::InvalidTargetPath,
@@ -134,15 +165,10 @@ pub async fn export_database(app: AppHandle, destination_path: String) -> AppRes
         )
     })?;
 
-    if destination_is_inside_dir(Path::new(destination_path), &config_dir) {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidTargetPath,
-            "the export cannot be written into the app's own data directory, which holds the live database and its backups",
-        ));
-    }
+    let destination = prepare_export_destination(&destination_path, &config_dir)?;
 
     let path = database_path(&app)?;
-    db_backup::export_database(&path, Path::new(destination_path)).await
+    db_backup::export_database(&path, &destination).await
 }
 
 /// Validates and stages a user-provided database file for import. The swap is applied on the
@@ -299,5 +325,75 @@ mod tests {
                 validate_export_destination(path).expect_err(&format!("{path} should be rejected"));
             assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
         }
+    }
+
+    fn unique_dir(tag: &str) -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+
+        std::env::temp_dir().join(format!(
+            "kavynex-prepare-export-{tag}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn prepare_export_destination_returns_the_trimmed_path_outside_the_config_dir() {
+        let config_dir = unique_dir("config");
+        let outside_dir = unique_dir("outside");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&outside_dir).unwrap();
+
+        let destination = outside_dir.join("backup.db");
+        // Padded input: the returned path must be the *trimmed* destination. This pins the
+        // single-path invariant - the guard and the write both act on exactly this path - so the
+        // validate-here/act-there regression (gate the trimmed path, write the raw one) stays dead.
+        let padded = format!("   {}   ", destination.to_string_lossy());
+
+        let prepared = prepare_export_destination(&padded, &config_dir).unwrap();
+        assert_eq!(prepared, destination);
+
+        let _ = std::fs::remove_dir_all(&config_dir);
+        let _ = std::fs::remove_dir_all(&outside_dir);
+    }
+
+    #[test]
+    fn prepare_export_destination_rejects_a_target_inside_the_config_dir() {
+        let config_dir = unique_dir("inside");
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        // A .db target directly inside the config dir passes the extension gate but must still be
+        // refused: it could clobber the live kavynex.db or one of its backup generations.
+        let inside = config_dir.join("kavynex.db.bak");
+        let error = prepare_export_destination(&inside.to_string_lossy(), &config_dir).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+
+        let _ = std::fs::remove_dir_all(&config_dir);
+    }
+
+    #[test]
+    fn prepare_export_destination_rejects_a_non_database_extension_before_containment() {
+        // The extension gate runs before the containment check, so a non-database target is rejected
+        // regardless of the config dir (a nonexistent path here is enough to prove the ordering).
+        let config_dir = unique_dir("nonexistent");
+
+        let error =
+            prepare_export_destination("C:/Users/victim/contract.docx", &config_dir).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+    }
+
+    #[test]
+    fn ensure_closed_before_restore_rejects_an_open_database() {
+        let error = ensure_closed_before_restore(true).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::DatabaseAlreadyOpen.as_str());
+    }
+
+    #[test]
+    fn ensure_closed_before_restore_allows_a_closed_database() {
+        assert!(ensure_closed_before_restore(false).is_ok());
     }
 }
