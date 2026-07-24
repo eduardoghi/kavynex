@@ -1,6 +1,7 @@
 import { ActionIcon, AppShell, Badge, Box, Group, Text } from "@mantine/core";
 import { Plus, Settings } from "lucide-react";
 import { AppButton } from "../ui/app-button";
+import { useAppVersion } from "../../hooks/use-app-version";
 
 type AppHeaderProps = {
     appIconSrc: string;
@@ -17,6 +18,8 @@ export function AppHeader({
     onOpenCreateChannel,
     onOpenSettings,
 }: AppHeaderProps): JSX.Element {
+    const appVersion = useAppVersion();
+
     return (
         <AppShell.Header
             style={{
@@ -42,21 +45,17 @@ export function AppHeader({
                         <img src={appIconSrc} width={28} height={28} alt="Kavynex" />
                     </Box>
 
-                    <Box>
-                        <Group gap="xs" align="center">
-                            <Text fw={950} size="lg" lh={1}>
-                                Kavynex
-                            </Text>
-
-                            <Badge variant="light" color="violet" size="sm">
-                                Desktop
-                            </Badge>
-                        </Group>
-
-                        <Text c="dimmed" size="xs" lh={1.2}>
-                            Curated media library
+                    <Group gap="xs" align="center">
+                        <Text fw={950} size="lg" lh={1}>
+                            Kavynex
                         </Text>
-                    </Box>
+
+                        {appVersion ? (
+                            <Badge variant="light" color="violet" size="sm">
+                                v{appVersion}
+                            </Badge>
+                        ) : null}
+                    </Group>
                 </Group>
 
                 <Group gap="xs">
