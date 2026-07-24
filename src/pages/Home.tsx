@@ -132,13 +132,10 @@ export default function Home(): JSX.Element {
                                 <EmptyStateCard
                                     title={UI_TEXT.home.emptyTitle}
                                     description={UI_TEXT.home.emptyDescription}
+                                    actionLabel={UI_TEXT.home.emptyAction}
+                                    onAction={() => channels.setCreateChannelOpen(true)}
                                     shellBorder={viewState.shellBorder}
                                     shellSurface={viewState.shellSurface}
-                                    features={[
-                                        UI_TEXT.home.emptyCards.channels,
-                                        UI_TEXT.home.emptyCards.media,
-                                        UI_TEXT.home.emptyCards.diagnostics,
-                                    ]}
                                 />
                             )}
 

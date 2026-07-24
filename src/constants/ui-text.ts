@@ -1,26 +1,13 @@
 export const UI_TEXT = {
     home: {
-        emptyTitle: "Channel library",
+        emptyTitle: "No channels yet",
         emptyDescription:
-            "Create channels and add media manually. You can configure tools and diagnostics from settings.",
+            "Create a channel to start backing up its videos, audio, thumbnails and comments.",
+        emptyAction: "Create your first channel",
         loadingApp: "Loading your library",
         selectChannelPrompt: "Select a channel from the sidebar to see its library.",
         addMedia: "Add media",
         back: "Back",
-        emptyCards: {
-            channels: {
-                title: "1) Channels",
-                description: "Organize content by channel.",
-            },
-            media: {
-                title: "2) Media",
-                description: "Import local files or download using yt-dlp.",
-            },
-            diagnostics: {
-                title: "3) Diagnostics",
-                description: "Check library setup, ffmpeg and yt-dlp status.",
-            },
-        },
     },
 
     library: {

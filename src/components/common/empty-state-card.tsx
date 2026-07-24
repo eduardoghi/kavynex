@@ -1,37 +1,25 @@
-import { Box, Card, Group, SimpleGrid, Text, ThemeIcon, Title } from "@mantine/core";
-import { FolderKanban, Library, Wrench } from "lucide-react";
-
-type EmptyStateFeature = {
-    title: string;
-    description: string;
-};
+import { Card, Stack, Text, ThemeIcon, Title } from "@mantine/core";
+import { Library, Plus } from "lucide-react";
+import { AppButton } from "../ui/app-button";
 
 type EmptyStateCardProps = {
     title: string;
     description: string;
+    actionLabel: string;
+    onAction: () => void;
     shellBorder: string;
     shellSurface: string;
-    features: EmptyStateFeature[];
 };
 
-function resolveFeatureIcon(index: number): JSX.Element {
-    if (index === 0) {
-        return <FolderKanban size={18} />;
-    }
-
-    if (index === 1) {
-        return <Library size={18} />;
-    }
-
-    return <Wrench size={18} />;
-}
-
+// A quiet, focused first-run empty state: one icon, a short line, and a single primary action -
+// deliberately not a grid of numbered feature cards, which reads as marketing rather than an app.
 export function EmptyStateCard({
     title,
     description,
+    actionLabel,
+    onAction,
     shellBorder,
     shellSurface,
-    features,
 }: EmptyStateCardProps): JSX.Element {
     return (
         <Card
@@ -39,52 +27,36 @@ export function EmptyStateCard({
             radius="xl"
             p="xl"
             role="region"
-            aria-label={typeof title === "string" ? title : "empty state"}
+            aria-label={title}
             style={{
-                background:
-                    "radial-gradient(500px 220px at top left, rgba(168,85,247,0.08), transparent 55%)," +
-                    shellSurface,
+                background: shellSurface,
                 borderColor: shellBorder,
             }}
         >
-            <Box maw={860}>
-                <Title order={1} fw={950}>
-                    {title}
-                </Title>
+            <Stack gap="lg" align="center" maw={440} mx="auto" py="xl" ta="center">
+                <ThemeIcon variant="light" size={64} radius="xl">
+                    <Library size={30} />
+                </ThemeIcon>
 
-                <Text c="dimmed" mt="xs" maw={780}>
-                    {description}
-                </Text>
-            </Box>
+                <Stack gap={6} align="center">
+                    <Title order={2} fw={900}>
+                        {title}
+                    </Title>
 
-            <Box mt="lg">
-                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-                    {features.map((feature, index) => (
-                        <Card
-                            key={`${feature.title}-${index}`}
-                            withBorder
-                            radius="lg"
-                            p="md"
-                            style={{
-                                borderColor: shellBorder,
-                                background: "rgba(255,255,255,0.02)",
-                            }}
-                        >
-                            <Group gap="sm" align="center" mb="sm">
-                                <ThemeIcon variant="light" radius="xl">
-                                    {resolveFeatureIcon(index)}
-                                </ThemeIcon>
+                    <Text c="dimmed" maw={380}>
+                        {description}
+                    </Text>
+                </Stack>
 
-                                <Text fw={900}>{feature.title}</Text>
-                            </Group>
-
-                            <Text size="sm" c="dimmed">
-                                {feature.description}
-                            </Text>
-                        </Card>
-                    ))}
-                </SimpleGrid>
-            </Box>
+                <AppButton
+                    type="button"
+                    appVariant="primary"
+                    leftSection={<Plus size={18} />}
+                    onClick={onAction}
+                >
+                    {actionLabel}
+                </AppButton>
+            </Stack>
         </Card>
     );
 }
