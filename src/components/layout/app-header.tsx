@@ -1,4 +1,4 @@
-import { ActionIcon, AppShell, Badge, Box, Group, Text } from "@mantine/core";
+import { ActionIcon, AppShell, Box, Group, Text } from "@mantine/core";
 import { Plus, Settings } from "lucide-react";
 import { AppButton } from "../ui/app-button";
 import { useAppVersion } from "../../hooks/use-app-version";
@@ -45,15 +45,15 @@ export function AppHeader({
                         <img src={appIconSrc} width={28} height={28} alt="Kavynex" />
                     </Box>
 
-                    <Group gap="xs" align="center">
+                    <Group gap={6} align="baseline">
                         <Text fw={950} size="lg" lh={1}>
                             Kavynex
                         </Text>
 
                         {appVersion ? (
-                            <Badge variant="light" color="violet" size="sm">
+                            <Text c="dimmed" size="xs" lh={1}>
                                 v{appVersion}
-                            </Badge>
+                            </Text>
                         ) : null}
                     </Group>
                 </Group>
