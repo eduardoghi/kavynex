@@ -8,6 +8,7 @@ import {
     INVALID_URL_ERROR_CODE,
     INVALID_RUN_ID_ERROR_CODE,
     INVALID_FORMAT_ID_ERROR_CODE,
+    TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,
     READ_DIR_FAILED_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
@@ -67,6 +68,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [INVALID_URL_ERROR_CODE]: "Enter a valid media URL.",
     [INVALID_RUN_ID_ERROR_CODE]: "The download session is invalid.",
     [INVALID_FORMAT_ID_ERROR_CODE]: "Choose a valid format before continuing.",
+    [TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE]:
+        "Too many downloads are already in progress. Wait for one to finish and try again.",
 
     [INVALID_DIRECTORY_PATH_ERROR_CODE]: "Choose a valid folder.",
     [INVALID_LIBRARY_PATH_ERROR_CODE]: "Configure a valid library folder before continuing.",

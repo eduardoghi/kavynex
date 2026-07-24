@@ -1,3 +1,4 @@
+pub mod bounded_semaphore;
 pub mod format;
 pub mod hash;
 pub mod io;

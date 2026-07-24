@@ -36,6 +36,7 @@ use crate::services::thumbnail_persist::persist_thumbnail_from_source;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
+use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::naming::unique_temp_suffix;
 use crate::utils::process::{hide_console_async, read_process_error};
 use crate::utils::task::run_blocking;
@@ -55,8 +56,13 @@ const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 /// metadata/comment/format runs (`STANDALONE_RUN_SEMAPHORE`) each have their own bound; this is the
 /// third yt-dlp spawn site and gets its own.
 const MAX_CONCURRENT_THUMBNAIL_RUNS: usize = 4;
-static THUMBNAIL_RUN_SEMAPHORE: tokio::sync::Semaphore =
-    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_THUMBNAIL_RUNS);
+// Ceiling on how many thumbnail/avatar runs may be in flight (running or queued) at once. The
+// concurrency cap bounds only how many spawn together; this bounds the queue behind it so a burst -
+// a bulk import or a compromised frontend firing the commands in a loop - is refused up front rather
+// than enqueued without limit (see BoundedSemaphore). Set well above a realistic bulk import.
+const MAX_THUMBNAIL_RUNS_IN_FLIGHT: usize = 32;
+static THUMBNAIL_RUN_SEMAPHORE: BoundedSemaphore =
+    BoundedSemaphore::new(MAX_CONCURRENT_THUMBNAIL_RUNS, MAX_THUMBNAIL_RUNS_IN_FLIGHT);
 
 /// Drains an async pipe to its end, retaining at most `max_bytes`. Bytes past the cap are read and
 /// discarded rather than left unread, so the child never blocks on a full pipe.
@@ -124,11 +130,10 @@ async fn run_thumbnail_yt_dlp_with_timeout(
 ) -> AppResult<std::process::Output> {
     // Bound concurrent thumbnail/avatar runs (see THUMBNAIL_RUN_SEMAPHORE). Held for the whole
     // function - spawn through wait - so a burst queues here rather than each spawning a yt-dlp +
-    // ffmpeg tree at once.
+    // ffmpeg tree at once, and a queue deeper than the in-flight ceiling is refused up front.
     let _permit = THUMBNAIL_RUN_SEMAPHORE
-        .acquire()
-        .await
-        .expect("the thumbnail-run semaphore is a 'static and is never closed");
+        .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
+        .await?;
 
     // Any early return still reaps the direct child; the tree kill below covers the ffmpeg
     // grandchild that `kill_on_drop` does not reach.

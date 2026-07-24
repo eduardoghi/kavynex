@@ -4,6 +4,16 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// Hard ceiling on how many runs may be registered at once. The entry is inserted *before* a
+/// download awaits its execution permit (so a queued download stays cancellable), so the registry
+/// size is exactly the number of running-plus-queued runs; `DOWNLOAD_SEMAPHORE` bounds only how many
+/// run concurrently, not how deep the queue behind it grows. Refusing a new run once the registry is
+/// this full stops a burst of unique run ids (a buggy or compromised frontend firing the download or
+/// cancellable-metadata IPC command in a loop) from piling an unbounded backlog ahead of a real
+/// request. Set well above the concurrency cap and any realistic interactive use, so it only trips on
+/// abuse; standalone metadata/comment fetches that opt into cancellation share this registry too.
+const MAX_ACTIVE_RUNS: usize = 16;
+
 /// Tracks one in-flight download. The `cancel_flag` is polled cooperatively by the
 /// download loop (per-run cancellation), while `pid` records the spawned yt-dlp child so
 /// its whole process tree can be killed when the app exits, before the async runtime is
@@ -36,6 +46,15 @@ pub fn register_download_run(run_id: &str) -> AppResult<Arc<AtomicBool>> {
         return Err(AppError::from_code(
             AppErrorCode::YtDlpRunAlreadyActive,
             "run_id is already active",
+        ));
+    }
+
+    // Bound the running-plus-queued depth (see MAX_ACTIVE_RUNS). Checked after the duplicate guard so
+    // re-registering an already-active run_id still reports the more specific error.
+    if guard.len() >= MAX_ACTIVE_RUNS {
+        return Err(AppError::from_code(
+            AppErrorCode::TooManyConcurrentYtDlpRuns,
+            "too many downloads are already in progress",
         ));
     }
 
@@ -210,6 +229,35 @@ mod tests {
         let _serial = serial_guard();
         let result = cancel_media_download("   ");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn register_download_run_rejects_once_the_active_ceiling_is_reached() {
+        let _serial = serial_guard();
+
+        // Fill the registry to its ceiling with distinct run ids.
+        let ids: Vec<String> = (0..MAX_ACTIVE_RUNS)
+            .map(|index| format!("cap-run-{index}"))
+            .collect();
+        for id in &ids {
+            register_download_run(id).unwrap();
+        }
+
+        // A further distinct run is refused with the too-many code, not the duplicate code.
+        let overflow = register_download_run("cap-run-overflow").unwrap_err();
+        assert_eq!(
+            overflow.code,
+            AppErrorCode::TooManyConcurrentYtDlpRuns.as_str()
+        );
+
+        // Freeing one slot admits exactly one more run.
+        unregister_download_run(&ids[0]);
+        register_download_run("cap-run-after-release").unwrap();
+
+        for id in &ids[1..] {
+            unregister_download_run(id);
+        }
+        unregister_download_run("cap-run-after-release");
     }
 
     #[test]

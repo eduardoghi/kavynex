@@ -17,6 +17,7 @@ use crate::services::binaries::resolve_yt_dlp_binary_async;
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_registry::{register_download_run, DownloadRunReleaseGuard};
 use crate::services::yt_dlp_url::{is_allowed_youtube_url, youtube_ref_for_log};
+use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
 use crate::utils::io::{read_lossy_line, read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::process::hide_console_async;
@@ -33,11 +34,18 @@ const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
 // downloads - only the metadata-style probes. Generous enough that normal interactive use (loading
 // formats for a video, fetching its comments) never queues.
 const MAX_CONCURRENT_STANDALONE_RUNS: usize = 4;
+// Ceiling on how many standalone runs may be in flight (running or queued) at once. The concurrency
+// cap above bounds only how many spawn together; this bounds the queue behind it so a burst of IPC
+// calls cannot pile up an unbounded backlog (see BoundedSemaphore). Set well above real interactive
+// use - loading formats and comments for a video never approaches it.
+const MAX_STANDALONE_RUNS_IN_FLIGHT: usize = 32;
 
-// A single process-wide semaphore: there is one app, and unlike the pool it holds no state a test
-// needs to inject. `acquire()` on it only errors if it is closed, which never happens for a 'static.
-static STANDALONE_RUN_SEMAPHORE: tokio::sync::Semaphore =
-    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_STANDALONE_RUNS);
+// A single process-wide gate: there is one app, and unlike the pool it holds no state a test needs to
+// inject.
+static STANDALONE_RUN_SEMAPHORE: BoundedSemaphore = BoundedSemaphore::new(
+    MAX_CONCURRENT_STANDALONE_RUNS,
+    MAX_STANDALONE_RUNS_IN_FLIGHT,
+);
 // Cap on how much yt-dlp stdout is buffered. `--dump-single-json` (with `--write-comments`)
 // emits the whole payload as one line, so an extreme video could otherwise allocate GBs.
 // Generous: even very large comment sets fit well under this.
@@ -417,12 +425,12 @@ async fn run_yt_dlp_and_capture_json(
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<(String, Vec<String>, Vec<String>)> {
     // Bound concurrent standalone runs (see STANDALONE_RUN_SEMAPHORE). Held for the whole function -
-    // spawn through wait - so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers
-    // queue here rather than each spawning a process and buffering up to 128 MiB.
+    // spawn through wait - so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers queue
+    // here rather than each spawning a process and buffering up to 128 MiB, and a queue deeper than
+    // the in-flight ceiling is refused up front rather than enqueued without limit.
     let _permit = STANDALONE_RUN_SEMAPHORE
-        .acquire()
-        .await
-        .expect("the standalone-run semaphore is a 'static and is never closed");
+        .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
+        .await?;
 
     let mut command = Command::new(yt_dlp);
     command
