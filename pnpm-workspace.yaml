@@ -12,6 +12,10 @@ blockExoticSubdeps: true
 minimumReleaseAge: 2880
 
 overrides:
+  # Force the transitive qs to the release that fixes CVE-2026-8723 (GHSA/GLAD): a remotely
+  # triggerable DoS where qs.stringify throws a TypeError on null/undefined entries in comma-format
+  # arrays when encodeValuesOnly is set, affecting >=6.11.1 <6.15.2. Transitive and dev/build-scope
+  # like fast-uri below (never shipped in the app); the pin clears the open Dependabot alert.
   qs: 6.15.2
   # Force the transitive fast-uri (pulled by ajv, a dev/build-only dependency) to the release that
   # fixes CVE-2026-16221 / GHSA-v2hh-gcrm-f6hx (host confusion via a literal backslash authority
