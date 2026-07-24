@@ -117,6 +117,23 @@ export function useAddMediaForm({
         onTerminalStop: ytDlpTerminal?.markStopped,
     });
 
+    // Destructure the reference-stable actions off each sub-controller so the callbacks below can
+    // depend on them individually, per CONTRIBUTING.md's hook conventions, instead of on the whole
+    // sub-controller object - whose identity changes on any field change (see the note in
+    // use-add-media-form-state) and would otherwise recreate these callbacks (and every per-card
+    // handler derived from them) on every keystroke in an unrelated field.
+    const {
+        setSourceModeState,
+        setMediaUrlState,
+        setTitleState,
+        setPublishedAtState,
+        setMediaTypeState,
+        applyLocalMediaSelectionState,
+        resetFormState,
+    } = formState;
+    const { resetThumbState, generateThumbForMedia, setManualThumbPath } = thumbnailState;
+    const { resetYtDlpFormats, loadYtDlpFormats: loadYtDlpFormatsFromLoader } = ytDlpState;
+
     const reportError = useCallback(
         (
             scope: string,
@@ -138,10 +155,10 @@ export function useAddMediaForm({
                 return;
             }
 
-            ytDlpState.resetYtDlpFormats();
+            resetYtDlpFormats();
 
             const detectedMediaType = mediaTypeFromFile(normalizedPath);
-            const currentTitle = formState.state.title.trim();
+            const currentTitle = title.trim();
 
             let nextTitle: string | null = null;
 
@@ -151,17 +168,19 @@ export function useAddMediaForm({
                 nextTitle = titleWithoutExtension || fileName || "Untitled";
             }
 
-            formState.applyLocalMediaSelectionState(
-                normalizedPath,
-                detectedMediaType,
-                nextTitle
-            );
+            applyLocalMediaSelectionState(normalizedPath, detectedMediaType, nextTitle);
 
-            await thumbnailState.resetThumbState();
+            await resetThumbState();
 
-            await thumbnailState.generateThumbForMedia(normalizedPath);
+            await generateThumbForMedia(normalizedPath);
         },
-        [formState, thumbnailState, ytDlpState]
+        [
+            title,
+            applyLocalMediaSelectionState,
+            resetThumbState,
+            generateThumbForMedia,
+            resetYtDlpFormats,
+        ]
     );
 
     const applyThumbSelection = useCallback(
@@ -181,9 +200,9 @@ export function useAddMediaForm({
                 logError("add-media-form", "Failed to authorize thumbnail preview.", error);
             }
 
-            await thumbnailState.setManualThumbPath(normalizedPath);
+            await setManualThumbPath(normalizedPath);
         },
-        [thumbnailState]
+        [setManualThumbPath]
     );
 
     const pickSinglePathFromDialog = useCallback(async (): Promise<string> => {
@@ -200,9 +219,9 @@ export function useAddMediaForm({
     // the previously loaded formats stale. Kept as one callback so the many call sites below cannot
     // drift - a site doing one reset but forgetting the other was the duplication this removes.
     const resetYtDlpSelectionState = useCallback((): void => {
-        ytDlpState.resetYtDlpFormats();
+        resetYtDlpFormats();
         ytDlpTerminal?.resetYtDlpState(true);
-    }, [ytDlpState, ytDlpTerminal]);
+    }, [resetYtDlpFormats, ytDlpTerminal]);
 
     const pickCookiesFileViaDialog = useCallback(async (): Promise<void> => {
         try {
@@ -231,46 +250,52 @@ export function useAddMediaForm({
 
     const setSourceMode = useCallback(
         async (value: MediaSourceMode): Promise<void> => {
-            if (value === formState.state.sourceMode) {
+            if (value === sourceMode) {
                 return;
             }
 
-            formState.setSourceModeState(value);
+            setSourceModeState(value);
             resetYtDlpSelectionState();
             setDownloadComments(true);
             setDownloadLiveChat(true);
             setCookiesBrowserState("");
             setCookiesPathState("");
-            await thumbnailState.resetThumbState();
+            await resetThumbState();
         },
-        [formState, thumbnailState, resetYtDlpSelectionState]
+        [sourceMode, setSourceModeState, resetThumbState, resetYtDlpSelectionState]
     );
 
     const setMediaUrl = useCallback(
         (value: string): void => {
-            formState.setMediaUrlState(value);
+            setMediaUrlState(value);
 
-            if (formState.state.sourceMode === "yt-dlp") {
+            if (sourceMode === "yt-dlp") {
                 resetYtDlpSelectionState();
-                formState.setPublishedAtState("");
-                formState.setMediaTypeState("video");
+                setPublishedAtState("");
+                setMediaTypeState("video");
             }
         },
-        [formState, resetYtDlpSelectionState]
+        [
+            sourceMode,
+            setMediaUrlState,
+            setPublishedAtState,
+            setMediaTypeState,
+            resetYtDlpSelectionState,
+        ]
     );
 
     const setTitle = useCallback(
         (value: string): void => {
-            formState.setTitleState(value);
+            setTitleState(value);
         },
-        [formState]
+        [setTitleState]
     );
 
     const setPublishedAt = useCallback(
         (value: string): void => {
-            formState.setPublishedAtState(value);
+            setPublishedAtState(value);
         },
-        [formState]
+        [setPublishedAtState]
     );
 
     const setCookiesBrowser = useCallback(
@@ -298,15 +323,15 @@ export function useAddMediaForm({
 
     const loadYtDlpFormats = useCallback(async (): Promise<void> => {
         try {
-            await ytDlpState.loadYtDlpFormats();
+            await loadYtDlpFormatsFromLoader();
         } catch (error) {
             reportError("add-media-form", "Failed to load yt-dlp formats.", error, {
-                mediaUrl: formState.state.mediaUrl.trim(),
+                mediaUrl: mediaUrl.trim(),
                 cookiesBrowser,
                 cookiesPath,
             });
         }
-    }, [cookiesBrowser, cookiesPath, formState.state.mediaUrl, reportError, ytDlpState]);
+    }, [cookiesBrowser, cookiesPath, mediaUrl, reportError, loadYtDlpFormatsFromLoader]);
 
     const pickMediaViaDialog = useCallback(async (): Promise<void> => {
         try {
@@ -337,14 +362,14 @@ export function useAddMediaForm({
     }, [applyThumbSelection, pickSinglePathFromDialog, reportError]);
 
     const resetForm = useCallback(async (): Promise<void> => {
-        formState.resetFormState();
+        resetFormState();
         resetYtDlpSelectionState();
         setDownloadComments(true);
         setDownloadLiveChat(true);
         setCookiesBrowserState("");
         setCookiesPathState("");
-        await thumbnailState.resetThumbState();
-    }, [formState, thumbnailState, resetYtDlpSelectionState]);
+        await resetThumbState();
+    }, [resetFormState, resetThumbState, resetYtDlpSelectionState]);
 
     // Destructure the sub-state fields the returned object exposes so the memo below can depend
     // on them directly (honest dependency array, no eslint-disable).
