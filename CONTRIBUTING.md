@@ -135,18 +135,25 @@ drift in unnoticed.
 2. Commit the version bump and push to `main`.
 3. Manually trigger the `release` GitHub Actions workflow
    (`.github/workflows/release.yml`, `workflow_dispatch` - there is no automatic release
-   on tag or merge). It builds installers for Windows, Linux, and both macOS
-   architectures (`aarch64-apple-darwin`, `x86_64-apple-darwin`), runs the same
+   on tag or merge). It builds installers across six matrix legs - Windows x64
+   (`windows-2025`) and ARM64 (`windows-11-arm`), Linux x64 (`ubuntu-26.04`) and ARM64
+   (`ubuntu-26.04-arm`), and both macOS architectures (`aarch64-apple-darwin`,
+   `x86_64-apple-darwin` on `macos-26`) - runs the same
    lint/test/build and fmt/clippy/Rust-test/TS-bindings-freshness/dependency-audit checks CI
    does (the release is manually dispatched, so nothing guarantees the chosen commit already
    passed CI), and refuses to run if a tag named
    `v<version>` (matching `package.json`'s version, e.g. `v1.2.0`) already exists on the
-   remote - bump the version again before re-releasing.
+   remote - bump the version again before re-releasing. The Windows-on-ARM and preview
+   `ubuntu-26.04-arm` legs are the least-exercised path, so the first dispatch after adding
+   them is what proves them end to end.
 4. The workflow creates a **draft** GitHub release tagged `v<version>` with auto-generated
    notes (every commit subject since the previous tag) and uploads the built installers
-   plus signed updater artifacts. A separate `checksums` job then downloads those assets
-   and publishes `SHA256SUMS.txt` on the same release (see `SECURITY.md` for why this
-   matters given installers are unsigned).
+   plus signed updater artifacts. A separate `sbom` job publishes a CycloneDX SBOM of the
+   Rust dependency tree (`kavynex_<version>_sbom.cdx.json`), and a `checksums` job then
+   downloads every asset, verifies the release is complete (the asset-completeness check -
+   a missing installer or SBOM fails the release loudly rather than shipping silently), and
+   publishes `SHA256SUMS.txt` on the same release (see `SECURITY.md` for why the checksums,
+   SBOM and build provenance matter given installers are unsigned).
 5. Review the draft release and publish it manually when ready.
 
 Installers are intentionally not code-signed (see `SECURITY.md`); do not add code-signing
