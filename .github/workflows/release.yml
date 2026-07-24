@@ -371,6 +371,12 @@ jobs:
     sbom:
         name: Publish SBOM
         needs: publish-tauri
+        # Run even if a build leg failed (but not on a manual cancel), so this and the completeness
+        # gates in the checksums job still execute on a *partial* draft. With the default behavior a
+        # failed leg skips both jobs, leaving an incomplete-but-complete-looking draft with no
+        # automated check between it and a manual "Publish" - the whole failure these gates exist to
+        # catch. A missing SBOM/asset then fails the checksums job loudly instead of being skipped.
+        if: ${{ !cancelled() }}
         # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 30
@@ -416,6 +422,10 @@ jobs:
     checksums:
         name: Publish checksums
         needs: [publish-tauri, sbom]
+        # Run on a partial draft too (see the SBOM job): a failed build leg must not skip the
+        # asset-completeness and latest.json checks below - those are exactly what should turn a
+        # partial release red with a list of what is missing, rather than being silently skipped.
+        if: ${{ !cancelled() }}
         # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 60
