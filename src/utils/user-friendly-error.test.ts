@@ -47,7 +47,8 @@ import {
 // code is asserted against its exact message. The raw backend message is always
 // different from the friendly one so a broken mapping cannot hide behind the
 // message fallback.
-const GENERIC_BACKEND_MESSAGE = "The operation could not be completed. Check the logs for details.";
+const GENERIC_BACKEND_MESSAGE =
+    "The operation could not be completed. If it keeps happening, check the app log file for details - Diagnostics shows where Kavynex keeps its files.";
 
 const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [INVALID_INPUT_ERROR_CODE, "Invalid input."],

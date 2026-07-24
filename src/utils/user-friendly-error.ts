@@ -53,7 +53,8 @@ const DEFAULT_ERROR_MESSAGE = "Unknown error.";
 // failures, so it is kept in the details block rather than shown as the primary line - a
 // newly added Rust error code therefore degrades to a controlled message instead of leaking
 // an internal string to the user.
-const GENERIC_BACKEND_ERROR_MESSAGE = "The operation could not be completed. Check the logs for details.";
+const GENERIC_BACKEND_ERROR_MESSAGE =
+    "The operation could not be completed. If it keeps happening, check the app log file for details - Diagnostics shows where Kavynex keeps its files.";
 
 const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [APP_ERROR_CODE]: DEFAULT_ERROR_MESSAGE,
