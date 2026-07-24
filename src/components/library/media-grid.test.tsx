@@ -58,7 +58,7 @@ describe("MediaGrid", () => {
             />
         );
 
-        expect(screen.getByText("Loading media...")).toBeInTheDocument();
+        expect(screen.getByText("Loading media")).toBeInTheDocument();
         // The shared LoadingStateCard exposes role="status" so a screen reader announces the
         // load, matching the comments/live-chat panels.
         expect(screen.getByRole("status")).toBeInTheDocument();
