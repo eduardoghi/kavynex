@@ -13,7 +13,14 @@ import { readFileSync } from "fs";
 // The keys the updater actually resolves. Tauri also emits `-app`/`-msi`/`-nsis`/`-appimage`/
 // `-deb`/`-rpm` variants of these, but the client looks up the bare `<os>-<arch>` one, so those are
 // what a release has to carry.
-const REQUIRED_PLATFORMS = ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"];
+const REQUIRED_PLATFORMS = [
+    "darwin-aarch64",
+    "darwin-x86_64",
+    "linux-aarch64",
+    "linux-x86_64",
+    "windows-aarch64",
+    "windows-x86_64",
+];
 
 // Derives the URL prefix every updater artifact must sit under, from the same GitHub release
 // endpoint the client is actually pointed at (tauri.conf.json's updater `endpoints`). That

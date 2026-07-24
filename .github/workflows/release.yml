@@ -162,6 +162,20 @@ jobs:
                     - platform: windows-2025
                       args: ""
 
+                    # aarch64 legs build natively on the arm64-hosted runners: the host default
+                    # target is already aarch64, so they need no `--target` and no extra rustup
+                    # target, exactly like the x64 ubuntu/windows legs above. ubuntu-26.04-arm keeps
+                    # the same OS major as the x64 Linux leg (pin symmetry) at the cost of being a
+                    # public-preview image, so it can queue or be less stable than the GA
+                    # ubuntu-24.04-arm. windows-11-arm is the GA Windows-on-ARM image; its Tauri
+                    # bundler toolchain (NSIS/WiX/WebView2) is the least-exercised path here, so the
+                    # first release dispatch is what actually proves these two legs end to end.
+                    - platform: ubuntu-26.04-arm
+                      args: ""
+
+                    - platform: windows-11-arm
+                      args: ""
+
         runs-on: ${{ matrix.platform }}
         # This job holds the repository-wide `release` concurrency lock (cancel-in-progress is
         # deliberately false), so a hang here blocks every later release dispatch until GitHub's
@@ -235,8 +249,11 @@ jobs:
             # Linux WebKit/GTK dev headers used to build against, dynamically linked at runtime
             # against the end user's own system libraries, so they are not shipped inside the
             # bundle and cannot change what a user actually runs.
+            # startsWith so this also runs on ubuntu-26.04-arm: the aarch64 leg needs the same
+            # WebKit/GTK dev headers, installed natively (the runner is arm64, so apt fetches the
+            # arm64 packages - no multiarch/cross setup).
             - name: Install Linux dependencies
-              if: matrix.platform == 'ubuntu-26.04'
+              if: startsWith(matrix.platform, 'ubuntu-')
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
@@ -307,8 +324,10 @@ jobs:
             # (they hang only on the ubuntu runner) so a release is also gated on the kill/timeout/
             # cancel path passing where it can run. Filtered by name to avoid the fixture-
             # regeneration test; short per-step timeout so a hang fails diagnosably.
+            # !startsWith so both Ubuntu legs (x64 and arm) are excluded: the hang is a property of
+            # the GitHub ubuntu runner, not the architecture, so it would strike ubuntu-26.04-arm too.
             - name: Run ignored process-kill tests (Windows and macOS only)
-              if: matrix.platform != 'ubuntu-26.04'
+              if: ${{ !startsWith(matrix.platform, 'ubuntu-') }}
               timeout-minutes: 5
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked run_and_capture_kills_the_child -- --ignored --test-threads=1
 
@@ -468,6 +487,10 @@ jobs:
                   # One entry per artifact the matrix is expected to produce, as a glob. The
                   # `.sig` files are the updater's; note the two .dmg files deliberately have
                   # none - tauri signs the macOS updater bundle (.app.tar.gz), not the disk image.
+                  # The aarch64 Windows/Linux names follow tauri's per-bundler arch strings, which
+                  # are not uniform: NSIS, WiX (MSI) and deb use `arm64`, while AppImage and rpm use
+                  # `aarch64`. If one is off, this check fails loudly and echoes the real asset names
+                  # above rather than shipping a partial draft, so the first release confirms them.
                   MISSING=""
                   for pattern in \
                       "kavynex_${VERSION}_x64-setup.exe" \
@@ -486,6 +509,16 @@ jobs:
                       "kavynex_${VERSION}_amd64.deb.sig" \
                       "kavynex-${VERSION}-1.x86_64.rpm" \
                       "kavynex-${VERSION}-1.x86_64.rpm.sig" \
+                      "kavynex_${VERSION}_arm64-setup.exe" \
+                      "kavynex_${VERSION}_arm64-setup.exe.sig" \
+                      "kavynex_${VERSION}_arm64_en-US.msi" \
+                      "kavynex_${VERSION}_arm64_en-US.msi.sig" \
+                      "kavynex_${VERSION}_aarch64.AppImage" \
+                      "kavynex_${VERSION}_aarch64.AppImage.sig" \
+                      "kavynex_${VERSION}_arm64.deb" \
+                      "kavynex_${VERSION}_arm64.deb.sig" \
+                      "kavynex-${VERSION}-1.aarch64.rpm" \
+                      "kavynex-${VERSION}-1.aarch64.rpm.sig" \
                       "kavynex_${VERSION}_sbom.cdx.json" \
                       "latest.json" \
                       "SHA256SUMS.txt" \

@@ -12,7 +12,9 @@ function completeManifest(version = "1.2.0") {
         platforms: {
             "darwin-aarch64": { signature: "sig", url: asset("kavynex_aarch64.app.tar.gz") },
             "darwin-x86_64": { signature: "sig", url: asset("kavynex_x64.app.tar.gz") },
+            "linux-aarch64": { signature: "sig", url: asset(`kavynex_${version}_aarch64.AppImage`) },
             "linux-x86_64": { signature: "sig", url: asset(`kavynex_${version}_amd64.AppImage`) },
+            "windows-aarch64": { signature: "sig", url: asset(`kavynex_${version}_arm64-setup.exe`) },
             "windows-x86_64": { signature: "sig", url: asset(`kavynex_${version}_x64-setup.exe`) },
         },
     };
