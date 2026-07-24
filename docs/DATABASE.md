@@ -83,7 +83,7 @@ CREATE TABLE video_comments (
     author_handle TEXT,
     author_channel_id TEXT,
     author_thumbnail TEXT,
-    text TEXT NOT NULL,
+    text TEXT NOT NULL CHECK (LENGTH(text) <= 16000),
     like_count INTEGER NOT NULL DEFAULT 0,
     reply_count INTEGER NOT NULL DEFAULT 0,
     is_author_uploader INTEGER NOT NULL DEFAULT 0,
@@ -199,7 +199,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `13`), in `db_schema.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `14`), in `db_schema.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -259,6 +259,14 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   media sits in the library while being invisible to every title search. An import is the one hole
   the triggers cannot cover, because it replaces the whole file and fires no write at all; that is
   refused up front instead (see "Importing a database" below).
+- **v14** backports the comment-body length ceiling to a table that predates it:
+  `video_comments.text` is capped at `MAX_COMMENT_TEXT_CHARS` characters, declared as
+  `CHECK (LENGTH(text) <= 16000)` on a fresh table (`ddl.rs`). Like v13's invariants it cannot be
+  added with `ALTER TABLE ADD CONSTRAINT`, so instead of rebuilding the largest child table the
+  migration installs an equivalent pair of `BEFORE INSERT`/`BEFORE UPDATE` triggers that reject an
+  over-length body, all in one transaction that stamps `user_version = 14`. A `db_schema` test pins
+  the DDL literal against the constant so the stored ceiling and the app-side truncation cannot
+  drift.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
