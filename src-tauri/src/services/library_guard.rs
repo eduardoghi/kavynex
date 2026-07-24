@@ -99,29 +99,38 @@ pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) ->
         .library_path
         .unwrap_or_default();
 
-    if !paths_refer_to_same_location(trimmed, &configured_library_path) {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidLibraryPath,
-            "requested path does not match the configured library directory",
-        ));
-    }
+    // `paths_refer_to_same_location` and the fallback-detection canonicalize below both call
+    // `std::fs::canonicalize`, a blocking filesystem call. A library the user put on a network
+    // share (a supported configuration) can make it block for the OS timeout when the share is
+    // offline, so run the comparison off the async runtime rather than occupying a tokio worker -
+    // consistent with every other filesystem touch in the backend.
+    let requested = trimmed.to_string();
+    run_blocking(move || {
+        if !paths_refer_to_same_location(&requested, &configured_library_path) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidLibraryPath,
+                "requested path does not match the configured library directory",
+            ));
+        }
 
-    // The match above compares canonical paths, but falls back to exact-string equality when a
-    // path cannot be canonicalized - typically because the library lives on a drive that is
-    // currently offline. That fallback grants the match without confirming canonical containment,
-    // so record when acceptance rested on it. It leaves the degraded check observable in the log
-    // rather than silent; the request is still only accepted when the strings match exactly. The
-    // two paths are equal here (they just matched), so canonicalizing the requested one is enough
-    // to tell the fallback branch apart from the canonical one.
-    if std::fs::canonicalize(trimmed).is_err() {
-        logger::warn(
-            "library_guard",
-            "accepted the library path by exact-string match; it could not be canonicalized (the \
-             library directory may be offline), so canonical containment was not confirmed",
-        );
-    }
+        // The match above compares canonical paths, but falls back to exact-string equality when a
+        // path cannot be canonicalized - typically because the library lives on a drive that is
+        // currently offline. That fallback grants the match without confirming canonical
+        // containment, so record when acceptance rested on it. It leaves the degraded check
+        // observable in the log rather than silent; the request is still only accepted when the
+        // strings match exactly. The two paths are equal here (they just matched), so canonicalizing
+        // the requested one is enough to tell the fallback branch apart from the canonical one.
+        if std::fs::canonicalize(&requested).is_err() {
+            logger::warn(
+                "library_guard",
+                "accepted the library path by exact-string match; it could not be canonicalized \
+                 (the library directory may be offline), so canonical containment was not confirmed",
+            );
+        }
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 /// Verifies that `library_path` matches the configured library directory, then runs `f` on a
