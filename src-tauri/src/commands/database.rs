@@ -2,7 +2,7 @@ use std::path::Path;
 
 use tauri::{AppHandle, Manager, State};
 
-use crate::services::database::{database_path, is_pool_initialized, Db};
+use crate::services::database::{database_path, Db};
 use crate::services::db_backup::{self, DatabaseBackupStatus, DatabaseIntegrityReport};
 use crate::utils::path::extension_from_path;
 use crate::utils::task::run_blocking;
@@ -90,7 +90,17 @@ pub async fn get_database_backup_status(app: AppHandle) -> AppResult<DatabaseBac
 /// run once the pool is already initialized.
 #[tauri::command]
 pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
-    if is_pool_initialized(&app) {
+    let db = app.try_state::<Db>().ok_or_else(|| {
+        AppError::from_code(AppErrorCode::AppError, "the database is not initialized")
+    })?;
+
+    // Hold the open lock for the whole restore so no concurrent command can open the pool - which
+    // creates/renames the database file - while the restore renames it underneath. The
+    // already-open check is re-done under the lock: the pool may have opened between the frontend's
+    // recovery entry and this command acquiring the lock.
+    let _open_guard = db.restore_guard().await;
+
+    if db.is_initialized() {
         return Err(AppError::from_code(
             AppErrorCode::DatabaseAlreadyOpen,
             "the database is already open; restart the app before restoring from backup",

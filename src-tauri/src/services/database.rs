@@ -6,7 +6,7 @@ use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
 };
 use tauri::{AppHandle, Manager};
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex, OnceCell};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -29,6 +29,11 @@ const EXTERNAL_BACKUP_DIR_KEY: &str = "external_backup_dir";
 pub struct Db {
     path: PathBuf,
     pool: OnceCell<SqlitePool>,
+    // Serializes opening the pool against the restore-from-backup flow. Restore renames the
+    // database file (and its -wal/-shm sidecars) out from under any concurrent open, so it holds
+    // this lock for its whole run and pool opening waits on it. Only ever contended on the one-time
+    // open: once the pool is cached, `pool()` returns it below without taking the lock.
+    open_lock: Mutex<()>,
 }
 
 impl Db {
@@ -38,18 +43,35 @@ impl Db {
         Self {
             path,
             pool: OnceCell::new(),
+            open_lock: Mutex::new(()),
         }
     }
 
     /// Returns the shared pool, opening (and migrating) it on first use. The returned
     /// `SqlitePool` is a cheap `Arc` clone, so callers hold it by value.
     pub async fn pool(&self) -> AppResult<SqlitePool> {
+        // Steady state: the pool is already open, so return it without taking the open lock (which
+        // only guards the one-time open against a concurrent restore-from-backup).
+        if let Some(pool) = self.pool.get() {
+            return Ok(pool.clone());
+        }
+
+        let _open_guard = self.open_lock.lock().await;
         let pool = self
             .pool
             .get_or_try_init(|| build_pool_at(&self.path))
             .await?;
 
         Ok(pool.clone())
+    }
+
+    /// Acquires the lock that serializes pool opening, for the restore-from-backup flow. Held for
+    /// the whole restore so no concurrent command can open (and thereby create/rename) the database
+    /// file while the restore renames it underneath. The caller must re-check [`Db::is_initialized`]
+    /// while holding the returned guard: the pool may have opened between the caller's first check
+    /// and acquiring the lock.
+    pub async fn restore_guard(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.open_lock.lock().await
     }
 
     /// The resolved on-disk path of the database file. Its parent is the app config directory,
@@ -76,6 +98,7 @@ impl Db {
         Self {
             path: PathBuf::new(),
             pool: cell,
+            open_lock: Mutex::new(()),
         }
     }
 }
