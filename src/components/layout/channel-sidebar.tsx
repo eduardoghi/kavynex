@@ -4,11 +4,12 @@ import {
     Box,
     Card,
     Group,
-    Loader,
     ScrollArea,
+    Skeleton,
     Stack,
     Text,
     Tooltip,
+    VisuallyHidden,
 } from "@mantine/core";
 import { Plus, Settings } from "lucide-react";
 import { useRef } from "react";
@@ -168,21 +169,20 @@ export function ChannelSidebar({
                 >
                     <Stack gap="xs">
                         {loading && (
-                            <Card
-                                withBorder
-                                p="md"
-                                style={{
-                                    borderColor: shellBorder,
-                                    background: shellSurface,
-                                }}
-                            >
-                                <Group gap="sm" justify="center">
-                                    <Loader size="sm" />
-                                    <Text c="dimmed" size="sm">
-                                        Loading channels...
-                                    </Text>
-                                </Group>
-                            </Card>
+                            <Box role="status">
+                                <VisuallyHidden>Loading channels</VisuallyHidden>
+                                <Stack gap="xs" aria-hidden>
+                                    {Array.from({ length: 7 }, (_, index) => (
+                                        <Group key={index} gap="sm" wrap="nowrap" p={8}>
+                                            <Skeleton circle height={44} />
+                                            <Stack gap={8} style={{ flex: 1, minWidth: 0 }}>
+                                                <Skeleton height={12} width="70%" radius="sm" />
+                                                <Skeleton height={10} width="45%" radius="sm" />
+                                            </Stack>
+                                        </Group>
+                                    ))}
+                                </Stack>
+                            </Box>
                         )}
 
                         {!loading && channels.length === 0 && (
@@ -191,7 +191,7 @@ export function ChannelSidebar({
                                 p="md"
                                 style={{
                                     borderColor: shellBorder,
-                                    background: "rgba(255,255,255,0.03)",
+                                    background: shellSurface,
                                 }}
                             >
                                 <Text fw={900}>No channels yet</Text>

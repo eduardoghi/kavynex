@@ -48,7 +48,10 @@ describe("ChannelSidebar", () => {
             { withAppShell: true }
         );
 
-        expect(screen.getByText("Loading channels...")).toBeInTheDocument();
+        // The skeleton rows are decorative; the status region carries the visually-hidden
+        // "Loading channels" text so a screen reader still announces the load.
+        expect(screen.getByRole("status")).toBeInTheDocument();
+        expect(screen.getByText("Loading channels")).toBeInTheDocument();
         expect(screen.getByText("...")).toBeInTheDocument();
     });
 
