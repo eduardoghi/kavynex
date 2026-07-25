@@ -264,7 +264,6 @@ export function MediaPlayerView({
                     isWatched={isWatched}
                     isAudio={isAudio}
                     isLive={isLive}
-                    hasLiveChat={hasLiveChat}
                     onOpenInYoutube={onOpenInYoutube}
                     onOpenFileLocation={onOpenFileLocation}
                     onRefreshComments={onRefreshComments}

@@ -22,11 +22,10 @@ type PlayerMediaHeaderProps = {
     canOpenInYoutube: boolean;
     isWatched: boolean;
     isAudio?: boolean;
-    // Required rather than defaulting to false: as optional props they silently defaulted their
-    // badges out of existence when the only caller forgot to pass them, and nothing failed. The
-    // compiler is the only thing that catches that.
+    // Required rather than defaulting to false: as an optional prop it silently defaulted its badge
+    // out of existence when the only caller forgot to pass it, and nothing failed. The compiler is
+    // the only thing that catches that.
     isLive: boolean;
-    hasLiveChat: boolean;
     isRefreshingComments?: boolean;
     // True while this media's own watched/unwatched toggle is in flight - mirrors
     // isRefreshingComments so the buttons below show the same loading feedback pattern as the
@@ -69,7 +68,6 @@ export function PlayerMediaHeader({
     isWatched,
     isAudio = false,
     isLive,
-    hasLiveChat,
     isRefreshingComments = false,
     isUpdatingWatchedStatus = false,
     onOpenInYoutube,
@@ -122,15 +120,6 @@ export function PlayerMediaHeader({
                                 leftSection={<Radio size={12} />}
                             >
                                 LIVE
-                            </Badge>
-                        )}
-
-                        {hasLiveChat && (
-                            <Badge
-                                variant="light"
-                                color="red"
-                            >
-                                CHAT REPLAY
                             </Badge>
                         )}
                     </Group>

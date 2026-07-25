@@ -13,9 +13,7 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}
-                hasLiveChat={false}
-                onOpenInYoutube={vi.fn()}
+                isLive={false}                onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
                 onBack={vi.fn()}
@@ -39,9 +37,7 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}
-                hasLiveChat={false}
-                onOpenInYoutube={vi.fn()}
+                isLive={false}                onOpenInYoutube={vi.fn()}
                 onMarkWatched={onMarkWatched}
                 onMarkUnwatched={vi.fn()}
                 onBack={onBack}
@@ -66,9 +62,7 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube
                 isWatched
-                isLive={false}
-                hasLiveChat={false}
-                onOpenInYoutube={onOpenInYoutube}
+                isLive={false}                onOpenInYoutube={onOpenInYoutube}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
                 onBack={vi.fn()}
@@ -91,9 +85,7 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}
-                hasLiveChat={false}
-                isUpdatingWatchedStatus
+                isLive={false}                isUpdatingWatchedStatus
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -113,9 +105,7 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched
-                isLive={false}
-                hasLiveChat={false}
-                isUpdatingWatchedStatus
+                isLive={false}                isUpdatingWatchedStatus
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -133,9 +123,7 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched
-                isLive={false}
-                hasLiveChat={false}
-                isUpdatingWatchedStatus={false}
+                isLive={false}                isUpdatingWatchedStatus={false}
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -146,9 +134,9 @@ describe("PlayerMediaHeader", () => {
         expect(screen.getByRole("button", { name: /mark as unwatched/i })).not.toBeDisabled();
     });
 
-    it("shows the live and chat replay badges only for a live media that has a chat replay", () => {
-        // These badges were dead for as long as they existed: the props defaulted to false and the
-        // only caller never passed them, so nothing rendered and nothing failed. Pin both states.
+    it("shows the live badge only for a live media", () => {
+        // The badge renders nothing unless the caller passes isLive; pin both states so a caller
+        // that forgets it is caught rather than silently rendering nothing.
         const { unmount } = renderWithMantine(
             <PlayerMediaHeader
                 title="Video A"
@@ -158,7 +146,6 @@ describe("PlayerMediaHeader", () => {
                 canOpenInYoutube={false}
                 isWatched={false}
                 isLive={false}
-                hasLiveChat={false}
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -167,7 +154,6 @@ describe("PlayerMediaHeader", () => {
         );
 
         expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
-        expect(screen.queryByText("CHAT REPLAY")).not.toBeInTheDocument();
 
         unmount();
 
@@ -180,7 +166,6 @@ describe("PlayerMediaHeader", () => {
                 canOpenInYoutube={false}
                 isWatched={false}
                 isLive
-                hasLiveChat
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -189,7 +174,6 @@ describe("PlayerMediaHeader", () => {
         );
 
         expect(screen.getByText("LIVE")).toBeInTheDocument();
-        expect(screen.getByText("CHAT REPLAY")).toBeInTheDocument();
     });
 });
 
@@ -207,9 +191,7 @@ describe("PlayerMediaHeader accessibility", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube
                 isWatched={false}
-                isLive={false}
-                hasLiveChat={false}
-                isRefreshingComments={false}
+                isLive={false}                isRefreshingComments={false}
                 onOpenInYoutube={vi.fn()}
                 onOpenFileLocation={vi.fn()}
                 onRefreshComments={vi.fn()}
@@ -242,9 +224,7 @@ describe("PlayerMediaHeader accessibility", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}
-                hasLiveChat={false}
-                isRefreshingComments={false}
+                isLive={false}                isRefreshingComments={false}
                 onOpenInYoutube={vi.fn()}
                 onRefreshComments={vi.fn()}
                 onCancelRefreshComments={vi.fn()}
@@ -265,9 +245,7 @@ describe("PlayerMediaHeader accessibility", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}
-                hasLiveChat={false}
-                isRefreshingComments
+                isLive={false}                isRefreshingComments
                 onOpenInYoutube={vi.fn()}
                 onRefreshComments={vi.fn()}
                 onCancelRefreshComments={vi.fn()}

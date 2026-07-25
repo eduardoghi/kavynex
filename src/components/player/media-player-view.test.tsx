@@ -68,12 +68,12 @@ describe("MediaPlayerView", () => {
         );
 
         expect(screen.getByText("LIVE")).toBeInTheDocument();
-        expect(screen.getByText("CHAT REPLAY")).toBeInTheDocument();
+        expect(screen.getByText("Live chat replay")).toBeInTheDocument();
     });
 
-    it("does not claim a chat replay when the media has no live chat file", () => {
-        // `has_live_chat` alone is not enough: the badge must promise only what the player can
-        // actually show, and the replay panel needs the file path.
+    it("does not show a chat replay panel when the media has no live chat file", () => {
+        // `has_live_chat` alone is not enough: the replay panel needs the file path, so with an
+        // empty path the media is still marked LIVE but no chat panel is shown.
         renderWithMantine(
             <MediaPlayerView
                 media={createMedia({
@@ -98,7 +98,7 @@ describe("MediaPlayerView", () => {
         );
 
         expect(screen.getByText("LIVE")).toBeInTheDocument();
-        expect(screen.queryByText("CHAT REPLAY")).not.toBeInTheDocument();
+        expect(screen.queryByText("Live chat replay")).not.toBeInTheDocument();
     });
 
     it("renders audio player state", () => {
