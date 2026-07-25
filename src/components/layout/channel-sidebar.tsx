@@ -9,9 +9,12 @@ import {
     Stack,
     Text,
 } from "@mantine/core";
+import { Plus, Settings } from "lucide-react";
 import { useRef, type CSSProperties } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChannelListItem } from "./channel-list-item";
+import { AppButton } from "../ui/app-button";
+import { useAppVersion } from "../../hooks/use-app-version";
 import type { Channel, ViewMode } from "../../types/media";
 
 // Row-height estimate for the virtualized channel list. Each row is a fixed-layout avatar plus
@@ -44,6 +47,11 @@ type ChannelSidebarProps = {
     deletingChannelId?: number | null;
     updatingChannelAvatarId?: number | null;
     libraryPath: string;
+    // Branding and the app-level actions the sidebar now hosts (the top bar was removed). Optional so
+    // the component still renders bare in isolation tests; the app always supplies them.
+    appIconSrc?: string;
+    onOpenCreateChannel?: () => void;
+    onOpenSettings?: () => void;
     onSelectChannel: (channelId: number) => void;
     onRequestEditChannel: (channel: Channel) => void;
     onRequestDeleteChannel: (channel: Channel) => void;
@@ -63,6 +71,9 @@ export function ChannelSidebar({
     deletingChannelId = null,
     updatingChannelAvatarId = null,
     libraryPath,
+    appIconSrc,
+    onOpenCreateChannel,
+    onOpenSettings,
     onSelectChannel,
     onRequestEditChannel,
     onRequestDeleteChannel,
@@ -72,6 +83,7 @@ export function ChannelSidebar({
     onClosePlayer,
 }: ChannelSidebarProps): JSX.Element {
     const scrollViewportRef = useRef<HTMLDivElement>(null);
+    const appVersion = useAppVersion();
 
     // Virtualize the channel rows so a library with a very large number of channels only mounts
     // the visible rows. Rows are near-uniform height (estimateSize), corrected by measureElement.
@@ -94,7 +106,43 @@ export function ChannelSidebar({
             }}
         >
             <Stack gap="sm" h="100%">
-                <Group justify="space-between" px={2} mb="xs">
+                <Group gap="sm" px={2} wrap="nowrap">
+                    {appIconSrc ? (
+                        <img
+                            src={appIconSrc}
+                            width={32}
+                            height={32}
+                            alt="Kavynex"
+                            style={{ borderRadius: 8, display: "block" }}
+                        />
+                    ) : null}
+
+                    <Group gap={8} align="baseline" wrap="nowrap">
+                        <Text fw={950} size="lg" lh={1}>
+                            Kavynex
+                        </Text>
+
+                        {appVersion ? (
+                            <Text c="dimmed" size="xs" lh={1}>
+                                v{appVersion}
+                            </Text>
+                        ) : null}
+                    </Group>
+                </Group>
+
+                {onOpenCreateChannel ? (
+                    <AppButton
+                        type="button"
+                        appVariant="primary"
+                        fullWidth
+                        leftSection={<Plus size={18} />}
+                        onClick={onOpenCreateChannel}
+                    >
+                        New channel
+                    </AppButton>
+                ) : null}
+
+                <Group justify="space-between" px={2} mt="xs" mb="xs">
                     <Box>
                         <Text fw={900} size="sm">
                             Channels
@@ -151,7 +199,7 @@ export function ChannelSidebar({
                                 <Text fw={900}>No channels yet</Text>
 
                                 <Text c="dimmed" size="sm" mt={4}>
-                                    Use <b>New channel</b> in the top bar to create your first one.
+                                    Use <b>New channel</b> above to create your first one.
                                 </Text>
                             </Card>
                         )}
@@ -226,6 +274,19 @@ export function ChannelSidebar({
                         )}
                     </Stack>
                 </ScrollArea>
+
+                {onOpenSettings ? (
+                    <AppButton
+                        type="button"
+                        appVariant="ghost"
+                        fullWidth
+                        justify="flex-start"
+                        leftSection={<Settings size={18} />}
+                        onClick={onOpenSettings}
+                    >
+                        Settings
+                    </AppButton>
+                ) : null}
             </Stack>
         </AppShell.Navbar>
     );

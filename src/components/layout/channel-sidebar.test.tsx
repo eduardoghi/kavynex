@@ -82,14 +82,53 @@ describe("ChannelSidebar", () => {
                 element?.tagName.toLowerCase() === "p" &&
                 element.textContent?.includes("Use") === true &&
                 element.textContent?.includes("New channel") === true &&
-                element.textContent?.includes("in the top bar to create your first one.") === true
+                element.textContent?.includes("above to create your first one.") === true
             );
         });
 
         expect(description).toBeInTheDocument();
         expect(description).toHaveTextContent(
-            "Use New channel in the top bar to create your first one."
+            "Use New channel above to create your first one."
         );
+    });
+
+    it("renders the branding and app actions the sidebar now hosts", () => {
+        const onOpenCreateChannel = vi.fn();
+        const onOpenSettings = vi.fn();
+
+        renderWithMantine(
+            <ChannelSidebar
+                channels={[]}
+                selectedChannelId={null}
+                viewMode="library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                deletingChannelId={null}
+                updatingChannelAvatarId={null}
+                libraryPath="/library"
+                appIconSrc="/icon.svg"
+                onOpenCreateChannel={onOpenCreateChannel}
+                onOpenSettings={onOpenSettings}
+                onSelectChannel={vi.fn()}
+                onRequestEditChannel={vi.fn()}
+                onRequestDeleteChannel={vi.fn()}
+                onUpdateChannelAvatarFromFile={vi.fn()}
+                onUpdateChannelAvatarFromYouTube={vi.fn()}
+                onRemoveChannelAvatar={vi.fn()}
+                onClosePlayer={vi.fn()}
+            />,
+            { withAppShell: true }
+        );
+
+        expect(screen.getByText("Kavynex")).toBeInTheDocument();
+        expect(screen.getByAltText("Kavynex")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /new channel/i }));
+        expect(onOpenCreateChannel).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+        expect(onOpenSettings).toHaveBeenCalledTimes(1);
     });
 
     it("renders channel list and badge count", () => {

@@ -14,7 +14,6 @@ import { SectionErrorBoundary } from "../components/common/section-error-boundar
 import { SelectedChannelLibrarySection } from "../components/home/selected-channel-library-section";
 import { HomeModals } from "../components/home/home-modals";
 import { EditMediaTitleModal } from "../components/modals/edit-media-title-modal";
-import { AppHeader } from "../components/layout/app-header";
 import { ChannelSidebar } from "../components/layout/channel-sidebar";
 import { MediaPlayerView } from "../components/player/media-player-view";
 import { UI_TEXT } from "../constants/ui-text";
@@ -82,7 +81,6 @@ export default function Home(): JSX.Element {
             }}
         >
             <AppShell
-                header={{ height: 74 }}
                 navbar={{ width: 320, breakpoint: "sm" }}
                 padding="md"
                 styles={{
@@ -91,14 +89,6 @@ export default function Home(): JSX.Element {
                     },
                 }}
             >
-                <AppHeader
-                    appIconSrc={AppIcon}
-                    shellSurface={viewState.shellSurface}
-                    shellBorder={viewState.shellBorder}
-                    onOpenCreateChannel={() => channels.setCreateChannelOpen(true)}
-                    onOpenSettings={settings.openSettings}
-                />
-
                 <ChannelSidebar
                     channels={channels.channels}
                     selectedChannelId={channels.selectedChannelId}
@@ -109,6 +99,9 @@ export default function Home(): JSX.Element {
                     deletingChannelId={channels.channelToDelete?.id ?? null}
                     updatingChannelAvatarId={channels.updatingChannelAvatarId}
                     libraryPath={controller.libraryPath}
+                    appIconSrc={AppIcon}
+                    onOpenCreateChannel={() => channels.setCreateChannelOpen(true)}
+                    onOpenSettings={settings.openSettings}
                     onSelectChannel={channels.setSelectedChannelId}
                     onRequestEditChannel={channels.requestEditChannel}
                     onRequestDeleteChannel={channels.requestDeleteChannel}
