@@ -44,6 +44,22 @@ export function useMediaPlayer({
         setActiveMediaState(media);
     }, []);
 
+    // Sync the active media's watch position through a functional update so it no-ops when the media
+    // is no longer active. A final progress save fired as the player unmounts (the Back button) can
+    // run before the mirrored activeMediaRef in use-media-library sees the close, so a ref-based
+    // guard there would still re-set the (just-cleared) active media - re-highlighting its card in
+    // the grid. Reading the live state here closes that race.
+    const syncActiveMediaProgress = useCallback(
+        (mediaId: number, progressSeconds: number): void => {
+            setActiveMediaState((prev) =>
+                prev && prev.id === mediaId
+                    ? { ...prev, progress_seconds: progressSeconds }
+                    : prev
+            );
+        },
+        []
+    );
+
     const closePlayer = useCallback((): void => {
         setViewMode("library");
         setActiveMediaState(null);
@@ -75,6 +91,7 @@ export function useMediaPlayer({
         activeIsWatched,
         openPlayer,
         setActiveMedia,
+        syncActiveMediaProgress,
         closePlayer,
         openInYoutube,
     });

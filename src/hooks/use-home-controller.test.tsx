@@ -232,6 +232,7 @@ const mockMediaLibrary = {
         activeIsWatched: false,
         openPlayer: vi.fn(),
         setActiveMedia: vi.fn(),
+        syncActiveMediaProgress: vi.fn(),
         closePlayer: vi.fn(),
         openInYoutube: vi.fn(),
     },

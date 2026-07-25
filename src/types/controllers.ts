@@ -59,6 +59,10 @@ export type MediaPlayerController = {
     activeIsWatched: boolean;
     openPlayer: (media: MediaRow) => void;
     setActiveMedia: (media: MediaRow | null) => void;
+    // Updates the active media's watch position, but only if that media is still the active one. A
+    // functional state read (not a mirrored ref) so a final progress save racing the player close
+    // cannot re-activate a media that was just cleared, which would re-highlight its card in the grid.
+    syncActiveMediaProgress: (mediaId: number, progressSeconds: number) => void;
     closePlayer: () => void;
     openInYoutube: () => Promise<void>;
 };

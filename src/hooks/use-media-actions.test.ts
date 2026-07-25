@@ -68,6 +68,7 @@ function createMediaPlayer(activeMedia: MediaRow | null = createMediaRow()) {
     return {
         activeMedia,
         setActiveMedia: vi.fn(),
+        syncActiveMediaProgress: vi.fn(),
         closePlayer: vi.fn(),
     };
 }

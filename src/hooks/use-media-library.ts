@@ -41,7 +41,7 @@ export function useMediaLibrary({
     // setActiveMedia (useCallback []) are stable, so a callback depending only on them is
     // itself stable.
     const { clearMedia, setMediaItems } = mediaList;
-    const { setActiveMedia } = mediaPlayer;
+    const { syncActiveMediaProgress } = mediaPlayer;
 
     // Track the active media in a ref so saveMediaProgress can read the current value without
     // listing mediaPlayer.activeMedia as a dependency. Depending on activeMedia would recreate
@@ -105,10 +105,7 @@ export function useMediaLibrary({
                 // position is stashed and reconciled into the list once the player closes (the
                 // effect below); the database is written on every save above, so nothing is lost
                 // if the app quits mid-playback.
-                setActiveMedia({
-                    ...active,
-                    progress_seconds: safeProgressSeconds,
-                });
+                syncActiveMediaProgress(mediaId, safeProgressSeconds);
                 pendingProgressRef.current.set(mediaId, safeProgressSeconds);
                 return;
             }
@@ -117,7 +114,7 @@ export function useMediaLibrary({
             // hidden hot-path cost, so it updates the list immediately.
             applyProgressToList(mediaId, safeProgressSeconds);
         },
-        [applyProgressToList, setActiveMedia]
+        [applyProgressToList, syncActiveMediaProgress]
     );
 
     // Reconcile the progress stashed during playback into the media list once the player closes
