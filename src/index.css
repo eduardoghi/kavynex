@@ -1,0 +1,36 @@
+/* App-level polish loaded after Mantine's styles so it refines rather than fights them.
+   Mantine's own controls already carry a keyboard focus ring; this fills the gaps Mantine
+   does not: the custom card overlay and the native scrollbars. */
+
+/* StretchedButtonCard activates a whole card through an absolutely-positioned UnstyledButton,
+   which is unstyled and shows nothing on keyboard focus. Draw a crisp violet ring, inset so it
+   sits just inside the card's rounded edge (offset follows the button's inherited radius). Only
+   on :focus-visible, so it appears for keyboard navigation and never on a mouse click. */
+.kx-card-button:focus-visible {
+    outline: 2px solid rgba(124, 92, 255, 0.9);
+    outline-offset: -3px;
+}
+
+/* Thin, subtle scrollbars for the native scroll areas (e.g. the media grid, which scrolls a plain
+   overflow:auto box). Mantine's ScrollArea renders its own custom scrollbars and is unaffected.
+   WebView2/Chromium supports the ::-webkit-scrollbar pseudo-elements. */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.24);
+    background-clip: padding-box;
+}

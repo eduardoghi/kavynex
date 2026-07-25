@@ -50,6 +50,7 @@ export function StretchedButtonCard({
             }}
         >
             <UnstyledButton
+                className="kx-card-button"
                 aria-label={ariaLabel}
                 aria-current={ariaCurrent ? "true" : undefined}
                 disabled={disabled}

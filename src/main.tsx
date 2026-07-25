@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@mantine/core/styles.css";
+import "./index.css";
 import App from "./App";
 import { AppErrorBoundary } from "./components/common/app-error-boundary";
 import { installGlobalErrorHandlers } from "./utils/global-error-reporting";
