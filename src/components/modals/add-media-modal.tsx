@@ -1,5 +1,6 @@
 import {
     Modal,
+    ScrollArea,
     SegmentedControl,
     Stack,
     Text,
@@ -152,116 +153,137 @@ export function AddMediaModal({
             overlayProps={{ blur: 6 }}
             size={760}
             zIndex={300}
+            // Cap the modal to the viewport and scroll the body inside it (same pattern the settings
+            // and diagnostics modals use). A fixed height makes the flex chain definite so the inner
+            // ScrollArea can size to it; `display: contents` on the form keeps that ScrollArea a
+            // direct flex child of the modal body. Without this the whole viewport-height wrapper
+            // scrolls, putting the scrollbar at the window edge and running a tall form past the
+            // screen. offsetScrollbars keeps the bar clear of the rounded corners.
+            styles={{
+                content: {
+                    height: "min(86vh, 800px)",
+                    display: "flex",
+                    flexDirection: "column",
+                },
+                body: {
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: "hidden",
+                },
+            }}
         >
             <form
                 onSubmit={(event) => {
                     event.preventDefault();
                     handleSubmit();
                 }}
+                style={{ display: "contents" }}
             >
-                <Stack gap="md">
-                    <SegmentedControl
-                        value={sourceMode}
-                        onChange={(value) =>
-                            void onChangeSourceMode(
-                                toUnionValue(value, ["local", "yt-dlp"] as const, "local")
-                            )
-                        }
-                        data={[
-                            { label: "Local file", value: "local" },
-                            { label: "URL (yt-dlp)", value: "yt-dlp" },
-                        ]}
-                        disabled={isModalLocked}
-                    />
-
-                    <TextInput
-                        label="Title"
-                        placeholder={
-                            isUrlMode
-                                ? "Optional. If empty, the title from yt-dlp will be used"
-                                : "e.g. Episode 01"
-                        }
-                        value={title}
-                        onChange={(event) => onChangeTitle(event.currentTarget.value)}
-                        disabled={isModalLocked}
-                    />
-
-                    {!isUrlMode && (
-                        <TextInput
-                            label="Published date"
-                            placeholder="dd/mm/yyyy"
-                            value={publishedAtInput}
-                            onChange={(event) => {
-                                const maskedValue = applyPublishedAtMask(event.currentTarget.value);
-
-                                setPublishedAtInput(maskedValue);
-                                onChangePublishedAt(displayDateToIso(maskedValue));
-                            }}
+                <ScrollArea h="100%" offsetScrollbars scrollbarSize={10} type="always">
+                    <Stack gap="md" pr="xs">
+                        <SegmentedControl
+                            value={sourceMode}
+                            onChange={(value) =>
+                                void onChangeSourceMode(
+                                    toUnionValue(value, ["local", "yt-dlp"] as const, "local")
+                                )
+                            }
+                            data={[
+                                { label: "Local file", value: "local" },
+                                { label: "URL (yt-dlp)", value: "yt-dlp" },
+                            ]}
                             disabled={isModalLocked}
-                            description="Optional. Use this if you want to save the original publication date."
-                            inputMode="numeric"
-                            maxLength={10}
                         />
-                    )}
 
-                    {isUrlMode ? (
-                        <YtDlpSection
-                            mediaUrl={mediaUrl}
-                            cookiesBrowser={cookiesBrowser}
-                            cookiesPath={cookiesPath}
-                            isLocked={isModalLocked}
-                            isLoadingYtDlpFormats={isLoadingYtDlpFormats}
-                            ytDlpFormats={ytDlpFormats}
-                            selectedYtDlpFormatId={selectedYtDlpFormatId}
-                            downloadComments={downloadComments}
-                            downloadLiveChat={downloadLiveChat}
-                            onChangeMediaUrl={onChangeMediaUrl}
-                            onChangeCookiesBrowser={onChangeCookiesBrowser}
-                            onPickCookiesFile={onPickCookiesFile}
-                            onClearCookiesPath={onClearCookiesPath}
-                            onChangeSelectedYtDlpFormatId={onChangeSelectedYtDlpFormatId}
-                            onChangeDownloadComments={onChangeDownloadComments}
-                            onChangeDownloadLiveChat={onChangeDownloadLiveChat}
-                            onLoadYtDlpFormats={onLoadYtDlpFormats}
+                        <TextInput
+                            label="Title"
+                            placeholder={
+                                isUrlMode
+                                    ? "Optional. If empty, the title from yt-dlp will be used"
+                                    : "e.g. Episode 01"
+                            }
+                            value={title}
+                            onChange={(event) => onChangeTitle(event.currentTarget.value)}
+                            disabled={isModalLocked}
                         />
-                    ) : (
-                        <LocalMediaSection
-                            mediaPath={mediaPath}
+
+                        {!isUrlMode && (
+                            <TextInput
+                                label="Published date"
+                                placeholder="dd/mm/yyyy"
+                                value={publishedAtInput}
+                                onChange={(event) => {
+                                    const maskedValue = applyPublishedAtMask(event.currentTarget.value);
+
+                                    setPublishedAtInput(maskedValue);
+                                    onChangePublishedAt(displayDateToIso(maskedValue));
+                                }}
+                                disabled={isModalLocked}
+                                description="Optional. Use this if you want to save the original publication date."
+                                inputMode="numeric"
+                                maxLength={10}
+                            />
+                        )}
+
+                        {isUrlMode ? (
+                            <YtDlpSection
+                                mediaUrl={mediaUrl}
+                                cookiesBrowser={cookiesBrowser}
+                                cookiesPath={cookiesPath}
+                                isLocked={isModalLocked}
+                                isLoadingYtDlpFormats={isLoadingYtDlpFormats}
+                                ytDlpFormats={ytDlpFormats}
+                                selectedYtDlpFormatId={selectedYtDlpFormatId}
+                                downloadComments={downloadComments}
+                                downloadLiveChat={downloadLiveChat}
+                                onChangeMediaUrl={onChangeMediaUrl}
+                                onChangeCookiesBrowser={onChangeCookiesBrowser}
+                                onPickCookiesFile={onPickCookiesFile}
+                                onClearCookiesPath={onClearCookiesPath}
+                                onChangeSelectedYtDlpFormatId={onChangeSelectedYtDlpFormatId}
+                                onChangeDownloadComments={onChangeDownloadComments}
+                                onChangeDownloadLiveChat={onChangeDownloadLiveChat}
+                                onLoadYtDlpFormats={onLoadYtDlpFormats}
+                            />
+                        ) : (
+                            <LocalMediaSection
+                                mediaPath={mediaPath}
+                                mediaType={mediaType}
+                                isLocked={isModalLocked}
+                                onPickMedia={onPickMedia}
+                            />
+                        )}
+
+                        <YtDlpTerminal
+                            opened={opened}
+                            visible={isUrlMode}
+                            ytDlpLogs={ytDlpLogs}
+                            isYtDlpRunning={isYtDlpRunning}
+                        />
+
+                        <ThumbnailSection
+                            thumbPath={thumbPath}
                             mediaType={mediaType}
-                            isLocked={isModalLocked}
-                            onPickMedia={onPickMedia}
+                            isGeneratingThumb={isGeneratingThumb}
+                            isBusy={isBusy}
+                            canSelectThumb={canSelectThumb}
+                            isUrlMode={isUrlMode}
+                            onPickThumb={onPickThumb}
                         />
-                    )}
 
-                    <YtDlpTerminal
-                        opened={opened}
-                        visible={isUrlMode}
-                        ytDlpLogs={ytDlpLogs}
-                        isYtDlpRunning={isYtDlpRunning}
-                    />
-
-                    <ThumbnailSection
-                        thumbPath={thumbPath}
-                        mediaType={mediaType}
-                        isGeneratingThumb={isGeneratingThumb}
-                        isBusy={isBusy}
-                        canSelectThumb={canSelectThumb}
-                        isUrlMode={isUrlMode}
-                        onPickThumb={onPickThumb}
-                    />
-
-                    <AddMediaModalActions
-                        isYtDlpRunning={isYtDlpRunning}
-                        isUrlMode={isUrlMode}
-                        isCancellingYtDlp={isCancellingYtDlp}
-                        isModalLocked={isModalLocked}
-                        canSubmit={canSubmit}
-                        isBusy={isBusy}
-                        loading={loading}
-                        onCancelYtDlpDownload={onCancelYtDlpDownload}
-                        onClose={onClose}
-                    />
-                </Stack>
+                        <AddMediaModalActions
+                            isYtDlpRunning={isYtDlpRunning}
+                            isUrlMode={isUrlMode}
+                            isCancellingYtDlp={isCancellingYtDlp}
+                            isModalLocked={isModalLocked}
+                            canSubmit={canSubmit}
+                            isBusy={isBusy}
+                            loading={loading}
+                            onCancelYtDlpDownload={onCancelYtDlpDownload}
+                            onClose={onClose}
+                        />
+                    </Stack>
+                </ScrollArea>
             </form>
         </Modal>
     );
