@@ -276,14 +276,16 @@ jobs:
         # floor - a guard against a catastrophic regression (a new module landing with no tests, a
         # mass test deletion), never a percentage chase. The frontend has tight coverage floors
         # (vitest.config.ts, ~89% lines) and broad Stryker mutation testing; the Rust side - the
-        # actual trust boundary - has `cargo test` (pass/fail) plus cargo-mutants scoped to the ten
+        # actual trust boundary - has `cargo test` (pass/fail) plus cargo-mutants scoped to the
         # security-critical modules in src-tauri/.cargo/mutants.toml's examine_globs (path
-        # containment, the library-path guard, the yt-dlp host allow-list, external-binary
-        # resolution, content-addressing/cleanup, the atomic filesystem primitives, the db_backup
-        # core, the SSRF address guard, and the live-chat command). This adds the missing safety net
-        # over the many other files under services/ and commands/ the mutation scope does not reach
-        # (the yt-dlp download/metadata orchestration, the thumbnail downloader, the repositories,
-        # the db_backup import/external/integrity submodules, and most command wrappers).
+        # containment, the library-path guard, input validation, the yt-dlp host allow-list, the
+        # yt-dlp download planning/argv builder, external-binary resolution,
+        # content-addressing/cleanup, the atomic filesystem primitives, the whole db_backup module,
+        # the SSRF address guard, and the live-chat command). Read that file rather than this list
+        # for the current set. This adds the missing safety net over the many other files under
+        # services/ and commands/ the mutation scope does not reach (the yt-dlp download/metadata
+        # orchestration, the thumbnail downloader, the repositories, the schema/migration module,
+        # and most command wrappers).
         #
         # The floor is set low on purpose to avoid the flaky-threshold trap this job previously
         # warned about: local readings sit around 73% lines / 77% regions, but coverage is measured
@@ -331,13 +333,21 @@ jobs:
               run: cargo install cargo-llvm-cov@0.8.7 --locked
 
             - name: Measure coverage and enforce the floor
+              # The instrumented suite runs once (`--no-report`), then both reports are rendered
+              # from that one profile: the browsable HTML uploaded below, and the summary this step
+              # gates on. Rendering twice costs nothing - a second `cargo llvm-cov` run would
+              # re-execute every test.
+              #
               # `--fail-under-lines` prints the summary and then exits non-zero when line coverage
               # is under the floor. Capture that output (stdout+stderr) first and publish it to the
               # step summary regardless of pass/fail, so the real number stays visible even on a
               # failure, then re-raise cargo's status so a regression below the floor fails the job.
               run: |
+                  cargo llvm-cov --no-report --manifest-path src-tauri/Cargo.toml --locked
+                  cargo llvm-cov report --manifest-path src-tauri/Cargo.toml \
+                      --html --output-dir coverage/rust
                   status=0
-                  cargo llvm-cov --manifest-path src-tauri/Cargo.toml --locked --summary-only \
+                  cargo llvm-cov report --manifest-path src-tauri/Cargo.toml --summary-only \
                       --fail-under-lines 60 > coverage-summary.txt 2>&1 || status=$?
                   cat coverage-summary.txt
                   {
@@ -348,6 +358,17 @@ jobs:
                       echo '```'
                   } >> "$GITHUB_STEP_SUMMARY"
                   exit "$status"
+
+            # The step summary carries the per-file table; this carries the line-by-line HTML, which
+            # is what actually answers "which branch of this function is untested". `if: always()` so
+            # a run that failed the floor - the one worth reading - still publishes it.
+            - name: Upload the coverage report
+              if: always()
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: rust-coverage-html
+                  path: coverage/rust/html
+                  retention-days: 30
 
     workflow-lint:
         name: Workflow lint (actionlint)
