@@ -1,12 +1,14 @@
 import { MantineProvider, createTheme } from "@mantine/core";
+import "@fontsource-variable/bricolage-grotesque";
 import Home from "./pages/Home";
+import { DISPLAY_FONT_FAMILY } from "./constants/fonts";
 
 const theme = createTheme({
     primaryColor: "violet",
     defaultRadius: "xl",
     fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
     headings: {
-        fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+        fontFamily: DISPLAY_FONT_FAMILY,
     },
     shadows: {
         xs: "0 8px 20px rgba(0,0,0,0.16)",

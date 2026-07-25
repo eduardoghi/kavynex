@@ -20,7 +20,7 @@ export function useHomeViewState({
 }: UseHomeViewStateOptions): HomeViewState {
     const shellSurface = "rgba(255,255,255,0.035)";
     const shellBorder = "rgba(255,255,255,0.085)";
-    const pageBackground = "#070A12";
+    const pageBackground = "#0C0A10";
 
     const showLoading =
         (!selectedChannel && isLoadingChannels) || isPreparingSettings;

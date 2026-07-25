@@ -177,7 +177,7 @@ describe("useHomeViewState", () => {
             })
         );
 
-        expect(result.current.pageBackground).toBe("#070A12");
+        expect(result.current.pageBackground).toBe("#0C0A10");
     });
 
     it("shows loading when there is no selected channel and channels are loading, even when settings are not preparing", () => {

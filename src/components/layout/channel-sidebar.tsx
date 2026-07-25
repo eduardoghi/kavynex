@@ -16,6 +16,7 @@ import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChannelListItem } from "./channel-list-item";
 import { useAppVersion } from "../../hooks/use-app-version";
+import { DISPLAY_FONT_FAMILY } from "../../constants/fonts";
 import type { Channel, ViewMode } from "../../types/media";
 
 // Row-height estimate for the virtualized channel list. Each row is a fixed-layout avatar plus
@@ -88,7 +89,7 @@ export function ChannelSidebar({
         <AppShell.Navbar
             p="lg"
             style={{
-                background: "rgba(9, 13, 22, 0.72)",
+                background: "rgba(15, 11, 19, 0.72)",
                 borderRight: `1px solid ${shellBorder}`,
                 backdropFilter: "blur(18px)",
             }}
@@ -107,7 +108,15 @@ export function ChannelSidebar({
                         ) : null}
 
                         <Group gap={8} align="baseline" wrap="nowrap">
-                            <Text fw={950} size="lg" lh={1}>
+                            <Text
+                                fw={700}
+                                size="xl"
+                                lh={1}
+                                style={{
+                                    fontFamily: DISPLAY_FONT_FAMILY,
+                                    letterSpacing: "-0.01em",
+                                }}
+                            >
                                 Kavynex
                             </Text>
 
