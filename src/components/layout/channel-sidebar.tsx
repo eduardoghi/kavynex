@@ -1,6 +1,6 @@
 import {
+    ActionIcon,
     AppShell,
-    Badge,
     Box,
     Card,
     Group,
@@ -8,12 +8,12 @@ import {
     ScrollArea,
     Stack,
     Text,
+    Tooltip,
 } from "@mantine/core";
 import { Plus, Settings } from "lucide-react";
-import { useRef, type CSSProperties } from "react";
+import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChannelListItem } from "./channel-list-item";
-import { AppButton } from "../ui/app-button";
 import { useAppVersion } from "../../hooks/use-app-version";
 import type { Channel, ViewMode } from "../../types/media";
 
@@ -23,19 +23,6 @@ const CHANNEL_ROW_ESTIMATE = 72;
 // Matches the "xs" Stack gap the list used before virtualization, applied as per-row bottom
 // padding since absolutely positioned virtual rows do not receive the flex gap.
 const CHANNEL_ROW_GAP = 8;
-
-const COUNT_BADGE_STYLES = {
-    root: {
-        minWidth: 30,
-        justifyContent: "center",
-        paddingInline: 10,
-    },
-    label: {
-        fontWeight: 800,
-        fontSize: 12,
-        lineHeight: 1,
-    },
-} satisfies Record<string, CSSProperties>;
 
 type ChannelSidebarProps = {
     channels: Channel[];
@@ -98,7 +85,7 @@ export function ChannelSidebar({
 
     return (
         <AppShell.Navbar
-            p="md"
+            p="lg"
             style={{
                 background: "rgba(9, 13, 22, 0.72)",
                 borderRight: `1px solid ${shellBorder}`,
@@ -106,61 +93,72 @@ export function ChannelSidebar({
             }}
         >
             <Stack gap="sm" h="100%">
-                <Group gap="sm" px={2} wrap="nowrap">
-                    {appIconSrc ? (
-                        <img
-                            src={appIconSrc}
-                            width={32}
-                            height={32}
-                            alt="Kavynex"
-                            style={{ borderRadius: 8, display: "block" }}
-                        />
-                    ) : null}
+                <Group justify="space-between" px={2} wrap="nowrap">
+                    <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+                        {appIconSrc ? (
+                            <img
+                                src={appIconSrc}
+                                width={32}
+                                height={32}
+                                alt="Kavynex"
+                                style={{ borderRadius: 8, display: "block" }}
+                            />
+                        ) : null}
 
-                    <Group gap={8} align="baseline" wrap="nowrap">
-                        <Text fw={950} size="lg" lh={1}>
-                            Kavynex
-                        </Text>
-
-                        {appVersion ? (
-                            <Text c="dimmed" size="xs" lh={1}>
-                                v{appVersion}
+                        <Group gap={8} align="baseline" wrap="nowrap">
+                            <Text fw={950} size="lg" lh={1}>
+                                Kavynex
                             </Text>
+
+                            {appVersion ? (
+                                <Text c="dimmed" size="xs" lh={1}>
+                                    v{appVersion}
+                                </Text>
+                            ) : null}
+                        </Group>
+                    </Group>
+
+                    <Group gap={2} wrap="nowrap" style={{ marginRight: -12 }}>
+                        {onOpenCreateChannel ? (
+                            <Tooltip label="New channel" withArrow>
+                                <ActionIcon
+                                    variant="subtle"
+                                    color="gray"
+                                    size="lg"
+                                    radius="md"
+                                    aria-label="New channel"
+                                    onClick={onOpenCreateChannel}
+                                >
+                                    <Plus size={18} />
+                                </ActionIcon>
+                            </Tooltip>
+                        ) : null}
+
+                        {onOpenSettings ? (
+                            <Tooltip label="Settings" withArrow>
+                                <ActionIcon
+                                    variant="subtle"
+                                    color="gray"
+                                    size="lg"
+                                    radius="md"
+                                    aria-label="Open settings"
+                                    onClick={onOpenSettings}
+                                >
+                                    <Settings size={18} />
+                                </ActionIcon>
+                            </Tooltip>
                         ) : null}
                     </Group>
                 </Group>
 
-                {onOpenCreateChannel ? (
-                    <AppButton
-                        type="button"
-                        appVariant="primary"
-                        fullWidth
-                        leftSection={<Plus size={18} />}
-                        onClick={onOpenCreateChannel}
-                    >
-                        New channel
-                    </AppButton>
-                ) : null}
+                <Group justify="space-between" align="center" mt="xl" mb="xs">
+                    <Text size="xs" fw={700} c="dimmed" style={{ letterSpacing: "0.08em" }}>
+                        CHANNELS
+                    </Text>
 
-                <Group justify="space-between" px={2} mt="xs" mb="xs">
-                    <Box>
-                        <Text fw={900} size="sm">
-                            Channels
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                            Your collections
-                        </Text>
-                    </Box>
-
-                    <Badge
-                        variant="light"
-                        color="gray"
-                        radius="xl"
-                        size="lg"
-                        styles={COUNT_BADGE_STYLES}
-                    >
+                    <Text size="xs" c="dimmed">
                         {loading ? "..." : channels.length}
-                    </Badge>
+                    </Text>
                 </Group>
 
                 <ScrollArea
@@ -199,7 +197,7 @@ export function ChannelSidebar({
                                 <Text fw={900}>No channels yet</Text>
 
                                 <Text c="dimmed" size="sm" mt={4}>
-                                    Use <b>New channel</b> above to create your first one.
+                                    Use the <b>+</b> above to add your first channel.
                                 </Text>
                             </Card>
                         )}
@@ -274,19 +272,6 @@ export function ChannelSidebar({
                         )}
                     </Stack>
                 </ScrollArea>
-
-                {onOpenSettings ? (
-                    <AppButton
-                        type="button"
-                        appVariant="ghost"
-                        fullWidth
-                        justify="flex-start"
-                        leftSection={<Settings size={18} />}
-                        onClick={onOpenSettings}
-                    >
-                        Settings
-                    </AppButton>
-                ) : null}
             </Stack>
         </AppShell.Navbar>
     );

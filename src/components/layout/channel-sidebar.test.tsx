@@ -80,16 +80,13 @@ describe("ChannelSidebar", () => {
         const description = screen.getByText((_, element) => {
             return (
                 element?.tagName.toLowerCase() === "p" &&
-                element.textContent?.includes("Use") === true &&
-                element.textContent?.includes("New channel") === true &&
-                element.textContent?.includes("above to create your first one.") === true
+                element.textContent?.includes("Use the") === true &&
+                element.textContent?.includes("above to add your first channel.") === true
             );
         });
 
         expect(description).toBeInTheDocument();
-        expect(description).toHaveTextContent(
-            "Use New channel above to create your first one."
-        );
+        expect(description).toHaveTextContent("Use the + above to add your first channel.");
     });
 
     it("renders the branding and app actions the sidebar now hosts", () => {
