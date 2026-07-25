@@ -692,12 +692,28 @@ mod tests {
 
     #[test]
     fn is_ignorable_os_entry_matches_only_os_generated_files() {
-        for name in [".DS_Store", ".ds_store", "Thumbs.db", "thumbs.db", "desktop.ini", " Desktop.ini "] {
+        for name in [
+            ".DS_Store",
+            ".ds_store",
+            "Thumbs.db",
+            "thumbs.db",
+            "desktop.ini",
+            " Desktop.ini ",
+        ] {
             assert!(is_ignorable_os_entry(name), "{name} should be ignorable");
         }
 
-        for name in ["video", "notes.txt", "my.DS_Store.mp4", "thumbs.db.bak", ".ds_storex"] {
-            assert!(!is_ignorable_os_entry(name), "{name} should not be ignorable");
+        for name in [
+            "video",
+            "notes.txt",
+            "my.DS_Store.mp4",
+            "thumbs.db.bak",
+            ".ds_storex",
+        ] {
+            assert!(
+                !is_ignorable_os_entry(name),
+                "{name} should not be ignorable"
+            );
         }
     }
 

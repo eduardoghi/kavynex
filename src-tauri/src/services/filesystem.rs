@@ -1028,9 +1028,15 @@ mod tests {
 
         let corrected = dir.join(format!("media_{actual}.mp4"));
         assert_eq!(result, corrected);
-        assert!(corrected.exists(), "the file must be renamed to its real hash");
+        assert!(
+            corrected.exists(),
+            "the file must be renamed to its real hash"
+        );
         assert!(!written.exists(), "the mis-named file must be gone");
-        assert_eq!(fs::read(&corrected).unwrap(), b"the bytes that actually landed");
+        assert_eq!(
+            fs::read(&corrected).unwrap(),
+            b"the bytes that actually landed"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1054,7 +1060,10 @@ mod tests {
             verify_content_addressed_write(&mis_named, "stalehash", "media", "mp4").unwrap();
 
         assert_eq!(result, correct);
-        assert!(!mis_named.exists(), "the redundant mis-named copy must be dropped");
+        assert!(
+            !mis_named.exists(),
+            "the redundant mis-named copy must be dropped"
+        );
         assert!(correct.exists());
 
         let _ = fs::remove_dir_all(&dir);
