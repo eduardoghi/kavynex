@@ -6,10 +6,11 @@ import {
     Container,
     Stack,
     Text,
+    VisuallyHidden,
 } from "@mantine/core";
 import AppIcon from "../assets/app-icon.svg";
 import { EmptyStateCard } from "../components/common/empty-state-card";
-import { LoadingStateCard } from "../components/common/loading-state-card";
+import { MediaGridSkeleton } from "../components/library/media-grid-skeleton";
 import { SectionErrorBoundary } from "../components/common/section-error-boundary";
 import { SelectedChannelLibrarySection } from "../components/home/selected-channel-library-section";
 import { HomeModals } from "../components/home/home-modals";
@@ -115,10 +116,10 @@ export default function Home(): JSX.Element {
                     <Container size="xl">
                         <Stack gap="lg">
                             {showLoading && (
-                                <LoadingStateCard
-                                    message={UI_TEXT.home.loadingApp}
-                                    shellBorder={viewState.shellBorder}
-                                />
+                                <Box role="status">
+                                    <VisuallyHidden>{UI_TEXT.home.loadingApp}</VisuallyHidden>
+                                    <MediaGridSkeleton shellBorder={viewState.shellBorder} />
+                                </Box>
                             )}
 
                             {showEmpty && (
