@@ -164,7 +164,8 @@ those cookies) at an arbitrary site. The app only ever needs YouTube, so this cl
 gap without losing functionality.
 
 Every yt-dlp invocation also places a literal `--` separator before the URL argument
-(see `services/yt_dlp_download.rs`), so the URL can never be reinterpreted as a
+(the argv builder in `services/yt_dlp_download/command.rs`, and `services/yt_dlp_metadata.rs`
+for the metadata calls), so the URL can never be reinterpreted as a
 command-line flag by yt-dlp itself - defense-in-depth on top of the scheme/host check,
 not a substitute for it. Binaries are always invoked via `std::process::Command`/
 `tokio::process::Command` with an argument array, never a shell string, so there is no

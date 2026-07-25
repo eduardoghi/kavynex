@@ -278,14 +278,14 @@ jobs:
         # (vitest.config.ts, ~89% lines) and broad Stryker mutation testing; the Rust side - the
         # actual trust boundary - has `cargo test` (pass/fail) plus cargo-mutants scoped to the
         # security-critical modules in src-tauri/.cargo/mutants.toml's examine_globs (path
-        # containment, the library-path guard, input validation, the yt-dlp host allow-list, the
-        # yt-dlp download planning/argv builder, external-binary resolution,
-        # content-addressing/cleanup, the atomic filesystem primitives, the whole db_backup module,
-        # the SSRF address guard, and the live-chat command). Read that file rather than this list
-        # for the current set. This adds the missing safety net over the many other files under
-        # services/ and commands/ the mutation scope does not reach (the yt-dlp download/metadata
-        # orchestration, the thumbnail downloader, the repositories, the schema/migration module,
-        # and most command wrappers).
+        # containment, the library-path guard, the yt-dlp host allow-list, the yt-dlp download
+        # planning/argv builder, external-binary resolution, content-addressing/cleanup, the atomic
+        # filesystem primitives, the whole db_backup module, the SSRF address guard, and the
+        # live-chat command). Read that file rather than this list for the current set. This adds
+        # the missing safety net over the many other files under services/, commands/ and utils/ the
+        # mutation scope does not reach (the yt-dlp download/metadata orchestration, the thumbnail
+        # downloader, the repositories, the schema/migration module, input validation, and most
+        # command wrappers).
         #
         # The floor is set low on purpose to avoid the flaky-threshold trap this job previously
         # warned about: local readings sit around 73% lines / 77% regions, but coverage is measured

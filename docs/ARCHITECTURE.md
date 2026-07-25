@@ -37,11 +37,15 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 
 - **Services** (`src-tauri/src/services/`) hold the actual logic, split by concern rather
   than by a strict service/repository naming split - some files are "repositories" in
-  spirit (`channel_repository.rs`, `video_repository.rs` hold the SQL), others are
+  spirit (`channel_repository.rs`, `video_repository/` hold the SQL), others are
   domain services (`library_media.rs`, `library_migration.rs`, `library_cleanup.rs`,
-  `thumbnail_persist.rs`, `thumbnail_download.rs`, `yt_dlp_download.rs`,
+  `thumbnail_persist.rs`, `thumbnail_download.rs`, `yt_dlp_download/`,
   `yt_dlp_metadata.rs`, `yt_dlp_cookies.rs`, `yt_dlp_url.rs`, `live_chat_storage.rs`,
-  `db_schema.rs`, `db_backup/`, `database.rs`, `binaries.rs`, `cleanup.rs`, `logger.rs`).
+  `db_schema/`, `db_backup/`, `database.rs`, `binaries.rs`, `cleanup.rs`, `logger.rs`).
+  A service that outgrew one file becomes a directory of the same name rather than a set
+  of loose siblings, with the coupled core in `mod.rs` and the separable part split off:
+  `db_schema/` (`ddl.rs`, `introspection.rs`), `db_backup/` (`integrity.rs`, `external.rs`,
+  `import.rs`), `video_repository/` (`media_page.rs`) and `yt_dlp_download/` (`command.rs`).
   All schema/query code lives here, never in `commands/`.
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
   across services:
@@ -165,11 +169,11 @@ seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` p
 | Concern | Backend | Frontend |
 |---|---|---|
 | Channels CRUD | `commands/channels.rs`, `services/channel_repository.rs` | `repositories/channel-repository.ts` |
-| Media CRUD / import | `commands/videos.rs`, `commands/media.rs`, `services/video_repository.rs`, `services/library_media.rs` | `repositories/media-repository.ts`, `services/media-file-service.ts`, `services/media-input-service.ts` |
-| yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp_download.rs`, `services/yt_dlp_metadata.rs`, `services/yt_dlp_cookies.rs`, `services/yt_dlp_url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
+| Media CRUD / import | `commands/videos.rs`, `commands/media.rs`, `services/video_repository/`, `services/library_media.rs` | `repositories/media-repository.ts`, `services/media-file-service.ts`, `services/media-input-service.ts` |
+| yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp_download/`, `services/yt_dlp_metadata.rs`, `services/yt_dlp_cookies.rs`, `services/yt_dlp_url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail_persist.rs`, `services/thumbnail_download.rs`, `services/thumbnail_temp.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts` |
-| Database schema/migrations | `services/db_schema.rs` | - |
+| Database schema/migrations | `services/db_schema/` | - |
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library_summary.rs`, `services/library_cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |

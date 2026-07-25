@@ -1,7 +1,9 @@
 # Database
 
 Kavynex stores its structured data in a single SQLite database file, `kavynex.db`, opened
-through `sqlx`. Everything schema-related lives in `src-tauri/src/services/db_schema.rs`;
+through `sqlx`. Everything schema-related lives in `src-tauri/src/services/db_schema/` (the DDL
+literals in `ddl.rs`, the migrations and `SCHEMA_VERSION` in `mod.rs`, the `PRAGMA`-based
+table/column/index lookups the migrations and the backup import share in `introspection.rs`);
 everything about the connection (WAL, timeouts, foreign keys) lives in
 `src-tauri/src/services/database.rs`; backup/restore/export/import lives in the
 `src-tauri/src/services/db_backup/` module. See `docs/DIRECTORIES.md` for exactly where the
@@ -9,7 +11,7 @@ database file and its backups live on disk.
 
 ## Schema
 
-Four tables, created by `db_schema.rs`:
+Four tables, declared in `db_schema/ddl.rs` and created by `db_schema/mod.rs`:
 
 ### `channels`
 
@@ -125,7 +127,7 @@ Live chat replay data is stored as gzip-compressed JSON files on disk under the 
 table only carries a `has_live_chat` flag and a `live_chat_file_path` pointing at that
 file. A `video_live_chat_messages` table existed in older versions of the app but was
 always empty by design; it is dropped by the baseline migration
-(`LEGACY_TABLE_DROPS` in `db_schema.rs`) if found on an existing database.
+(`LEGACY_TABLE_DROPS` in `db_schema/ddl.rs`) if found on an existing database.
 
 ### Foreign keys and cascades
 
