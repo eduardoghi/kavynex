@@ -25,11 +25,13 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
     primary: {
         variant: "filled",
         style: {
-            border: "1px solid rgba(139,92,246,0.34)",
-            background:
-                "linear-gradient(135deg, rgba(124,92,255,0.90), rgba(14,165,233,0.78))",
+            border: "1px solid rgba(124,92,255,0.45)",
+            background: "#7C5CFF",
             color: "#ffffff",
-            boxShadow: "0 12px 28px rgba(80,50,180,0.22)",
+            // A soft, muted shadow rather than a bright glow: a saturated semi-transparent violet
+            // over a near-black OLED background reads as a burned purple halo, so keep the color
+            // dark and the alpha low so it registers as depth, not light.
+            boxShadow: "0 8px 22px rgba(60,40,120,0.22)",
         },
     },
     secondary: {
@@ -61,6 +63,16 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
     },
 };
 
+// A variant's background/border/shadow are inline styles, which override Mantine's `:disabled`
+// dimming - so a disabled button would otherwise look identical to an active one. Replace them with
+// one muted, shadowless look so "not clickable" reads at a glance, whatever the variant.
+const DISABLED_STYLE: CSSProperties = {
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.09)",
+    color: "rgba(255,255,255,0.35)",
+    boxShadow: "none",
+};
+
 export function AppButton({
     appVariant = "secondary",
     style,
@@ -68,6 +80,9 @@ export function AppButton({
     ...props
 }: AppButtonProps): JSX.Element {
     const buttonStyle = BUTTON_STYLES[appVariant];
+    // Loading keeps the active look (the spinner already signals progress); only a truly disabled
+    // button gets the muted treatment.
+    const isDisabled = props.disabled === true && props.loading !== true;
 
     return (
         <Button
@@ -77,6 +92,7 @@ export function AppButton({
             {...props}
             style={{
                 ...buttonStyle.style,
+                ...(isDisabled ? DISABLED_STYLE : {}),
                 ...style,
             }}
         >
