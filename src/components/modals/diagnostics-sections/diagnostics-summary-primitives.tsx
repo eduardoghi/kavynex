@@ -50,7 +50,7 @@ export function SectionIcon({
             variant="light"
             style={{
                 background:
-                    "linear-gradient(135deg, rgba(124,92,255,0.24), rgba(37,99,235,0.10))",
+                    "linear-gradient(135deg, rgba(124,92,255,0.24), rgba(124,92,255,0.08))",
                 border: "1px solid rgba(139,92,246,0.30)",
                 color: "rgba(237,233,254,0.96)",
                 boxShadow: "0 10px 24px rgba(80,50,180,0.12)",

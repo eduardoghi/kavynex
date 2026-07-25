@@ -245,7 +245,7 @@ function MediaCardComponent({
             style={{
                 ...ROOT_CARD_BASE_STYLE,
                 background: isActive
-                    ? "linear-gradient(180deg, rgba(124,92,255,0.16), rgba(14,165,233,0.06))"
+                    ? "linear-gradient(180deg, rgba(124,92,255,0.18), rgba(124,92,255,0.05))"
                     : isWatched
                     ? "linear-gradient(180deg, rgba(34,197,94,0.07), rgba(34,197,94,0.025))"
                     : "rgba(255,255,255,0.028)",

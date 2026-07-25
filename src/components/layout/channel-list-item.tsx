@@ -112,7 +112,7 @@ export const ChannelListItem = memo(function ChannelListItem({
                     styles={{
                         root: {
                             background:
-                                "linear-gradient(135deg, rgba(168,85,247,0.32), rgba(59,130,246,0.20))",
+                                "linear-gradient(135deg, rgba(124,92,255,0.34), rgba(124,92,255,0.16))",
                             border: `1px solid ${shellBorder}`,
                         },
                     }}
