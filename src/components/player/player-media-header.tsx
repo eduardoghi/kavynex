@@ -89,7 +89,7 @@ export function PlayerMediaHeader({
                     aria-label="Back to library"
                     onClick={onBack}
                     style={{
-                        background: "rgba(255,255,255,0.04)",
+                        background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
                         border: `1px solid ${shellBorder}`,
                         flex: "0 0 auto",
                     }}
@@ -144,7 +144,7 @@ export function PlayerMediaHeader({
                             size="lg"
                             aria-label="Keyboard shortcuts"
                             style={{
-                                background: "rgba(255,255,255,0.04)",
+                                background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
                                 border: `1px solid ${shellBorder}`,
                             }}
                         >

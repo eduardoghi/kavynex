@@ -126,15 +126,15 @@ const CHAT_BADGE_STYLE: CSSProperties = {
     flexShrink: 0,
     background: "rgba(239,68,68,0.14)",
     borderColor: "rgba(239,68,68,0.34)",
-    color: "rgb(252,165,165)",
+    color: "light-dark(#DC2626, rgb(252,165,165))",
     fontWeight: 800,
 };
 
 const COMMENTS_BADGE_STYLE: CSSProperties = {
     flexShrink: 0,
-    background: "rgba(255,255,255,0.055)",
-    borderColor: "rgba(255,255,255,0.14)",
-    color: "rgba(255,255,255,0.74)",
+    background: "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.055))",
+    borderColor: "light-dark(rgba(0,0,0,0.14), rgba(255,255,255,0.14))",
+    color: "light-dark(rgba(0,0,0,0.66), rgba(255,255,255,0.74))",
     fontWeight: 700,
     paddingInline: rem(8),
 };
@@ -145,7 +145,7 @@ const MEDIA_TYPE_BADGE_STYLE_AUDIO: CSSProperties = {
     flexShrink: 0,
     background: "rgba(249,115,22,0.13)",
     borderColor: "rgba(249,115,22,0.34)",
-    color: "rgb(253,186,116)",
+    color: "light-dark(#C2410C, rgb(253,186,116))",
     fontWeight: 800,
 };
 
@@ -153,7 +153,7 @@ const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
     flexShrink: 0,
     background: "rgba(59,130,246,0.13)",
     borderColor: "rgba(59,130,246,0.34)",
-    color: "rgb(147,197,253)",
+    color: "light-dark(#1D4ED8, rgb(147,197,253))",
     fontWeight: 800,
 };
 
@@ -245,10 +245,10 @@ function MediaCardComponent({
             style={{
                 ...ROOT_CARD_BASE_STYLE,
                 background: isActive
-                    ? "linear-gradient(180deg, rgba(124,92,255,0.18), rgba(124,92,255,0.05))"
+                    ? "light-dark(linear-gradient(180deg, rgba(124,92,255,0.12), rgba(124,92,255,0.04)), linear-gradient(180deg, rgba(124,92,255,0.18), rgba(124,92,255,0.05)))"
                     : isWatched
-                    ? "linear-gradient(180deg, rgba(34,197,94,0.07), rgba(34,197,94,0.025))"
-                    : "rgba(255,255,255,0.028)",
+                    ? "light-dark(linear-gradient(180deg, rgba(34,197,94,0.12), rgba(34,197,94,0.05)), linear-gradient(180deg, rgba(34,197,94,0.07), rgba(34,197,94,0.025)))"
+                    : "light-dark(#ffffff, rgba(255,255,255,0.028))",
                 borderColor: isActive
                     ? "rgba(124,92,255,0.68)"
                     : isWatched
@@ -256,7 +256,7 @@ function MediaCardComponent({
                     : shellBorder,
                 boxShadow: isActive
                     ? "0 0 0 1px rgba(124,92,255,0.24), 0 18px 42px rgba(80,50,180,0.22)"
-                    : "0 12px 32px rgba(0,0,0,0.12)",
+                    : "light-dark(0 6px 18px rgba(26,24,37,0.10), 0 12px 32px rgba(0,0,0,0.12))",
                 transform: isActive ? "translateY(-2px)" : "none",
             }}
         >

@@ -76,14 +76,19 @@ export function DiagnosticsIssuesSection({
             p="md"
             style={{
                 background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
+                    "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
             }}
         >
             <Stack gap="sm">
                 <Title order={4}>Issues</Title>
 
                 {issues.length === 0 && (
-                    <Paper withBorder radius="lg" p="md" style={{ background: "rgba(255,255,255,0.02)" }}>
+                    <Paper
+                        withBorder
+                        radius="lg"
+                        p="md"
+                        style={{ background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))" }}
+                    >
                         <Group gap="sm">
                             <ThemeIcon color="green" variant="light" radius="xl">
                                 <CheckCircle2 size={16} />

@@ -15,7 +15,7 @@ export function DiagnosticsMetricCard({
             radius="lg"
             p="sm"
             style={{
-                background: "rgba(255,255,255,0.02)",
+                background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
             }}
         >
             <Text size="sm" c="dimmed">

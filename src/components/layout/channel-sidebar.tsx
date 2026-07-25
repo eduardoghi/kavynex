@@ -15,6 +15,7 @@ import { Plus, Settings } from "lucide-react";
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChannelListItem } from "./channel-list-item";
+import { ThemeToggle } from "./theme-toggle";
 import { useAppVersion } from "../../hooks/use-app-version";
 import { DISPLAY_FONT_FAMILY } from "../../constants/fonts";
 import type { Channel, ViewMode } from "../../types/media";
@@ -89,7 +90,7 @@ export function ChannelSidebar({
         <AppShell.Navbar
             p="lg"
             style={{
-                background: "rgba(15, 11, 19, 0.72)",
+                background: "light-dark(rgba(255, 255, 255, 0.82), rgba(15, 11, 19, 0.72))",
                 borderRight: `1px solid ${shellBorder}`,
                 backdropFilter: "blur(18px)",
             }}
@@ -129,6 +130,8 @@ export function ChannelSidebar({
                     </Group>
 
                     <Group gap={2} wrap="nowrap" style={{ marginRight: -12 }}>
+                        <ThemeToggle />
+
                         {onOpenCreateChannel ? (
                             <Tooltip label="New channel" withArrow>
                                 <ActionIcon

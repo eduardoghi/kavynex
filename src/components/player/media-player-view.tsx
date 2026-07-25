@@ -79,7 +79,11 @@ export function MediaPlayerView({
 
         return () => {
             if (previouslyFocused?.isConnected) {
-                previouslyFocused.focus();
+                // Restore focus to the originating card, but suppress the focus-visible ring: a
+                // programmatic restore would otherwise flash the keyboard focus outline on the card
+                // even for a mouse user who never saw one, which reads as a stray violet highlight.
+                // Keyboard navigation still shows the ring normally on the next key press.
+                previouslyFocused.focus({ focusVisible: false });
             }
         };
     }, []);
@@ -168,7 +172,7 @@ export function MediaPlayerView({
                             width: rem(38),
                             height: rem(38),
                             borderRadius: rem(12),
-                            background: "rgba(255,255,255,0.04)",
+                            background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
                             border: `1px solid ${shellBorder}`,
                             display: "grid",
                             placeItems: "center",
@@ -190,7 +194,7 @@ export function MediaPlayerView({
                     style={{
                         borderColor: shellBorder,
                         background:
-                            "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
+                            "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
                         minHeight: rem(540),
                         display: "grid",
                         placeItems: "center",
@@ -204,7 +208,7 @@ export function MediaPlayerView({
                                 borderRadius: rem(20),
                                 display: "grid",
                                 placeItems: "center",
-                                background: "rgba(255,255,255,0.04)",
+                                background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
                                 border: `1px solid ${shellBorder}`,
                             }}
                         >

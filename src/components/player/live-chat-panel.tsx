@@ -263,7 +263,7 @@ export function LiveChatPanel({
             style={{
                 borderColor: shellBorder,
                 background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
+                    "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
                 minHeight: rem(520),
                 maxHeight: rem(760),
                 overflow: "hidden",

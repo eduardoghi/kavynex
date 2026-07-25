@@ -24,13 +24,13 @@
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.14);
+    background: light-dark(rgba(26, 24, 37, 0.22), rgba(255, 255, 255, 0.14));
     border-radius: 8px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.24);
+    background: light-dark(rgba(26, 24, 37, 0.34), rgba(255, 255, 255, 0.24));
     background-clip: padding-box;
 }

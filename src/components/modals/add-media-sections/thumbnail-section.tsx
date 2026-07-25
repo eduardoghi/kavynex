@@ -27,16 +27,16 @@ export function ThumbnailSection({
     const isAudio = mediaType === "audio";
 
     let badgeLabel = "optional";
-    let badgeBackground = "rgba(255,255,255,0.055)";
-    let badgeBorder = "rgba(255,255,255,0.14)";
-    let badgeColor = "rgba(255,255,255,0.62)";
+    let badgeBackground = "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.055))";
+    let badgeBorder = "light-dark(rgba(0,0,0,0.14), rgba(255,255,255,0.14))";
+    let badgeColor = "light-dark(rgba(0,0,0,0.58), rgba(255,255,255,0.62))";
     let shouldShowBadge = !hasThumbnail;
 
     if (!canSelectThumb) {
         badgeLabel = "blocked";
-        badgeBackground = "rgba(255,255,255,0.045)";
-        badgeBorder = "rgba(255,255,255,0.10)";
-        badgeColor = "rgba(255,255,255,0.7)";
+        badgeBackground = "light-dark(rgba(0,0,0,0.045), rgba(255,255,255,0.045))";
+        badgeBorder = "light-dark(rgba(0,0,0,0.10), rgba(255,255,255,0.10))";
+        badgeColor = "light-dark(rgba(0,0,0,0.62), rgba(255,255,255,0.7))";
         shouldShowBadge = true;
     } else if (isGeneratingThumb) {
         badgeLabel = "loading";
@@ -69,8 +69,8 @@ export function ThumbnailSection({
                 borderWidth: 1,
                 borderColor: hasThumbnail
                     ? "rgba(139,92,246,0.24)"
-                    : "rgba(255,255,255,0.16)",
-                background: "rgba(255,255,255,0.02)",
+                    : "light-dark(rgba(0,0,0,0.16), rgba(255,255,255,0.16))",
+                background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
                 cursor: !canSelectThumb ? "not-allowed" : isBusy ? "progress" : "pointer",
                 userSelect: "none",
                 opacity: !canSelectThumb ? 0.55 : isAudio ? 0.92 : 1,
@@ -90,10 +90,10 @@ export function ThumbnailSection({
                         borderRadius: rem(14),
                         border: hasThumbnail
                             ? "1px solid rgba(139,92,246,0.18)"
-                            : "1px solid rgba(255,255,255,0.12)",
+                            : "1px solid light-dark(rgba(0,0,0,0.12), rgba(255,255,255,0.12))",
                         background: hasThumbnail
                             ? "rgba(124,92,255,0.06)"
-                            : "rgba(255,255,255,0.03)",
+                            : "light-dark(rgba(0,0,0,0.03), rgba(255,255,255,0.03))",
                         flex: "0 0 auto",
                         overflow: "hidden",
                     }}

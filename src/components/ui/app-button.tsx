@@ -38,16 +38,16 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
         variant: "subtle",
         color: "gray",
         style: {
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(255,255,255,0.035)",
-            color: "rgba(255,255,255,0.86)",
+            border: "1px solid light-dark(rgba(0,0,0,0.12), rgba(255,255,255,0.10))",
+            background: "light-dark(rgba(0,0,0,0.035), rgba(255,255,255,0.035))",
+            color: "light-dark(rgba(0,0,0,0.80), rgba(255,255,255,0.86))",
         },
     },
     ghost: {
         variant: "subtle",
         color: "gray",
         style: {
-            color: "rgba(255,255,255,0.78)",
+            color: "light-dark(rgba(0,0,0,0.72), rgba(255,255,255,0.78))",
         },
     },
     danger: {
@@ -67,9 +67,9 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
 // dimming - so a disabled button would otherwise look identical to an active one. Replace them with
 // one muted, shadowless look so "not clickable" reads at a glance, whatever the variant.
 const DISABLED_STYLE: CSSProperties = {
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.09)",
-    color: "rgba(255,255,255,0.35)",
+    background: "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.05))",
+    border: "1px solid light-dark(rgba(0,0,0,0.10), rgba(255,255,255,0.09))",
+    color: "light-dark(rgba(0,0,0,0.35), rgba(255,255,255,0.35))",
     boxShadow: "none",
 };
 

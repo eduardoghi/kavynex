@@ -89,7 +89,7 @@ export function getBadgeStyle(tone: BadgeTone): BadgeStyle {
         return {
             background: "rgba(124,92,255,0.13)",
             borderColor: "rgba(139,92,246,0.34)",
-            color: "rgb(221,214,254)",
+            color: "light-dark(#6D28D9, rgb(221,214,254))",
         };
     }
 
@@ -97,7 +97,7 @@ export function getBadgeStyle(tone: BadgeTone): BadgeStyle {
         return {
             background: "rgba(59,130,246,0.13)",
             borderColor: "rgba(59,130,246,0.34)",
-            color: "rgb(147,197,253)",
+            color: "light-dark(#1D4ED8, rgb(147,197,253))",
         };
     }
 
@@ -105,7 +105,7 @@ export function getBadgeStyle(tone: BadgeTone): BadgeStyle {
         return {
             background: "rgba(34,197,94,0.13)",
             borderColor: "rgba(34,197,94,0.34)",
-            color: "rgb(134,239,172)",
+            color: "light-dark(#15803D, rgb(134,239,172))",
         };
     }
 
@@ -113,7 +113,7 @@ export function getBadgeStyle(tone: BadgeTone): BadgeStyle {
         return {
             background: "rgba(249,115,22,0.13)",
             borderColor: "rgba(249,115,22,0.34)",
-            color: "rgb(253,186,116)",
+            color: "light-dark(#C2410C, rgb(253,186,116))",
         };
     }
 
@@ -121,7 +121,7 @@ export function getBadgeStyle(tone: BadgeTone): BadgeStyle {
         return {
             background: "rgba(239,68,68,0.13)",
             borderColor: "rgba(239,68,68,0.34)",
-            color: "rgb(252,165,165)",
+            color: "light-dark(#DC2626, rgb(252,165,165))",
         };
     }
 
@@ -129,13 +129,13 @@ export function getBadgeStyle(tone: BadgeTone): BadgeStyle {
         return {
             background: "rgba(234,179,8,0.13)",
             borderColor: "rgba(234,179,8,0.34)",
-            color: "rgb(253,224,71)",
+            color: "light-dark(#A16207, rgb(253,224,71))",
         };
     }
 
     return {
-        background: "rgba(255,255,255,0.055)",
-        borderColor: "rgba(255,255,255,0.14)",
-        color: "rgba(255,255,255,0.66)",
+        background: "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.055))",
+        borderColor: "light-dark(rgba(0,0,0,0.14), rgba(255,255,255,0.14))",
+        color: "light-dark(rgba(0,0,0,0.60), rgba(255,255,255,0.66))",
     };
 }

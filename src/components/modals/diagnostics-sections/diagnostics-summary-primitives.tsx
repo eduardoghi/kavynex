@@ -52,7 +52,7 @@ export function SectionIcon({
                 background:
                     "linear-gradient(135deg, rgba(124,92,255,0.24), rgba(124,92,255,0.08))",
                 border: "1px solid rgba(139,92,246,0.30)",
-                color: "rgba(237,233,254,0.96)",
+                color: "light-dark(#5B3FD1, rgba(237,233,254,0.96))",
                 boxShadow: "0 10px 24px rgba(80,50,180,0.12)",
             }}
         >
@@ -86,10 +86,10 @@ export function OverviewIcon({
                       ? "1px solid rgba(234,179,8,0.30)"
                       : "1px solid rgba(239,68,68,0.30)",
                 color: isHealthy
-                    ? "rgb(134,239,172)"
+                    ? "light-dark(#15803D, rgb(134,239,172))"
                     : isWarning
-                      ? "rgb(253,224,71)"
-                      : "rgb(252,165,165)",
+                      ? "light-dark(#A16207, rgb(253,224,71))"
+                      : "light-dark(#B91C1C, rgb(252,165,165))",
             }}
         >
             {isHealthy ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}

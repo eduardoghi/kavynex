@@ -245,8 +245,8 @@ export function YtDlpSection({
                 <Box
                     style={{
                         borderRadius: rem(14),
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        background: "rgba(255,255,255,0.02)",
+                        border: "1px solid light-dark(rgba(0,0,0,0.12), rgba(255,255,255,0.12))",
+                        background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
                         padding: rem(12),
                     }}
                 >

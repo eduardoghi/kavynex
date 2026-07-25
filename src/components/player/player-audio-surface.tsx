@@ -41,7 +41,8 @@ export function PlayerAudioSurface({
             style={{
                 borderRadius: rem(24),
                 border: `1px solid ${shellBorder}`,
-                background: "linear-gradient(180deg, #101114 0%, #0b0c0f 100%)",
+                background:
+                    "light-dark(linear-gradient(180deg, #ffffff 0%, #f6f5f9 100%), linear-gradient(180deg, #101114 0%, #0b0c0f 100%))",
                 minHeight: rem(560),
                 padding: rem(40),
                 display: "flex",
@@ -60,12 +61,12 @@ export function PlayerAudioSurface({
             >
                 <Box
                     style={{
-                        width: rem(260),
-                        height: rem(260),
-                        borderRadius: rem(28),
+                        width: rem(300),
+                        aspectRatio: "16 / 9",
+                        borderRadius: rem(20),
                         overflow: "hidden",
                         background: thumbnailSrc
-                            ? "#111"
+                            ? "light-dark(#e9e8ee, #111)"
                             : "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(59,130,246,0.14))",
                         border: `1px solid ${shellBorder}`,
                         flex: "0 0 auto",
@@ -112,7 +113,7 @@ export function PlayerAudioSurface({
                         style={{
                             borderRadius: rem(16),
                             border: `1px solid ${shellBorder}`,
-                            background: "rgba(255,255,255,0.03)",
+                            background: "light-dark(rgba(0,0,0,0.03), rgba(255,255,255,0.03))",
                             padding: rem(16),
                         }}
                     >

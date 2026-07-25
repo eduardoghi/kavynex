@@ -38,8 +38,8 @@ export function LocalMediaSection({
                 borderRadius: rem(14),
                 border: hasMedia
                     ? "1px solid rgba(139,92,246,0.18)"
-                    : "1px solid rgba(255,255,255,0.18)",
-                background: "rgba(255,255,255,0.02)",
+                    : "1px solid light-dark(rgba(0,0,0,0.18), rgba(255,255,255,0.18))",
+                background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
                 padding: rem(16),
                 cursor: isLocked ? "progress" : "pointer",
                 userSelect: "none",
@@ -59,10 +59,10 @@ export function LocalMediaSection({
                         borderRadius: rem(12),
                         border: hasMedia
                             ? "1px solid rgba(139,92,246,0.18)"
-                            : "1px solid rgba(255,255,255,0.12)",
+                            : "1px solid light-dark(rgba(0,0,0,0.12), rgba(255,255,255,0.12))",
                         background: hasMedia
                             ? "rgba(124,92,255,0.06)"
-                            : "rgba(0,0,0,0.25)",
+                            : "light-dark(rgba(0,0,0,0.06), rgba(0,0,0,0.25))",
                         flex: "0 0 auto",
                     }}
                 >
@@ -90,17 +90,17 @@ export function LocalMediaSection({
                             ? isAudio
                                 ? "rgba(249,115,22,0.13)"
                                 : "rgba(59,130,246,0.13)"
-                            : "rgba(255,255,255,0.055)",
+                            : "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.055))",
                         borderColor: hasMedia
                             ? isAudio
                                 ? "rgba(249,115,22,0.34)"
                                 : "rgba(59,130,246,0.34)"
-                            : "rgba(255,255,255,0.14)",
+                            : "light-dark(rgba(0,0,0,0.14), rgba(255,255,255,0.14))",
                         color: hasMedia
                             ? isAudio
                                 ? "rgb(253,186,116)"
                                 : "rgb(147,197,253)"
-                            : "rgba(255,255,255,0.62)",
+                            : "light-dark(rgba(0,0,0,0.58), rgba(255,255,255,0.62))",
                         fontWeight: 800,
                     }}
                 >

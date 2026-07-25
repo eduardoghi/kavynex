@@ -18,7 +18,7 @@ export function PinnedChatMessage({
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
                 <Box
                     style={{
-                        background: "rgba(255,255,255,0.04)",
+                        background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
                         border: `1px solid ${shellBorder}`,
                         borderRadius: rem(8),
                         padding: rem(8),

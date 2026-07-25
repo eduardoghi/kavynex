@@ -108,7 +108,9 @@ describe("getBadgeStyle", () => {
 
     it("falls back to the neutral style for the neutral tone", () => {
         const neutral = getBadgeStyle("neutral");
-        expect(neutral.background).toBe("rgba(255,255,255,0.055)");
-        expect(neutral.color).toBe("rgba(255,255,255,0.66)");
+        expect(neutral.background).toBe(
+            "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.055))"
+        );
+        expect(neutral.color).toBe("light-dark(rgba(0,0,0,0.60), rgba(255,255,255,0.66))");
     });
 });

@@ -18,9 +18,14 @@ export function useHomeViewState({
     isPreparingSettings,
     mediaPlayer,
 }: UseHomeViewStateOptions): HomeViewState {
-    const shellSurface = "rgba(255,255,255,0.035)";
-    const shellBorder = "rgba(255,255,255,0.085)";
-    const pageBackground = "#0C0A10";
+    // Color-scheme-aware via the CSS `light-dark()` function: the first value applies in the light
+    // scheme, the second in dark. Mantine sets `color-scheme` on the root when the theme toggles, so
+    // these resolve automatically wherever they are used as inline style values. The light values are
+    // a deliberate light palette (a soft off-white page with raised white surfaces), not a mechanical
+    // inversion of the dark overlays.
+    const shellSurface = "light-dark(#ffffff, rgba(255,255,255,0.035))";
+    const shellBorder = "light-dark(rgba(26,24,37,0.09), rgba(255,255,255,0.085))";
+    const pageBackground = "light-dark(#F1F0F4, #0C0A10)";
 
     const showLoading =
         (!selectedChannel && isLoadingChannels) || isPreparingSettings;

@@ -13,8 +13,8 @@ const ROW_MENU_STYLES = {
     dropdown: {
         borderRadius: 14,
         padding: 6,
-        background: "rgba(36, 36, 40, 0.98)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        background: "light-dark(rgba(255, 255, 255, 0.98), rgba(36, 36, 40, 0.98))",
+        border: "1px solid light-dark(rgba(0,0,0,0.10), rgba(255,255,255,0.08))",
         backdropFilter: "blur(12px)",
     },
     item: {
@@ -99,7 +99,7 @@ export const ChannelListItem = memo(function ChannelListItem({
                 borderColor: selected ? "rgba(139,92,246,0.45)" : shellBorder,
                 background: selected
                     ? "rgba(124,92,255,0.10)"
-                    : "rgba(255,255,255,0.025)",
+                    : "light-dark(rgba(0,0,0,0.025), rgba(255,255,255,0.025))",
                 opacity: isBusy ? 0.6 : 1,
                 transition: "background 160ms ease, border-color 160ms ease",
             }}
