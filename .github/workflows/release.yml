@@ -317,19 +317,13 @@ jobs:
             - name: Clippy
               run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
+            # Covers the yt-dlp process-kill/timeout/cancel tests too: they used to be `#[ignore]`d
+            # (they hung on the ubuntu-22.04 runner) and needed a dedicated step here, but the hang
+            # is gone on ubuntu-26.04 and the attribute was dropped, so they run in the step above
+            # on every platform. A second step filtering on `--ignored` would now match nothing and
+            # pass vacuously.
             - name: Run Rust tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-
-            # Mirror ci.yml: run the #[ignore]d yt-dlp process-kill tests on Windows and macOS
-            # (they hang only on the ubuntu runner) so a release is also gated on the kill/timeout/
-            # cancel path passing where it can run. Filtered by name to avoid the fixture-
-            # regeneration test; short per-step timeout so a hang fails diagnosably.
-            # !startsWith so both Ubuntu legs (x64 and arm) are excluded: the hang is a property of
-            # the GitHub ubuntu runner, not the architecture, so it would strike ubuntu-26.04-arm too.
-            - name: Run ignored process-kill tests (Windows and macOS only)
-              if: ${{ !startsWith(matrix.platform, 'ubuntu-') }}
-              timeout-minutes: 5
-              run: cargo test --manifest-path src-tauri/Cargo.toml --locked run_and_capture_kills_the_child -- --ignored --test-threads=1
 
             # Mirror ci.yml's bindings-freshness gate so a release cannot ship with the
             # checked-in TypeScript bindings out of sync with the Rust types they are generated
