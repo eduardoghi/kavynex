@@ -35,13 +35,24 @@ the full set (hundreds of fixes, refactors and test/CI improvements not listed i
   logs with cookie-path masking, and a warning when the installed yt-dlp is old.
 - Supply chain: each release now publishes a CycloneDX SBOM of the Rust dependency tree, covered by
   SHA256SUMS.txt and the release asset-completeness check.
+- A light color theme, with a toggle in the sidebar; the choice is remembered between sessions.
+- Interface refresh: a display typeface for headings, a warmer base palette built on a single violet
+  accent, a keyboard focus ring on the custom card controls, and thinner styled scrollbars.
+- Skeleton placeholders while the app boots and while the channel sidebar and the media grid load,
+  in place of the previous spinners.
 
 ### Changed
 
+- The top bar is gone: the wordmark, the app version and the global actions now live in the sidebar.
+- The add-media and settings modals scroll their own body instead of the whole page.
+- Count labels are pluralized properly rather than showing an "item(s)" placeholder.
+- The first run shows a focused empty state instead of a feature grid.
 - The yt-dlp browser list now covers all 9 officially supported browsers.
 - The channel library is paginated through the server-side media query.
 
 ### Fixed
+
+- A closed video no longer stays highlighted in its library card.
 
 - External backup safety: reject a backup directory inside the app config directory, and keep the
   good copy when finalizing an export or mirror fails.
