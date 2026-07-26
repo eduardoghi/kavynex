@@ -41,6 +41,8 @@ use migrations::{
 // SQLite's table-rebuild procedure, for a change `ALTER TABLE ADD COLUMN` or a trigger cannot
 // express. Unused as of SCHEMA_VERSION 14 and kept ready; see the module for why.
 mod rebuild;
+#[cfg(test)]
+use rebuild::RebuildConnection;
 #[allow(unused_imports)]
 pub(crate) use rebuild::{apply_table_rebuilds, TableRebuild};
 
@@ -1742,6 +1744,76 @@ mod tests {
         assert_eq!(
             foreign_keys, 1,
             "foreign keys must be re-enabled even when the rebuild fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unrestored_rebuild_connection_is_discarded_instead_of_returned_to_the_pool() {
+        // The last line of defense behind the rebuild: apply_table_rebuilds normally restores
+        // `PRAGMA foreign_keys = ON` itself, and the test above pins that. This covers what happens
+        // when that restore never ran - the PRAGMA itself failed, or a panic unwound through the
+        // rebuild - which leaves `restored` false. The connection then still has enforcement OFF,
+        // and handing it back to the pool would silently give the next consumer a connection on
+        // which every ON DELETE CASCADE is inert. RebuildConnection's Drop detaches it instead.
+        //
+        // Asserted through the pool rather than by inspecting the guard: with max_connections(1) a
+        // detached connection forces the pool to open a fresh one, which picks up foreign_keys from
+        // the connect options, so the observable difference between detaching and not is exactly
+        // the PRAGMA the next consumer sees.
+        let pool = memory_pool_with_foreign_keys().await;
+
+        let mut conn = pool.acquire().await.unwrap();
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+
+        drop(RebuildConnection {
+            conn: Some(conn),
+            restored: false,
+        });
+
+        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            foreign_keys, 1,
+            "a connection whose enforcement was never restored must not come back from the pool"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_restored_rebuild_connection_goes_back_to_the_pool() {
+        // The other half of the guard: on the normal path the restore has run, so the connection is
+        // reusable and detaching it would throw away a live connection on every rebuild. Pinning
+        // both directions is what makes the Drop impl's condition meaningful rather than "always
+        // detach", which would also satisfy the test above.
+        let pool = memory_pool_with_foreign_keys().await;
+
+        let mut conn = pool.acquire().await.unwrap();
+        // A table created on this connection is only visible through the *same* in-memory
+        // connection, so finding it afterwards proves the pool handed the very same one back.
+        // Created on the held connection, not through the pool: max_connections is 1, so a pool
+        // query here would wait on the connection this test is holding.
+        sqlx::query("CREATE TABLE returned_marker (id INTEGER PRIMARY KEY)")
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+
+        drop(RebuildConnection {
+            conn: Some(conn),
+            restored: true,
+        });
+
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE name = 'returned_marker'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            count, 1,
+            "a restored connection must be reused, not discarded"
         );
     }
 

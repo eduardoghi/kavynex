@@ -89,9 +89,9 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
 /// connect options) rather than a reused one with enforcement silently off. `detach()` is
 /// synchronous, so it is safe to call from `Drop` even though re-running the PRAGMA would not be.
 #[allow(dead_code)]
-struct RebuildConnection {
-    conn: Option<sqlx::pool::PoolConnection<sqlx::Sqlite>>,
-    restored: bool,
+pub(super) struct RebuildConnection {
+    pub(super) conn: Option<sqlx::pool::PoolConnection<sqlx::Sqlite>>,
+    pub(super) restored: bool,
 }
 
 impl RebuildConnection {

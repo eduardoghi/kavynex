@@ -85,6 +85,17 @@
 # viable mutant. Scoped to `command.rs`, not the whole `yt_dlp_download` directory: `mod.rs` is the
 # async process-spawning orchestration a unit test cannot drive (like the excluded binaries.rs
 # boundary functions).
+# `src/services/db_schema/*.rs` - the versioned migrations, the table-rebuild machinery and the
+# schema introspection. This is the most destructive code in the app after db_backup: ensure_schema
+# runs synchronously as the shared pool opens, so a migration that goes wrong does not degrade, it
+# stops the app from opening at all - and the one real migration failure the project has had (the
+# v8..v10 index built over a column v11 is what adds) was found by a user's database refusing to
+# open, not by the suite. ADDED after a measured pass (2026-07-25, `--in-place --no-config --file
+# <each>`): 106 mutants, 84 unviable, 15 caught, 7 missed. Six of the missed were the `> 0` guards
+# that gate only a logger::warn line and are excluded below as equivalent; the seventh was the
+# RebuildConnection Drop impl, which is now killed by a pair of tests asserting both directions of
+# the detach-vs-return decision through the pool. Scoped by directory glob, like db_backup, so a
+# future submodule split cannot silently fall out of scope.
 examine_globs = [
     "src/utils/path.rs",
     "src/services/library_guard.rs",
@@ -94,6 +105,7 @@ examine_globs = [
     "src/services/library_cleanup.rs",
     "src/services/filesystem.rs",
     "src/services/db_backup/*.rs",
+    "src/services/db_schema/*.rs",
     "src/services/yt_dlp_download/command.rs",
     "src/services/ssrf_guard.rs",
     "src/commands/live_chat.rs",
@@ -192,4 +204,12 @@ exclude_re = [
     # integrity_check_is_not_due_within_the_weekly_throttle_window.
     'replace && with \|\| in run_full_integrity_check',
     'replace > with (==|<|>=) in run_full_integrity_check',
+    # db_schema/migrations.rs equivalents (triaged 2026-07-25). Both `> 0` guards gate nothing but a
+    # logger::warn line reporting how many rows the migration repaired - the repair itself is the
+    # UPDATE above, which runs unconditionally. Every mutation of the comparison changes only
+    # whether that line is written, which no test can observe; same class as the migrate_directory_contents
+    # `!=` excluded above. The repair counts themselves stay covered by the migration tests, which
+    # assert the repaired rows rather than the log.
+    'replace > with (==|<|>=) in apply_migration_13',
+    'replace > with (==|<|>=) in apply_migration_14',
 ]
