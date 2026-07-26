@@ -10,7 +10,9 @@
 // in a project that deliberately runs minimumReleaseAge and blockExoticSubdeps.
 //
 // The allow-list mirrors src-tauri/deny.toml's, minus the entries no npm package here uses. Keep
-// the two in step: a license permissible for a crate is permissible for a package.
+// the two in step: a license permissible for a crate is permissible for a package. OFL-1.1 is the
+// one deliberate exception to that mirroring - it covers a bundled font asset, which has no crate
+// counterpart, so adding it to deny.toml would only imply a crate could ship under it.
 
 import { execFileSync } from "node:child_process";
 
@@ -29,6 +31,14 @@ const ALLOWED = new Set([
     "CC0-1.0",
     "Zlib",
     "Python-2.0",
+    // The SIL Open Font License, covering the bundled display typeface
+    // (@fontsource-variable/bricolage-grotesque, imported in src/App.tsx, so Vite emits its woff2
+    // into dist/ and the installer embeds them). OSI- and FSF-approved, and it explicitly permits
+    // bundling the font inside an application - including a proprietary one - without affecting the
+    // application's own license, so it does not reach the MIT code around it. What it does require
+    // is that the copyright notice and license text accompany the distribution, which is why
+    // public/licenses/ ships the font's own LICENSE verbatim (see README's Third-party assets).
+    "OFL-1.1",
 ]);
 
 // pnpm reports SPDX expressions ("MIT OR Apache-2.0", "(MIT OR CC0-1.0)"). A dual license is fine

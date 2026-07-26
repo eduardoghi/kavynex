@@ -226,6 +226,16 @@ per-OS paths of the other three and what each one holds. Note that the config di
 holding the database and its automatic backups, so deleting it discards the channel/watched/comment
 data even though the media files live elsewhere.
 
+## Third-party assets
+
+Kavynex's own code is MIT (see `LICENSE`). The one bundled asset under a different license is the
+display typeface used for headings, **Bricolage Grotesque**, licensed under the SIL Open Font
+License 1.1. The OFL permits bundling a font inside an application without affecting that
+application's own license, but it does require the copyright notice and license text to travel with
+the distribution - so the font's license is shipped verbatim as
+`licenses/bricolage-grotesque-OFL-1.1.txt` inside the app bundle (from `public/licenses/` in this
+repository), and applies to the font files only, not to Kavynex itself.
+
 ## More documentation
 
 - `docs/ARCHITECTURE.md` - the layered backend/frontend architecture and the IPC boundary.
