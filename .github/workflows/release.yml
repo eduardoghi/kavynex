@@ -206,8 +206,12 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
-                  # Full history so the release notes can list the commits since the
-                  # previous tag.
+                  # Kept deliberately, though the reason it was added is gone: the release notes
+                  # used to list every commit since the previous tag, and no step walks history
+                  # any more (the tag guard uses `git ls-remote`, the bindings check `git diff`
+                  # against HEAD). tauri-action creates the tag from this checkout, and whether it
+                  # needs more than one commit to do so has not been verified - so shallowing this
+                  # is its own change, to be made and tested apart from a release.
                   fetch-depth: 0
 
             # No version input: the pnpm version comes from package.json's packageManager
@@ -306,20 +310,27 @@ jobs:
               id: release_notes
               shell: bash
               run: |
-                  PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-                  # Randomize the heredoc delimiter so a commit subject that happened to contain the
-                  # literal delimiter cannot terminate the block early and inject extra key=value
-                  # pairs into GITHUB_OUTPUT. openssl is present on all GitHub-hosted runners.
+                  # This body is not only the release description: tauri-action also writes it into
+                  # latest.json's `notes`, which the in-app update notice renders as a single
+                  # unscrolled block (app-update-section.tsx). So it stays one short line, and the
+                  # commit log is deliberately not inlined - it would be unreadable there, and this
+                  # release alone carries hundreds of commits. The changelog belongs on the release
+                  # page, written by hand on the draft before publishing; editing the draft does not
+                  # regenerate latest.json, so that text reaches GitHub without reaching the app.
+                  #
+                  # The repository comes from GITHUB_REPOSITORY rather than being spelled out, for
+                  # the same reason verify-latest-json.js derives its URL prefix from the updater
+                  # endpoint: moving the repo must not leave a second hardcoded copy pointing at the
+                  # old one.
+                  VERSION=$(node -p "require('./package.json').version")
+                  # The body is fully controlled here (a fixed sentence plus the version from
+                  # package.json), but the delimiter stays randomized so that adding any dynamic
+                  # content later cannot terminate the block early and inject extra key=value pairs
+                  # into GITHUB_OUTPUT. openssl is present on all GitHub-hosted runners.
                   DELIM="NOTES_EOF_$(openssl rand -hex 16)"
                   {
                       echo "body<<$DELIM"
-                      echo "See the assets below to download and install this version."
-                      if [ -n "$PREV_TAG" ]; then
-                          echo ""
-                          echo "## Changes since $PREV_TAG"
-                          echo ""
-                          git log --pretty="- %s" "$PREV_TAG..HEAD"
-                      fi
+                      echo "See the release page for what changed in this version: https://github.com/${GITHUB_REPOSITORY}/releases/tag/v$VERSION"
                       echo "$DELIM"
                   } >> "$GITHUB_OUTPUT"
 
