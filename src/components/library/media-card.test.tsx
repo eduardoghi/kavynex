@@ -105,6 +105,46 @@ describe("MediaCard", () => {
         expect(screen.getByAltText("Video A")).toBeInTheDocument();
     });
 
+    it("drops the active glow once the media is no longer the active one", () => {
+        // The card that opened the player kept its violet glow after the player closed, on every
+        // card the user had ever opened. The cause was the inactive box-shadow being invalid CSS
+        // (light-dark() around whole shadows rather than around their colors): assigning an invalid
+        // value to an inline style is ignored, so the previous - active, violet - value stayed put.
+        // Both the badge and the border reset correctly, which is why the state looked half-applied.
+        const media = createMedia({ title: "Video A" });
+
+        const { rerender } = renderWithMantine(
+            <MediaCard
+                media={media}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                isActive
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        const card = screen.getByText("Video A").closest("[class*='mantine-Paper-root']");
+        expect(card).not.toBeNull();
+        expect((card as HTMLElement).style.boxShadow).toContain("124,92,255");
+
+        rerender(
+            <MediaCard
+                media={media}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                isActive={false}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        // The glow is gone, and the resting elevation actually applied rather than being dropped as
+        // an invalid declaration - the second half of the same defect, which left every card flat.
+        expect((card as HTMLElement).style.boxShadow).not.toContain("124,92,255");
+        expect((card as HTMLElement).style.boxShadow).not.toBe("");
+    });
+
     it("opens media on card click", () => {
         const media = createMedia({
             title: "Video A",

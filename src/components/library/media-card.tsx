@@ -157,6 +157,22 @@ const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
     fontWeight: 800,
 };
 
+// The resting elevation of a card that is neither active nor watched.
+//
+// `light-dark()` resolves a *color*, so it has to sit in the color slot of each shadow - not around
+// the shadow as a whole. Wrapping the whole thing (`light-dark(0 6px 18px <color>, 0 12px 32px
+// <color>)`) makes the declaration invalid, and that had two consequences: no card ever got its
+// resting shadow, and - worse - a card that had been the active one kept the violet active glow
+// forever, because assigning an invalid value to an element's inline style is ignored and leaves the
+// previous valid value in place. So the highlight survived the media being closed, on every card the
+// user had ever opened.
+//
+// Both geometries are kept by emitting both shadows and letting each one be transparent in the theme
+// it does not belong to, which preserves the original per-theme look exactly.
+const INACTIVE_CARD_SHADOW =
+    "0 6px 18px light-dark(rgba(26,24,37,0.10), transparent)," +
+    " 0 12px 32px light-dark(transparent, rgba(0,0,0,0.12))";
+
 // The static base of the root card. Only the four properties that react to isActive/isWatched
 // (background, borderColor, boxShadow, transform) are spread over this inline below; the rest -
 // including the rem() height and the long transition string - is built once here instead of on
@@ -256,7 +272,7 @@ function MediaCardComponent({
                     : shellBorder,
                 boxShadow: isActive
                     ? "0 0 0 1px rgba(124,92,255,0.24), 0 18px 42px rgba(80,50,180,0.22)"
-                    : "light-dark(0 6px 18px rgba(26,24,37,0.10), 0 12px 32px rgba(0,0,0,0.12))",
+                    : INACTIVE_CARD_SHADOW,
                 transform: isActive ? "translateY(-2px)" : "none",
             }}
         >
