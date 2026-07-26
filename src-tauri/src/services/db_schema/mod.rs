@@ -486,6 +486,205 @@ mod tests {
         );
     }
 
+    /// Creates the four core tables in the shape a build that stamped `version` would have left on
+    /// disk, seeds one channel/media/comment row, and stamps that `user_version`.
+    ///
+    /// Two historical eras are what make this worth seeding by hand rather than reusing the current
+    /// DDL. `title_normalized` only entered `VIDEOS_ADDITIVE_COLUMNS` with v11, so a database
+    /// stamped 7..=10 by the build of its day carries every other additive column and not that one -
+    /// exactly the shape whose `CREATE INDEX ... ON videos(title_normalized)` used to fail. Below
+    /// the baseline (0..=6) none of the additive columns are there either, since the baseline is
+    /// what adds them. Column types are kept loose on purpose: this models what an older build
+    /// actually wrote, not what the current DDL declares.
+    async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
+        let has_additive_columns = version >= BASELINE_SCHEMA_VERSION;
+        let has_title_normalized = version >= 11;
+
+        sqlx::query(
+            "CREATE TABLE channels ( \
+                id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                name TEXT NOT NULL, \
+                youtube_handle TEXT NOT NULL, \
+                avatar_path TEXT, \
+                created_at TEXT NOT NULL DEFAULT (datetime('now')) \
+            )",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        let mut videos_columns = String::from(
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, \
+             channel_id INTEGER NOT NULL, \
+             title TEXT NOT NULL, \
+             file_path TEXT NOT NULL, \
+             thumbnail_path TEXT, \
+             media_type TEXT NOT NULL, \
+             youtube_video_id TEXT, \
+             watched_at TEXT, \
+             published_at TEXT, \
+             duration_seconds INTEGER, \
+             progress_seconds INTEGER NOT NULL DEFAULT 0, \
+             has_comments INTEGER NOT NULL DEFAULT 0, \
+             comments_count INTEGER NOT NULL DEFAULT 0, \
+             created_at TEXT NOT NULL DEFAULT (datetime('now'))",
+        );
+
+        if has_additive_columns {
+            videos_columns.push_str(
+                ", is_live INTEGER NOT NULL DEFAULT 0, \
+                 has_live_chat INTEGER NOT NULL DEFAULT 0, \
+                 live_chat_file_path TEXT",
+            );
+        }
+
+        if has_title_normalized {
+            videos_columns.push_str(", title_normalized TEXT");
+        }
+
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE TABLE videos ({videos_columns}, \
+             FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
+             UNIQUE (channel_id, file_path))"
+        )))
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE video_comments ( \
+                id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                video_id INTEGER NOT NULL, \
+                comment_id TEXT, \
+                parent_comment_id TEXT, \
+                author_name TEXT NOT NULL DEFAULT '', \
+                text TEXT NOT NULL DEFAULT '', \
+                like_count INTEGER NOT NULL DEFAULT 0, \
+                reply_count INTEGER NOT NULL DEFAULT 0, \
+                created_at TEXT NOT NULL DEFAULT (datetime('now')), \
+                FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE \
+            )",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE app_settings ( \
+                key TEXT PRIMARY KEY, \
+                value TEXT NOT NULL, \
+                created_at TEXT NOT NULL DEFAULT (datetime('now')), \
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')) \
+            )",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(pool)
+            .await
+            .unwrap();
+
+        // An accented title, so the assertion below is pinned to the real normalizer rather than to
+        // anything a plain lower() would also satisfy.
+        if has_title_normalized {
+            // A database stamped v11 or later claims to have been backfilled, so it must carry the
+            // value - a NULL there is the one state stage_database_import refuses outright.
+            sqlx::query(
+                "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type) \
+                 VALUES (1, 1, 'Ação  Válida', 'acao valida', 'video/a.mp4', 'video')",
+            )
+            .execute(pool)
+            .await
+            .unwrap();
+        } else {
+            sqlx::query(
+                "INSERT INTO videos (id, channel_id, title, file_path, media_type) \
+                 VALUES (1, 1, 'Ação  Válida', 'video/a.mp4', 'video')",
+            )
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            "INSERT INTO video_comments (id, video_id, comment_id, author_name, text) \
+             VALUES (1, 1, 'c1', 'A', 'hello')",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {version}"
+        )))
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn every_historical_version_migrates_to_the_current_schema() {
+        // The gap this closes: the individual migration tests below each start from one chosen
+        // version (v5 via the real fixture, v6, v9, v12), so the versions nobody picked were never
+        // exercised as a *starting point* at all. That is precisely how the v8..v10 failure shipped -
+        // those migrations run the whole INDEX_DDLS list, which indexes a column v11 is what adds,
+        // and no test ever started at 7, 8 or 10. Rather than add one test per version as each bug is
+        // found, drive every version the app has ever stamped through the full chain.
+        //
+        // Deliberately covers 0..=SCHEMA_VERSION inclusive: the top of the range asserts that a
+        // database already at head is left alone, which is the idempotence the startup path relies on.
+        for from_version in 0..=SCHEMA_VERSION {
+            let pool = memory_pool().await;
+            seed_database_at_version(&pool, from_version).await;
+
+            ensure_schema(&pool).await.unwrap_or_else(|error| {
+                panic!("a database stamped v{from_version} failed to reach head: {error}")
+            });
+
+            assert_eq!(
+                read_user_version(&pool).await.unwrap(),
+                SCHEMA_VERSION,
+                "v{from_version} did not end up at the current schema version"
+            );
+
+            // The row survived and carries the normalized title every later query depends on. A
+            // NULL here is the silent failure mode: LIKE never matches it, so the media stays in
+            // the library while being invisible to every title search.
+            let (title, normalized): (String, Option<String>) =
+                sqlx::query_as("SELECT title, title_normalized FROM videos WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("v{from_version} lost the seeded media row: {error}")
+                    });
+            assert_eq!(title, "Ação  Válida", "v{from_version} altered the title");
+            assert_eq!(
+                normalized.as_deref(),
+                Some("acao valida"),
+                "v{from_version} left title_normalized unusable for search"
+            );
+
+            // The comment row survived the v10 dedup and the v14 truncation untouched.
+            let (comment_text,): (String,) =
+                sqlx::query_as("SELECT text FROM video_comments WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("v{from_version} lost the seeded comment row: {error}")
+                    });
+            assert_eq!(comment_text, "hello");
+
+            // Re-running against the now-current database must be a no-op, since ensure_schema runs
+            // on every startup.
+            ensure_schema(&pool).await.unwrap_or_else(|error| {
+                panic!("re-running ensure_schema after v{from_version} failed: {error}")
+            });
+            assert_eq!(read_user_version(&pool).await.unwrap(), SCHEMA_VERSION);
+        }
+    }
+
     #[tokio::test]
     async fn migrates_a_v9_database_that_predates_title_normalized() {
         // Reproduces the real upgrade failure a database stamped at v9 by a build that predated the
