@@ -84,7 +84,11 @@
 # `--paths` temp directory and the raw pasted URL out of a line users copy into public bug reports -
 # pure logic with a privacy consequence, which is exactly what this gate is for. Extracted from
 # `mod.rs` (the async orchestration a unit test cannot drive) rather than widening the glob to the
-# whole directory, following the ssrf_guard.rs precedent. ADDED after a measured pass (2026-07-26).
+# whole directory, following the ssrf_guard.rs precedent. ADDED after a measured pass (2026-07-26,
+# `--in-place --no-config --file` over it and command.rs together): 34 mutants, 6 unviable, 28
+# caught, 0 missed - the existing argv test plus a new direct test for redact_paths_value's
+# no-scope branch (which the argv test cannot reach, since build_download_command_args always
+# emits the home:/temp: prefix) already kill every viable mutant.
 # `is_valid_run_id` / `is_valid_format_id` moved into `command.rs` in the same change: they were
 # defined in the ungated `mod.rs` while only `command.rs` used them, so no mutant was ever generated
 # for the character-class filter that keeps the value after `-f` from being read as a yt-dlp flag.
