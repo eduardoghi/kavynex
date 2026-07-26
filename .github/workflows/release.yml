@@ -529,34 +529,13 @@ jobs:
                   gh release download "v$VERSION" --dir assets
 
                   # id -> name for every asset on the draft, so each entry's URL is rebuilt from the
-                  # asset it actually points at rather than from a guess about the filename.
+                  # asset it actually points at rather than from a guess about the filename. The id
+                  # comes from the api URL's last segment, not gh's `.id`, which is a GraphQL node
+                  # id and would match nothing.
                   gh release view "v$VERSION" --json assets \
                       --jq '[.assets[] | {id: (.apiUrl | split("/") | last), name}]' > asset-ids.json
 
-                  VERSION="$VERSION" REPO="$GITHUB_REPOSITORY" node -e '
-                      const fs = require("fs");
-                      const manifest = JSON.parse(fs.readFileSync("assets/latest.json", "utf8"));
-                      const names = new Map(
-                          JSON.parse(fs.readFileSync("asset-ids.json", "utf8")).map((a) => [a.id, a.name])
-                      );
-                      const base = `https://github.com/${process.env.REPO}/releases/download/v${process.env.VERSION}/`;
-
-                      for (const [platform, entry] of Object.entries(manifest.platforms ?? {})) {
-                          const id = String(entry.url ?? "").split("/").pop();
-                          const name = names.get(id);
-                          // Leave anything unrecognized alone and let verify-latest-json.js reject
-                          // it: silently dropping an entry here would turn a loud failure into a
-                          // platform that quietly stops receiving updates.
-                          if (!name) {
-                              console.log(`${platform}: no asset matches ${entry.url}, left as is`);
-                              continue;
-                          }
-                          entry.url = base + name;
-                      }
-
-                      fs.writeFileSync("assets/latest.json", JSON.stringify(manifest, null, 2) + "\n");
-                      console.log(JSON.stringify(manifest, null, 2));
-                  '
+                  node scripts/rewrite-latest-json-urls.js assets/latest.json asset-ids.json
 
                   gh release upload "v$VERSION" assets/latest.json --clobber
 
