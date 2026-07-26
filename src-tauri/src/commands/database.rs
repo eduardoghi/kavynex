@@ -328,16 +328,9 @@ mod tests {
     }
 
     fn unique_dir(tag: &str) -> PathBuf {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-prepare-export-{tag}-{}-{nanos}",
-            std::process::id()
+            "kavynex-prepare-export-{tag}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

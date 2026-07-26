@@ -185,19 +185,11 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_dir(suffix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-security-cmd-test-{}-{}-{}",
-            std::process::id(),
-            nanos,
-            suffix
+            "kavynex-security-cmd-test-{suffix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

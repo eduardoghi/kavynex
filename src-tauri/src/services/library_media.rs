@@ -204,19 +204,11 @@ pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-library-media-test-{}-{}-{}",
-            prefix,
-            std::process::id(),
-            nanos
+            "kavynex-library-media-test-{prefix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

@@ -10,6 +10,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// produce the same string, so the counter is what actually makes concurrent same-process callers
 /// collision-free. Shared by the download, thumbnail and atomic-file-replace paths, which all stage
 /// work under uniquely named temp entries.
+///
+/// **Every `unique_test_dir`/`unique_dir`/`unique_temp_db` test helper builds its name from this too,
+/// and a new one must.** Those helpers were originally hand-rolled from pid + nanos, and the missing
+/// counter was a real intermittent CI failure: two tests starting in the same tick got the same temp
+/// directory and one deleted the other's files, which surfaced on macOS (coarser timer) as a failure
+/// nowhere near its cause. The pattern was fixed in one helper and re-appeared by copy-paste in
+/// sixteen more, so the fix is to delegate here rather than to reproduce the three components.
 pub fn unique_temp_suffix() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 

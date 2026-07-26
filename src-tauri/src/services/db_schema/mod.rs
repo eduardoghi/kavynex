@@ -817,15 +817,9 @@ mod tests {
     }
 
     fn unique_temp_db(tag: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-migration-{tag}-{}-{}.sqlite",
-            std::process::id(),
-            nanos
+            "kavynex-migration-{tag}-{}.sqlite",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

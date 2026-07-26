@@ -290,19 +290,11 @@ pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSu
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::time::UNIX_EPOCH;
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-cleanup-test-{}-{}-{}",
-            prefix,
-            std::process::id(),
-            nanos
+            "kavynex-cleanup-test-{prefix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

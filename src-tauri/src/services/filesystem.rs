@@ -967,27 +967,17 @@ pub fn migrate_directory_contents(source_dir: &Path, destination_dir: &Path) -> 
 mod tests {
     use super::*;
     use std::thread::sleep;
-    use std::time::{Duration, UNIX_EPOCH};
+    use std::time::Duration;
 
     fn unique_test_dir() -> PathBuf {
-        // pid + nanos alone is not collision-proof: tests run concurrently and share the pid, so two
-        // calls landing in the same nanosecond (more likely on a coarser macOS timer) would get the
-        // same directory and clobber each other's files - a real intermittent CI failure. A
-        // per-process atomic sequence makes every call distinct regardless of timer resolution.
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-        let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-
+        // Via unique_temp_suffix rather than pid + nanos: that pair is not collision-proof, because
+        // tests run concurrently and share the pid, so two calls landing in the same nanosecond (more
+        // likely on a coarser macOS timer) would get the same directory and clobber each other's
+        // files - a real intermittent CI failure. The suffix's monotonic counter is what makes every
+        // call distinct regardless of timer resolution.
         std::env::temp_dir().join(format!(
-            "kavynex-filesystem-test-{}-{}-{}",
-            std::process::id(),
-            nanos,
-            seq
+            "kavynex-filesystem-test-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

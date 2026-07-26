@@ -382,18 +382,11 @@ pub fn relative_path_from_base(base_dir: &Path, absolute_path: &Path) -> AppResu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_dir() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-path-test-{}-{}",
-            std::process::id(),
-            nanos
+            "kavynex-path-test-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

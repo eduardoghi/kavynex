@@ -370,7 +370,6 @@ pub fn migrate_library_directory_sync(
 mod tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn migration_test_lock() -> &'static Mutex<()> {
         static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -378,16 +377,9 @@ mod tests {
     }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-library-migration-test-{}-{}-{}",
-            prefix,
-            std::process::id(),
-            nanos
+            "kavynex-library-migration-test-{prefix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

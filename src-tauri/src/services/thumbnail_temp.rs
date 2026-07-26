@@ -556,15 +556,9 @@ mod tests {
     }
 
     fn unique_test_dir() -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-thumbnail-temp-test-{}-{}",
-            std::process::id(),
-            nanos
+            "kavynex-thumbnail-temp-test-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 }

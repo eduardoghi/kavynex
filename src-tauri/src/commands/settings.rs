@@ -156,21 +156,13 @@ mod tests {
     use crate::AppErrorCode;
     use std::fs;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tauri::test::{mock_builder, mock_context, noop_assets};
     use tauri::Manager;
 
     fn unique_test_dir(suffix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-settings-cmd-test-{}-{}-{}",
-            std::process::id(),
-            nanos,
-            suffix
+            "kavynex-settings-cmd-test-{suffix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

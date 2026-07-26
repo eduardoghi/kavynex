@@ -675,7 +675,6 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
     use std::fs;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     async fn create_test_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
@@ -1156,16 +1155,9 @@ mod tests {
     }
 
     fn unique_test_dir(suffix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-library-cleanup-test-{}-{}-{}",
-            std::process::id(),
-            nanos,
-            suffix
+            "kavynex-library-cleanup-test-{suffix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

@@ -308,19 +308,11 @@ pub fn is_directory_empty_sync(path: &str) -> AppResult<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-library-paths-test-{}-{}-{}",
-            prefix,
-            std::process::id(),
-            nanos
+            "kavynex-library-paths-test-{prefix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

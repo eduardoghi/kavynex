@@ -120,18 +120,11 @@ pub fn delete_thumbnail_file_sync(thumbnail_path: &str, library_path: &str) -> A
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_dir() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-thumbnail-persist-test-{}-{}",
-            std::process::id(),
-            nanos
+            "kavynex-thumbnail-persist-test-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

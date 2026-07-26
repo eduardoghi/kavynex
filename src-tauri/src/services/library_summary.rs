@@ -186,18 +186,11 @@ pub fn summarize_library(library_dir: &Path) -> AppResult<LibrarySummaryInfo> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_dir() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         std::env::temp_dir().join(format!(
-            "kavynex-library-summary-test-{}-{}",
-            std::process::id(),
-            nanos
+            "kavynex-library-summary-test-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

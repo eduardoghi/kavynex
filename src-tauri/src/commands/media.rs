@@ -116,18 +116,11 @@ mod tests {
     use crate::AppErrorCode;
     use std::fs;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
         std::env::temp_dir().join(format!(
-            "kavynex-media-command-test-{}-{}-{}",
-            prefix,
-            std::process::id(),
-            nanos
+            "kavynex-media-command-test-{prefix}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 
