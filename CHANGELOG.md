@@ -54,6 +54,13 @@ the full set (hundreds of fixes, refactors and test/CI improvements not listed i
 
 - A closed video no longer stays highlighted in its library card.
 
+- Media files left behind by an import or download that the app did not survive are now reconciled
+  automatically on the next launch, instead of sitting in the library until Diagnostics was run by
+  hand. Only files no saved media points at are removed.
+
+- The "Load comment and live chat images from Google" privacy setting is now enforced in one place
+  for avatars, custom emojis and super stickers alike, so no view can load one while it is off.
+
 - External backup safety: reject a backup directory inside the app config directory, and keep the
   good copy when finalizing an export or mirror fails.
 - Prevent silent comment loss when a duplicate comment id has blank text, and report a concurrently
