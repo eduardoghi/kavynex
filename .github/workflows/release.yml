@@ -261,14 +261,46 @@ jobs:
             - name: Verify version consistency
               run: node scripts/verify-release-version.js
 
-            - name: Verify the release tag does not exist yet
+            # Refuse to re-release a version that is already out. The tag is created by
+            # tauri-action further down, i.e. *before* the sbom and checksums jobs run, so a
+            # dispatch that got as far as building and then failed one of those later gates leaves
+            # the tag behind on a release that is still a draft. Treating "the tag exists" as
+            # "already released" would make every such failure cost a version number: the fix for a
+            # wrong asset-name pattern in the checksums job would be a version bump, not a retry.
+            # So the guard asks what the tag actually means. A tag on a *published* release is
+            # final - bump the version. A tag whose release is still a draft is the residue of an
+            # incomplete dispatch, and re-running over it is the intended recovery: tauri-action
+            # reuses the existing draft and re-uploads its assets. A tag with no release at all
+            # (the release was deleted by hand, or the tag was pushed some other way) is refused
+            # too, since nothing proves what it points at.
+            - name: Verify the release tag is free or belongs to an unfinished draft
               shell: bash
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   VERSION=$(node -p "require('./package.json').version")
-                  if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null 2>&1; then
-                      echo "Tag v$VERSION already exists; bump the version before releasing." >&2
-                      exit 1
+
+                  if ! git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null 2>&1; then
+                      echo "Tag v$VERSION is free."
+                      exit 0
                   fi
+
+                  # `|| true` so a missing release (gh exits non-zero) falls through to the refusal
+                  # below with an empty value, rather than failing the step on its own.
+                  IS_DRAFT=$(gh release view "v$VERSION" --json isDraft --jq '.isDraft' 2>/dev/null || true)
+
+                  if [ "$IS_DRAFT" = "true" ]; then
+                      echo "::warning::Tag v$VERSION already exists, but its release is still a draft - retrying that dispatch."
+                      exit 0
+                  fi
+
+                  if [ "$IS_DRAFT" = "false" ]; then
+                      echo "::error::Release v$VERSION is already published; bump the version before releasing." >&2
+                  else
+                      echo "::error::Tag v$VERSION exists with no release behind it; delete the tag or bump the version." >&2
+                  fi
+
+                  exit 1
 
             - name: Build release notes
               id: release_notes
