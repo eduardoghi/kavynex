@@ -155,9 +155,10 @@ content-hashed (hashing a multi-GB download would be wasteful and pointless, sin
 video id already identifies it). It is named from the source metadata as
 `<extractor>_<id>_<format_id>.<ext>` (e.g. `youtube_dQw4w9WgXcQ_137.mp4`), where each
 component is passed through `services/yt_dlp_metadata.rs::sanitize_filename_component`;
-see `build_download_command_args`/`place_downloaded_file` in
-`services/yt_dlp_download.rs`. This name is deterministic for a given video+format, and
-the download path never overwrites an existing destination, so re-downloading the same
+see `build_download_command_args` in `services/yt_dlp_download/command.rs` and
+`place_downloaded_file` in `services/yt_dlp_download/mod.rs`. This name is deterministic
+for a given video+format, and the download path never overwrites an existing destination,
+so re-downloading the same
 video+format keeps the already-catalogued bytes rather than replacing them with a
 re-encode. One consequence worth knowing: because the two schemes differ, downloading a
 video via yt-dlp and *separately* importing the same file locally produces two distinct
@@ -165,7 +166,7 @@ on-disk copies (there is no cross-scheme deduplication) - within a single scheme
 still holds.
 
 Live chat files are likewise named from the video/run rather than content-hashed (they are
-written once by a yt-dlp run and not re-derived); see `services/yt_dlp_download.rs` and
+written once by a yt-dlp run and not re-derived); see `services/yt_dlp_download/mod.rs` and
 `services/live_chat_storage.rs` for the exact naming if you need to trace a specific file.
 
 All paths stored in the database (`videos.file_path`, `videos.thumbnail_path`,

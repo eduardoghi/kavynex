@@ -2,8 +2,9 @@
 
 Kavynex stores its structured data in a single SQLite database file, `kavynex.db`, opened
 through `sqlx`. Everything schema-related lives in `src-tauri/src/services/db_schema/` (the DDL
-literals in `ddl.rs`, the migrations and `SCHEMA_VERSION` in `mod.rs`, the `PRAGMA`-based
-table/column/index lookups the migrations and the backup import share in `introspection.rs`);
+literals in `ddl.rs`, the versioned migrations in `migrations.rs`, the table-rebuild procedure in
+`rebuild.rs`, the `PRAGMA`-based table/column/index lookups the migrations and the backup import
+share in `introspection.rs`, and `SCHEMA_VERSION` plus the `ensure_schema` dispatcher in `mod.rs`);
 everything about the connection (WAL, timeouts, foreign keys) lives in
 `src-tauri/src/services/database.rs`; backup/restore/export/import lives in the
 `src-tauri/src/services/db_backup/` module. See `docs/DIRECTORIES.md` for exactly where the
@@ -11,7 +12,7 @@ database file and its backups live on disk.
 
 ## Schema
 
-Four tables, declared in `db_schema/ddl.rs` and created by `db_schema/mod.rs`:
+Four tables, declared in `db_schema/ddl.rs` and created by `db_schema/migrations.rs`:
 
 ### `channels`
 
@@ -140,7 +141,8 @@ belonged to those rows (media, thumbnails, avatar, live chat), not for the rows.
 
 ### Indexes
 
-`db_schema.rs` creates a set of indexes to support the app's real query patterns:
+`db_schema/ddl.rs`'s `INDEX_DDLS` declares a set of indexes to support the app's real query
+patterns:
 `videos(channel_id)`, lookups by `youtube_handle`,
 `avatar_path`, `thumbnail_path`, `youtube_video_id`, `watched_at`, `published_at`,
 `has_comments`, `is_live`, `has_live_chat`, a unique index backing
@@ -158,7 +160,7 @@ before deciding which are still referenced elsewhere), and comment lookups by `v
 
 `list_media_page` is the grid's query, and it re-runs on every filter, sort and page change,
 so each of its five sort categories gets an index whose columns mirror that category's
-`ORDER BY` exactly (`video_repository::resolve_order_by`):
+`ORDER BY` exactly (`video_repository::media_page::resolve_order_by`):
 
 | Sort category | Index |
 |---|---|
@@ -187,7 +189,7 @@ in `ORDER BY` order when the leading terms match term for term, so:
   serves the leading group key and sorts the other three terms, and since almost every row shares
   that key, that is the whole channel.
 
-`services/video_repository.rs`'s `every_media_page_sort_is_served_by_an_index` pins this: it
+`services/video_repository/mod.rs`'s `every_media_page_sort_is_served_by_an_index` pins this: it
 runs `EXPLAIN QUERY PLAN` for each category **in both directions** against the real schema and
 fails if the plan loses the intended index or sorts rows the index was supposed to have ordered.
 Only one temp-B-tree form is accepted, `USE TEMP B-TREE FOR LAST TERM OF ORDER BY`, which just
@@ -201,7 +203,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `14`), in `db_schema.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `14`), in `db_schema/mod.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -501,7 +503,9 @@ live connection pool is a singleton that cannot be reopened mid-session:
 
 ## Related files
 
-- `src-tauri/src/services/db_schema.rs` - schema DDL, migrations, `SCHEMA_VERSION`.
+- `src-tauri/src/services/db_schema/` - the DDL literals (`ddl.rs`), the versioned migrations
+  (`migrations.rs`), the table-rebuild procedure (`rebuild.rs`), the `PRAGMA` table/column/index
+  introspection (`introspection.rs`), and `SCHEMA_VERSION` plus `ensure_schema` (`mod.rs`).
 - `src-tauri/src/services/database.rs` - pool creation, connection options, app settings
   key/value helpers.
 - `src-tauri/src/services/db_backup/` - backup, restore and import (`mod.rs`), the throttled
