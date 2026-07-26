@@ -499,6 +499,67 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+            # Point every latest.json entry at the tagged download URL the updater will actually be
+            # served from, rather than the api.github.com asset URL tauri-action writes.
+            #
+            # The reason it writes that one is real: while the release is a draft the tag is not
+            # attached to it yet, so an asset's download URL carries an `untagged-<hash>` path
+            # segment instead of `v<version>`. Baking that in would produce a manifest that breaks
+            # the moment the release is published, so tauri-action uses the asset API URL, which is
+            # stable across the transition. (tauri-action v0, which built v1.1.1, constructed the
+            # tag URL instead - hence the difference from that release's manifest.)
+            #
+            # For this project the tag URL is the correct one regardless: the updater endpoint is
+            # `releases/latest/download/latest.json`, which only ever resolves to a *published*
+            # release, so no user reaches this manifest while it is still a draft. The api.github.com
+            # form would also work on a public repo, but it moves the download onto a host with a
+            # 60-request/hour unauthenticated rate limit and away from the one URL shape
+            # verify-latest-json.js is written to accept - a gate that stays untouched here and
+            # remains the authority: if this rewrite ever fails or targets the wrong repo, that
+            # check fails the release.
+            #
+            # Runs before the checksums below so SHA256SUMS.txt covers the corrected file, and
+            # before the verify step so it reads the corrected copy.
+            - name: Rewrite latest.json to the tagged download URLs
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  mkdir assets
+                  gh release download "v$VERSION" --dir assets
+
+                  # id -> name for every asset on the draft, so each entry's URL is rebuilt from the
+                  # asset it actually points at rather than from a guess about the filename.
+                  gh release view "v$VERSION" --json assets \
+                      --jq '[.assets[] | {id: (.apiUrl | split("/") | last), name}]' > asset-ids.json
+
+                  VERSION="$VERSION" REPO="$GITHUB_REPOSITORY" node -e '
+                      const fs = require("fs");
+                      const manifest = JSON.parse(fs.readFileSync("assets/latest.json", "utf8"));
+                      const names = new Map(
+                          JSON.parse(fs.readFileSync("asset-ids.json", "utf8")).map((a) => [a.id, a.name])
+                      );
+                      const base = `https://github.com/${process.env.REPO}/releases/download/v${process.env.VERSION}/`;
+
+                      for (const [platform, entry] of Object.entries(manifest.platforms ?? {})) {
+                          const id = String(entry.url ?? "").split("/").pop();
+                          const name = names.get(id);
+                          // Leave anything unrecognized alone and let verify-latest-json.js reject
+                          // it: silently dropping an entry here would turn a loud failure into a
+                          // platform that quietly stops receiving updates.
+                          if (!name) {
+                              console.log(`${platform}: no asset matches ${entry.url}, left as is`);
+                              continue;
+                          }
+                          entry.url = base + name;
+                      }
+
+                      fs.writeFileSync("assets/latest.json", JSON.stringify(manifest, null, 2) + "\n");
+                      console.log(JSON.stringify(manifest, null, 2));
+                  '
+
+                  gh release upload "v$VERSION" assets/latest.json --clobber
+
             # The updater artifacts are signed, but the installers downloaded manually
             # from the release page have no integrity reference without this file.
             - name: Generate and upload SHA256SUMS
@@ -506,8 +567,6 @@ jobs:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   VERSION=$(node -p "require('./package.json').version")
-                  mkdir assets
-                  gh release download "v$VERSION" --dir assets
                   (cd assets && sha256sum -- * > ../SHA256SUMS.txt)
                   cat SHA256SUMS.txt
                   gh release upload "v$VERSION" SHA256SUMS.txt --clobber
