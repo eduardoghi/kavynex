@@ -3,6 +3,7 @@ import { Alert, Box, Button, Group, Paper, Stack, Text, rem } from "@mantine/cor
 import { AlertTriangle, ArrowLeft, FolderOpen, PlayCircle } from "lucide-react";
 import type { MediaRow } from "../../types/media";
 import { logError } from "../../utils/app-logger";
+import { suppressFocusRingOnce } from "../../utils/focus-ring";
 import {
     formatCreatedAt,
     formatPublishedDate,
@@ -83,6 +84,14 @@ export function MediaPlayerView({
                 // programmatic restore would otherwise flash the keyboard focus outline on the card
                 // even for a mouse user who never saw one, which reads as a stray violet highlight.
                 // Keyboard navigation still shows the ring normally on the next key press.
+                //
+                // `focusVisible: false` says exactly that, but only Firefox implements it - Chromium
+                // and WebKit, which is every engine this app ships on, accept and ignore the option,
+                // so on its own it did nothing and the ring appeared anyway. The option stays for
+                // the engines that honor it; suppressFocusRingOnce is what carries it everywhere
+                // else, and it must be called before focus() so the mark is present when the style
+                // is evaluated.
+                suppressFocusRingOnce(previouslyFocused);
                 previouslyFocused.focus({ focusVisible: false });
             }
         };

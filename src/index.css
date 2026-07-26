@@ -11,6 +11,18 @@
     outline-offset: -3px;
 }
 
+/* Escape hatch for a programmatic focus restore that must not draw the ring - closing the player
+   returns focus to the card that opened it, and a mouse user should not see a keyboard outline
+   appear there. `focus({ focusVisible: false })` is the standard way to express that, but only
+   Firefox implements it; Chromium and WebKit (i.e. every engine this app ships on) ignore it. The
+   mark is set for that single focus call and released on the next keydown/blur, so keyboard
+   navigation still shows the ring. See src/utils/focus-ring.ts. Deliberately not scoped to
+   .kx-card-button: the point is to suppress whatever ring the restored element would draw,
+   including Mantine's own. */
+[data-suppress-focus-ring]:focus-visible {
+    outline: none;
+}
+
 /* Thin, subtle scrollbars for the native scroll areas (e.g. the media grid, which scrolls a plain
    overflow:auto box). Mantine's ScrollArea renders its own custom scrollbars and is unaffected.
    WebView2/Chromium supports the ::-webkit-scrollbar pseudo-elements. */
