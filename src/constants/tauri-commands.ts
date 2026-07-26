@@ -16,6 +16,8 @@ export const TAURI_COMMANDS = {
     LIST_LIVE_CHAT_FILES: "list_live_chat_files",
     MIGRATE_LIVE_CHAT_TO_LIBRARY: "migrate_live_chat_to_library",
     CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS: "cleanup_unreferenced_media_artifacts",
+    RECORD_PENDING_MEDIA_ARTIFACTS: "record_pending_media_artifacts",
+    CLEAR_PENDING_MEDIA_ARTIFACTS: "clear_pending_media_artifacts",
 
     GENERATE_TEMP_THUMBNAIL: "generate_temporary_thumbnail",
     PERSIST_THUMBNAIL_FILE: "persist_thumbnail_file",

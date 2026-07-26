@@ -89,11 +89,25 @@ in `src-tauri/src/constants.rs`):
   moved into the library.
 - `yt-dlp-thumb-temp/` - scratch space for thumbnails fetched as part of a yt-dlp run.
 
+A fourth, `pending-media/`, is created by `services/pending_media.rs` rather than
+`temp_paths.rs`, and holds something different from scratch data: one `pending-*.json`
+marker per media creation that has already written its artifacts into the library but has
+not yet inserted the row. Adding media is not a single call, and between those two steps
+the files exist with nothing pointing at them - so the marker names them. It is removed as
+soon as the row lands (or the failure path has cleaned the artifacts up), which means a
+marker still present at the next startup is a creation the process did not survive.
+
+`lib.rs`'s `spawn_pending_media_sweep` reconciles those shortly after launch by handing the
+paths to the same reference-counting cleanup the Diagnostics path uses, so an artifact a
+registered row still points at is kept and only a genuine orphan is removed. Finding a
+`pending-media/` marker on a healthy install means a media import died midway; the sweep
+handles it on the next launch and nothing needs to be deleted by hand.
+
 On startup, `lib.rs`'s `setup()` authorizes the whole cache directory in the Tauri
 asset-protocol scope (see `SECURITY.md`) so these temporary files can be shown in the
 webview via `convertFileSrc` before they are persisted. A background task
-(`services::cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps these
-temp directories on every startup and removes entries older than 7 days
+(`services::cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the
+three scratch directories above on every startup and removes entries older than 7 days
 (`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/cleanup.rs`), so an interrupted
 download/thumbnail generation does not leak disk space indefinitely.
 

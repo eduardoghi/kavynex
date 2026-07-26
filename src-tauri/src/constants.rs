@@ -14,6 +14,11 @@ pub const TEMP_DIR_THUMBS: &str = "thumbs-temp";
 pub const TEMP_DIR_YT_DLP: &str = "yt-dlp-temp";
 pub const TEMP_DIR_YT_DLP_THUMB: &str = "yt-dlp-thumb-temp";
 
+// Holds one marker per in-flight media creation, naming the library artifacts it has already
+// written but not yet registered a row for. A marker still here at startup is a creation that died
+// in that window; see services/pending_media.rs.
+pub const TEMP_DIR_PENDING_MEDIA: &str = "pending-media";
+
 pub const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
 pub const EVENT_YT_DLP_ERROR: &str = "yt-dlp-error";
 pub const EVENT_YT_DLP_FINISHED: &str = "yt-dlp-finished";

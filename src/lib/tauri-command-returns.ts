@@ -48,6 +48,8 @@ export type TauriCommandReturns = {
     list_live_chat_files: string[];
     migrate_live_chat_to_library: void;
     cleanup_unreferenced_media_artifacts: ArtifactCleanupReport;
+    record_pending_media_artifacts: string;
+    clear_pending_media_artifacts: void;
 
     generate_temporary_thumbnail: string;
     persist_thumbnail_file: string;

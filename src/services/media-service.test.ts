@@ -9,6 +9,7 @@ import {
 } from "./media-service";
 
 vi.mock("../repositories", () => ({
+    clearPendingMediaArtifacts: vi.fn(),
     deleteMediaWithArtifacts: vi.fn(),
     findMediaByChannelAndFilePath: vi.fn(),
     insertMedia: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("../repositories", () => ({
     markMediaAsUnwatched: vi.fn(),
     markMediaAsWatched: vi.fn(),
     mediaExistsForChannelAndYoutubeId: vi.fn(),
+    recordPendingMediaArtifacts: vi.fn(),
     updateMediaProgress: vi.fn(),
 }));
 
@@ -49,12 +51,14 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import {
+    clearPendingMediaArtifacts,
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
     markMediaAsUnwatched,
     markMediaAsWatched,
     mediaExistsForChannelAndYoutubeId,
+    recordPendingMediaArtifacts,
     updateMediaProgress,
 } from "../repositories";
 import {
@@ -589,6 +593,151 @@ describe("media-service", () => {
         );
 
         expect(insertMedia).not.toHaveBeenCalled();
+    });
+
+    it("records the prepared artifacts before inserting and clears the marker afterwards", async () => {
+        // The window this covers: the artifacts are already in the library and no row points at
+        // them yet. The catch below handles a *failed* step, but nothing in this process runs if
+        // the process itself is gone, so the marker on disk is what the next startup reconciles.
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "local" as const,
+            sourceValue: "/tmp/a.mp4",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "",
+            ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
+            filePath: "video/a.mp4",
+            thumbnailPath: "thumbnails/a.jpg",
+            youtubeVideoId: null,
+            publishedAt: null,
+            mediaType: "video",
+            isLive: false,
+            liveChatFilePath: "live_chat/a.json.gz",
+        });
+        vi.mocked(recordPendingMediaArtifacts).mockResolvedValueOnce("pending-1.json");
+        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(10);
+        vi.mocked(insertMedia).mockResolvedValueOnce(77);
+
+        await createMedia(normalizedInput);
+
+        expect(recordPendingMediaArtifacts).toHaveBeenCalledWith(
+            "video/a.mp4",
+            "thumbnails/a.jpg",
+            "live_chat/a.json.gz"
+        );
+        // Recorded before the row is inserted, not after - a marker written afterwards would
+        // cover none of the window it exists for.
+        expect(vi.mocked(recordPendingMediaArtifacts).mock.invocationCallOrder[0]).toBeLessThan(
+            vi.mocked(insertMedia).mock.invocationCallOrder[0] as number
+        );
+        expect(clearPendingMediaArtifacts).toHaveBeenCalledWith("pending-1.json");
+    });
+
+    it("clears the marker when the creation fails after the artifacts were prepared", async () => {
+        // The failure path already removes the artifacts, so leaving the marker behind would make
+        // the next startup reconcile paths that are gone.
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "local" as const,
+            sourceValue: "/tmp/a.mp4",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "",
+            ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
+            filePath: "video/a.mp4",
+            thumbnailPath: null,
+            youtubeVideoId: null,
+            publishedAt: null,
+            mediaType: "video",
+            isLive: false,
+            liveChatFilePath: null,
+        });
+        vi.mocked(recordPendingMediaArtifacts).mockResolvedValueOnce("pending-2.json");
+        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(10);
+        vi.mocked(insertMedia).mockRejectedValueOnce(new Error("db constraint"));
+
+        await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
+
+        expect(cleanupCreatedArtifacts).toHaveBeenCalled();
+        expect(clearPendingMediaArtifacts).toHaveBeenCalledWith("pending-2.json");
+    });
+
+    it("still creates the media when the pending marker cannot be recorded", async () => {
+        // The artifacts are already on disk and the user asked for them, so losing the
+        // crash-recovery hint must not cost the media itself.
+        const normalizedInput = {
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "local" as const,
+            sourceValue: "/tmp/a.mp4",
+            thumbnailSourcePath: null,
+            mediaType: "video" as const,
+            importMode: "copy" as const,
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "",
+            ytDlpFormatId: "",
+            ytDlpYoutubeVideoId: null,
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        };
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
+            filePath: "video/a.mp4",
+            thumbnailPath: null,
+            youtubeVideoId: null,
+            publishedAt: null,
+            mediaType: "video",
+            isLive: false,
+            liveChatFilePath: null,
+        });
+        vi.mocked(recordPendingMediaArtifacts).mockRejectedValueOnce(new Error("cache read-only"));
+        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(10);
+        vi.mocked(insertMedia).mockResolvedValueOnce(88);
+
+        await expect(createMedia(normalizedInput)).resolves.toEqual({ id: 88 });
+
+        // No marker was obtained, so there is nothing to clear.
+        expect(clearPendingMediaArtifacts).not.toHaveBeenCalled();
+        expect(logError).toHaveBeenCalledWith(
+            "media-service",
+            expect.stringContaining("pending media artifacts"),
+            expect.anything(),
+            expect.anything()
+        );
     });
 
     it("deletes media through the atomic backend command without logging when nothing failed", async () => {

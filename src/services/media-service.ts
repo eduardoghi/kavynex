@@ -2,6 +2,7 @@ import type { MediaCommentRow, YtDlpComment } from "../types/media";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { MediaPageQuery } from "../types/generated/MediaPageQuery";
 import {
+    clearPendingMediaArtifacts,
     deleteMediaWithArtifacts,
     findMediaByChannelAndFilePath,
     insertMedia,
@@ -10,6 +11,7 @@ import {
     markMediaAsUnwatched,
     markMediaAsWatched,
     mediaExistsForChannelAndYoutubeId,
+    recordPendingMediaArtifacts,
     updateMediaProgress,
     updateMediaTitle as updateMediaTitleInRepository,
 } from "../repositories";
@@ -161,6 +163,45 @@ async function ensureYtDlpMediaDoesNotAlreadyExist(
     }
 }
 
+// Records the prepared artifacts on disk before the row is inserted, so a process that does not
+// survive that window leaves a trace the next startup can reconcile (see
+// src-tauri/src/services/pending_media.rs). Best effort: failing to write the marker must not fail
+// the creation itself - the artifacts are already in the library and the user asked for them, so
+// losing the crash-recovery hint is strictly better than losing the media.
+async function tryRecordPendingArtifacts(
+    prepared: PreparedMediaArtifacts
+): Promise<string | null> {
+    try {
+        return await recordPendingMediaArtifacts(
+            prepared.filePath,
+            prepared.thumbnailPath,
+            prepared.liveChatFilePath ?? null
+        );
+    } catch (error) {
+        logError("media-service", "Could not record the pending media artifacts.", error, {
+            filePath: prepared.filePath,
+        });
+
+        return null;
+    }
+}
+
+// Clears the marker once the creation has resolved one way or the other. Best effort for the same
+// reason, and harmless if it fails: the startup sweep hands the paths to the reference-counting
+// cleanup, which keeps anything a registered row still points at - so a marker that outlives a
+// creation that actually succeeded deletes nothing.
+async function tryClearPendingArtifacts(marker: string | null): Promise<void> {
+    if (!marker) {
+        return;
+    }
+
+    try {
+        await clearPendingMediaArtifacts(marker);
+    } catch (error) {
+        logError("media-service", "Could not clear the pending media marker.", error, { marker });
+    }
+}
+
 async function tryPersistYouTubeComments(
     mediaId: number | null,
     youtubeVideoId: string | null,
@@ -289,6 +330,10 @@ export async function createMedia(
     let createdThumbnailPath: string | null = null;
     let createdLiveChatFilePath: string | null = null;
     let mediaRegistered = false;
+    // Set once the artifacts exist on disk and cleared in the `finally` below. Between those two
+    // points the files are in the library with no row pointing at them, and the `catch` that cleans
+    // that up only runs if this process survives - which is the case the marker exists for.
+    let pendingMarker: string | null = null;
 
     try {
         if (normalizedInput.sourceMode === "yt-dlp") {
@@ -303,6 +348,11 @@ export async function createMedia(
         createdFilePath = prepared.filePath;
         createdThumbnailPath = prepared.thumbnailPath;
         createdLiveChatFilePath = prepared.liveChatFilePath ?? null;
+
+        // The artifacts exist from here on, so record them before anything else can fail or the
+        // process can die. Everything between this line and insertMedia is the window a marker
+        // recovers from.
+        pendingMarker = await tryRecordPendingArtifacts(prepared);
 
         await emitProgress(options.onProgress, "Registering media in local library...");
 
@@ -374,6 +424,11 @@ export async function createMedia(
         }
 
         throw error;
+    } finally {
+        // Both outcomes are resolved by now: either the row was inserted, or the catch above
+        // cleaned the artifacts up. Either way there is nothing left for the startup sweep to
+        // reconcile, so the marker goes.
+        await tryClearPendingArtifacts(pendingMarker);
     }
 }
 

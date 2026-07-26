@@ -96,6 +96,25 @@ export async function cleanupUnreferencedMediaArtifacts(
     );
 }
 
+// Records, before the row exists, that these artifacts are already written to the library, and
+// returns the marker name to hand back once the row lands. Covers the one window the caller's own
+// error handling structurally cannot: the process not surviving between the two steps, where no
+// `catch` runs. See src-tauri/src/services/pending_media.rs.
+export async function recordPendingMediaArtifacts(
+    filePath: string | null,
+    thumbnailPath: string | null,
+    liveChatFilePath: string | null
+): Promise<string> {
+    return invokeCommand(
+        TAURI_COMMANDS.RECORD_PENDING_MEDIA_ARTIFACTS,
+        { filePath, thumbnailPath, liveChatFilePath }
+    );
+}
+
+export async function clearPendingMediaArtifacts(marker: string): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.CLEAR_PENDING_MEDIA_ARTIFACTS, { marker });
+}
+
 export async function getMediaRepositoryStats(): Promise<MediaRepositoryStats> {
     return invokeCommand(TAURI_COMMANDS.GET_MEDIA_REPOSITORY_STATS);
 }

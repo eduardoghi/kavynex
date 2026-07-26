@@ -40,6 +40,11 @@ const INITIAL_BACKUP_DELAY_SECS: u64 = 60;
 // happens, never how often.
 const INTEGRITY_CHECK_STARTUP_DELAY_SECS: u64 = 120;
 
+// Delay before the pending-media sweep runs. Shorter than the integrity check's: it opens the same
+// pool but does far less work, and an artifact stranded by a crashed creation is disk the user is
+// paying for until it is reconciled. Still off the first-render path.
+const PENDING_MEDIA_SWEEP_DELAY_SECS: u64 = 30;
+
 fn spawn_startup_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         match services::cleanup::cleanup_stale_temp_files_sync(&app_handle) {
@@ -223,6 +228,32 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
             Err(error) => services::logger::warn(
                 "db_integrity",
                 format!("background integrity check could not run: {error}"),
+            ),
+        }
+    });
+}
+
+/// Reconciles the artifacts a media creation wrote but never registered a row for, because the
+/// process did not survive the window between the two. The frontend's failure path handles a step
+/// that *fails*; nothing there can run when the process is gone, so a marker left on disk is what
+/// records the intent (see `services::pending_media`).
+///
+/// Runs after a short delay rather than inline with setup: it needs the database pool, and the
+/// deletion decision it delegates to reference-counts every path against the rows, so an artifact
+/// that did get registered is kept. Best effort - any failure is logged and never affects startup.
+fn spawn_pending_media_sweep(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(PENDING_MEDIA_SWEEP_DELAY_SECS)).await;
+
+        match services::pending_media::sweep_pending_media_artifacts(&app_handle).await {
+            Ok(0) => {}
+            Ok(removed) => services::logger::info(
+                "pending_media",
+                format!("reconciled {removed} artifact(s) from an unfinished media creation"),
+            ),
+            Err(error) => services::logger::warn(
+                "pending_media",
+                format!("pending media sweep failed: {error}"),
             ),
         }
     });
@@ -415,6 +446,7 @@ pub fn run() {
 
             spawn_startup_cleanup(app_handle.clone());
             spawn_startup_library_cleanup(app_handle.clone());
+            spawn_pending_media_sweep(app_handle.clone());
             spawn_startup_integrity_check(app_handle.clone());
             spawn_periodic_backup(app_handle);
             services::logger::info("app", "application setup finished");
@@ -432,6 +464,8 @@ pub fn run() {
             commands::library::open_path_in_system,
             commands::media::import_media_file,
             commands::media::cleanup_unreferenced_media_artifacts,
+            commands::media::record_pending_media_artifacts,
+            commands::media::clear_pending_media_artifacts,
             commands::live_chat::stream_live_chat_file,
             commands::live_chat::delete_live_chat_file,
             commands::live_chat::list_live_chat_files,

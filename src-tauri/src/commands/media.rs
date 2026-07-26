@@ -4,6 +4,8 @@ use crate::models::yt_dlp::ImportMode;
 use crate::services::library_cleanup::{self, ArtifactCleanupReport};
 use crate::services::library_guard::verify_library_path_then_blocking;
 use crate::services::library_media;
+use crate::services::pending_media::{self, PendingMediaArtifacts};
+use crate::utils::task::run_blocking;
 use crate::AppResult;
 
 #[tauri::command]
@@ -38,6 +40,39 @@ pub async fn cleanup_unreferenced_media_artifacts(
         live_chat_file_path,
     )
     .await
+}
+
+/// Records that a media creation has written these library artifacts but not yet registered a row
+/// for them, and returns the marker name to hand back to `clear_pending_media_artifacts`.
+///
+/// The frontend's own failure path already cleans up when a step *fails*; this covers the case it
+/// structurally cannot - the process not surviving the window between the artifacts existing and
+/// the row being inserted, where no `catch` ever runs. See `services::pending_media`.
+#[tauri::command]
+pub async fn record_pending_media_artifacts(
+    app: AppHandle,
+    file_path: Option<String>,
+    thumbnail_path: Option<String>,
+    live_chat_file_path: Option<String>,
+) -> AppResult<String> {
+    run_blocking(move || {
+        pending_media::record_pending_media_artifacts(
+            &app,
+            PendingMediaArtifacts {
+                file_path,
+                thumbnail_path,
+                live_chat_file_path,
+            },
+        )
+    })
+    .await
+}
+
+/// Clears a marker once its creation has finished, so the next startup does not reconcile artifacts
+/// that are now properly registered. Clearing a marker that is already gone succeeds.
+#[tauri::command]
+pub async fn clear_pending_media_artifacts(app: AppHandle, marker: String) -> AppResult<()> {
+    run_blocking(move || pending_media::clear_pending_media_artifacts(&app, &marker)).await
 }
 
 // Neither command in this file can be driven through a true IPC round trip with the
