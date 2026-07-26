@@ -44,12 +44,6 @@ use crate::{AppError, AppErrorCode, AppResult};
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
 
-/// Upper bound on the frontend-supplied `run_id`. The legitimate value is a `crypto.randomUUID()`
-/// (36 chars); this cap leaves generous room while stopping a compromised frontend from driving an
-/// arbitrarily long value into the download temp-directory name (`{run_id}-{suffix}`), where it
-/// could otherwise blow past filesystem path-length limits. The backend is the trust boundary, so
-/// it validates rather than assuming the run id is well-formed.
-const MAX_RUN_ID_LEN: usize = 128;
 // A download that produces no output AND whose temp files stop growing for this long is
 // treated as hung (dead network, deadlocked ffmpeg) and killed. Output alone is not a
 // sufficient liveness signal: a large ffmpeg merge/remux can run for minutes writing to the
@@ -113,119 +107,6 @@ fn total_matching_file_size(dir: &Path, prefix: &str) -> u64 {
         .filter(|metadata| metadata.is_file())
         .map(|metadata| metadata.len())
         .sum()
-}
-
-/// How the value following a flag must be redacted when building the log line.
-enum PendingRedaction {
-    None,
-    /// Replace the whole value (used for `--cookies`).
-    FullValue,
-    /// Keep the `home:`/`temp:` scope prefix but drop the directory (used for `--paths`).
-    PathsValue,
-    /// Reduce a YouTube URL to its video id, dropping playlist/tracking query params (used for
-    /// the URL after the `--` separator). This line is shown in the UI terminal and may be pasted
-    /// into a public bug report, so it gets the same reduction the file log already applies via
-    /// `youtube_ref_for_log`.
-    YoutubeUrl,
-}
-
-/// Redacts a `--paths` value, keeping its `SCOPE:` prefix but dropping the directory. The
-/// directory sits under the per-user app cache (e.g. `C:\Users\<name>\AppData\...`), so it would
-/// otherwise leak the OS username. `split_once(':')` splits on the scope separator even though a
-/// Windows path also contains a drive colon, because the scope colon always comes first.
-fn redact_paths_value(value: &str) -> String {
-    match value.split_once(':') {
-        Some((scope, _)) => format!("{scope}:<redacted>"),
-        None => "<redacted>".to_string(),
-    }
-}
-
-/// Maps a flag whose following value is sensitive to how that value must be redacted. Centralized
-/// so a path-carrying flag is a single edit here rather than a new branch in the loop below - the
-/// shape of gap that previously let `--ffmpeg-location` leak the app-cache path (and with it the OS
-/// username) into a line shown in the UI and pasted into public bug reports. Any flag whose value is
-/// an absolute local path belongs here.
-fn redaction_for_flag(flag: &str) -> PendingRedaction {
-    match flag {
-        // Both carry an absolute path under the per-user profile: the cookies file location, and
-        // the ffmpeg binary's parent directory - which falls back to `<app_data_dir>/tools`, i.e.
-        // exactly the `C:\Users\<name>\AppData\...` layout the `--paths` redaction exists to hide.
-        "--cookies" | "--ffmpeg-location" => PendingRedaction::FullValue,
-        "--paths" => PendingRedaction::PathsValue,
-        // The URL is the only argument after the `--` separator (see build_download_command_args);
-        // reduce it so the raw pasted URL, with any playlist/tracking params, never reaches the UI
-        // terminal.
-        "--" => PendingRedaction::YoutubeUrl,
-        _ => PendingRedaction::None,
-    }
-}
-
-/// Joins yt-dlp args for display, redacting values that can leak local filesystem paths. The
-/// value after `--cookies` reveals the cookies file location, `--ffmpeg-location` carries the
-/// ffmpeg directory (which can sit under the app cache), and each `--paths` value carries the
-/// temp directory under the user's app cache; all would expose the username/profile layout in a
-/// log line that is shown in the app and may be pasted into a public bug report.
-/// `--cookies-from-browser` (a browser name, not a path) is left intact. Which flags are treated
-/// as sensitive lives in `redaction_for_flag`, so this loop never has to be touched to cover a new one.
-fn redacted_args_for_log(args: &[String]) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(args.len());
-    let mut pending = PendingRedaction::None;
-
-    for arg in args {
-        match pending {
-            PendingRedaction::FullValue => {
-                parts.push("<redacted>".to_string());
-                pending = PendingRedaction::None;
-                continue;
-            }
-            PendingRedaction::PathsValue => {
-                parts.push(redact_paths_value(arg));
-                pending = PendingRedaction::None;
-                continue;
-            }
-            PendingRedaction::YoutubeUrl => {
-                parts.push(youtube_ref_for_log(arg));
-                pending = PendingRedaction::None;
-                continue;
-            }
-            PendingRedaction::None => {}
-        }
-
-        pending = redaction_for_flag(arg);
-
-        parts.push(arg.clone());
-    }
-
-    parts.join(" ")
-}
-
-/// Accepts only format ids built from the characters yt-dlp uses for concrete format ids
-/// (ASCII alphanumerics plus `.`, `_`, `-`), optionally `+`-combined for a video+audio
-/// selection such as `137+140`. Every part must be non-empty and must not start with `-`, so
-/// the value placed after `-f` can never be parsed as a yt-dlp flag. This is defense in depth
-/// on top of `resolve_format_has_video`, which additionally requires the id to match a real
-/// format from the fetched metadata: since that metadata is attacker-influenced (it comes from
-/// the video being downloaded), the id is filtered by character class before it is trusted.
-/// True for a well-formed run id: non-empty, within [`MAX_RUN_ID_LEN`], and made only of the
-/// characters a UUID (or a hex/dash fallback) uses. It becomes part of a temp-directory name, so
-/// restricting it to `[A-Za-z0-9._-]` also keeps a path separator or other filesystem-significant
-/// character out of that name regardless of what the frontend sends.
-fn is_valid_run_id(run_id: &str) -> bool {
-    !run_id.is_empty()
-        && run_id.len() <= MAX_RUN_ID_LEN
-        && run_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-}
-
-fn is_valid_format_id(format_id: &str) -> bool {
-    format_id.split('+').all(|part| {
-        !part.is_empty()
-            && !part.starts_with('-')
-            && part
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-    })
 }
 
 /// Resolves a (possibly `+`-combined) yt-dlp format selector against the fetched metadata
@@ -420,6 +301,16 @@ use command::{
     build_download_command_args, classify_download_termination, validate_download_inputs,
     DownloadTermination,
 };
+#[cfg(test)]
+use command::{is_valid_format_id, is_valid_run_id, MAX_RUN_ID_LEN};
+
+// Redacting the argument vector before it reaches the in-app terminal (and, from there, a public
+// bug report) also lives in its own submodule: it has a privacy consequence and no I/O, which is
+// exactly the shape that belongs under the mutation gate rather than buried in the orchestration.
+mod redaction;
+#[cfg(test)]
+use redaction::redact_paths_value;
+use redaction::redacted_args_for_log;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async(
@@ -1613,6 +1504,33 @@ mod tests {
         // since this line is shown in the UI terminal and may be pasted into a public bug report.
         assert!(!logged.contains("https://youtube.com/watch?v=x"));
         assert!(logged.contains("-- youtube.com?v=x"));
+    }
+
+    #[test]
+    fn redact_paths_value_keeps_the_scope_and_drops_everything_after_it() {
+        // The scope prefix is kept for readability, the directory is not: it sits under the
+        // per-user app cache and so embeds the OS username.
+        assert_eq!(
+            redact_paths_value("home:C:\\Users\\alice\\AppData\\Local\\cache"),
+            "home:<redacted>"
+        );
+        assert_eq!(
+            redact_paths_value("temp:/home/alice/.cache/kavynex"),
+            "temp:<redacted>"
+        );
+
+        // The split is on the *first* colon, which is always the scope separator - a Windows drive
+        // colon comes after it and must not be what the value is cut on.
+        assert_eq!(
+            redact_paths_value("home:C:\\Users\\alice"),
+            "home:<redacted>"
+        );
+
+        // A value with no scope at all has nothing safe to keep, so the whole thing goes. This is
+        // the branch the argv test cannot reach, since build_download_command_args always emits the
+        // `home:`/`temp:` prefix.
+        assert_eq!(redact_paths_value("/home/alice/cache"), "<redacted>");
+        assert_eq!(redact_paths_value(""), "<redacted>");
     }
 
     #[test]

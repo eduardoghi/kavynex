@@ -6,10 +6,45 @@
 
 use std::path::Path;
 
-use super::{is_valid_format_id, is_valid_run_id};
 use crate::services::yt_dlp_cookies::append_auth_args;
 use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::{AppError, AppErrorCode, AppResult};
+
+/// Upper bound on the frontend-supplied `run_id`. The legitimate value is a `crypto.randomUUID()`
+/// (36 chars); this cap leaves generous room while stopping a compromised frontend from driving an
+/// arbitrarily long value into the download temp-directory name (`{run_id}-{suffix}`), where it
+/// could otherwise blow past filesystem path-length limits. The backend is the trust boundary, so
+/// it validates rather than assuming the run id is well-formed.
+pub(super) const MAX_RUN_ID_LEN: usize = 128;
+
+/// True for a well-formed run id: non-empty, within [`MAX_RUN_ID_LEN`], and made only of the
+/// characters a UUID (or a hex/dash fallback) uses. It becomes part of a temp-directory name, so
+/// restricting it to `[A-Za-z0-9._-]` also keeps a path separator or other filesystem-significant
+/// character out of that name regardless of what the frontend sends.
+pub(super) fn is_valid_run_id(run_id: &str) -> bool {
+    !run_id.is_empty()
+        && run_id.len() <= MAX_RUN_ID_LEN
+        && run_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+/// Accepts only format ids built from the characters yt-dlp uses for concrete format ids
+/// (ASCII alphanumerics plus `.`, `_`, `-`), optionally `+`-combined for a video+audio
+/// selection such as `137+140`. Every part must be non-empty and must not start with `-`, so
+/// the value placed after `-f` can never be parsed as a yt-dlp flag. This is defense in depth
+/// on top of `resolve_format_has_video`, which additionally requires the id to match a real
+/// format from the fetched metadata: since that metadata is attacker-influenced (it comes from
+/// the video being downloaded), the id is filtered by character class before it is trusted.
+pub(super) fn is_valid_format_id(format_id: &str) -> bool {
+    format_id.split('+').all(|part| {
+        !part.is_empty()
+            && !part.starts_with('-')
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    })
+}
 
 #[derive(Debug)]
 pub(super) struct ValidatedDownloadInputs {
