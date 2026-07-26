@@ -3,23 +3,20 @@ import { openAuthorYoutubeChannel } from "../../../services/author-navigation";
 import { activateOnEnterOrSpace } from "../../../utils/keyboard";
 import { avatarInitials } from "../../../utils/avatar";
 import { SafeAvatar } from "../safe-avatar";
+import { RemoteImage } from "../remote-image";
 import {
     renderMessageContent,
     type LiveChatVariantProps,
 } from "./live-chat-message-content";
 
-type SuperChatMessageProps = LiveChatVariantProps & {
-    // The super sticker image is only loaded when remote images are allowed.
-    remoteImagesEnabled: boolean;
-};
-
-// Super Chat / Super Sticker (a paid, colored message card).
+// Super Chat / Super Sticker (a paid, colored message card). The sticker image is a remote load,
+// so it goes through RemoteImage, which owns the privacy gate - this component no longer takes a
+// `remoteImagesEnabled` prop, and therefore cannot be rendered with the wrong one.
 export function SuperChatMessage({
     message,
     shellBorder,
     avatarSrc,
-    remoteImagesEnabled,
-}: SuperChatMessageProps): JSX.Element {
+}: LiveChatVariantProps): JSX.Element {
     const authorChannelId = message.author_channel_id;
 
     // Inside a super chat card the author name inherits the card's text color.
@@ -94,19 +91,16 @@ export function SuperChatMessage({
                         </Text>
                     )}
 
-                    {remoteImagesEnabled && message.sticker_image_url && (
-                        <img
-                            src={message.sticker_image_url}
-                            alt="Super Sticker"
-                            loading="lazy"
-                            style={{
-                                width: rem(72),
-                                height: rem(72),
-                                marginTop: rem(6),
-                                display: "block",
-                            }}
-                        />
-                    )}
+                    <RemoteImage
+                        src={message.sticker_image_url}
+                        alt="Super Sticker"
+                        style={{
+                            width: rem(72),
+                            height: rem(72),
+                            marginTop: rem(6),
+                            display: "block",
+                        }}
+                    />
                 </Box>
             </Stack>
         </Group>

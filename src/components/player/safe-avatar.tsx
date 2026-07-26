@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { Avatar } from "@mantine/core";
+import { useRemoteImagesEnabled } from "./remote-images-context";
 
 type SafeAvatarProps = {
+    // The author's avatar URL as stored. Loaded only when the user has opted into remote images;
+    // otherwise the initials fallback renders and no request is made.
     src?: string;
     initials: string;
     shellBorder: string;
@@ -9,11 +12,18 @@ type SafeAvatarProps = {
 };
 
 export function SafeAvatar({
-    src,
+    src: requestedSrc,
     initials,
     shellBorder,
     size,
 }: SafeAvatarProps): JSX.Element {
+    // The privacy gate lives here rather than at each call site (see remote-image.tsx): every
+    // caller passing an author thumbnail had to remember to consult the context first, which is a
+    // convention a component added later can break without anything failing. Dropping the src here
+    // means a caller cannot forget, and the context defaults to false so a SafeAvatar rendered
+    // outside the provider falls back to initials instead of leaking a load.
+    const remoteImagesEnabled = useRemoteImagesEnabled();
+    const src = remoteImagesEnabled ? requestedSrc : undefined;
     // Track which src the load failed for, not a bare boolean, so the fallback is cleared for a
     // new src synchronously during render. This is deliberately React's "adjust state directly
     // during render" pattern, matching media-card.tsx's thumbnail handling - NOT a useEffect. An

@@ -15,7 +15,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { AsyncStatusRegion } from "../common/async-status-region";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
 import { resolveAvatarSrc } from "../../utils/avatar";
-import { useRemoteImagesEnabled } from "./remote-images-context";
 import { MembershipChatMessage } from "./live-chat-sections/membership-chat-message";
 import { PinnedChatMessage } from "./live-chat-sections/pinned-chat-message";
 import { RegularChatMessage } from "./live-chat-sections/regular-chat-message";
@@ -108,10 +107,10 @@ const LiveChatItem = memo(function LiveChatItem({
     message,
     shellBorder,
 }: LiveChatItemProps): JSX.Element {
-    const remoteImagesEnabled = useRemoteImagesEnabled();
-    const avatarSrc = remoteImagesEnabled
-        ? resolveAvatarSrc(message.author_thumbnail)
-        : undefined;
+    // No privacy check here: SafeAvatar and RemoteImage apply it themselves (see
+    // remote-image.tsx), so the stored thumbnail passes through unconditionally and this component
+    // cannot forget the gate.
+    const avatarSrc = resolveAvatarSrc(message.author_thumbnail);
 
     if (message.kind === "pinned") {
         return (
@@ -140,7 +139,6 @@ const LiveChatItem = memo(function LiveChatItem({
                 message={message}
                 shellBorder={shellBorder}
                 avatarSrc={avatarSrc}
-                remoteImagesEnabled={remoteImagesEnabled}
             />
         );
     }

@@ -1,6 +1,5 @@
-import { useState } from "react";
 import type { LiveChatMessageItem } from "../../../services/live-chat-service";
-import { useRemoteImagesEnabled } from "../remote-images-context";
+import { RemoteImage } from "../remote-image";
 
 // Shared props for the message-variant components (pinned/membership/super chat/regular).
 export type LiveChatVariantProps = {
@@ -9,25 +8,16 @@ export type LiveChatVariantProps = {
     avatarSrc: string | undefined;
 };
 
-// Inline custom-emoji image, falling back to the emoji shortcut text if it fails to load
-// (the image URLs can expire).
+// Inline custom-emoji image. RemoteImage owns both the privacy gate (with remote images off, no
+// request is made) and the load-failure fallback (these image URLs can expire) - in either case
+// the emoji's shortcut text renders in its place.
 export function EmojiImage({ url, label }: { url: string; label: string }): JSX.Element {
-    const [failed, setFailed] = useState(false);
-    const remoteImagesEnabled = useRemoteImagesEnabled();
-
-    // With remote images off, fall back to the emoji's shortcut text instead of loading it
-    // from Google.
-    if (failed || !remoteImagesEnabled) {
-        return <>{label}</>;
-    }
-
     return (
-        <img
+        <RemoteImage
             src={url}
             alt={label}
             title={label}
-            loading="lazy"
-            onError={() => setFailed(true)}
+            fallback={label}
             style={{ height: "1.25em", verticalAlign: "-0.25em", margin: "0 1px" }}
         />
     );

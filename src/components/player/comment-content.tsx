@@ -6,7 +6,6 @@ import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { activateOnEnterOrSpace } from "../../utils/keyboard";
 import { SafeAvatar } from "./safe-avatar";
-import { useRemoteImagesEnabled } from "./remote-images-context";
 import { formatCommentPublishedAt, type CommentTreeNode } from "./comment-tree";
 
 const COMMENT_TEXT_STYLE: CSSProperties = {
@@ -36,10 +35,9 @@ export function CommentContent({
     actions,
 }: CommentContentProps): JSX.Element {
     const publishedLabel = formatCommentPublishedAt(comment.published_at, comment.time_text);
-    const remoteImagesEnabled = useRemoteImagesEnabled();
-    const avatarSrc = remoteImagesEnabled
-        ? resolveAvatarSrc(comment.author_thumbnail)
-        : undefined;
+    // No privacy check here: SafeAvatar applies it (see remote-image.tsx), so this passes the
+    // stored thumbnail through unconditionally and cannot forget the gate.
+    const avatarSrc = resolveAvatarSrc(comment.author_thumbnail);
     const authorChannelId = comment.author_channel_id;
 
     return (
