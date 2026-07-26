@@ -256,11 +256,18 @@ jobs:
             # startsWith so this also runs on ubuntu-26.04-arm: the aarch64 leg needs the same
             # WebKit/GTK dev headers, installed natively (the runner is arm64, so apt fetches the
             # arm64 packages - no multiarch/cross setup).
+            #
+            # xdg-utils supplies /usr/bin/xdg-open, which the AppImage bundler copies into the
+            # bundle and refuses to proceed without. The x64 image happens to ship it, the arm64
+            # one does not, so the first aarch64 dispatch built the deb and the rpm and then died
+            # on the AppImage - taking all three down, since the leg uploads nothing when the
+            # bundle step fails. Installed explicitly on both rather than relying on either image
+            # to keep providing it, which is what made this a surprise in the first place.
             - name: Install Linux dependencies
               if: startsWith(matrix.platform, 'ubuntu-')
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
 
             - name: Verify version consistency
               run: node scripts/verify-release-version.js
@@ -524,10 +531,15 @@ jobs:
                   # One entry per artifact the matrix is expected to produce, as a glob. The
                   # `.sig` files are the updater's; note the two .dmg files deliberately have
                   # none - tauri signs the macOS updater bundle (.app.tar.gz), not the disk image.
-                  # The aarch64 Windows/Linux names follow tauri's per-bundler arch strings, which
-                  # are not uniform: NSIS, WiX (MSI) and deb use `arm64`, while AppImage and rpm use
-                  # `aarch64`. If one is off, this check fails loudly and echoes the real asset names
-                  # above rather than shipping a partial draft, so the first release confirms them.
+                  #
+                  # Every name here is now confirmed against a real dispatch (v1.2.0), including the
+                  # aarch64 ones this comment previously flagged as derived rather than observed:
+                  # NSIS, WiX (MSI) and deb do use `arm64` while AppImage and rpm use `aarch64`, so
+                  # those held. What did not hold was the pair that had been observed - the macOS
+                  # `.app.tar.gz` names carried no version on v1.1.1 and carry one now, which is why
+                  # they are built from ${VERSION} below. Treat the whole list as perishable: it
+                  # tracks tauri's per-bundler naming, and this check exists precisely to fail loudly
+                  # (echoing the real names above) rather than let a partial draft look complete.
                   MISSING=""
                   for pattern in \
                       "kavynex_${VERSION}_x64-setup.exe" \
@@ -536,10 +548,10 @@ jobs:
                       "kavynex_${VERSION}_x64_en-US.msi.sig" \
                       "kavynex_${VERSION}_aarch64.dmg" \
                       "kavynex_${VERSION}_x64.dmg" \
-                      "kavynex_aarch64.app.tar.gz" \
-                      "kavynex_aarch64.app.tar.gz.sig" \
-                      "kavynex_x64.app.tar.gz" \
-                      "kavynex_x64.app.tar.gz.sig" \
+                      "kavynex_${VERSION}_aarch64.app.tar.gz" \
+                      "kavynex_${VERSION}_aarch64.app.tar.gz.sig" \
+                      "kavynex_${VERSION}_x64.app.tar.gz" \
+                      "kavynex_${VERSION}_x64.app.tar.gz.sig" \
                       "kavynex_${VERSION}_amd64.AppImage" \
                       "kavynex_${VERSION}_amd64.AppImage.sig" \
                       "kavynex_${VERSION}_amd64.deb" \
