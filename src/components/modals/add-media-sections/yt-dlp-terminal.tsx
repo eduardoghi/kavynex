@@ -12,7 +12,14 @@ type YtDlpTerminalProps = {
 
 // Height of the scrollback viewport. Previously a Mantine ScrollArea `h`; the virtualizer needs a
 // plain scrolling element it owns, so this is applied to that element directly.
-const TERMINAL_HEIGHT_PX = 320;
+//
+// Scales with the viewport rather than sitting at a fixed 320px: the modal around it is now sized
+// off the viewport too, and this is the element that actually wants the extra room - it is what the
+// user watches for the minutes a download runs. `clamp` keeps it a definite computed height, which
+// is what the virtualizer measures the scroll element for, so virtualization is unaffected. The
+// lower bound keeps it usable on a short window; the upper one stops it from crowding out the form
+// controls above it on a tall one.
+const TERMINAL_HEIGHT = "clamp(220px, 32vh, 460px)";
 
 // First guess at a log row's height (one line of the 13px/1.6 monospace text below). Real heights
 // are measured after mount via measureElement, so this only shapes the first paint's scrollbar
@@ -110,7 +117,7 @@ export function YtDlpTerminal({
                     ref={terminalViewportRef}
                     aria-label="yt-dlp output"
                     style={{
-                        height: rem(TERMINAL_HEIGHT_PX),
+                        height: TERMINAL_HEIGHT,
                         overflowY: "auto",
                         overflowX: "hidden",
                         padding: rem(14),

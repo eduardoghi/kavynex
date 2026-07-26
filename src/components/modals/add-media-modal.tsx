@@ -151,7 +151,13 @@ export function AddMediaModal({
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
-            size={760}
+            // Sized off the viewport like the diagnostics modal rather than pinned to a fixed 760px:
+            // on a large window that cap left most of the screen empty while the body scrolled, and
+            // this form has two elements that genuinely want the width - the format option
+            // ("Merged - 1080p - MP4 - AVC (H.264) - 2638.3 kbps - HTTPS - 1.43 GB") and the terminal's
+            // yt-dlp command line, both of which wrapped at 760px. Kept under diagnostics' 1200px
+            // because the rest is short inputs, which look stretched past roughly this width.
+            size="min(1040px, 94vw)"
             zIndex={300}
             // Cap the modal to the viewport and scroll the body inside it (same pattern the settings
             // and diagnostics modals use). A fixed height makes the flex chain definite so the inner
@@ -161,7 +167,7 @@ export function AddMediaModal({
             // screen. offsetScrollbars keeps the bar clear of the rounded corners.
             styles={{
                 content: {
-                    height: "min(86vh, 800px)",
+                    height: "min(90vh, 980px)",
                     display: "flex",
                     flexDirection: "column",
                 },
