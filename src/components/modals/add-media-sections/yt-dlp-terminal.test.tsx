@@ -1,8 +1,26 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { YtDlpTerminal } from "./yt-dlp-terminal";
 import type { YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
 import { renderWithMantine } from "../../../test/test-utils";
+
+// The virtualized scrollback only mounts rows near the viewport, and jsdom has no layout (every
+// rect is 0x0), so the real virtualizer would render no lines at all here. Mock it to yield every
+// row - the same approach the media grid, comments panel and live chat replay tests take - so these
+// can still assert on a specific line's content.
+vi.mock("@tanstack/react-virtual", () => ({
+    useVirtualizer: vi.fn(({ count }: { count: number }) => ({
+        getTotalSize: () => count * 21,
+        getVirtualItems: () =>
+            Array.from({ length: count }, (_, index) => ({
+                index,
+                key: index,
+                start: index * 21,
+            })),
+        measureElement: vi.fn(),
+        measure: vi.fn(),
+    })),
+}));
 
 // The terminal keys rows on a stable per-line id (see YtDlpLogLine); the ids are arbitrary here, so
 // number them positionally.
