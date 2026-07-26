@@ -50,9 +50,10 @@ use crate::{AppError, AppErrorCode, AppResult};
 const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
 /// Bounds how many thumbnail/avatar yt-dlp runs execute at once. Each spawns a yt-dlp + ffmpeg
-/// process tree (`--convert-thumbnails png`), so a burst - a bulk import, a retry loop, or a
-/// compromised frontend firing the thumbnail/avatar commands - could otherwise spawn an unbounded
-/// number of process trees and exhaust CPU/handles. The download flow (`DOWNLOAD_SEMAPHORE`) and the
+/// process tree (`--convert-thumbnails`, see [`THUMBNAIL_OUTPUT_FORMAT`]), so a burst - a bulk
+/// import, a retry loop, or a compromised frontend firing the thumbnail/avatar commands - could
+/// otherwise spawn an unbounded number of process trees and exhaust CPU/handles. The download flow
+/// (`DOWNLOAD_SEMAPHORE`) and the
 /// metadata/comment/format runs (`STANDALONE_RUN_SEMAPHORE`) each have their own bound; this is the
 /// third yt-dlp spawn site and gets its own.
 const MAX_CONCURRENT_THUMBNAIL_RUNS: usize = 4;
@@ -117,7 +118,8 @@ async fn wait_with_capped_output(
 
 /// Runs a yt-dlp thumbnail/avatar command under the shared timeout, capturing its output.
 ///
-/// These invocations pass `--convert-thumbnails png`, which makes yt-dlp spawn an `ffmpeg`
+/// These invocations pass `--convert-thumbnails` (see [`THUMBNAIL_OUTPUT_FORMAT`]), which makes
+/// yt-dlp spawn an `ffmpeg`
 /// child. Relying on `kill_on_drop` alone (as the previous `.output()` call did) only kills
 /// the direct yt-dlp child on timeout, leaving that ffmpeg grandchild running and holding the
 /// temp directory open. Spawning into its own process group and killing the whole tree on
@@ -217,8 +219,26 @@ enum ThumbnailTarget {
     ChannelAvatar,
 }
 
-/// Builds the yt-dlp argument vector for writing a thumbnail (converted to PNG) into
-/// `temp_dir` under `file_prefix`.
+/// The format `--convert-thumbnails` normalizes every downloaded thumbnail to, and therefore the
+/// extension the file lands under in the temp directory (see `finalize_thumbnail_download`, which
+/// looks the written file up by it). One constant so the argument and the lookup cannot drift.
+///
+/// JPEG rather than PNG: YouTube serves photographic JPEG thumbnails, and re-encoding those
+/// losslessly to PNG multiplied the stored size for no visual gain - measured on a real library,
+/// PNG thumbnails averaged ~365 KB against a few dozen KB for the JPEG originals, and the whole
+/// directory sat at 322 MB for 904 media. Normalizing is still worth doing (a single known
+/// extension for the content-addressed name), so the conversion stays; only the target changes.
+///
+/// Note what this does *not* fix: the decoded size of the image in the grid is
+/// `width * height * 4` bytes regardless of how the file is compressed, so this reduces disk and
+/// I/O, never the webview's bitmap memory. Storing a display-sized image is a separate change,
+/// and a much bigger one - the filenames are content-addressed, so re-encoding an existing
+/// thumbnail changes its hash and would require renaming the file and updating every row that
+/// references it.
+const THUMBNAIL_OUTPUT_FORMAT: &str = "jpg";
+
+/// Builds the yt-dlp argument vector for writing a thumbnail (converted to
+/// [`THUMBNAIL_OUTPUT_FORMAT`]) into `temp_dir` under `file_prefix`.
 ///
 /// Extracted as a pure function so the three thumbnail flows (direct-URL fallback,
 /// pre-download media thumbnail, channel avatar) share one definition instead of three
@@ -248,7 +268,7 @@ fn build_thumbnail_command_args(
         "--skip-download".to_string(),
         "--write-thumbnail".to_string(),
         "--convert-thumbnails".to_string(),
-        "png".to_string(),
+        THUMBNAIL_OUTPUT_FORMAT.to_string(),
         "--restrict-filenames".to_string(),
         "--windows-filenames".to_string(),
         "--no-warnings".to_string(),
@@ -578,8 +598,12 @@ async fn finalize_thumbnail_download(
         ));
     }
 
-    let downloaded_thumb = find_best_matching_file(thumb_temp_dir, file_name_prefix, Some("png"))
-        .map_err(|_| {
+    let downloaded_thumb = find_best_matching_file(
+        thumb_temp_dir,
+        file_name_prefix,
+        Some(THUMBNAIL_OUTPUT_FORMAT),
+    )
+    .map_err(|_| {
         AppError::from_code(
             AppErrorCode::YtDlpThumbnailNotFound,
             format!("yt-dlp did not produce a {subject} file"),
@@ -1361,7 +1385,7 @@ mod tests {
         assert!(args.iter().any(|arg| arg == "--no-playlist"));
         assert!(!args.iter().any(|arg| arg == "--playlist-items"));
 
-        // The shared skeleton is present: skip download, write and convert the thumbnail to png,
+        // The shared skeleton is present: skip download, write and convert the thumbnail,
         // pin ffmpeg, sandbox writes to the temp dir, and template the output name.
         assert!(args.iter().any(|arg| arg == "--skip-download"));
         assert!(args.iter().any(|arg| arg == "--write-thumbnail"));
@@ -1369,7 +1393,7 @@ mod tests {
             .iter()
             .position(|arg| arg == "--convert-thumbnails")
             .unwrap();
-        assert_eq!(args[convert + 1], "png");
+        assert_eq!(args[convert + 1], THUMBNAIL_OUTPUT_FORMAT);
         let ffmpeg = args
             .iter()
             .position(|arg| arg == "--ffmpeg-location")

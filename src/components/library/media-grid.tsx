@@ -96,6 +96,14 @@ export function MediaGrid({
     // renders - an inline arrow function here would be reassigned on every scroll-driven
     // re-render, forcing React to call it again and re-run getBoundingClientRect (a synchronous
     // layout reflow) even though the measured node has not changed.
+    //
+    // This one measurement is also why the rows below deliberately do NOT take the virtualizer's
+    // `measureElement` ref. Rows are uniform by construction - each is exactly one card tall, and
+    // MEDIA_CARD_HEIGHT pins the card with the thumbnail, title and footer all fixed - so the only
+    // thing that can move the real height is the root font size behind `rem()`, which this catches
+    // once. `measureElement` would instead attach a ResizeObserver to every rendered row and read
+    // layout as rows mount and unmount during a scroll, to re-derive a height that is already known
+    // exactly. Re-add it only if a row's height ever becomes content-dependent.
     const measureFirstRow = useCallback(
         (node: HTMLDivElement | null) => {
             if (!node) {
@@ -131,7 +139,14 @@ export function MediaGrid({
         count: rows.length,
         getScrollElement: () => scrollParentRef.current,
         estimateSize: () => rowHeight + GRID_GAP,
-        overscan: 4,
+        // Every row is exactly one card tall (MEDIA_CARD_HEIGHT, with the thumbnail, title and
+        // footer all pinned), so estimateSize above is the real height rather than a guess and each
+        // overscanned row is a full row of cards that must be built, laid out and - the dominant
+        // cost - have its thumbnails decoded. A YouTube thumbnail decodes to width * height * 4
+        // bytes whatever its file size, so each extra row of four is several megabytes of bitmap
+        // held for rows the user cannot see. Two is enough to cover a fast flick without paying for
+        // eight off-screen rows.
+        overscan: 2,
     });
 
     const virtualRows = rowVirtualizer.getVirtualItems();
@@ -304,7 +319,6 @@ export function MediaGrid({
                                 return (
                                     <Box
                                         key={virtualRow.key}
-                                        ref={rowVirtualizer.measureElement}
                                         data-index={virtualRow.index}
                                         role="presentation"
                                         style={{
