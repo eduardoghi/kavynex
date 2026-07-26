@@ -529,13 +529,25 @@ pub async fn delete_channel_with_artifacts(
 /// lock keyed by artifact path, held across both the count and the unlink and taken by
 /// `insert_media` too, would close it.
 ///
-/// That is deliberately not built, because the interleaving it guards against is not currently
-/// reachable: it needs two media creations in flight at once resolving to the same
-/// content-addressed path, and the add-media modal is locked for the duration of one
-/// (`isModalLocked` covers the whole run), so a second cannot start. If that ever changes -
-/// a queue, a batch import, background re-download - this becomes reachable and the consequence
-/// is a row pointing at a file this deleted, so revisit it then rather than assuming the count
-/// still holds.
+/// That is deliberately not built, because neither caller can currently reach the interleaving, and
+/// they are kept out of it by different means - so a new caller has to establish its own guard rather
+/// than inherit one:
+///
+/// - The manual/Diagnostics path (and an add-media run's own failure path) needs two media creations
+///   in flight at once resolving to the same content-addressed path, and the add-media modal is
+///   locked for the duration of one (`isModalLocked` covers the whole run), so a second cannot start.
+///   If that ever changes - a queue, a batch import, background re-download - this becomes reachable
+///   and the consequence is a row pointing at a file this deleted, so revisit it then rather than
+///   assuming the count still holds.
+/// - The startup sweep (`services::pending_media`) is a *backend* caller, so that modal lock does not
+///   cover it at all. It carries its own guard: it refuses any marker registered as in flight by this
+///   process or newer than the process itself (`pending_media::marker_is_sweepable`), because a
+///   creation that has written its artifacts but not yet reached `insert_media` is indistinguishable
+///   here from one that died there - and consuming its marker would unlink the file the user is
+///   adding right now.
+///
+/// See the matching section in `SECURITY.md` for the same split written for a reader auditing the
+/// trust boundary rather than this function.
 async fn plan_unreferenced_artifacts(
     conn: &mut SqliteConnection,
     file_path: Option<String>,

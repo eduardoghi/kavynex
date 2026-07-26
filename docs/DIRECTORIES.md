@@ -95,13 +95,21 @@ marker per media creation that has already written its artifacts into the librar
 not yet inserted the row. Adding media is not a single call, and between those two steps
 the files exist with nothing pointing at them - so the marker names them. It is removed as
 soon as the row lands (or the failure path has cleaned the artifacts up), which means a
-marker still present at the next startup is a creation the process did not survive.
+marker left over from an *earlier* run is a creation the process did not survive.
 
 `lib.rs`'s `spawn_pending_media_sweep` reconciles those shortly after launch by handing the
 paths to the same reference-counting cleanup the Diagnostics path uses, so an artifact a
 registered row still points at is kept and only a genuine orphan is removed. Finding a
 `pending-media/` marker on a healthy install means a media import died midway; the sweep
 handles it on the next launch and nothing needs to be deleted by hand.
+
+The sweep runs on a short delay rather than inline with startup, so "still present" is not by
+itself enough to act on: a marker written by a creation the user started *after* launch is
+also present, and its row has legitimately not been inserted yet. Consuming it would unlink
+the file being added right now. So the sweep only considers a marker that is neither
+registered as in flight by this process nor newer than the process itself
+(`pending_media::marker_is_sweepable`), and every uncertain case is left in place - one launch
+later is a cheaper mistake than deleting a file the user still wants.
 
 On startup, `lib.rs`'s `setup()` authorizes the whole cache directory in the Tauri
 asset-protocol scope (see `SECURITY.md`) so these temporary files can be shown in the

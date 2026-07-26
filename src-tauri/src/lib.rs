@@ -374,6 +374,12 @@ pub fn run() {
 
             services::logger::info("app", "application setup started");
 
+            // Pin the launch instant while it is still accurate: the pending-media sweep refuses to
+            // consume any marker that is not older than it, and that cutoff has to be the real start
+            // of the process rather than whenever the sweep first asked (see
+            // services::pending_media::pin_process_start).
+            services::pending_media::pin_process_start();
+
             // Apply a database import staged by the import command before the pool can open.
             // The connection pool is a process-wide singleton that cannot be swapped
             // in-process, so the actual file swap is deferred to this pre-open point. A

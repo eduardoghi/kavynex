@@ -18,9 +18,21 @@
 //! row references it, so a marker that outlived a creation which actually *succeeded* (the row was
 //! inserted, the clear call was lost) deletes nothing. The sweep can be wrong about what happened
 //! without being able to destroy anything the library still needs.
+//!
+//! It is *not* free to be wrong about *which* marker is a leftover, though, and that is what
+//! [`marker_is_sweepable`] decides. Reference-counting cannot tell a creation that died before its
+//! row from one that has simply not reached `insert_media` yet - both have artifacts on disk with
+//! nothing pointing at them. So a marker belonging to a creation still in flight must never be
+//! consumed: the sweep would unlink the file the user is adding right now, then remove the marker,
+//! and the row that lands moments later would point at nothing with nothing left to reconcile it.
+//! Two independent filters keep that out: the in-memory set of markers this process wrote and has
+//! not cleared, and a refusal to touch anything whose mtime is not older than this process.
 
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
@@ -101,6 +113,79 @@ pub(crate) fn is_marker_file_name(name: &str) -> bool {
     name.starts_with("pending-") && name.ends_with(".json")
 }
 
+/// The names of the markers this process wrote and has not cleared yet, i.e. the creations still in
+/// flight right now.
+///
+/// This is the first of the two filters described in the module docs, and the precise one: the
+/// process knows exactly which creations it started, so consulting that beats inferring it. A name
+/// is registered before its file exists and removed when the creation resolves, so there is never a
+/// moment where a marker is on disk without being known as in flight.
+fn live_markers() -> &'static Mutex<HashSet<String>> {
+    static LIVE: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    LIVE.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// The critical sections are a single insert/remove/contains, so a panic inside one is not a real
+/// possibility; recover the guard rather than let poisoning propagate into the sweep, which must
+/// stay best effort.
+fn lock_live_markers() -> MutexGuard<'static, HashSet<String>> {
+    live_markers()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn is_live_marker(name: &str) -> bool {
+    lock_live_markers().contains(name)
+}
+
+/// The instant this process started, used as the cutoff by [`marker_is_sweepable`].
+///
+/// Pinned through [`pin_process_start`] from `lib.rs`'s `setup()` rather than left to initialize
+/// lazily: the first caller would otherwise be the sweep itself, half a minute into the session, and
+/// every marker this session had written before that point would read as older than "process start"
+/// and become sweepable - defeating the filter exactly when it is needed.
+fn process_start() -> SystemTime {
+    static START: OnceLock<SystemTime> = OnceLock::new();
+    *START.get_or_init(SystemTime::now)
+}
+
+/// Records the process-start instant while it is still accurate. Call once, early in `setup()`.
+pub fn pin_process_start() {
+    let _ = process_start();
+}
+
+/// Decides whether the sweep may consume a marker: only one that no in-flight creation owns *and*
+/// that predates this process, which together mean it can only have been left by an earlier run.
+///
+/// Pure so both directions can be pinned by a test without a Tauri runtime, and so the decision that
+/// gates an unlink of the user's media is a function rather than a condition buried in a loop.
+///
+/// Every uncertain case answers "not sweepable". An unreadable mtime, a marker written in the same
+/// coarse filesystem tick as the process start, or a clock that moved backwards between runs all
+/// leave the marker in place: the cost is a leftover reconciled one launch later, whereas acting on
+/// a wrong answer deletes a file the user still wants.
+pub(crate) fn marker_is_sweepable(
+    is_live: bool,
+    modified_at: Option<SystemTime>,
+    process_start: SystemTime,
+) -> bool {
+    if is_live {
+        return false;
+    }
+
+    match modified_at {
+        Some(modified_at) => modified_at < process_start,
+        None => false,
+    }
+}
+
+/// When `path` was last modified, or `None` if that cannot be read.
+fn marker_modified_at(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+}
+
 fn pending_media_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     let cache_dir = app.path().app_cache_dir().map_err(|e| {
         AppError::from_code(
@@ -131,8 +216,6 @@ pub fn record_pending_media_artifacts<R: Runtime>(
     app: &AppHandle<R>,
     artifacts: PendingMediaArtifacts,
 ) -> AppResult<String> {
-    use std::io::Write;
-
     let sanitized = sanitize_pending_artifacts(artifacts);
 
     if sanitized.is_empty() {
@@ -153,25 +236,39 @@ pub fn record_pending_media_artifacts<R: Runtime>(
         )
     })?;
 
-    let mut file = fs::File::create(&marker).map_err(|e| {
+    // Registered before the file exists, so the sweep can never observe a marker on disk that is not
+    // yet known to belong to a creation in flight. Rolled back on the failure path below.
+    lock_live_markers().insert(name.clone());
+
+    if let Err(error) = write_marker_file(&marker, &contents) {
+        lock_live_markers().remove(&name);
+        return Err(error);
+    }
+
+    Ok(name)
+}
+
+/// Writes the marker durably: contents, `sync_all`, then a parent-directory fsync. Split out so the
+/// caller can roll its live-marker registration back on failure without duplicating the error mapping.
+fn write_marker_file(marker: &Path, contents: &str) -> AppResult<()> {
+    use std::io::Write;
+
+    let write_failed = |e: std::io::Error| {
         AppError::from_code(
             AppErrorCode::FileOpenFailed,
             format!("failed to write the pending media marker: {e}"),
         )
-    })?;
+    };
+
+    let mut file = fs::File::create(marker).map_err(write_failed)?;
 
     file.write_all(contents.as_bytes())
         .and_then(|_| file.sync_all())
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::FileOpenFailed,
-                format!("failed to write the pending media marker: {e}"),
-            )
-        })?;
+        .map_err(write_failed)?;
 
-    crate::services::filesystem::fsync_parent_dir(&marker);
+    crate::services::filesystem::fsync_parent_dir(marker);
 
-    Ok(name)
+    Ok(())
 }
 
 /// Removes a marker once its creation has finished - either the row was inserted, or the failure
@@ -188,6 +285,12 @@ pub fn clear_pending_media_artifacts<R: Runtime>(
         ));
     }
 
+    // The creation has resolved either way, so it is no longer in flight. Dropped unconditionally,
+    // before the unlink: if the unlink fails the marker stays on disk, and leaving it registered would
+    // pin it in memory for the rest of the session for no benefit - its mtime already keeps this
+    // session's sweep off it, and the next launch reconciles it as the leftover it now is.
+    lock_live_markers().remove(marker);
+
     let path = pending_media_dir(app)?.join(marker);
 
     match fs::remove_file(&path) {
@@ -203,6 +306,10 @@ pub fn clear_pending_media_artifacts<R: Runtime>(
 /// Reads every marker left behind by a previous run and returns what each one named, together with
 /// its file name. Unreadable or malformed markers are skipped and reported in the log rather than
 /// failing the sweep.
+///
+/// "Left behind by a previous run" is the load-bearing part, and [`marker_is_sweepable`] is what
+/// enforces it: a marker belonging to a creation this process still has in flight is skipped, so the
+/// sweep can never hand its artifacts to a reference count that has not seen its row yet.
 fn read_pending_markers<R: Runtime>(
     app: &AppHandle<R>,
 ) -> AppResult<Vec<(String, PendingMediaArtifacts)>> {
@@ -222,12 +329,21 @@ fn read_pending_markers<R: Runtime>(
 
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
 
-        if !is_marker_file_name(&name) || !entry.path().is_file() {
+        if !is_marker_file_name(&name) || !path.is_file() {
             continue;
         }
 
-        match fs::read_to_string(entry.path()).ok().as_deref() {
+        if !marker_is_sweepable(
+            is_live_marker(&name),
+            marker_modified_at(&path),
+            process_start(),
+        ) {
+            continue;
+        }
+
+        match fs::read_to_string(&path).ok().as_deref() {
             Some(contents) => match decode_marker(contents) {
                 Some(artifacts) => markers.push((name, artifacts)),
                 // A marker that names nothing usable has no work behind it; drop the file so it is
@@ -303,6 +419,7 @@ pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     /// A mock app is enough for the record/clear round trip: those only need `app.path()` and the
@@ -310,6 +427,15 @@ mod tests {
     /// per-OS one, shared with a running app, so the tree is never wiped.
     fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
         mock_builder().build(mock_context(noop_assets())).unwrap()
+    }
+
+    /// Backdates a marker so it reads as written before this process started, which is what makes it
+    /// a leftover of an earlier run as far as `marker_is_sweepable` is concerned. A freshly written
+    /// file is always newer than `process_start()` in a test, so a leftover has to be simulated.
+    fn set_modified_before_process_start(path: &Path) {
+        let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.set_modified(process_start() - Duration::from_secs(3600))
+            .unwrap();
     }
 
     fn artifacts(
@@ -377,7 +503,12 @@ mod tests {
     }
 
     #[test]
-    fn a_recorded_marker_is_readable_back_and_clears_cleanly() {
+    fn a_recorded_marker_is_not_swept_while_its_creation_is_in_flight() {
+        // The whole point of the two filters: between recording the marker and inserting the row the
+        // artifacts are in the library with nothing pointing at them, which is indistinguishable from
+        // a creation that died there. If the sweep consumed this marker it would unlink the file the
+        // user is adding right now and then delete the marker, leaving the row that lands moments
+        // later pointing at nothing and nothing behind to reconcile it.
         let app = mock_app();
         let handle = app.handle();
 
@@ -386,15 +517,16 @@ mod tests {
             Some("thumbnails/thumb_roundtrip.jpg"),
             None,
         );
-        let name = record_pending_media_artifacts(handle, recorded.clone()).unwrap();
+        let name = record_pending_media_artifacts(handle, recorded).unwrap();
         assert!(is_marker_file_name(&name));
 
-        // What the next launch would read back is exactly what was recorded.
-        let found = read_pending_markers(handle)
-            .unwrap()
-            .into_iter()
-            .find(|(marker_name, _)| marker_name == &name);
-        assert_eq!(found, Some((name.clone(), recorded)));
+        assert!(
+            !read_pending_markers(handle)
+                .unwrap()
+                .iter()
+                .any(|(marker_name, _)| marker_name == &name),
+            "a marker whose creation is still in flight must not be swept"
+        );
 
         clear_pending_media_artifacts(handle, &name).unwrap();
 
@@ -409,6 +541,55 @@ mod tests {
         // Clearing an already-cleared marker succeeds: the sweep may have consumed it first, and
         // the caller has nothing to do about that either way.
         clear_pending_media_artifacts(handle, &name).unwrap();
+    }
+
+    #[test]
+    fn a_marker_left_by_a_previous_run_is_read_back() {
+        // The counterpart to the test above, and it is what keeps that filter from silently turning
+        // the sweep off altogether: a marker that really is a leftover - not registered as in flight,
+        // and older than this process - must still be picked up with exactly what it named.
+        let app = mock_app();
+        let handle = app.handle();
+
+        let leftover = artifacts(Some("video/media_leftover.mp4"), None, None);
+        let name = format!("pending-{}.json", unique_temp_suffix());
+        let marker = pending_media_dir(handle).unwrap().join(&name);
+
+        // Written directly rather than through record_pending_media_artifacts, which would register
+        // it as in flight: this simulates the file an earlier run left behind.
+        fs::write(&marker, serde_json::to_string(&leftover).unwrap()).unwrap();
+        set_modified_before_process_start(&marker);
+
+        let found = read_pending_markers(handle)
+            .unwrap()
+            .into_iter()
+            .find(|(marker_name, _)| marker_name == &name);
+        assert_eq!(found, Some((name.clone(), leftover)));
+
+        clear_pending_media_artifacts(handle, &name).unwrap();
+    }
+
+    #[test]
+    fn marker_is_sweepable_only_for_a_leftover_of_an_earlier_run() {
+        let start = SystemTime::now();
+        let before = start - Duration::from_secs(60);
+        let after = start + Duration::from_secs(60);
+
+        // The only sweepable combination: not in flight, and written before this process existed.
+        assert!(marker_is_sweepable(false, Some(before), start));
+
+        // In flight, whatever the mtime says.
+        assert!(!marker_is_sweepable(true, Some(before), start));
+        assert!(!marker_is_sweepable(true, Some(after), start));
+
+        // This session's own marker, and the same-tick boundary: `<` is what keeps a marker written
+        // in the very tick of the process start out of the sweep.
+        assert!(!marker_is_sweepable(false, Some(after), start));
+        assert!(!marker_is_sweepable(false, Some(start), start));
+
+        // An unreadable mtime answers "leave it alone": acting on a wrong answer here deletes a file
+        // the user still wants, while refusing only defers the leftover by one launch.
+        assert!(!marker_is_sweepable(false, None, start));
     }
 
     #[test]

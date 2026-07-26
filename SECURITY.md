@@ -126,26 +126,41 @@ single-user desktop model - the import is user-triggered on a file the user just
 re-hashing immediately before the delete would only narrow, not close, the window (the classic
 TOCTOU shape). Recorded as an accepted residual rather than left implicit.
 
-##### Accepted residual: unreferenced-artifact cleanup is serialized by the frontend
+##### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
 `cleanup_unreferenced_media_artifacts` reference-counts each artifact path against the database and
 then unlinks the files nothing points at (`services/library_cleanup.rs`). Folding that count and the
 unlink into one backend call closed the multi-round-trip race the frontend used to have, but the two
-steps are still not atomic against a *concurrent* backend media creation that resolves to the same
+steps are still not atomic against a *concurrent* media creation that resolves to the same
 content-addressed path. A wrapping transaction cannot help - the unlink necessarily happens after
 any commit, since the filesystem cannot join a SQLite transaction - so only a lock keyed by artifact
 path, held across both the count and the unlink and taken by `insert_media` too, would close it.
 
-That lock is deliberately not built, and this is the one place in this document where a guarantee
-rests on frontend behavior rather than on the Rust layer alone: the interleaving needs two media
-creations in flight at once resolving to the same path, and the add-media modal is locked for the
-duration of one (`isModalLocked` covers the whole run), so a second cannot start. If that ever
-changes - a queue, a batch import, a background re-download, or a compromised renderer firing
-`insert_media` / `cleanup_unreferenced_media_artifacts` directly - the window becomes reachable, and
-the consequence is a row pointing at a file this deleted. It is called out here, against the rest of
-the document's "the Rust layer holds regardless of what the frontend sends" posture, so the exception
-is explicit rather than living only in the `plan_unreferenced_artifacts` code comment, and so a later
-change to the frontend locking is understood to reopen it.
+That lock is deliberately not built. There are exactly two callers, and each is kept out of the
+window by a different mechanism:
+
+- The **manual/Diagnostics path** (`cleanup_unreferenced_media_artifacts`, and the failure path of an
+  add-media run) needs two creations in flight at once resolving to the same path, and the add-media
+  modal is locked for the duration of one (`isModalLocked` covers the whole run), so a second cannot
+  start. This is the one guarantee in this document that rests on frontend behavior rather than on the
+  Rust layer alone, so a later change to that locking - a queue, a batch import, a background
+  re-download, or a compromised renderer firing `insert_media` /
+  `cleanup_unreferenced_media_artifacts` directly - reopens it.
+- The **startup sweep** (`services/pending_media.rs`, which hands a crashed creation's artifacts to
+  the same cleanup) is a backend caller and is *not* covered by that modal lock, so it carries its own
+  guard instead. Reference-counting cannot tell a creation that died before its row from one that has
+  simply not reached `insert_media` yet, so the sweep refuses any marker that is either registered as
+  in flight by this process or whose mtime is not older than the process itself
+  (`pending_media::marker_is_sweepable`). Without that, a creation running while the sweep fires would
+  have the file it just wrote unlinked and its marker deleted, leaving the row that lands moments
+  later pointing at nothing with nothing left to reconcile it. Every uncertain input to that decision
+  (an unreadable mtime, a same-tick write, a clock that moved backwards between runs) answers "leave
+  it alone", since refusing only defers a leftover by one launch while acting wrongly deletes a file
+  the user still wants.
+
+It is called out here, against the rest of the document's "the Rust layer holds regardless of what the
+frontend sends" posture, so the exception and the asymmetry between the two callers are explicit rather
+than living only in the `plan_unreferenced_artifacts` code comment.
 
 The security boundary these share is the same one this whole document is about: the Rust
 command layer holds regardless of what the frontend sends. React's default escaping (see
