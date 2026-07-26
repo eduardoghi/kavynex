@@ -141,9 +141,10 @@ drift in unnoticed.
    `x86_64-apple-darwin` on `macos-26`) - runs the same
    lint/test/build and fmt/clippy/Rust-test/TS-bindings-freshness/dependency-audit checks CI
    does (the release is manually dispatched, so nothing guarantees the chosen commit already
-   passed CI), and refuses to run if a tag named
-   `v<version>` (matching `package.json`'s version, e.g. `v1.2.0`) already exists on the
-   remote - bump the version again before re-releasing. The Windows-on-ARM and preview
+   passed CI), and refuses to run if `v<version>` (matching `package.json`'s version, e.g.
+   `v1.2.0`) already names a **published** release - bump the version again before
+   re-releasing. A tag left behind by a dispatch that failed partway is handled instead of
+   refused; see "When a release dispatch fails" below. The Windows-on-ARM and preview
    `ubuntu-26.04-arm` legs are the least-exercised path, so the first dispatch after adding
    them is what proves them end to end.
 4. The workflow creates a **draft** GitHub release tagged `v<version>` with auto-generated
@@ -158,6 +159,32 @@ drift in unnoticed.
 
 Installers are intentionally not code-signed (see `SECURITY.md`); do not add code-signing
 steps to the release workflow.
+
+### When a release dispatch fails
+
+The tag is created by `tauri-action` in step 3, i.e. *before* the `sbom` and `checksums` jobs
+run. A dispatch that built and signed everything and then failed one of those later gates
+therefore leaves the tag behind on a release that is still a draft. That is a normal outcome,
+not a corrupted state - and it does **not** cost a version number:
+
+- **A later job failed (asset-completeness, `latest.json`, SBOM upload).** Fix the cause and
+  re-dispatch the same version. The tag guard recognizes a tag whose release is still a draft
+  and lets the run through with a warning; `tauri-action` reuses the existing draft and
+  re-uploads its assets. The asset-completeness check is the most likely first failure, since
+  its arm64 asset-name patterns have not yet been confirmed by a real run - the run echoes the
+  actual asset names above the failure, which is what to compare the patterns against.
+- **A build leg failed.** Same thing: re-dispatch. The `sbom` and `checksums` jobs deliberately
+  run even when a leg fails (`if: ${{ !cancelled() }}`), so the incomplete draft is reported
+  rather than silently left publishable.
+- **The release was already published.** The guard refuses, correctly - a published release is
+  final. Bump the version and release again.
+- **The tag exists with no release behind it** (a draft deleted by hand). The guard refuses,
+  since nothing proves what the tag points at. Delete the tag on the remote
+  (`git push origin :refs/tags/v<version>`) and re-dispatch, or bump the version.
+
+Never delete or re-upload an asset on an *already published* release: `latest.json` and the
+minisign signatures are what the updater trusts, and rewriting a published release is the one
+operation the updater's rollback exposure (see `SECURITY.md`) actually depends on not happening.
 
 ## Commit conventions
 
