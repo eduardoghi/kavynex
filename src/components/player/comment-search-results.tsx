@@ -41,6 +41,14 @@ export function CommentSearchResults({
         count: rows.length,
         getScrollElement: () => scrollParentRef.current,
         estimateSize: () => ESTIMATED_ROW_HEIGHT,
+        // Key by the comment's own id, not by position. Rows here are measured (measureElement
+        // below), and the measurement cache is keyed by whatever this returns - so with the default
+        // index key, editing the search term keeps the heights measured for the *previous* query's
+        // rows and applies them to whatever now sits at each index. Comment rows vary a lot in
+        // height, so that is visible as rows overlapping or leaving gaps until they remeasure.
+        // `virtualRow.key` is what the rendered Box uses as its React key, so this fixes
+        // reconciliation identity at the same time.
+        getItemKey: (index) => rows[index]?.node.id ?? index,
         overscan: 6,
     });
 

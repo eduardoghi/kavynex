@@ -81,6 +81,11 @@ export function ChannelSidebar({
         count: channels.length,
         getScrollElement: () => scrollViewportRef.current,
         estimateSize: () => CHANNEL_ROW_ESTIMATE + CHANNEL_ROW_GAP,
+        // Key by channel id, not by position. The rows below take `measureElement` and are keyed to
+        // React by `channel.id`, so leaving this at the default index key indexes the measurement
+        // cache by position while React reconciles by identity: renaming, adding or deleting a
+        // channel reorders the list and a row inherits the height measured for a different channel.
+        getItemKey: (index) => channels[index]?.id ?? index,
         overscan: 6,
     });
 
