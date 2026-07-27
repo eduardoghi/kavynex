@@ -197,10 +197,18 @@ exclude_re = [
     # extension). The `with false`/`delete !` variants are killed by the migration extension test.
     'replace match guard !ext.trim\(\).is_empty\(\) with true in alternative_destination_path',
     # db_backup/mod.rs survivors that no unit test can deterministically kill (triaged 2026-07-19).
-    # is_recent compares `age < interval`; the `<`/`<=` boundary differs only when the file's age is
-    # exactly the interval to the second, which the real clock advancing between set and read never
-    # lets a test hit.
-    'replace < with <= in is_recent',
+    #
+    # There used to be a `replace < with <= in is_recent` entry here, excluded because the throttle
+    # boundary differs only when a file's age is exactly the interval to the second and a real clock
+    # advancing between the set and the read never lets a test hit that. It is gone for two reasons,
+    # both worth stating so it is not re-added: the comparison was extracted into the pure
+    # `duration_is_recent(now, modified, interval)`, which takes `now` as an argument and can
+    # therefore be handed the exact boundary; and `duration_is_recent_classifies_recent_stale_and_
+    # backward_clock` now asserts that boundary, so the mutant is caught rather than excluded
+    # (verified by applying it: the test fails on the `now - 60s` assertion). The entry also never
+    # matched anything after the extraction - the mutant is named for `duration_is_recent`, and
+    # `in is_recent` is not a substring of `in duration_is_recent`.
+    #
     # The WAL-checkpoint "still in use" branch (busy != 0 && frames > 0): forcing a busy checkpoint
     # with frames left needs a second connection holding a lock on the source during the import,
     # which no deterministic unit test can arrange. The valid (busy == 0) path is exercised by the
