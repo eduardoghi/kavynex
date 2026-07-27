@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use crate::utils::path::is_network_path;
+
 fn has_txt_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
@@ -11,6 +13,17 @@ pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     let normalized = value?.trim();
 
     if normalized.is_empty() {
+        return None;
+    }
+
+    // Refuse a UNC / network location before the `is_file()` below touches it. Merely stat'ing
+    // one on Windows makes the OS authenticate to `host` over SMB, leaking the user's NTLM hash
+    // to whoever controls it - and this value arrives raw over IPC, so the check has to happen
+    // here rather than resting on the picker. Same guard, for the same reason, as
+    // library::resolve_path_inside_library and thumbnail_temp::validate_source_media_path; this
+    // path was the one caller-supplied path left without it. A cookies file kept on a share
+    // loses only the ability to be pointed at directly (copy it locally first).
+    if is_network_path(normalized) {
         return None;
     }
 
@@ -134,6 +147,52 @@ mod tests {
         assert_eq!(normalize_cookies_path(Some(file.to_str().unwrap())), None);
 
         let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn normalize_cookies_path_rejects_a_network_location() {
+        // A UNC path must be refused before `is_file()` stats it: on Windows that alone
+        // authenticates to the host over SMB and leaks the user's NTLM hash. Every spelling
+        // Windows resolves to a share is covered, including the mixed separators a literal
+        // `\\` prefix match would miss. The `.txt` extension is deliberately correct on each
+        // one, so only the network check can be what rejects them.
+        for value in [
+            r"\\evil\share\cookies.txt",
+            "//evil/share/cookies.txt",
+            r"/\evil\share\cookies.txt",
+            r"\/evil\share\cookies.txt",
+            r"\\?\UNC\evil\share\cookies.txt",
+            "   \\\\evil\\share\\cookies.txt   ",
+        ] {
+            assert_eq!(
+                normalize_cookies_path(Some(value)),
+                None,
+                "a network cookies path should be refused: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn append_auth_args_drops_a_network_cookies_path_and_falls_back_to_the_browser() {
+        // The refusal above must reach the argv builder: a rejected cookies file leaves
+        // `--cookies` off entirely rather than passing the UNC through to yt-dlp, and the
+        // browser source (which normally loses the precedence contest) takes over.
+        let mut args: Vec<String> = Vec::new();
+        append_auth_args(
+            &mut args,
+            Some("firefox"),
+            Some(r"\\evil\share\cookies.txt"),
+        );
+
+        assert_eq!(
+            args,
+            vec!["--cookies-from-browser".to_string(), "firefox".to_string()]
+        );
+
+        // With no browser to fall back to, nothing is appended at all.
+        let mut only_unc: Vec<String> = Vec::new();
+        append_auth_args(&mut only_unc, None, Some(r"\\evil\share\cookies.txt"));
+        assert!(only_unc.is_empty());
     }
 
     #[test]
