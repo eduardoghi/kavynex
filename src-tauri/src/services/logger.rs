@@ -136,16 +136,13 @@ pub fn error(scope: &str, message: impl AsRef<str>) {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     use super::*;
 
     fn temp_log(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("kavynex_log_{label}_{nanos}"));
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex_log_{label}_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
         fs::create_dir_all(&dir).unwrap();
         dir.join("kavynex.log")
     }

@@ -214,18 +214,11 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_library_dir(tag: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
         let dir = std::env::temp_dir().join(format!(
-            "kavynex-live-chat-cmd-{tag}-{}-{}",
-            std::process::id(),
-            nanos
+            "kavynex-live-chat-cmd-{tag}-{}",
+            crate::utils::naming::unique_temp_suffix()
         ));
         fs::create_dir_all(dir.join("live_chat")).unwrap();
         dir

@@ -56,18 +56,12 @@ pub fn file_hash(path: &Path) -> AppResult<String> {
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn file_hash_matches_known_sha256() {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
         let path = std::env::temp_dir().join(format!(
-            "kavynex-hash-test-{}-{}.bin",
-            std::process::id(),
-            nanos
+            "kavynex-hash-test-{}.bin",
+            crate::utils::naming::unique_temp_suffix()
         ));
 
         File::create(&path).unwrap().write_all(b"abc").unwrap();

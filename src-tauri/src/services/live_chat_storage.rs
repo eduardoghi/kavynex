@@ -448,14 +448,12 @@ pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompre
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!("kavynex_lcs_{label}_{nanos}"))
+        std::env::temp_dir().join(format!(
+            "kavynex_lcs_{label}_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ))
     }
 
     #[test]

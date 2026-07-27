@@ -276,13 +276,10 @@ mod tests {
 
     #[test]
     fn destination_is_inside_dir_detects_a_target_within_the_protected_directory() {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-        let protected = std::env::temp_dir().join(format!("kavynex-export-guard-{nanos}"));
+        let protected = std::env::temp_dir().join(format!(
+            "kavynex-export-guard-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
         std::fs::create_dir_all(&protected).unwrap();
 
         // A destination directly inside the protected directory (e.g. overwriting kavynex.db.bak).
@@ -290,7 +287,12 @@ mod tests {
         assert!(destination_is_inside_dir(&inside, &protected));
 
         // A destination in a sibling directory is not inside it, even though its name is a prefix.
-        let sibling = std::env::temp_dir().join(format!("kavynex-export-guard-{nanos}-elsewhere"));
+        // Built by extending `protected`'s own name rather than from a second unique suffix, which
+        // would not share that prefix - and the prefix is the whole point of this assertion.
+        let sibling = protected.with_file_name(format!(
+            "{}-elsewhere",
+            protected.file_name().unwrap().to_string_lossy()
+        ));
         std::fs::create_dir_all(&sibling).unwrap();
         let outside = sibling.join("backup.db");
         assert!(!destination_is_inside_dir(&outside, &protected));

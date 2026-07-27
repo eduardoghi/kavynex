@@ -57,19 +57,14 @@ pub fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn unique_temp_path(suffix: &str) -> std::path::PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|value| value.as_nanos())
-            .unwrap_or(0);
-
+    /// `file_name` goes last, and has to: callers pass a real file name (`cookies.txt`,
+    /// `cookies.dat`, `cookies.TXT`) because the function under test gates on the `.txt`
+    /// extension, so anything appended after it would strip the extension the assertion depends on.
+    fn unique_temp_path(file_name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "kavynex-cookies-test-{}-{}-{}",
-            std::process::id(),
-            nanos,
-            suffix
+            "kavynex-cookies-test-{}-{file_name}",
+            crate::utils::naming::unique_temp_suffix()
         ))
     }
 

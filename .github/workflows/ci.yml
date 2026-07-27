@@ -204,6 +204,34 @@ jobs:
                   cargo test --manifest-path src-tauri/Cargo.toml --locked --lib export_bindings
                   git diff --exit-code -- src/types/generated
 
+            # A temporary path built from pid + nanos alone collides when two callers land in the
+            # same clock tick, and that was a real intermittent failure here: two tests took the
+            # same directory and one deleted the other's files, surfacing on macOS (coarser timer)
+            # nowhere near its cause. `utils::naming::unique_temp_suffix` adds the monotonic counter
+            # that actually fixes it.
+            #
+            # This is a lint rather than a convention because the convention kept losing. It was
+            # written as a doc comment naming the three helpers to convert, and the next sweep -
+            # whose commit message claimed "every temp-directory test helper" - missed eight more
+            # whose names simply were not on that list, three of which had drifted to a bare
+            # timestamp with no pid at all. So the property is enforced instead of the naming: only
+            # naming.rs derives anything from a raw nanosecond timestamp. Anything else that
+            # genuinely needs one (a duration measurement, not a path) belongs behind its own
+            # helper, which is what a failure here should prompt.
+            - name: Verify temp paths are built from the shared unique suffix
+              if: matrix.platform == 'ubuntu-26.04'
+              run: |
+                  offenders=$(grep -rn 'as_nanos()' src-tauri/src --include='*.rs' \
+                      | grep -v '^src-tauri/src/utils/naming.rs:' || true)
+
+                  if [ -n "$offenders" ]; then
+                      echo "::error::build temporary paths with utils::naming::unique_temp_suffix() instead of a raw timestamp"
+                      printf '%s\n' "$offenders"
+                      exit 1
+                  fi
+
+                  echo "Every temporary path is built from the shared unique suffix."
+
     audit:
         name: Cargo audit and deny
         # Pinned like the rust job below; see its comment on why `-latest` is avoided repo-wide.

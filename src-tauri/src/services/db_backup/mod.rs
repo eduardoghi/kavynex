@@ -597,11 +597,10 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     fn temp_dir(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("kavynex_dbbak_{label}_{nanos}"));
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex_dbbak_{label}_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

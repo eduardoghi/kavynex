@@ -11,12 +11,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// collision-free. Shared by the download, thumbnail and atomic-file-replace paths, which all stage
 /// work under uniquely named temp entries.
 ///
-/// **Every `unique_test_dir`/`unique_dir`/`unique_temp_db` test helper builds its name from this too,
-/// and a new one must.** Those helpers were originally hand-rolled from pid + nanos, and the missing
+/// **Any test helper that builds a unique temporary path builds it from this too, whatever that
+/// helper is called.** Those helpers were originally hand-rolled from pid + nanos, and the missing
 /// counter was a real intermittent CI failure: two tests starting in the same tick got the same temp
 /// directory and one deleted the other's files, which surfaced on macOS (coarser timer) as a failure
 /// nowhere near its cause. The pattern was fixed in one helper and re-appeared by copy-paste in
 /// sixteen more, so the fix is to delegate here rather than to reproduce the three components.
+///
+/// The rule is written that way on purpose. It used to name three helpers (`unique_test_dir`,
+/// `unique_dir`, `unique_temp_db`), and a later sweep that believed it had converted every one of
+/// them missed eight more (`temp_dir`, `temp_log`, `unique_temp_path`, `unique_library_dir` and
+/// friends) simply because their names were not on that list. Three of those eight had drifted
+/// further still and carried only the timestamp, without even the pid. Match on what the helper
+/// *does*, never on what it is called. `ci.yml` now enforces this rather than trusting it.
 pub fn unique_temp_suffix() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
