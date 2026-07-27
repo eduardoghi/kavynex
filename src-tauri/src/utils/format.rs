@@ -71,6 +71,34 @@ pub fn codec_is_present(codec: &Option<String>) -> bool {
         .unwrap_or(false)
 }
 
+/// Renders a byte count as a human-readable size (`0 B`, `10 B`, `1.00 KB`, `2.34 GB`).
+///
+/// Shared rather than defined per caller: the settings dialog shows the library size and the
+/// database size next to each other, and two formatters that rounded or spelled units differently
+/// would read as a bug in the numbers rather than as a formatting difference. Whole bytes below
+/// 1 KB, two decimals above it.
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+
+    let mut value = bytes as f64;
+    let mut unit_index = 0usize;
+
+    while value >= 1024.0 && unit_index < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit_index += 1;
+    }
+
+    if unit_index == 0 {
+        format!("{} {}", bytes, UNITS[unit_index])
+    } else {
+        format!("{value:.2} {}", UNITS[unit_index])
+    }
+}
+
 pub fn normalize_yt_dlp_upload_date(upload_date: Option<String>) -> Option<String> {
     let value = upload_date?;
     let trimmed = value.trim();
@@ -89,6 +117,17 @@ pub fn normalize_yt_dlp_upload_date(upload_date: Option<String>) -> Option<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_bytes_formats_values_consistently() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(10), "10 B");
+        assert_eq!(format_bytes(1024), "1.00 KB");
+        assert_eq!(format_bytes(1024 * 1024), "1.00 MB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.00 GB");
+        // Saturates at the largest unit rather than inventing one past TB.
+        assert_eq!(format_bytes(2 * 1024_u64.pow(5)), "2048.00 TB");
+    }
 
     #[test]
     fn media_subdir_from_extension_detects_audio() {

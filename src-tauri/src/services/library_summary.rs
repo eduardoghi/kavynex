@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::services::filesystem::dir_entry_is_symlink;
+use crate::utils::format::format_bytes;
 use crate::{AppError, AppErrorCode, AppResult};
 
 // u64 counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs
@@ -20,28 +21,6 @@ pub struct LibrarySummaryInfo {
     pub audio_files: u64,
     #[ts(type = "number")]
     pub thumbnail_files: u64,
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-
-    let mut value = bytes as f64;
-    let mut unit_index = 0usize;
-
-    while value >= 1024.0 && unit_index < UNITS.len() - 1 {
-        value /= 1024.0;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 {
-        format!("{} {}", bytes, UNITS[unit_index])
-    } else {
-        format!("{value:.2} {}", UNITS[unit_index])
-    }
 }
 
 fn calculate_directory_size(path: &Path) -> AppResult<u64> {
@@ -192,14 +171,6 @@ mod tests {
             "kavynex-library-summary-test-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
-    }
-
-    #[test]
-    fn format_bytes_formats_values_consistently() {
-        assert_eq!(format_bytes(0), "0 B");
-        assert_eq!(format_bytes(10), "10 B");
-        assert_eq!(format_bytes(1024), "1.00 KB");
-        assert_eq!(format_bytes(1024 * 1024), "1.00 MB");
     }
 
     #[test]
