@@ -338,12 +338,15 @@ certificate is a recurring cost that is hard to justify here. In practice this m
 ### When these three controls started applying
 
 `SHA256SUMS.txt` and the provenance attestation were both added to the release workflow after
-v1.1.1 shipped (the `checksums` job and `actions/attest-build-provenance` respectively), so no
-release published before them carries either, and `gh attestation verify` reports *no
-attestation* for those installers rather than a failed check. The minisign signature on the
-updater artifacts predates both and applies to every release. This section is what the next
-release onward looks like; it is recorded here rather than quietly implied, because "verify the
-hash" is useless advice if the file it names is not there.
+v1.1.1 shipped (the `checksums` job and `actions/attest-build-provenance` respectively), so
+**v1.2.0 is the first release carrying either**. On v1.1.1 and earlier, `gh attestation verify`
+reports *no attestation* for an installer rather than a failed check. The minisign signature on
+the updater artifacts predates both and applies to every release. This is recorded rather than
+quietly implied, because "verify the hash" is useless advice if the file it names is not there.
+
+Both were exercised against v1.2.0 after it was published: the published `SHA256SUMS.txt` matches
+a freshly downloaded installer, and `gh attestation verify` on that installer resolves to this
+repository's `release.yml` at the commit the release was built from.
 
 ### Build provenance
 
@@ -379,8 +382,8 @@ The SBOM covers the *native* dependency tree only. The frontend's build-time npm
 into the webview assets rather than being a runtime dependency of the binary, and is already
 advisory- and license-gated (`frontend-audit` job, `scripts/check-js-advisories.js` /
 `scripts/check-js-licenses.js`) and pinned in `pnpm-lock.yaml`. Like `SHA256SUMS.txt` and the
-provenance attestation, the SBOM applies from the first release published after it was added, not
-retroactively (see "When these three controls started applying" above).
+provenance attestation, the SBOM applies from v1.2.0 onward, not retroactively (see "When these
+three controls started applying" above).
 
 ### Accepted risk: the signing key is present while dependencies build
 

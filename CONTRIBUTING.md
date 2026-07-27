@@ -145,8 +145,10 @@ drift in unnoticed.
    `v1.2.0`) already names a **published** release - bump the version again before
    re-releasing. A tag left behind by a dispatch that failed partway is handled instead of
    refused; see "When a release dispatch fails" below. The Windows-on-ARM and preview
-   `ubuntu-26.04-arm` legs are the least-exercised path, so the first dispatch after adding
-   them is what proves them end to end.
+   `ubuntu-26.04-arm` legs first shipped in v1.2.0 and are now proven end to end; the one
+   thing that leg needed was `xdg-utils`, which the arm64 runner image does not carry and the
+   AppImage bundler refuses to run without (the apt step installs it explicitly on both Linux
+   legs for that reason).
 4. The workflow creates a **draft** GitHub release tagged `v<version>` with auto-generated
    notes (every commit subject since the previous tag) and uploads the built installers
    plus signed updater artifacts. A separate `sbom` job publishes a CycloneDX SBOM of the
@@ -170,9 +172,13 @@ not a corrupted state - and it does **not** cost a version number:
 - **A later job failed (asset-completeness, `latest.json`, SBOM upload).** Fix the cause and
   re-dispatch the same version. The tag guard recognizes a tag whose release is still a draft
   and lets the run through with a warning; `tauri-action` reuses the existing draft and
-  re-uploads its assets. The asset-completeness check is the most likely first failure, since
-  its arm64 asset-name patterns have not yet been confirmed by a real run - the run echoes the
-  actual asset names above the failure, which is what to compare the patterns against.
+  re-uploads its assets. The asset-completeness check is the most likely first failure whenever
+  a bundler's naming shifts - the run echoes the actual asset names above the failure, which is
+  what to compare the patterns against. Every name in that list was confirmed against the v1.2.0
+  dispatch, and the lesson from it was that the list is perishable in both directions: the arm64
+  names, flagged in the workflow as unconfirmed, all held, while the macOS `.app.tar.gz` names -
+  the pair that *had* been observed on v1.1.1 - had since gained the version and were the ones
+  that broke.
 - **A build leg failed.** Same thing: re-dispatch. The `sbom` and `checksums` jobs deliberately
   run even when a leg fails (`if: ${{ !cancelled() }}`), so the incomplete draft is reported
   rather than silently left publishable.

@@ -166,10 +166,16 @@ jobs:
                     # target is already aarch64, so they need no `--target` and no extra rustup
                     # target, exactly like the x64 ubuntu/windows legs above. ubuntu-26.04-arm keeps
                     # the same OS major as the x64 Linux leg (pin symmetry) at the cost of being a
-                    # public-preview image, so it can queue or be less stable than the GA
-                    # ubuntu-24.04-arm. windows-11-arm is the GA Windows-on-ARM image; its Tauri
-                    # bundler toolchain (NSIS/WiX/WebView2) is the least-exercised path here, so the
-                    # first release dispatch is what actually proves these two legs end to end.
+                    # public-preview image, so it can queue more than the GA ubuntu-24.04-arm.
+                    # windows-11-arm is the GA Windows-on-ARM image.
+                    #
+                    # Both shipped in v1.2.0 and are proven end to end. Worth recording what the one
+                    # failure actually was, since "preview image" is the tempting explanation and was
+                    # the wrong one: the aarch64 leg died bundling the AppImage because the arm64
+                    # runner image does not carry xdg-utils, which that bundler requires and the x64
+                    # image happens to provide. Switching to ubuntu-24.04-arm would not have helped;
+                    # installing the package did. Move to the GA image only if queueing becomes a
+                    # real problem, not on a suspicion that preview means unstable.
                     - platform: ubuntu-26.04-arm
                       args: ""
 
