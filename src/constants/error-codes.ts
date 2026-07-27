@@ -11,6 +11,11 @@ export const DATABASE_SCHEMA_TOO_NEW_ERROR_CODE = "DATABASE_SCHEMA_TOO_NEW" as c
 
 export const INVALID_URL_ERROR_CODE = "INVALID_URL" as const;
 export const INVALID_LIBRARY_PATH_ERROR_CODE = "INVALID_LIBRARY_PATH" as const;
+// Raised when the library being registered in the asset scope was already released this session
+// (the app migrated away from it and back). Tauri's scope cannot withdraw a forbid, so the grant
+// would succeed while every media file stayed unreadable - this code is what turns that into a
+// message telling the user to restart. See src-tauri/src/commands/security.rs.
+export const ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE = "ASSET_SCOPE_RESTART_REQUIRED" as const;
 export const INVALID_DIRECTORY_PATH_ERROR_CODE = "INVALID_DIRECTORY_PATH" as const;
 export const READ_DIR_FAILED_ERROR_CODE = "READ_DIR_FAILED" as const;
 export const INVALID_MEDIA_PATH_ERROR_CODE = "INVALID_MEDIA_PATH" as const;
@@ -119,6 +124,7 @@ export const KNOWN_ERROR_CODES = [
     TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE,
     DESTINATION_ALREADY_EXISTS_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
+    ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
     PATH_OUTSIDE_BASE_DIR_ERROR_CODE,
     CHANNEL_ALREADY_EXISTS_ERROR_CODE,
     INVALID_YOUTUBE_HANDLE_ERROR_CODE,

@@ -6,6 +6,9 @@ import { getDefaultAppSettings } from "./use-app-settings-storage";
 import { registerLibraryAssetScope } from "../services/asset-scope-service";
 import { migrateLiveChatToLibrary } from "../services/live-chat-service";
 import { logError } from "../utils/app-logger";
+import { parseAppError } from "../utils/app-error";
+import { toUserFriendlyError } from "../utils/user-friendly-error";
+import { ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE } from "../constants/error-codes";
 
 type UseAppSettingsOptions = {
     onError: (message: string) => void;
@@ -108,6 +111,16 @@ export function useAppSettings({
             logError("asset-scope", "Failed to register library asset scope.", error, {
                 libraryPath,
             });
+
+            // One failure here is worth interrupting the user for, against the log-only default
+            // above. Changing the library folder and changing it back within a session leaves the
+            // scope permanently refusing that folder (see commands/security.rs), so *every*
+            // thumbnail and video stops loading - and the fix, restarting, is something only the
+            // user can do and would never guess. Every other failure is genuinely partial and
+            // stays in the log.
+            if (parseAppError(error).code === ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE) {
+                onError(toUserFriendlyError(error));
+            }
         });
 
         // Best effort: move any live chat files still in the old app-data location into the
@@ -117,7 +130,10 @@ export function useAppSettings({
                 libraryPath,
             });
         });
-    }, [settings.libraryPath]);
+        // `onError` joins the deps rather than being suppressed: it is `useErrorModal`'s
+        // `showError`, a `useCallback(..., [])` that never changes identity, so listing it keeps the
+        // array honest without making this effect re-run any more often than the library path does.
+    }, [settings.libraryPath, onError]);
 
     // Reference-stable controller (its identity only changes when a field does), via useMemoObject
     // rather than a hand-maintained useMemo dependency array - so adding a field here can never

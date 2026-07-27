@@ -19,6 +19,14 @@ use crate::AppResult;
 /// `convertFileSrc` for the rest of the session. Best effort: a failure only leaves the stale
 /// grant in place (the pre-existing behavior) and must not fail the migration itself.
 fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
+    // A forbid is permanent for the rest of the session - Tauri's scope checks the forbidden
+    // patterns first and offers no way to withdraw one - so record what is being given up before
+    // doing it. Migrating back to this library later would otherwise re-grant it to no effect and
+    // leave every thumbnail and video silently unreadable; register_library_asset_scope reads this
+    // and refuses with a "restart required" instead. Recorded first so the two cannot disagree even
+    // if a forbid below fails partway.
+    crate::commands::security::record_forbidden_library_dirs(std::path::Path::new(dir));
+
     // register_library_asset_scope grants the four managed subdirectories, not the root, so forbid
     // the same set here. A forbid always wins over an allow, closing the window where a file that
     // later lands in the old library's managed trees would still be readable through convertFileSrc.

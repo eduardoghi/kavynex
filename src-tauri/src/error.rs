@@ -19,6 +19,7 @@ pub enum AppErrorCode {
     BlockingTaskJoinFailed,
 
     AssetScopeRegisterFailed,
+    AssetScopeRestartRequired,
 
     NoDatabaseBackupAvailable,
     NoDatabaseImportToUndo,
@@ -174,6 +175,7 @@ impl AppErrorCode {
             Self::BlockingTaskJoinFailed => "BLOCKING_TASK_JOIN_FAILED",
 
             Self::AssetScopeRegisterFailed => "ASSET_SCOPE_REGISTER_FAILED",
+            Self::AssetScopeRestartRequired => "ASSET_SCOPE_RESTART_REQUIRED",
 
             Self::NoDatabaseBackupAvailable => "NO_DATABASE_BACKUP_AVAILABLE",
             Self::NoDatabaseImportToUndo => "NO_DATABASE_IMPORT_TO_UNDO",

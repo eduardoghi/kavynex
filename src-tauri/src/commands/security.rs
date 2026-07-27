@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use tauri::{AppHandle, Manager};
 
@@ -58,6 +60,58 @@ pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The managed directories this session has forbidden in the asset scope, i.e. the libraries the
+/// app migrated *away* from while running.
+///
+/// This set exists because Tauri's asset scope is append-only in both directions: `is_allowed`
+/// consults the forbidden patterns first and returns false on a match, and there is no API to
+/// withdraw one. So once `revoke_directory_from_asset_scope` (commands/library.rs) forbids a
+/// library's managed subdirectories, re-granting them later in the same session does nothing -
+/// `allow_directory` succeeds, the forbid still wins, and every `convertFileSrc` into that library
+/// resolves to a blocked asset.
+///
+/// That is reachable through an ordinary settings flow: move the library to a new folder, change
+/// your mind, move it back. Without this set the second migration reports success, the grid renders
+/// every item, and not one thumbnail or video loads, with nothing said. Recording what was forbidden
+/// lets the re-registration say so instead.
+fn session_forbidden_dirs() -> &'static Mutex<HashSet<PathBuf>> {
+    static FORBIDDEN: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    FORBIDDEN.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// The critical sections are a single insert or membership test, so a panic inside one is not a real
+/// possibility; recover the guard rather than let poisoning propagate into a settings command.
+fn lock_forbidden_dirs() -> MutexGuard<'static, HashSet<PathBuf>> {
+    session_forbidden_dirs()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// True when any managed subdirectory of `library_root` has already been forbidden this session.
+///
+/// Pure over the set it is handed, so both directions can be pinned by a test without a Tauri
+/// runtime and without touching process-wide state. Checks the managed subdirectories rather than
+/// the root because those are exactly what the grant and the revoke operate on.
+pub(crate) fn any_managed_dir_is_forbidden(
+    library_root: &Path,
+    forbidden: &HashSet<PathBuf>,
+) -> bool {
+    managed_asset_scope_dirs(library_root)
+        .iter()
+        .any(|dir| forbidden.contains(dir))
+}
+
+/// Records that `library_root`'s managed subdirectories were forbidden in the asset scope, so a
+/// later attempt to re-authorize that library is refused with a clear reason instead of silently
+/// succeeding into an unreadable library.
+pub(crate) fn record_forbidden_library_dirs(library_root: &Path) {
+    let mut forbidden = lock_forbidden_dirs();
+
+    for dir in managed_asset_scope_dirs(library_root) {
+        forbidden.insert(dir);
+    }
+}
+
 /// Authorizes the asset protocol to read files inside the user's library directory.
 ///
 /// The requested path is never trusted on its own: it must match the library path
@@ -86,6 +140,23 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
     // frontend (settings are persisted before the library path state that triggers the
     // registration changes), so a legitimate request always matches.
     ensure_configured_library_path(&app, &trimmed).await?;
+
+    // Refuse rather than succeed into a library the scope will keep refusing to serve (see
+    // session_forbidden_dirs). The guard runs after the path check above so an unauthorized path
+    // still fails as one, and the lock is released before the blocking work below rather than held
+    // across it.
+    let already_forbidden = {
+        let forbidden = lock_forbidden_dirs();
+        any_managed_dir_is_forbidden(Path::new(&trimmed), &forbidden)
+    };
+
+    if already_forbidden {
+        return Err(AppError::from_code(
+            AppErrorCode::AssetScopeRestartRequired,
+            "this library was released earlier in this session and cannot be served again until \
+             the app restarts",
+        ));
+    }
 
     // canonicalize() and the asset scope registration are blocking filesystem/IPC calls;
     // run them off the async runtime's worker threads, consistent with other commands
@@ -211,6 +282,62 @@ mod tests {
         assert!(dirs.contains(&root.join("thumbnails")));
         assert!(dirs.contains(&root.join("live_chat")));
         assert!(!dirs.contains(&root.to_path_buf()));
+    }
+
+    #[test]
+    fn a_library_is_not_forbidden_until_one_of_its_managed_dirs_is() {
+        let library = Path::new("/library");
+        let mut forbidden = HashSet::new();
+
+        assert!(
+            !any_managed_dir_is_forbidden(library, &forbidden),
+            "a library nothing has revoked must still be authorizable"
+        );
+
+        // A single revoked subdirectory is enough: the scope refuses that tree for the rest of the
+        // session, so re-registering the library would leave part of it unreadable.
+        forbidden.insert(library.join("video"));
+
+        assert!(any_managed_dir_is_forbidden(library, &forbidden));
+    }
+
+    #[test]
+    fn forbidding_one_library_leaves_a_different_one_authorizable() {
+        // The normal migration is A -> B, and B must not inherit A's revocation - otherwise the
+        // guard would break the very flow it is meant to protect. Also covers the prefix case: a
+        // sibling whose path starts with the revoked one is a different library.
+        let old_library = Path::new("/library");
+        let forbidden: HashSet<PathBuf> =
+            managed_asset_scope_dirs(old_library).into_iter().collect();
+
+        assert!(any_managed_dir_is_forbidden(old_library, &forbidden));
+        assert!(!any_managed_dir_is_forbidden(
+            Path::new("/library-2"),
+            &forbidden
+        ));
+        assert!(!any_managed_dir_is_forbidden(
+            Path::new("/elsewhere"),
+            &forbidden
+        ));
+    }
+
+    #[test]
+    fn recording_a_revoked_library_marks_every_managed_dir_it_owns() {
+        // Pins that the recording side covers the same set the grant and the revoke walk, so a
+        // library revoked through commands/library.rs is recognized whichever subdirectory the
+        // re-registration would have started from.
+        let library = unique_test_dir("forbidden-record");
+        record_forbidden_library_dirs(&library);
+
+        let forbidden = lock_forbidden_dirs();
+
+        for managed_dir in managed_asset_scope_dirs(&library) {
+            assert!(
+                forbidden.contains(&managed_dir),
+                "{} should be recorded as forbidden",
+                managed_dir.display()
+            );
+        }
     }
 
     #[test]

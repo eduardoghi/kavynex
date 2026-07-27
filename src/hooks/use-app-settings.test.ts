@@ -334,6 +334,47 @@ describe("useAppSettings", () => {
         });
     });
 
+    it("surfaces the restart-required asset scope failure to the user, not just the log", async () => {
+        // Registering the scope is otherwise best effort and log-only, and that is right for a
+        // partial failure. This one is not partial: the library folder was changed and changed back
+        // in the same session, so the scope refuses it permanently and no media loads at all. The
+        // only fix is restarting, which the user cannot guess from an empty grid.
+        const onError = vi.fn();
+        mockedRegisterLibraryAssetScope.mockRejectedValueOnce({
+            code: "ASSET_SCOPE_RESTART_REQUIRED",
+            message: "this library was released earlier in this session",
+        });
+
+        renderHook(() => useAppSettings({ onError }));
+
+        await waitFor(() => {
+            expect(onError).toHaveBeenCalledTimes(1);
+        });
+
+        expect(onError.mock.calls[0]?.[0]).toContain("restarted");
+    });
+
+    it("keeps an ordinary asset scope failure out of the user's way", async () => {
+        // The counterpart to the test above: escalating every scope failure would put a modal in
+        // front of the user for something that leaves the app working, which is why the log-only
+        // default exists. Only the restart-required code is worth interrupting for.
+        const onError = vi.fn();
+        mockedRegisterLibraryAssetScope.mockRejectedValueOnce(new Error("scope failure"));
+
+        renderHook(() => useAppSettings({ onError }));
+
+        await waitFor(() => {
+            expect(mockedLogError).toHaveBeenCalledWith(
+                "asset-scope",
+                "Failed to register library asset scope.",
+                expect.anything(),
+                { libraryPath: "/library" }
+            );
+        });
+
+        expect(onError).not.toHaveBeenCalled();
+    });
+
     it("logs an error when migrating live chat into the library fails", async () => {
         mockedGetDefaultAppSettings.mockReturnValue({
             importMode: "copy",

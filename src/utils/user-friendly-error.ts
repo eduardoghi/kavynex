@@ -13,6 +13,7 @@ import {
     READ_DIR_FAILED_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
+    ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
     INVALID_MEDIA_PATH_ERROR_CODE,
     INVALID_THUMBNAIL_PATH_ERROR_CODE,
     INVALID_TEMP_THUMBNAIL_PATH_ERROR_CODE,
@@ -74,6 +75,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [INVALID_DIRECTORY_PATH_ERROR_CODE]: "Choose a valid folder.",
     [INVALID_LIBRARY_PATH_ERROR_CODE]: "Configure a valid library folder before continuing.",
     [INVALID_LIBRARY_MIGRATION_ERROR_CODE]: "The selected library migration path is not valid.",
+    [ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE]:
+        "The library folder was changed and then changed back during this session. Your files are safe, but Kavynex has to be restarted before it can play them again.",
     [INVALID_MEDIA_PATH_ERROR_CODE]: "The selected media item is invalid.",
     [MEDIA_FILE_NOT_FOUND_ERROR_CODE]:
         "The media file is missing from the library folder. It may have been moved or deleted outside Kavynex, or it may be on a drive that is not connected.",
