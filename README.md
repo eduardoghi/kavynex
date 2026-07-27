@@ -32,13 +32,16 @@ Prebuilt installers and packages are available on the latest GitHub release:
 
 ### Windows
 
-Download the Windows installer from the latest release:
+Download the installer matching your processor - `arm64` for a Windows on ARM device (Snapdragon
+and similar), `x64` for everything else:
 
 - `kavynex_*_x64-setup.exe`
+- `kavynex_*_arm64-setup.exe`
 
 The `.msi` package is also available if you prefer it:
 
 - `kavynex_*_x64_en-US.msi`
+- `kavynex_*_arm64_en-US.msi`
 
 ### macOS
 
@@ -49,11 +52,16 @@ Download the package according to your Mac:
 
 ### Linux
 
-Choose the package according to your distribution:
+Choose the package according to your distribution, in the build matching your processor - the
+`amd64`/`x86_64` files are for a normal 64-bit PC, the `arm64`/`aarch64` ones for an ARM machine
+(a Raspberry Pi 5, an Ampere server, an ARM cloud VM):
 
-- AppImage: `kavynex_*_amd64.AppImage`
-- Debian/Ubuntu: `kavynex_*_amd64.deb`
-- Fedora/RHEL/openSUSE: `kavynex-*.x86_64.rpm`
+- AppImage: `kavynex_*_amd64.AppImage` / `kavynex_*_aarch64.AppImage`
+- Debian/Ubuntu: `kavynex_*_amd64.deb` / `kavynex_*_arm64.deb`
+- Fedora/RHEL/openSUSE: `kavynex-*.x86_64.rpm` / `kavynex-*.aarch64.rpm`
+
+(The architecture is spelled differently by each packaging format - that is the format's convention,
+not an inconsistency in the build.)
 
 ### Verifying a download
 
@@ -69,10 +77,9 @@ SmartScreen/Gatekeeper will warn on first run. To confirm a download is authenti
 
   A successful check confirms the file was built by this repository's release workflow.
 
-Both apply from the next release onward: the checksum and provenance steps were added to the
-release workflow after v1.1.1 was published, so that release - the latest at the time of
-writing - has neither, and `gh attestation verify` will report no attestation for it rather
-than a failure to trust.
+Both apply from v1.2.0 onward: the checksum and provenance steps were added to the release
+workflow after v1.1.1 was published, so v1.1.1 and earlier have neither, and `gh attestation
+verify` will report *no attestation* for those installers rather than a failure to trust.
 
 ## Screenshots
 
