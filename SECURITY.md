@@ -75,6 +75,19 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
   see the save dialog, and the pick-then-confirm import UX depends on the dialog staying on the
   frontend); overwriting *another* app's `.db`/`.sqlite` file remains the accepted, documented
   residual of that tradeoff.
+- `import_database` - the mirror image of the export gate, on the way in
+  (`commands/database.rs::prepare_import_source`). The source is **extension-gated** to the same
+  `.db`/`.sqlite`/`.sqlite3` list the export uses (one shared `DATABASE_FILE_EXTENSIONS`, so the
+  two directions cannot drift), and a **network location is refused outright** - `stage_database_import`
+  stats and then opens this path, and on Windows the stat alone authenticates to the host over SMB
+  (see `open_path_in_system` below for the same escalation). Importing a database off a share still
+  works; it has to be copied locally first, which the staging copy does anyway. The extension gate is
+  not a boundary on its own - the source is only ever read, and `validate_import_source` still has to
+  recognize it as a kavynex database - but it turns a mistyped or hostile path into a clear refusal
+  rather than an "is this a valid SQLite file?" probe of any path on disk. The gate lives on the
+  command rather than in `stage_database_import` because the undo path
+  (`stage_database_import_undo`) reuses that function with the `.pre-import` snapshot, whose
+  extension it would reject; that source is written by the backend and never comes from IPC.
 - `open_path_in_system` - spawns the OS file manager on the resolved path. Because it
   takes both `path` and `library_path` from the caller, its containment check alone cannot
   be trusted (a caller can pass the same value as both). Two things follow from that, and
@@ -187,9 +200,17 @@ not a substitute for it. Binaries are always invoked via `std::process::Command`
 shell-interpolation step for injection to exploit in the first place.
 
 The optional cookies-file path (`--cookies <path>`) is similarly restricted: only an
-existing `.txt` file is accepted (`services/yt_dlp_cookies.rs::normalize_cookies_path`),
+existing, non-network `.txt` file is accepted (`services/yt_dlp_cookies.rs::normalize_cookies_path`),
 mirroring the file picker's own filter, and the resolved path is redacted before it is
-ever shown in the in-app terminal preview.
+ever shown in the in-app terminal preview. The network-path refusal has to come *before* the
+`is_file()` check rather than after it: stat'ing a UNC share is itself what makes Windows
+authenticate to that host over SMB and leak the user's NTLM hash, so a check that ran later
+would already have paid the cost it exists to avoid. This is the same guard, closing the same
+escalation, as `library::resolve_path_inside_library` and
+`thumbnail_temp::validate_source_media_path`; a cookies file kept on a share loses only the
+ability to be pointed at directly. An invalid value is dropped rather than raised as an error,
+matching how this function treats every other rejection - the run simply proceeds without
+cookies (or falls back to `--cookies-from-browser`).
 
 ### External binary resolution (no working-directory hijack)
 

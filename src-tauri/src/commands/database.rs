@@ -4,9 +4,20 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::services::database::{database_path, Db};
 use crate::services::db_backup::{self, DatabaseBackupStatus, DatabaseIntegrityReport};
-use crate::utils::path::extension_from_path;
+use crate::utils::path::{extension_from_path, is_network_path};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
+
+/// The file extensions a database may be exported to or imported from. One list, shared by both
+/// directions, so the gate on the way out and the gate on the way in cannot drift apart. Both
+/// dialogs filter to `.db` alone, so this is deliberately wider than either legitimate flow.
+const DATABASE_FILE_EXTENSIONS: [&str; 3] = ["db", "sqlite", "sqlite3"];
+
+fn has_database_extension(path: &str) -> bool {
+    let extension = extension_from_path(Path::new(path));
+
+    DATABASE_FILE_EXTENSIONS.contains(&extension.as_str())
+}
 
 /// Validates the caller-provided export destination. `export_database` unconditionally removes
 /// and replaces the file at this path, so accepting an arbitrary string would let a compromised
@@ -23,9 +34,7 @@ fn validate_export_destination(destination_path: &str) -> AppResult<()> {
         ));
     }
 
-    let extension = extension_from_path(Path::new(trimmed));
-
-    if !matches!(extension.as_str(), "db" | "sqlite" | "sqlite3") {
+    if !has_database_extension(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidTargetPath,
             "database export must target a .db, .sqlite or .sqlite3 file",
@@ -85,6 +94,58 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
         return Err(AppError::from_code(
             AppErrorCode::InvalidTargetPath,
             "the export cannot be written into the app's own data directory, which holds the live database and its backups",
+        ));
+    }
+
+    Ok(PathBuf::from(trimmed))
+}
+
+/// Validates the caller-provided import source and returns the exact path the staging copy must
+/// read. The mirror image of [`prepare_export_destination`] on the way in: the import replaces the
+/// live database on the next startup, so its *input* deserves the same gate its output already had.
+///
+/// Two things are enforced, each closing a gap the export side never had:
+///
+/// - **No network location.** `stage_database_import` stats and then opens this path, and on
+///   Windows merely stat'ing a UNC share authenticates to that host over SMB, leaking the user's
+///   NTLM hash. This value arrives raw over IPC, so the refusal belongs here rather than resting on
+///   the file picker - the same guard, for the same reason, as
+///   `library::resolve_path_inside_library` and `yt_dlp_cookies::normalize_cookies_path`. Importing
+///   a database off a share still works; it just has to be copied locally first, which the staging
+///   copy does anyway.
+/// - **A database file extension.** Not a security boundary on its own (the source is only read,
+///   and `validate_import_source` still has to recognize it as a kavynex database), but it turns a
+///   mistyped or hostile path into a clear refusal instead of an "is this a valid SQLite file?"
+///   probe of an arbitrary path on disk.
+///
+/// It lives here rather than inside `stage_database_import` on purpose: the undo path
+/// (`db_backup::stage_database_import_undo`) reuses that function with the `.pre-import` snapshot,
+/// whose extension this gate would reject. Keeping the gate on the caller-facing command leaves the
+/// undo - whose source the backend wrote itself and never took from IPC - untouched.
+///
+/// Returns the trimmed path so the guard and the read act on exactly one value, the same
+/// single-path invariant `prepare_export_destination` documents.
+fn prepare_import_source(source_path: &str) -> AppResult<PathBuf> {
+    let trimmed = source_path.trim();
+
+    if trimmed.is_empty() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "import source path is empty",
+        ));
+    }
+
+    if is_network_path(trimmed) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "a database on a network location cannot be imported; copy it to a local folder first",
+        ));
+    }
+
+    if !has_database_extension(trimmed) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "database import must select a .db, .sqlite or .sqlite3 file",
         ));
     }
 
@@ -175,8 +236,12 @@ pub async fn export_database(app: AppHandle, destination_path: String) -> AppRes
 /// next startup, so the caller should relaunch the app after this succeeds.
 #[tauri::command]
 pub async fn import_database(app: AppHandle, source_path: String) -> AppResult<()> {
+    // Gate the caller-supplied source before anything stats or opens it (see
+    // prepare_import_source), and read from exactly the path it returns.
+    let source = prepare_import_source(&source_path)?;
+
     let path = database_path(&app)?;
-    db_backup::stage_database_import(&path, std::path::Path::new(&source_path)).await
+    db_backup::stage_database_import(&path, &source).await
 }
 
 /// Reports whether the last applied import can still be undone (a `.pre-import` snapshot of
@@ -379,6 +444,90 @@ mod tests {
         let error =
             prepare_export_destination("C:/Users/victim/contract.docx", &config_dir).unwrap_err();
         assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+    }
+
+    #[test]
+    fn prepare_import_source_returns_the_trimmed_path_for_every_database_extension() {
+        for name in ["backup.db", "backup.sqlite", "backup.sqlite3", "BACKUP.DB"] {
+            let source = unique_dir("import").join(name);
+            // Padded input: the returned path must be the *trimmed* source, so the guard and the
+            // read act on one value - the same single-path invariant the export side pins.
+            let padded = format!("   {}   ", source.to_string_lossy());
+
+            let prepared = prepare_import_source(&padded)
+                .unwrap_or_else(|error| panic!("{name} should be accepted: {error}"));
+            assert_eq!(prepared, source);
+        }
+    }
+
+    #[test]
+    fn prepare_import_source_rejects_a_network_location() {
+        // stage_database_import stats and opens this path; on Windows a UNC share authenticates
+        // over SMB on the stat alone and leaks the user's NTLM hash. Every spelling Windows
+        // resolves to a share is covered, and each one carries a valid `.db` extension so only
+        // the network check can be what rejects it.
+        for value in [
+            r"\\evil\share\library.db",
+            "//evil/share/library.db",
+            r"/\evil\share\library.db",
+            r"\/evil\share\library.db",
+            r"\\?\UNC\evil\share\library.db",
+        ] {
+            let error = prepare_import_source(value)
+                .expect_err(&format!("{value} should be rejected as a network path"));
+            assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+            assert!(
+                error.message.contains("network location"),
+                "the refusal should name the reason: {}",
+                error.message
+            );
+        }
+    }
+
+    #[test]
+    fn prepare_import_source_rejects_empty_and_non_database_sources() {
+        let empty = prepare_import_source("   ").unwrap_err();
+        assert_eq!(empty.code, AppErrorCode::InvalidTargetPath.as_str());
+
+        // An arbitrary file must not be probed as a candidate database.
+        for path in [
+            "C:/Users/victim/Documents/contract.docx",
+            "/home/victim/.ssh/id_rsa",
+            "no-extension",
+        ] {
+            let error =
+                prepare_import_source(path).expect_err(&format!("{path} should be rejected"));
+            assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+        }
+    }
+
+    #[test]
+    fn prepare_import_source_rejects_the_undo_snapshot_the_command_never_sees() {
+        // The undo path (db_backup::stage_database_import_undo) reuses stage_database_import with
+        // the `.pre-import` snapshot, whose extension this gate rejects. That is exactly why the
+        // gate lives on the command rather than inside stage_database_import: putting it there
+        // would have broken the undo silently. This pins the incompatibility, so a later move of
+        // the check into the service layer fails here instead of at a user's next undo.
+        let snapshot = unique_dir("undo").join("kavynex.db.pre-import");
+
+        let error = prepare_import_source(&snapshot.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+    }
+
+    #[test]
+    fn the_export_and_import_gates_accept_the_same_extensions() {
+        // Both directions read DATABASE_FILE_EXTENSIONS, so they cannot drift apart. Asserting it
+        // is what keeps a future change to one gate from quietly widening or narrowing only that
+        // side - the import gate is the newer of the two and the likelier one to be edited alone.
+        for extension in DATABASE_FILE_EXTENSIONS {
+            let candidate = unique_dir("parity").join(format!("db.{extension}"));
+            let candidate = candidate.to_string_lossy().to_string();
+
+            validate_export_destination(&candidate)
+                .unwrap_or_else(|error| panic!(".{extension} should export: {error}"));
+            prepare_import_source(&candidate)
+                .unwrap_or_else(|error| panic!(".{extension} should import: {error}"));
+        }
     }
 
     #[test]
