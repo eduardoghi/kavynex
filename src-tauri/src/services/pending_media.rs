@@ -570,6 +570,36 @@ mod tests {
     }
 
     #[test]
+    fn an_unrelated_file_in_the_directory_is_never_read_as_a_marker() {
+        // The sweep hands whatever this returns to a cleanup that unlinks files, so it must only
+        // ever recognize this module's own markers. The name filter is what enforces that, and it
+        // is worth pinning here rather than only on `is_marker_file_name` in isolation: the guard
+        // that applies it also tests `path.is_file()`, and weakening the `||` between them to `&&`
+        // makes a file with an unrelated name fall through and be parsed as a marker anyway. The
+        // contents are deliberately a *valid* marker payload, so nothing downstream would reject it.
+        let app = mock_app();
+        let handle = app.handle();
+
+        let payload = artifacts(Some("video/media_unrelated.mp4"), None, None);
+        let intruder = pending_media_dir(handle).unwrap().join("notes.txt");
+
+        fs::write(&intruder, serde_json::to_string(&payload).unwrap()).unwrap();
+        set_modified_before_process_start(&intruder);
+
+        let found = read_pending_markers(handle)
+            .unwrap()
+            .into_iter()
+            .any(|(marker_name, _)| marker_name == "notes.txt");
+
+        assert!(
+            !found,
+            "a file whose name is not a pending marker must not be read as one"
+        );
+
+        let _ = fs::remove_file(&intruder);
+    }
+
+    #[test]
     fn marker_is_sweepable_only_for_a_leftover_of_an_earlier_run() {
         let start = SystemTime::now();
         let before = start - Duration::from_secs(60);
