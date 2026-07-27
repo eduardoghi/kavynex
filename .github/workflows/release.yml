@@ -212,13 +212,22 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
-                  # Kept deliberately, though the reason it was added is gone: the release notes
-                  # used to list every commit since the previous tag, and no step walks history
-                  # any more (the tag guard uses `git ls-remote`, the bindings check `git diff`
-                  # against HEAD). tauri-action creates the tag from this checkout, and whether it
-                  # needs more than one commit to do so has not been verified - so shallowing this
-                  # is its own change, to be made and tested apart from a release.
-                  fetch-depth: 0
+                  # A shallow checkout is enough, and stated explicitly rather than left to the
+                  # default because this step carried a full clone (`fetch-depth: 0`) until the
+                  # reason for it was traced and found to be gone. That reason was the release
+                  # notes, which used to list every commit since the previous tag with `git log`;
+                  # that step was removed once it turned out tauri-action copies the whole body
+                  # into latest.json's `notes`, where the app renders it unscrolled.
+                  #
+                  # Nothing left in this job walks history: the tag guard uses `git ls-remote`
+                  # (which queries the remote, not the local clone), the bindings check diffs the
+                  # working tree against HEAD, and tauri-action creates the tag through the GitHub
+                  # REST API - `repos.createRelease` with `target_commitish` defaulting to
+                  # `context.sha`, i.e. the GITHUB_SHA string - never a local `git tag`. Verified
+                  # by reading tauri-action's source at the SHA this workflow pins for it further
+                  # down; re-check that when the pin moves. The sbom and checksums jobs have always
+                  # checked out shallow, which is the same claim already proven by a real release.
+                  fetch-depth: 1
 
             # No version input: the pnpm version comes from package.json's packageManager
             # field, so CI and local Corepack install the same pinned pnpm.
