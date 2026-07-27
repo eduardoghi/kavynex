@@ -198,19 +198,33 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/), wit
 specific to this project:
 
 - Format: `<type>: <imperative, lowercase subject>` - **no scope**.
-- Subject is imperative mood, lowercase, and has **no trailing period**.
+- Subject is imperative mood, lowercase, and has **no trailing period**. Keep it short.
 - English only.
-- Allowed types, and *only* these: `fix`, `feat`, `build`, `ci`, `refactor`, `docs`,
-  `test`, `chore`. There is no `perf`, `style`, or `revert` type in this project - a
-  performance optimization is committed as `refactor`, not `perf`.
-- Dependency updates (e.g. bumping a package or crate version) are committed as `build`,
-  never `chore`.
+
+Allowed types, and *only* these:
+
+| Type | For |
+|---|---|
+| `fix` | a bug fix |
+| `feat` | a new feature |
+| `build` | the build, packaging or dependencies |
+| `ci` | the CI pipeline - workflows, triggers, matrix, cache, secrets |
+| `refactor` | a code change that neither fixes a bug nor adds a feature |
+| `perf` | a code change that improves performance |
+| `docs` | documentation only |
+| `test` | adding, fixing or adjusting tests |
+| `style` | formatting that does not change behavior - whitespace, indentation, line breaks |
+| `revert` | reverting an earlier commit |
+| `chore` | general maintenance that is not functionality, build, CI or documentation |
+
+Dependency updates (bumping a package or crate version) are `build`, never `chore`.
 
 Examples from this repository's history:
 
 ```
 fix: distinguish "no comments" from a failed comment fetch on refresh
 refactor: extract pure comment-tree and format-rules modules, drop a dead use-case
+perf: stop storing thumbnails as lossless png and trim the grid overscan
 build: pin the Rust toolchain to 1.96.0 and tighten CI
 ci: audit rust dependencies with cargo-audit
 ```
