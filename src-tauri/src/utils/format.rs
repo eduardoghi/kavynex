@@ -40,11 +40,25 @@ pub fn is_allowed_media_extension(ext: &str) -> bool {
     )
 }
 
+/// The image extensions a thumbnail may use. Raster formats only: `svg` is deliberately absent
+/// because it can carry script and must never be authorized for the asset protocol.
+///
+/// Declared as a list rather than only spelled out inside the predicate below so the message shown
+/// when a file is rejected can be built from it (see [`allowed_thumbnail_extensions_label`]). The
+/// two had already drifted once - `gif` was accepted here while the message still named six formats
+/// - which is the kind of mismatch that sends a user looking for a bug in their file.
+pub const ALLOWED_THUMBNAIL_EXTENSIONS: [&str; 7] =
+    ["png", "jpg", "jpeg", "webp", "bmp", "avif", "gif"];
+
 pub fn is_allowed_thumbnail_extension(ext: &str) -> bool {
-    matches!(
-        normalize_extension(ext).as_str(),
-        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "avif" | "gif"
-    )
+    ALLOWED_THUMBNAIL_EXTENSIONS.contains(&normalize_extension(ext).as_str())
+}
+
+/// The allowed thumbnail extensions as a comma-separated list, for the error a rejected file
+/// produces. Derived from [`ALLOWED_THUMBNAIL_EXTENSIONS`] so a format added there cannot be left
+/// out of what the user is told.
+pub fn allowed_thumbnail_extensions_label() -> String {
+    ALLOWED_THUMBNAIL_EXTENSIONS.join(", ")
 }
 
 pub fn codec_is_present(codec: &Option<String>) -> bool {
@@ -92,18 +106,37 @@ mod tests {
 
     #[test]
     fn is_allowed_thumbnail_extension_accepts_only_image_types() {
-        // The allow_asset_file command uses this to decide what can be authorized for the
-        // asset protocol, so a non-image extension must be rejected.
-        for ext in [
-            "png", "jpg", "jpeg", "webp", "bmp", "avif", "gif", ".PNG", "JPG",
-        ] {
+        // Driven off the constant rather than a second hand-written list, so a format added there
+        // is covered here without anyone remembering to extend this.
+        for ext in ALLOWED_THUMBNAIL_EXTENSIONS {
             assert!(is_allowed_thumbnail_extension(ext), "should allow {ext}");
         }
 
-        // svg stays rejected: it can carry script and must never be authorized for the asset
-        // protocol. gif is now accepted (a raster image, safe as an <img> source).
+        // A leading dot and upper case normalize to the same entry.
+        for ext in [".PNG", "JPG"] {
+            assert!(is_allowed_thumbnail_extension(ext), "should allow {ext}");
+        }
+
+        // The allow_asset_file command uses this to decide what can be authorized for the asset
+        // protocol, so a non-image extension must be rejected. svg stays rejected because it can
+        // carry script; gif is accepted (a raster image, safe as an <img> source).
         for ext in ["txt", "exe", "mp4", "svg", ""] {
             assert!(!is_allowed_thumbnail_extension(ext), "should reject {ext}");
+        }
+    }
+
+    #[test]
+    fn allowed_thumbnail_extensions_label_names_every_accepted_format() {
+        // What makes the rejection message unable to drift from the predicate again: the label has
+        // to mention each extension the predicate accepts, so adding one without it appearing here
+        // fails rather than silently telling the user a shorter list.
+        let label = allowed_thumbnail_extensions_label();
+
+        for ext in ALLOWED_THUMBNAIL_EXTENSIONS {
+            assert!(
+                label.contains(ext),
+                "the rejection message should name {ext}, got: {label}"
+            );
         }
     }
 

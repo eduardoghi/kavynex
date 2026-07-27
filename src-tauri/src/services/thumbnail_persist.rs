@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::constants::LIBRARY_DIR_THUMBNAILS;
 use crate::services::filesystem::copy_file_atomic;
 use crate::services::library_paths::{ensure_library_dir, resolve_existing_library_dir};
-use crate::utils::format::is_allowed_thumbnail_extension;
+use crate::utils::format::{allowed_thumbnail_extensions_label, is_allowed_thumbnail_extension};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir, ensure_path_parent_inside_dir,
@@ -44,7 +44,10 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
     if !is_allowed_thumbnail_extension(&ext) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidThumbnailFile,
-            "invalid thumbnail file type. Allowed: png, jpg, jpeg, webp, bmp, avif",
+            format!(
+                "invalid thumbnail file type. Allowed: {}",
+                allowed_thumbnail_extensions_label()
+            ),
         ));
     }
 
