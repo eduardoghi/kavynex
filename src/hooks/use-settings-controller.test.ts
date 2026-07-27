@@ -11,6 +11,7 @@ vi.mock("../lib/tauri-platform", () => ({
 vi.mock("../services/database-service", () => ({
     exportDatabase: vi.fn(),
     importDatabase: vi.fn(),
+    getDatabaseBackupStatus: vi.fn(),
     getDatabaseImportUndoStatus: vi.fn(),
     undoDatabaseImport: vi.fn(),
 }));
@@ -44,11 +45,14 @@ vi.mock("./use-app-update", () => ({
 import { openFileDialog, relaunch, saveFileDialog } from "../lib/tauri-platform";
 import {
     exportDatabase,
+    getDatabaseBackupStatus,
     getDatabaseImportUndoStatus,
     importDatabase,
     undoDatabaseImport,
+    type DatabaseBackupStatus,
 } from "../services/database-service";
 import { getLibrarySummary } from "../services/library-service";
+import { logError } from "../utils/app-logger";
 import { useSettingsController } from "./use-settings-controller";
 
 const openMock = vi.mocked(openFileDialog);
@@ -57,6 +61,7 @@ const relaunchMock = vi.mocked(relaunch);
 const exportDatabaseMock = vi.mocked(exportDatabase);
 const importDatabaseMock = vi.mocked(importDatabase);
 const getDatabaseImportUndoStatusMock = vi.mocked(getDatabaseImportUndoStatus);
+const getDatabaseBackupStatusMock = vi.mocked(getDatabaseBackupStatus);
 const undoDatabaseImportMock = vi.mocked(undoDatabaseImport);
 const getLibrarySummaryMock = vi.mocked(getLibrarySummary);
 
@@ -71,6 +76,18 @@ function createSummary(overrides: Partial<LibrarySummaryInfo> = {}): LibrarySumm
     };
 }
 
+function createBackupStatus(
+    overrides: Partial<DatabaseBackupStatus> = {}
+): DatabaseBackupStatus {
+    return {
+        available: true,
+        backedUpAtMs: 1_700_000_000_000,
+        totalBytes: 2048,
+        formattedTotalSize: "2.00 KB",
+        ...overrides,
+    };
+}
+
 type HookProps = {
     opened: boolean;
     libraryPath: string;
@@ -81,6 +98,7 @@ describe("useSettingsController", () => {
         vi.clearAllMocks();
         // No previous import to undo unless a test opts in.
         getDatabaseImportUndoStatusMock.mockResolvedValue(false);
+        getDatabaseBackupStatusMock.mockResolvedValue(createBackupStatus());
     });
 
     it("loads the library summary when opened", async () => {
@@ -472,6 +490,78 @@ describe("useSettingsController", () => {
         });
 
         expect(result.current.pendingImportPath).toBeNull();
+    });
+
+    it("reads the database backup status when opened", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        getDatabaseBackupStatusMock.mockResolvedValueOnce(
+            createBackupStatus({ formattedTotalSize: "2.25 GB", totalBytes: 2_411_724_800 })
+        );
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await waitFor(() => {
+            expect(result.current.backupStatus?.formattedTotalSize).toBe("2.25 GB");
+        });
+    });
+
+    it("does not read the backup status while the modal is closed", () => {
+        renderHook(() => useSettingsController({ opened: false, libraryPath: "/library" }));
+
+        expect(getDatabaseBackupStatusMock).not.toHaveBeenCalled();
+    });
+
+    it("re-reads the backup status on each open so an export or import is reflected", async () => {
+        getLibrarySummaryMock.mockResolvedValue(createSummary());
+        getDatabaseBackupStatusMock
+            .mockResolvedValueOnce(createBackupStatus({ formattedTotalSize: "1.00 MB" }))
+            .mockResolvedValueOnce(createBackupStatus({ formattedTotalSize: "3.00 MB" }));
+
+        const { result, rerender } = renderHook(
+            ({ opened, libraryPath }: HookProps) =>
+                useSettingsController({ opened, libraryPath }),
+            { initialProps: { opened: true, libraryPath: "/library" } }
+        );
+
+        await waitFor(() => {
+            expect(result.current.backupStatus?.formattedTotalSize).toBe("1.00 MB");
+        });
+
+        // Closing must drop the reading rather than leave a stale size on screen the next time
+        // the dialog opens, before the fresh read lands.
+        rerender({ opened: false, libraryPath: "/library" });
+        expect(result.current.backupStatus).toBeNull();
+
+        rerender({ opened: true, libraryPath: "/library" });
+
+        await waitFor(() => {
+            expect(result.current.backupStatus?.formattedTotalSize).toBe("3.00 MB");
+        });
+    });
+
+    it("leaves the backup status null and logs when reading it fails", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        const statusError = new Error("status unavailable");
+        getDatabaseBackupStatusMock.mockRejectedValueOnce(statusError);
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        // The reading is informational, so its failure must not surface as a database error next
+        // to the export/import actions - those still work.
+        await waitFor(() => {
+            expect(logError).toHaveBeenCalledWith(
+                "settings-modal",
+                "Failed to read database backup status.",
+                statusError
+            );
+        });
+
+        expect(result.current.backupStatus).toBeNull();
+        expect(result.current.databaseMessage).toBeNull();
     });
 
     it("reports when the last import can be undone", async () => {

@@ -121,6 +121,7 @@ export function SettingsModal({
                     />
 
                     <DatabaseSection
+                        backupStatus={controller.backupStatus}
                         databaseBusy={controller.databaseBusy}
                         databaseMessage={controller.databaseMessage}
                         pendingImportPath={controller.pendingImportPath}

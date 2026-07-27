@@ -3,9 +3,11 @@ import { openFileDialog, relaunch, saveFileDialog } from "../lib/tauri-platform"
 import type { AppUpdateInfo, AppUpdateProgress } from "../services/app-update-service";
 import {
     exportDatabase,
+    getDatabaseBackupStatus,
     getDatabaseImportUndoStatus,
     importDatabase,
     undoDatabaseImport,
+    type DatabaseBackupStatus,
 } from "../services/database-service";
 import { getLibrarySummary, type LibrarySummaryInfo } from "../services/library-service";
 import { parseAppError } from "../utils/app-error";
@@ -37,6 +39,9 @@ export type SettingsController = {
     isLoadingLibrarySummary: boolean;
     librarySummaryError: string;
     refreshLibrarySummary: () => Promise<void>;
+    // Null until the status has been read (or when reading it failed), so the UI can stay silent
+    // rather than claim a size or a backup date it does not have.
+    backupStatus: DatabaseBackupStatus | null;
     databaseBusy: "idle" | "exporting" | "importing" | "undoing";
     databaseMessage: DatabaseMessage | null;
     pendingImportPath: string | null;
@@ -64,6 +69,8 @@ export function useSettingsController({
     const [librarySummary, setLibrarySummary] = useState<LibrarySummaryInfo>(EMPTY_LIBRARY_SUMMARY);
     const [isLoadingLibrarySummary, setIsLoadingLibrarySummary] = useState(false);
     const [librarySummaryError, setLibrarySummaryError] = useState("");
+
+    const [backupStatus, setBackupStatus] = useState<DatabaseBackupStatus | null>(null);
 
     const [databaseBusy, setDatabaseBusy] = useState<
         "idle" | "exporting" | "importing" | "undoing"
@@ -274,6 +281,7 @@ export function useSettingsController({
             // away from, out of context and one click from replacing their library.
             setPendingImportPath(null);
             setDatabaseMessage(null);
+            setBackupStatus(null);
             return;
         }
 
@@ -301,6 +309,27 @@ export function useSettingsController({
             }
         })();
 
+        // When the last automatic snapshot was taken, and how much disk the database plus its
+        // snapshots occupy. Read on every open rather than cached: an export or an import in this
+        // same dialog changes both, and the periodic backup can land while it is open.
+        void (async () => {
+            try {
+                const status = await getDatabaseBackupStatus();
+
+                if (!cancelled) {
+                    setBackupStatus(status);
+                }
+            } catch (error) {
+                // Purely informational, so a failure just leaves the line out rather than
+                // surfacing an error next to the export/import actions, which still work.
+                logError("settings-modal", "Failed to read database backup status.", error);
+
+                if (!cancelled) {
+                    setBackupStatus(null);
+                }
+            }
+        })();
+
         return () => {
             cancelled = true;
         };
@@ -314,6 +343,7 @@ export function useSettingsController({
         isLoadingLibrarySummary,
         librarySummaryError,
         refreshLibrarySummary,
+        backupStatus,
         databaseBusy,
         databaseMessage,
         pendingImportPath,

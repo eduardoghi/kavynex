@@ -57,6 +57,13 @@ See `docs/DATABASE.md` for the rotation, restore and import rules these files fo
 counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in
 `db_backup/mod.rs`, which is what to read if this list and the code ever disagree.
 
+Those counts bound how *many* snapshots exist, never how *large* they get, and each `.bak`,
+`.corrupt` and `.pre-import` is a full copy of the database - which grows with every comment
+backed up. Up to eleven such copies can therefore sit in this one directory. Because that is not
+otherwise visible anywhere (and on Windows this is the roaming profile), **Settings > Database**
+reports the total these files currently occupy alongside the date of the last automatic snapshot;
+`db_backup/mod.rs::managed_database_paths` is the set it sums.
+
 All of the snapshots above sit on the same volume as the live database, so a disk failure takes
 them with it. The **optional** external backup (Settings > Database) addresses that: when a folder
 is configured (`external_backup_dir` in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir`

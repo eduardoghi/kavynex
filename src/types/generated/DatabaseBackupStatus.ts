@@ -4,4 +4,15 @@ export type DatabaseBackupStatus = { available: boolean,
 /**
  * Modification time of the backup that would be restored, in epoch milliseconds.
  */
-backedUpAtMs: number | null, };
+backedUpAtMs: number | null, 
+/**
+ * Total bytes the database and every file this module keeps beside it currently occupy
+ * (see [`managed_database_paths`]). Annotated `number` because ts-rs emits `bigint` for
+ * `u64` by default, and this crosses IPC as a plain JSON number.
+ */
+totalBytes: number, 
+/**
+ * [`total_bytes`](Self::total_bytes) rendered for display, using the same formatter as the
+ * library summary so the two sizes shown in Settings cannot disagree on units or rounding.
+ */
+formattedTotalSize: string, };

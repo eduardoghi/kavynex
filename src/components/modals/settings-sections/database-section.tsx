@@ -3,8 +3,16 @@ import { Database, Download, FolderClock, Undo2, Upload, X } from "lucide-react"
 import type { SettingsController } from "../../../hooks/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
 
+// "the backup from <date>" in the recovery modal uses the same locale call; keep them reading the
+// same way. A status with no backup yet has no timestamp, which the caller renders as its own line
+// rather than passing here.
+function formatBackedUpAt(backedUpAtMs: number): string {
+    return new Date(backedUpAtMs).toLocaleString("en-US");
+}
+
 type DatabaseSectionProps = Pick<
     SettingsController,
+    | "backupStatus"
     | "databaseBusy"
     | "databaseMessage"
     | "pendingImportPath"
@@ -25,6 +33,7 @@ type DatabaseSectionProps = Pick<
 };
 
 export function DatabaseSection({
+    backupStatus,
     databaseBusy,
     databaseMessage,
     pendingImportPath,
@@ -59,6 +68,24 @@ export function DatabaseSection({
                         install, or import one to restore it. Media files live in the library
                         folder and are backed up separately.
                     </Text>
+
+                    {backupStatus && (
+                        <Text size="sm" c="dimmed">
+                            {backupStatus.backedUpAtMs === null
+                                ? "No automatic backup has been taken yet."
+                                : `Last automatic backup: ${formatBackedUpAt(backupStatus.backedUpAtMs)}.`}{" "}
+                            {/* The size is shown because nothing else surfaces it: Kavynex keeps
+                                several rotated snapshots beside the database, so this folder can
+                                hold many times the database's own size without anything saying so.
+                                Named "on this disk" rather than "backups" because the total
+                                includes the live database itself. */}
+                            The database and its backups use{" "}
+                            <Text span fw={600}>
+                                {backupStatus.formattedTotalSize}
+                            </Text>{" "}
+                            on this disk.
+                        </Text>
+                    )}
 
                     <Group gap="sm">
                         <AppButton

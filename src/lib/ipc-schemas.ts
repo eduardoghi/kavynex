@@ -251,6 +251,8 @@ const artifactCleanupReportSchema = z.object({
 const databaseBackupStatusSchema = z.object({
     available: z.boolean(),
     backedUpAtMs: z.number().nullable(),
+    totalBytes: z.number(),
+    formattedTotalSize: z.string(),
 });
 
 const databaseIntegrityReportSchema = z.object({

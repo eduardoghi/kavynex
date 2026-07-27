@@ -20,6 +20,7 @@ import {
     ensureDatabaseReady,
     getDatabaseBackupStatus,
     restoreDatabaseFromBackup,
+    type DatabaseBackupStatus,
 } from "../services/database-service";
 import { logError } from "../utils/app-logger";
 
@@ -31,6 +32,8 @@ describe("useAppBootstrap", () => {
         vi.mocked(getDatabaseBackupStatus).mockResolvedValue({
             available: false,
             backedUpAtMs: null,
+            totalBytes: 0,
+            formattedTotalSize: "0 B",
         });
     });
 
@@ -142,6 +145,8 @@ describe("useAppBootstrap", () => {
         vi.mocked(getDatabaseBackupStatus).mockResolvedValueOnce({
             available: true,
             backedUpAtMs: 1_700_000_000_000,
+            totalBytes: 2048,
+            formattedTotalSize: "2.00 KB",
         });
 
         const onError = vi.fn();
@@ -161,6 +166,8 @@ describe("useAppBootstrap", () => {
         vi.mocked(getDatabaseBackupStatus).mockResolvedValueOnce({
             available: true,
             backedUpAtMs: 1_700_000_000_000,
+            totalBytes: 2048,
+            formattedTotalSize: "2.00 KB",
         });
         vi.mocked(restoreDatabaseFromBackup).mockResolvedValueOnce(undefined);
 
@@ -191,6 +198,8 @@ describe("useAppBootstrap", () => {
         vi.mocked(getDatabaseBackupStatus).mockResolvedValueOnce({
             available: true,
             backedUpAtMs: null,
+            totalBytes: 1024,
+            formattedTotalSize: "1.00 KB",
         });
         const restoreError = new Error("restore failed");
         vi.mocked(restoreDatabaseFromBackup).mockRejectedValueOnce(restoreError);
@@ -224,6 +233,8 @@ describe("useAppBootstrap", () => {
         vi.mocked(getDatabaseBackupStatus).mockResolvedValueOnce({
             available: true,
             backedUpAtMs: 1_700_000_000_000,
+            totalBytes: 2048,
+            formattedTotalSize: "2.00 KB",
         });
 
         let resolveRestore: (() => void) | undefined;
@@ -279,6 +290,8 @@ describe("useAppBootstrap", () => {
         vi.mocked(getDatabaseBackupStatus).mockResolvedValueOnce({
             available: true,
             backedUpAtMs: 1_700_000_000_000,
+            totalBytes: 2048,
+            formattedTotalSize: "2.00 KB",
         });
 
         const onError = vi.fn();
@@ -323,9 +336,7 @@ describe("useAppBootstrap", () => {
     it("does not surface an error for a backup-status check settled after unmount", async () => {
         vi.mocked(ensureDatabaseReady).mockRejectedValueOnce(new Error("boom"));
 
-        let resolveStatus:
-            | ((value: { available: boolean; backedUpAtMs: number | null }) => void)
-            | undefined;
+        let resolveStatus: ((value: DatabaseBackupStatus) => void) | undefined;
 
         vi.mocked(getDatabaseBackupStatus).mockImplementationOnce(
             () =>
@@ -344,7 +355,12 @@ describe("useAppBootstrap", () => {
 
         unmount();
 
-        resolveStatus?.({ available: false, backedUpAtMs: null });
+        resolveStatus?.({
+            available: false,
+            backedUpAtMs: null,
+            totalBytes: 0,
+            formattedTotalSize: "0 B",
+        });
 
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
 

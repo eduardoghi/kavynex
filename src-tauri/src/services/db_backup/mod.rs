@@ -295,6 +295,14 @@ pub struct DatabaseBackupStatus {
     /// Modification time of the backup that would be restored, in epoch milliseconds.
     #[ts(type = "number | null")]
     pub backed_up_at_ms: Option<u64>,
+    /// Total bytes the database and every file this module keeps beside it currently occupy
+    /// (see [`managed_database_paths`]). Annotated `number` because ts-rs emits `bigint` for
+    /// `u64` by default, and this crosses IPC as a plain JSON number.
+    #[ts(type = "number")]
+    pub total_bytes: u64,
+    /// [`total_bytes`](Self::total_bytes) rendered for display, using the same formatter as the
+    /// library summary so the two sizes shown in Settings cannot disagree on units or rounding.
+    pub formatted_total_size: String,
 }
 
 fn corrupt_path(db_path: &Path) -> PathBuf {
@@ -393,18 +401,81 @@ fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Reports whether a backup file exists (without verifying its integrity) and when the
-/// most recent one was written, so the frontend can offer to restore it.
+/// Every file this module owns beside the live database in the app config directory: the database
+/// itself, SQLite's WAL sidecars, all seven backup generations, all three corrupt snapshots, the
+/// import undo/staging files, every short-lived scratch file, and the two markers.
+/// `docs/DIRECTORIES.md` documents the same set for the user.
+///
+/// Deliberately pure - it names paths without touching the filesystem, so the set is pinned by a
+/// test rather than by whatever happens to exist on the machine running it. That matters because
+/// the whole point of summing these is that the number is *complete*: a file this module starts
+/// writing later and forgets to add here does not report as an error, it silently stops being
+/// counted, and the reported size drifts below the real one exactly when the total is largest.
+fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![
+        db_path.to_path_buf(),
+        // SQLite's write-ahead log and shared-memory sidecars, present while the app runs.
+        sibling(db_path, "-wal"),
+        sibling(db_path, "-shm"),
+    ];
+
+    // `.bak` plus `.bak.1`..`.bak.N`, and the scratch file a snapshot vacuums into.
+    paths.extend(
+        (0..=BACKUP_ROTATED_GENERATIONS)
+            .map(|generation| generation_backup_path(db_path, generation)),
+    );
+    paths.push(temp_backup_path(db_path));
+
+    // `.corrupt` plus its rotated generations, and the scratch name a restore moves through.
+    paths.extend(
+        (0..=CORRUPT_ROTATED_GENERATIONS)
+            .map(|generation| generation_corrupt_path(db_path, generation)),
+    );
+    paths.push(sibling(db_path, ".corrupt.tmp"));
+
+    paths.extend([
+        restore_staging_path(db_path),
+        import::pre_import_path(db_path),
+        import::import_staged_path(db_path),
+        sibling(db_path, ".import-staged.tmp"),
+        import::import_applying_marker_path(db_path),
+        integrity::integrity_check_marker_path(db_path),
+    ]);
+
+    paths
+}
+
+/// Sums the sizes of whichever of `paths` exist. A path that cannot be stat'd contributes zero
+/// rather than failing the whole report: this feeds a display-only number, and a missing
+/// generation is the normal case, not an error.
+fn total_size_bytes(paths: &[PathBuf]) -> u64 {
+    paths
+        .iter()
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .fold(0u64, |total, size| total.saturating_add(size))
+}
+
+/// Reports whether a backup file exists (without verifying its integrity), when the most recent
+/// one was written, and how much disk the database and its snapshots occupy in total.
+///
+/// The size is reported because nothing else in the app makes it visible. Up to eleven full copies
+/// of the database can sit in the app config directory (seven `.bak` generations, three `.corrupt`
+/// ones, one `.pre-import`), the rotation bounds how *many* exist but never how *large* they get,
+/// and that directory is the roaming profile on Windows. A database that grows with every comment
+/// backed up can therefore take gigabytes there with nothing saying so.
 pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {
-    match backup_candidates(db_path).first() {
-        Some(path) => DatabaseBackupStatus {
-            available: true,
-            backed_up_at_ms: modified_ms(path),
-        },
-        None => DatabaseBackupStatus {
-            available: false,
-            backed_up_at_ms: None,
-        },
+    let total_bytes = total_size_bytes(&managed_database_paths(db_path));
+    // Resolved once: backup_candidates stats every generation, and the two fields below both read
+    // the same newest one.
+    let newest_backup = backup_candidates(db_path).into_iter().next();
+
+    DatabaseBackupStatus {
+        available: newest_backup.is_some(),
+        backed_up_at_ms: newest_backup.as_deref().and_then(modified_ms),
+        total_bytes,
+        formatted_total_size: crate::utils::format::format_bytes(total_bytes),
     }
 }
 
@@ -921,6 +992,128 @@ mod tests {
         assert_eq!(
             std::fs::read(generation_external_backup_path(&dir, 2)).unwrap(),
             b"gen1"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn managed_database_paths_names_every_file_this_module_writes() {
+        // Pins the set the size report sums. Written as an exact comparison rather than a handful
+        // of `contains` assertions on purpose: the number is only worth showing if it is complete,
+        // and a file added to the module without being added here would silently stop being
+        // counted. A failure means "add the new file", not "loosen the test".
+        let db = Path::new("/config/kavynex.db");
+        let named: Vec<String> = managed_database_paths(db)
+            .iter()
+            .map(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+
+        assert_eq!(
+            named,
+            vec![
+                "kavynex.db",
+                "kavynex.db-wal",
+                "kavynex.db-shm",
+                "kavynex.db.bak",
+                "kavynex.db.bak.1",
+                "kavynex.db.bak.2",
+                "kavynex.db.bak.3",
+                "kavynex.db.bak.4",
+                "kavynex.db.bak.5",
+                "kavynex.db.bak.6",
+                "kavynex.db.bak.tmp",
+                "kavynex.db.corrupt",
+                "kavynex.db.corrupt.1",
+                "kavynex.db.corrupt.2",
+                "kavynex.db.corrupt.tmp",
+                "kavynex.db.restore.tmp",
+                "kavynex.db.pre-import",
+                "kavynex.db.import-staged",
+                "kavynex.db.import-staged.tmp",
+                "kavynex.db.import-applying",
+                "kavynex.db.integrity-checked",
+            ]
+        );
+
+        // Every entry is a sibling of the database, never somewhere else on disk: the report is
+        // about what this one directory holds.
+        for path in managed_database_paths(db) {
+            assert_eq!(path.parent(), db.parent());
+        }
+    }
+
+    #[test]
+    fn total_size_ignores_missing_paths_and_directories() {
+        let dir = temp_dir("total-size");
+
+        let present = dir.join("present.bin");
+        std::fs::write(&present, vec![0u8; 300]).unwrap();
+
+        let subdir = dir.join("a-directory");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let missing = dir.join("never-written.bin");
+
+        // A missing generation is the normal case, and a directory sharing a managed name must
+        // never contribute its metadata size - both count as zero, so only the real file's bytes
+        // are reported.
+        assert_eq!(
+            total_size_bytes(&[present.clone(), subdir, missing]),
+            300,
+            "only existing regular files contribute to the total"
+        );
+
+        assert_eq!(total_size_bytes(&[]), 0);
+
+        let second = dir.join("second.bin");
+        std::fs::write(&second, vec![0u8; 45]).unwrap();
+        // Summed, not maxed or counted: two files report the sum of their sizes.
+        assert_eq!(total_size_bytes(&[present, second]), 345);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn backup_status_reports_the_size_of_the_database_and_its_snapshots() {
+        let dir = temp_dir("status-size");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+
+        let database_only = database_backup_status(&db);
+        let database_bytes = std::fs::metadata(&db).unwrap().len();
+
+        // With no snapshot yet the total is at least the database itself (the WAL sidecars may or
+        // may not linger after seed_db closes its pool, so this is a floor, not an equality).
+        assert!(
+            database_only.total_bytes >= database_bytes,
+            "total {} should cover the {database_bytes}-byte database",
+            database_only.total_bytes
+        );
+
+        assert!(backup_database(&db).await.unwrap());
+
+        let with_snapshot = database_backup_status(&db);
+        let snapshot_bytes = std::fs::metadata(backup_path(&db)).unwrap().len();
+
+        // Taking a snapshot must grow the reported total by that snapshot: this is the whole point
+        // of the number, and it is what a mutant reporting only the database's own size loses.
+        assert!(
+            with_snapshot.total_bytes >= database_only.total_bytes + snapshot_bytes,
+            "total should grow by the {snapshot_bytes}-byte snapshot, went from {} to {}",
+            database_only.total_bytes,
+            with_snapshot.total_bytes
+        );
+
+        // The formatted string is derived from the same count, not computed independently.
+        assert_eq!(
+            with_snapshot.formatted_total_size,
+            crate::utils::format::format_bytes(with_snapshot.total_bytes)
         );
 
         let _ = std::fs::remove_dir_all(&dir);

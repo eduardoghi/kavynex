@@ -7,6 +7,7 @@ type SectionProps = Parameters<typeof DatabaseSection>[0];
 
 function baseProps(overrides: Partial<SectionProps> = {}): SectionProps {
     return {
+        backupStatus: null,
         databaseBusy: "idle",
         databaseMessage: null,
         pendingImportPath: null,
@@ -28,6 +29,59 @@ function baseProps(overrides: Partial<SectionProps> = {}): SectionProps {
 }
 
 describe("DatabaseSection", () => {
+    it("shows nothing about backups until the status has been read", () => {
+        // A failed read leaves the status null, and claiming a size or a date the app does not
+        // have would be worse than saying nothing.
+        renderWithMantine(<DatabaseSection {...baseProps({ backupStatus: null })} />);
+
+        expect(screen.queryByText(/on this disk/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/last automatic backup/i)).not.toBeInTheDocument();
+    });
+
+    it("reports the last backup and the disk the database and its backups use", () => {
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({
+                    backupStatus: {
+                        available: true,
+                        backedUpAtMs: Date.UTC(2026, 0, 15, 12, 0, 0),
+                        totalBytes: 2_411_724_800,
+                        formattedTotalSize: "2.25 GB",
+                    },
+                })}
+            />
+        );
+
+        // The formatted size comes from the backend, so the component must render that string
+        // rather than deriving its own from totalBytes - two formatters would drift.
+        expect(screen.getByText("2.25 GB")).toBeInTheDocument();
+        expect(screen.getByText(/on this disk/i)).toBeInTheDocument();
+        // Only the date part is asserted: the exact rendering is locale/timezone dependent, and
+        // pinning the whole string would make this fail on a runner in another timezone.
+        expect(screen.getByText(/last automatic backup: .*2026/i)).toBeInTheDocument();
+    });
+
+    it("still reports the size when no backup has been taken yet", () => {
+        // A first run has a database but no snapshot. The size is the useful half of the line and
+        // must not be withheld just because there is no timestamp to pair it with.
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({
+                    backupStatus: {
+                        available: false,
+                        backedUpAtMs: null,
+                        totalBytes: 40_960,
+                        formattedTotalSize: "40.00 KB",
+                    },
+                })}
+            />
+        );
+
+        expect(screen.getByText(/no automatic backup has been taken yet/i)).toBeInTheDocument();
+        expect(screen.getByText("40.00 KB")).toBeInTheDocument();
+        expect(screen.queryByText(/last automatic backup/i)).not.toBeInTheDocument();
+    });
+
     it("runs export and import from their buttons", () => {
         const exportDatabaseAction = vi.fn();
         const pickImportFileAction = vi.fn();
