@@ -48,6 +48,15 @@ updates:
           cargo-minor-and-patch:
               patterns:
                   - "*"
+              # sqlx is the one crate this grouping is wrong for. It is pre-1.0, where semver makes
+              # the MINOR the breaking bump - so 0.9 -> 0.10 is exactly the "read it on its own,
+              # with its migration notes" case this group's own reasoning reserves for a major, yet
+              # it would arrive batched with five routine updates under a title that says minor and
+              # patch. It also carries the entire persistence layer, and the cargo-audit step has a
+              # standing note to re-check the yanked `spin` it pulls in whenever sqlx moves, which
+              # only works if the move is visible. Excluding it here gives it its own PR.
+              exclude-patterns:
+                  - "sqlx"
               update-types:
                   - "minor"
                   - "patch"
