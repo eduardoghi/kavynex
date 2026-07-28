@@ -149,15 +149,27 @@ drift in unnoticed.
    thing that leg needed was `xdg-utils`, which the arm64 runner image does not carry and the
    AppImage bundler refuses to run without (the apt step installs it explicitly on both Linux
    legs for that reason).
-4. The workflow creates a **draft** GitHub release tagged `v<version>` with auto-generated
-   notes (every commit subject since the previous tag) and uploads the built installers
-   plus signed updater artifacts. A separate `sbom` job publishes a CycloneDX SBOM of the
+4. The workflow creates a **draft** GitHub release tagged `v<version>` whose body is a single
+   line pointing at the release page, and uploads the built installers plus signed updater
+   artifacts. That body is deliberately short rather than a commit log: `tauri-action` copies
+   it verbatim into `latest.json`'s `notes`, which the in-app update notice renders as one
+   unscrolled block, so anything longer arrives as a wall of text in the update dialog. A
+   release here can carry hundreds of commits, which is what made this a real problem rather
+   than a stylistic one. A separate `sbom` job publishes a CycloneDX SBOM of the
    Rust dependency tree (`kavynex_<version>_sbom.cdx.json`), and a `checksums` job then
    downloads every asset, verifies the release is complete (the asset-completeness check -
    a missing installer or SBOM fails the release loudly rather than shipping silently), and
    publishes `SHA256SUMS.txt` on the same release (see `SECURITY.md` for why the checksums,
    SBOM and build provenance matter given installers are unsigned).
-5. Review the draft release and publish it manually when ready.
+5. Write the release notes by hand on the draft, using `git log v<previous>..HEAD --oneline`
+   as the raw material - the `feat:` and `fix:` subjects are the user-facing set, and the
+   commit convention below is what keeps them legible enough to serve as that material. This
+   is why there is no `CHANGELOG.md` to keep in step: the history already answers "what
+   changed since the last release", and a second copy of it only had somewhere to drift.
+   Writing it here rather than in the workflow body is what keeps it off the update notice -
+   editing a draft does not regenerate `latest.json`, so the text reaches the release page
+   without reaching the app.
+6. Review the draft release and publish it manually when ready.
 
 Installers are intentionally not code-signed (see `SECURITY.md`); do not add code-signing
 steps to the release workflow.
