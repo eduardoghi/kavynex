@@ -6,7 +6,9 @@
     "main"
   ],
   "permissions": [
-    "core:default",
+    "core:app:allow-version",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

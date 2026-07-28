@@ -285,6 +285,49 @@ resting the guarantee on the compiler version holding across every build. A real
 alongside the shim still resolves; a lone shim resolves to nothing and surfaces the normal
 "not found" guidance.
 
+### Capabilities: what the renderer is allowed to call at all
+
+Before any of the checks below apply, Tauri's ACL decides which *plugin* commands the webview
+may invoke in the first place (`src-tauri/capabilities/`). Commands this app defines itself are
+not gated there - a `#[tauri::command]` is reachable from the window it is registered for, which
+is exactly why the Rust command layer, not the ACL, is the trust boundary this document is about.
+What the ACL does bound is the surface Tauri and its plugins add on top.
+
+That surface is granted as the exact list the app uses, not a preset:
+
+- `core:app:allow-version` - `getVersion`, for the version shown in Settings.
+- `core:event:allow-listen` / `core:event:allow-unlisten` - `listen`, for the yt-dlp progress and
+  database-integrity events the backend emits.
+- `opener:allow-open-url`, scoped to the three YouTube hosts; `dialog:allow-open` /
+  `dialog:allow-save`; and, in `desktop.json`, `updater:default` and `process:allow-restart`.
+
+`convertFileSrc` and `Channel` appear in no grant because they need none: the first builds a URL
+string in the renderer, and the second is part of the IPC mechanism rather than a command. What
+serves an `asset:` URL is the scope described below, not a permission.
+
+The list started as the scaffolded `core:default` and stayed that way through four rounds of
+capability hardening, because each of those rounds was framed as narrowing *plugin* permissions
+(the opener's URL scope, dropping `reveal_item_in_dir`, replacing `dialog:default` and
+`process:default` with the commands actually called) and `core:*` never came into view.
+`core:default` is a set of sets: it expands to nine `core:<area>:default` sets and, on the pinned
+Tauri, to 92 individual `allow-*` permissions - the whole of `core:window` (28), `core:menu` (22),
+`core:tray` (12), `core:path` (8), `core:image` (5), `core:webview` (4) and more. None of it was
+reachable from the two seam modules, so a renderer that had been compromised could move, resize
+or enumerate windows, and resolve arbitrary paths, purely because a template said so.
+
+The seam rule is what makes this auditable rather than a guess: `src/lib/tauri-client.ts` and
+`src/lib/tauri-platform.ts` are the only files permitted to import `@tauri-apps` (enforced by
+`eslint.config.js`), so the used surface is a two-file read. When a new Tauri API is added there,
+its permission belongs in this list - and the failure mode if it is forgotten is loud and
+immediate (the call rejects with a permission error), unlike the silent over-grant it replaces.
+
+One trap worth naming, since it is the one case where the tight list could bite: the `Update`
+object returned by the updater plugin extends `Resource`, and calling `.close()` on it would
+invoke `plugin:resources|close`, which is **not** granted. Nothing calls it today - the flow is
+`check()` then `downloadAndInstall()` then `relaunch()`, and the plugin closes the handle on the
+Rust side - so adding `core:resources:allow-close` now would be granting an unused permission.
+Add it if and when a `.close()` call appears.
+
 ### Asset-protocol scope
 
 The webview loads local files (video/audio/thumbnails) through Tauri's `asset:` protocol
