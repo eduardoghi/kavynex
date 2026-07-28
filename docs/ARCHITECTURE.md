@@ -39,9 +39,10 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   than by a strict service/repository naming split - some files are "repositories" in
   spirit (`channel_repository.rs`, `video_repository/` hold the SQL), others are
   domain services (`library_media.rs`, `library_migration.rs`, `library_cleanup.rs`,
-  `thumbnail_persist.rs`, `thumbnail_download.rs`, `yt_dlp_download/`,
+  `thumbnail_persist.rs`, `thumbnail_download.rs`, `thumbnail_url.rs`, `yt_dlp_download/`,
   `yt_dlp_metadata.rs`, `yt_dlp_cookies.rs`, `yt_dlp_url.rs`, `live_chat_storage.rs`,
-  `db_schema/`, `db_backup/`, `database.rs`, `binaries.rs`, `cleanup.rs`, `logger.rs`).
+  `db_schema/`, `db_backup/`, `database.rs`, `binaries.rs`, `cleanup.rs`, `logger.rs`,
+  `pending_media.rs`, `library_recovery.rs`).
   A service that outgrew one file becomes a directory of the same name rather than a set
   of loose siblings, with the coupled core in `mod.rs` and the separable part split off:
   `db_schema/` (`ddl.rs`, `introspection.rs`), `db_backup/` (`integrity.rs`, `external.rs`,
@@ -171,13 +172,14 @@ seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` p
 | Channels CRUD | `commands/channels.rs`, `services/channel_repository.rs` | `repositories/channel-repository.ts` |
 | Media CRUD / import | `commands/videos.rs`, `commands/media.rs`, `services/video_repository/`, `services/library_media.rs` | `repositories/media-repository.ts`, `services/media-file-service.ts`, `services/media-input-service.ts` |
 | yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp_download/`, `services/yt_dlp_metadata.rs`, `services/yt_dlp_cookies.rs`, `services/yt_dlp_url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
-| Thumbnails | `commands/thumbnail.rs`, `services/thumbnail_persist.rs`, `services/thumbnail_download.rs`, `services/thumbnail_temp.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts` |
+| Thumbnails | `commands/thumbnail.rs`, `services/thumbnail_persist.rs`, `services/thumbnail_download.rs`, `services/thumbnail_url.rs`, `services/thumbnail_temp.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts` |
 | Database schema/migrations | `services/db_schema/` | - |
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library_summary.rs`, `services/library_cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/use-app-settings*.ts` |
+| Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library_recovery.rs`, `services/cleanup.rs` | - |
 
 See `docs/DATABASE.md` for the schema/migration/backup model and `docs/DIRECTORIES.md` for
 the on-disk layout these services read and write.

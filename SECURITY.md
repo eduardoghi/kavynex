@@ -36,6 +36,25 @@ prefixes) so a sibling directory like `library-evil` next to `library` can never
 mistaken for it. This is what stops a compromised frontend from redirecting a delete/move
 operation at an arbitrary directory by simply passing a different `library_path`.
 
+A third rule cuts across both, and is stated here as a rule rather than left to be inferred from
+the places it appears: **every command that accepts a path from the caller refuses a UNC / network
+location before any filesystem call touches it.** The reason is specific to Windows and easy to
+miss - merely stat'ing or canonicalizing `\\host\share` makes the OS authenticate to `host` over
+SMB, handing the user's NTLM hash to whoever controls it. So the refusal has to come *first*, ahead
+of the `exists()`/`is_file()`/`canonicalize()` that would otherwise pay the cost the check exists to
+avoid. `utils/path.rs::is_network_path` is the shared predicate (it normalizes separators, so the
+mixed spellings Windows still resolves to a share - `/\host\share`, `\/host\share` - cannot slip
+past a literal prefix match), and the commands applying it are
+`library::resolve_path_inside_library` (reveal in file manager),
+`thumbnail_temp::validate_source_media_path` (the FFmpeg preview source),
+`library_media::import_media_file_sync` (the import source),
+`library_guard::paths_refer_to_same_location` (a network path aimed at a local library),
+`yt_dlp_cookies::normalize_cookies_path` (the `--cookies` file) and
+`commands/database.rs::prepare_import_source` (the database import source). A library or a cookies
+file the user deliberately keeps on a share is not blocked from *existing* - only from being
+reached through a path the renderer supplies; copy it locally and the flow works. When a new
+command takes a caller-supplied path, this is the list it joins.
+
 #### Commands that intentionally take a caller-supplied path
 
 A handful of commands deliberately do *not* go through `library_guard`, because they are
@@ -285,6 +304,20 @@ primitive if it is ever widened too far:
 
 The app's cache directory (for temporary thumbnail previews) is authorized once, in
 `lib.rs`'s `setup()`, since it never contains anything but app-generated temp files.
+
+One property of the scope itself is worth stating, because it differs from how containment is
+decided everywhere else in this document: Tauri matches a request against the scope's **glob
+patterns over the requested path string**, without canonicalizing it first. Every other containment
+check here resolves symlinks and compares canonical paths
+(`ensure_existing_path_inside_dir`, `library_guard`), so this is the one place the decision is
+purely lexical. The practical consequence is that a symlink planted inside one of the four managed
+subdirectories, pointing outside the library, would be served through `convertFileSrc`. That is
+recorded rather than fixed because reaching it already requires write access to the user's library
+folder, at which point an attacker has better options than reading a file back through the webview -
+and because the paths the app itself serves are content-addressed names taken from the database,
+never a name a symlink would carry. It matters if the scope is ever widened to a directory the user
+did not choose, which is exactly what `register_library_asset_scope`'s settings cross-check and the
+managed-subdirectory restriction above are there to prevent.
 
 The scope decides *which files* may be served; the CSP decides *whether the webview may fetch
 them at all*, and the two must agree. `tauri.conf.json`'s `img-src`/`media-src` therefore name

@@ -162,6 +162,18 @@ most up-to-date Windows 10 installs already have it. If the window fails to open
 blank, install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 and try again.
 
+### "This library was released earlier in this session" after changing the library folder
+
+Restart Kavynex and it works again. Nothing is lost and nothing needs to be repaired - the media,
+the database and your settings are all untouched.
+
+This appears if you move the library folder to a new location and then move it back within the same
+session. Kavynex authorizes the library's folders with the webview so it can display your videos and
+thumbnails, and that authorization can be withdrawn but not re-granted while the app is running (a
+limitation of the underlying framework, not a state Kavynex chose). Rather than accept the move and
+leave you with a library where every thumbnail and video silently fails to load, it refuses up front
+and asks for the restart. After restarting, the folder is authorized normally.
+
 ### Kavynex reports a corrupted database
 
 This is handled automatically and nothing is silently lost. On the next launch Kavynex restores
