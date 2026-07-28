@@ -269,6 +269,112 @@ mod tests {
     // authorize. The library-path guard behind register_library_asset_scope is covered by
     // services::library_guard's paths_refer_to_same_location tests.
 
+    /// Records every path a `grant_path_with_canonical` run authorized, so its two-grant contract
+    /// can be asserted without a Tauri runtime. The closure is `Fn`, not `FnMut`, so the recording
+    /// needs interior mutability.
+    fn record_grants(primary: &Path) -> AppResult<Vec<PathBuf>> {
+        let granted = std::cell::RefCell::new(Vec::new());
+
+        grant_path_with_canonical(primary, "test path", |path| {
+            granted.borrow_mut().push(path.to_path_buf());
+            Ok(())
+        })?;
+
+        Ok(granted.into_inner())
+    }
+
+    #[test]
+    fn grant_path_with_canonical_authorizes_both_forms_when_they_differ() {
+        // This is the whole reason the helper exists: convertFileSrc can hand the asset scope
+        // either the plain path or its canonical (`\\?\`-prefixed, on Windows) form, and a scope
+        // holding only one of them refuses the other - which surfaces as every thumbnail and video
+        // silently failing to load, with nothing logged. Routing through a `..` segment yields a
+        // path whose canonical form is a different string on every platform, which is what makes
+        // this portable rather than Windows-only.
+        let base = unique_test_dir("grant-differs");
+        let nested = base.join("sub");
+        fs::create_dir_all(&nested).unwrap();
+
+        let indirect = nested.join("..");
+        let canonical = indirect.canonicalize().unwrap();
+        assert_ne!(
+            indirect, canonical,
+            "the two spellings must differ or this test asserts nothing"
+        );
+
+        let granted = record_grants(&indirect).unwrap();
+
+        assert_eq!(
+            granted,
+            vec![indirect.clone(), canonical],
+            "the requested form and its canonical form must both be authorized, in that order"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn grant_path_with_canonical_authorizes_once_when_the_path_is_already_canonical() {
+        // The other direction of the same comparison. Without it, inverting `canonical != primary`
+        // still passes the test above by re-granting an identical path, so the redundant second
+        // grant has to be ruled out explicitly.
+        let base = unique_test_dir("grant-same");
+        fs::create_dir_all(&base).unwrap();
+        let canonical = base.canonicalize().unwrap();
+
+        let granted = record_grants(&canonical).unwrap();
+
+        assert_eq!(
+            granted,
+            vec![canonical],
+            "an already-canonical path must be authorized exactly once"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn grant_path_with_canonical_propagates_the_primary_failure_but_not_the_canonical_one() {
+        // The documented asymmetry: failing to authorize the requested path is the caller's
+        // problem, while the canonical retry is best effort and only warns. A change that made the
+        // retry fatal would break registration for any path whose canonical form cannot be granted.
+        let base = unique_test_dir("grant-failure");
+        let nested = base.join("sub");
+        fs::create_dir_all(&nested).unwrap();
+        let indirect = nested.join("..");
+
+        // The first grant fails: the error reaches the caller.
+        let error = grant_path_with_canonical(&indirect, "test path", |_| {
+            Err(AppError::from_code(
+                AppErrorCode::AssetScopeRegisterFailed,
+                "denied",
+            ))
+        })
+        .unwrap_err();
+        assert_eq!(error.code, AppErrorCode::AssetScopeRegisterFailed.as_str());
+
+        // Only the canonical retry fails: the run still succeeds, and both grants were tried.
+        let calls = std::cell::RefCell::new(0);
+        grant_path_with_canonical(&indirect, "test path", |_| {
+            let mut calls = calls.borrow_mut();
+            *calls += 1;
+
+            if *calls == 1 {
+                Ok(())
+            } else {
+                Err(AppError::from_code(
+                    AppErrorCode::AssetScopeRegisterFailed,
+                    "denied",
+                ))
+            }
+        })
+        .expect("a failed canonical retry must not fail the registration");
+
+        assert_eq!(calls.into_inner(), 2, "both grants should have been tried");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn managed_asset_scope_dirs_are_the_four_managed_subdirs_never_the_root() {
         let root = Path::new("/library");
