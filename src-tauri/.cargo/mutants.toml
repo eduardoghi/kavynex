@@ -124,6 +124,32 @@
 #   module doc already claimed that property; nothing tested it above `is_marker_file_name`. The
 #   other nine are excluded below in three groups, each for a different reason.
 #   library_recovery.rs - 15 mutants, 1 unviable, 14 caught, 0 missed. Goes in clean.
+# The four remaining pure security gates: every function that decides whether a caller-supplied
+# value is allowed through, which is the profile this whole gate exists for. Each was already
+# covered by unit tests; what was untested was whether those tests kill a logic mutant.
+# ADDED after a measured pass (2026-07-27, `--in-place --no-config --file <each>`):
+#   `src/services/yt_dlp_cookies.rs` - the `.txt` gate and the network-path refusal on the
+#   `--cookies` argument, plus the browser allow-list that decides which cookie store yt-dlp is
+#   allowed to read. 11 mutants, 0 unviable, 11 caught, 0 missed. Goes in clean.
+#   `src/commands/security.rs` - `validate_asset_file_for_preview`, the only gate on the only
+#   command that widens the asset scope to a caller-chosen file: a dropped `!` there turns
+#   `allow_asset_file` into an arbitrary-file read through `convertFileSrc`. 32 mutants, 23
+#   unviable (the AppHandle command glue does not build under mutation, as in live_chat.rs), 8
+#   caught, 1 missed. The survivor was real and is now covered: `canonical != primary` in
+#   `grant_path_with_canonical` had no test at all, and inverting it skips the canonical grant in
+#   exactly the case the function exists for (the `\\?\` form convertFileSrc hands the scope on
+#   Windows), which fails as every thumbnail and video silently not loading. Three tests now pin
+#   both directions of that comparison and the documented propagate-primary/warn-on-canonical
+#   asymmetry; re-measured at 9 caught, 0 missed.
+#   `src/commands/database.rs` - `prepare_export_destination` / `prepare_import_source` and the
+#   `destination_is_inside_dir` containment behind them, i.e. both directions of the gate on a
+#   destructive overwrite. Measured with `--examine-re` scoped to those functions: 22 mutants, 16
+#   unviable, 6 caught, 0 missed. The scoping is a runtime concession, not a narrower claim - a
+#   full-file run generates ~35 further mutants that are all unviable command glue, and a partial
+#   full-file pass confirmed the same 6 viable mutants and no survivor. The glob below is the whole
+#   file regardless, matching live_chat.rs.
+#   `src/utils/validation.rs` - the media title/type and channel name/handle validators every write
+#   boundary calls. 31 mutants, 16 unviable, 15 caught, 0 missed. Goes in clean.
 examine_globs = [
     "src/services/pending_media.rs",
     "src/services/library_recovery.rs",
@@ -139,7 +165,11 @@ examine_globs = [
     "src/services/yt_dlp_download/command.rs",
     "src/services/yt_dlp_download/redaction.rs",
     "src/services/ssrf_guard.rs",
+    "src/services/yt_dlp_cookies.rs",
+    "src/utils/validation.rs",
     "src/commands/live_chat.rs",
+    "src/commands/security.rs",
+    "src/commands/database.rs",
 ]
 
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the
