@@ -60,13 +60,28 @@ jobs:
                   retention-days: 30
 
     rust-mutation:
-        name: Rust mutation testing
+        name: Rust mutation testing (shard ${{ strategy.job-index }})
         # Pinned like the job above and ci.yml's rust job; see those comments.
         runs-on: ubuntu-26.04
-        # Generous timeout for the same reason as the frontend job above: cargo-mutants rebuilds and
-        # tests the tree once per mutant, so a full run is long, and this weekly scheduled run can
-        # afford the wall-clock.
-        timeout-minutes: 120
+        strategy:
+            # One shard failing must not cancel the others: each covers a distinct slice of the
+            # mutant list, so the surviving shards still produce a usable verdict for their slice.
+            fail-fast: false
+            matrix:
+                # These values are never read. The shard is derived from `strategy.job-index` /
+                # `strategy.job-total` in the run step below, so only the *length* of this list
+                # matters: adding or removing an entry changes the shard count with nothing else to
+                # keep in step. Spelling the count in two places is what this avoids, and the
+                # failure it avoids is silent - a matrix of three against a hardcoded `/4` would
+                # simply never run the fourth shard's mutants, and the run would go green.
+                shard: [1, 2, 3]
+        # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
+        # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
+        # was killed at 2h00m having produced no verdict - the two runs before it took ~56 minutes.
+        # The scope is 1047 mutants today (`cargo mutants --list | wc -l`), so a third of it plus one
+        # baseline build sits well inside this, and the ceiling stays low enough to be a real signal
+        # rather than a number nothing ever approaches.
+        timeout-minutes: 90
         # Trim debuginfo like ci.yml's Rust job: cargo-mutants rebuilds the tree once per mutant, so
         # keeping the per-build cost down matters more here than anywhere else.
         env:
@@ -98,6 +113,10 @@ jobs:
             # run is the one interaction worth avoiding; a fresh checkout would re-fingerprint and
             # rebuild the changed files next run, but not persisting a failure-run cache removes the
             # question entirely. A successful run still caches normally.
+            #
+            # No per-shard cache key: every shard builds the same unmutated tree, so they share one
+            # entry rather than storing three near-identical copies against the repository's cache
+            # quota. They race to save it and all but one log a benign "already exists".
             - name: Cache Rust build
               uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
               with:
@@ -133,30 +152,66 @@ jobs:
             # invocation it runs. Verified locally (cargo-mutants 27.1.0, the version pinned
             # above): passing `--cargo-arg=--locked` here as well fails the run with "the argument
             # '--locked' cannot be used multiple times", confirming it is already applied.
+            #
+            # `--shard k/n` splits the *mutant list*, not the file scope, which is why it is the
+            # right knob here: `examine_globs`, `exclude_re` and `additional_cargo_args` all stay
+            # exactly as mutants.toml declares them, and the shards partition the same set the
+            # unsharded run would have produced. Verified against the pinned 27.1.0 on this tree:
+            # the full list is 1047 mutants and shards 0/3, 1/3 and 2/3 list 349 each - an exact
+            # partition, nothing dropped and nothing run twice. `k` is zero-based (`3/3` is refused
+            # with "shard k must be less than n"), which is what `strategy.job-index` already is.
+            #
+            # `round-robin` rather than the default `slice`: consecutive mutants come from the same
+            # file, so slicing would hand one shard a run of db_backup mutants and another a run of
+            # cheap pure-function ones. Interleaving keeps the three legs about the same length.
+            # `--no-shuffle` still applies, and now orders each shard's own slice deterministically.
             - name: Run Rust mutation testing
-              run: cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle --timeout 300
+              run: >
+                  cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle
+                  --timeout 300
+                  --sharding round-robin
+                  --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
 
             # Same reasoning as the Stryker upload above, and it matters more here: a cargo-mutants
             # run rebuilds and tests the tree once per mutant, so reproducing one locally to find out
             # which mutant survived costs far more than reading `missed.txt` from the artifact.
             # mutants.out/ also carries outcomes.json, caught/unviable lists and the debug log.
+            #
+            # The name carries the shard index because upload-artifact refuses two artifacts with
+            # the same name in one run - and it has to be the index rather than the `k/n` spec,
+            # since an artifact name cannot contain a slash. Each shard reports only its own slice,
+            # so triaging a red run means reading the artifact of the shard that failed.
             - name: Upload the cargo-mutants output
               if: always()
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
-                  name: cargo-mutants-output
+                  name: cargo-mutants-output-shard-${{ strategy.job-index }}
                   path: src-tauri/mutants.out
                   retention-days: 30
 
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
     # signal - mirrors scheduled-audit.yml's alert-on-failure job for the same reason. Open (or
     # comment on) a tracking issue so a failing mutation run is visible in the repository itself.
-    # Runs only when a job above actually failed, and only on the schedule/dispatch this workflow
+    # Runs only when a job above did not succeed, and only on the schedule/dispatch this workflow
     # already runs on.
     alert-on-failure:
         name: Open an issue on failure
         needs: [mutation, rust-mutation]
-        if: failure()
+        # `failure()` alone was wrong, and it cost a real run: a job killed by its own
+        # `timeout-minutes` is marked **cancelled**, not failed, so on 2026-07-27 the Rust leg died
+        # at the 2h ceiling and this job was *skipped*. The gate stopped producing a verdict and the
+        # one mechanism built to make that visible stayed quiet - the worse half of the bug, since a
+        # gate that fails loudly is merely broken while a gate that goes silent reads as green.
+        #
+        # So the dependency results are checked explicitly instead of leaning on a status function.
+        # `always()` is what lets this run at all once a dependency is cancelled; the consequence is
+        # that cancelling the run by hand also opens an issue. That is the right direction to err:
+        # a stray comment on an existing tracking issue costs a moment, whereas the alternative is
+        # the failure mode this whole condition exists to close.
+        if: >
+            always() &&
+            (needs.mutation.result == 'failure' || needs.mutation.result == 'cancelled' ||
+             needs.rust-mutation.result == 'failure' || needs.rust-mutation.result == 'cancelled')
         runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
@@ -168,7 +223,7 @@ jobs:
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   TITLE="Scheduled mutation testing failed"
-                  BODY="The weekly scheduled mutation testing run failed - a mutant survived, a test regressed, or the run itself errored. Review the run and shore up the affected tests: $RUN_URL"
+                  BODY="The weekly scheduled mutation testing run did not succeed - a mutant survived, a test regressed, a shard ran past its timeout (which reports as cancelled, not failed), or the run itself errored. Review the run and shore up the affected tests: $RUN_URL"
                   EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
                   if [ -n "$EXISTING" ]; then
                       gh issue comment "$EXISTING" --body "$BODY"
