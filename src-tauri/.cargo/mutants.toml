@@ -150,6 +150,17 @@
 #   file regardless, matching live_chat.rs.
 #   `src/utils/validation.rs` - the media title/type and channel name/handle validators every write
 #   boundary calls. 31 mutants, 16 unviable, 15 caught, 0 missed. Goes in clean.
+# `src/services/thumbnail_url.rs` - the host allow-list on the *direct* thumbnail fetch, the one
+# branch of `download_thumbnail_from_url_async` that reaches the network without going through
+# yt-dlp. It is what keeps that branch from being an outbound channel to any public host (the
+# yt-dlp fallback has its own allow-list, in `yt_dlp_url.rs`, already in scope above). Extracted
+# from `thumbnail_download.rs` rather than widening the glob to that file, following the
+# `ssrf_guard.rs` and `yt_dlp_download/redaction.rs` precedent: the rest of that module is async
+# process orchestration a unit test cannot drive, so a whole-file glob would report dozens of
+# unkillable mutants and cost minutes per run. ADDED after a measured pass (2026-07-27,
+# `--in-place --no-config --file`): 4 mutants, 0 unviable, 4 caught, 0 missed, in 85s - the three
+# tests that moved with it (the real CDNs, the look-alike rejections, and the two-way CSP parity
+# check) already kill every viable mutant. The runtime is the extraction's whole payoff.
 examine_globs = [
     "src/services/pending_media.rs",
     "src/services/library_recovery.rs",
@@ -165,6 +176,7 @@ examine_globs = [
     "src/services/yt_dlp_download/command.rs",
     "src/services/yt_dlp_download/redaction.rs",
     "src/services/ssrf_guard.rs",
+    "src/services/thumbnail_url.rs",
     "src/services/yt_dlp_cookies.rs",
     "src/utils/validation.rs",
     "src/commands/live_chat.rs",
