@@ -265,6 +265,7 @@ repository), and applies to the font files only, not to Kavynex itself.
 - `docs/ARCHITECTURE.md` - the layered backend/frontend architecture and the IPC boundary.
 - `docs/DATABASE.md` - the SQLite schema, migrations, and backup/restore/export/import model.
 - `docs/DIRECTORIES.md` - the runtime directories and library layout the app uses on disk.
-- `CONTRIBUTING.md` - development setup, commands, and the release flow.
+- `docs/RELEASING.md` - how a release is cut and published (needs repository write access).
+- `CONTRIBUTING.md` - development setup, commands, and commit conventions.
 - `SECURITY.md` - the threat model and how to report a vulnerability.
 
