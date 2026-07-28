@@ -212,6 +212,41 @@ ability to be pointed at directly. An invalid value is dropped rather than raise
 matching how this function treats every other rejection - the run simply proceeds without
 cookies (or falls back to `--cookies-from-browser`).
 
+### Outbound image fetches (thumbnails and channel avatars)
+
+Downloading a thumbnail is the one place the backend makes an HTTP request of its own rather than
+delegating to yt-dlp, so it carries its own set of controls
+(`services/thumbnail_download.rs`). `download_thumbnail_from_url` takes two paths depending on the
+URL, and **both gate the host**:
+
+- A URL whose *path* ends in an image extension is fetched directly, and is restricted to the
+  image CDNs YouTube actually serves thumbnails from (`ALLOWED_THUMBNAIL_IMAGE_HOSTS`:
+  `ytimg.com`, `ggpht.com`, `googleusercontent.com`, `youtube.com`, each suffix-matched on a
+  leading `.` so a look-alike like `ytimg.com.evil.example` is refused). That list is a copy of the
+  CSP's `img-src` hosts and is pinned against it by a test, on the principle that the backend
+  should only fetch an image the webview would be permitted to render. Note this is deliberately
+  *not* the yt-dlp allow-list below: real thumbnails live on ytimg/ggpht/googleusercontent, none of
+  which is a `youtube.com` host, so reusing that list would reject every legitimate thumbnail.
+- Any other URL falls through to yt-dlp's generic extractor, which is restricted to YouTube by
+  `is_allowed_youtube_url` - the same allow-list, for the same reason, as every other yt-dlp
+  invocation: the extractor runs with access to the user's browser cookies.
+
+The direct fetch is additionally constrained on the way back: a hard 10 MiB cap, an allow-listed
+`Content-Type`, and a magic-byte sniff (the header is attacker-controlled, so it is only a first
+filter). It follows redirects **manually**, re-running the address check on every hop, and dials
+through a DNS resolver that drops every private/loopback/reserved answer
+(`services::ssrf_guard`, `PublicOnlyResolver`) - so the address that is validated is the address
+that is dialed, closing the rebinding window a pre-connection check alone leaves open. This is why
+the module uses a hand-rolled hyper client rather than the `reqwest` already in the tree: automatic
+redirect following would bypass the per-hop revalidation.
+
+Worth stating plainly, because the two halves once differed: the host gate on the direct branch was
+added after the fallback already had one. Until then the SSRF guard kept that branch off internal
+addresses but nothing kept it off the open internet, which left a compromised frontend an outbound
+channel (a path ending in `.jpg` on a host of its choosing). It cost no functionality to close - the
+manual thumbnail control is a file picker, never a URL field, and the only remote value that reaches
+the command is yt-dlp's own `thumbnail` metadata.
+
 ### External binary resolution (no working-directory hijack)
 
 `services/binaries.rs` resolves `yt-dlp`/`ffmpeg` by walking only the directories listed

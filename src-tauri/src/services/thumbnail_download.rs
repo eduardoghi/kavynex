@@ -209,6 +209,47 @@ const ALLOWED_THUMBNAIL_CONTENT_TYPES: &[&str] = &[
     "image/gif",
 ];
 
+/// The image CDNs the direct thumbnail fetch may reach. These mirror the `img-src` hosts in
+/// `tauri.conf.json`'s CSP: the webview is already only permitted to *render* images from them, so
+/// letting the backend *fetch* one from anywhere else served no flow this app has. The parity is
+/// pinned by `allowed_thumbnail_hosts_match_the_csp_img_src` below, so the two lists cannot drift.
+///
+/// This exists because the two halves of `download_thumbnail_from_url_async` used to treat the host
+/// differently: the yt-dlp fallback has always refused a non-YouTube URL (it hands the value to
+/// yt-dlp's generic extractor, which runs with access to the user's browser cookies), while the
+/// direct-image branch accepted any *public* host. The SSRF guard kept that branch off internal
+/// addresses, but nothing kept it off the open internet - so a compromised frontend could use it as
+/// an outbound channel, encoding data in a path that still ends in `.jpg`. No legitimate flow ever
+/// supplied such a URL: the manual thumbnail control is a file picker (`utils/pick-image-file.ts`),
+/// and the only remote value that reaches here is yt-dlp's own `thumbnail` metadata.
+///
+/// Deliberately **not** `yt_dlp_url::YOUTUBE_DOMAINS`, which gates the fallback. The thumbnails
+/// yt-dlp reports live on ytimg/ggpht/googleusercontent, none of which is a `youtube.com` host, so
+/// reusing that list here would reject every real thumbnail the app downloads.
+const ALLOWED_THUMBNAIL_IMAGE_HOSTS: [&str; 4] = [
+    "ytimg.com",
+    "ggpht.com",
+    "googleusercontent.com",
+    "youtube.com",
+];
+
+/// True when `uri`'s host is one of [`ALLOWED_THUMBNAIL_IMAGE_HOSTS`] or a subdomain of one.
+///
+/// Suffix-matched on a leading `.` exactly like `yt_dlp_url::is_allowed_youtube_host`, so a
+/// look-alike (`ytimg.com.evil.example`, `notytimg.com`) is rejected rather than matched by a bare
+/// `contains`. A trailing root dot is stripped first, since `ytimg.com.` resolves to the same host.
+fn is_allowed_thumbnail_image_host(uri: &Uri) -> bool {
+    let Some(host) = uri.host() else {
+        return false;
+    };
+
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+
+    ALLOWED_THUMBNAIL_IMAGE_HOSTS
+        .iter()
+        .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
+}
+
 /// What a thumbnail fetch is pointed at, which decides how yt-dlp treats playlists.
 #[derive(Clone, Copy)]
 enum ThumbnailTarget {
@@ -787,6 +828,23 @@ pub async fn download_thumbnail_from_url_async(
 
     let result = async {
         if let Some(ext) = direct_image_extension(&normalized_url) {
+            // Restrict the fetch to the image CDNs before it goes out, matching the host gate the
+            // yt-dlp fallback below has always applied. `http_get_image`'s SSRF guard keeps this
+            // off internal addresses and its size/content-type/magic-byte checks bound what comes
+            // back, but all three constrain the *response* - none of them stopped the request from
+            // reaching an arbitrary public host in the first place. See
+            // ALLOWED_THUMBNAIL_IMAGE_HOSTS for why this list is not the yt-dlp one.
+            let direct_uri: Uri = normalized_url.parse().map_err(|e| {
+                AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
+            })?;
+
+            if !is_allowed_thumbnail_image_host(&direct_uri) {
+                return Err(AppError::from_code(
+                    AppErrorCode::InvalidUrl,
+                    "direct thumbnail download is restricted to the youtube image cdns",
+                ));
+            }
+
             let direct_file_path = thumb_temp_dir.join(format!("direct_thumbnail.{ext}"));
 
             let (status, headers, buffer) =
@@ -1157,6 +1215,96 @@ mod tests {
             split_url_path("no-query-or-fragment"),
             "no-query-or-fragment"
         );
+    }
+
+    #[test]
+    fn is_allowed_thumbnail_image_host_accepts_the_cdns_youtube_actually_serves() {
+        // The real hosts yt-dlp reports a thumbnail on. None of them is a `youtube.com` host,
+        // which is exactly why this gate cannot reuse the yt-dlp allow-list.
+        for value in [
+            "https://i.ytimg.com/vi/abc/maxresdefault.jpg",
+            "https://i9.ytimg.com/vi/abc/hq720.jpg",
+            "https://yt3.ggpht.com/ytc/abc.jpg",
+            "https://lh3.googleusercontent.com/abc.jpg",
+            "https://yt3.googleusercontent.com/abc.jpg",
+            "https://www.youtube.com/img/abc.png",
+            // The bare apex of each allowed domain, and a trailing root dot, both resolve here.
+            "https://ytimg.com/abc.jpg",
+            "https://ggpht.com./abc.jpg",
+            // Host matching is case-insensitive.
+            "https://I.YTIMG.COM/vi/abc/default.jpg",
+        ] {
+            assert!(
+                is_allowed_thumbnail_image_host(&uri(value)),
+                "should accept: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_allowed_thumbnail_image_host_rejects_look_alikes_and_arbitrary_hosts() {
+        // The suffix match requires a leading `.`, so a domain that merely *contains* or *ends
+        // with the letters of* an allowed one is refused. The last two are the exfiltration shape
+        // this gate exists to close: a path that still ends in `.jpg` on a host of the caller's
+        // choosing.
+        for value in [
+            "https://ytimg.com.evil.example/abc.jpg",
+            "https://notytimg.com/abc.jpg",
+            "https://evilggpht.com/abc.jpg",
+            "https://googleusercontent.com.attacker.test/abc.jpg",
+            "https://ytimg.evil.example/abc.jpg",
+            "https://attacker.example/ZXhmaWx0cmF0ZWQ.jpg",
+            "https://attacker.example/pic.jpg?leak=secret",
+        ] {
+            assert!(
+                !is_allowed_thumbnail_image_host(&uri(value)),
+                "should reject: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn allowed_thumbnail_hosts_match_the_csp_img_src() {
+        // The backend fetches an image only from hosts the webview is allowed to render one from,
+        // so this list is a copy of the CSP's `img-src` hosts. A copy drifts, and the drift would
+        // be silent in both directions: a host added here but not to the CSP downloads a thumbnail
+        // the grid then refuses to display, and one added to the CSP but not here is renderable and
+        // undownloadable. Read the CSP as the source and assert every entry is covered.
+        let raw = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"));
+        let config: serde_json::Value =
+            serde_json::from_str(raw).expect("tauri.conf.json must be valid JSON");
+
+        let csp = config["app"]["security"]["csp"]
+            .as_str()
+            .expect("the CSP must be a string");
+
+        let img_src = csp
+            .split(';')
+            .map(str::trim)
+            .find(|directive| directive.starts_with("img-src"))
+            .expect("the CSP must declare img-src");
+
+        for domain in ALLOWED_THUMBNAIL_IMAGE_HOSTS {
+            assert!(
+                img_src.contains(domain),
+                "img-src does not cover {domain}, which the direct thumbnail fetch allows: {img_src}"
+            );
+        }
+
+        // And the other direction: every https host the CSP names must be fetchable here, so a
+        // host added to the CSP alone fails this test instead of silently never downloading.
+        for token in img_src.split_whitespace() {
+            let Some(host) = token.strip_prefix("https://") else {
+                continue;
+            };
+
+            let host = host.trim_start_matches("*.");
+
+            assert!(
+                ALLOWED_THUMBNAIL_IMAGE_HOSTS.contains(&host),
+                "img-src names {host}, which the direct thumbnail fetch would refuse"
+            );
+        }
     }
 
     #[test]
