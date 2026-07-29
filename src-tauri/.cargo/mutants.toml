@@ -317,4 +317,24 @@ exclude_re = [
     # assert the repaired rows rather than the log.
     'replace > with (==|<|>=) in apply_migration_13',
     'replace > with (==|<|>=) in apply_migration_14',
+    # `is_batch_shim_extension` is `#[cfg(windows)]`, and so is the test that pins it. The gate runs
+    # on ubuntu, where neither is compiled, so both directions of the mutant are reported missed on
+    # every run and nothing on that platform can ever kill them. Same class, and the same reason, as
+    # the `resolve_from_path_var` cfg-split exclusion above. The BatBadBut guard itself stays covered
+    # by `is_batch_shim_extension_flags_only_bat_and_cmd`, which runs on Windows.
+    'is_batch_shim_extension',
+    # `current_version < N` weakened to `<= N` in ensure_schema re-runs the migration the database is
+    # already at. Every migration is idempotent by construction - `CREATE TABLE/INDEX/TRIGGER IF NOT
+    # EXISTS`, column-existence-guarded `ALTER`, and repairs that are plain `UPDATE ... WHERE` - and
+    # each stamps the version it just re-applied, so the end state is byte-identical and only the
+    # work is wasted. No assertion can distinguish it.
+    #
+    # The `== N` direction is deliberately NOT excluded. That one skips a migration outright, which
+    # is a real defect, and it survived until 2026-07-28 because reaching head was the only thing
+    # asserted - the later migrations stamp their version on the way past a skipped one, so the
+    # database still ends at SCHEMA_VERSION while missing that migration's indexes.
+    # `every_historical_version_migrates_to_the_current_schema` now asserts every index and trigger
+    # in `INDEX_DDLS`/`TRIGGER_DDLS` exists after migrating from each historical version, which is
+    # what kills it.
+    'replace < with <= in ensure_schema',
 ]
