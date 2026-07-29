@@ -63,6 +63,21 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 /// they are a stat each, and refusing them would make a fully warmed page fall back for no reason.
 const MAX_GENERATIONS_PER_CALL: usize = 64;
 
+/// Upper bound on how many entries one call will consider at all.
+///
+/// [`MAX_GENERATIONS_PER_CALL`] bounds the expensive half - how many FFmpeg runs a call may start -
+/// and says nothing about the cheap half, which is not free at library scale: every entry costs a
+/// `display_cache_key` and a `stat` whether or not it can be generated, all of it on one
+/// blocking-pool thread. This is the bound on that, and it is the same bound every other command
+/// taking a collection over IPC already declares (`MAX_MEDIA_PAGE_LIMIT`,
+/// `MAX_MEDIA_COMMENTS_LOADED`, `MAX_SEARCH_TERM_CHARS`, `MAX_RUN_ID_LEN`): the backend is the trust
+/// boundary, so it states its own limit rather than inheriting whatever the caller sends.
+///
+/// A page of the grid is at most a few dozen rows, so this is generous for every legitimate call.
+/// Entries past it answer `None`, which the caller already renders as the stored thumbnail - the
+/// same benign fallback as a name this app did not write.
+const MAX_RESOLVED_PER_CALL: usize = 512;
+
 /// Ceiling on the total size of the derivative cache directory.
 ///
 /// A derivative is capped at [`DISPLAY_THUMBNAIL_MAX_WIDTH`] wide and JPEG-encoded, so it runs tens
@@ -135,6 +150,14 @@ pub(crate) fn plan_display_cache_eviction(
 /// The cache's own size budget, for the startup sweep that enforces it (`services::cleanup`).
 pub(crate) fn display_cache_max_bytes() -> u64 {
     DISPLAY_CACHE_MAX_BYTES
+}
+
+/// The prefix of `relative_paths` one call will resolve, bounded by [`MAX_RESOLVED_PER_CALL`].
+///
+/// Pure over the slice so both directions of the ceiling are one call from a test; the entry point
+/// that applies it is `AppHandle`-bound and cannot be driven by one.
+pub(crate) fn within_call_ceiling(relative_paths: &[String]) -> &[String] {
+    &relative_paths[..relative_paths.len().min(MAX_RESOLVED_PER_CALL)]
 }
 
 /// The name a derivative lands under: the canonical thumbnail's own content hash, plus the shared
@@ -323,6 +346,10 @@ fn resolve_one(
 /// `Ok` with every entry `None` rather than failing when the cache directory or FFmpeg cannot be
 /// resolved - the grid must render either way, and a thumbnail cache is not worth an error modal.
 ///
+/// The returned vector is always as long as `relative_paths`, because the caller reads it by
+/// position; entries the per-call ceiling ([`MAX_RESOLVED_PER_CALL`]) excluded are `None` like any
+/// other unresolved one.
+///
 /// `library_path` is the caller's, and is verified by the command layer
 /// (`verify_library_path_then_blocking`) before this runs, exactly like every other library read.
 pub fn resolve_display_thumbnails_sync(
@@ -339,13 +366,30 @@ pub fn resolve_display_thumbnails_sync(
         return Ok(vec![None; relative_paths.len()]);
     };
 
+    let considered = within_call_ceiling(relative_paths);
+
+    // A truncated call means the caller asked about more than a page, which no legitimate flow does,
+    // so say so once rather than capping silently - a page of cards quietly falling back to the
+    // stored file is otherwise indistinguishable from a machine with no FFmpeg.
+    if considered.len() < relative_paths.len() {
+        logger::warn(
+            "thumbnail_display",
+            format!(
+                "a display thumbnail request named {} paths; resolving the first {} and serving the \
+                 stored thumbnails for the rest",
+                relative_paths.len(),
+                considered.len()
+            ),
+        );
+    }
+
     // Resolved once for the whole page, and only lazily needed: a fully cached page never asks for
     // it, so a machine without FFmpeg still gets its derivatives served (it just cannot make new
     // ones). `resolve_one` treats a missing binary as "no derivative", not as an error.
     let ffmpeg = resolve_ffmpeg_binary(app).ok();
     let mut generations_left = MAX_GENERATIONS_PER_CALL;
 
-    let resolved = relative_paths
+    let mut resolved: Vec<Option<String>> = considered
         .iter()
         .map(|relative_path| {
             resolve_one(
@@ -358,6 +402,9 @@ pub fn resolve_display_thumbnails_sync(
             .map(|path| path.to_string_lossy().to_string())
         })
         .collect();
+
+    // Restore the positional contract the caller indexes by.
+    resolved.resize(relative_paths.len(), None);
 
     Ok(resolved)
 }
@@ -450,6 +497,44 @@ mod tests {
         ];
 
         assert_eq!(plan_display_cache_eviction(entries, 0).len(), 2);
+    }
+
+    #[test]
+    fn within_call_ceiling_passes_a_normal_page_through_untouched() {
+        // A page of the grid is a few dozen rows, so the ceiling must never be what a real call
+        // meets - otherwise it would be silently degrading the feature it is protecting.
+        let page: Vec<String> = (0..64)
+            .map(|index| format!("thumbnails/{index}.jpg"))
+            .collect();
+
+        assert_eq!(within_call_ceiling(&page).len(), 64);
+    }
+
+    #[test]
+    fn within_call_ceiling_truncates_an_oversized_request_at_the_boundary() {
+        // Both sides of the comparison, on the exact boundary: a request of exactly the ceiling is
+        // fully served, and one entry more is truncated to the ceiling rather than to zero or to
+        // one-off either way.
+        let exact: Vec<String> = vec![String::new(); MAX_RESOLVED_PER_CALL];
+        assert_eq!(within_call_ceiling(&exact).len(), MAX_RESOLVED_PER_CALL);
+
+        let over: Vec<String> = vec![String::new(); MAX_RESOLVED_PER_CALL + 1];
+        assert_eq!(within_call_ceiling(&over).len(), MAX_RESOLVED_PER_CALL);
+
+        let far_over: Vec<String> = vec![String::new(); MAX_RESOLVED_PER_CALL * 10];
+        assert_eq!(within_call_ceiling(&far_over).len(), MAX_RESOLVED_PER_CALL);
+    }
+
+    #[test]
+    fn within_call_ceiling_keeps_the_leading_entries_in_order() {
+        // The caller reads the answer by position, so the prefix has to be the *leading* entries and
+        // has to stay in order - a truncation that took the tail would answer every entry with the
+        // wrong derivative.
+        let requested: Vec<String> = (0..3)
+            .map(|index| format!("thumbnails/{index}.jpg"))
+            .collect();
+
+        assert_eq!(within_call_ceiling(&requested), requested.as_slice());
     }
 
     #[test]
