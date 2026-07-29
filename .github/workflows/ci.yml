@@ -241,17 +241,25 @@ jobs:
             #
             # This is a lint rather than a convention for the same reason the check above is: a
             # property enforced nowhere is a property that drifts back. The check is deliberately
-            # crude - it flags `display()` within a few lines of a logger call - because the cost of
-            # a false positive is naming the value explicitly, while the cost of a miss is a
+            # crude - it flags either spelling within a few lines of a logger call - because the cost
+            # of a false positive is naming the value explicitly, while the cost of a miss is a
             # username in someone's public issue.
+            #
+            # Both spellings, because `display()` alone was only half the property: `{:?}` on a
+            # `Path` prints the entire path too (quoted), so a `Debug`-formatted value would have
+            # walked straight past a check written to catch exactly this. There was no such site when
+            # this was widened - the one `{:?}` near a logger call formatted an `ImportMode` enum, now
+            # spelled through `ImportMode::as_str` - which is the point: the gap was closed while it
+            # was still theoretical rather than after a path had reached someone's public issue. A
+            # future `{:?}` on something harmless is a false positive worth paying; name the value.
             - name: Verify log lines redact absolute paths
               if: matrix.platform == 'ubuntu-26.04'
               run: |
                   offenders=$(grep -rn -A6 'logger::\(warn\|error\|info\)(' src-tauri/src \
-                      --include='*.rs' | grep -F 'display()' || true)
+                      --include='*.rs' | grep -E 'display\(\)|\{:\?\}' || true)
 
                   if [ -n "$offenders" ]; then
-                      echo "::error::log a path through services::logger::redact_path, not Path::display"
+                      echo "::error::log a path through services::logger::redact_path - not Path::display, and not {:?}, which prints the whole path too"
                       printf '%s\n' "$offenders"
                       exit 1
                   fi
