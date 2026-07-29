@@ -172,7 +172,7 @@ seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` p
 | Channels CRUD | `commands/channels.rs`, `services/channel_repository.rs` | `repositories/channel-repository.ts` |
 | Media CRUD / import | `commands/videos.rs`, `commands/media.rs`, `services/video_repository/`, `services/library_media.rs` | `repositories/media-repository.ts`, `services/media-file-service.ts`, `services/media-input-service.ts` |
 | yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp_download/`, `services/yt_dlp_metadata.rs`, `services/yt_dlp_cookies.rs`, `services/yt_dlp_url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
-| Thumbnails | `commands/thumbnail.rs`, `services/thumbnail_persist.rs`, `services/thumbnail_download.rs`, `services/thumbnail_url.rs`, `services/thumbnail_temp.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts` |
+| Thumbnails | `commands/thumbnail.rs`, `services/thumbnail_persist.rs`, `services/thumbnail_download.rs`, `services/thumbnail_url.rs`, `services/thumbnail_temp.rs`, `services/thumbnail_display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts` |
 | Database schema/migrations | `services/db_schema/` | - |
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |

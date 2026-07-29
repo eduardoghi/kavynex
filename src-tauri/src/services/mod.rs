@@ -23,6 +23,7 @@ pub mod process_registry;
 pub mod ssrf_guard;
 pub mod temp_paths;
 pub mod thumbnail;
+pub mod thumbnail_display;
 pub mod thumbnail_download;
 pub mod thumbnail_persist;
 pub mod thumbnail_temp;

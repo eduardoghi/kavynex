@@ -31,9 +31,23 @@ pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
 /// re-encodes retroactively.
 pub const THUMBNAIL_OUTPUT_FORMAT: &str = "jpg";
 
+/// The width a display-sized thumbnail derivative is scaled down to (never up).
+///
+/// The grid's card is 158 px tall, so at 16:9 it draws roughly 280 px wide; 640 covers that at a
+/// device pixel ratio of 2 with room to spare, and matches the cap the local-import generator
+/// already applies (`thumbnail_temp.rs`'s scale filter), so a locally-imported thumbnail is passed
+/// through at its own size rather than resampled for nothing. Against a yt-dlp `maxresdefault` at
+/// 1280x720 it is a quarter of the decoded bitmap.
+pub const DISPLAY_THUMBNAIL_MAX_WIDTH: u32 = 640;
+
 pub const TEMP_DIR_THUMBS: &str = "thumbs-temp";
 pub const TEMP_DIR_YT_DLP: &str = "yt-dlp-temp";
 pub const TEMP_DIR_YT_DLP_THUMB: &str = "yt-dlp-thumb-temp";
+
+// Holds the display-sized copies of the library's thumbnails (see services/thumbnail_display.rs).
+// Derived and disposable: every entry is regenerable from the canonical file in the library, is
+// addressed by that file's own content hash, and is swept with the rest of the cache directory.
+pub const TEMP_DIR_THUMB_DISPLAY: &str = "thumb-display";
 
 // Holds one marker per in-flight media creation, naming the library artifacts it has already
 // written but not yet registered a row for. A marker still here at startup is a creation that died

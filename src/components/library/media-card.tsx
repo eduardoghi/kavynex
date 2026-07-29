@@ -27,6 +27,7 @@ import { StretchedButtonCard } from "../common/stretched-button-card";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
 import {
+    fileSrcFromAbsolutePath,
     fileSrcFromStoredPath,
     formatDuration,
     formatPublishedDate,
@@ -36,6 +37,13 @@ import {
 type MediaCardProps = {
     media: MediaRow;
     libraryPath: string;
+    // Absolute path to a display-sized copy of this media's stored thumbnail, when one has been
+    // resolved (see hooks/use-display-thumbnails.ts). Preferred over the stored file because the
+    // webview decodes an image at its natural size - a 1280x720 thumbnail costs the same bitmap in
+    // a 280px card as it would full screen. Optional on purpose: absent is the ordinary state on
+    // first paint and the permanent state whenever a derivative cannot be produced, and both fall
+    // back to the stored file.
+    displayThumbnailPath?: string;
     shellBorder: string;
     isActive?: boolean;
     onOpen: (media: MediaRow) => void;
@@ -208,6 +216,7 @@ const THUMBNAIL_CONTAINER_BASE_STYLE: CSSProperties = {
 function MediaCardComponent({
     media,
     libraryPath,
+    displayThumbnailPath,
     shellBorder,
     isActive = false,
     onOpen,
@@ -223,7 +232,15 @@ function MediaCardComponent({
     const isWatched = isMediaWatched(media);
     const isLive = Boolean(media.is_live);
     const hasLiveChat = Boolean(media.has_live_chat);
-    const thumbSrc = fileSrcFromStoredPath(media.thumbnail_path, libraryPath);
+    // Prefer the display-sized copy when one has been resolved, and fall back to the stored file
+    // otherwise. The fallback is not an error path: it is what every card shows on first paint, and
+    // what it keeps showing whenever a derivative cannot be produced (no FFmpeg, a thumbnail the app
+    // did not write, a source that has since moved). Both spellings go through the asset protocol -
+    // the derivative lives in the cache directory, authorized in `setup()`, and the stored file
+    // under the library, authorized by `register_library_asset_scope`.
+    const storedThumbSrc = fileSrcFromStoredPath(media.thumbnail_path, libraryPath);
+    const displayThumbSrc = fileSrcFromAbsolutePath(displayThumbnailPath ?? null);
+    const thumbSrc = displayThumbSrc || storedThumbSrc;
 
     // Reset the failure when the thumbnail itself changes, so replacing a missing thumbnail with a
     // new one shows it rather than staying on the placeholder. Keying state to a value is cheaper

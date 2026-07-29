@@ -55,6 +55,9 @@ export type TauriCommandReturns = {
     persist_thumbnail_file: string;
     download_thumbnail_from_url: string;
     download_channel_avatar_from_handle: string;
+    // One entry per requested path, in order: the display-sized copy's absolute path, or null
+    // when there is none and the caller should render the stored thumbnail instead.
+    resolve_display_thumbnails: (string | null)[];
     delete_temporary_thumbnail: void;
     delete_thumbnail_file: void;
 

@@ -480,6 +480,7 @@ pub fn run() {
             commands::thumbnail::persist_thumbnail_file,
             commands::thumbnail::download_thumbnail_from_url,
             commands::thumbnail::download_channel_avatar_from_handle,
+            commands::thumbnail::resolve_display_thumbnails,
             commands::thumbnail::delete_temporary_thumbnail,
             commands::thumbnail::delete_thumbnail_file,
             commands::comments::replace_media_comments,

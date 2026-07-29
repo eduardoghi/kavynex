@@ -87,17 +87,33 @@ this matters to you.
 - macOS: `~/Library/Caches/com.kavynex.app`
 - Linux: `~/.cache/com.kavynex.app` (or `$XDG_CACHE_HOME` if set)
 
-`services/temp_paths.rs` creates three subdirectories under the cache dir (names defined
+`services/temp_paths.rs` creates four subdirectories under the cache dir (names defined
 in `src-tauri/src/constants.rs`):
 
 - `thumbs-temp/` - temporary thumbnail previews generated before a thumbnail is committed
-  to the library (`services/thumbnail_temp.rs`), named `thumb_<sha256>.png`.
+  to the library (`services/thumbnail_temp.rs`), named `thumb_<sha256>.jpg` - the container
+  both thumbnail producers share (`THUMBNAIL_OUTPUT_FORMAT` in `src-tauri/src/constants.rs`).
 - `yt-dlp-temp/` - scratch space for an in-progress yt-dlp download before its output is
   moved into the library.
 - `yt-dlp-thumb-temp/` - scratch space for thumbnails fetched as part of a yt-dlp run.
 
-A fourth, `pending-media/`, is created by `services/pending_media.rs` rather than
-`temp_paths.rs`, and holds something different from scratch data: one `pending-*.json`
+A fourth, `thumb-display/`, holds something different from scratch data: a **display-sized copy** of
+each thumbnail the grid has drawn (`services/thumbnail_display.rs`), named
+`<sha256-of-the-stored-thumbnail>.jpg`. A stored thumbnail keeps whatever size it arrived at - a
+yt-dlp `maxresdefault` is 1280x720 - and a webview decodes an image at its natural size regardless
+of how well the file is compressed, so drawing one into a card a few hundred pixels wide costs the
+full bitmap. These copies are capped at `DISPLAY_THUMBNAIL_MAX_WIDTH` (640) so the card decodes a
+quarter of that.
+
+Nothing in the database refers to them. `videos.thumbnail_path` and `channels.avatar_path` still
+point at the canonical file in the library; a derivative is addressed *by* that file's own content
+hash, which is already in its name, so the mapping needs no storage. That is also why the cache is
+safe to delete at any time: a missing entry is regenerated the next time the grid asks, and a
+thumbnail that has been in the library for years gets one the first time it is drawn. If FFmpeg is
+not available, or the source has moved, the grid simply draws the stored file as it always did.
+
+A fifth, `pending-media/`, is created by `services/pending_media.rs` rather than
+`temp_paths.rs`, and holds something different again: one `pending-*.json`
 marker per media creation that has already written its artifacts into the library but has
 not yet inserted the row. Adding media is not a single call, and between those two steps
 the files exist with nothing pointing at them - so the marker names them. It is removed as
@@ -122,7 +138,7 @@ On startup, `lib.rs`'s `setup()` authorizes the whole cache directory in the Tau
 asset-protocol scope (see `SECURITY.md`) so these temporary files can be shown in the
 webview via `convertFileSrc` before they are persisted. A background task
 (`services::cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the
-three scratch directories above on every startup and removes entries older than 7 days
+four cache subdirectories above on every startup and removes entries older than 7 days
 (`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/cleanup.rs`), so an interrupted
 download/thumbnail generation does not leak disk space indefinitely.
 

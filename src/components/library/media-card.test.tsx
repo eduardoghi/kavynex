@@ -18,6 +18,9 @@ vi.mock("../../utils/media-utils", async () => {
 
             return `file://${libraryPath}/${thumbnailPath}`;
         }),
+        fileSrcFromAbsolutePath: vi.fn((path: string | null) => {
+            return path ? `file://${path}` : "";
+        }),
         formatPublishedDate: vi.fn((publishedAt: string | null) => {
             return publishedAt ? "2026-03-31" : "";
         }),
@@ -25,6 +28,48 @@ vi.mock("../../utils/media-utils", async () => {
 });
 
 describe("MediaCard", () => {
+    it("draws the display-sized copy when one has been resolved", () => {
+        // The whole payoff of the derivative cache: the card has to actually point at the smaller
+        // file, not merely receive it. A webview decodes an image at its natural size, so rendering
+        // the stored 1280x720 file into a 280px card costs the full bitmap either way.
+        renderWithMantine(
+            <MediaCard
+                media={createMedia({ title: "Video A", thumbnail_path: "thumbnails/thumb_a.jpg" })}
+                libraryPath="/library"
+                displayThumbnailPath="/cache/thumb-display/a.jpg"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByAltText("Video A")).toHaveAttribute(
+            "src",
+            "file:///cache/thumb-display/a.jpg"
+        );
+    });
+
+    it("falls back to the stored thumbnail when no display copy was resolved", () => {
+        // Absent is the ordinary state, not an error one: it is what every card shows on first paint
+        // and what it keeps showing when a derivative cannot be produced (no FFmpeg on the machine,
+        // a thumbnail the app did not write). The card must render exactly as it did before the
+        // cache existed.
+        renderWithMantine(
+            <MediaCard
+                media={createMedia({ title: "Video A", thumbnail_path: "thumbnails/thumb_a.jpg" })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByAltText("Video A")).toHaveAttribute(
+            "src",
+            "file:///library/thumbnails/thumb_a.jpg"
+        );
+    });
+
     it("renders media title and published label", () => {
         renderWithMantine(
             <MediaCard

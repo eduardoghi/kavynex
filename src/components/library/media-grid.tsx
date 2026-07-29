@@ -7,6 +7,7 @@ import type { MediaRow } from "../../types/media";
 import { useGridScrollRestoration } from "../../hooks/use-grid-scroll-restoration";
 import { MediaGridSkeleton } from "./media-grid-skeleton";
 import { MediaCard, MEDIA_CARD_HEIGHT } from "./media-card";
+import { useDisplayThumbnails } from "../../hooks/use-display-thumbnails";
 
 type MediaGridProps = {
     items: MediaRow[];
@@ -124,6 +125,16 @@ export function MediaGrid({
     );
 
     const columnCount = useMemo(() => getColumnCount(width), [width]);
+
+    // Display-sized copies of the thumbnails on screen, so a card decodes a few hundred pixels
+    // rather than the stored file's full resolution. Resolved for every loaded item rather than only
+    // the virtualized window: the window changes on every scroll tick, and asking per tick would
+    // turn a scroll into a stream of IPC calls. Purely an optimization - a path with no entry here
+    // renders the stored thumbnail, which is what every card did before this existed.
+    const displayThumbnails = useDisplayThumbnails(
+        useMemo(() => items.map((item) => item.thumbnail_path), [items]),
+        libraryPath
+    );
 
     const rows = useMemo(() => {
         const groupedRows: MediaRow[][] = [];
@@ -372,6 +383,13 @@ export function MediaGrid({
                                                     <MediaCard
                                                         media={media}
                                                         libraryPath={libraryPath}
+                                                        displayThumbnailPath={
+                                                            media.thumbnail_path
+                                                                ? displayThumbnails.get(
+                                                                      media.thumbnail_path
+                                                                  )
+                                                                : undefined
+                                                        }
                                                         shellBorder={shellBorder}
                                                         isActive={activeMediaId === media.id}
                                                         onOpen={onOpen}

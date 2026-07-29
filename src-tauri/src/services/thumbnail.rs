@@ -1,3 +1,4 @@
+pub use crate::services::thumbnail_display::resolve_display_thumbnails_sync;
 pub use crate::services::thumbnail_download::{
     download_channel_avatar_from_handle_async, download_thumbnail_from_url_async,
 };

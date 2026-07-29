@@ -86,6 +86,59 @@ export async function downloadChannelAvatarFromHandle(
     );
 }
 
+/**
+ * Asks the backend for display-sized copies of a page of stored thumbnails, keyed by the
+ * library-relative path each one answers.
+ *
+ * The grid renders the stored thumbnail at whatever size it was saved (a yt-dlp `maxresdefault` is
+ * 1280x720) into a card a few hundred pixels wide, and a webview decodes an image at its natural
+ * size regardless of how well it is compressed. This is what lets a card draw a smaller decode
+ * instead.
+ *
+ * A path with no derivative is simply absent from the map, which is the normal answer rather than a
+ * failure: the caller keeps rendering the stored file. Blanks and duplicates are dropped before the
+ * call so the backend's per-call generation budget is spent on distinct real work.
+ */
+export async function resolveDisplayThumbnails(
+    relativePaths: readonly (string | null | undefined)[],
+    libraryPath: string
+): Promise<ReadonlyMap<string, string>> {
+    const normalizedLibraryPath = normalizeString(libraryPath);
+
+    if (!normalizedLibraryPath) {
+        return new Map();
+    }
+
+    const requested = [
+        ...new Set(
+            relativePaths
+                .map((relativePath) => normalizeString(relativePath ?? ""))
+                .filter((relativePath) => relativePath.length > 0)
+        ),
+    ];
+
+    if (requested.length === 0) {
+        return new Map();
+    }
+
+    const resolved = await invokeCommand(TAURI_COMMANDS.RESOLVE_DISPLAY_THUMBNAILS, {
+        relativePaths: requested,
+        libraryPath: normalizedLibraryPath,
+    });
+
+    const displayPaths = new Map<string, string>();
+
+    requested.forEach((relativePath, index) => {
+        const displayPath = normalizeString(resolved[index] ?? "");
+
+        if (displayPath) {
+            displayPaths.set(relativePath, displayPath);
+        }
+    });
+
+    return displayPaths;
+}
+
 export async function deleteTemporaryThumbnail(tempThumbnailPath: string): Promise<void> {
     const normalizedTempThumbnailPath = normalizeString(tempThumbnailPath);
 

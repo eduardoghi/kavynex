@@ -161,7 +161,27 @@
 # `--in-place --no-config --file`): 4 mutants, 0 unviable, 4 caught, 0 missed, in 85s - the three
 # tests that moved with it (the real CDNs, the look-alike rejections, and the two-way CSP parity
 # check) already kill every viable mutant. The runtime is the extraction's whole payoff.
+# `src/services/thumbnail_display.rs` - the addressing behind the display-thumbnail cache. Two
+# decisions there are worth a gate rather than only a test. `display_cache_key` decides which stored
+# file a cached derivative answers for, so a weakened check (a dropped length comparison, an
+# inverted hex test) makes one media's thumbnail render on another media's card - a wrong-data bug
+# that looks like a UI glitch, and one no crash reports. And `is_usable_file`'s emptiness check is
+# what stops a killed generation's zero-byte output from being cached as a permanent blank card,
+# which nothing ever regenerates. Both are pure and were written that way for this. The FFmpeg
+# spawn is excluded below, following the binaries.rs precedent; the AppHandle-bound entry point needs
+# no exclusion because it does not build under mutation and is reported unviable.
+# ADDED after a measured pass (2026-07-29, `--in-place --no-config --file`): 42 mutants, 14 unviable,
+# 24 caught, 4 missed - all four inside the excluded FFmpeg spawn, so the glob goes in clean. Two
+# rounds were needed and both are worth recording. The first left the generation budget's `== 0` and
+# `-= 1` surviving, because the branch that spends it is only reachable through a successful FFmpeg
+# run; extracting `take_generation_slot` put both one call from a test. The second left a `delete !`
+# on the caller's `if !take_generation_slot(..)`, which is genuinely unkillable - with or without the
+# `!` the call returns `None` unless FFmpeg succeeds - so the function returns `Option<()>` and the
+# caller writes `take_generation_slot(..)?`, stating the decision once. Removing the restatement
+# removed the mutant, which beats excluding it (the same resolution as the ssrf_guard dead-code
+# clause).
 examine_globs = [
+    "src/services/thumbnail_display.rs",
     "src/services/pending_media.rs",
     "src/services/library_recovery.rs",
     "src/utils/path.rs",
@@ -197,6 +217,17 @@ additional_cargo_args = ["--locked"]
 # exclusion below is a function whose behavior is a filesystem/process/env boundary, a
 # cfg-split body cargo-mutants cannot evaluate, or an equivalent mutant.
 exclude_re = [
+    # thumbnail_display.rs: `generate_display_thumbnail` spawns FFmpeg and polls it to a deadline,
+    # which no unit test can pin on an arbitrary machine - the same reason binaries.rs's resolution
+    # functions are excluded above. Its four survivors are the return value and the deadline
+    # arithmetic, all of which need a real FFmpeg to distinguish. Nothing is excluded for
+    # `resolve_display_thumbnails_sync`: it is AppHandle-bound, so its mutants are reported unviable
+    # rather than missed, and an exclusion matching nothing is the dead entry this file has already
+    # had to remove once. The decisions that matter are not in either function -
+    # `display_cache_key` (which stored file a derivative answers for), `is_usable_file` (which stops
+    # a zero-byte output being cached as a valid hit) and `take_generation_slot` (the FFmpeg budget)
+    # are pure, in scope, and covered.
+    'generate_display_thumbnail',
     # pending_media.rs survivors (triaged 2026-07-27), in three groups.
     #
     # 1. `pin_process_start` exists to initialize a process-global OnceLock early, while the launch

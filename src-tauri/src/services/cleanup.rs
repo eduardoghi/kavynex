@@ -5,7 +5,8 @@ use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Manager};
 
 use crate::constants::{
-    MANAGED_LIBRARY_DIRS, TEMP_DIR_THUMBS, TEMP_DIR_YT_DLP, TEMP_DIR_YT_DLP_THUMB,
+    MANAGED_LIBRARY_DIRS, TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY, TEMP_DIR_YT_DLP,
+    TEMP_DIR_YT_DLP_THUMB,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -123,11 +124,17 @@ pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummar
     let thumbs_temp_dir = cache_dir.join(TEMP_DIR_THUMBS);
     let yt_dlp_temp_dir = cache_dir.join(TEMP_DIR_YT_DLP);
     let yt_dlp_thumb_temp_dir = cache_dir.join(TEMP_DIR_YT_DLP_THUMB);
+    // Swept like the three scratch directories, and for a different reason: nothing here is
+    // in-flight state, but every entry is regenerable from the canonical thumbnail, so an entry
+    // nothing has asked for in a week is cheaper to drop than to keep. A derivative removed while
+    // still wanted simply regenerates on the next resolve.
+    let thumb_display_dir = cache_dir.join(TEMP_DIR_THUMB_DISPLAY);
 
     let mut summary = CleanupSummary::default();
     summary.merge(cleanup_dir_children(&thumbs_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_thumb_temp_dir, max_age)?);
+    summary.merge(cleanup_dir_children(&thumb_display_dir, max_age)?);
 
     Ok(summary)
 }

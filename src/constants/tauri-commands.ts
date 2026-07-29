@@ -23,6 +23,7 @@ export const TAURI_COMMANDS = {
     PERSIST_THUMBNAIL_FILE: "persist_thumbnail_file",
     DOWNLOAD_THUMBNAIL_FROM_URL: "download_thumbnail_from_url",
     DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE: "download_channel_avatar_from_handle",
+    RESOLVE_DISPLAY_THUMBNAILS: "resolve_display_thumbnails",
     DELETE_TEMP_THUMBNAIL: "delete_temporary_thumbnail",
     DELETE_THUMBNAIL_FILE: "delete_thumbnail_file",
 

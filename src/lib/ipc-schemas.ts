@@ -289,6 +289,10 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     // The marker name the pending-artifact record hands back; it is passed straight to the clear
     // command, so a non-string here would only surface as a failed clear much later.
     record_pending_media_artifacts: z.string(),
+    // Positional: entry i answers requested path i, so a shorter or reordered array would silently
+    // map a derivative onto the wrong media. The array shape is what this pins; the caller zips it
+    // back against the paths it sent.
+    resolve_display_thumbnails: z.array(z.string().nullable()),
     list_yt_dlp_formats: ytDlpFormatsResultSchema satisfies z.ZodType<YtDlpFormatsResult>,
     download_media_from_url: downloadedMediaResultSchema satisfies z.ZodType<DownloadedMediaResult>,
     fetch_youtube_comments: z.array(ytDlpCommentSchema) satisfies z.ZodType<YtDlpComment[]>,
