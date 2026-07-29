@@ -72,12 +72,35 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   - `path.rs` - the path-safety primitives (sanitizing a relative path, canonicalizing and
     containment-checking a path against a base directory). See `docs/DATABASE.md` and
     `SECURITY.md` for how this backs the library/asset-scope guarantees.
-  - `process.rs` - suppresses the flashing console window Windows would otherwise show
-    when spawning a console child process (yt-dlp, ffmpeg) from a windowed app.
+  - `process.rs` - everything about spawning an external child: suppressing the flashing
+    console window Windows would otherwise show from a windowed app (`hide_console`), putting
+    the child in its own process group, and killing a whole process tree
+    (`kill_process_tree`). The last two are a pair - the Unix kill signals the negated pid,
+    i.e. the group, so a child spawned without its own group is not reachable by the kill that
+    every timeout path depends on.
   - `hash.rs` - SHA-256 file hashing used for the content-addressed media/thumbnail
     filenames (see `docs/DIRECTORIES.md`).
-  - `format.rs`, `task.rs`, `io.rs` - extension/media-type helpers, a `run_blocking`
-    wrapper for moving blocking work off the async runtime, and small IO helpers.
+  - `naming.rs` - `unique_temp_suffix()` (pid + nanoseconds + a monotonic counter), and the
+    **only** place in the tree allowed to derive a name from a raw timestamp. Every temporary
+    path, in production and in tests, is built from it, because pid + nanoseconds alone
+    collides when two callers land in the same clock tick - which was a real intermittent
+    failure, on macOS, surfacing nowhere near its cause. `ci.yml`'s "Verify temp paths are
+    built from the shared unique suffix" step enforces this, since the convention had already
+    drifted back twice.
+  - `validation.rs` - the channel name/handle and media title/type validators every write
+    boundary calls, including the length ceilings. Under the mutation gate
+    (`src-tauri/.cargo/mutants.toml`), and its handle rule is asserted against
+    `shared/youtube-handle-cases.json` so it cannot drift from the frontend's copy.
+  - `text.rs` - accent stripping, whitespace collapsing and `LIKE`-metacharacter escaping,
+    behind the normalized columns the media search queries against.
+  - `format.rs` - the allowed media/thumbnail extension lists (and their user-facing labels),
+    the extension-to-subdirectory mapping, and `format_bytes`, shared by the library and
+    database size summaries.
+  - `bounded_semaphore.rs` - the permit-based limiter bounding how much parallel work runs at
+    once.
+  - `task.rs`, `io.rs` - a `run_blocking` wrapper for moving blocking work off the async
+    runtime, and line readers that cap how much a single unbounded line from a child process
+    can buffer.
 - Below that, services call `sqlx` against the shared SQLite pool (`services/database.rs`),
   `std::fs` for the filesystem, and `std::process::Command` / `tokio::process::Command` to
   run yt-dlp and FFmpeg (resolved via `services/binaries.rs`).
