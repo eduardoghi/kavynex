@@ -88,7 +88,7 @@ this matters to you.
 - Linux: `~/.cache/com.kavynex.app` (or `$XDG_CACHE_HOME` if set)
 
 `services/temp_paths.rs` creates four subdirectories under the cache dir (names defined
-in `src-tauri/src/constants.rs`):
+in `src-tauri/src/constants.rs`). Three of them hold pure scratch:
 
 - `thumbs-temp/` - temporary thumbnail previews generated before a thumbnail is committed
   to the library (`services/thumbnail/temp.rs`), named `thumb_<sha256>.jpg` - the container
@@ -111,6 +111,14 @@ hash, which is already in its name, so the mapping needs no storage. That is als
 safe to delete at any time: a missing entry is regenerated the next time the grid asks, and a
 thumbnail that has been in the library for years gets one the first time it is drawn. If FFmpeg is
 not available, or the source has moved, the grid simply draws the stored file as it always did.
+
+Being derived rather than scratch is also why this one is **not** swept by age like the three above.
+Regenerating a derivative costs an FFmpeg process, and a cache *hit* is a `stat` that renews nothing,
+so an age rule discarded the thumbnails the grid draws every day at the same rate as the ones nothing
+had looked at since they were written - emptying the whole cache every seven days and paying it back
+as a burst of FFmpeg runs on the next scroll. It is bounded by total size instead
+(`DISPLAY_CACHE_MAX_BYTES` in `services/thumbnail/display.rs`): a cache that fits is left entirely
+alone whatever its age, and one that does not is trimmed oldest-first until it fits.
 
 A fifth, `pending-media/`, is created by `services/pending_media.rs` rather than
 `temp_paths.rs`, and holds something different again: one `pending-*.json`
@@ -145,10 +153,16 @@ at error level with its count, instead of at warning level on every launch forev
 On startup, `lib.rs`'s `setup()` authorizes the whole cache directory in the Tauri
 asset-protocol scope (see `SECURITY.md`) so these temporary files can be shown in the
 webview via `convertFileSrc` before they are persisted. A background task
-(`services::cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the
-four cache subdirectories above on every startup and removes entries older than 7 days
-(`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/cleanup.rs`), so an interrupted
-download/thumbnail generation does not leak disk space indefinitely.
+(`services::cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the cache
+directory on every startup, and the rule it applies depends on what a directory holds:
+
+- The three scratch directories (`thumbs-temp/`, `yt-dlp-temp/`, `yt-dlp-thumb-temp/`) lose any
+  entry older than 7 days (`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/cleanup.rs`), so an
+  interrupted download/thumbnail generation does not leak disk space indefinitely.
+- `thumb-display/` is bounded by total size instead, for the reason given above.
+- `pending-media/` is swept by neither: its markers are reconciled by
+  `spawn_pending_media_sweep`, which decides per marker (see `marker_is_sweepable`) rather than
+  by age, and a marker it cannot reconcile is deliberately kept.
 
 ## App log directory - `kavynex.log`
 

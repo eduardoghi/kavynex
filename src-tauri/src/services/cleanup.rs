@@ -8,6 +8,9 @@ use crate::constants::{
     MANAGED_LIBRARY_DIRS, TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY, TEMP_DIR_YT_DLP,
     TEMP_DIR_YT_DLP_THUMB,
 };
+use crate::services::thumbnail::display::{
+    display_cache_max_bytes, plan_display_cache_eviction, CachedDerivative,
+};
 use crate::{AppError, AppErrorCode, AppResult};
 
 const TEMP_ENTRY_MAX_AGE_HOURS: u64 = 24 * 7;
@@ -104,6 +107,85 @@ fn cleanup_dir_children(dir: &Path, max_age: Duration) -> AppResult<CleanupSumma
     Ok(summary)
 }
 
+/// Trims the display-thumbnail cache to its size budget, dropping the oldest derivatives first.
+///
+/// Kept apart from [`cleanup_dir_children`] because the two answer different questions. That one
+/// asks "is this entry stale?", which is the right question for the three scratch directories: an
+/// old entry there is state from an operation that already finished. This cache holds *derived*
+/// data - each entry is regenerable, but only by spawning FFmpeg, and reading a cached one is a
+/// `stat` that renews nothing. Asking the age question of it therefore discarded the entries the
+/// grid draws daily as readily as the ones nothing had touched since they were written, emptying the
+/// whole cache every seven days and paying it all back as a burst of FFmpeg runs on the next scroll.
+///
+/// So the question here is "does the cache fit?" - and when it does, nothing is removed at all.
+/// [`plan_display_cache_eviction`] holds the decision itself (pure, and under the mutation gate);
+/// this is the `read_dir` around it.
+fn cleanup_display_cache(dir: &Path, max_bytes: u64) -> AppResult<CleanupSummary> {
+    let mut summary = CleanupSummary::default();
+
+    if !dir.exists() {
+        return Ok(summary);
+    }
+
+    if !dir.is_dir() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTempDirectory,
+            "display thumbnail cache target is not a directory",
+        ));
+    }
+
+    let mut entries = Vec::new();
+
+    for entry in fs::read_dir(dir).map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::TempDirectoryReadFailed,
+            format!("failed to read the display thumbnail cache directory: {e}"),
+        )
+    })? {
+        let entry = entry.map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::TempDirectoryEntryReadFailed,
+                format!("failed to read a display thumbnail cache entry: {e}"),
+            )
+        })?;
+
+        summary.scanned_entries += 1;
+
+        let path = entry.path();
+
+        // An entry whose metadata cannot be read is left in place and left out of the total, so an
+        // unreadable file can neither be evicted nor push a readable one out. Same direction as
+        // every other uncertain case in this tree: refusing to act costs a sweep, acting on a wrong
+        // answer costs a file.
+        let Ok(metadata) = fs::metadata(&path) else {
+            continue;
+        };
+
+        if !metadata.is_file() {
+            continue;
+        }
+
+        let Ok(modified_at) = metadata.modified() else {
+            continue;
+        };
+
+        entries.push(CachedDerivative {
+            path,
+            size_bytes: metadata.len(),
+            modified_at,
+        });
+    }
+
+    for path in plan_display_cache_eviction(entries, max_bytes) {
+        match fs::remove_file(&path) {
+            Ok(()) => summary.removed_entries += 1,
+            Err(_) => summary.failed_removals += 1,
+        }
+    }
+
+    Ok(summary)
+}
+
 pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummary> {
     let cache_dir = app.path().app_cache_dir().map_err(|e| {
         AppError::from_code(
@@ -124,17 +206,18 @@ pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummar
     let thumbs_temp_dir = cache_dir.join(TEMP_DIR_THUMBS);
     let yt_dlp_temp_dir = cache_dir.join(TEMP_DIR_YT_DLP);
     let yt_dlp_thumb_temp_dir = cache_dir.join(TEMP_DIR_YT_DLP_THUMB);
-    // Swept like the three scratch directories, and for a different reason: nothing here is
-    // in-flight state, but every entry is regenerable from the canonical thumbnail, so an entry
-    // nothing has asked for in a week is cheaper to drop than to keep. A derivative removed while
-    // still wanted simply regenerates on the next resolve.
+    // Bounded by total size rather than by age, unlike the three above - see cleanup_display_cache
+    // for why the age question is the wrong one to ask of a derivative cache.
     let thumb_display_dir = cache_dir.join(TEMP_DIR_THUMB_DISPLAY);
 
     let mut summary = CleanupSummary::default();
     summary.merge(cleanup_dir_children(&thumbs_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_thumb_temp_dir, max_age)?);
-    summary.merge(cleanup_dir_children(&thumb_display_dir, max_age)?);
+    summary.merge(cleanup_display_cache(
+        &thumb_display_dir,
+        display_cache_max_bytes(),
+    )?);
 
     Ok(summary)
 }
@@ -426,6 +509,77 @@ mod tests {
         assert!(recent.exists());
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_display_cache_is_left_alone_while_it_fits_however_old_it_is() {
+        // The regression this replaced the age sweep to prevent. Both files are far past the age
+        // gate the three scratch directories use, and the cache is well under its budget, so nothing
+        // may be removed - under the old rule both would have gone and both would have been
+        // re-encoded by FFmpeg on the next scroll.
+        let dir = unique_test_dir("display-fits");
+        fs::create_dir_all(&dir).unwrap();
+
+        let ancient = dir.join("a.jpg");
+        let also_ancient = dir.join("b.jpg");
+        make_old_file(
+            &ancient,
+            Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60),
+        );
+        make_old_file(
+            &also_ancient,
+            Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60),
+        );
+
+        let summary = cleanup_display_cache(&dir, display_cache_max_bytes()).unwrap();
+
+        assert_eq!(summary.scanned_entries, 2);
+        assert_eq!(
+            summary.removed_entries, 0,
+            "a cache that fits is not touched"
+        );
+        assert!(ancient.exists());
+        assert!(also_ancient.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_display_cache_is_trimmed_to_its_budget_oldest_first() {
+        // Over budget, so it is trimmed rather than emptied: the newest entry survives because the
+        // older ones already covered the overage.
+        let dir = unique_test_dir("display-trim");
+        fs::create_dir_all(&dir).unwrap();
+
+        let oldest = dir.join("oldest.jpg");
+        let newest = dir.join("newest.jpg");
+        fs::write(&oldest, vec![0u8; 80]).unwrap();
+        fs::write(&newest, vec![0u8; 80]).unwrap();
+        set_modified(&oldest, SystemTime::now() - Duration::from_secs(600));
+        set_modified(&newest, SystemTime::now());
+
+        // 160 bytes against a 100-byte budget: 60 have to go, which the oldest entry covers alone.
+        let summary = cleanup_display_cache(&dir, 100).unwrap();
+
+        assert_eq!(summary.removed_entries, 1);
+        assert_eq!(summary.failed_removals, 0);
+        assert!(!oldest.exists(), "the oldest derivative is the one dropped");
+        assert!(newest.exists(), "the newest derivative must survive");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_display_cache_sweep_is_a_noop_for_a_missing_directory() {
+        // The first launch after an install, and every launch on a machine without FFmpeg: the
+        // directory is only created when a derivative is first written.
+        let dir = unique_test_dir("display-missing");
+
+        let summary = cleanup_display_cache(&dir, display_cache_max_bytes()).unwrap();
+
+        assert_eq!(summary.scanned_entries, 0);
+        assert_eq!(summary.removed_entries, 0);
+        assert_eq!(summary.failed_removals, 0);
     }
 
     #[test]

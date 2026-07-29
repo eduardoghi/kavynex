@@ -30,6 +30,7 @@
 //!   exactly as before. A slow card is better than a blank one.
 
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use tauri::AppHandle;
 
@@ -61,6 +62,80 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 /// which the caller already handles by rendering the canonical file. Cache *hits* are not capped -
 /// they are a stat each, and refusing them would make a fully warmed page fall back for no reason.
 const MAX_GENERATIONS_PER_CALL: usize = 64;
+
+/// Ceiling on the total size of the derivative cache directory.
+///
+/// A derivative is capped at [`DISPLAY_THUMBNAIL_MAX_WIDTH`] wide and JPEG-encoded, so it runs tens
+/// of kilobytes; this holds a few thousand of them, which is more than a session draws. It exists
+/// because the directory otherwise has no bound at all - a derivative is never deleted when its
+/// media is, since nothing in the database refers to one (see the module docs).
+const DISPLAY_CACHE_MAX_BYTES: u64 = 200 * 1024 * 1024;
+
+/// One cached derivative, as [`plan_display_cache_eviction`] sees it. Carries only what the decision
+/// reads, so that decision can be made without a filesystem.
+pub(crate) struct CachedDerivative {
+    pub(crate) path: PathBuf,
+    pub(crate) size_bytes: u64,
+    pub(crate) modified_at: SystemTime,
+}
+
+/// Chooses which derivatives to drop so the cache fits under `max_bytes`, oldest first.
+///
+/// This exists because the cache was previously swept by the same age rule as its neighbours under
+/// the app cache directory, and that rule is wrong for it. `thumbs-temp/`, `yt-dlp-temp/` and
+/// `yt-dlp-thumb-temp/` hold scratch from an operation that finished, so an old entry there is
+/// garbage by definition. A derivative is not: regenerating one costs an FFmpeg process, and reading
+/// a cached one is a `stat` that renews nothing - so an age sweep discarded the thumbnails the grid
+/// draws every day at exactly the same rate as the ones nothing had looked at since they were
+/// written. The whole cache therefore emptied every seven days and came back as a burst of FFmpeg
+/// runs on the next scroll, which is most of the cost the cache exists to remove.
+///
+/// Bounding total size instead means a cache that fits is never touched, whatever its age, and a
+/// cache that does not is trimmed to fit rather than emptied.
+///
+/// Ordering is by write time, so this is FIFO rather than LRU. Making it a true LRU would need a
+/// write on every cache *hit* to renew the entry, and a hit costing a write instead of a `stat` is
+/// precisely what [`display_cache_key`] is shaped to avoid. FIFO is the right trade here: it only
+/// decides which entries leave once the budget is already exceeded, where the previous rule decided
+/// that every entry leaves regardless.
+///
+/// Pure, and separate from the sweep that calls it, for the reason every extraction in this module
+/// is: the decision in front of files on the user's disk should be a function a test can hand exact
+/// inputs to, not a comparison buried in a `read_dir` loop.
+pub(crate) fn plan_display_cache_eviction(
+    mut entries: Vec<CachedDerivative>,
+    max_bytes: u64,
+) -> Vec<PathBuf> {
+    let total_bytes: u64 = entries
+        .iter()
+        .map(|entry| entry.size_bytes)
+        .fold(0u64, u64::saturating_add);
+
+    if total_bytes <= max_bytes {
+        return Vec::new();
+    }
+
+    entries.sort_by_key(|entry| entry.modified_at);
+
+    let mut over_budget = total_bytes - max_bytes;
+    let mut evicted = Vec::new();
+
+    for entry in entries {
+        if over_budget == 0 {
+            break;
+        }
+
+        over_budget = over_budget.saturating_sub(entry.size_bytes);
+        evicted.push(entry.path);
+    }
+
+    evicted
+}
+
+/// The cache's own size budget, for the startup sweep that enforces it (`services::cleanup`).
+pub(crate) fn display_cache_max_bytes() -> u64 {
+    DISPLAY_CACHE_MAX_BYTES
+}
 
 /// The name a derivative lands under: the canonical thumbnail's own content hash, plus the shared
 /// thumbnail container.
@@ -290,6 +365,92 @@ pub fn resolve_display_thumbnails_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    /// A cache entry at a given age and size, for the eviction tests. Ages are expressed as an
+    /// offset from a fixed base rather than from `now`, so the ordering under test is exact.
+    fn derivative(name: &str, size_bytes: u64, age: Duration) -> CachedDerivative {
+        CachedDerivative {
+            path: PathBuf::from(name),
+            size_bytes,
+            modified_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000) - age,
+        }
+    }
+
+    #[test]
+    fn a_cache_within_its_budget_is_never_touched() {
+        // The property the previous age sweep did not have, and the whole reason this replaced it: a
+        // cache that fits keeps every entry no matter how old, so a thumbnail the grid has drawn for
+        // a year is not discarded and re-encoded for having been written a week ago.
+        let entries = vec![
+            derivative("a.jpg", 40, Duration::from_secs(60 * 60 * 24 * 365)),
+            derivative("b.jpg", 40, Duration::from_secs(0)),
+        ];
+
+        assert!(plan_display_cache_eviction(entries, 100).is_empty());
+    }
+
+    #[test]
+    fn a_cache_exactly_at_its_budget_is_still_within_it() {
+        // The boundary: `<=`, not `<`. Getting this wrong evicts on every sweep of a cache that
+        // fits perfectly, which is the failure mode of the rule being replaced.
+        let entries = vec![derivative("a.jpg", 100, Duration::from_secs(0))];
+
+        assert!(plan_display_cache_eviction(entries, 100).is_empty());
+    }
+
+    #[test]
+    fn eviction_drops_the_oldest_entries_until_the_cache_fits() {
+        // 250 bytes against a 100-byte budget: 150 have to go, which the two oldest cover exactly.
+        // The newest must survive - it is the one the grid is most likely to ask for next.
+        let entries = vec![
+            derivative("newest.jpg", 100, Duration::from_secs(10)),
+            derivative("oldest.jpg", 100, Duration::from_secs(300)),
+            derivative("middle.jpg", 50, Duration::from_secs(100)),
+        ];
+
+        let evicted = plan_display_cache_eviction(entries, 100);
+
+        assert_eq!(
+            evicted,
+            vec![PathBuf::from("oldest.jpg"), PathBuf::from("middle.jpg")],
+            "the oldest entries go first, and only as many as the budget requires"
+        );
+    }
+
+    #[test]
+    fn eviction_stops_as_soon_as_the_cache_fits() {
+        // One large old entry is enough to get back under budget, so the two newer ones stay even
+        // though the loop has more entries to walk. A plan that kept going would empty the cache to
+        // reclaim space it had already reclaimed.
+        let entries = vec![
+            derivative("huge-old.jpg", 500, Duration::from_secs(900)),
+            derivative("small-new.jpg", 10, Duration::from_secs(1)),
+            derivative("small-newer.jpg", 10, Duration::from_secs(0)),
+        ];
+
+        let evicted = plan_display_cache_eviction(entries, 100);
+
+        assert_eq!(evicted, vec![PathBuf::from("huge-old.jpg")]);
+    }
+
+    #[test]
+    fn eviction_of_an_empty_cache_plans_nothing() {
+        assert!(plan_display_cache_eviction(Vec::new(), DISPLAY_CACHE_MAX_BYTES).is_empty());
+        // A zero budget with nothing in it still has nothing to drop, which is the branch a
+        // subtraction underflow would panic on.
+        assert!(plan_display_cache_eviction(Vec::new(), 0).is_empty());
+    }
+
+    #[test]
+    fn a_zero_budget_evicts_the_whole_cache() {
+        let entries = vec![
+            derivative("a.jpg", 1, Duration::from_secs(200)),
+            derivative("b.jpg", 1, Duration::from_secs(100)),
+        ];
+
+        assert_eq!(plan_display_cache_eviction(entries, 0).len(), 2);
+    }
 
     #[test]
     fn display_cache_key_takes_the_content_hash_out_of_the_stored_name() {
