@@ -80,7 +80,15 @@ export function AppUpdateSection({
                                 </Text>
 
                                 {!!updateInfo.body && (
-                                    <Text size="sm" c="dimmed">
+                                    // Clamped rather than free-flowing. This string is latest.json's
+                                    // `notes`, which tauri-action copies verbatim from the release
+                                    // workflow's `releaseBody`. That body is deliberately one line
+                                    // pointing at the release page (docs/RELEASING.md), because a
+                                    // release here can carry hundreds of commits - but the guarantee
+                                    // lives entirely in a YAML file a human edits, and this side had
+                                    // no bound at all if it ever slipped. A wall of text would grow
+                                    // the alert past the modal instead of scrolling inside it.
+                                    <Text size="sm" c="dimmed" lineClamp={4}>
                                         {updateInfo.body}
                                     </Text>
                                 )}
