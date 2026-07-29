@@ -61,7 +61,15 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 /// unbounded run of FFmpeg invocations: entries past it are simply reported as having no derivative,
 /// which the caller already handles by rendering the canonical file. Cache *hits* are not capped -
 /// they are a stat each, and refusing them would make a fully warmed page fall back for no reason.
-const MAX_GENERATIONS_PER_CALL: usize = 64;
+///
+/// Sized to a **full** page (`shared/media-page-size.json`, pinned by
+/// `the_generation_budget_covers_a_full_page_of_the_grid` below), which it was not: at 64 against a
+/// page of 100, the first visit to a channel generated 64 derivatives and answered `None` for the
+/// remaining 36. That is not the self-correcting miss the comment above describes, because the
+/// caller only re-asks when its item list changes: a channel that fits in one page (`hasMore` false)
+/// has nothing left to trigger a retry, so those 36 cards kept decoding the full-resolution stored
+/// file for the rest of the session - the exact cost this module exists to remove.
+const MAX_GENERATIONS_PER_CALL: usize = 100;
 
 /// Upper bound on how many entries one call will consider at all.
 ///
@@ -497,6 +505,45 @@ mod tests {
         ];
 
         assert_eq!(plan_display_cache_eviction(entries, 0).len(), 2);
+    }
+
+    /// The grid's page size, read from the fixture both sides assert against.
+    fn shared_media_page_size() -> usize {
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/media-page-size.json"
+        ));
+        let fixture: serde_json::Value =
+            serde_json::from_str(raw).expect("the shared fixture must be valid JSON");
+
+        fixture["mediaPageSize"]
+            .as_u64()
+            .expect("mediaPageSize must be a number") as usize
+    }
+
+    #[test]
+    fn the_generation_budget_covers_a_full_page_of_the_grid() {
+        // The two constants live on opposite sides of the IPC boundary and nothing else forces them
+        // to move together, which is how they came to disagree: a budget of 64 against a page of 100
+        // left 36 cards of a first-visited channel without a derivative, and - because the caller
+        // re-asks only when its item list changes - a channel that fits in one page never got them.
+        // A budget *above* the page size is fine (it only bounds a caller asking for more than a
+        // page); below it silently degrades the feature, so this is the direction that is asserted.
+        let page_size = shared_media_page_size();
+
+        assert!(
+            MAX_GENERATIONS_PER_CALL >= page_size,
+            "the generation budget ({MAX_GENERATIONS_PER_CALL}) must cover a full page of the grid \
+             ({page_size}), or the tail of a first-visited page never gets a derivative"
+        );
+
+        // The cheap half's ceiling has to clear a page too, or a legitimate first visit would be
+        // truncated - and truncation logs a warning that says no legitimate flow reaches it.
+        assert!(
+            MAX_RESOLVED_PER_CALL >= page_size,
+            "the per-call ceiling ({MAX_RESOLVED_PER_CALL}) must not truncate a single page \
+             ({page_size})"
+        );
     }
 
     #[test]

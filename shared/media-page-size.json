@@ -1,0 +1,4 @@
+{
+    "_comment": "The size of one page of the media grid, shared so the frontend's request size and the backend's per-call ceilings are calibrated against one number instead of two independent guesses. The frontend asks for this many rows per page (MEDIA_PAGE_SIZE in src/hooks/use-channel-media-list.ts) and the display-thumbnail command sizes its per-call budgets from it (MAX_GENERATIONS_PER_CALL and MAX_RESOLVED_PER_CALL in src-tauri/src/services/thumbnail/display.rs). Both sides assert against this file, because the two constants have to move together and nothing else forces that: a generation budget below the page size leaves the tail of a first-visited page permanently undersized, since the caller only re-asks when its item list changes and a channel that fits in one page has nothing left to trigger a retry. Change the page size here and in the two implementations at once; either side drifting fails a test.",
+    "mediaPageSize": 100
+}

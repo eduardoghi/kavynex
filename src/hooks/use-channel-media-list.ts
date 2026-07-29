@@ -12,6 +12,12 @@ import { useMemoObject } from "./use-memo-object";
 
 // One page of media requested at a time. The backend clamps to its own max; this is the browse
 // chunk the grid appends as the user scrolls.
+//
+// Kept in step with `shared/media-page-size.json`, which the display-thumbnail command sizes its
+// per-call budgets from (MAX_GENERATIONS_PER_CALL / MAX_RESOLVED_PER_CALL in
+// src-tauri/src/services/thumbnail/display.rs). Both sides assert against that file, so raising this
+// without raising the budget - which is how a budget of 64 ended up serving a page of 100, leaving
+// 36 cards of a first-visited channel without a derivative - fails a test on each side.
 const MEDIA_PAGE_SIZE = 100;
 
 type UseChannelMediaListOptions = {

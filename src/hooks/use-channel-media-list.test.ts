@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { MediaRow } from "../types/media";
@@ -22,6 +24,15 @@ vi.mock("../utils/app-logger", () => ({
 
 import { listChannelMediaPage } from "../services";
 import { logError } from "../utils/app-logger";
+
+// The page size both sides are calibrated against. Resolved from the repo root (vitest's cwd), not
+// import.meta.url, matching the other shared-fixture readers - vitest does not serve the test module
+// as a file: URL, so fileURLToPath would reject it.
+const SHARED_MEDIA_PAGE_SIZE = (
+    JSON.parse(
+        readFileSync(resolve(process.cwd(), "shared/media-page-size.json"), "utf-8")
+    ) as { mediaPageSize: number }
+).mediaPageSize;
 
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
     return {
@@ -75,9 +86,15 @@ describe("useChannelMediaList", () => {
             await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
 
+        // Asserted against the shared fixture rather than a literal, because the backend sizes the
+        // display-thumbnail command's per-call budgets from the same number (see
+        // the_generation_budget_covers_a_full_page_of_the_grid in
+        // src-tauri/src/services/thumbnail/display.rs). Changing the page size on this side alone
+        // used to leave those budgets calibrated for the old one, which is how a generation budget
+        // of 64 ended up serving a page of 100.
         expect(listChannelMediaPage).toHaveBeenCalledWith(
             10,
-            expect.objectContaining({ limit: 100, offset: 0 })
+            expect.objectContaining({ limit: SHARED_MEDIA_PAGE_SIZE, offset: 0 })
         );
         expect(result.current.mediaItems).toHaveLength(1);
         expect(result.current.total).toBe(3);
