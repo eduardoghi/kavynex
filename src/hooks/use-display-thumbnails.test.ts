@@ -93,6 +93,63 @@ describe("useDisplayThumbnails", () => {
         expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
     });
 
+    it("asks only about the paths that do not have a derivative yet", async () => {
+        // Every request used to carry every loaded path, so appending page k re-asked about all k
+        // pages and the backend paid a stat per entry to answer "already cached" - quadratic in the
+        // number of pages, for an answer this side already had. Only the new page is unresolved.
+        vi.mocked(resolveDisplayThumbnails)
+            .mockResolvedValueOnce(new Map([["thumbnails/thumb_a.jpg", "/cache/a.jpg"]]))
+            .mockResolvedValueOnce(new Map([["thumbnails/thumb_b.jpg", "/cache/b.jpg"]]));
+
+        const { rerender } = renderHook(
+            ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
+            { initialProps: { paths: ["thumbnails/thumb_a.jpg"] } }
+        );
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
+        });
+
+        rerender({ paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"] });
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(2);
+        });
+
+        expect(resolveDisplayThumbnails).toHaveBeenLastCalledWith(
+            ["thumbnails/thumb_b.jpg"],
+            "/library"
+        );
+    });
+
+    it("asks again about a path that came back without a derivative", async () => {
+        // The other direction of the same filter, and it has to hold: a miss is not a final answer.
+        // The backend caps how many derivatives one call may generate, so a page whose misses hit
+        // that ceiling only ever gets them by being asked a second time. Skipping on "was requested"
+        // rather than on "was resolved" would strand those cards on the stored file forever.
+        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(new Map());
+
+        const { rerender } = renderHook(
+            ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
+            { initialProps: { paths: ["thumbnails/thumb_a.jpg"] } }
+        );
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
+        });
+
+        rerender({ paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"] });
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(2);
+        });
+
+        expect(resolveDisplayThumbnails).toHaveBeenLastCalledWith(
+            ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"],
+            "/library"
+        );
+    });
+
     it("drops everything it resolved when the library path changes", async () => {
         // The derivatives are addressed by content, but the paths they answer are relative to a
         // library that is no longer in use, so carrying them across would map a new library's
