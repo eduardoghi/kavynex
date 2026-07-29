@@ -6,8 +6,8 @@
 
 use std::path::Path;
 
-use crate::services::yt_dlp_cookies::append_auth_args;
-use crate::services::yt_dlp_url::is_allowed_youtube_url;
+use crate::services::yt_dlp::cookies::append_auth_args;
+use crate::services::yt_dlp::url::is_allowed_youtube_url;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Upper bound on the frontend-supplied `run_id`. The legitimate value is a `crypto.randomUUID()`

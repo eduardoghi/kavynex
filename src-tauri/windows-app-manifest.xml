@@ -15,7 +15,7 @@
     Opt the process into long paths so Win32 file APIs (which std::fs calls) are not capped at
     the legacy 260-char MAX_PATH for normal, non-"\\?\" paths. This only takes effect when the
     machine also has LongPathsEnabled=1 in the registry, so it is the "belt"; the code in
-    services/library_paths.rs additionally rewrites library paths to their "\\?\" form, which
+    services/library/paths.rs additionally rewrites library paths to their "\\?\" form, which
     bypasses MAX_PATH unconditionally and is what actually closes the gap on machines without
     the registry setting.
   -->

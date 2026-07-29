@@ -273,7 +273,7 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
 /// atomic-write leftovers a crashed copy/replace/migrate left behind. The startup cache sweep
 /// (`cleanup_stale_temp_files_sync`) never reaches these, because they live inside the library
 /// tree next to the real files rather than in the disposable cache directories. Reported by
-/// `library_integrity` as orphans until now, but nothing removed them.
+/// `library::integrity` as orphans until now, but nothing removed them.
 pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSummary> {
     let mut summary = CleanupSummary::default();
 

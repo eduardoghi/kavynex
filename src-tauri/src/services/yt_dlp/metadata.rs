@@ -14,9 +14,9 @@ use crate::models::yt_dlp::{
     YtDlpComment, YtDlpCommentMetadata, YtDlpFormatOption, YtDlpFormatsResult, YtDlpMetadata,
 };
 use crate::services::binaries::resolve_yt_dlp_binary_async;
-use crate::services::yt_dlp_cookies::append_auth_args;
-use crate::services::yt_dlp_registry::{register_download_run, DownloadRunReleaseGuard};
-use crate::services::yt_dlp_url::{is_allowed_youtube_url, youtube_ref_for_log};
+use crate::services::yt_dlp::cookies::append_auth_args;
+use crate::services::yt_dlp::registry::{register_download_run, DownloadRunReleaseGuard};
+use crate::services::yt_dlp::url::{is_allowed_youtube_url, youtube_ref_for_log};
 use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
 use crate::utils::io::{read_lossy_line, read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
@@ -53,7 +53,7 @@ const MAX_YT_DLP_JSON_BYTES: u64 = 128 * 1024 * 1024; // 128 MiB
 
 // Cap on the stderr log lines kept from a metadata/comments/format run and handed to the frontend
 // as `terminal_logs`. `-v` is always passed, so a chatty failure can emit thousands of lines;
-// keep only the most recent, matching yt_dlp_download's stderr ring buffer.
+// keep only the most recent, matching yt_dlp::download's stderr ring buffer.
 const MAX_CAPTURED_STDERR_LINES: usize = 100;
 
 /// Reads yt-dlp stdout, keeping the JSON payload line and the useful log lines, but never
@@ -130,7 +130,7 @@ pub fn sanitize_filename_component(value: &str) -> String {
 
     // yt-dlp reads a leading '-' as an option, so a component that sanitizes to one starting with
     // '-' is prefixed with '_'. Rare (extractor/id come from yt-dlp's own extractor, not free-form
-    // text), but this mirrors the leading-dash guard in yt_dlp_download::is_valid_format_id and
+    // text), but this mirrors the leading-dash guard in yt_dlp::download::is_valid_format_id and
     // keeps the value safe wherever the resulting file_prefix feeds an argv position.
     let guarded = if compact.starts_with('-') {
         format!("_{compact}")
@@ -488,7 +488,7 @@ async fn run_yt_dlp_and_capture_json(
                 // Bound memory (and the IPC payload these lines become in `terminal_logs`) on a
                 // chatty failure - retry storms, throttling notices - since `-v` is always passed
                 // here. Keep the most recent lines, the same ring-buffer cap the download flow's
-                // stderr uses (yt_dlp_download::MAX_CAPTURED_STDERR_LINES).
+                // stderr uses (yt_dlp::download::MAX_CAPTURED_STDERR_LINES).
                 if log_lines.len() >= MAX_CAPTURED_STDERR_LINES {
                     log_lines.remove(0);
                 }

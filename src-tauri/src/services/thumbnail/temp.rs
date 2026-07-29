@@ -69,7 +69,7 @@ fn validate_source_media_path(path: &str) -> AppResult<PathBuf> {
     let ext = extension_from_path(&source_path);
 
     if !is_allowed_media_extension(&ext) {
-        // Same shape as the import gate in library_media.rs: the accepted list goes in `details`,
+        // Same shape as the import gate in library/media.rs: the accepted list goes in `details`,
         // which is what the frontend appends after the catalogued message.
         return Err(AppError::from_code_with_details(
             AppErrorCode::UnsupportedMediaExtension,
@@ -113,7 +113,7 @@ fn ensure_generated_thumbnail_exists(
 /// Cap on how much stdout/stderr is retained from the local ffmpeg thumbnail run. `wait_with_output`
 /// would buffer its whole output unbounded; this keeps memory bounded while still draining the pipes
 /// fully on separate threads, so neither pipe filling can deadlock the other. Mirrors the async twin
-/// in thumbnail_download.rs.
+/// in thumbnail/download.rs.
 const MAX_FFMPEG_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
 /// How long a single-frame thumbnail extraction may run before ffmpeg is treated as hung and its
@@ -256,7 +256,7 @@ fn temporary_thumbnail_file_name(source_hash: &str) -> String {
 /// Builds the ffmpeg argv for a video thumbnail: seek slightly past the start (a frame at exactly
 /// 0 is often black or missing on some encodes) and take a single scaled frame.
 ///
-/// Extracted as a pure function, like `yt_dlp_download::build_download_command_args`, so the argv
+/// Extracted as a pure function, like `yt_dlp::download::build_download_command_args`, so the argv
 /// can be asserted without spawning ffmpeg. Both paths are otherwise only observable as a blank
 /// thumbnail on a user's machine.
 fn build_video_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<String> {

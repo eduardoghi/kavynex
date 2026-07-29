@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::constants::LIBRARY_DIR_THUMBNAILS;
 use crate::services::filesystem::copy_file_atomic;
-use crate::services::library_paths::{ensure_library_dir, resolve_existing_library_dir};
+use crate::services::library::paths::{ensure_library_dir, resolve_existing_library_dir};
 use crate::utils::format::{allowed_thumbnail_extensions_label, is_allowed_thumbnail_extension};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{
@@ -13,10 +13,10 @@ use crate::utils::path::{
 use crate::{AppError, AppErrorCode, AppResult};
 
 pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppResult<String> {
-    // Serialize this library write against a concurrent migration (see library_lock). Covers
+    // Serialize this library write against a concurrent migration (see library::lock). Covers
     // both the manual-thumbnail persist and the downloaded-thumbnail/avatar persist, which are
     // this function's only callers.
-    let _library_guard = crate::services::library_lock::library_read_guard();
+    let _library_guard = crate::services::library::lock::library_read_guard();
 
     if !source.exists() {
         return Err(AppError::from_code(
@@ -89,10 +89,10 @@ pub fn persist_thumbnail_file_sync(path: &str, library_path: &str) -> AppResult<
 }
 
 pub fn delete_thumbnail_file_sync(thumbnail_path: &str, library_path: &str) -> AppResult<()> {
-    // Serialize against a concurrent library migration (see library_lock). Acquired once per
-    // call, so the per-artifact loop in library_cleanup releases between files rather than
+    // Serialize against a concurrent library migration (see library::lock). Acquired once per
+    // call, so the per-artifact loop in library::cleanup releases between files rather than
     // nesting.
-    let _library_guard = crate::services::library_lock::library_read_guard();
+    let _library_guard = crate::services::library::lock::library_read_guard();
 
     let library_dir = resolve_existing_library_dir(library_path)?;
     let target_path = absolute_path_from_relative(&library_dir, thumbnail_path)?;

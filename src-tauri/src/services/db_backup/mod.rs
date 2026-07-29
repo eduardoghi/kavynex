@@ -1608,7 +1608,7 @@ mod tests {
     async fn import_rejects_a_database_missing_the_comment_cascade() {
         // Right tables, right columns, both videos constraints present - but no
         // video_comments -> videos ON DELETE CASCADE. Accepting it would let a later media delete
-        // (a bare DELETE FROM videos, see library_cleanup) orphan that media's comment rows
+        // (a bare DELETE FROM videos, see library::cleanup) orphan that media's comment rows
         // forever, with nothing in the library diagnostics to reconcile them. PRAGMA foreign_keys
         // can only enforce a cascade the DDL declares and never adds a missing one, so it is
         // refused here alongside the two videos constraints.

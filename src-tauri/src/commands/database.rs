@@ -128,7 +128,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
 ///   Windows merely stat'ing a UNC share authenticates to that host over SMB, leaking the user's
 ///   NTLM hash. This value arrives raw over IPC, so the refusal belongs here rather than resting on
 ///   the file picker - the same guard, for the same reason, as
-///   `library::resolve_path_inside_library` and `yt_dlp_cookies::normalize_cookies_path`. Importing
+///   `library::resolve_path_inside_library` and `yt_dlp::cookies::normalize_cookies_path`. Importing
 ///   a database off a share still works; it just has to be copied locally first, which the staging
 ///   copy does anyway.
 /// - **A database file extension.** Not a security boundary on its own (the source is only read,

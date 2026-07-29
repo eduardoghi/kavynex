@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::constants::MANAGED_LIBRARY_DIRS;
 use crate::services::filesystem::copy_directory_contents;
-use crate::services::library_paths::ensure_library_dir;
+use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -184,7 +184,7 @@ fn migrate_library_contents_with_marker(
     copy_library_contents(old_library_dir, new_library_dir)?;
 
     if let Some(marker) = commit_marker {
-        if let Err(error) = crate::services::library_recovery::write_commit_marker(
+        if let Err(error) = crate::services::library::recovery::write_commit_marker(
             marker,
             &new_library_dir.to_string_lossy(),
         ) {
@@ -324,9 +324,9 @@ pub fn migrate_library_directory_sync(
     // Hold the exclusive library gate across the copy/remove phase: it drains any in-flight
     // import/download/delete and blocks new ones, so a file can never be written into the old
     // directory in the window between it being copied to the new location and removed. Only the
-    // destructive phase needs it; the validation above is read-only. See services/library_lock.
+    // destructive phase needs it; the validation above is read-only. See services/library/lock.
     let migration_result = {
-        let _library_write_guard = crate::services::library_lock::library_write_guard();
+        let _library_write_guard = crate::services::library::lock::library_write_guard();
         migrate_library_contents_with_marker(&canonical_old, &canonical_new, commit_marker)
     };
 

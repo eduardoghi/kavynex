@@ -1,5 +1,5 @@
 //! Classifies an IP address as safe or unsafe to fetch from a user-provided URL (the SSRF guard
-//! behind the thumbnail/avatar downloader in `services::thumbnail_download`). Kept in its own
+//! behind the thumbnail/avatar downloader in `services::thumbnail::download`). Kept in its own
 //! module - pure, dependency-free, no network or filesystem - so the whole classifier can sit under
 //! the mutation gate (`.cargo/mutants.toml`) without dragging in the downloader's untestable async
 //! network code. `is_disallowed_ip` is the only entry point the downloader uses; it is applied both

@@ -20,10 +20,10 @@ use sqlx::{SqliteConnection, SqlitePool};
 use tauri::AppHandle;
 
 use crate::services::database::{db_error, shared_pool};
-use crate::services::library_guard::configured_library_dir;
-use crate::services::library_media::delete_media_file_sync;
+use crate::services::library::guard::configured_library_dir;
+use crate::services::library::media::delete_media_file_sync;
 use crate::services::logger;
-use crate::services::thumbnail_persist::delete_thumbnail_file_sync;
+use crate::services::thumbnail::persist::delete_thumbnail_file_sync;
 
 /// Opens the read-then-write transactions below with `BEGIN IMMEDIATE` rather than sqlx's
 /// default deferred `BEGIN`.
@@ -282,9 +282,9 @@ pub async fn delete_channel_row_and_plan_cleanup(
 }
 
 fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResult<()> {
-    // Serialize against a concurrent library migration (see library_lock). Acquired once per
+    // Serialize against a concurrent library migration (see library::lock). Acquired once per
     // call, so the per-artifact loop in remove_planned_artifacts_sync releases between files.
-    let _library_guard = crate::services::library_lock::library_read_guard();
+    let _library_guard = crate::services::library::lock::library_read_guard();
 
     let absolute = absolute_path_from_relative(library_dir, relative_path)?;
 

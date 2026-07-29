@@ -46,10 +46,10 @@ unicode-normalization = "0.1.25"
 tauri-plugin-process = "2"
 tauri-plugin-window-state = "2"
 # Minimal hand-rolled HTTP client (hyper) for the direct thumbnail/avatar download in
-# services/thumbnail_download.rs. Deliberately kept separate from `reqwest` (pulled in
+# services/thumbnail/download.rs. Deliberately kept separate from `reqwest` (pulled in
 # transitively by tauri-plugin-updater): that download follows redirects manually so it can
 # re-run its SSRF guard on every hop, which reqwest's automatic redirect following would bypass.
-# See http_get_image in services/thumbnail_download.rs for the full rationale.
+# See http_get_image in services/thumbnail/download.rs for the full rationale.
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "rustls-platform-verifier"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "http1", "tokio"] }
 http-body-util = { version = "0.1", default-features = false }
@@ -58,7 +58,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 hyper = { version = "1", default-features = false }
 # The `Service<Name>` trait hyper-util's HttpConnector takes as a custom DNS resolver. Used by the
 # thumbnail downloader's SSRF guard to pin resolution to public addresses (see
-# services/thumbnail_download.rs). Already present transitively via hyper-util; pinned here as a
+# services/thumbnail/download.rs). Already present transitively via hyper-util; pinned here as a
 # direct dependency because the code names the trait.
 tower-service = "0.3"
 ts-rs = "12.0.1"

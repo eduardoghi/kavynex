@@ -13,8 +13,8 @@ pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
 /// The container every thumbnail this app produces is written in.
 ///
 /// Both producers read it: the yt-dlp download normalizes to it with `--convert-thumbnails` and
-/// then looks the written file up by it (`services/thumbnail_download.rs`), and the local-import
-/// FFmpeg preview names its output with it (`services/thumbnail_temp.rs`). It lives here rather
+/// then looks the written file up by it (`services/thumbnail/download.rs`), and the local-import
+/// FFmpeg preview names its output with it (`services/thumbnail/temp.rs`). It lives here rather
 /// than in either module because it is one decision, and it was made in only one of them: the
 /// download switched to JPEG while the local import kept writing lossless PNG, so a library that
 /// mixes both sources ended up holding both formats for the same kind of content, and the size
@@ -35,7 +35,7 @@ pub const THUMBNAIL_OUTPUT_FORMAT: &str = "jpg";
 ///
 /// The grid's card is 158 px tall, so at 16:9 it draws roughly 280 px wide; 640 covers that at a
 /// device pixel ratio of 2 with room to spare, and matches the cap the local-import generator
-/// already applies (`thumbnail_temp.rs`'s scale filter), so a locally-imported thumbnail is passed
+/// already applies (`thumbnail/temp.rs`'s scale filter), so a locally-imported thumbnail is passed
 /// through at its own size rather than resampled for nothing. Against a yt-dlp `maxresdefault` at
 /// 1280x720 it is a quarter of the decoded bitmap.
 pub const DISPLAY_THUMBNAIL_MAX_WIDTH: u32 = 640;
@@ -44,7 +44,7 @@ pub const TEMP_DIR_THUMBS: &str = "thumbs-temp";
 pub const TEMP_DIR_YT_DLP: &str = "yt-dlp-temp";
 pub const TEMP_DIR_YT_DLP_THUMB: &str = "yt-dlp-thumb-temp";
 
-// Holds the display-sized copies of the library's thumbnails (see services/thumbnail_display.rs).
+// Holds the display-sized copies of the library's thumbnails (see services/thumbnail/display.rs).
 // Derived and disposable: every entry is regenerable from the canonical file in the library, is
 // addressed by that file's own content hash, and is swept with the rest of the cache directory.
 pub const TEMP_DIR_THUMB_DISPLAY: &str = "thumb-display";

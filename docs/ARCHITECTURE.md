@@ -38,16 +38,35 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 - **Services** (`src-tauri/src/services/`) hold the actual logic, split by concern rather
   than by a strict service/repository naming split - some files are "repositories" in
   spirit (`channel_repository.rs`, `video_repository/` hold the SQL), others are
-  domain services (`library_media.rs`, `library_migration.rs`, `library_cleanup.rs`,
-  `thumbnail_persist.rs`, `thumbnail_download.rs`, `thumbnail_url.rs`, `yt_dlp_download/`,
-  `yt_dlp_metadata.rs`, `yt_dlp_cookies.rs`, `yt_dlp_url.rs`, `live_chat_storage.rs`,
-  `db_schema/`, `db_backup/`, `database.rs`, `binaries.rs`, `cleanup.rs`, `logger.rs`,
-  `pending_media.rs`, `library_recovery.rs`).
-  A service that outgrew one file becomes a directory of the same name rather than a set
-  of loose siblings, with the coupled core in `mod.rs` and the separable part split off:
-  `db_schema/` (`ddl.rs`, `introspection.rs`), `db_backup/` (`integrity.rs`, `external.rs`,
-  `import.rs`), `video_repository/` (`media_page.rs`) and `yt_dlp_download/` (`command.rs`).
-  All schema/query code lives here, never in `commands/`.
+  domain services. All schema/query code lives here, never in `commands/`.
+
+  Two rules decide whether a concern is a file or a directory, and they apply at different
+  scales:
+
+  - **A file that outgrew itself becomes a directory of the same name**, with the coupled
+    core in `mod.rs` and the separable part split off: `db_schema/` (`ddl.rs`,
+    `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`integrity.rs`,
+    `external.rs`, `import.rs`), `video_repository/` (`media_page.rs`) and
+    `yt_dlp/download/` (`command.rs`, `redaction.rs`).
+  - **A feature family that outgrew a shared filename prefix becomes a directory too.**
+    `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
+    common prefix was already naming a directory, so they are now `library/`
+    (`cleanup.rs`, `guard.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
+    `paths.rs`, `recovery.rs`, `summary.rs`), `thumbnail/` (`display.rs`, `download.rs`,
+    `persist.rs`, `temp.rs`, `url.rs`) and `yt_dlp/` (`cookies.rs`, `events.rs`,
+    `metadata.rs`, `registry.rs`, `url.rs`, plus the nested `download/`). Each family's
+    `mod.rs` declares its submodules and re-exports the entry points the command layer
+    imports, so a caller does not have to know which submodule holds each one.
+
+  Within a family, siblings reach each other through `super::` (matching `db_schema/`,
+  `db_backup/` and `video_repository/`); everything outside it uses the full path, so a
+  call site reads `library::cleanup::delete_media_with_artifacts` rather than a bare
+  `cleanup::` that would collide with the unrelated `services::cleanup` (stale temp files).
+
+  What stays a flat file is a concern with no family: `database.rs`, `binaries.rs`,
+  `cleanup.rs`, `logger.rs`, `filesystem.rs`, `live_chat_storage.rs`, `media_comments.rs`,
+  `pending_media.rs`, `process_registry.rs`, `ssrf_guard.rs`, `temp_paths.rs`,
+  `channel_repository.rs`.
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
   across services:
   - `path.rs` - the path-safety primitives (sanitizing a relative path, canonicalizing and
@@ -170,16 +189,16 @@ seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` p
 | Concern | Backend | Frontend |
 |---|---|---|
 | Channels CRUD | `commands/channels.rs`, `services/channel_repository.rs` | `repositories/channel-repository.ts` |
-| Media CRUD / import | `commands/videos.rs`, `commands/media.rs`, `services/video_repository/`, `services/library_media.rs` | `repositories/media-repository.ts`, `services/media-file-service.ts`, `services/media-input-service.ts` |
-| yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp_download/`, `services/yt_dlp_metadata.rs`, `services/yt_dlp_cookies.rs`, `services/yt_dlp_url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
-| Thumbnails | `commands/thumbnail.rs`, `services/thumbnail_persist.rs`, `services/thumbnail_download.rs`, `services/thumbnail_url.rs`, `services/thumbnail_temp.rs`, `services/thumbnail_display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
+| Media CRUD / import | `commands/videos.rs`, `commands/media.rs`, `services/video_repository/`, `services/library/media.rs` | `repositories/media-repository.ts`, `services/media-file-service.ts`, `services/media-input-service.ts` |
+| yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata.rs`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
+| Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download.rs`, `services/thumbnail/url.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts` |
 | Database schema/migrations | `services/db_schema/` | - |
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
-| Diagnostics | `commands/library.rs`, `services/library_summary.rs`, `services/library_cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
+| Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/use-app-settings*.ts` |
-| Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library_recovery.rs`, `services/cleanup.rs` | - |
+| Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/cleanup.rs` | - |
 
 See `docs/DATABASE.md` for the schema/migration/backup model and `docs/DIRECTORIES.md` for
 the on-disk layout these services read and write.

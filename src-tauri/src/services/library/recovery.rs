@@ -1,7 +1,7 @@
 //! Durable recovery of an interrupted library-directory migration.
 //!
 //! A migration copies the whole library to the new location and only then removes the old one
-//! (`library_migration`). The frontend persists the new `library_path` in a separate IPC call
+//! (`library::migration`). The frontend persists the new `library_path` in a separate IPC call
 //! after the migrate command returns. If the process dies between the copy and that persist,
 //! the settings still point at the old (now emptied) directory even though a complete copy
 //! exists at the new one - the app looks like it lost the entire library.
@@ -18,7 +18,7 @@ use sqlx::SqlitePool;
 
 use crate::constants::MANAGED_LIBRARY_DIRS;
 use crate::services::database::{get_app_settings_from_pool, set_library_path_in_pool};
-use crate::services::library_guard::paths_refer_to_same_location;
+use crate::services::library::guard::paths_refer_to_same_location;
 use crate::services::logger;
 use crate::utils::task::run_blocking;
 
@@ -142,7 +142,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
     }
 
     // The marker is written only *after* the copy to `new_path` finishes (see
-    // `library_migration::migrate_library_contents_with_marker`), so a populated target is a
+    // `library::migration::migrate_library_contents_with_marker`), so a populated target is a
     // complete copy of the library. Adopt it whenever the app is still pointed elsewhere -
     // including when the old directory only *looks* intact because its removal failed partway
     // through (a partial `remove_dir_all`). Trusting a still-populated old directory here is

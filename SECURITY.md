@@ -28,7 +28,7 @@ so a symlink or a `..`-laden path can't walk a write or delete outside the inten
 directory. Every command that reads or writes inside the library directory or the app's
 cache/log directories goes through these helpers rather than joining strings by hand.
 
-On top of that, `src-tauri/src/services/library_guard.rs` never trusts a `library_path`
+On top of that, `src-tauri/src/services/library/guard.rs` never trusts a `library_path`
 argument received over IPC on its own: `ensure_configured_library_path` re-derives the
 library directory from the persisted `app_settings` row and rejects any request whose
 path does not canonicalize to the same location - comparing canonical paths (not string
@@ -46,10 +46,10 @@ avoid. `utils/path.rs::is_network_path` is the shared predicate (it normalizes s
 mixed spellings Windows still resolves to a share - `/\host\share`, `\/host\share` - cannot slip
 past a literal prefix match), and the commands applying it are
 `library::resolve_path_inside_library` (reveal in file manager),
-`thumbnail_temp::validate_source_media_path` (the FFmpeg preview source),
-`library_media::import_media_file_sync` (the import source),
-`library_guard::paths_refer_to_same_location` (a network path aimed at a local library),
-`yt_dlp_cookies::normalize_cookies_path` (the `--cookies` file),
+`thumbnail::temp::validate_source_media_path` (the FFmpeg preview source),
+`library::media::import_media_file_sync` (the import source),
+`library::guard::paths_refer_to_same_location` (a network path aimed at a local library),
+`yt_dlp::cookies::normalize_cookies_path` (the `--cookies` file),
 `commands/database.rs::prepare_import_source` (the database import source) and
 `commands/database.rs::prepare_export_destination` (the database export destination). A library or
 a cookies file the user deliberately keeps on a share is not blocked from *existing* - only from
@@ -76,7 +76,7 @@ gating the export command costs this feature nothing.
 
 #### Commands that intentionally take a caller-supplied path
 
-A handful of commands deliberately do *not* go through `library_guard`, because they are
+A handful of commands deliberately do *not* go through `library::guard`, because they are
 used by the onboarding/settings UI to preview or act on a *candidate* library folder
 before it is persisted (at which point there is no configured library to re-derive from).
 These are a conscious exception, not an oversight, and each is constrained so the "the
@@ -99,7 +99,7 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
   is disclosure only - never a write outside the managed tree, an arbitrary-file *content*
   read of a non-media file, or code execution - and it is bounded further: the source is
   rejected up front if it is a UNC/network location
-  (`services/thumbnail_temp.rs::validate_source_media_path`), closing the NTLM-leak
+  (`services/thumbnail/temp.rs::validate_source_media_path`), closing the NTLM-leak
   escalation the same way `open_path_in_system` does. Scoping the source to the library is
   not possible without breaking the preview, so this is recorded as an accepted residual in
   the same spirit as the file-existence oracle below.
@@ -162,7 +162,7 @@ worse are closed above.
 This one is not closed, on purpose: the whole reason these commands take a caller path is to
 preview or reveal a *candidate* folder before it is persisted - onboarding, and the change-library
 flow, both act on a directory that is not (yet) the configured library, so routing them through
-`library_guard` would break the feature the exception exists for. There is no backend signal that
+`library::guard` would break the feature the exception exists for. There is no backend signal that
 separates "the user picked this folder in the dialog" from "the renderer invoked this directly," so
 the oracle is inherent to supporting the preview at all. It is recorded here as an accepted residual
 rather than left implicit, in the same spirit as the export-overwrite and updater-rollback residuals
@@ -183,7 +183,7 @@ TOCTOU shape). Recorded as an accepted residual rather than left implicit.
 ##### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
 `cleanup_unreferenced_media_artifacts` reference-counts each artifact path against the database and
-then unlinks the files nothing points at (`services/library_cleanup.rs`). Folding that count and the
+then unlinks the files nothing points at (`services/library/cleanup.rs`). Folding that count and the
 unlink into one backend call closed the multi-round-trip race the frontend used to have, but the two
 steps are still not atomic against a *concurrent* media creation that resolves to the same
 content-addressed path. A wrapping transaction cannot help - the unlink necessarily happens after
@@ -223,7 +223,7 @@ constraints are the defense-in-depth for if it ever were.
 
 ### The yt-dlp host allow-list and argument separator
 
-`src-tauri/src/services/yt_dlp_url.rs` restricts every URL handed to yt-dlp to an
+`src-tauri/src/services/yt_dlp/url.rs` restricts every URL handed to yt-dlp to an
 `http`/`https` URL whose host is `youtube.com`, `youtube-nocookie.com`, `youtu.be`, or a
 subdomain of one of those - rejecting look-alike hosts (`youtube.com.evil.com`,
 `notyoutube.com`, userinfo tricks like `youtube.com@evil.com`). This matters because
@@ -233,7 +233,7 @@ those cookies) at an arbitrary site. The app only ever needs YouTube, so this cl
 gap without losing functionality.
 
 Every yt-dlp invocation also places a literal `--` separator before the URL argument
-(the argv builder in `services/yt_dlp_download/command.rs`, and `services/yt_dlp_metadata.rs`
+(the argv builder in `services/yt_dlp/download/command.rs`, and `services/yt_dlp/metadata.rs`
 for the metadata calls), so the URL can never be reinterpreted as a
 command-line flag by yt-dlp itself - defense-in-depth on top of the scheme/host check,
 not a substitute for it. Binaries are always invoked via `std::process::Command`/
@@ -241,14 +241,14 @@ not a substitute for it. Binaries are always invoked via `std::process::Command`
 shell-interpolation step for injection to exploit in the first place.
 
 The optional cookies-file path (`--cookies <path>`) is similarly restricted: only an
-existing, non-network `.txt` file is accepted (`services/yt_dlp_cookies.rs::normalize_cookies_path`),
+existing, non-network `.txt` file is accepted (`services/yt_dlp/cookies.rs::normalize_cookies_path`),
 mirroring the file picker's own filter, and the resolved path is redacted before it is
 ever shown in the in-app terminal preview. The network-path refusal has to come *before* the
 `is_file()` check rather than after it: stat'ing a UNC share is itself what makes Windows
 authenticate to that host over SMB and leak the user's NTLM hash, so a check that ran later
 would already have paid the cost it exists to avoid. This is the same guard, closing the same
 escalation, as `library::resolve_path_inside_library` and
-`thumbnail_temp::validate_source_media_path`; a cookies file kept on a share loses only the
+`thumbnail::temp::validate_source_media_path`; a cookies file kept on a share loses only the
 ability to be pointed at directly. An invalid value is dropped rather than raised as an error,
 matching how this function treats every other rejection - the run simply proceeds without
 cookies (or falls back to `--cookies-from-browser`).
@@ -257,7 +257,7 @@ cookies (or falls back to `--cookies-from-browser`).
 
 Downloading a thumbnail is the one place the backend makes an HTTP request of its own rather than
 delegating to yt-dlp, so it carries its own set of controls
-(`services/thumbnail_download.rs`). `download_thumbnail_from_url` takes two paths depending on the
+(`services/thumbnail/download.rs`). `download_thumbnail_from_url` takes two paths depending on the
 URL, and **both gate the host**:
 
 - A URL whose *path* ends in an image extension is fetched directly, and is restricted to the
@@ -374,7 +374,7 @@ One property of the scope itself is worth stating, because it differs from how c
 decided everywhere else in this document: Tauri matches a request against the scope's **glob
 patterns over the requested path string**, without canonicalizing it first. Every other containment
 check here resolves symlinks and compares canonical paths
-(`ensure_existing_path_inside_dir`, `library_guard`), so this is the one place the decision is
+(`ensure_existing_path_inside_dir`, `library::guard`), so this is the one place the decision is
 purely lexical. The practical consequence is that a symlink planted inside one of the four managed
 subdirectories, pointing outside the library, would be served through `convertFileSrc`. That is
 recorded rather than fixed because reaching it already requires write access to the user's library

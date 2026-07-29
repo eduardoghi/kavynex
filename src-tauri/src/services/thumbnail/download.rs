@@ -30,14 +30,14 @@ use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
 use crate::services::filesystem::{clean_matching_files_in_dir, find_best_matching_file};
-use crate::services::library_paths::ensure_library_dir;
+use crate::services::library::paths::ensure_library_dir;
 use crate::services::ssrf_guard::is_disallowed_ip;
 use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
-use crate::services::thumbnail_persist::persist_thumbnail_from_source;
-use crate::services::thumbnail_url::is_allowed_thumbnail_image_host;
+use crate::services::thumbnail::persist::persist_thumbnail_from_source;
+use crate::services::thumbnail::url::is_allowed_thumbnail_image_host;
+use crate::services::yt_dlp::cookies::append_auth_args;
+use crate::services::yt_dlp::url::is_allowed_youtube_url;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
-use crate::services::yt_dlp_cookies::append_auth_args;
-use crate::services::yt_dlp_url::is_allowed_youtube_url;
 use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::naming::unique_temp_suffix;
 use crate::utils::process::{hide_console_async, read_process_error};
@@ -224,7 +224,7 @@ enum ThumbnailTarget {
 // `THUMBNAIL_OUTPUT_FORMAT` (imported at the top of this file) is what `--convert-thumbnails`
 // normalizes every downloaded thumbnail to, and therefore the extension the file lands under in
 // the temp directory - see `finalize_thumbnail_download` below, which looks the written file up by
-// it. It lives in `constants.rs` because the local-import producer (`thumbnail_temp.rs`) writes
+// it. It lives in `constants.rs` because the local-import producer (`thumbnail/temp.rs`) writes
 // the same kind of file and has to agree; `constants.rs` is where the choice is explained.
 //
 // Note what the format choice does *not* fix: the decoded size of the image in the grid is
@@ -786,7 +786,7 @@ pub async fn download_thumbnail_from_url_async(
             // off internal addresses and its size/content-type/magic-byte checks bound what comes
             // back, but all three constrain the *response* - none of them stopped the request from
             // reaching an arbitrary public host in the first place. See
-            // services::thumbnail_url for the list and why it is not the yt-dlp one.
+            // services::thumbnail::url for the list and why it is not the yt-dlp one.
             let direct_uri: Uri = normalized_url.parse().map_err(|e| {
                 AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
             })?;

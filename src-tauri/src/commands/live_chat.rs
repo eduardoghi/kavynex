@@ -4,7 +4,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
 use crate::constants::LIBRARY_DIR_LIVE_CHAT;
-use crate::services::library_guard::configured_library_dir;
+use crate::services::library::guard::configured_library_dir;
 use crate::services::live_chat_storage::{
     compress_existing_live_chat_files, list_live_chat_relative_paths, migrate_live_chat_files,
     stream_live_chat_lines, LIVE_CHAT_STREAM_BATCH_LINES,
@@ -96,13 +96,13 @@ pub async fn stream_live_chat_file(
 ) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
 
-    // Deliberately does NOT take library_lock::library_read_guard(), unlike delete/migrate above.
+    // Deliberately does NOT take library::lock::library_read_guard(), unlike delete/migrate above.
     // That gate serializes writes and deletes against a migration's copy/remove phase, because
     // only those can lose data (a file written into the old tree between copy and remove). A pure
     // read cannot: the worst a concurrent migration does to it is move the file mid-read, which
     // surfaces as a LiveChatFileUnreadable error, never corruption. Holding a read guard for the
     // whole streamed read would instead block a migration for the entire duration of a (possibly
-    // large) replay, which is worse than the transient error it would prevent. See services::library_lock.
+    // large) replay, which is worse than the transient error it would prevent. See services::library::lock.
     run_blocking(move || {
         stream_live_chat_relative_sync(
             &library_dir,
@@ -167,8 +167,8 @@ pub async fn delete_live_chat_file(app: AppHandle, relative_path: String) -> App
         .await?;
 
     run_blocking(move || {
-        // Serialize against a concurrent library migration (see services::library_lock).
-        let _library_guard = crate::services::library_lock::library_read_guard();
+        // Serialize against a concurrent library migration (see services::library::lock).
+        let _library_guard = crate::services::library::lock::library_read_guard();
 
         delete_live_chat_relative_sync(&library_dir, &relative_path)
             .map_err(reword_unlink_error_after_reference_clear)
@@ -199,8 +199,8 @@ pub async fn migrate_live_chat_to_library(app: AppHandle) -> AppResult<()> {
 
     run_blocking(move || {
         // Serialize this library write against a concurrent migration (see
-        // services::library_lock). Held across both steps; neither reacquires the guard.
-        let _library_guard = crate::services::library_lock::library_read_guard();
+        // services::library::lock). Held across both steps; neither reacquires the guard.
+        let _library_guard = crate::services::library::lock::library_read_guard();
 
         migrate_live_chat_files(&app_data_dir, &library_dir)?;
         compress_existing_live_chat_files(&library_dir.join("live_chat"))?;

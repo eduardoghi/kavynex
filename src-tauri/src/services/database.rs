@@ -354,7 +354,7 @@ where
 /// value comes from a bug or a compromised frontend and is rejected rather than persisted -
 /// otherwise a later read would surface a nonsensical mode in the settings UI. `library_path`
 /// is intentionally left free-form: it is re-derived and canonicalized downstream
-/// (`library_guard`, `ensure_library_dir`), and an empty value is the valid "not configured
+/// (`library::guard`, `ensure_library_dir`), and an empty value is the valid "not configured
 /// yet" state.
 fn validate_import_mode(value: &str) -> AppResult<&str> {
     match value.trim() {
@@ -368,7 +368,7 @@ fn validate_import_mode(value: &str) -> AppResult<&str> {
 
 /// Upserts only the library path setting. Used by the interrupted-migration recovery, which
 /// adopts a new library directory recorded by a migration that crashed before the frontend
-/// could persist it (see `services::library_recovery`). The other settings are left untouched.
+/// could persist it (see `services::library::recovery`). The other settings are left untouched.
 pub(crate) async fn set_library_path_in_pool(
     pool: &SqlitePool,
     library_path: &str,

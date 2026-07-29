@@ -9,7 +9,7 @@
 //! Kept apart from the async orchestration in the parent module so this - the part with a privacy
 //! consequence and no I/O at all - can be mutation-tested. Tests live in the parent's `mod tests`.
 
-use crate::services::yt_dlp_url::youtube_ref_for_log;
+use crate::services::yt_dlp::url::youtube_ref_for_log;
 
 /// How the value following a flag must be redacted when building the log line.
 enum PendingRedaction {

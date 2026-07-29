@@ -162,7 +162,7 @@ pub struct YtDlpCommentMetadata {
 // format (see `buildMergedFormats`), so it has to label and order entries this side never
 // emitted - and a label produced here would be overwritten for every row. What the two sides
 // do agree on is `format_id`: the frontend mints combined ids like `137+140` from these, and
-// `yt_dlp_download::resolve_format_has_video` resolves them back against this metadata.
+// `yt_dlp::download::resolve_format_has_video` resolves them back against this metadata.
 #[derive(Serialize, Deserialize, Clone, Debug, TS)]
 #[ts(
     export,

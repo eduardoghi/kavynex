@@ -91,14 +91,14 @@ this matters to you.
 in `src-tauri/src/constants.rs`):
 
 - `thumbs-temp/` - temporary thumbnail previews generated before a thumbnail is committed
-  to the library (`services/thumbnail_temp.rs`), named `thumb_<sha256>.jpg` - the container
+  to the library (`services/thumbnail/temp.rs`), named `thumb_<sha256>.jpg` - the container
   both thumbnail producers share (`THUMBNAIL_OUTPUT_FORMAT` in `src-tauri/src/constants.rs`).
 - `yt-dlp-temp/` - scratch space for an in-progress yt-dlp download before its output is
   moved into the library.
 - `yt-dlp-thumb-temp/` - scratch space for thumbnails fetched as part of a yt-dlp run.
 
 A fourth, `thumb-display/`, holds something different from scratch data: a **display-sized copy** of
-each thumbnail the grid has drawn (`services/thumbnail_display.rs`), named
+each thumbnail the grid has drawn (`services/thumbnail/display.rs`), named
 `<sha256-of-the-stored-thumbnail>.jpg`. A stored thumbnail keeps whatever size it arrived at - a
 yt-dlp `maxresdefault` is 1280x720 - and a webview decodes an image at its natural size regardless
 of how well the file is compressed, so drawing one into a card a few hundred pixels wide costs the
@@ -170,10 +170,10 @@ ever kept.
 
 The library directory is user-chosen (persisted as `library_path` in `app_settings`; see
 `docs/DATABASE.md`) and defaults, on first run, to `<video_dir>/Kavynex Library`
-(`services/library_paths.rs::resolve_default_library_directory_sync`, using Tauri's
+(`services/library/paths.rs::resolve_default_library_directory_sync`, using Tauri's
 platform `video_dir()` - e.g. `~/Videos/Kavynex Library` on Linux/macOS,
 `%USERPROFILE%\Videos\Kavynex Library` on Windows). Unlike the app-owned directories
-above, the user can point this anywhere via Settings, and `services/library_migration.rs`
+above, the user can point this anywhere via Settings, and `services/library/migration.rs`
 supports moving its contents when the path changes.
 
 Inside the library directory, media services create these subfolders on demand:
@@ -193,23 +193,23 @@ SHA-256 hash of their own content (`utils/hash.rs::file_hash`, computed by strea
 file rather than loading it whole):
 
 - `video/media_<sha256>.<ext>` or `audio/media_<sha256>.<ext>` - a **locally imported**
-  file, written by `services/library_media.rs::import_media_file_sync`.
-- `thumbnails/thumb_<sha256>.<ext>` - written by `services/thumbnail_persist.rs`.
+  file, written by `services/library/media.rs::import_media_file_sync`.
+- `thumbnails/thumb_<sha256>.<ext>` - written by `services/thumbnail/persist.rs`.
 
 This makes storage naturally deduplicated (two imports of byte-identical content produce
 the same filename) and content-verifiable (the filename itself is a checksum). It also
 means renaming or re-encoding a file outside the app changes its hash and therefore its
 expected filename - this is exactly what the library-integrity diagnostics
-(`services/library_cleanup.rs`, `services/library_summary.rs`, surfaced by the
+(`services/library/cleanup.rs`, `services/library/summary.rs`, surfaced by the
 Diagnostics dialog) check for.
 
 **Identifier-based (yt-dlp downloads).** A file downloaded via yt-dlp is *not*
 content-hashed (hashing a multi-GB download would be wasteful and pointless, since the
 video id already identifies it). It is named from the source metadata as
 `<extractor>_<id>_<format_id>.<ext>` (e.g. `youtube_dQw4w9WgXcQ_137.mp4`), where each
-component is passed through `services/yt_dlp_metadata.rs::sanitize_filename_component`;
-see `build_download_command_args` in `services/yt_dlp_download/command.rs` and
-`place_downloaded_file` in `services/yt_dlp_download/mod.rs`. This name is deterministic
+component is passed through `services/yt_dlp/metadata.rs::sanitize_filename_component`;
+see `build_download_command_args` in `services/yt_dlp/download/command.rs` and
+`place_downloaded_file` in `services/yt_dlp/download/mod.rs`. This name is deterministic
 for a given video+format, and the download path never overwrites an existing destination,
 so re-downloading the same
 video+format keeps the already-catalogued bytes rather than replacing them with a
@@ -219,7 +219,7 @@ on-disk copies (there is no cross-scheme deduplication) - within a single scheme
 still holds.
 
 Live chat files are likewise named from the video/run rather than content-hashed (they are
-written once by a yt-dlp run and not re-derived); see `services/yt_dlp_download/mod.rs` and
+written once by a yt-dlp run and not re-derived); see `services/yt_dlp/download/mod.rs` and
 `services/live_chat_storage.rs` for the exact naming if you need to trace a specific file.
 
 All paths stored in the database (`videos.file_path`, `videos.thumbnail_path`,

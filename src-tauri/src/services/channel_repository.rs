@@ -133,7 +133,7 @@ pub async fn update_channel_name_and_handle(
 }
 
 // `update_channel_avatar_path` and `count_channels_using_avatar_path_outside_channel` lived here
-// until they were superseded by `library_cleanup::replace_channel_avatar_and_plan_cleanup`, which
+// until they were superseded by `library::cleanup::replace_channel_avatar_and_plan_cleanup`, which
 // does the update and the reference decision in one transaction. Both were removed rather than
 // kept "in case": neither had a caller outside its own test, and the count encoded the *older*
 // rule - it only looked at other channels' avatars, missing the video thumbnails that can point

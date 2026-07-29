@@ -3,7 +3,8 @@ use tauri::{AppHandle, State};
 use crate::services::channel_repository as repo;
 use crate::services::channel_repository::ChannelRow;
 use crate::services::database::Db;
-use crate::services::library_cleanup::{self, ArtifactCleanupReport};
+use crate::services::library;
+use crate::services::library::cleanup::ArtifactCleanupReport;
 use crate::utils::path::ensure_managed_library_relative_path;
 use crate::utils::validation::{ensure_valid_channel_name, ensure_valid_youtube_handle};
 use crate::AppResult;
@@ -15,7 +16,7 @@ pub async fn delete_channel_with_artifacts(
     app: AppHandle,
     channel_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
-    library_cleanup::delete_channel_with_artifacts(&app, channel_id).await
+    library::cleanup::delete_channel_with_artifacts(&app, channel_id).await
 }
 
 #[tauri::command]
@@ -102,7 +103,7 @@ pub async fn replace_channel_avatar(
         ensure_managed_library_relative_path(path)?;
     }
 
-    library_cleanup::replace_channel_avatar(&app, channel_id, avatar_path).await
+    library::cleanup::replace_channel_avatar(&app, channel_id, avatar_path).await
 }
 
 #[cfg(test)]

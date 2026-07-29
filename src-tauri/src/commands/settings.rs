@@ -6,8 +6,8 @@ use crate::services::database::{
 };
 use std::path::Path;
 
-use crate::services::library_paths::{library_path_is_inside_dir, resolve_existing_library_dir};
-use crate::services::library_recovery;
+use crate::services::library;
+use crate::services::library::paths::{library_path_is_inside_dir, resolve_existing_library_dir};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -19,9 +19,9 @@ pub async fn get_app_settings(db: State<'_, Db>) -> AppResult<StoredAppSettings>
     // new path: if the configured library lost its content but a commit marker points at a
     // populated directory, adopt it before returning, so the frontend never sees the library as
     // "disappeared". Best effort and cheap in the common case (a single stat of a missing
-    // marker); see services::library_recovery.
+    // marker); see services::library::recovery.
     if let Some(config_dir) = db.path().parent() {
-        library_recovery::reconcile_interrupted_migration(&pool, config_dir).await;
+        library::recovery::reconcile_interrupted_migration(&pool, config_dir).await;
     }
 
     get_app_settings_from_pool(&pool).await
@@ -29,7 +29,7 @@ pub async fn get_app_settings(db: State<'_, Db>) -> AppResult<StoredAppSettings>
 
 /// Rejects a non-empty `library_path` that is not an existing directory (or is a filesystem
 /// root). The whole security model re-derives the library directory from this stored value and
-/// trusts it (see `services::library_guard`); enforcing it at the write boundary stops a
+/// trusts it (see `services::library::guard`); enforcing it at the write boundary stops a
 /// compromised frontend from persisting an arbitrary base path that a later delete/move command
 /// would then operate inside. An empty value is the valid "not configured yet" state and the
 /// legitimate flow always persists a path already created by `ensure_directory_exists`.

@@ -54,7 +54,7 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
 /// filesystem call they make on a caller-supplied path is long-path-safe. A no-op beyond the
 /// trim on other platforms.
 ///
-/// Deliberately does NOT reject a UNC / network path here (unlike `services::library_guard` and
+/// Deliberately does NOT reject a UNC / network path here (unlike `services::library::guard` and
 /// `services::library::resolve_path_inside_library`, which do): these helpers sit on the
 /// library-selection path (onboarding and change-library both call `ensure_directory_exists`/
 /// `resolve_existing_directory`/`is_directory_empty` on the candidate folder), and a library kept

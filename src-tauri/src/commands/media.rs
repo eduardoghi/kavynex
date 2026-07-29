@@ -1,9 +1,9 @@
 use tauri::AppHandle;
 
 use crate::models::yt_dlp::ImportMode;
-use crate::services::library_cleanup::{self, ArtifactCleanupReport};
-use crate::services::library_guard::verify_library_path_then_blocking;
-use crate::services::library_media;
+use crate::services::library;
+use crate::services::library::cleanup::ArtifactCleanupReport;
+use crate::services::library::guard::verify_library_path_then_blocking;
 use crate::services::pending_media::{self, PendingMediaArtifacts};
 use crate::utils::task::run_blocking;
 use crate::AppResult;
@@ -16,7 +16,7 @@ pub async fn import_media_file(
     library_path: String,
 ) -> AppResult<String> {
     verify_library_path_then_blocking(&app, library_path, move |library_path| {
-        library_media::import_media_file_sync(&path, mode, &library_path)
+        library::media::import_media_file_sync(&path, mode, &library_path)
     })
     .await
 }
@@ -33,7 +33,7 @@ pub async fn cleanup_unreferenced_media_artifacts(
     thumbnail_path: Option<String>,
     live_chat_file_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
-    library_cleanup::cleanup_unreferenced_artifacts(
+    library::cleanup::cleanup_unreferenced_artifacts(
         &app,
         file_path,
         thumbnail_path,
@@ -89,7 +89,7 @@ pub async fn clear_pending_media_artifacts(app: AppHandle, marker: String) -> Ap
 // `AppHandle<Wry>`. (This is exactly why `library.rs`'s existing IPC tests only cover
 // `ensure_directory_exists` and `check_library_integrity` - the only two commands in
 // that file with no `AppHandle` parameter.) The same mismatch means the underlying
-// async service functions (`library_media`/`library_cleanup`) cannot be called directly
+// async service functions (`library::media`/`library::cleanup`) cannot be called directly
 // with a mock `AppHandle` either, since their signatures take the same concrete type.
 //
 // The runtime mismatch above is the whole of it: the database is no longer the obstacle.
@@ -102,13 +102,13 @@ pub async fn clear_pending_media_artifacts(app: AppHandle, marker: String) -> Ap
 //
 // `cleanup_unreferenced_media_artifacts`'s reference-counting behavior (a file shared by
 // two rows is kept, an unreferenced one is deleted) is already covered thoroughly at the
-// service layer by the existing tests in `services/library_cleanup.rs`
+// service layer by the existing tests in `services/library/cleanup.rs`
 // (`cleanup_plan_deletes_orphan_artifacts_no_row_references`,
 // `cleanup_plan_keeps_artifacts_still_referenced_by_a_registered_row`, etc.), which build
 // their own in-memory sqlite pool and call the plan/cleanup functions directly instead of
 // going through `shared_pool`.
 //
-// What *is* tested below is `library_media::import_media_file_sync` - a plain sync
+// What *is* tested below is `library::media::import_media_file_sync` - a plain sync
 // function taking only `&str`/`ImportMode` arguments (no `AppHandle`) - which is exactly
 // what `import_media_file` runs inside `run_blocking` once its guard passes. This locks
 // down the command's actual behavior: content-addressed destination naming, copy vs.
@@ -141,7 +141,7 @@ mod tests {
         let library = root.join("library");
         let source = write_temp_file(&root.join("source"), "clip.mp4", b"copy-me");
 
-        let relative = library_media::import_media_file_sync(
+        let relative = library::media::import_media_file_sync(
             &source.to_string_lossy(),
             ImportMode::Copy,
             &library.to_string_lossy(),
@@ -166,7 +166,7 @@ mod tests {
         let library = root.join("library");
         let source = write_temp_file(&root.join("source"), "clip.mp3", b"move-me");
 
-        let relative = library_media::import_media_file_sync(
+        let relative = library::media::import_media_file_sync(
             &source.to_string_lossy(),
             ImportMode::Move,
             &library.to_string_lossy(),
@@ -195,14 +195,14 @@ mod tests {
         let first_source = write_temp_file(&source_dir, "first.mp4", b"same-bytes");
         let second_source = write_temp_file(&source_dir, "second.mp4", b"same-bytes");
 
-        let first_relative = library_media::import_media_file_sync(
+        let first_relative = library::media::import_media_file_sync(
             &first_source.to_string_lossy(),
             ImportMode::Copy,
             &library.to_string_lossy(),
         )
         .unwrap();
 
-        let second_relative = library_media::import_media_file_sync(
+        let second_relative = library::media::import_media_file_sync(
             &second_source.to_string_lossy(),
             ImportMode::Copy,
             &library.to_string_lossy(),
@@ -224,7 +224,7 @@ mod tests {
 
         // First import establishes the content-addressed destination.
         let first = write_temp_file(&root.join("source"), "first.mp4", b"same-bytes");
-        let relative = library_media::import_media_file_sync(
+        let relative = library::media::import_media_file_sync(
             &first.to_string_lossy(),
             ImportMode::Copy,
             &library.to_string_lossy(),
@@ -236,7 +236,7 @@ mod tests {
         // A second, distinct file with identical content imported in Move mode: the destination
         // already exists, but the redundant source must still be removed to complete the move.
         let second = write_temp_file(&root.join("source"), "second.mp4", b"same-bytes");
-        let second_relative = library_media::import_media_file_sync(
+        let second_relative = library::media::import_media_file_sync(
             &second.to_string_lossy(),
             ImportMode::Move,
             &library.to_string_lossy(),
@@ -257,7 +257,7 @@ mod tests {
         let library = root.join("library");
         let missing_source = root.join("does-not-exist.mp4");
 
-        let error = library_media::import_media_file_sync(
+        let error = library::media::import_media_file_sync(
             &missing_source.to_string_lossy(),
             ImportMode::Copy,
             &library.to_string_lossy(),
@@ -275,7 +275,7 @@ mod tests {
         let library = root.join("library");
         let source = write_temp_file(&root.join("source"), "notes.txt", b"not media");
 
-        let error = library_media::import_media_file_sync(
+        let error = library::media::import_media_file_sync(
             &source.to_string_lossy(),
             ImportMode::Copy,
             &library.to_string_lossy(),

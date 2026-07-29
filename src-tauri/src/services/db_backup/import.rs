@@ -125,7 +125,7 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     // ON CONFLICT target has nothing to match, so every insert fails; without the videos -> channels
     // ON DELETE CASCADE a channel delete leaves its videos orphaned; and without the
     // video_comments -> videos ON DELETE CASCADE a media delete (a bare DELETE FROM videos, see
-    // library_cleanup) leaves that media's comment rows orphaned forever, with nothing in the
+    // library::cleanup) leaves that media's comment rows orphaned forever, with nothing in the
     // library diagnostics to reconcile them. Enabling PRAGMA foreign_keys cannot rescue any of
     // these - it only enforces constraints the DDL declares, it never adds one - so the shape has
     // to be verified before the database is accepted.

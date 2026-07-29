@@ -1,16 +1,34 @@
-pub use crate::services::library_media::{delete_media_file_sync, import_media_file_sync};
-pub use crate::services::library_migration::migrate_library_directory_sync;
-pub use crate::services::library_paths::{
+//! The library feature family: the user-chosen media directory, everything that reads, writes,
+//! validates or repairs it. Each concern is a submodule here rather than a `library_*` sibling of
+//! this file; see `services/mod.rs` for why the grouping exists.
+//!
+//! This module itself keeps the "reveal a path in the system file manager" flow plus the
+//! re-exports the command layer imports, so a caller that only needs the common entry points does
+//! not have to know which submodule holds each one.
+
+pub mod cleanup;
+pub mod guard;
+pub mod integrity;
+pub mod lock;
+pub mod media;
+pub mod migration;
+pub mod paths;
+pub mod recovery;
+pub mod summary;
+
+pub use media::{delete_media_file_sync, import_media_file_sync};
+pub use migration::migrate_library_directory_sync;
+pub use paths::{
     ensure_directory_exists_sync, ensure_library_dir, resolve_default_library_directory_sync,
     resolve_existing_directory_sync, resolve_existing_library_dir,
 };
-pub use crate::services::library_summary::LibrarySummaryInfo;
+pub use summary::LibrarySummaryInfo;
 
 use std::path::PathBuf;
 
-use crate::services::library_summary::summarize_library;
 use crate::utils::path::is_network_path;
 use crate::{AppError, AppErrorCode, AppResult};
+use summary::summarize_library;
 
 pub fn get_library_summary_sync(library_path: &str) -> AppResult<LibrarySummaryInfo> {
     let library_dir = resolve_existing_library_dir(library_path)?;

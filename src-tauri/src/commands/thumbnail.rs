@@ -1,6 +1,6 @@
 use tauri::AppHandle;
 
-use crate::services::library_guard::{
+use crate::services::library::guard::{
     ensure_configured_library_path, verify_library_path_then_blocking,
 };
 use crate::services::thumbnail;
@@ -47,7 +47,7 @@ pub async fn download_channel_avatar_from_handle(
 }
 
 /// Resolves display-sized copies of a page of the grid's thumbnails, generating the ones that are
-/// not cached yet (see `services::thumbnail_display`).
+/// not cached yet (see `services::thumbnail::display`).
 ///
 /// Each entry answers the corresponding `relative_paths` entry with either an absolute path to the
 /// derivative or `null`, and `null` is an ordinary answer rather than a failure - the caller renders

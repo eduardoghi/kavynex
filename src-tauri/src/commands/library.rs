@@ -1,12 +1,10 @@
 use tauri::{AppHandle, Manager};
 
-use crate::services::library_guard::verify_library_path_then_blocking;
-use crate::services::library_integrity::LibraryIntegrityReport;
-use crate::services::library_migration;
-use crate::services::library_paths;
-use crate::services::library_summary::LibrarySummaryInfo;
+use crate::services::library;
+use crate::services::library::guard::verify_library_path_then_blocking;
+use crate::services::library::integrity::LibraryIntegrityReport;
+use crate::services::library::summary::LibrarySummaryInfo;
 use crate::services::logger;
-use crate::services::{library, library_integrity};
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
@@ -50,22 +48,22 @@ fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
 
 #[tauri::command]
 pub async fn resolve_default_library_directory(app: AppHandle) -> AppResult<String> {
-    run_blocking(move || library_paths::resolve_default_library_directory_sync(&app)).await
+    run_blocking(move || library::paths::resolve_default_library_directory_sync(&app)).await
 }
 
 #[tauri::command]
 pub async fn ensure_directory_exists(path: String) -> AppResult<String> {
-    run_blocking(move || library_paths::ensure_directory_exists_sync(&path)).await
+    run_blocking(move || library::paths::ensure_directory_exists_sync(&path)).await
 }
 
 #[tauri::command]
 pub async fn resolve_existing_directory(path: String) -> AppResult<String> {
-    run_blocking(move || library_paths::resolve_existing_directory_sync(&path)).await
+    run_blocking(move || library::paths::resolve_existing_directory_sync(&path)).await
 }
 
 #[tauri::command]
 pub async fn is_directory_empty(path: String) -> AppResult<bool> {
-    run_blocking(move || library_paths::is_directory_empty_sync(&path)).await
+    run_blocking(move || library::paths::is_directory_empty_sync(&path)).await
 }
 
 #[tauri::command]
@@ -73,7 +71,7 @@ pub async fn migrate_library_directory(
     app: AppHandle,
     old_library_path: String,
     new_library_path: String,
-) -> AppResult<library_migration::MigrateLibraryDirectoryResult> {
+) -> AppResult<library::migration::MigrateLibraryDirectoryResult> {
     // Keep the old path (already the canonical form register_library_asset_scope authorized)
     // so its asset-scope grant can be withdrawn once the migration actually moves the library.
     let old_dir_for_scope = old_library_path.trim().to_string();
@@ -84,7 +82,7 @@ pub async fn migrate_library_directory(
     // persists the new one after the migration succeeds. To survive a crash in that window,
     // the migration records the new path in a commit marker next to the database just before
     // it removes the old directory; get_app_settings adopts it if the app restarts still
-    // pointing at the emptied old library (see services::library_recovery).
+    // pointing at the emptied old library (see services::library::recovery).
     let config_dir = app.path().app_config_dir().ok();
 
     // The commit marker lives next to the database in the config directory. If that cannot be
@@ -104,7 +102,7 @@ pub async fn migrate_library_directory(
     // "backups off the library volume" intent. Checked before any copy/remove runs. set_app_settings
     // enforces the same on the persistence path; this covers the destructive move flow.
     if let Some(config_dir) = config_dir.as_deref() {
-        if library_paths::library_path_is_inside_dir(&new_library_path, config_dir) {
+        if library::paths::library_path_is_inside_dir(&new_library_path, config_dir) {
             return Err(crate::AppError::from_code(
                 crate::AppErrorCode::InvalidLibraryPath,
                 "the library folder cannot be inside the application data directory",
@@ -114,11 +112,11 @@ pub async fn migrate_library_directory(
 
     let commit_marker = config_dir
         .as_deref()
-        .map(crate::services::library_recovery::commit_marker_path);
+        .map(crate::services::library::recovery::commit_marker_path);
 
     let result =
         verify_library_path_then_blocking(&app, old_library_path, move |old_library_path| {
-            library_migration::migrate_library_directory_sync(
+            library::migration::migrate_library_directory_sync(
                 &old_library_path,
                 &new_library_path,
                 commit_marker.as_deref(),
@@ -168,7 +166,7 @@ pub async fn check_library_integrity(
     live_chat_paths: Vec<String>,
 ) -> AppResult<LibraryIntegrityReport> {
     run_blocking(move || {
-        library_integrity::check_library_integrity_sync(
+        library::integrity::check_library_integrity_sync(
             &library_path,
             media_paths,
             thumbnail_paths,

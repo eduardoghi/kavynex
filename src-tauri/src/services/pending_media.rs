@@ -450,7 +450,7 @@ pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> 
 
     for (name, artifacts) in markers {
         if !artifacts.is_empty() {
-            match crate::services::library_cleanup::cleanup_unreferenced_artifacts(
+            match crate::services::library::cleanup::cleanup_unreferenced_artifacts(
                 app,
                 artifacts.file_path.clone(),
                 artifacts.thumbnail_path.clone(),

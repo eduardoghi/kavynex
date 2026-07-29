@@ -136,7 +136,7 @@ always empty by design; it is dropped by the baseline migration
 `FOREIGN KEY (...) REFERENCES ... ON DELETE CASCADE`, and every connection opens with
 `PRAGMA foreign_keys = ON` (see "Connection settings" below). Deleting a channel deletes
 its videos, which in turn deletes their comments, in the database itself - the artifact
-cleanup code (`services/library_cleanup.rs`) is only responsible for the *files* that
+cleanup code (`services/library/cleanup.rs`) is only responsible for the *files* that
 belonged to those rows (media, thumbnails, avatar, live chat), not for the rows.
 
 ### Indexes
@@ -311,7 +311,7 @@ Every pooled connection (`database.rs::build_pool_at`) is configured identically
   on the read and asks for the write lock later, and if another connection commits in between,
   SQLite rejects that upgrade with `SQLITE_BUSY_SNAPSHOT` **immediately, without consulting the
   busy handler** - waiting can never make a stale snapshot writable. That is why the
-  read-then-write transactions in `services/library_cleanup.rs` open with `BEGIN IMMEDIATE`
+  read-then-write transactions in `services/library/cleanup.rs` open with `BEGIN IMMEDIATE`
   (`begin_with(BEGIN_IMMEDIATE)`), taking the write lock up front so the wait happens where this
   timeout does apply. A transaction that writes first (e.g. `media_comments::replace_media_comments`)
   is unaffected.

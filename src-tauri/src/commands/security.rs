@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use tauri::{AppHandle, Manager};
 
-use crate::services::library_guard::ensure_configured_library_path;
+use crate::services::library::guard::ensure_configured_library_path;
 use crate::services::logger;
 use crate::utils::format::is_allowed_thumbnail_extension;
 use crate::utils::path::extension_from_path;
@@ -267,7 +267,7 @@ mod tests {
     // The asset-scope registration itself needs the Tauri runtime, which does not run under
     // the mock runtime; these cover the gate that decides what allow_asset_file will ever
     // authorize. The library-path guard behind register_library_asset_scope is covered by
-    // services::library_guard's paths_refer_to_same_location tests.
+    // services::library::guard's paths_refer_to_same_location tests.
 
     /// Records every path a `grant_path_with_canonical` run authorized, so its two-grant contract
     /// can be asserted without a Tauri runtime. The closure is `Fn`, not `FnMut`, so the recording

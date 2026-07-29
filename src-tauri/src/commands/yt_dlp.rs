@@ -4,7 +4,7 @@ use crate::models::yt_dlp::{
     DownloadedMediaResult, ExternalToolsStatus, YtDlpComment, YtDlpFormatsResult,
 };
 use crate::services::binaries::resolve_external_tools_status_async;
-use crate::services::library_guard::ensure_configured_library_path;
+use crate::services::library::guard::ensure_configured_library_path;
 use crate::services::yt_dlp;
 use crate::AppResult;
 
@@ -96,7 +96,7 @@ pub async fn check_external_tools(app: AppHandle) -> AppResult<ExternalToolsStat
 //
 // The URL/video-id validation those other commands perform before ever spawning yt-dlp
 // (host allow-list, empty/malformed id) is already covered directly at the service layer
-// in `services/yt_dlp_url.rs` (`is_allowed_youtube_url` tests). None of the yt-dlp
+// in `services/yt_dlp/url.rs` (`is_allowed_youtube_url` tests). None of the yt-dlp
 // commands can be meaningfully tested beyond that without either a real `AppHandle<Wry>`
 // (which needs a real webview runtime, unavailable headlessly here) or spawning the
 // actual yt-dlp/ffmpeg binaries, which is out of scope for a deterministic, offline test.

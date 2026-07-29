@@ -67,7 +67,7 @@ pub fn yt_dlp_thumb_temp_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBu
     )
 }
 
-/// The cache of display-sized thumbnail derivatives (see `services::thumbnail_display`). Unlike its
+/// The cache of display-sized thumbnail derivatives (see `services::thumbnail::display`). Unlike its
 /// three siblings this holds no scratch data - every entry is a finished, reusable file - but it
 /// belongs here rather than in the library because it is *derived*: regenerable from the canonical
 /// thumbnail, addressed by that file's content hash, and safe to lose.

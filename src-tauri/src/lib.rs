@@ -75,7 +75,8 @@ fn spawn_startup_cleanup(app_handle: AppHandle) {
 /// logged and never affect startup.
 fn spawn_startup_library_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let library_dir = match services::library_guard::configured_library_dir(&app_handle).await {
+        let library_dir = match services::library::guard::configured_library_dir(&app_handle).await
+        {
             Ok(library_dir) => library_dir,
             // No library configured yet, or the settings could not be read: nothing to sweep.
             Err(_) => return,

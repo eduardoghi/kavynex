@@ -1,7 +1,8 @@
 use tauri::{AppHandle, State};
 
 use crate::services::database::Db;
-use crate::services::library_cleanup::{self, ArtifactCleanupReport};
+use crate::services::library;
+use crate::services::library::cleanup::ArtifactCleanupReport;
 use crate::services::video_repository as repo;
 use crate::services::video_repository::{
     MediaCommentRow, MediaIntegrityReference, MediaPage, MediaPageQuery, MediaRepositoryStats,
@@ -18,7 +19,7 @@ pub async fn delete_media_with_artifacts(
     app: AppHandle,
     media_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
-    library_cleanup::delete_media_with_artifacts(&app, media_id).await
+    library::cleanup::delete_media_with_artifacts(&app, media_id).await
 }
 
 #[tauri::command]

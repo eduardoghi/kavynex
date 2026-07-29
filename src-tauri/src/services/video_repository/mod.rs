@@ -454,7 +454,7 @@ pub async fn update_media_progress(
 
 // These three artifact reference-count helpers are test-only on purpose. The production delete
 // paths do the same count *inside* the same `BEGIN IMMEDIATE` transaction that removes the row
-// (see services::library_cleanup), which is what makes the count-then-act atomic. Standalone
+// (see services::library::cleanup), which is what makes the count-then-act atomic. Standalone
 // versions like these are a check-then-act race waiting to happen if a future caller reaches for
 // them instead, so they are gated to `#[cfg(test)]` - compiling them out of production builds means
 // no such caller can exist, while the SQL stays exercised by the tests below.

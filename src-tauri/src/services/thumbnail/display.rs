@@ -50,7 +50,7 @@ use crate::AppResult;
 /// for a cold disk while staying bounded, matching every other external-process call site.
 const DISPLAY_THUMBNAIL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// How often the bounded wait re-checks for exit. Matches `thumbnail_temp.rs`'s generator.
+/// How often the bounded wait re-checks for exit. Matches `thumbnail/temp.rs`'s generator.
 const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// Upper bound on how many derivatives one call will generate.
@@ -74,7 +74,7 @@ fn display_thumbnail_file_name(cache_key: &str) -> String {
 /// produced.
 ///
 /// Every thumbnail and avatar the app writes is named `thumb_<sha256>.<ext>`
-/// (`services::thumbnail_persist`), so the content hash is already in the name and the key is free
+/// (`services::thumbnail::persist`), so the content hash is already in the name and the key is free
 /// to compute - no re-reading the file on a cache hit, which is the point: a hit has to cost a stat,
 /// not a hash of the very bytes the derivative exists to avoid decoding.
 ///
@@ -107,7 +107,7 @@ fn display_cache_key(relative_path: &str) -> Option<String> {
 /// its own size rather than blown up - which matters because the two producers write at different
 /// sizes (a yt-dlp `maxresdefault` at 1280 wide, an FFmpeg frame already capped at 640).
 ///
-/// Extracted as a pure function, like `thumbnail_temp::build_video_thumbnail_args`, so the argv can
+/// Extracted as a pure function, like `thumbnail::temp::build_video_thumbnail_args`, so the argv can
 /// be asserted without spawning a process; a wrong filter here is otherwise only observable as a
 /// blurry or oversized card on someone's machine.
 fn build_display_thumbnail_args(source_path: &Path, out_path: &Path) -> Vec<String> {

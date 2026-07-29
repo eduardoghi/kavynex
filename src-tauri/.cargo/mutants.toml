@@ -44,7 +44,7 @@
 #     is_recent exact-second equality boundary (no deterministic input hits it) and the WAL-busy
 #     import branch (needs a second connection holding a lock to force busy=1 with frames left,
 #     which a unit test cannot arrange deterministically).
-#   - `src/services/library_media.rs` and `src/services/library_cleanup.rs` - content-addressing
+#   - `src/services/library/media.rs` and `src/services/library/cleanup.rs` - content-addressing
 #     and the reference-count-before-unlink decision. ADDED below after a measured pass
 #     (2026-07-18, cargo-mutants 27.1.0, `--in-place --no-config --file <each>`): 111 mutants, 94
 #     unviable, 14 caught, and 3 initially missed - all three in `execute_plan`'s two early-return
@@ -55,14 +55,14 @@
 #     at all: the copy mode leaves the repo-root `../shared` parity fixture behind - see
 #     mutation.yml.)
 # `src/commands/live_chat.rs` - the one command module that re-implements the containment
-# pattern (scope-to-live_chat/ plus symlink re-check) rather than delegating to library_guard,
+# pattern (scope-to-live_chat/ plus symlink re-check) rather than delegating to library::guard,
 # so its logic deserves the same mutation gate as the guard itself. ADDED after a measured pass
 # (2026-07-20, `--in-place --no-config --file`): 32 mutants, 31 unviable (the AppHandle command
 # glue does not build under mutation), 1 viable and caught - the unlink-rewording code gate,
 # extracted into the pure `reword_unlink_error_after_reference_clear` so a test could pin it.
 # `src/services/ssrf_guard.rs` - the pure IP-classification SSRF guard behind the thumbnail/avatar
 # downloader (loopback/private/link-local/reserved, including IPv4-mapped/compatible and
-# 6to4/NAT64/Teredo tunnel-embedded addresses). Extracted from `thumbnail_download.rs` into its own
+# 6to4/NAT64/Teredo tunnel-embedded addresses). Extracted from `thumbnail/download.rs` into its own
 # module so the classifier can be gated without dragging in the downloader's untestable async network
 # code. ADDED after a measured pass (2026-07-21, `--in-place --no-config --file`): 73 mutants, 3
 # unviable, 70 caught, 0 missed. The tunnel decoders were split into pure functions pinned by an
@@ -78,7 +78,7 @@
 # missing-`live_chat_file_path`-column cases, the intact-mirror no-clobber case, and the one-week
 # integrity throttle - except the `run_full_integrity_check` operator survivors, which need a corrupt
 # database returning a *controlled* number of problem rows and are excluded below.
-# `src/services/yt_dlp_download/redaction.rs` - the argv redaction behind the `yt-dlp args: ...` line
+# `src/services/yt_dlp/download/redaction.rs` - the argv redaction behind the `yt-dlp args: ...` line
 # streamed to the in-app terminal. It is the only thing keeping the cookies-file path, the ffmpeg
 # directory (which falls back to `<app_data_dir>/tools`, i.e. `C:\Users\<name>\AppData\...`), the
 # `--paths` temp directory and the raw pasted URL out of a line users copy into public bug reports -
@@ -92,11 +92,11 @@
 # `is_valid_run_id` / `is_valid_format_id` moved into `command.rs` in the same change: they were
 # defined in the ungated `mod.rs` while only `command.rs` used them, so no mutant was ever generated
 # for the character-class filter that keeps the value after `-f` from being read as a yt-dlp flag.
-# `src/services/yt_dlp_download/command.rs` - the pure yt-dlp download planning: request validation,
+# `src/services/yt_dlp/download/command.rs` - the pure yt-dlp download planning: request validation,
 # the argv builder (with the `--` separator that stops the URL being read as a flag), and the
 # terminal-outcome classifier - the command-injection defense-in-depth layer. ADDED after a measured
 # pass (2026-07-24): 12 mutants, 5 unviable, 7 caught, 0 missed; its existing tests already kill every
-# viable mutant. Scoped to `command.rs`, not the whole `yt_dlp_download` directory: `mod.rs` is the
+# viable mutant. Scoped to `command.rs`, not the whole `yt_dlp/download` directory: `mod.rs` is the
 # async process-spawning orchestration a unit test cannot drive (like the excluded binaries.rs
 # boundary functions).
 # `src/services/db_schema/*.rs` - the versioned migrations, the table-rebuild machinery and the
@@ -110,7 +110,7 @@
 # RebuildConnection Drop impl, which is now killed by a pair of tests asserting both directions of
 # the detach-vs-return decision through the pool. Scoped by directory glob, like db_backup, so a
 # future submodule split cannot silently fall out of scope.
-# `src/services/pending_media.rs` and `src/services/library_recovery.rs` - the two crash-recovery
+# `src/services/pending_media.rs` and `src/services/library/recovery.rs` - the two crash-recovery
 # modules that decide, on their own, whether to act on a leftover the previous run left behind.
 # `marker_is_sweepable` is the reason: it gates the unlink of a media file the user may still want,
 # and it is pure precisely so it can be gated here. This is also the file of the project's only real
@@ -132,12 +132,12 @@
 #   identical to a working one until the retry never ends - which is the bug the ceiling removes.
 #   `a_failed_attempt_is_written_back_so_the_ceiling_survives_a_restart` now covers it; re-measured
 #   with `--examine-re record_marker_attempt` at 3 mutants, 3 caught.
-#   library_recovery.rs - 15 mutants, 1 unviable, 14 caught, 0 missed. Goes in clean.
+#   library/recovery.rs - 15 mutants, 1 unviable, 14 caught, 0 missed. Goes in clean.
 # The four remaining pure security gates: every function that decides whether a caller-supplied
 # value is allowed through, which is the profile this whole gate exists for. Each was already
 # covered by unit tests; what was untested was whether those tests kill a logic mutant.
 # ADDED after a measured pass (2026-07-27, `--in-place --no-config --file <each>`):
-#   `src/services/yt_dlp_cookies.rs` - the `.txt` gate and the network-path refusal on the
+#   `src/services/yt_dlp/cookies.rs` - the `.txt` gate and the network-path refusal on the
 #   `--cookies` argument, plus the browser allow-list that decides which cookie store yt-dlp is
 #   allowed to read. 11 mutants, 0 unviable, 11 caught, 0 missed. Goes in clean.
 #   `src/commands/security.rs` - `validate_asset_file_for_preview`, the only gate on the only
@@ -159,18 +159,18 @@
 #   file regardless, matching live_chat.rs.
 #   `src/utils/validation.rs` - the media title/type and channel name/handle validators every write
 #   boundary calls. 31 mutants, 16 unviable, 15 caught, 0 missed. Goes in clean.
-# `src/services/thumbnail_url.rs` - the host allow-list on the *direct* thumbnail fetch, the one
+# `src/services/thumbnail/url.rs` - the host allow-list on the *direct* thumbnail fetch, the one
 # branch of `download_thumbnail_from_url_async` that reaches the network without going through
 # yt-dlp. It is what keeps that branch from being an outbound channel to any public host (the
-# yt-dlp fallback has its own allow-list, in `yt_dlp_url.rs`, already in scope above). Extracted
-# from `thumbnail_download.rs` rather than widening the glob to that file, following the
-# `ssrf_guard.rs` and `yt_dlp_download/redaction.rs` precedent: the rest of that module is async
+# yt-dlp fallback has its own allow-list, in `yt_dlp/url.rs`, already in scope above). Extracted
+# from `thumbnail/download.rs` rather than widening the glob to that file, following the
+# `ssrf_guard.rs` and `yt_dlp/download/redaction.rs` precedent: the rest of that module is async
 # process orchestration a unit test cannot drive, so a whole-file glob would report dozens of
 # unkillable mutants and cost minutes per run. ADDED after a measured pass (2026-07-27,
 # `--in-place --no-config --file`): 4 mutants, 0 unviable, 4 caught, 0 missed, in 85s - the three
 # tests that moved with it (the real CDNs, the look-alike rejections, and the two-way CSP parity
 # check) already kill every viable mutant. The runtime is the extraction's whole payoff.
-# `src/services/thumbnail_display.rs` - the addressing behind the display-thumbnail cache. Two
+# `src/services/thumbnail/display.rs` - the addressing behind the display-thumbnail cache. Two
 # decisions there are worth a gate rather than only a test. `display_cache_key` decides which stored
 # file a cached derivative answers for, so a weakened check (a dropped length comparison, an
 # inverted hex test) makes one media's thumbnail render on another media's card - a wrong-data bug
@@ -190,23 +190,23 @@
 # removed the mutant, which beats excluding it (the same resolution as the ssrf_guard dead-code
 # clause).
 examine_globs = [
-    "src/services/thumbnail_display.rs",
+    "src/services/thumbnail/display.rs",
     "src/services/pending_media.rs",
-    "src/services/library_recovery.rs",
+    "src/services/library/recovery.rs",
     "src/utils/path.rs",
-    "src/services/library_guard.rs",
-    "src/services/yt_dlp_url.rs",
+    "src/services/library/guard.rs",
+    "src/services/yt_dlp/url.rs",
     "src/services/binaries.rs",
-    "src/services/library_media.rs",
-    "src/services/library_cleanup.rs",
+    "src/services/library/media.rs",
+    "src/services/library/cleanup.rs",
     "src/services/filesystem.rs",
     "src/services/db_backup/*.rs",
     "src/services/db_schema/*.rs",
-    "src/services/yt_dlp_download/command.rs",
-    "src/services/yt_dlp_download/redaction.rs",
+    "src/services/yt_dlp/download/command.rs",
+    "src/services/yt_dlp/download/redaction.rs",
     "src/services/ssrf_guard.rs",
-    "src/services/thumbnail_url.rs",
-    "src/services/yt_dlp_cookies.rs",
+    "src/services/thumbnail/url.rs",
+    "src/services/yt_dlp/cookies.rs",
     "src/utils/validation.rs",
     "src/commands/live_chat.rs",
     "src/commands/security.rs",
@@ -226,7 +226,7 @@ additional_cargo_args = ["--locked"]
 # exclusion below is a function whose behavior is a filesystem/process/env boundary, a
 # cfg-split body cargo-mutants cannot evaluate, or an equivalent mutant.
 exclude_re = [
-    # thumbnail_display.rs: `generate_display_thumbnail` spawns FFmpeg and polls it to a deadline,
+    # thumbnail/display.rs: `generate_display_thumbnail` spawns FFmpeg and polls it to a deadline,
     # which no unit test can pin on an arbitrary machine - the same reason binaries.rs's resolution
     # functions are excluded above. Its four survivors are the return value and the deadline
     # arithmetic, all of which need a real FFmpeg to distinguish. Nothing is excluded for

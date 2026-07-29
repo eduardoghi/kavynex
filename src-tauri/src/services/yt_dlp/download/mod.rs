@@ -16,23 +16,23 @@ use crate::services::binaries::{
 use crate::services::filesystem::{
     clean_matching_files_in_dir, find_best_matching_file, replace_file_safely,
 };
-use crate::services::library_paths::ensure_library_dir;
+use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
-use crate::services::thumbnail_download::download_thumbnail_for_media_async;
-use crate::services::yt_dlp_cookies::{normalize_cookies_browser, normalize_cookies_path};
-use crate::services::yt_dlp_events::{
+use crate::services::thumbnail::download::download_thumbnail_for_media_async;
+use crate::services::yt_dlp::cookies::{normalize_cookies_browser, normalize_cookies_path};
+use crate::services::yt_dlp::events::{
     emit_download_cancelled, emit_download_error, emit_download_finished, emit_download_log,
     emit_download_log_infallible,
 };
-use crate::services::yt_dlp_metadata::{
+use crate::services::yt_dlp::metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, redact_cookies_path_from_line,
     sanitize_filename_component, sanitize_identifier_component,
 };
-use crate::services::yt_dlp_registry::{
+use crate::services::yt_dlp::registry::{
     register_download_run, set_download_pid, DownloadRunReleaseGuard,
 };
-use crate::services::yt_dlp_url::youtube_ref_for_log;
+use crate::services::yt_dlp::url::youtube_ref_for_log;
 use crate::utils::format::codec_is_present;
 use crate::utils::io::{read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::naming::unique_temp_suffix;
@@ -63,7 +63,7 @@ const YT_DLP_MAX_RUNTIME_SECS: u64 = 12 * 60 * 60;
 // CPU-, disk- and network-heavy, so without a cap a compromised or buggy frontend firing many
 // distinct run ids could saturate the machine (the per-run registry only rejects a *duplicate* run
 // id, not a burst of unique ones). Separate from the standalone metadata/comment cap in
-// yt_dlp_metadata: a download's own metadata pre-fetch takes a standalone permit, so gating both on
+// yt_dlp::metadata: a download's own metadata pre-fetch takes a standalone permit, so gating both on
 // one semaphore could deadlock. A small limit keeps a couple of downloads progressing without
 // thrashing.
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
@@ -191,10 +191,10 @@ fn place_downloaded_file(
         )
     })?;
 
-    // Serialize the placement into the library against a concurrent migration (see library_lock)
+    // Serialize the placement into the library against a concurrent migration (see library::lock)
     // so a just-finished download cannot land in the old directory while the migration is
     // copying/removing it.
-    let _library_guard = crate::services::library_lock::library_read_guard();
+    let _library_guard = crate::services::library::lock::library_read_guard();
 
     let final_destination = media_dir.join(file_name);
     ensure_path_parent_inside_dir(&final_destination, library_dir)?;
@@ -287,7 +287,7 @@ fn build_live_chat_relative_path(file_name: &Path) -> String {
 /// runtime, so in-flight yt-dlp/ffmpeg children are terminated instead of being orphaned
 /// when the window closes.
 pub fn cancel_all_active_downloads_blocking() {
-    let pids = crate::services::yt_dlp_registry::signal_cancel_all_and_collect_pids();
+    let pids = crate::services::yt_dlp::registry::signal_cancel_all_and_collect_pids();
 
     for pid in pids {
         crate::utils::process::kill_process_tree_blocking(pid);
@@ -653,7 +653,7 @@ pub async fn download_media_from_url_async(
         hide_console_async(&mut command);
         // If stdout/stderr capture fails below and the `?` returns early, the Child must not
         // be left running detached; mirrors the kill_on_drop used by every sibling yt-dlp
-        // spawn (yt_dlp_metadata.rs, thumbnail_download.rs).
+        // spawn (yt_dlp/metadata.rs, thumbnail/download.rs).
         command.kill_on_drop(true);
 
         let mut child = command
@@ -960,10 +960,10 @@ pub async fn download_media_from_url_async(
 
                 // Store live chat replays gzip-compressed to save disk; the frontend reader
                 // transparently decompresses them. Serialize this library write against a
-                // concurrent migration (see library_lock); the guard is dropped as soon as the
+                // concurrent migration (see library::lock); the guard is dropped as soon as the
                 // synchronous compress returns, never held across an await.
                 let kept_existing_live_chat = {
-                    let _library_guard = crate::services::library_lock::library_read_guard();
+                    let _library_guard = crate::services::library::lock::library_read_guard();
 
                     // Never overwrite an already-stored replay, matching place_downloaded_file's
                     // "keep the catalogued bytes" rule for the main media file. The name is

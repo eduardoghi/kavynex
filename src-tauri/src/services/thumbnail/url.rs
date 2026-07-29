@@ -1,15 +1,15 @@
 //! Restricts the *direct* thumbnail fetch to the image CDNs YouTube actually serves from.
 //!
-//! The sibling of `yt_dlp_url` on the other branch of the same command: that module gates the URL
+//! The sibling of `yt_dlp::url` on the other branch of the same command: that module gates the URL
 //! handed to yt-dlp's generic extractor, this one gates the URL the backend fetches over HTTP
-//! itself (`services::thumbnail_download::download_thumbnail_from_url_async`). Both are host
+//! itself (`services::thumbnail::download::download_thumbnail_from_url_async`). Both are host
 //! allow-lists, and the lists deliberately differ - see [`ALLOWED_THUMBNAIL_IMAGE_HOSTS`].
 //!
 //! Kept in its own module - pure, no network, no filesystem - so the whole classifier can sit under
-//! the mutation gate (`.cargo/mutants.toml`) without dragging in `thumbnail_download`'s async
+//! the mutation gate (`.cargo/mutants.toml`) without dragging in `thumbnail::download`'s async
 //! process orchestration, which a unit test cannot drive and which would report dozens of
 //! unkillable mutants. Same reasoning, and the same shape, as the `ssrf_guard` and
-//! `yt_dlp_download::redaction` extractions before it.
+//! `yt_dlp::download::redaction` extractions before it.
 
 use http::Uri;
 
@@ -28,7 +28,7 @@ use http::Uri;
 /// supplied such a URL: the manual thumbnail control is a file picker (`utils/pick-image-file.ts`),
 /// and the only remote value that reaches the command is yt-dlp's own `thumbnail` metadata.
 ///
-/// Deliberately **not** `yt_dlp_url`'s `YOUTUBE_DOMAINS`, which gates the fallback. The thumbnails
+/// Deliberately **not** `yt_dlp::url`'s `YOUTUBE_DOMAINS`, which gates the fallback. The thumbnails
 /// yt-dlp reports live on ytimg/ggpht/googleusercontent, none of which is a `youtube.com` host, so
 /// reusing that list here would reject every real thumbnail the app downloads.
 pub(crate) const ALLOWED_THUMBNAIL_IMAGE_HOSTS: [&str; 4] = [
@@ -40,7 +40,7 @@ pub(crate) const ALLOWED_THUMBNAIL_IMAGE_HOSTS: [&str; 4] = [
 
 /// True when `uri`'s host is one of [`ALLOWED_THUMBNAIL_IMAGE_HOSTS`] or a subdomain of one.
 ///
-/// Suffix-matched on a leading `.` exactly like `yt_dlp_url::is_allowed_youtube_host`, so a
+/// Suffix-matched on a leading `.` exactly like `yt_dlp::url::is_allowed_youtube_host`, so a
 /// look-alike (`ytimg.com.evil.example`, `notytimg.com`) is rejected rather than matched by a bare
 /// `contains`. A trailing root dot is stripped first, since `ytimg.com.` resolves to the same host.
 pub(crate) fn is_allowed_thumbnail_image_host(uri: &Uri) -> bool {

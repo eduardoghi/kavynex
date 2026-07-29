@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
 // Some callers (yt-dlp's `--dump-single-json`, optionally with `--write-comments`) legitimately
 // emit a single line up to their own cap (128 MiB, see `MAX_YT_DLP_JSON_BYTES` in
-// `yt_dlp_metadata.rs`). This stays comfortably above that so normal reading is never
+// `yt_dlp/metadata.rs`). This stays comfortably above that so normal reading is never
 // truncated, while still bounding the otherwise-unbounded growth of a line that never ends
 // (e.g. a hung/misbehaving process writing to stdout/stderr with no newline).
 const MAX_LINE_BYTES: usize = 256 * 1024 * 1024; // 256 MiB

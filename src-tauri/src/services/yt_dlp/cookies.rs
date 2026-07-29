@@ -20,7 +20,7 @@ pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     // one on Windows makes the OS authenticate to `host` over SMB, leaking the user's NTLM hash
     // to whoever controls it - and this value arrives raw over IPC, so the check has to happen
     // here rather than resting on the picker. Same guard, for the same reason, as
-    // library::resolve_path_inside_library and thumbnail_temp::validate_source_media_path; this
+    // library::resolve_path_inside_library and thumbnail::temp::validate_source_media_path; this
     // path was the one caller-supplied path left without it. A cookies file kept on a share
     // loses only the ability to be pointed at directly (copy it locally first).
     if is_network_path(normalized) {

@@ -1,7 +1,7 @@
 //! Serializes library file mutations against a library-directory migration.
 //!
 //! A library migration copies every managed subdirectory (video/audio/thumbnails/live_chat)
-//! to the new location and then removes the old one (`library_migration::migrate_library_contents`).
+//! to the new location and then removes the old one (`library::migration::migrate_library_contents`).
 //! Nothing else stopped a concurrent import/download/delete from writing a brand-new file into
 //! the old directory in the window between the copy and the `remove_dir_all`; that file would be
 //! silently deleted and never reach the new location, with the operation still reporting success.
@@ -16,7 +16,7 @@
 //!
 //! The gate guards no data (`RwLock<()>`), only ordering, so a prior panic must never wedge
 //! every future library operation: both helpers recover a poisoned lock rather than propagate
-//! it, mirroring `library_migration::migrate_library_directory_sync`'s own poison handling.
+//! it, mirroring `library::migration::migrate_library_directory_sync`'s own poison handling.
 //!
 //! IMPORTANT: only leaf filesystem functions take the read guard, and only for the extent of a
 //! single fs call. A guarded function must never call another guarded function while holding the
@@ -73,7 +73,7 @@ pub fn library_read_guard() -> LibraryReadGuard {
             depth.get(),
             0,
             "nested library read guard: a guarded function acquired a second read guard while \
-             holding one, which can deadlock against a waiting migration (see the library_lock \
+             holding one, which can deadlock against a waiting migration (see the library::lock \
              module docs)"
         );
         depth.set(depth.get() + 1);

@@ -55,7 +55,7 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
 /// Reduces a path to its final component for use in a log line. A log line can be pasted into
 /// a public bug report, and an absolute Windows path embeds `C:\Users\<name>\...`, revealing
 /// the OS username/profile. Mirrors the redaction the yt-dlp paths already receive
-/// (services::yt_dlp_download::redact_paths_value).
+/// (services::yt_dlp::download::redact_paths_value).
 ///
 /// Splits on both `/` and `\` on every platform: a path can come from a library synced from
 /// Windows even when running on Unix, where `\` is not a separator and `Path::file_name` would
