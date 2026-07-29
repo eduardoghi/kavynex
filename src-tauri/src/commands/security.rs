@@ -60,6 +60,63 @@ pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The subdirectories of the app cache directory whose files the asset protocol may serve: the
+/// preview written before a thumbnail is committed (`thumbs-temp/`) and the display-sized
+/// derivatives the grid draws (`thumb-display/`). See
+/// [`crate::constants::WEBVIEW_READABLE_CACHE_DIRS`] for why the other three are excluded.
+///
+/// The sibling of [`managed_asset_scope_dirs`], and it exists for the same reason: the cache root is
+/// never granted. On Windows that root is the parent of the log directory and of the WebView2
+/// profile, so granting it recursively - which is what this replaced - authorized the renderer to
+/// read a tree that has nothing to do with rendering a thumbnail.
+pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
+    crate::constants::WEBVIEW_READABLE_CACHE_DIRS
+        .iter()
+        .map(|managed| cache_root.join(managed))
+        .collect()
+}
+
+/// Authorizes the cache subdirectories the webview renders from, called once from `lib.rs`'s
+/// `setup()`. The library directory is authorized separately, at runtime, once the stored library
+/// path is known ([`register_library_asset_scope`]).
+///
+/// Best effort throughout, exactly like the single recursive grant it replaced: a subdirectory that
+/// cannot be created or authorized is logged and skipped rather than failing startup, because the
+/// consequence is a thumbnail preview that does not appear, never an app that cannot open.
+///
+/// Each directory is created before it is granted so its canonical (`\\?\`) form resolves and can be
+/// authorized alongside the plain one - the same two-form grant the library subdirectories need, for
+/// the same reason (see [`grant_path_with_canonical`]). The directories are created on demand by
+/// their writers anyway; doing it here is what makes the canonical grant possible on a first run.
+pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
+    for managed_dir in managed_cache_scope_dirs(cache_root) {
+        if let Err(error) = std::fs::create_dir_all(&managed_dir) {
+            logger::warn(
+                "asset_scope",
+                format!(
+                    "failed to create cache directory {} for the asset scope: {error}",
+                    logger::redact_path(&managed_dir)
+                ),
+            );
+            continue;
+        }
+
+        let granted = grant_path_with_canonical(&managed_dir, "cache subdirectory", |dir| {
+            allow_directory_in_asset_scope(app, dir)
+        });
+
+        if let Err(error) = granted {
+            logger::warn(
+                "asset_scope",
+                format!(
+                    "failed to authorize cache directory {} in asset scope: {error}",
+                    logger::redact_path(&managed_dir)
+                ),
+            );
+        }
+    }
+}
+
 /// The managed directories this session has forbidden in the asset scope, i.e. the libraries the
 /// app migrated *away* from while running.
 ///
@@ -388,6 +445,44 @@ mod tests {
         assert!(dirs.contains(&root.join("thumbnails")));
         assert!(dirs.contains(&root.join("live_chat")));
         assert!(!dirs.contains(&root.to_path_buf()));
+    }
+
+    #[test]
+    fn managed_cache_scope_dirs_are_the_rendered_subdirs_never_the_root() {
+        // The negative assertion is the one that matters, and it is what this function was created
+        // to make testable: the grant it replaced was a single recursive `allow_directory` on the
+        // cache root, and on Windows that root is `%LOCALAPPDATA%\<identifier>` - the parent of the
+        // log directory and of the WebView2 profile. Granting the root therefore authorized the
+        // renderer to read both, for no reason: only these two subdirectories are ever drawn.
+        let root = Path::new("/cache");
+        let dirs = managed_cache_scope_dirs(root);
+
+        assert_eq!(dirs.len(), 2);
+        assert!(dirs.contains(&root.join(crate::constants::TEMP_DIR_THUMBS)));
+        assert!(dirs.contains(&root.join(crate::constants::TEMP_DIR_THUMB_DISPLAY)));
+
+        assert!(
+            !dirs.contains(&root.to_path_buf()),
+            "the cache root must never be granted"
+        );
+
+        // The backend-only siblings, named explicitly rather than left to the length check: each
+        // holds something the webview has no reason to read, and a future grant that widened this
+        // list should have to delete an assertion that says so.
+        for excluded in [
+            crate::constants::TEMP_DIR_YT_DLP,
+            crate::constants::TEMP_DIR_YT_DLP_THUMB,
+            crate::constants::TEMP_DIR_PENDING_MEDIA,
+            // Not one of ours to name as a constant, but it is the reason the root is refused: the
+            // WebView2 user-data folder sits next to these on Windows.
+            "EBWebView",
+            "logs",
+        ] {
+            assert!(
+                !dirs.contains(&root.join(excluded)),
+                "{excluded} must not be authorized in the asset scope"
+            );
+        }
     }
 
     #[test]

@@ -367,8 +367,28 @@ primitive if it is ever widened too far:
   manual-thumbnail-preview flow, and only after confirming it is an existing regular file
   with an allowed image extension.
 
-The app's cache directory (for temporary thumbnail previews) is authorized once, in
-`lib.rs`'s `setup()`, since it never contains anything but app-generated temp files.
+Two subdirectories of the app's cache directory are authorized once, in `lib.rs`'s `setup()`
+(`register_cache_asset_scope`): `thumbs-temp/`, which holds the preview shown before a thumbnail is
+committed to the library, and `thumb-display/`, which holds the display-sized thumbnail derivatives
+the grid draws. Those are the only two the webview renders from - `yt-dlp-temp/` and
+`yt-dlp-thumb-temp/` are scratch whose output is moved into the library before any path reaches the
+frontend, and `pending-media/` is read by the startup sweep alone.
+
+The **cache root is deliberately not granted**, and that distinction is not cosmetic. This used to
+be a single recursive `allow_directory` on the root, justified by the root holding nothing but
+app-generated temp files. That justification was wrong on Windows, where `app_cache_dir()` resolves
+to `%LOCALAPPDATA%\com.kavynex.app` and is therefore also the parent of the log directory
+(`app_log_dir()` = `<cache root>\logs`) and of `EBWebView/`, the WebView2 user-data folder. So the
+grant reached a log file the README asks users to attach to bug reports, and the browser profile of
+the app's own webview, neither of which has anything to do with rendering a thumbnail.
+
+The residual exposure while that grant was in place was small - `connect-src` does not include
+`asset:`, so the renderer could *display* such a file as an `<img>`/`<video>` but never read its
+bytes back through `fetch`/XHR, and there is no injection sink in `src/` to reach it from - but the
+scope is this app's arbitrary-local-file-read boundary, and it should not be wider than the two
+directories it serves. Naming the subdirectories is the same rule
+`managed_asset_scope_dirs` already applies to the library, applied to the cache tree
+(`constants::WEBVIEW_READABLE_CACHE_DIRS`).
 
 One property of the scope itself is worth stating, because it differs from how containment is
 decided everywhere else in this document: Tauri matches a request against the scope's **glob

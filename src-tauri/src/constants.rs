@@ -54,6 +54,23 @@ pub const TEMP_DIR_THUMB_DISPLAY: &str = "thumb-display";
 // in that window; see services/pending_media.rs.
 pub const TEMP_DIR_PENDING_MEDIA: &str = "pending-media";
 
+/// The cache subdirectories whose files the webview actually renders, and therefore the only ones
+/// the asset protocol is authorized to serve (`commands::security::managed_cache_scope_dirs`).
+///
+/// Both are drawn through `convertFileSrc`: `thumbs-temp/` holds the preview shown before a
+/// thumbnail is committed to the library, and `thumb-display/` the display-sized derivatives the
+/// grid draws. The other cache subdirectories are backend-only - `yt-dlp-temp/` and
+/// `yt-dlp-thumb-temp/` are scratch whose output is moved into the library before any path reaches
+/// the frontend, and `pending-media/` is read by the startup sweep alone.
+///
+/// The point of naming them is that the cache *root* is never granted. On Windows
+/// `app_cache_dir()` resolves to `%LOCALAPPDATA%\<identifier>`, which is also the parent of the log
+/// directory (`app_log_dir()`) and of the WebView2 profile (`EBWebView/`), so a recursive grant of
+/// the root hands the renderer a tree it has no reason to reach. That is the same mistake
+/// [`MANAGED_LIBRARY_DIRS`] exists to avoid for the user's library, and it is avoided here the same
+/// way: name the subdirectories, never the parent.
+pub const WEBVIEW_READABLE_CACHE_DIRS: [&str; 2] = [TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY];
+
 pub const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
 pub const EVENT_YT_DLP_ERROR: &str = "yt-dlp-error";
 pub const EVENT_YT_DLP_FINISHED: &str = "yt-dlp-finished";

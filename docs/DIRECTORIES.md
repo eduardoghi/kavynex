@@ -150,9 +150,13 @@ up on, never the files: the marker stays on disk and its artifacts stay in the l
 Diagnostics dialog reports them as unreferenced. The difference is that the failure is logged once,
 at error level with its count, instead of at warning level on every launch forever.
 
-On startup, `lib.rs`'s `setup()` authorizes the whole cache directory in the Tauri
-asset-protocol scope (see `SECURITY.md`) so these temporary files can be shown in the
-webview via `convertFileSrc` before they are persisted. A background task
+On startup, `lib.rs`'s `setup()` authorizes `thumbs-temp/` and `thumb-display/` - and only those
+two - in the Tauri asset-protocol scope (`commands/security.rs::register_cache_asset_scope`, see
+`SECURITY.md`), so a thumbnail preview can be shown in the webview via `convertFileSrc` before it is
+persisted and a display derivative can be drawn by the grid. The cache **root** is deliberately not
+granted: on Windows it is the parent of the `logs` directory described below and of the WebView2
+profile (`EBWebView/`), and the other three subdirectories here are read by the backend alone. A
+background task
 (`services::cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the cache
 directory on every startup, and the rule it applies depends on what a directory holds:
 

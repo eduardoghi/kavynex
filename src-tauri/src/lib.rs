@@ -429,19 +429,16 @@ pub fn run() {
                 )),
             }
 
-            // Authorize the app cache directory in the asset protocol scope so temporary
-            // thumbnail previews (generated into the cache dir) can be loaded via
-            // convertFileSrc. The library directory is authorized at runtime once the
-            // stored library path is known (see register_library_asset_scope).
+            // Authorize the two cache subdirectories the webview renders from - the temporary
+            // thumbnail preview and the display-sized thumbnail derivatives - in the asset
+            // protocol scope, so both can be loaded via convertFileSrc. Only those two are
+            // granted, never the cache root: on Windows the root is also the parent of the log
+            // directory and of the WebView2 profile (see WEBVIEW_READABLE_CACHE_DIRS). The
+            // library directory is authorized at runtime once the stored library path is known
+            // (see register_library_asset_scope).
             match app.path().app_cache_dir() {
                 Ok(cache_dir) => {
-                    if let Err(error) = app.asset_protocol_scope().allow_directory(&cache_dir, true)
-                    {
-                        services::logger::warn(
-                            "asset_scope",
-                            format!("failed to authorize cache dir in asset scope: {error}"),
-                        );
-                    }
+                    commands::security::register_cache_asset_scope(&app_handle, &cache_dir)
                 }
                 Err(error) => {
                     services::logger::warn(
