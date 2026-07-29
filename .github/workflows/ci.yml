@@ -232,6 +232,32 @@ jobs:
 
                   echo "Every temporary path is built from the shared unique suffix."
 
+            # A log line is something the README asks users to attach to a bug report, and an
+            # absolute Windows path embeds `C:\Users\<name>\...`. `services::logger::redact_path`
+            # exists for that and is applied at roughly twenty sites, including every `AppError`
+            # built through `fs_error` - but two `Path::display()` calls inside `logger::warn`
+            # survived every round of that work, in exactly the code that handles the library
+            # directory.
+            #
+            # This is a lint rather than a convention for the same reason the check above is: a
+            # property enforced nowhere is a property that drifts back. The check is deliberately
+            # crude - it flags `display()` within a few lines of a logger call - because the cost of
+            # a false positive is naming the value explicitly, while the cost of a miss is a
+            # username in someone's public issue.
+            - name: Verify log lines redact absolute paths
+              if: matrix.platform == 'ubuntu-26.04'
+              run: |
+                  offenders=$(grep -rn -A6 'logger::\(warn\|error\|info\)(' src-tauri/src \
+                      --include='*.rs' | grep -F 'display()' || true)
+
+                  if [ -n "$offenders" ]; then
+                      echo "::error::log a path through services::logger::redact_path, not Path::display"
+                      printf '%s\n' "$offenders"
+                      exit 1
+                  fi
+
+                  echo "Every logged path goes through redact_path."
+
     audit:
         name: Cargo audit and deny
         # Pinned like the rust job below; see its comment on why `-latest` is avoided repo-wide.

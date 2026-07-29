@@ -172,7 +172,7 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
                     "asset_scope",
                     format!(
                         "failed to create managed directory {} for the asset scope: {error}",
-                        managed_dir.display()
+                        logger::redact_path(&managed_dir)
                     ),
                 );
                 continue;

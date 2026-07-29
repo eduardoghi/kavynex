@@ -41,7 +41,7 @@ fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
                 "asset_scope",
                 format!(
                     "failed to revoke old library subdirectory {} from asset scope: {error}",
-                    managed_dir.display()
+                    logger::redact_path(&managed_dir)
                 ),
             );
         }
