@@ -2,42 +2,56 @@ fn normalize_extension(value: &str) -> String {
     value.trim().trim_start_matches('.').to_lowercase()
 }
 
+/// The audio extensions the library recognizes. Drives both which managed subdirectory an import
+/// lands in ([`media_subdir_from_extension`]) and half of what may be imported at all
+/// ([`ALLOWED_MEDIA_EXTENSIONS`]), so the two cannot disagree about whether a `.opus` is audio.
+pub const ALLOWED_AUDIO_EXTENSIONS: [&str; 10] = [
+    "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "wma", "alac", "aiff",
+];
+
+/// The video extensions the library recognizes.
+pub const ALLOWED_VIDEO_EXTENSIONS: [&str; 13] = [
+    "mp4", "mkv", "webm", "mov", "avi", "m4v", "mpg", "mpeg", "wmv", "flv", "3gp", "ts", "m2ts",
+];
+
+/// Every extension a local import may carry, video and audio together.
+///
+/// Declared as lists rather than only spelled out inside the predicate below for the same reason
+/// [`ALLOWED_THUMBNAIL_EXTENSIONS`] is: the message a rejected file produces has to be built from
+/// the same source that rejected it. The thumbnail pair had already drifted once (`gif` accepted
+/// while the message named six formats), and this is the larger list of the two - what the user is
+/// told here is the only place the app ever says which files it takes.
+pub fn allowed_media_extensions() -> Vec<&'static str> {
+    ALLOWED_VIDEO_EXTENSIONS
+        .iter()
+        .chain(ALLOWED_AUDIO_EXTENSIONS.iter())
+        .copied()
+        .collect()
+}
+
+/// The managed subdirectory an extension belongs in. Anything not recognized as audio is treated
+/// as video, which is the fallback the import path relies on; `is_allowed_media_extension` is what
+/// keeps an unrecognized extension from reaching here in the first place.
 pub fn media_subdir_from_extension(ext: &str) -> &'static str {
-    match normalize_extension(ext).as_str() {
-        "mp3" | "m4a" | "aac" | "wav" | "flac" | "ogg" | "opus" | "wma" | "alac" | "aiff" => {
-            "audio"
-        }
-        _ => "video",
+    if ALLOWED_AUDIO_EXTENSIONS.contains(&normalize_extension(ext).as_str()) {
+        return "audio";
     }
+
+    "video"
 }
 
 pub fn is_allowed_media_extension(ext: &str) -> bool {
-    matches!(
-        normalize_extension(ext).as_str(),
-        "mp4"
-            | "mkv"
-            | "webm"
-            | "mov"
-            | "avi"
-            | "m4v"
-            | "mpg"
-            | "mpeg"
-            | "wmv"
-            | "flv"
-            | "3gp"
-            | "ts"
-            | "m2ts"
-            | "mp3"
-            | "m4a"
-            | "aac"
-            | "wav"
-            | "flac"
-            | "ogg"
-            | "opus"
-            | "wma"
-            | "alac"
-            | "aiff"
-    )
+    let normalized = normalize_extension(ext);
+
+    ALLOWED_VIDEO_EXTENSIONS.contains(&normalized.as_str())
+        || ALLOWED_AUDIO_EXTENSIONS.contains(&normalized.as_str())
+}
+
+/// The allowed media extensions as a comma-separated list, for the error a rejected file produces.
+/// Derived from the lists above so a format added to one cannot be left out of what the user is
+/// told - the mirror of [`allowed_thumbnail_extensions_label`].
+pub fn allowed_media_extensions_label() -> String {
+    allowed_media_extensions().join(", ")
 }
 
 /// The image extensions a thumbnail may use. Raster formats only: `svg` is deliberately absent
@@ -141,6 +155,52 @@ mod tests {
         assert!(is_allowed_media_extension("mp4"));
         assert!(is_allowed_media_extension(".mp3"));
         assert!(!is_allowed_media_extension("txt"));
+    }
+
+    #[test]
+    fn is_allowed_media_extension_accepts_every_listed_format() {
+        // Driven off the constants rather than a second hand-written list, matching the thumbnail
+        // test below: a format added to either list is covered here without anyone remembering to
+        // extend this.
+        for ext in allowed_media_extensions() {
+            assert!(is_allowed_media_extension(ext), "should allow {ext}");
+        }
+
+        // A leading dot and upper case normalize to the same entry.
+        for ext in [".MP4", "FLAC"] {
+            assert!(is_allowed_media_extension(ext), "should allow {ext}");
+        }
+    }
+
+    #[test]
+    fn every_audio_extension_lands_in_the_audio_subdir_and_every_video_one_does_not() {
+        // media_subdir_from_extension used to spell the audio list a second time, so the two could
+        // disagree about whether a `.opus` is audio - the file would be accepted for import and
+        // then filed under video/. Deriving both from ALLOWED_AUDIO_EXTENSIONS is what removes that,
+        // and this is what pins it.
+        for ext in ALLOWED_AUDIO_EXTENSIONS {
+            assert_eq!(media_subdir_from_extension(ext), "audio", "{ext}");
+        }
+
+        for ext in ALLOWED_VIDEO_EXTENSIONS {
+            assert_eq!(media_subdir_from_extension(ext), "video", "{ext}");
+        }
+    }
+
+    #[test]
+    fn allowed_media_extensions_label_names_every_accepted_format() {
+        // The import rejection puts this label in the error's `details`, which the frontend appends
+        // after its catalogued message - so this string is the only place the app ever tells a user
+        // which files it takes. A format accepted but not named here is a user hunting for a bug in
+        // their file.
+        let label = allowed_media_extensions_label();
+
+        for ext in allowed_media_extensions() {
+            assert!(
+                label.contains(ext),
+                "the rejection message should name {ext}, got: {label}"
+            );
+        }
     }
 
     #[test]

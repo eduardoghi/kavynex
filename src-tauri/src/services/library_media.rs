@@ -5,7 +5,9 @@ use crate::models::yt_dlp::ImportMode;
 use crate::services::filesystem::{copy_file_atomic, move_or_copy_file_with_known_source_hash};
 use crate::services::library_paths::{ensure_library_dir, resolve_existing_library_dir};
 use crate::services::logger;
-use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extension};
+use crate::utils::format::{
+    allowed_media_extensions_label, is_allowed_media_extension, media_subdir_from_extension,
+};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir, ensure_path_parent_inside_dir,
@@ -54,9 +56,14 @@ pub fn import_media_file_sync(
     let ext = extension_from_path(&source);
 
     if !is_allowed_media_extension(&ext) {
-        return Err(AppError::from_code(
+        // The accepted list travels in `details` rather than in the message: the frontend shows a
+        // catalogued sentence for this code and appends `details` after it, so this is what puts
+        // the answer ("which files does it take, then?") in front of the user instead of leaving
+        // it in the log.
+        return Err(AppError::from_code_with_details(
             AppErrorCode::UnsupportedMediaExtension,
             format!("unsupported media file extension: {ext}"),
+            format!("accepted: {}", allowed_media_extensions_label()),
         ));
     }
 

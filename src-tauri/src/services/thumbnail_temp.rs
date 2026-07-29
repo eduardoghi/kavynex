@@ -7,7 +7,9 @@ use tauri::AppHandle;
 
 use crate::services::binaries::resolve_ffmpeg_binary;
 use crate::services::temp_paths::thumbs_temp_dir;
-use crate::utils::format::{is_allowed_media_extension, media_subdir_from_extension};
+use crate::utils::format::{
+    allowed_media_extensions_label, is_allowed_media_extension, media_subdir_from_extension,
+};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path, is_network_path};
 use crate::utils::process::{
@@ -66,9 +68,12 @@ fn validate_source_media_path(path: &str) -> AppResult<PathBuf> {
     let ext = extension_from_path(&source_path);
 
     if !is_allowed_media_extension(&ext) {
-        return Err(AppError::from_code(
+        // Same shape as the import gate in library_media.rs: the accepted list goes in `details`,
+        // which is what the frontend appends after the catalogued message.
+        return Err(AppError::from_code_with_details(
             AppErrorCode::UnsupportedMediaExtension,
             format!("unsupported media extension: {ext}"),
+            format!("accepted: {}", allowed_media_extensions_label()),
         ));
     }
 

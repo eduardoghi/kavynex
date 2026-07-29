@@ -46,6 +46,12 @@ import {
     FFMPEG_EXEC_FAILED_ERROR_CODE,
     DESTINATION_ALREADY_EXISTS_ERROR_CODE,
     PATH_OUTSIDE_BASE_DIR_ERROR_CODE,
+    UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE,
+    YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE,
+    YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE,
+    NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE,
+    NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE,
+    DATABASE_ALREADY_OPEN_ERROR_CODE,
 } from "../constants/error-codes";
 
 const DEFAULT_ERROR_MESSAGE = "Unknown error.";
@@ -65,6 +71,15 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [DATABASE_SCHEMA_TOO_NEW_ERROR_CODE]:
         "This database was created by a newer version of Kavynex. Update the app and try again.",
     DATABASE_IMPORT_INVALID: "The selected file is not a valid Kavynex database.",
+    // The three database-recovery refusals. Each is a state the user asked about rather than a
+    // failure, and each surfaces in the restore/import flow - the one place where telling someone
+    // to go read a log file is the least useful answer the app could give.
+    [NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE]:
+        "No healthy backup was found to restore from. The current database was left untouched - Diagnostics shows where Kavynex keeps its files.",
+    [NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE]:
+        "There is no imported database to undo. The undo snapshot is kept only until the next import replaces it.",
+    [DATABASE_ALREADY_OPEN_ERROR_CODE]:
+        "The database is already open. Restart Kavynex and try the restore again before anything else opens it.",
 
     [INVALID_URL_ERROR_CODE]: "Enter a valid media URL.",
     [INVALID_RUN_ID_ERROR_CODE]: "The download session is invalid.",
@@ -85,6 +100,12 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
 
     [INVALID_SOURCE_MEDIA_ERROR_CODE]: "Select a valid media file.",
     [SOURCE_MEDIA_NOT_FOUND_ERROR_CODE]: "The selected media file was not found.",
+    // The likeliest failure of the most-used flow, and it is entirely the user's to fix. The
+    // accepted formats are not repeated here: the backend sends them in the error's `details`
+    // (utils/format.rs's allowed_media_extensions_label), which is appended after this line, so the
+    // list the user reads is always the list that rejected the file.
+    [UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE]:
+        "Kavynex does not support this file type.",
     [LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE]:
         "The saved live chat file is missing from the library folder. It may have been moved or deleted outside Kavynex.",
     [LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE]:
@@ -117,6 +138,10 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE]: "The media download was cancelled.",
     [YT_DLP_THUMBNAIL_TIMEOUT_ERROR_CODE]: "Timed out while downloading the thumbnail.",
     [YT_DLP_THUMBNAIL_FAILED_ERROR_CODE]: "The thumbnail download failed.",
+    [YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE]:
+        "The selected format is no longer offered for this media. Load the formats again and pick another one.",
+    [YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE]:
+        "This download is already running. Wait for it to finish, or cancel it first.",
 
     [FFMPEG_NOT_FOUND_ERROR_CODE]:
         "ffmpeg was not found. Install ffmpeg or place the binary in the app tools folder.",

@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { KNOWN_ERROR_CODES } from "./error-codes";
+import { toUserFriendlyError } from "../utils/user-friendly-error";
 
 // error-codes.ts is a hand-maintained mirror of a curated subset of the Rust
 // `AppErrorCode` enum in src-tauri/src/error.rs. It does not (and is not meant to) mirror
@@ -80,6 +81,74 @@ describe("error codes stay in sync with the backend", () => {
         // FRONTEND_ONLY_ERROR_CODES and let the mirroring check above cover it instead.
         for (const code of FRONTEND_ONLY_ERROR_CODES) {
             expect(rustCodes.has(code)).toBe(false);
+        }
+    });
+});
+
+// The checks above run frontend -> backend: every code the frontend claims to mirror still exists
+// in Rust, which catches a rename. This is the other direction, and it is the one that was missing.
+//
+// It is deliberately not "every backend code needs a message". Most of the ~125 do not: an
+// unreachable canonicalize failure is exactly what GENERIC_BACKEND_ERROR_MESSAGE is for. What the
+// generic line is *not* for is a failure the user caused and can fix, and there is nothing about a
+// code's shape that distinguishes the two - so the distinction is declared here. A code added to
+// error.rs for a new user-facing refusal, and not catalogued, degrades in silence to "check the app
+// log file", which is how the six added alongside this test went unnoticed.
+//
+// Adding to this list is the deliberate act; the payoff is that forgetting the message is not.
+const USER_FACING_BACKEND_CODES = [
+    // Local import and the FFmpeg thumbnail preview: the user picked a file Kavynex does not take.
+    "UNSUPPORTED_MEDIA_EXTENSION",
+    // The yt-dlp add flow.
+    "INVALID_URL",
+    "INVALID_FORMAT_ID",
+    "YT_DLP_NOT_FOUND",
+    "YT_DLP_SELECTED_FORMAT_NOT_FOUND",
+    "YT_DLP_RUN_ALREADY_ACTIVE",
+    "TOO_MANY_CONCURRENT_YT_DLP_RUNS",
+    "YT_DLP_DOWNLOAD_FAILED",
+    "YT_DLP_DOWNLOAD_CANCELLED",
+    "YT_DLP_DOWNLOAD_TIMEOUT",
+    "FFMPEG_NOT_FOUND",
+    // Channel and media writes the user drives directly.
+    "CHANNEL_ALREADY_EXISTS",
+    "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
+    "INVALID_CHANNEL_NAME",
+    "INVALID_YOUTUBE_HANDLE",
+    "CHANNEL_NOT_FOUND",
+    "MEDIA_NOT_FOUND",
+    // The library folder, and files that moved out from under it.
+    "INVALID_LIBRARY_PATH",
+    "INVALID_LIBRARY_MIGRATION",
+    "ASSET_SCOPE_RESTART_REQUIRED",
+    "MEDIA_FILE_NOT_FOUND",
+    "LIVE_CHAT_FILE_NOT_FOUND",
+    "LIVE_CHAT_FILE_UNREADABLE",
+    "THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO",
+    "INVALID_THUMBNAIL_FILE",
+    // Settings > Database. These reach the user at the worst moment there is - the recovery flow
+    // after the database failed to open - so the generic line is least acceptable here.
+    "DATABASE_SCHEMA_TOO_NEW",
+    "NO_DATABASE_BACKUP_AVAILABLE",
+    "NO_DATABASE_IMPORT_TO_UNDO",
+    "DATABASE_ALREADY_OPEN",
+] as const;
+
+describe("every user-facing backend code has a friendly message", () => {
+    it.each(USER_FACING_BACKEND_CODES)("does not fall back to the generic line for %s", (code) => {
+        const message = toUserFriendlyError({ code, message: "raw internal backend text" });
+
+        expect(message).not.toContain("check the app log file");
+        expect(message).not.toContain("raw internal backend text");
+    });
+
+    it("still lists a code the backend actually emits", () => {
+        // Guards the list itself: a code renamed in error.rs would otherwise sit here forever,
+        // asserting a friendly message for something nothing can produce.
+        const rustCodes = extractRustErrorCodes(readFileSync(errorRsPath, "utf-8"));
+
+        for (const code of USER_FACING_BACKEND_CODES) {
+            expect(rustCodes.has(code), `${code} is not emitted by error.rs`).toBe(true);
         }
     });
 });
