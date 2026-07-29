@@ -70,6 +70,23 @@ async fn set_user_version(conn: &mut SqliteConnection, version: i64) -> AppResul
     Ok(())
 }
 
+/// Whether a database stamped `current` still needs the migration that stamps `target`.
+///
+/// The rule is one comparison, and it was written out at each of the eight guards below until the
+/// mutation gate made the cost of that visible: nine identical `current_version < N` expressions
+/// generate nine mutants with the same description, so they cannot be told apart by anything but a
+/// line number. Three of them are equivalent - skipping v8, v9 or v11 changes nothing, because a
+/// later migration re-runs the whole `INDEX_DDLS` list and v13 redoes v11's backfill - and with the
+/// comparison inlined there was no way to exclude those three without also dropping the five that
+/// catch a real skipped migration. Naming the rule once gives it one mutant, which can be reasoned
+/// about (and excluded, if it turns out equivalent) on its own terms.
+///
+/// The `>` refusal above is deliberately not routed through this: it decides whether the database
+/// is openable at all, which is a different question from which migrations are outstanding.
+fn needs_migration(current: i64, target: i64) -> bool {
+    current < target
+}
+
 /// Brings the database up to `SCHEMA_VERSION`, applying only the migrations the
 /// on-disk `user_version` is missing. Idempotent and safe to run on every startup:
 /// a database already at `SCHEMA_VERSION` is left untouched. Runs as part of the
@@ -98,51 +115,51 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
 
     // Baseline (versions 0..=6 -> 7): the idempotent reconcile that predates versioned
     // migrations. Every legacy and fresh database goes through this exactly once.
-    if current_version < BASELINE_SCHEMA_VERSION {
+    if needs_migration(current_version, BASELINE_SCHEMA_VERSION) {
         apply_baseline_schema(pool).await?;
     }
 
     // v8: adds idx_videos_channel_created_id. Additive, so it just runs the index DDLs.
-    if current_version < 8 {
+    if needs_migration(current_version, 8) {
         apply_migration_8(pool).await?;
     }
 
     // v9: adds idx_videos_file_path and idx_videos_live_chat_file_path. Additive, so it just
     // runs the index DDLs.
-    if current_version < 9 {
+    if needs_migration(current_version, 9) {
         apply_migration_9(pool).await?;
     }
 
     // v10: adds the partial unique index on (video_id, comment_id). A pre-v10 database could in
     // principle already hold a duplicate the index would reject, so this migration first collapses
     // any duplicate comment rows and only then builds the index (see apply_migration_10).
-    if current_version < 10 {
+    if needs_migration(current_version, 10) {
         apply_migration_10(pool).await?;
     }
 
     // v11: adds the `title_normalized` column (accent/case-folded title) plus its index, and
     // backfills the column for existing rows. Not index-only: the backfill is computed in Rust
     // because SQLite cannot accent-fold in SQL (see apply_migration_11).
-    if current_version < 11 {
+    if needs_migration(current_version, 11) {
         apply_migration_11(pool).await?;
     }
 
     // v12: adds the per-sort-category indexes for `list_media_page`.
-    if current_version < 12 {
+    if needs_migration(current_version, 12) {
         apply_migration_12(pool).await?;
     }
 
     // v13: enforces the videos live-chat invariant on databases whose table predates the CHECK.
     // Repairs any already-inconsistent row, then adds the enforcement triggers. Not index-only,
     // but still additive (no table rebuild) - see apply_migration_13.
-    if current_version < 13 {
+    if needs_migration(current_version, 13) {
         apply_migration_13(pool).await?;
     }
 
     // v14: enforces the comment-body length ceiling on databases whose video_comments table predates
     // the CHECK. Truncates any already-over-length row, then adds the enforcement triggers. Additive
     // (no table rebuild), same shape as v13 - see apply_migration_14.
-    if current_version < 14 {
+    if needs_migration(current_version, 14) {
         apply_migration_14(pool).await?;
     }
 
@@ -695,6 +712,22 @@ mod tests {
             | "idx_videos_channel_published_desc" => 12,
             _ => BASELINE_SCHEMA_VERSION,
         }
+    }
+
+    #[test]
+    fn needs_migration_is_outstanding_only_below_the_target() {
+        // A database below the target still owes that migration; one already at it does not, which
+        // is what keeps ensure_schema a no-op on an up-to-date database. The at-the-target case is
+        // the boundary the whole rule turns on: re-running is harmless (every migration is
+        // idempotent) but it is still work nobody asked for, on every startup.
+        assert!(needs_migration(7, 8));
+        assert!(!needs_migration(8, 8));
+        assert!(!needs_migration(9, 8));
+
+        // A database below the baseline owes every migration, and one at head owes none.
+        assert!(needs_migration(0, BASELINE_SCHEMA_VERSION));
+        assert!(needs_migration(0, SCHEMA_VERSION));
+        assert!(!needs_migration(SCHEMA_VERSION, SCHEMA_VERSION));
     }
 
     #[tokio::test]
