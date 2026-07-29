@@ -177,12 +177,21 @@ pub(crate) fn within_call_ceiling(relative_paths: &[String]) -> &[String] {
     &relative_paths[..relative_paths.len().min(MAX_RESOLVED_PER_CALL)]
 }
 
-/// The name a derivative lands under: the canonical thumbnail's own content hash, plus the shared
-/// thumbnail container.
+/// The name a derivative lands under: the canonical thumbnail's own content hash, the width it was
+/// scaled to, and the shared thumbnail container.
+///
+/// The width is part of the name because it is part of what the derivative *is*, and leaving it out
+/// made [`DISPLAY_THUMBNAIL_MAX_WIDTH`] a constant that could not be changed. Nothing revalidates a
+/// cached file's dimensions - [`is_usable_file`] asks only whether it exists and is non-empty - so a
+/// name of `<hash>.jpg` alone kept serving 640-wide derivatives forever after the constant moved,
+/// leaving a library holding two sizes with no way to tell which was which. Naming the width makes a
+/// change to it self-invalidating, exactly as [`THUMBNAIL_OUTPUT_FORMAT`] already is by virtue of
+/// being the extension: derivatives at the old width stop being addressed, and the size sweep
+/// reclaims them as the disposable files they are.
 ///
 /// Pure so the addressing can be pinned without a filesystem or an FFmpeg.
 fn display_thumbnail_file_name(cache_key: &str) -> String {
-    format!("{cache_key}.{THUMBNAIL_OUTPUT_FORMAT}")
+    format!("{cache_key}-w{DISPLAY_THUMBNAIL_MAX_WIDTH}.{THUMBNAIL_OUTPUT_FORMAT}")
 }
 
 /// The cache key for a library-relative thumbnail path, or `None` when the name is not one this app
@@ -651,11 +660,24 @@ mod tests {
     }
 
     #[test]
-    fn display_thumbnail_file_name_uses_the_shared_thumbnail_format() {
+    fn display_thumbnail_file_name_carries_the_format_and_the_width() {
         // ffmpeg picks its encoder from the output extension, so the name is what decides the bytes.
         let name = display_thumbnail_file_name("abc");
 
-        assert_eq!(name, format!("abc.{THUMBNAIL_OUTPUT_FORMAT}"));
+        assert_eq!(
+            name,
+            format!("abc-w{DISPLAY_THUMBNAIL_MAX_WIDTH}.{THUMBNAIL_OUTPUT_FORMAT}")
+        );
+
+        // The width has to be in the name, because nothing revalidates a cached file's dimensions:
+        // is_usable_file asks only whether it exists and is non-empty, so a name that omitted the
+        // width would keep serving the old size after DISPLAY_THUMBNAIL_MAX_WIDTH changed. Asserting
+        // it as a substring - and not merely that the two names differ - is what pins the change as
+        // self-invalidating.
+        assert!(
+            name.contains(&format!("w{DISPLAY_THUMBNAIL_MAX_WIDTH}")),
+            "the width must be part of the name so a change to it invalidates the cache: {name}"
+        );
     }
 
     #[test]

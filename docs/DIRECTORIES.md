@@ -99,7 +99,10 @@ in `src-tauri/src/constants.rs`). Three of them hold pure scratch:
 
 A fourth, `thumb-display/`, holds something different from scratch data: a **display-sized copy** of
 each thumbnail the grid has drawn (`services/thumbnail/display.rs`), named
-`<sha256-of-the-stored-thumbnail>.jpg`. A stored thumbnail keeps whatever size it arrived at - a
+`<sha256-of-the-stored-thumbnail>-w<width>.jpg`. The width is in the name so that changing
+`DISPLAY_THUMBNAIL_MAX_WIDTH` invalidates the cache: nothing revalidates a cached file's dimensions,
+so a name without it would keep serving the old size indefinitely. A stored thumbnail keeps whatever
+size it arrived at - a
 yt-dlp `maxresdefault` is 1280x720 - and a webview decodes an image at its natural size regardless
 of how well the file is compressed, so drawing one into a card a few hundred pixels wide costs the
 full bitmap. These copies are capped at `DISPLAY_THUMBNAIL_MAX_WIDTH` (640) so the card decodes a
