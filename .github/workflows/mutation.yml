@@ -220,6 +220,13 @@ jobs:
             - name: Open or update the tracking issue
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  # This job has no checkout step, and `gh issue` resolves the repository from the
+                  # git remote of the working directory - so without this it dies with "fatal: not a
+                  # git repository" before it can open anything. That was latent for as long as the
+                  # job existed: `if: failure()` never matched a timeout, so it had never actually
+                  # run. Setting GH_REPO is what a checkout would otherwise be needed for, minus the
+                  # clone.
+                  GH_REPO: ${{ github.repository }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   TITLE="Scheduled mutation testing failed"

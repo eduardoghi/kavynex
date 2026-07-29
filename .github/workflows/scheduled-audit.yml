@@ -113,6 +113,11 @@ jobs:
             - name: Open or update the tracking issue
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  # No checkout step here either, so `gh issue` has no git remote to resolve the
+                  # repository from and would fail before opening anything. Proven by the mutation
+                  # workflow's identical job, which failed exactly that way the first time it ever
+                  # ran; this one has the same shape and has never fired, so it would have too.
+                  GH_REPO: ${{ github.repository }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   TITLE="Scheduled dependency audit failed"
