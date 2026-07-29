@@ -49,11 +49,30 @@ past a literal prefix match), and the commands applying it are
 `thumbnail_temp::validate_source_media_path` (the FFmpeg preview source),
 `library_media::import_media_file_sync` (the import source),
 `library_guard::paths_refer_to_same_location` (a network path aimed at a local library),
-`yt_dlp_cookies::normalize_cookies_path` (the `--cookies` file) and
-`commands/database.rs::prepare_import_source` (the database import source). A library or a cookies
-file the user deliberately keeps on a share is not blocked from *existing* - only from being
-reached through a path the renderer supplies; copy it locally and the flow works. When a new
+`yt_dlp_cookies::normalize_cookies_path` (the `--cookies` file),
+`commands/database.rs::prepare_import_source` (the database import source) and
+`commands/database.rs::prepare_export_destination` (the database export destination). A library or
+a cookies file the user deliberately keeps on a share is not blocked from *existing* - only from
+being reached through a path the renderer supplies; copy it locally and the flow works. When a new
 command takes a caller-supplied path, this is the list it joins.
+
+The export is the one entry where the refusal stops more than the NTLM leak. Everything else on
+that list only *reads* through the supplied path; the export *writes the whole database* to it -
+every channel, title, comment and stored local path - so a share there is an exfiltration primitive
+reachable in one IPC call, not merely an authentication the user did not ask for. It went without
+the check for a while after the import side gained it, which is why it is called out rather than
+left to blend into the list.
+
+**One command deliberately does not apply the rule: `set_external_backup_dir`.** Its whole purpose
+is a copy of the database that survives a failure of the volume the database lives on, and a NAS is
+the ordinary answer to that - the README's Privacy section documents "another drive or a network
+share" as supported. So the SMB authentication is the cost of the feature working at all rather
+than an oversight. What bounds it: the directory is write-only (the mirror is never read back, and
+nothing serves it through the asset scope), it is chosen through a folder dialog rather than
+derived from anything, and it is refused unless it already exists as a directory outside the app
+config directory. Note also that `mirror_database_to_external_dir` calls the `export_database`
+*service* function directly, so the command-level refusal above does not reach the daily mirror -
+gating the export command costs this feature nothing.
 
 #### Commands that intentionally take a caller-supplied path
 
@@ -86,7 +105,10 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
   the same spirit as the file-existence oracle below.
 - `export_database` - the destination is **extension-gated** to `.db`/`.sqlite`/
   `.sqlite3` (`commands/database.rs::validate_export_destination`) so the exported
-  database cannot be written over an arbitrary file such as a document or a key, and it is
+  database cannot be written over an arbitrary file such as a document or a key, a
+  **network location is refused outright** (`prepare_export_destination`, see the cross-cutting
+  rule above - this is the direction where a share is an exfiltration of every row, not only an
+  NTLM leak), and it is
   additionally **refused if it resolves inside the app's own config directory**
   (`destination_is_inside_dir`), where the live `kavynex.db` and every backup generation live -
   those share the `.db` extension, so without this a save aimed there could clobber the live

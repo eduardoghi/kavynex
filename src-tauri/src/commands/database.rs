@@ -76,8 +76,10 @@ fn destination_is_inside_dir(destination: &Path, protected_dir: &Path) -> bool {
 ///
 /// Extracted from `export_database` as a pure function (the caller resolves `config_dir` from the
 /// `AppHandle` first) so the ordering it enforces is unit-testable without a live app: trim once,
-/// then the extension gate, then the app-config-dir containment refusal - all against the *same*
-/// trimmed path, and the returned `PathBuf` is that same path. That single-path invariant is the
+/// then the extension gate, then the network-location refusal, then the app-config-dir containment
+/// refusal - all against the *same* trimmed path, and the returned `PathBuf` is that same path. The
+/// network check has to precede the containment one because that one canonicalizes (see below).
+/// That single-path invariant is the
 /// point: the earlier inline version gated the extension/containment on the trimmed path while the
 /// write used the raw one, so a padded destination could be validated on one path and written to
 /// another - a validate-here/act-there gap in a function whose whole job is to gate a destructive
@@ -86,6 +88,22 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
     let trimmed = destination_path.trim();
 
     validate_export_destination(trimmed)?;
+
+    // Refuse a network destination before anything touches it. Two things follow from a UNC path
+    // here, and the write is the worse one: `destination_is_inside_dir` below canonicalizes the
+    // destination's parent, and on Windows that alone authenticates to the host over SMB and hands
+    // it the user's NTLM hash - and then the export writes the whole database (every channel,
+    // title, comment and stored local path) to a host the caller chose. The mirror in
+    // `db_backup::external.rs` calls the `export_database` *service* function rather than this
+    // command, so an external backup folder on a share keeps working; only the manual export has
+    // to be written locally and copied from there, exactly as `prepare_import_source` requires on
+    // the way in.
+    if is_network_path(trimmed) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTargetPath,
+            "a database cannot be exported to a network location; export it to a local folder and copy it from there",
+        ));
+    }
 
     // Refuse an export aimed inside the app's own config directory, where the live database and
     // every backup generation live: replacing one of those with an export is a data-loss path the
@@ -433,6 +451,57 @@ mod tests {
         assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
 
         let _ = std::fs::remove_dir_all(&config_dir);
+    }
+
+    #[test]
+    fn prepare_export_destination_rejects_a_network_location() {
+        // The export writes the whole database to this path, so a share here is both the NTLM leak
+        // the import gate closes and an exfiltration of every row. Every spelling Windows resolves
+        // to a share is covered, and each carries a valid `.db` extension so only the network check
+        // can be what rejects it. The config dir is deliberately a path that does not exist: the
+        // refusal has to come before `destination_is_inside_dir` canonicalizes anything.
+        let config_dir = unique_dir("net");
+
+        for value in [
+            r"\\evil\share\library.db",
+            "//evil/share/library.db",
+            r"/\evil\share\library.db",
+            r"\/evil\share\library.db",
+            r"\\?\UNC\evil\share\library.db",
+        ] {
+            let error = prepare_export_destination(value, &config_dir)
+                .expect_err(&format!("{value} should be rejected as a network path"));
+            assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
+            assert!(
+                error.message.contains("network location"),
+                "the refusal should name the reason: {}",
+                error.message
+            );
+        }
+    }
+
+    #[test]
+    fn the_export_and_import_gates_refuse_the_same_network_spellings() {
+        // The two directions already share DATABASE_FILE_EXTENSIONS; this pins that they share the
+        // network rule too. The import gate got it first and the export side went without for a
+        // while, which is the asymmetry this asserts stays closed - the more so because the
+        // extension parity test right below reads as though the two gates were already aligned.
+        let config_dir = unique_dir("parity-net");
+
+        for value in [
+            r"\\host\share\db.db",
+            "//host/share/db.sqlite",
+            r"\\?\UNC\host\share\db.sqlite3",
+        ] {
+            assert!(
+                prepare_export_destination(value, &config_dir).is_err(),
+                "{value} should not be exportable"
+            );
+            assert!(
+                prepare_import_source(value).is_err(),
+                "{value} should not be importable"
+            );
+        }
     }
 
     #[test]
