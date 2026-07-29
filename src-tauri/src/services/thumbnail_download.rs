@@ -24,6 +24,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 use tower_service::Service;
 
+use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
 use crate::models::yt_dlp::YtDlpMetadata;
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
@@ -220,23 +221,15 @@ enum ThumbnailTarget {
     ChannelAvatar,
 }
 
-/// The format `--convert-thumbnails` normalizes every downloaded thumbnail to, and therefore the
-/// extension the file lands under in the temp directory (see `finalize_thumbnail_download`, which
-/// looks the written file up by it). One constant so the argument and the lookup cannot drift.
-///
-/// JPEG rather than PNG: YouTube serves photographic JPEG thumbnails, and re-encoding those
-/// losslessly to PNG multiplied the stored size for no visual gain - measured on a real library,
-/// PNG thumbnails averaged ~365 KB against a few dozen KB for the JPEG originals, and the whole
-/// directory sat at 322 MB for 904 media. Normalizing is still worth doing (a single known
-/// extension for the content-addressed name), so the conversion stays; only the target changes.
-///
-/// Note what this does *not* fix: the decoded size of the image in the grid is
-/// `width * height * 4` bytes regardless of how the file is compressed, so this reduces disk and
-/// I/O, never the webview's bitmap memory. Storing a display-sized image is a separate change,
-/// and a much bigger one - the filenames are content-addressed, so re-encoding an existing
-/// thumbnail changes its hash and would require renaming the file and updating every row that
-/// references it.
-const THUMBNAIL_OUTPUT_FORMAT: &str = "jpg";
+// `THUMBNAIL_OUTPUT_FORMAT` (imported at the top of this file) is what `--convert-thumbnails`
+// normalizes every downloaded thumbnail to, and therefore the extension the file lands under in
+// the temp directory - see `finalize_thumbnail_download` below, which looks the written file up by
+// it. It lives in `constants.rs` because the local-import producer (`thumbnail_temp.rs`) writes
+// the same kind of file and has to agree; `constants.rs` is where the choice is explained.
+//
+// Note what the format choice does *not* fix: the decoded size of the image in the grid is
+// `width * height * 4` bytes regardless of how the file is compressed, so it reduces disk and I/O,
+// never the webview's bitmap memory.
 
 /// Builds the yt-dlp argument vector for writing a thumbnail (converted to
 /// [`THUMBNAIL_OUTPUT_FORMAT`]) into `temp_dir` under `file_prefix`.

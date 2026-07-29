@@ -10,6 +10,27 @@ pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
     LIBRARY_DIR_LIVE_CHAT,
 ];
 
+/// The container every thumbnail this app produces is written in.
+///
+/// Both producers read it: the yt-dlp download normalizes to it with `--convert-thumbnails` and
+/// then looks the written file up by it (`services/thumbnail_download.rs`), and the local-import
+/// FFmpeg preview names its output with it (`services/thumbnail_temp.rs`). It lives here rather
+/// than in either module because it is one decision, and it was made in only one of them: the
+/// download switched to JPEG while the local import kept writing lossless PNG, so a library that
+/// mixes both sources ended up holding both formats for the same kind of content, and the size
+/// win the switch was made for applied to half the paths.
+///
+/// JPEG rather than PNG: YouTube serves photographic JPEG thumbnails, and re-encoding those
+/// losslessly to PNG multiplied the stored size for no visual gain - measured on a real library,
+/// PNG thumbnails averaged ~365 KB against a few dozen KB for the JPEG originals, and the whole
+/// directory sat at 322 MB for 904 media. Normalizing to one known extension is still worth doing
+/// (the content-addressed name needs one), so the conversion stays; only the target changed.
+///
+/// Changing it changes only files produced from now on. Names are content-addressed, so an
+/// existing thumbnail keeps its own extension and the rows pointing at it stay valid; nothing
+/// re-encodes retroactively.
+pub const THUMBNAIL_OUTPUT_FORMAT: &str = "jpg";
+
 pub const TEMP_DIR_THUMBS: &str = "thumbs-temp";
 pub const TEMP_DIR_YT_DLP: &str = "yt-dlp-temp";
 pub const TEMP_DIR_YT_DLP_THUMB: &str = "yt-dlp-thumb-temp";

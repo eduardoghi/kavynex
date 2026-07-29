@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 
+use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
 use crate::services::binaries::resolve_ffmpeg_binary;
 use crate::services::temp_paths::thumbs_temp_dir;
 use crate::utils::format::{
@@ -240,13 +241,25 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
 /// smaller source, and let the height follow the aspect ratio.
 const THUMBNAIL_SCALE_FILTER: &str = "scale='min(640,iw)':-1";
 
+/// The name a generated preview lands under, content-addressed by the source file's hash and
+/// carrying the container both thumbnail producers share ([`THUMBNAIL_OUTPUT_FORMAT`]).
+///
+/// Pure, and separate from the generator, so the format can be asserted without an `AppHandle` or
+/// an ffmpeg on the machine. That matters more than it looks: this path wrote lossless PNG for a
+/// while after the download path had moved to JPEG, and nothing failed - the divergence was only
+/// visible as a library holding both formats for the same kind of content. The extension is also
+/// what ffmpeg picks its encoder from, so the name and the bytes written cannot disagree.
+fn temporary_thumbnail_file_name(source_hash: &str) -> String {
+    format!("thumb_{source_hash}.{THUMBNAIL_OUTPUT_FORMAT}")
+}
+
 /// Builds the ffmpeg argv for a video thumbnail: seek slightly past the start (a frame at exactly
 /// 0 is often black or missing on some encodes) and take a single scaled frame.
 ///
 /// Extracted as a pure function, like `yt_dlp_download::build_download_command_args`, so the argv
 /// can be asserted without spawning ffmpeg. Both paths are otherwise only observable as a blank
 /// thumbnail on a user's machine.
-fn build_video_thumbnail_args(source_path: &Path, out_png: &Path) -> Vec<String> {
+fn build_video_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<String> {
     vec![
         "-y".to_string(),
         "-ss".to_string(),
@@ -257,7 +270,7 @@ fn build_video_thumbnail_args(source_path: &Path, out_png: &Path) -> Vec<String>
         "1".to_string(),
         "-vf".to_string(),
         THUMBNAIL_SCALE_FILTER.to_string(),
-        out_png.to_string_lossy().to_string(),
+        out_thumbnail.to_string_lossy().to_string(),
     ]
 }
 
@@ -265,7 +278,7 @@ fn build_video_thumbnail_args(source_path: &Path, out_png: &Path) -> Vec<String>
 /// no `-ss` (there is no timeline to seek); `-map 0:v:0` selects the attached picture stream, and
 /// ffmpeg fails when the file has none - which is what the caller reports as
 /// `ThumbnailNotSupportedForAudio`.
-fn build_audio_thumbnail_args(source_path: &Path, out_png: &Path) -> Vec<String> {
+fn build_audio_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<String> {
     vec![
         "-y".to_string(),
         "-i".to_string(),
@@ -276,17 +289,17 @@ fn build_audio_thumbnail_args(source_path: &Path, out_png: &Path) -> Vec<String>
         "1".to_string(),
         "-vf".to_string(),
         THUMBNAIL_SCALE_FILTER.to_string(),
-        out_png.to_string_lossy().to_string(),
+        out_thumbnail.to_string_lossy().to_string(),
     ]
 }
 
 fn generate_video_temporary_thumbnail(
     ffmpeg: &str,
     source_path: &Path,
-    out_png: &Path,
+    out_thumbnail: &Path,
 ) -> AppResult<()> {
     let mut command = std::process::Command::new(ffmpeg);
-    command.args(build_video_thumbnail_args(source_path, out_png));
+    command.args(build_video_thumbnail_args(source_path, out_thumbnail));
 
     let output = run_tracked_ffmpeg(command)?;
 
@@ -299,7 +312,7 @@ fn generate_video_temporary_thumbnail(
     }
 
     ensure_generated_thumbnail_exists(
-        out_png,
+        out_thumbnail,
         AppErrorCode::FfmpegFailed,
         "ffmpeg did not generate a valid thumbnail",
     )
@@ -308,10 +321,10 @@ fn generate_video_temporary_thumbnail(
 fn generate_audio_embedded_temporary_thumbnail(
     ffmpeg: &str,
     source_path: &Path,
-    out_png: &Path,
+    out_thumbnail: &Path,
 ) -> AppResult<()> {
     let mut command = std::process::Command::new(ffmpeg);
-    command.args(build_audio_thumbnail_args(source_path, out_png));
+    command.args(build_audio_thumbnail_args(source_path, out_thumbnail));
 
     let output = run_tracked_ffmpeg(command)?;
 
@@ -324,7 +337,7 @@ fn generate_audio_embedded_temporary_thumbnail(
     }
 
     ensure_generated_thumbnail_exists(
-        out_png,
+        out_thumbnail,
         AppErrorCode::ThumbnailNotSupportedForAudio,
         "audio file does not have an embedded thumbnail",
     )
@@ -339,19 +352,19 @@ pub fn generate_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResu
     let thumbs_dir = thumbs_temp_dir(app)?;
 
     let hash = file_hash(&source_path)?;
-    let out_png = thumbs_dir.join(format!("thumb_{hash}.png"));
+    let out_thumbnail = thumbs_dir.join(temporary_thumbnail_file_name(&hash));
 
-    if out_png.exists() {
-        return Ok(out_png.to_string_lossy().to_string());
+    if out_thumbnail.exists() {
+        return Ok(out_thumbnail.to_string_lossy().to_string());
     }
 
     if media_kind == "audio" {
-        generate_audio_embedded_temporary_thumbnail(&ffmpeg, &source_path, &out_png)?;
+        generate_audio_embedded_temporary_thumbnail(&ffmpeg, &source_path, &out_thumbnail)?;
     } else {
-        generate_video_temporary_thumbnail(&ffmpeg, &source_path, &out_png)?;
+        generate_video_temporary_thumbnail(&ffmpeg, &source_path, &out_thumbnail)?;
     }
 
-    Ok(out_png.to_string_lossy().to_string())
+    Ok(out_thumbnail.to_string_lossy().to_string())
 }
 
 pub fn delete_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult<()> {
@@ -405,9 +418,28 @@ mod tests {
     }
 
     #[test]
+    fn both_thumbnail_producers_name_their_output_with_the_shared_format() {
+        // The two producers each choose an output container, and they diverged once: the yt-dlp
+        // download moved to JPEG while this path kept writing lossless PNG, so a library fed from
+        // both sources held both formats for the same kind of content and the size win applied to
+        // half the paths. Reading the shared constant is what makes it one decision; asserting the
+        // filename actually follows it is what stops a hardcoded extension creeping back, which is
+        // exactly how the divergence happened the first time.
+        //
+        // ffmpeg picks its encoder from the output extension, so this is also what keeps the argv
+        // built above writing the format the name claims.
+        let ffmpeg_output = temporary_thumbnail_file_name("abc123");
+
+        assert!(
+            ffmpeg_output.ends_with(&format!(".{THUMBNAIL_OUTPUT_FORMAT}")),
+            "the local-import thumbnail should use the shared format, got: {ffmpeg_output}"
+        );
+    }
+
+    #[test]
     fn video_thumbnail_args_seek_past_the_start_and_take_one_scaled_frame() {
         let args =
-            build_video_thumbnail_args(Path::new("/tmp/clip.mp4"), Path::new("/tmp/out.png"));
+            build_video_thumbnail_args(Path::new("/tmp/clip.mp4"), Path::new("/tmp/out.jpg"));
 
         assert_eq!(
             args,
@@ -421,7 +453,7 @@ mod tests {
                 "1",
                 "-vf",
                 THUMBNAIL_SCALE_FILTER,
-                "/tmp/out.png",
+                "/tmp/out.jpg",
             ]
         );
     }
@@ -429,7 +461,7 @@ mod tests {
     #[test]
     fn audio_thumbnail_args_map_the_attached_picture_and_never_seek() {
         let args =
-            build_audio_thumbnail_args(Path::new("/tmp/song.mp3"), Path::new("/tmp/out.png"));
+            build_audio_thumbnail_args(Path::new("/tmp/song.mp3"), Path::new("/tmp/out.jpg"));
 
         assert_eq!(
             args,
@@ -443,7 +475,7 @@ mod tests {
                 "1",
                 "-vf",
                 THUMBNAIL_SCALE_FILTER,
-                "/tmp/out.png",
+                "/tmp/out.jpg",
             ]
         );
 
@@ -501,7 +533,7 @@ mod tests {
     fn ensure_generated_thumbnail_exists_rejects_and_removes_a_zero_byte_file() {
         // ffmpeg can exit 0 having written nothing. Without this guard the empty file would be
         // returned as a valid preview and, worse, cached: generate_temporary_thumbnail_sync
-        // short-circuits on an existing out_png, so the blank result would stick for that source
+        // short-circuits on an existing out_thumbnail, so the blank result would stick for that source
         // until the temp dir is swept.
         let dir = unique_test_dir();
         fs::create_dir_all(&dir).unwrap();
