@@ -92,6 +92,15 @@ const MAX_RESOLVED_PER_CALL: usize = 512;
 /// of kilobytes; this holds a few thousand of them, which is more than a session draws. It exists
 /// because the directory otherwise has no bound at all - a derivative is never deleted when its
 /// media is, since nothing in the database refers to one (see the module docs).
+///
+/// **Enforced by the startup sweep** (`services::cleanup::cleanup_stale_temp_files_sync`), not on
+/// write: a session that draws more than this grows past it and is trimmed back on the next launch.
+/// That is deliberate rather than an oversight, and worth stating because "ceiling" otherwise reads
+/// as a continuous invariant. Checking it per generated entry would mean summing the directory on
+/// each write, and keeping the write path cheap is the whole shape of this module - a cache *hit* is
+/// one `stat` ([`display_cache_key`]) precisely so the grid pays nothing for a warmed page. The
+/// overshoot is bounded by what one session can draw and costs disk in a directory that is
+/// disposable by construction, which is the cheaper side of the trade.
 const DISPLAY_CACHE_MAX_BYTES: u64 = 200 * 1024 * 1024;
 
 /// One cached derivative, as [`plan_display_cache_eviction`] sees it. Carries only what the decision
