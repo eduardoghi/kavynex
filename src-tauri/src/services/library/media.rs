@@ -90,9 +90,9 @@ pub fn import_media_file_sync(
     logger::info(
         "library",
         format!(
-            "importing media: source='{}', mode='{:?}', destination='{}'",
+            "importing media: source='{}', mode='{}', destination='{}'",
             logger::redact_path(&source),
-            mode,
+            mode.as_str(),
             logger::redact_path(&destination)
         ),
     );

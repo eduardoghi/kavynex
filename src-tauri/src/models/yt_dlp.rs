@@ -8,6 +8,22 @@ pub enum ImportMode {
     Move,
 }
 
+impl ImportMode {
+    /// The mode's name for a log line.
+    ///
+    /// Spelled out rather than reached through `{:?}`, so that a log line never carries a
+    /// `Debug`-formatted value: `Debug` on a `Path` prints the whole path, which is what
+    /// `services::logger::redact_path` exists to prevent, and CI now refuses `{:?}` anywhere near a
+    /// logger call rather than trusting each site to be the harmless kind. This was the one
+    /// harmless kind.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImportMode::Copy => "copy",
+            ImportMode::Move => "move",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, TS)]
 #[ts(export, export_to = "../../src/types/generated/")]
 pub struct DownloadedMediaResult {
