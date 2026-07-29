@@ -618,12 +618,83 @@ mod tests {
         .await
         .unwrap();
 
+        // The indexes a real database of this era carries. Seeding none at all - which this used to
+        // do - makes the fixture a shape no build ever produced, and hides a skipped index migration
+        // behind a database that never had the index either. A database below the baseline is the
+        // one case that legitimately has none: `apply_baseline_schema` is what first creates them.
+        if version >= BASELINE_SCHEMA_VERSION {
+            for &(_, ddl) in INDEX_DDLS {
+                if index_introduced_in(ddl_object_name(ddl)) <= version {
+                    sqlx::query(sqlx::AssertSqlSafe(ddl))
+                        .execute(pool)
+                        .await
+                        .unwrap_or_else(|error| {
+                            panic!("failed to seed {ddl} at v{version}: {error}")
+                        });
+                }
+            }
+        }
+
+        // Same for the triggers, whose era is read off the table each one guards rather than its
+        // name: v13 backported the two `videos` row invariants, v14 the `video_comments` body-length
+        // ceiling. A database below v13 has none, which is exactly what those migrations are for.
+        for &(table, ddl) in TRIGGER_DDLS {
+            if trigger_introduced_in(table) <= version {
+                sqlx::query(sqlx::AssertSqlSafe(ddl))
+                    .execute(pool)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("failed to seed a trigger at v{version}: {error}")
+                    });
+            }
+        }
+
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "PRAGMA user_version = {version}"
         )))
         .execute(pool)
         .await
         .unwrap();
+    }
+
+    /// The schema version that first created the triggers on each table: v13 backported the two
+    /// `videos` row invariants, v14 the `video_comments` body-length ceiling.
+    fn trigger_introduced_in(table: &str) -> i64 {
+        match table {
+            "video_comments" => 14,
+            _ => 13,
+        }
+    }
+
+    /// The object name out of a `CREATE ... IF NOT EXISTS <name> ON <table>(...)` literal.
+    fn ddl_object_name(ddl: &str) -> &str {
+        ddl.split(" IF NOT EXISTS ")
+            .nth(1)
+            .and_then(|rest| rest.split_whitespace().next())
+            .unwrap_or_else(|| panic!("could not read an object name out of: {ddl}"))
+    }
+
+    /// The schema version that first created each index. Anything not named here predates versioned
+    /// migrations, so `apply_baseline_schema` creates it and every database from v7 up has it.
+    ///
+    /// This exists because `INDEX_DDLS` is the *current* list with no history in it: the baseline and
+    /// the index-only migrations all re-run the whole list, so the code cannot say which index
+    /// belonged to which era. Without that, `seed_database_at_version` cannot produce a faithful v8
+    /// database (one that really is missing v9's indexes), and the migration test below could not
+    /// tell a migration that ran from one that was skipped. Kept in step with `docs/DATABASE.md`,
+    /// which records what each migration added.
+    fn index_introduced_in(name: &str) -> i64 {
+        match name {
+            "idx_videos_channel_created_id" => 8,
+            "idx_videos_file_path" | "idx_videos_live_chat_file_path" => 9,
+            "idx_videos_channel_title_normalized" => 11,
+            "idx_videos_channel_created_title_id"
+            | "idx_videos_channel_comments_count"
+            | "idx_videos_channel_duration"
+            | "idx_videos_channel_published_ordered"
+            | "idx_videos_channel_published_desc" => 12,
+            _ => BASELINE_SCHEMA_VERSION,
+        }
     }
 
     #[tokio::test]
@@ -650,6 +721,31 @@ mod tests {
                 SCHEMA_VERSION,
                 "v{from_version} did not end up at the current schema version"
             );
+
+            // Reaching head is not the same as arriving complete, and the version stamp cannot tell
+            // the two apart: each migration stamps its own version, so one that is skipped entirely
+            // still ends at SCHEMA_VERSION because the later ones carry the number past it. The data
+            // assertions below cannot tell either - they read rows, not the objects that make those
+            // rows queryable. So assert the schema itself.
+            //
+            // This is the v8..v10 failure seen from the other side, and it is what the seed above
+            // had to become faithful for: a v11 database really is missing the five sort indexes v12
+            // adds, so if migration 12 is skipped, nothing else puts them there.
+            for &(_, ddl) in INDEX_DDLS {
+                let name = ddl_object_name(ddl);
+                assert!(
+                    object_exists(&pool, "index", name).await,
+                    "a database stamped v{from_version} reached head without {name}"
+                );
+            }
+
+            for &(_, ddl) in TRIGGER_DDLS {
+                let name = ddl_object_name(ddl);
+                assert!(
+                    object_exists(&pool, "trigger", name).await,
+                    "a database stamped v{from_version} reached head without {name}"
+                );
+            }
 
             // The row survived and carries the normalized title every later query depends on. A
             // NULL here is the silent failure mode: LIKE never matches it, so the media stays in
