@@ -123,6 +123,15 @@
 #   as a marker, and what that function returns goes straight to a cleanup that unlinks files. The
 #   module doc already claimed that property; nothing tested it above `is_marker_file_name`. The
 #   other nine are excluded below in three groups, each for a different reason.
+#   Re-measured 2026-07-29 after the marker gained a retry ceiling: 95 mutants, 48 unviable, 36
+#   caught, 11 missed - nine of the eleven are the groups already excluded below, and the other two
+#   were a real gap the gate is exactly for. `record_marker_attempt` writes the incremented count
+#   back to the marker, and both deleting the call and dropping the incremented field from the
+#   struct-update expression survived: nothing above it observes the write, since the sweep's logging
+#   is unobservable and the marker is only re-read on the *next* launch, so a broken write-back looks
+#   identical to a working one until the retry never ends - which is the bug the ceiling removes.
+#   `a_failed_attempt_is_written_back_so_the_ceiling_survives_a_restart` now covers it; re-measured
+#   with `--examine-re record_marker_attempt` at 3 mutants, 3 caught.
 #   library_recovery.rs - 15 mutants, 1 unviable, 14 caught, 0 missed. Goes in clean.
 # The four remaining pure security gates: every function that decides whether a caller-supplied
 # value is allowed through, which is the profile this whole gate exists for. Each was already

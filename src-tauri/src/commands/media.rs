@@ -62,6 +62,10 @@ pub async fn record_pending_media_artifacts(
                 file_path,
                 thumbnail_path,
                 live_chat_file_path,
+                // The sweep's own retry bookkeeping, not part of what a creation reports. The
+                // service zeroes it regardless of what arrives here; naming it keeps that visible
+                // rather than hiding it behind a `..Default::default()`.
+                attempts: 0,
             },
         )
     })

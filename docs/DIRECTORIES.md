@@ -134,6 +134,14 @@ registered as in flight by this process nor newer than the process itself
 (`pending_media::marker_is_sweepable`), and every uncertain case is left in place - one launch
 later is a cheaper mistake than deleting a file the user still wants.
 
+A marker whose reconciliation *fails* is kept for the next launch to retry, since the usual cause is
+transient (the library drive not mounted yet). Nothing there can tell transient from permanent, so
+the marker carries an `attempts` count and is abandoned after `MAX_MARKER_SWEEP_ATTEMPTS` (5) - a
+failure that survives five launches is not a slow drive. Abandoning it means the *record* is given
+up on, never the files: the marker stays on disk and its artifacts stay in the library, where the
+Diagnostics dialog reports them as unreferenced. The difference is that the failure is logged once,
+at error level with its count, instead of at warning level on every launch forever.
+
 On startup, `lib.rs`'s `setup()` authorizes the whole cache directory in the Tauri
 asset-protocol scope (see `SECURITY.md`) so these temporary files can be shown in the
 webview via `convertFileSrc` before they are persisted. A background task

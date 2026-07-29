@@ -53,6 +53,12 @@ pub struct PendingMediaArtifacts {
     pub thumbnail_path: Option<String>,
     #[serde(default)]
     pub live_chat_file_path: Option<String>,
+    /// How many launches have already tried and failed to reconcile this marker. Written back by
+    /// the sweep, never by the caller that records the marker (see
+    /// [`record_pending_media_artifacts`], which zeroes it), and defaulted so a marker written
+    /// before this field existed reads as a first attempt rather than failing to parse.
+    #[serde(default)]
+    pub attempts: u32,
 }
 
 impl PendingMediaArtifacts {
@@ -90,6 +96,10 @@ pub(crate) fn sanitize_pending_artifacts(
         file_path: managed_path_or_none(artifacts.file_path),
         thumbnail_path: managed_path_or_none(artifacts.thumbnail_path),
         live_chat_file_path: managed_path_or_none(artifacts.live_chat_file_path),
+        // Carried through rather than reset: this runs on the decode path too, where dropping the
+        // count would restart the retry budget on every launch and reinstate the forever-retry this
+        // field exists to end. The record path zeroes it explicitly instead.
+        attempts: artifacts.attempts,
     }
 }
 
@@ -179,6 +189,29 @@ pub(crate) fn marker_is_sweepable(
     }
 }
 
+/// How many launches may fail to reconcile one marker before the sweep stops retrying it.
+///
+/// The retry exists for the transient case - the library drive not mounted yet, a lock still held -
+/// which resolves within a launch or two. A failure that survives this many is not transient: the
+/// library was repointed, or the path went permanently invalid. Retrying it forever turns a one-off
+/// failure into a tax on every launch, with nothing but a `warn` line nobody reads to show for it,
+/// and a directory of such markers only ever grows.
+const MAX_MARKER_SWEEP_ATTEMPTS: u32 = 5;
+
+/// Whether a marker has been retried enough times that its failure is not transient.
+///
+/// Pure so both directions are pinned by a test, matching [`marker_is_sweepable`] next door - and
+/// for the same reason: the decision sits in front of artifacts belonging to the user, so it should
+/// be a function rather than a comparison buried in a loop.
+///
+/// Reaching the ceiling abandons the *record*, never the files. The marker is deliberately left on
+/// disk: it names artifacts in the user's library, and giving up on reconciling them is not the
+/// same as being allowed to remove them. What changes is that the failure is logged at `error`
+/// once, with its count, instead of at `warn` on every launch forever.
+pub(crate) fn marker_retries_are_exhausted(attempts: u32) -> bool {
+    attempts >= MAX_MARKER_SWEEP_ATTEMPTS
+}
+
 /// When `path` was last modified, or `None` if that cannot be read.
 fn marker_modified_at(path: &Path) -> Option<SystemTime> {
     fs::metadata(path)
@@ -216,7 +249,14 @@ pub fn record_pending_media_artifacts<R: Runtime>(
     app: &AppHandle<R>,
     artifacts: PendingMediaArtifacts,
 ) -> AppResult<String> {
-    let sanitized = sanitize_pending_artifacts(artifacts);
+    let sanitized = PendingMediaArtifacts {
+        // A fresh record always starts its retry budget at zero, whatever the caller passed. The
+        // count is the sweep's own bookkeeping, and a caller able to pre-set it could hand over a
+        // marker that is abandoned on its first failure - quietly turning off the recovery this
+        // whole module exists for.
+        attempts: 0,
+        ..sanitize_pending_artifacts(artifacts)
+    };
 
     if sanitized.is_empty() {
         return Err(AppError::from_code(
@@ -269,6 +309,44 @@ fn write_marker_file(marker: &Path, contents: &str) -> AppResult<()> {
     crate::services::filesystem::fsync_parent_dir(marker);
 
     Ok(())
+}
+
+/// Rewrites a marker with an incremented attempt count, so the ceiling survives a restart.
+///
+/// Best effort by design, like everything else the sweep does: if this fails, the marker keeps its
+/// previous count and simply gets one more attempt than it should. That is the harmless direction -
+/// the alternative, treating a failed rewrite as a reason to give up, would abandon a record over a
+/// transient write error, which is exactly the mistake the retry exists to avoid.
+///
+/// The rewrite refreshes the marker's mtime, which is deliberate and safe: `marker_is_sweepable`
+/// compares that against the *process* start, so a marker touched during this run is skipped by
+/// this run's remaining work (there is none - the sweep runs once) and is sweepable again on the
+/// next launch, whose process start is later.
+fn record_marker_attempt<R: Runtime>(
+    app: &AppHandle<R>,
+    name: &str,
+    artifacts: &PendingMediaArtifacts,
+    attempts: u32,
+) {
+    let updated = PendingMediaArtifacts {
+        attempts,
+        ..artifacts.clone()
+    };
+
+    let Ok(dir) = pending_media_dir(app) else {
+        return;
+    };
+
+    let Ok(contents) = serde_json::to_string(&updated) else {
+        return;
+    };
+
+    if let Err(error) = write_marker_file(&dir.join(name), &contents) {
+        logger::warn(
+            "pending_media",
+            format!("could not record a pending media marker attempt: {error}"),
+        );
+    }
 }
 
 /// Removes a marker once its creation has finished - either the row was inserted, or the failure
@@ -395,11 +473,33 @@ pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> 
                 }
                 Err(error) => {
                     // Leave the marker in place so the next launch retries; a transient failure
-                    // (the library drive not mounted yet) must not silently drop the record.
-                    logger::warn(
-                        "pending_media",
-                        format!("could not reconcile a pending media marker: {error}"),
-                    );
+                    // (the library drive not mounted yet) must not silently drop the record. What
+                    // the count adds is an end to that: nothing here can tell transient from
+                    // permanent, so a failure that keeps recurring is reclassified by how often it
+                    // has, and reported once instead of every launch.
+                    let attempts = artifacts.attempts.saturating_add(1);
+
+                    if marker_retries_are_exhausted(attempts) {
+                        logger::error(
+                            "pending_media",
+                            format!(
+                                "giving up on a pending media marker after {attempts} failed attempts; \
+                                 its artifacts are left in the library and are reported by \
+                                 Diagnostics as unreferenced files: {error}"
+                            ),
+                        );
+                    } else {
+                        record_marker_attempt(app, &name, &artifacts, attempts);
+
+                        logger::warn(
+                            "pending_media",
+                            format!(
+                                "could not reconcile a pending media marker (attempt {attempts} of \
+                                 {MAX_MARKER_SWEEP_ATTEMPTS}): {error}"
+                            ),
+                        );
+                    }
+
                     continue;
                 }
             }
@@ -447,7 +547,110 @@ mod tests {
             file_path: file.map(str::to_string),
             thumbnail_path: thumb.map(str::to_string),
             live_chat_file_path: chat.map(str::to_string),
+            attempts: 0,
         }
+    }
+
+    #[test]
+    fn marker_retries_are_exhausted_only_at_the_ceiling() {
+        // Both directions, on the exact boundary. Getting this off by one either abandons a marker
+        // a launch too early - dropping a record that names files in the user's library - or leaves
+        // the forever-retry this exists to end.
+        for attempts in 0..MAX_MARKER_SWEEP_ATTEMPTS {
+            assert!(
+                !marker_retries_are_exhausted(attempts),
+                "{attempts} attempts should still be retried"
+            );
+        }
+
+        assert!(marker_retries_are_exhausted(MAX_MARKER_SWEEP_ATTEMPTS));
+        // Past the ceiling stays exhausted: a marker written by a future build with a higher count,
+        // or one whose rewrite failed and skipped a number, must not fall back through.
+        assert!(marker_retries_are_exhausted(MAX_MARKER_SWEEP_ATTEMPTS + 1));
+        assert!(marker_retries_are_exhausted(u32::MAX));
+    }
+
+    #[test]
+    fn the_attempt_count_survives_a_decode_so_the_budget_is_not_reset_each_launch() {
+        // The count only means anything if it is carried across restarts, and sanitize runs on the
+        // decode path - so dropping it there would restart the budget on every launch and reinstate
+        // the forever-retry with extra steps. The paths still go through the same refusal.
+        let decoded = decode_marker(
+            r#"{"file_path":"video/media_abc.mp4","thumbnail_path":"../escape.jpg","attempts":3}"#,
+        )
+        .expect("a marker naming a managed artifact should decode");
+
+        assert_eq!(decoded.attempts, 3);
+        assert_eq!(decoded.file_path.as_deref(), Some("video/media_abc.mp4"));
+        assert_eq!(decoded.thumbnail_path, None);
+    }
+
+    #[test]
+    fn a_marker_written_before_the_count_existed_reads_as_a_first_attempt() {
+        // Markers from an older build have no `attempts` key at all. Failing to parse those would
+        // strand exactly the leftovers the sweep exists to reconcile.
+        let decoded = decode_marker(r#"{"file_path":"video/media_abc.mp4"}"#)
+            .expect("a marker without the field should still decode");
+
+        assert_eq!(decoded.attempts, 0);
+    }
+
+    #[test]
+    fn a_recorded_marker_always_starts_its_budget_at_zero() {
+        // The count is the sweep's bookkeeping, so a caller must not be able to pre-set it. One that
+        // could would hand over a marker abandoned on its first failure, quietly disabling the
+        // recovery this module exists for.
+        let requested = PendingMediaArtifacts {
+            file_path: Some("video/media_abc.mp4".to_string()),
+            thumbnail_path: None,
+            live_chat_file_path: None,
+            attempts: MAX_MARKER_SWEEP_ATTEMPTS + 10,
+        };
+
+        let app = mock_app();
+        let name = record_pending_media_artifacts(app.handle(), requested).unwrap();
+
+        let marker = pending_media_dir(app.handle()).unwrap().join(&name);
+        let decoded = decode_marker(&fs::read_to_string(&marker).unwrap()).unwrap();
+
+        assert_eq!(decoded.attempts, 0);
+
+        clear_pending_media_artifacts(app.handle(), &name).unwrap();
+    }
+
+    #[test]
+    fn a_failed_attempt_is_written_back_so_the_ceiling_survives_a_restart() {
+        // The count only bounds anything if it reaches disk. Nothing above this test would notice if
+        // the write-back were dropped or wrote the old value: the sweep's own logging is unobservable,
+        // and the marker is only re-read on the *next* launch, so a broken write-back looks exactly
+        // like a working one until the retry never ends - which is the bug this whole change removes.
+        //
+        // The mutation gate found precisely that gap, in both shapes: deleting the call, and dropping
+        // the incremented field so the struct update carried the old count through.
+        let app = mock_app();
+        let name = record_pending_media_artifacts(
+            app.handle(),
+            artifacts(Some("video/media_abc.mp4"), None, None),
+        )
+        .unwrap();
+
+        let marker = pending_media_dir(app.handle()).unwrap().join(&name);
+        let recorded = decode_marker(&fs::read_to_string(&marker).unwrap()).unwrap();
+        assert_eq!(recorded.attempts, 0, "a fresh record starts at zero");
+
+        record_marker_attempt(app.handle(), &name, &recorded, 3);
+
+        let after = decode_marker(&fs::read_to_string(&marker).unwrap()).unwrap();
+        assert_eq!(
+            after.attempts, 3,
+            "the new count must be what lands on disk"
+        );
+        // The artifacts it names have to survive the rewrite intact - the marker is what tells the
+        // next launch which files to reconcile, so losing them would strand exactly the leftover the
+        // retry is still trying to clean up.
+        assert_eq!(after.file_path.as_deref(), Some("video/media_abc.mp4"));
+
+        clear_pending_media_artifacts(app.handle(), &name).unwrap();
     }
 
     #[test]
