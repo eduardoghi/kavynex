@@ -544,6 +544,43 @@ mod tests {
     }
 
     #[test]
+    fn an_in_flight_marker_is_held_out_even_once_it_is_older_than_the_process() {
+        // Isolates the first of the two filters, which the sibling test above cannot. That one
+        // records a marker and finds it excluded - but the file it just wrote is newer than the
+        // process, so the mtime filter would have excluded it too. Both filters agree there, so the
+        // assertion passes whichever one actually acted, and it passes just as happily if the
+        // in-flight registration stops working altogether.
+        //
+        // Backdating the file removes that cover: the mtime now says "leftover" (exactly what
+        // `a_marker_left_by_a_previous_run_is_read_back` below relies on to get a marker read back),
+        // so a marker still held out here can only be the live registration doing it.
+        //
+        // What that registration guards is the project's one real CRITICAL: a sweep that consumes a
+        // marker belonging to a creation still in flight unlinks the file the user is adding right
+        // now and deletes the marker, leaving the row that lands moments later pointing at nothing
+        // with nothing left to reconcile it.
+        let app = mock_app();
+        let handle = app.handle();
+
+        let recorded = artifacts(Some("video/media_in_flight.mp4"), None, None);
+        let name = record_pending_media_artifacts(handle, recorded).unwrap();
+        let marker = pending_media_dir(handle).unwrap().join(&name);
+
+        set_modified_before_process_start(&marker);
+
+        assert!(
+            !read_pending_markers(handle)
+                .unwrap()
+                .iter()
+                .any(|(marker_name, _)| marker_name == &name),
+            "a marker registered as in flight must be held out by that registration alone, even \
+             once its file is older than the process"
+        );
+
+        clear_pending_media_artifacts(handle, &name).unwrap();
+    }
+
+    #[test]
     fn a_marker_left_by_a_previous_run_is_read_back() {
         // The counterpart to the test above, and it is what keeps that filter from silently turning
         // the sweep off altogether: a marker that really is a leftover - not registered as in flight,
