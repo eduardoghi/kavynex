@@ -175,6 +175,19 @@
 # `--in-place --no-config --file`): 4 mutants, 0 unviable, 4 caught, 0 missed, in 85s - the three
 # tests that moved with it (the real CDNs, the look-alike rejections, and the two-way CSP parity
 # check) already kill every viable mutant. The runtime is the extraction's whole payoff.
+# `src/services/thumbnail/picked.rs` - the gate on an image the user picked from the file dialog
+# (a network-location refusal and an image-extension check on a path that arrives raw over IPC),
+# plus the name its staged copy lands under. It is here because the gate it replaced was here: the
+# manual preview used to widen the asset scope to that file through
+# `commands::security::allow_asset_file`, whose `validate_asset_file_for_preview` this glob covered.
+# Staging a copy in an already-authorized directory removed that command, and the check moved with
+# the flow - so without this entry a security gate would have quietly left the mutation gate.
+# ADDED after a measured pass (2026-07-30, `--in-place --no-config --file`): 8 mutants, 4 caught,
+# 4 unviable, 0 missed. Its own module rather than a widened glob over `thumbnail/temp.rs`, where it
+# briefly lived: the same pass over that whole file reported 86 mutants with 15 missed, every one of
+# them in the FFmpeg spawn, the deadline arithmetic or the pipe-draining cap - boundary code no unit
+# test can pin, which would have meant six exclusions and a permanently noisy run. Same resolution,
+# and the same reasoning, as `ssrf_guard.rs`, `thumbnail/url.rs` and `yt_dlp/download/redaction.rs`.
 # `src/services/thumbnail/display.rs` - the addressing behind the display-thumbnail cache. Two
 # decisions there are worth a gate rather than only a test. `display_cache_key` decides which stored
 # file a cached derivative answers for, so a weakened check (a dropped length comparison, an
@@ -210,6 +223,7 @@
 # which is why the predicate takes `now` as an argument instead of reading the clock - the same
 # shape, and the same reason, as `duration_is_recent` in db_backup.
 examine_globs = [
+    "src/services/thumbnail/picked.rs",
     "src/services/thumbnail/display.rs",
     "src/services/pending_media.rs",
     "src/services/library/recovery.rs",
