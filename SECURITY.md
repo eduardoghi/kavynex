@@ -435,6 +435,41 @@ So the honest statement of the tradeoff is: this token is load-bearing for the U
 thing that makes it acceptable is the absence of an injection sink rather than the token itself
 being harmless. A future change that introduces raw-HTML rendering would have to revisit it.
 
+#### Where the remote-images privacy setting is enforced (and where it is not)
+
+The README states that with **Settings > Privacy > "Load comment and live chat images from
+Google"** off - which is the default - viewing saved media makes no network requests at all. That
+is accurate, and it is worth being precise about which layer delivers it, because it is not the
+CSP.
+
+`img-src` names `https://*.ggpht.com`, `https://*.googleusercontent.com`, `https://*.ytimg.com`
+and `https://*.youtube.com` **unconditionally, in both modes**. The setting is enforced one layer
+up, in the renderer: `RemoteImage` (`src/components/player/remote-image.tsx`) reads the preference
+from context and renders a monogram or the emoji shortcut text instead of emitting an `<img>` at
+all, and `SafeAvatar` routes through it so a caller cannot forget the gate. No request is made,
+so nothing reaches the CSP to be judged.
+
+Two consequences follow, and both are accepted:
+
+- The guarantee is an application-layer one. A renderer that ran attacker-controlled code could
+  emit an `<img>` at one of those hosts and the CSP would allow it, which makes those four hosts a
+  low-bandwidth outbound channel (a URL path, no response read back - `connect-src` is `'self' ipc:`,
+  so the bytes cannot be fetched). Reaching it requires an injection sink, and there is none: every
+  YouTube-derived string is rendered as a React child, never through `dangerouslySetInnerHTML` or
+  `eval`. This is the same property the `style-src` tradeoff above rests on, and it fails in the
+  same way if raw-HTML rendering is ever introduced.
+- Tightening it is not a config change. Tauri applies the CSP as a static header from
+  `tauri.conf.json`; making it track a database-backed setting would mean intercepting web-resource
+  requests at runtime and rewriting the header per response, which is a real amount of machinery to
+  duplicate a check the renderer already performs correctly.
+
+The narrower statement is therefore the true one: **with the setting off, Kavynex makes no remote
+image requests; the CSP is what would constrain such a request if one were ever made, not what
+prevents it.** Recorded because "off by default" reads as a transport-level guarantee and it is not
+one - unlike the host allow-list on the backend's own fetches (`services/thumbnail/url.rs`), which
+*is* enforced below the renderer and is pinned against this same `img-src` list by
+`allowed_thumbnail_hosts_match_the_csp_img_src`.
+
 ### Updater
 
 The updater (`tauri-plugin-updater`) checks a fixed HTTPS endpoint on GitHub
