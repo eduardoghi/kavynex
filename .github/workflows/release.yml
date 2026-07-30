@@ -402,6 +402,25 @@ jobs:
             - name: Build frontend
               run: pnpm build
 
+            # The `audit` and `sbom` jobs both describe `src-tauri/Cargo.lock`: one gates it against
+            # RUSTSEC and the license/source allow-lists, the other publishes it as the release's
+            # SBOM, i.e. the machine-readable answer to "does this release ship crate X at version
+            # Y?". Neither statement is worth anything unless the signed binary is compiled from
+            # that exact lockfile.
+            #
+            # Every other cargo invocation in this job already passes `--locked`; the build did not,
+            # and `Cargo.toml` uses caret requirements (`tauri = "2"`), so a lockfile that had drifted
+            # out of sync with the manifest would be silently re-resolved here - producing a binary
+            # containing crates the SBOM does not list and `cargo audit` never examined. Nothing else
+            # in the pipeline would notice.
+            #
+            # Two defenses, because they fail at different points. This one fails the run *before*
+            # the build if the lockfile is not already consistent with the manifest (`cargo metadata`
+            # resolves the graph without compiling, so it is seconds); the `-- --locked` below makes
+            # cargo itself refuse to re-resolve even if this step is ever dropped.
+            - name: Verify the lockfile matches the manifest
+              run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+
             - name: Build and publish Tauri app
               uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
               env:
@@ -414,7 +433,12 @@ jobs:
                   releaseBody: ${{ steps.release_notes.outputs.body }}
                   releaseDraft: true
                   prerelease: false
-                  args: ${{ matrix.args }}
+                  # Everything after `--` is forwarded verbatim to the runner (cargo) by the Tauri
+                  # CLI - see `tauri build --help`, whose ARGS are documented as "Command line
+                  # arguments passed to the runner. Use `--` to explicitly mark the start of the
+                  # arguments". So this is the build's own `--locked`, matching the clippy/test/
+                  # bindings steps above. See the lockfile step for why it matters here.
+                  args: ${{ matrix.args }} -- --locked
 
             # Start the binary that was just built, and require it to complete startup.
             #
