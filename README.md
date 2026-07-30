@@ -262,7 +262,8 @@ repository), and applies to the font files only, not to Kavynex itself.
 
 ## More documentation
 
-- `docs/ARCHITECTURE.md` - the layered backend/frontend architecture and the IPC boundary.
+- `docs/ARCHITECTURE.md` - the layered backend/frontend architecture, the IPC boundary, and a
+  walk-through of the main flows (adding media, changing the library folder, database recovery).
 - `docs/DATABASE.md` - the SQLite schema, migrations, and backup/restore/export/import model.
 - `docs/DIRECTORIES.md` - the runtime directories and library layout the app uses on disk.
 - `docs/RELEASING.md` - how a release is cut and published (needs repository write access).

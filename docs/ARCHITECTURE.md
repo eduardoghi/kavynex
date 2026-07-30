@@ -207,6 +207,135 @@ import `@tauri-apps` at all, and that is enforced by `eslint.config.js`'s
 any new caller could silently invalidate. A test that needs to stub a Tauri call mocks the
 seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` package.
 
+## Main flows
+
+The layering above says where a kind of code lives; it does not say what actually happens when
+a user clicks something. These three flows are the ones worth tracing before changing anything
+around them: each spans several hooks, crosses the IPC boundary more than once, and has an
+ordering that is load-bearing rather than incidental. Everything else in the app is a variation
+on one of them.
+
+### Adding media
+
+Entry point: the add-media modal, driven by `useAddMediaWorkflow` (`src/hooks/`), which
+`useMediaLibrary` composes. The modal has two source modes, and they diverge only in how the
+artifacts are produced.
+
+**The yt-dlp pre-step.** Pasting a URL and loading formats runs
+`useYtDlpFormatLoader.loadYtDlpFormats()`, which calls `list_yt_dlp_formats` - a metadata-only
+yt-dlp run, no download. It returns the available formats, a suggested title, and
+`resolvedYoutubeVideoId`. That last one is why the pre-step matters beyond picking a quality:
+knowing the video id *before* downloading is what lets the duplicate check below fail fast
+instead of after fetching a whole file. The loader goes through `useRequestGuard`, so a slow
+response for a URL the user has since changed cannot repopulate the selection that feeds the
+real download command.
+
+**The run.** `addMedia()` validates through the `validateAddMediaForm` use-case, then runs
+inside `useAsyncFlag`, whose ref is set before any `await` - two synchronous invocations can
+never both pass, so a double click cannot start two downloads. For a yt-dlp source it generates
+the run id and opens the terminal session before calling into the service layer.
+
+`createMedia` (`src/services/media-service.ts`) is where the ordering lives:
+
+1. yt-dlp only: `ensureYtDlpMediaDoesNotAlreadyExist` on the resolved video id.
+2. `prepareMediaArtifacts` -> `prepareYtDlpArtifacts` / `prepareLocalArtifacts`
+   (`media-artifacts-service.ts`). **The files are in the library from here on.**
+3. `tryRecordPendingArtifacts` writes the crash marker. Everything between this line and
+   step 5 is the window where artifacts exist with no row pointing at them, and the marker is
+   what a startup that follows a crash reconciles (see `services/pending_media.rs`).
+4. `ensureMediaDoesNotAlreadyExist` on the stored file path, then the duration probe.
+5. `insertMedia` - the row lands.
+6. `finally`: `tryClearPendingArtifacts`. `catch` (when the row never landed):
+   `cleanupCreatedArtifacts`, one backend call that reference-counts and unlinks together.
+
+Steps 2 and 3 are in that order and not the other way round: a marker written before the
+artifacts exist would name files that were never created.
+
+**Progress and cancellation.** During step 2 the backend streams `yt-dlp-log` / `yt-dlp-error`
+/ `yt-dlp-finished` / `yt-dlp-cancelled` / `yt-dlp-terminal` (`src/constants/events.ts`),
+correlated by run id; `useYtDlpEvents` subscribes through `listenValidated`, so a payload that
+does not match its zod schema is dropped at the seam. `cancelYtDlpDownload` calls
+`cancel_media_download(runId)`; the backend unwinds a cancel *as an error*, so `addMedia`
+recognizes `YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE` and routes it to the notice channel rather
+than the error modal - the user got the outcome they clicked for.
+
+**The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
+`isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set.
+This is not only UX: `SECURITY.md` records it as the one guarantee in that document resting on
+frontend behavior, because it is what keeps two creations from being in flight at once and
+racing the reference-counted cleanup. A change that lets a second run start - a queue, a batch
+import - has to revisit that note.
+
+### Changing the library folder
+
+Entry point: Settings > Library folder. `useHomeController` overrides the settings hook's
+`chooseLibraryPath` with the Home-level one so the UI guards run first; it reaches
+`useAppSettingsActions.changeLibraryPath`, which delegates the decisions to the
+`executeChangeLibraryPath` use-case (`src/use-cases/`):
+
+1. `chooseLibraryDirectory()` - the native folder dialog, through the platform seam. Cancel
+   returns `changed: false` and nothing else runs.
+2. A filesystem root is refused. (The backend's `reject_filesystem_root` is the real guard;
+   this one is there to fail before the round trip.)
+3. `ensureDirectoryExists(selected)` returns the canonical path, which is what everything
+   downstream compares against - not the string the dialog handed back.
+4. Same as the current library -> `changed: false`.
+5. A non-empty destination is refused when a library already exists.
+6. No current library (first-time setup) -> `changed: true` with no migration to run.
+7. Otherwise `migrateLibraryDirectory(old, new)`.
+
+Backend side (`commands/library.rs`): the *old* path is the one verified against persisted
+settings, since that is the directory the migration removes; a destination inside the app
+config directory is refused; a commit marker is written next to the database before the old
+directory goes, so a crash mid-move is self-healed by `reconcile_interrupted_migration` on the
+next `get_app_settings`; and once the move succeeds the old directory's asset-scope grant is
+revoked.
+
+Back in the frontend, `updateStoredLibraryPath` persists **before** `setSettings` exposes the
+new value. That order is required, not stylistic: the state change is what fires
+`useAppSettings`'s effect calling `registerLibraryAssetScope`, and the backend validates that
+request against the persisted library path. Persisting second would make a legitimate
+registration fail.
+
+Two outcomes surface to the user rather than only to the log. `oldDirectoryRetained` means the
+copy succeeded but the old folder could not be removed, so a full duplicate of the media is
+still on the old volume. And moving *back* to a folder released earlier in the same session
+fails with `ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE` - the asset scope cannot un-forbid a
+directory - which is the one asset-scope failure worth interrupting the user for, because the
+fix is a restart and nothing would suggest it.
+
+### Database recovery at startup
+
+Two of the three steps happen before the frontend exists at all. `lib.rs`'s `setup()` runs
+`resume_interrupted_restore` and then `apply_pending_database_import`, in that order and both
+before the pool can open - a pending import has to set the *restored* database aside as its
+undo snapshot, not the one the interrupted restore left behind.
+
+The frontend's part is `useAppBootstrap`, whose effect calls `ensureDatabaseReady()`. That
+resolves to `db.pool()`, i.e. `build_pool_at`: the `quick_check` gate when a migration is
+pending, the pre-migration snapshot, the open, and `ensure_schema`. So a failure here can mean
+corruption, a failed migration, or a database this build refuses.
+
+The hook branches on which:
+
+- `DATABASE_SCHEMA_TOO_NEW` shows an "update Kavynex" message and **deliberately does not offer
+  a restore**. That database is fine, just newer; restoring would replace a good database with
+  an older snapshot.
+- Anything else asks `getDatabaseBackupStatus()`. If a backup exists, the recovery modal opens
+  showing its date; otherwise the initialization error is surfaced as-is.
+
+`restoreFromBackup` calls `restore_database_from_backup` (which refuses to run once the pool is
+open, and holds the open lock for the whole restore so nothing can create the file underneath
+it) and then reloads the window, so the app re-initializes against the restored database rather
+than continuing on the half-loaded state the failed startup left.
+
+One related path does not go through this hook: `useDatabaseIntegrityAlert` subscribes to
+`database-integrity-failed`, which the background weekly full `integrity_check` emits when it
+finds damage a `quick_check` passed. That is a warning pointing at Settings > Database, not a
+recovery flow - the database opened fine.
+
+See `docs/DATABASE.md` for the backup, restore and import rules these three steps follow.
+
 ## Where to look for what
 
 | Concern | Backend | Frontend |
