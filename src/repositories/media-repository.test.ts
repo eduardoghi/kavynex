@@ -3,18 +3,18 @@ import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
     cleanupUnreferencedMediaArtifacts,
+    createMedia,
     deleteMediaWithArtifacts,
-    findMediaByChannelAndFilePath,
     getMediaRepositoryStats,
-    insertMedia,
     listMediaCommentsByMediaId,
     listMediaIntegrityReferences,
     markMediaAsUnwatched,
     markMediaAsWatched,
-    mediaExistsForChannelAndYoutubeId,
+    updateMediaDuration,
     updateMediaProgress,
     updateMediaTitle,
 } from "./media-repository";
+import type { CreateMediaRequest } from "../types/generated/CreateMediaRequest";
 
 vi.mock("../lib/tauri-client", () => ({
     invokeCommand: vi.fn(),
@@ -39,53 +39,56 @@ describe("media-repository command wiring", () => {
         });
     });
 
-    it("findMediaByChannelAndFilePath passes channel id and file path", async () => {
-        await findMediaByChannelAndFilePath(3, "video/a.mp4");
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH,
-            { channelId: 3, filePath: "video/a.mp4" }
-        );
-    });
+    it("createMedia sends the whole request under one argument and returns the created media", async () => {
+        // The request is nested under `request` because the command takes it as a single struct.
+        // Spreading it into top-level arguments would type-check on this side and fail to
+        // deserialize on the other, which is the mistake worth pinning at the seam.
+        const created = {
+            id: 101,
+            filePath: "video/media_a.mp4",
+            thumbnailPath: "thumbnails/thumb_a.jpg",
+            mediaType: "video" as const,
+            youtubeVideoId: "yt1",
+            liveChatFilePath: null,
+            isLive: false,
+        };
+        invokeCommandMock.mockResolvedValueOnce(created as never);
 
-    it("mediaExistsForChannelAndYoutubeId passes channel id and youtube video id and returns the result", async () => {
-        invokeCommandMock.mockResolvedValueOnce(true as never);
-
-        await expect(mediaExistsForChannelAndYoutubeId(3, "abc123")).resolves.toBe(true);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID,
-            { channelId: 3, youtubeVideoId: "abc123" }
-        );
-    });
-
-    it("insertMedia passes every field and returns the new id", async () => {
-        invokeCommandMock.mockResolvedValueOnce(101 as never);
-
-        await expect(
-            insertMedia({
-                channelId: 3,
-                title: "Video A",
-                filePath: "video/a.mp4",
-                thumbnailPath: "thumb/a.jpg",
-                mediaType: "video",
-                youtubeVideoId: "yt1",
-                publishedAt: "2026-01-01",
-                durationSeconds: 120,
-                isLive: false,
-                liveChatFilePath: "live_chat/a.json",
-            })
-        ).resolves.toBe(101);
-
-        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.INSERT_MEDIA, {
+        const request: CreateMediaRequest = {
             channelId: 3,
             title: "Video A",
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumb/a.jpg",
+            sourceMode: "yt-dlp",
+            sourceValue: "https://www.youtube.com/watch?v=yt1",
+            thumbnailSourcePath: null,
             mediaType: "video",
-            youtubeVideoId: "yt1",
+            importMode: "copy",
+            libraryPath: "/library",
             publishedAt: "2026-01-01",
-            durationSeconds: 120,
-            isLive: false,
-            liveChatFilePath: "live_chat/a.json",
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137+140",
+            ytDlpYoutubeVideoId: "yt1",
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
+        };
+
+        await expect(createMedia(request)).resolves.toBe(created);
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.CREATE_MEDIA, { request });
+    });
+
+    it("updateMediaDuration passes id and duration, including a null measurement", async () => {
+        await updateMediaDuration(9, 125);
+        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.UPDATE_MEDIA_DURATION, {
+            mediaId: 9,
+            durationSeconds: 125,
+        });
+
+        // A file the probe could not read reports null, and that has to reach the command as null
+        // rather than being dropped: the argument is not optional on the Rust side.
+        await updateMediaDuration(9, null);
+        expect(invokeVoidMock).toHaveBeenLastCalledWith(TAURI_COMMANDS.UPDATE_MEDIA_DURATION, {
+            mediaId: 9,
+            durationSeconds: null,
         });
     });
 

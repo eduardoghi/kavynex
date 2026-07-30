@@ -29,10 +29,8 @@ import type { AppErrorShape } from "../utils/app-error";
 
 import type {
     Channel,
-    DownloadedMediaResult,
     LiveChatStreamEvent,
     MediaCommentRow,
-    MediaRow,
     YtDlpComment,
     YtDlpFailedEvent,
     YtDlpFinishedEvent,
@@ -47,6 +45,7 @@ import type {
     MediaRepositoryStats,
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
+import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
@@ -106,18 +105,6 @@ const mediaCommentRowSchema = z.object({
     time_text: z.string().nullable(),
     published_at: z.string().nullable(),
     created_at: z.string(),
-});
-
-const downloadedMediaResultSchema = z.object({
-    file_path: z.string(),
-    suggested_title: z.string(),
-    youtube_video_id: z.string().nullable(),
-    published_at: z.string().nullable(),
-    media_type: mediaTypeSchema,
-    thumbnail_url: z.string().nullable(),
-    thumbnail_path: z.string().nullable(),
-    is_live: z.boolean(),
-    live_chat_file_path: z.string().nullable(),
 });
 
 const ytDlpCommentSchema = z.object({
@@ -276,6 +263,16 @@ const webviewCheckPlanSchema = z.object({
     assetPath: z.string(),
 });
 
+const createdMediaSchema = z.object({
+    id: z.number(),
+    filePath: z.string(),
+    thumbnailPath: z.string().nullable(),
+    mediaType: mediaTypeSchema,
+    youtubeVideoId: z.string().nullable(),
+    liveChatFilePath: z.string().nullable(),
+    isLive: z.boolean(),
+});
+
 const storedAppSettingsPayloadSchema = z.object({
     importMode: z.string().nullable(),
     libraryPath: z.string().nullable(),
@@ -303,9 +300,11 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     list_live_chat_files: z.array(z.string()),
     cleanup_unreferenced_media_artifacts:
         artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
-    // The marker name the pending-artifact record hands back; it is passed straight to the clear
-    // command, so a non-string here would only surface as a failed clear much later.
-    record_pending_media_artifacts: z.string(),
+    // The registered media. Worth validating rather than trusting even though it comes straight
+    // back from a command this app wrote: the caller feeds `filePath`/`mediaType` to the duration
+    // probe and `youtubeVideoId` to the comment backup, so a wrong shape here would surface two
+    // steps later as a probe against nothing or a comment fetch for the wrong video.
+    create_media: createdMediaSchema satisfies z.ZodType<CreatedMedia>,
     // Positional: entry i answers requested path i, so a shorter or reordered array would silently
     // map a derivative onto the wrong media. The array shape is what this pins; the caller zips it
     // back against the paths it sent.
@@ -313,7 +312,6 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
         displayThumbnailSchema
     ) satisfies z.ZodType<DisplayThumbnail[]>,
     list_yt_dlp_formats: ytDlpFormatsResultSchema satisfies z.ZodType<YtDlpFormatsResult>,
-    download_media_from_url: downloadedMediaResultSchema satisfies z.ZodType<DownloadedMediaResult>,
     fetch_youtube_comments: z.array(ytDlpCommentSchema) satisfies z.ZodType<YtDlpComment[]>,
     get_database_backup_status: databaseBackupStatusSchema satisfies z.ZodType<DatabaseBackupStatus>,
     check_database_integrity:
@@ -326,7 +324,6 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     delete_channel_with_artifacts:
         artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
     list_media_page: mediaPageSchema satisfies z.ZodType<MediaPage>,
-    find_media_by_channel_and_file_path: mediaRowSchema.nullable() satisfies z.ZodType<MediaRow | null>,
     list_media_comments_by_media_id:
         z.array(mediaCommentRowSchema) satisfies z.ZodType<MediaCommentRow[]>,
     delete_media_with_artifacts: artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,

@@ -65,8 +65,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 
   What stays a flat file is a concern with no family: `database.rs`, `binaries.rs`,
   `cleanup.rs`, `logger.rs`, `filesystem.rs`, `live_chat_storage.rs`, `media_comments.rs`,
-  `pending_media.rs`, `process_registry.rs`, `ssrf_guard.rs`, `temp_paths.rs`,
-  `channel_repository.rs`.
+  `media_creation.rs`, `pending_media.rs`, `process_registry.rs`, `ssrf_guard.rs`,
+  `temp_paths.rs`, `channel_repository.rs`.
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
   across services:
   - `path.rs` - the path-safety primitives (sanitizing a relative path, canonicalizing and
@@ -235,21 +235,36 @@ inside `useAsyncFlag`, whose ref is set before any `await` - two synchronous inv
 never both pass, so a double click cannot start two downloads. For a yt-dlp source it generates
 the run id and opens the terminal session before calling into the service layer.
 
-`createMedia` (`src/services/media-service.ts`) is where the ordering lives:
+`createMedia` (`src/services/media-service.ts`) is a thin wrapper from there: it normalizes the form
+through `validateCreateMediaInput` and hands the whole request to one command, `create_media`. The
+ordering lives on the other side, in `services/media_creation.rs`:
 
-1. yt-dlp only: `ensureYtDlpMediaDoesNotAlreadyExist` on the resolved video id.
-2. `prepareMediaArtifacts` -> `prepareYtDlpArtifacts` / `prepareLocalArtifacts`
-   (`media-artifacts-service.ts`). **The files are in the library from here on.**
-3. `tryRecordPendingArtifacts` writes the crash marker. Everything between this line and
-   step 5 is the window where artifacts exist with no row pointing at them, and the marker is
-   what a startup that follows a crash reconciles (see `services/pending_media.rs`).
-4. `ensureMediaDoesNotAlreadyExist` on the stored file path, then the duration probe.
-5. `insertMedia` - the row lands.
-6. `finally`: `tryClearPendingArtifacts`. `catch` (when the row never landed):
-   `cleanupCreatedArtifacts`, one backend call that reference-counts and unlinks together.
+1. `normalize_create_media_request` - title, media type, and every stored value trimmed. Runs first
+   and entirely, so a rejected request has produced nothing to clean up.
+2. yt-dlp only: `ensure_youtube_media_is_new` on the video id the format picker resolved, so a
+   re-add fails before the download rather than after it.
+3. `prepare_yt_dlp_artifacts` / `prepare_local_artifacts` - the download or import, plus the
+   thumbnail. **The files are in the library from here on.**
+4. `register_prepared_media`, under `library::cleanup::media_registration_guard`: the crash marker,
+   the duplicate check on the stored path, `insert_media`, then the marker's removal. A failure
+   inside it cleans the artifacts up (reference-counted, so a path a registered row shares is kept)
+   while still holding the lock.
 
-Steps 2 and 3 are in that order and not the other way round: a marker written before the
-artifacts exist would name files that were never created.
+Steps 3 and 4 are in that order and not the other way round: a marker written before the artifacts
+exist would name files that were never created. And the marker is cleared *after* the row lands or
+the cleanup has run, never before, because until then it is the only record of what is on disk.
+
+**Why one command.** This was seven IPC calls until the transaction moved. Two things came with the
+move, and `SECURITY.md` covers both: the artifacts-without-a-row window no longer crosses the process
+boundary, and the exclusion against a concurrent reference-counted cleanup is a backend lock rather
+than the modal refusing to open twice. The individual steps (`import_media_file`,
+`download_media_from_url`, the two crash-marker commands, ...) were removed from the IPC surface at
+the same time - a command exposes an operation, not its steps.
+
+**What stayed in the renderer**, deliberately, is everything that runs *after* the row lands: the
+duration probe (`readMediaDurationInSeconds`, which needs a media element the backend does not have,
+written back through `update_media_duration`), the comment backup, and the live-chat notice. None of
+them can strand an artifact, because the media is already registered when they run.
 
 **Progress and cancellation.** During step 2 the backend streams `yt-dlp-log` / `yt-dlp-error`
 / `yt-dlp-finished` / `yt-dlp-cancelled` / `yt-dlp-terminal` (`src/constants/events.ts`),
@@ -260,11 +275,12 @@ recognizes `YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE` and routes it to the notice ch
 than the error modal - the user got the outcome they clicked for.
 
 **The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
-`isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set.
-This is not only UX: `SECURITY.md` records it as the one guarantee in that document resting on
-frontend behavior, because it is what keeps two creations from being in flight at once and
-racing the reference-counted cleanup. A change that lets a second run start - a queue, a batch
-import - has to revisit that note.
+`isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is
+now UX only - closing the modal mid-run would discard a terminal the user is watching. It used to be
+more than that: `SECURITY.md` recorded it as the one guarantee in that document resting on frontend
+behavior, because it was what kept two creations from racing the reference-counted cleanup. The lock
+in `library::cleanup` holds that property now, so a queue or a batch import is a UX question rather
+than a correctness one.
 
 ### Changing the library folder
 
@@ -341,7 +357,8 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Concern | Backend | Frontend |
 |---|---|---|
 | Channels CRUD | `commands/channels.rs`, `services/channel_repository.rs` | `repositories/channel-repository.ts` |
-| Media CRUD / import | `commands/videos.rs`, `commands/media.rs`, `services/video_repository/`, `services/library/media.rs` | `repositories/media-repository.ts`, `services/media-file-service.ts`, `services/media-input-service.ts` |
+| Media CRUD | `commands/videos.rs`, `services/video_repository/` | `repositories/media-repository.ts`, `services/media-service.ts` |
+| Creating a media (download or import, thumbnail, crash marker, row) | `commands/media.rs`, `services/media_creation.rs`, `services/library/media.rs` | `services/media-input-service.ts`, `hooks/use-add-media-workflow.ts` |
 | yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata.rs`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download.rs`, `services/thumbnail/url.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts` |

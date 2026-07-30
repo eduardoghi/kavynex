@@ -1,27 +1,19 @@
 import type { MediaCommentRow, YtDlpComment } from "../types/media";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { MediaPageQuery } from "../types/generated/MediaPageQuery";
+import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import {
-    clearPendingMediaArtifacts,
+    createMedia as createMediaInBackend,
     deleteMediaWithArtifacts,
-    findMediaByChannelAndFilePath,
-    insertMedia,
     listMediaCommentsByMediaId,
     listMediaPage,
     markMediaAsUnwatched,
     markMediaAsWatched,
-    mediaExistsForChannelAndYoutubeId,
-    recordPendingMediaArtifacts,
+    updateMediaDuration,
     updateMediaProgress,
     updateMediaTitle as updateMediaTitleInRepository,
 } from "../repositories";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
-import {
-    cleanupCreatedArtifacts,
-    prepareLocalArtifacts,
-    prepareYtDlpArtifacts,
-    type PreparedMediaArtifacts,
-} from "./media-artifacts-service";
 import {
     type CreateMediaInput,
     validateChannelId,
@@ -96,109 +88,34 @@ function normalizeFetchedComments(comments: YtDlpComment[]): YtDlpComment[] {
     }));
 }
 
-async function prepareMediaArtifacts(
-    input: CreateMediaInput
-): Promise<PreparedMediaArtifacts> {
-    if (input.sourceMode === "yt-dlp") {
-        return prepareYtDlpArtifacts({
-            sourceValue: input.sourceValue,
-            thumbnailSourcePath: input.thumbnailSourcePath,
-            libraryPath: input.libraryPath,
-            ytDlpRunId: input.ytDlpRunId,
-            ytDlpFormatId: input.ytDlpFormatId,
-            cookiesBrowser: input.cookiesBrowser,
-            cookiesPath: input.cookiesPath,
-            downloadLiveChat: input.downloadLiveChat,
-        });
-    }
-
-    return prepareLocalArtifacts({
-        sourceValue: input.sourceValue,
-        thumbnailSourcePath: input.thumbnailSourcePath,
-        mediaType: input.mediaType,
-        importMode: input.importMode,
-        libraryPath: input.libraryPath,
-        publishedAt: input.publishedAt,
-    });
-}
-
-async function ensureMediaDoesNotAlreadyExist(
-    channelId: number,
-    filePath: string
+// Measures the media that was just created and stores the result. Best effort and deliberately
+// after the fact: the probe decodes the file through a media element, so it can only run here, and
+// a media whose duration cannot be read is a card without a runtime rather than a failed import.
+//
+// It used to run *inside* the creation, between the crash marker and the insert. Besides putting a
+// renderer step in the middle of a backend transaction, that placement carried a real hazard: the
+// probe settles on `loadedmetadata` or `error`, and a source that fires neither left the promise
+// pending forever with the marker on disk and the row never inserted.
+async function tryStoreMeasuredDuration(
+    created: CreatedMedia,
+    libraryPath: string
 ): Promise<void> {
-    const existing = await findMediaByChannelAndFilePath(channelId, filePath);
-
-    if (existing) {
-        throw createAppError(
-            "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
-            "This media is already registered for the selected channel."
-        );
-    }
-}
-
-// Pre-download duplicate guard for the yt-dlp (URL) add flow: the youtube video id resolved
-// from the format-loading metadata (see use-yt-dlp-format-loader.ts) is known before the media
-// is downloaded, so a re-add of an already-registered video can fail fast with the same
-// friendly error `ensureMediaDoesNotAlreadyExist` raises for the local-import path, instead of
-// downloading the whole file and only then hitting the `idx_videos_channel_youtube_video_id_unique`
-// unique index in `insert_media`. The post-download index check stays in place as a safety net
-// (e.g. when the id could not be resolved up front, or a race with another add).
-async function ensureYtDlpMediaDoesNotAlreadyExist(
-    channelId: number,
-    youtubeVideoId: string | null
-): Promise<void> {
-    const normalizedVideoId = youtubeVideoId?.trim() ?? "";
-
-    if (!normalizedVideoId) {
-        return;
-    }
-
-    const alreadyExists = await mediaExistsForChannelAndYoutubeId(channelId, normalizedVideoId);
-
-    if (alreadyExists) {
-        throw createAppError(
-            "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
-            "This media is already registered for the selected channel."
-        );
-    }
-}
-
-// Records the prepared artifacts on disk before the row is inserted, so a process that does not
-// survive that window leaves a trace the next startup can reconcile (see
-// src-tauri/src/services/pending_media.rs). Best effort: failing to write the marker must not fail
-// the creation itself - the artifacts are already in the library and the user asked for them, so
-// losing the crash-recovery hint is strictly better than losing the media.
-async function tryRecordPendingArtifacts(
-    prepared: PreparedMediaArtifacts
-): Promise<string | null> {
     try {
-        return await recordPendingMediaArtifacts(
-            prepared.filePath,
-            prepared.thumbnailPath,
-            prepared.liveChatFilePath ?? null
+        const durationSeconds = await readMediaDurationInSeconds(
+            created.filePath,
+            libraryPath,
+            created.mediaType
         );
+
+        if (durationSeconds === null) {
+            return;
+        }
+
+        await updateMediaDuration(created.id, durationSeconds);
     } catch (error) {
-        logError("media-service", "Could not record the pending media artifacts.", error, {
-            filePath: prepared.filePath,
+        logError("media-service", "Could not store the measured media duration.", error, {
+            mediaId: created.id,
         });
-
-        return null;
-    }
-}
-
-// Clears the marker once the creation has resolved one way or the other. Best effort for the same
-// reason, and harmless if it fails: the startup sweep hands the paths to the reference-counting
-// cleanup, which keeps anything a registered row still points at - so a marker that outlives a
-// creation that actually succeeded deletes nothing.
-async function tryClearPendingArtifacts(marker: string | null): Promise<void> {
-    if (!marker) {
-        return;
-    }
-
-    try {
-        await clearPendingMediaArtifacts(marker);
-    } catch (error) {
-        logError("media-service", "Could not clear the pending media marker.", error, { marker });
     }
 }
 
@@ -326,110 +243,69 @@ export async function createMedia(
 ): Promise<CreateMediaResult> {
     const normalizedInput = validateCreateMediaInput(input);
 
-    let createdFilePath: string | null = null;
-    let createdThumbnailPath: string | null = null;
-    let createdLiveChatFilePath: string | null = null;
-    let mediaRegistered = false;
-    // Set once the artifacts exist on disk and cleared in the `finally` below. Between those two
-    // points the files are in the library with no row pointing at them, and the `catch` that cleans
-    // that up only runs if this process survives - which is the case the marker exists for.
-    let pendingMarker: string | null = null;
+    await emitProgress(options.onProgress, "Registering media in local library...");
 
-    try {
-        if (normalizedInput.sourceMode === "yt-dlp") {
-            await ensureYtDlpMediaDoesNotAlreadyExist(
-                normalizedInput.channelId,
-                normalizedInput.ytDlpYoutubeVideoId
+    // One call, and everything that used to be sequenced here is inside it: the duplicate
+    // pre-check, the download or import, the thumbnail, the crash marker, the insert and the
+    // marker's removal. What that buys is not fewer lines but a window that no longer crosses the
+    // process boundary, and an exclusion against a concurrent cleanup that is a backend lock rather
+    // than this modal refusing to open twice. A failure unwinds inside the backend too, artifacts
+    // and all, so there is nothing left here to clean up.
+    const created = await createMediaInBackend({
+        channelId: normalizedInput.channelId,
+        title: normalizedInput.title,
+        sourceMode: normalizedInput.sourceMode,
+        sourceValue: normalizedInput.sourceValue,
+        thumbnailSourcePath: normalizedInput.thumbnailSourcePath,
+        mediaType: normalizedInput.mediaType,
+        importMode: normalizedInput.importMode,
+        libraryPath: normalizedInput.libraryPath,
+        publishedAt: normalizedInput.publishedAt,
+        ytDlpRunId: normalizedInput.ytDlpRunId,
+        ytDlpFormatId: normalizedInput.ytDlpFormatId,
+        ytDlpYoutubeVideoId: normalizedInput.ytDlpYoutubeVideoId,
+        downloadLiveChat: normalizedInput.downloadLiveChat,
+        cookiesBrowser: normalizedInput.cookiesBrowser,
+        cookiesPath: normalizedInput.cookiesPath,
+    });
+
+    await emitProgress(options.onProgress, "Media registered successfully.");
+
+    // Everything below runs against a media that is already registered, which is why it stayed on
+    // this side: each step is best effort, none of it can strand an artifact, and the duration probe
+    // needs a media element the backend does not have.
+    await tryStoreMeasuredDuration(created, normalizedInput.libraryPath);
+
+    if (normalizedInput.sourceMode === "yt-dlp") {
+        if (normalizedInput.downloadComments) {
+            await tryPersistYouTubeComments(
+                created.id,
+                created.youtubeVideoId,
+                normalizedInput.cookiesBrowser,
+                normalizedInput.cookiesPath,
+                options.onProgress
             );
+        } else {
+            await emitProgress(options.onProgress, "Skipping comments: disabled by user.");
         }
 
-        const prepared = await prepareMediaArtifacts(normalizedInput);
-
-        createdFilePath = prepared.filePath;
-        createdThumbnailPath = prepared.thumbnailPath;
-        createdLiveChatFilePath = prepared.liveChatFilePath ?? null;
-
-        // The artifacts exist from here on, so record them before anything else can fail or the
-        // process can die. Everything between this line and insertMedia is the window a marker
-        // recovers from.
-        pendingMarker = await tryRecordPendingArtifacts(prepared);
-
-        await emitProgress(options.onProgress, "Registering media in local library...");
-
-        await ensureMediaDoesNotAlreadyExist(normalizedInput.channelId, prepared.filePath);
-
-        const durationSeconds = await readMediaDurationInSeconds(
-            prepared.filePath,
-            normalizedInput.libraryPath,
-            prepared.mediaType
-        );
-
-        const createdId = await insertMedia({
-            channelId: normalizedInput.channelId,
-            title: normalizedInput.title,
-            filePath: prepared.filePath,
-            thumbnailPath: prepared.thumbnailPath,
-            mediaType: prepared.mediaType,
-            youtubeVideoId: prepared.youtubeVideoId,
-            publishedAt: prepared.publishedAt,
-            durationSeconds,
-            isLive: Boolean(prepared.isLive),
-            liveChatFilePath: prepared.liveChatFilePath ?? null,
-        });
-
-        mediaRegistered = true;
-
-        await emitProgress(options.onProgress, "Media registered successfully.");
-
-        if (normalizedInput.sourceMode === "yt-dlp") {
-            if (normalizedInput.downloadComments) {
-                await tryPersistYouTubeComments(
-                    createdId,
-                    prepared.youtubeVideoId,
-                    normalizedInput.cookiesBrowser,
-                    normalizedInput.cookiesPath,
-                    options.onProgress
+        if (normalizedInput.downloadLiveChat) {
+            if (created.liveChatFilePath?.trim()) {
+                await emitProgress(options.onProgress, "Live chat replay saved successfully.");
+            } else {
+                await emitProgress(
+                    options.onProgress,
+                    "Live chat replay was not found for this media."
                 );
-            } else {
-                await emitProgress(options.onProgress, "Skipping comments: disabled by user.");
             }
-
-            if (normalizedInput.downloadLiveChat) {
-                if (prepared.liveChatFilePath?.trim()) {
-                    await emitProgress(options.onProgress, "Live chat replay saved successfully.");
-                } else {
-                    await emitProgress(
-                        options.onProgress,
-                        "Live chat replay was not found for this media."
-                    );
-                }
-            } else {
-                await emitProgress(options.onProgress, "Skipping live chat: disabled by user.");
-            }
+        } else {
+            await emitProgress(options.onProgress, "Skipping live chat: disabled by user.");
         }
-
-        return {
-            id: createdId ?? null,
-        };
-    } catch (error) {
-        if (!mediaRegistered) {
-            // One atomic backend call reference-counts and removes the media file,
-            // thumbnail and live chat replay that were prepared before insertMedia failed,
-            // keeping any that a registered row still shares.
-            await cleanupCreatedArtifacts(
-                createdFilePath,
-                createdThumbnailPath,
-                createdLiveChatFilePath
-            );
-        }
-
-        throw error;
-    } finally {
-        // Both outcomes are resolved by now: either the row was inserted, or the catch above
-        // cleaned the artifacts up. Either way there is nothing left for the startup sweep to
-        // reconcile, so the marker goes.
-        await tryClearPendingArtifacts(pendingMarker);
     }
+
+    return {
+        id: created.id,
+    };
 }
 
 // The backend deletes the row and its now-unreferenced files atomically; files it could

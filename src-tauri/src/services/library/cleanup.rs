@@ -520,31 +520,23 @@ pub async fn delete_channel_with_artifacts(
 /// (the same video added to several channels, a thumbnail reused as a channel avatar), so a
 /// freshly prepared artifact can already back a registered row; such a path is kept.
 ///
-/// What the single backend call does and does not close: the frontend can no longer interleave
-/// an operation between "is it still used" and "delete it", which is the race that existed when
-/// this was orchestrated over several IPC round-trips. It does **not** make the count and the
-/// unlink atomic against a concurrent *backend* command. A wrapping transaction would not fix
-/// that either - the unlink necessarily happens after any commit, since the filesystem cannot
-/// join a SQLite transaction - so the delete paths above are not a template to copy here; only a
-/// lock keyed by artifact path, held across both the count and the unlink and taken by
-/// `insert_media` too, would close it.
+/// What the count and the unlink are serialized against: [`MEDIA_REGISTRATION_LOCK`]. A wrapping
+/// transaction cannot help - the unlink necessarily happens after any commit, since the filesystem
+/// cannot join a SQLite transaction - so the delete paths above are not a template to copy here.
+/// The lock is what closes it, and `services::media_creation` takes the same one around its own
+/// marker/duplicate-check/insert sequence, so a creation resolving to the same content-addressed
+/// path can never be counted as absent by a cleanup that is about to unlink the file it just wrote.
 ///
-/// That is deliberately not built, because neither caller can currently reach the interleaving, and
-/// they are kept out of it by different means - so a new caller has to establish its own guard rather
-/// than inherit one:
+/// This used to rest on the add-media modal being locked for the duration of one creation, i.e. on
+/// frontend behavior, which is the one thing the rest of this codebase refuses to depend on. It no
+/// longer does: the whole creation is a single backend call now, so the exclusion is a lock here
+/// rather than a flag in the renderer.
 ///
-/// - The manual/Diagnostics path (and an add-media run's own failure path) needs two media creations
-///   in flight at once resolving to the same content-addressed path, and the add-media modal is
-///   locked for the duration of one (`isModalLocked` covers the whole run), so a second cannot start.
-///   If that ever changes - a queue, a batch import, background re-download - this becomes reachable
-///   and the consequence is a row pointing at a file this deleted, so revisit it then rather than
-///   assuming the count still holds.
-/// - The startup sweep (`services::pending_media`) is a *backend* caller, so that modal lock does not
-///   cover it at all. It carries its own guard: it refuses any marker registered as in flight by this
-///   process or newer than the process itself (`pending_media::marker_is_sweepable`), because a
-///   creation that has written its artifacts but not yet reached `insert_media` is indistinguishable
-///   here from one that died there - and consuming its marker would unlink the file the user is
-///   adding right now.
+/// The startup sweep (`services::pending_media`) keeps its own, separate guard on top, because the
+/// lock alone cannot answer its question: it refuses any marker registered as in flight by this
+/// process or newer than the process itself (`pending_media::marker_is_sweepable`), since a creation
+/// that has written its artifacts but not yet reached `insert_media` is indistinguishable *by
+/// reference count* from one that died there.
 ///
 /// See the matching section in `SECURITY.md` for the same split written for a reader auditing the
 /// trust boundary rather than this function.
@@ -571,7 +563,43 @@ async fn plan_unreferenced_artifacts(
     Ok(plan)
 }
 
+/// Serializes a reference-counted artifact cleanup against a media registration.
+///
+/// Both sides of the race this closes are short and rare, so one lock is enough and a map keyed by
+/// artifact path would only add a way to get the keying wrong. What it must *not* cover is the
+/// expensive half of a creation: the download and the import run outside it, so holding this never
+/// blocks anything a user waits on - `media_creation` takes it only around the marker, the duplicate
+/// check and the insert, which are milliseconds.
+///
+/// A single static lock, like `db_backup`'s `BACKUP_IN_PROGRESS`: there is one library process-wide
+/// and the lock holds no state a test needs to inject.
+static MEDIA_REGISTRATION_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Acquires [`MEDIA_REGISTRATION_LOCK`] for a media registration. Held by
+/// `services::media_creation` from before the crash marker is written until after the row lands, so
+/// a concurrent cleanup cannot observe the artifacts as unreferenced in that window.
+pub async fn media_registration_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    MEDIA_REGISTRATION_LOCK.lock().await
+}
+
 pub async fn cleanup_unreferenced_artifacts(
+    app: &AppHandle,
+    file_path: Option<String>,
+    thumbnail_path: Option<String>,
+    live_chat_file_path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
+    let _guard = MEDIA_REGISTRATION_LOCK.lock().await;
+
+    cleanup_unreferenced_artifacts_locked(app, file_path, thumbnail_path, live_chat_file_path).await
+}
+
+/// The body of [`cleanup_unreferenced_artifacts`], for a caller that already holds
+/// [`MEDIA_REGISTRATION_LOCK`].
+///
+/// It exists because the creation's own failure path has to clean up while still holding that lock -
+/// taking it a second time would deadlock, and releasing it first would reopen the window between
+/// the failed insert and the unlink. Every other caller goes through the public function above.
+pub(crate) async fn cleanup_unreferenced_artifacts_locked(
     app: &AppHandle,
     file_path: Option<String>,
     thumbnail_path: Option<String>,

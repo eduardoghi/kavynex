@@ -34,15 +34,10 @@ export {
 } from "./library-service";
 
 export {
-    downloadMediaFromUrl,
     cancelMediaDownload,
     listYtDlpFormats,
     fetchYouTubeComments,
 } from "./media-download-service";
-
-export {
-    importMediaFile,
-} from "./media-file-service";
 
 export {
     listChannelMediaPage,
@@ -60,6 +55,5 @@ export {
     deleteThumbnailFile,
     generateTemporaryThumbnail,
     deleteTemporaryThumbnail,
-    downloadThumbnailFromUrl,
     downloadChannelAvatarFromHandle,
 } from "./thumbnail-service";

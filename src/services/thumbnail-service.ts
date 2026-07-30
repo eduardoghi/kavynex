@@ -66,28 +66,10 @@ export async function persistThumbnailFile(
     );
 }
 
-export async function downloadThumbnailFromUrl(
-    url: string,
-    libraryPath: string
-): Promise<string> {
-    const normalizedUrl = normalizeString(url);
-    const normalizedLibraryPath = normalizeString(libraryPath);
-
-    if (!normalizedUrl) {
-        throw new ClientError("Thumbnail URL is required.");
-    }
-
-    if (!normalizedLibraryPath) {
-        throw new ClientError("Library path is required.");
-    }
-
-    return normalizeString(
-        await invokeCommand(TAURI_COMMANDS.DOWNLOAD_THUMBNAIL_FROM_URL, {
-            url: normalizedUrl,
-            libraryPath: normalizedLibraryPath,
-        })
-    );
-}
+// Fetching a thumbnail by URL is not called from here any more: its only caller resolved the
+// thumbnail for a media being created, and that whole sequence runs in the backend now
+// (`create_media`). The avatar download below stays, because it is its own operation - a user
+// changing a channel's picture, with no artifacts-without-a-row window behind it.
 
 export async function downloadChannelAvatarFromHandle(
     youtubeHandle: string,

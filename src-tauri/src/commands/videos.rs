@@ -57,19 +57,6 @@ pub async fn find_media_by_channel_and_file_path(
     repo::find_media_by_channel_and_file_path(&pool, channel_id, &file_path).await
 }
 
-/// Pre-check used by the yt-dlp (URL) add flow before the video is downloaded: lets the
-/// frontend fail early with the friendly "already registered" error instead of downloading the
-/// whole file only to hit the unique index in `insert_media` afterwards.
-#[tauri::command]
-pub async fn media_exists_for_channel_and_youtube_id(
-    db: State<'_, Db>,
-    channel_id: i64,
-    youtube_video_id: String,
-) -> AppResult<bool> {
-    let pool = db.pool().await?;
-    repo::media_exists_for_channel_and_youtube_id(&pool, channel_id, &youtube_video_id).await
-}
-
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_media(
@@ -154,6 +141,31 @@ pub async fn mark_media_as_unwatched(db: State<'_, Db>, media_id: i64) -> AppRes
     repo::mark_media_as_unwatched(&pool, media_id).await
 }
 
+/// Records the duration the renderer measured for a media that has already been created.
+///
+/// The probe runs after `create_media` returns, not inside it: it decodes the file through a media
+/// element, which is a capability the webview has and the backend would have to re-implement over
+/// FFmpeg to match. Keeping it outside also keeps it off the creation's critical path - it used to
+/// sit between the crash marker and the insert, where a source that never fired `loadedmetadata` nor
+/// `error` would hang the whole creation with the marker on disk.
+///
+/// A negative or absurd value is refused rather than stored: it arrives over IPC, and a duration is
+/// only ever a count of seconds.
+#[tauri::command]
+pub async fn update_media_duration(
+    db: State<'_, Db>,
+    media_id: i64,
+    duration_seconds: Option<i64>,
+) -> AppResult<()> {
+    // A media element reports a non-finite or non-positive duration for a file it could not read,
+    // which the renderer already maps to "unknown"; normalizing the same way here means the column
+    // holds either a real measurement or nothing, never a zero that renders as "0:00".
+    let duration_seconds = duration_seconds.filter(|seconds| *seconds > 0);
+
+    let pool = db.pool().await?;
+    repo::update_media_duration(&pool, media_id, duration_seconds).await
+}
+
 #[tauri::command]
 pub async fn update_media_progress(
     db: State<'_, Db>,
@@ -200,7 +212,6 @@ mod tests {
                 mark_media_as_unwatched,
                 update_media_progress,
                 find_media_by_channel_and_file_path,
-                media_exists_for_channel_and_youtube_id,
                 list_media_comments_by_media_id,
                 get_media_repository_stats,
                 list_media_integrity_references
@@ -502,36 +513,6 @@ mod tests {
         .deserialize::<serde_json::Value>()
         .unwrap();
         assert!(missing.is_null());
-    }
-
-    #[test]
-    fn media_exists_for_channel_and_youtube_id_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-
-        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
-        body["youtubeVideoId"] = serde_json::json!("vid123");
-        invoke(&webview, "insert_media", body).unwrap();
-
-        let exists = invoke(
-            &webview,
-            "media_exists_for_channel_and_youtube_id",
-            serde_json::json!({ "channelId": channel_id, "youtubeVideoId": "vid123" }),
-        )
-        .unwrap()
-        .deserialize::<bool>()
-        .unwrap();
-        assert!(exists);
-
-        let absent = invoke(
-            &webview,
-            "media_exists_for_channel_and_youtube_id",
-            serde_json::json!({ "channelId": channel_id, "youtubeVideoId": "other" }),
-        )
-        .unwrap()
-        .deserialize::<bool>()
-        .unwrap();
-        assert!(!absent);
     }
 
     #[test]

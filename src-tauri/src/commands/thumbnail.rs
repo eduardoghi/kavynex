@@ -26,17 +26,6 @@ pub async fn persist_thumbnail_file(
 }
 
 #[tauri::command]
-pub async fn download_thumbnail_from_url(
-    app: AppHandle,
-    url: String,
-    library_path: String,
-) -> AppResult<String> {
-    ensure_configured_library_path(&app, &library_path).await?;
-
-    thumbnail::download_thumbnail_from_url_async(&app, &url, &library_path).await
-}
-
-#[tauri::command]
 pub async fn download_channel_avatar_from_handle(
     app: AppHandle,
     youtube_handle: String,

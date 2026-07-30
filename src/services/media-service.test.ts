@@ -9,22 +9,13 @@ import {
 } from "./media-service";
 
 vi.mock("../repositories", () => ({
-    clearPendingMediaArtifacts: vi.fn(),
+    createMedia: vi.fn(),
     deleteMediaWithArtifacts: vi.fn(),
-    findMediaByChannelAndFilePath: vi.fn(),
-    insertMedia: vi.fn(),
     listMediaCommentsByMediaId: vi.fn(),
     markMediaAsUnwatched: vi.fn(),
     markMediaAsWatched: vi.fn(),
-    mediaExistsForChannelAndYoutubeId: vi.fn(),
-    recordPendingMediaArtifacts: vi.fn(),
+    updateMediaDuration: vi.fn(),
     updateMediaProgress: vi.fn(),
-}));
-
-vi.mock("./media-artifacts-service", () => ({
-    cleanupCreatedArtifacts: vi.fn(),
-    prepareLocalArtifacts: vi.fn(),
-    prepareYtDlpArtifacts: vi.fn(),
 }));
 
 vi.mock("./media-input-service", () => ({
@@ -51,309 +42,198 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import {
-    clearPendingMediaArtifacts,
+    createMedia as createMediaInBackend,
     deleteMediaWithArtifacts,
-    findMediaByChannelAndFilePath,
-    insertMedia,
     markMediaAsUnwatched,
     markMediaAsWatched,
-    mediaExistsForChannelAndYoutubeId,
-    recordPendingMediaArtifacts,
+    updateMediaDuration,
     updateMediaProgress,
 } from "../repositories";
-import {
-    cleanupCreatedArtifacts,
-    prepareLocalArtifacts,
-    prepareYtDlpArtifacts,
-} from "./media-artifacts-service";
-import {
-    validateCreateMediaInput,
-    validateMediaId,
-} from "./media-input-service";
+import { validateCreateMediaInput, validateMediaId } from "./media-input-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
 import { fetchYouTubeComments } from "./media-download-service";
 import { replaceMediaCommentsInBackend } from "./media-comments-service";
 import { logError } from "../utils/app-logger";
+import type { CreatedMedia } from "../types/generated/CreatedMedia";
+import type { CreateMediaInput } from "./media-input-service";
+
+function localInput(overrides: Partial<CreateMediaInput> = {}): CreateMediaInput {
+    return {
+        channelId: 10,
+        title: "Video A",
+        sourceMode: "local",
+        sourceValue: "/tmp/a.mp4",
+        thumbnailSourcePath: null,
+        mediaType: "video",
+        importMode: "copy",
+        libraryPath: "/library",
+        publishedAt: "2026-03-31",
+        ytDlpRunId: "",
+        ytDlpFormatId: "",
+        ytDlpYoutubeVideoId: null,
+        downloadComments: false,
+        downloadLiveChat: false,
+        cookiesBrowser: null,
+        cookiesPath: null,
+        ...overrides,
+    };
+}
+
+function ytDlpInput(overrides: Partial<CreateMediaInput> = {}): CreateMediaInput {
+    return localInput({
+        sourceMode: "yt-dlp",
+        sourceValue: "https://www.youtube.com/watch?v=abc",
+        ytDlpRunId: "run-1",
+        ytDlpFormatId: "137+140",
+        ytDlpYoutubeVideoId: "abc",
+        ...overrides,
+    });
+}
+
+function created(overrides: Partial<CreatedMedia> = {}): CreatedMedia {
+    return {
+        id: 55,
+        filePath: "video/media_a.mp4",
+        thumbnailPath: "thumbnails/thumb_a.jpg",
+        mediaType: "video",
+        youtubeVideoId: null,
+        liveChatFilePath: null,
+        isLive: false,
+        ...overrides,
+    };
+}
 
 describe("media-service", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValue(null);
     });
 
-    it("creates local media successfully", async () => {
-        const normalizedInput = {
+    // The orchestration these tests used to cover - the duplicate pre-check, the artifact
+    // preparation, the crash marker, the insert and the failure cleanup - is not in this module any
+    // more. It runs in `services::media_creation` on the Rust side, and its ordering and refusals are
+    // tested there. What is left here is the request this module hands over and the best-effort steps
+    // it runs afterwards, so that is what is asserted.
+
+    it("hands the whole request to the backend in one call", async () => {
+        const input = ytDlpInput();
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
+
+        await expect(createMedia(input)).resolves.toEqual({ id: 55 });
+
+        // Every field the creation needs, and nothing this side invented: `downloadComments` stays
+        // here because the comment backup runs after the row lands, not inside the creation.
+        expect(createMediaInBackend).toHaveBeenCalledWith({
             channelId: 10,
             title: "Video A",
-            sourceMode: "local" as const,
-            sourceValue: "/tmp/a.mp4",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: "2026-03-31",
-            ytDlpRunId: "",
-            ytDlpFormatId: "",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-
-        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: null,
-            publishedAt: "2026-03-31",
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(125);
-        vi.mocked(insertMedia).mockResolvedValueOnce(55);
-
-        const result = await createMedia(normalizedInput);
-
-        expect(validateCreateMediaInput).toHaveBeenCalledWith(normalizedInput);
-        expect(prepareLocalArtifacts).toHaveBeenCalledWith({
-            sourceValue: "/tmp/a.mp4",
+            sourceMode: "yt-dlp",
+            sourceValue: "https://www.youtube.com/watch?v=abc",
             thumbnailSourcePath: null,
             mediaType: "video",
             importMode: "copy",
             libraryPath: "/library",
             publishedAt: "2026-03-31",
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137+140",
+            ytDlpYoutubeVideoId: "abc",
+            downloadLiveChat: false,
+            cookiesBrowser: null,
+            cookiesPath: null,
         });
-        expect(findMediaByChannelAndFilePath).toHaveBeenCalledWith(10, "video/a.mp4");
+    });
+
+    it("sends the normalized input rather than the raw one", async () => {
+        // validateCreateMediaInput trims and normalizes; sending the caller's object instead would
+        // put padded values on the wire, where they would be validated in one form and stored in
+        // another.
+        const raw = localInput({ title: "  Video A  " });
+        const normalized = localInput({ title: "Video A" });
+
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalized);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created());
+
+        await createMedia(raw);
+
+        expect(validateCreateMediaInput).toHaveBeenCalledWith(raw);
+        expect(createMediaInBackend).toHaveBeenCalledWith(
+            expect.objectContaining({ title: "Video A" })
+        );
+    });
+
+    it("does not create anything when validation rejects the input", async () => {
+        vi.mocked(validateCreateMediaInput).mockImplementationOnce(() => {
+            throw new Error("Media title is required.");
+        });
+
+        await expect(createMedia(localInput())).rejects.toThrow("Media title is required.");
+        expect(createMediaInBackend).not.toHaveBeenCalled();
+    });
+
+    it("propagates a backend failure without cleaning anything up itself", async () => {
+        // The failure unwinds inside the backend, artifacts and all, so this side must not attempt
+        // its own cleanup - doing so was what made the sequence a distributed transaction.
+        const input = ytDlpInput();
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockRejectedValueOnce(
+            new Error("this media is already registered for the selected channel")
+        );
+
+        await expect(createMedia(input)).rejects.toThrow("already registered");
+        expect(updateMediaDuration).not.toHaveBeenCalled();
+        expect(fetchYouTubeComments).not.toHaveBeenCalled();
+    });
+
+    it("measures the created media and stores the duration afterwards", async () => {
+        const input = localInput();
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created());
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(125);
+
+        await createMedia(input);
+
+        // Probed at the stored path the backend answered with, not at the source the user picked.
         expect(readMediaDurationInSeconds).toHaveBeenCalledWith(
-            "video/a.mp4",
+            "video/media_a.mp4",
             "/library",
             "video"
         );
-        expect(insertMedia).toHaveBeenCalledWith({
-            channelId: 10,
-            title: "Video A",
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            mediaType: "video",
-            youtubeVideoId: null,
-            publishedAt: "2026-03-31",
-            durationSeconds: 125,
-            isLive: false,
-            liveChatFilePath: null,
-        });
-        expect(result).toEqual({ id: 55 });
+        expect(updateMediaDuration).toHaveBeenCalledWith(55, 125);
     });
 
-    it("creates yt-dlp media successfully", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: true,
-            cookiesBrowser: "edge",
-            cookiesPath: null,
-        };
+    it("skips the duration write when the file could not be measured", async () => {
+        // A probe that cannot read the file resolves null, which is the ordinary outcome for an
+        // exotic container. Writing it back would cost a round trip to store what the column
+        // already holds.
+        const input = localInput();
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created());
+        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(null);
 
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        await createMedia(input);
 
-        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: "abc",
-            publishedAt: "2026-03-31",
-            mediaType: "video",
-            isLive: true,
-            liveChatFilePath: "live-chat/abc.json",
-        });
+        expect(updateMediaDuration).not.toHaveBeenCalled();
+    });
 
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(242);
-        vi.mocked(insertMedia).mockResolvedValueOnce(77);
+    it("still reports the created media when the duration step fails", async () => {
+        // The media is registered by then, so a failed measurement is a card without a runtime -
+        // never a failed import, and never something the user is shown an error for.
+        const input = localInput();
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created());
+        vi.mocked(readMediaDurationInSeconds).mockRejectedValueOnce(new Error("decode failed"));
 
-        const result = await createMedia(normalizedInput);
+        await expect(createMedia(input)).resolves.toEqual({ id: 55 });
 
-        expect(prepareYtDlpArtifacts).toHaveBeenCalledWith({
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            libraryPath: "/library",
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            cookiesBrowser: "edge",
-            cookiesPath: null,
-            downloadLiveChat: true,
-        });
-        expect(readMediaDurationInSeconds).toHaveBeenCalledWith(
-            "video/a.mp4",
-            "/library",
-            "video"
+        expect(logError).toHaveBeenCalledWith(
+            "media-service",
+            expect.stringContaining("duration"),
+            expect.anything(),
+            { mediaId: 55 }
         );
-        expect(insertMedia).toHaveBeenCalledWith({
-            channelId: 10,
-            title: "Video A",
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            mediaType: "video",
-            youtubeVideoId: "abc",
-            publishedAt: "2026-03-31",
-            durationSeconds: 242,
-            isLive: true,
-            liveChatFilePath: "live-chat/abc.json",
-        });
-        expect(result).toEqual({ id: 77 });
     });
 
-    it("checks for a yt-dlp duplicate by the resolved youtube video id and proceeds when none exists", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            ytDlpYoutubeVideoId: "abc",
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-        vi.mocked(mediaExistsForChannelAndYoutubeId).mockResolvedValueOnce(false);
-        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: "abc",
-            publishedAt: "2026-03-31",
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(242);
-        vi.mocked(insertMedia).mockResolvedValueOnce(78);
-
-        const result = await createMedia(normalizedInput);
-
-        expect(mediaExistsForChannelAndYoutubeId).toHaveBeenCalledWith(10, "abc");
-        expect(prepareYtDlpArtifacts).toHaveBeenCalled();
-        expect(insertMedia).toHaveBeenCalled();
-        expect(result).toEqual({ id: 78 });
-    });
-
-    it("rejects a yt-dlp duplicate by the resolved youtube video id before downloading", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            ytDlpYoutubeVideoId: "abc",
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-        vi.mocked(mediaExistsForChannelAndYoutubeId).mockResolvedValueOnce(true);
-
-        await expect(createMedia(normalizedInput)).rejects.toThrow(
-            "This media is already registered for the selected channel."
-        );
-
-        expect(mediaExistsForChannelAndYoutubeId).toHaveBeenCalledWith(10, "abc");
-        // The heavy yt-dlp download/artifact preparation must never run for an
-        // already-registered video: this must fail fast, before wasting bandwidth/time.
-        expect(prepareYtDlpArtifacts).not.toHaveBeenCalled();
-        expect(insertMedia).not.toHaveBeenCalled();
-    });
-
-    it("skips the yt-dlp duplicate check when no youtube video id was resolved", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: null,
-            publishedAt: null,
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
-        vi.mocked(insertMedia).mockResolvedValueOnce(79);
-
-        const result = await createMedia(normalizedInput);
-
-        expect(mediaExistsForChannelAndYoutubeId).not.toHaveBeenCalled();
-        expect(prepareYtDlpArtifacts).toHaveBeenCalled();
-        expect(result).toEqual({ id: 79 });
-    });
-
-    it("persists fetched comments through the backend when adding yt-dlp media", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: true,
-            downloadLiveChat: false,
-            cookiesBrowser: "edge",
-            cookiesPath: null,
-        };
-
+    it("persists fetched comments for a yt-dlp media when the user asked for them", async () => {
         const fetchedComment = {
             comment_id: "c1",
             parent_comment_id: null,
@@ -372,372 +252,77 @@ describe("media-service", () => {
             published_at: "2026-01-01",
         };
 
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: "abc",
-            publishedAt: "2026-03-31",
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(242);
-        vi.mocked(insertMedia).mockResolvedValueOnce(77);
+        const input = ytDlpInput({ downloadComments: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
         vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([fetchedComment]);
-        vi.mocked(replaceMediaCommentsInBackend).mockResolvedValueOnce(1);
 
-        await createMedia(normalizedInput);
+        await createMedia(input);
 
-        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", "edge", null);
-        expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(77, [fetchedComment]);
+        // The video id comes off the created media rather than the request: for a yt-dlp source the
+        // backend resolved it from the download, which is the authoritative one.
+        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", null, null);
+        expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(55, [fetchedComment]);
     });
 
-    it("cleans created artifacts when insertMedia rejects before registration", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "local" as const,
-            sourceValue: "/tmp/a.mp4",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "",
-            ytDlpFormatId: "",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
+    it("skips the comment backup when the user turned it off", async () => {
+        const input = ytDlpInput({ downloadComments: false });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
 
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        await createMedia(input);
 
-        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: null,
-            publishedAt: null,
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-
-        vi.mocked(findMediaByChannelAndFilePath).mockRejectedValueOnce(new Error("db failed"));
-        vi.mocked(cleanupCreatedArtifacts).mockResolvedValueOnce(undefined);
-
-        await expect(createMedia(normalizedInput)).rejects.toThrow("db failed");
-
-        expect(cleanupCreatedArtifacts).toHaveBeenCalledWith(
-            "video/a.mp4",
-            "thumbnails/a.jpg",
-            null
-        );
+        expect(fetchYouTubeComments).not.toHaveBeenCalled();
     });
 
-    it("cleans every artifact through one call when insertMedia rejects before registration", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: true,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
+    it("does not fetch comments for a local import", async () => {
+        const input = localInput({ downloadComments: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created());
 
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
+        await createMedia(input);
 
-        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: "abc",
-            publishedAt: null,
-            mediaType: "video",
-            isLive: true,
-            liveChatFilePath: "live-chat/abc.json",
-        });
-
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
-        vi.mocked(insertMedia).mockRejectedValueOnce(new Error("db constraint"));
-        vi.mocked(cleanupCreatedArtifacts).mockResolvedValueOnce(undefined);
-
-        await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
-
-        // The media file, thumbnail and live chat replay are all handed to the single
-        // atomic backend cleanup; the "is the live chat still referenced" decision now lives
-        // in the backend, not in a separate frontend reference-count call.
-        expect(cleanupCreatedArtifacts).toHaveBeenCalledWith(
-            "video/a.mp4",
-            "thumbnails/a.jpg",
-            "live-chat/abc.json"
-        );
+        expect(fetchYouTubeComments).not.toHaveBeenCalled();
     });
 
-    it("does not clean artifacts when error occurs after successful insertMedia", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "yt-dlp" as const,
-            sourceValue: "https://youtube.com/watch?v=abc",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "run-1",
-            ytDlpFormatId: "137",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: true,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
+    it("still reports the created media when the comment backup fails", async () => {
+        const input = ytDlpInput({ downloadComments: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
+        vi.mocked(fetchYouTubeComments).mockRejectedValueOnce(new Error("extraction incomplete"));
 
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-
-        vi.mocked(prepareYtDlpArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: "abc",
-            publishedAt: null,
-            mediaType: "video",
-            isLive: true,
-            liveChatFilePath: "live-chat/abc.json",
-        });
-
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(100);
-        vi.mocked(insertMedia).mockResolvedValueOnce(42);
-
-        // first onProgress call is before insertMedia - must resolve so insertMedia runs
-        // second call is after insertMedia succeeds (mediaRegistered = true) - then rejects
-        const failingOnProgress = vi.fn()
-            .mockResolvedValueOnce(undefined)
-            .mockRejectedValueOnce(new Error("progress failed"));
-
-        await expect(createMedia(normalizedInput, { onProgress: failingOnProgress })).rejects.toThrow(
-            "progress failed"
-        );
-
-        expect(cleanupCreatedArtifacts).not.toHaveBeenCalled();
+        await expect(createMedia(input)).resolves.toEqual({ id: 55 });
     });
 
-    it("rejects duplicate media for channel", async () => {
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "local" as const,
-            sourceValue: "/tmp/a.mp4",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "",
-            ytDlpFormatId: "",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-
-        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: null,
-            youtubeVideoId: null,
-            publishedAt: null,
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce({
-            id: 1,
-            channel_id: 10,
-            title: "Video A",
-            file_path: "video/a.mp4",
-            thumbnail_path: null,
-            media_type: "video",
-            youtube_video_id: null,
-            watched_at: null,
-            published_at: null,
-            duration_seconds: 125,
-            progress_seconds: 0,
-            has_comments: 0,
-            comments_count: 0,
-            is_live: 0,
-            has_live_chat: 0,
-            live_chat_file_path: null,
-            created_at: "2026-03-31T10:00:00.000Z",
-        });
-
-        await expect(createMedia(normalizedInput)).rejects.toThrow(
-            "This media is already registered for the selected channel."
+    it("reports progress around the creation", async () => {
+        const input = ytDlpInput({ downloadComments: false, downloadLiveChat: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(
+            created({ liveChatFilePath: "live_chat/a.live_chat.json.gz" })
         );
 
-        expect(insertMedia).not.toHaveBeenCalled();
+        const messages: string[] = [];
+        await createMedia(input, { onProgress: (message) => void messages.push(message) });
+
+        // Comments before live chat, matching the order the two steps run in - the terminal reads
+        // as a transcript of the run, so the sequence is part of what is asserted, not just the set.
+        expect(messages).toEqual([
+            "Registering media in local library...",
+            "Media registered successfully.",
+            "Skipping comments: disabled by user.",
+            "Live chat replay saved successfully.",
+        ]);
     });
 
-    it("records the prepared artifacts before inserting and clears the marker afterwards", async () => {
-        // The window this covers: the artifacts are already in the library and no row points at
-        // them yet. The catch below handles a *failed* step, but nothing in this process runs if
-        // the process itself is gone, so the marker on disk is what the next startup reconciles.
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "local" as const,
-            sourceValue: "/tmp/a.mp4",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "",
-            ytDlpFormatId: "",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
+    it("says so when a live chat replay was asked for but not found", async () => {
+        const input = ytDlpInput({ downloadComments: false, downloadLiveChat: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ liveChatFilePath: null }));
 
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: "thumbnails/a.jpg",
-            youtubeVideoId: null,
-            publishedAt: null,
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: "live_chat/a.json.gz",
-        });
-        vi.mocked(recordPendingMediaArtifacts).mockResolvedValueOnce("pending-1.json");
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(10);
-        vi.mocked(insertMedia).mockResolvedValueOnce(77);
+        const messages: string[] = [];
+        await createMedia(input, { onProgress: (message) => void messages.push(message) });
 
-        await createMedia(normalizedInput);
-
-        expect(recordPendingMediaArtifacts).toHaveBeenCalledWith(
-            "video/a.mp4",
-            "thumbnails/a.jpg",
-            "live_chat/a.json.gz"
-        );
-        // Recorded before the row is inserted, not after - a marker written afterwards would
-        // cover none of the window it exists for.
-        expect(vi.mocked(recordPendingMediaArtifacts).mock.invocationCallOrder[0]).toBeLessThan(
-            vi.mocked(insertMedia).mock.invocationCallOrder[0] as number
-        );
-        expect(clearPendingMediaArtifacts).toHaveBeenCalledWith("pending-1.json");
-    });
-
-    it("clears the marker when the creation fails after the artifacts were prepared", async () => {
-        // The failure path already removes the artifacts, so leaving the marker behind would make
-        // the next startup reconcile paths that are gone.
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "local" as const,
-            sourceValue: "/tmp/a.mp4",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "",
-            ytDlpFormatId: "",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: null,
-            youtubeVideoId: null,
-            publishedAt: null,
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-        vi.mocked(recordPendingMediaArtifacts).mockResolvedValueOnce("pending-2.json");
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(10);
-        vi.mocked(insertMedia).mockRejectedValueOnce(new Error("db constraint"));
-
-        await expect(createMedia(normalizedInput)).rejects.toThrow("db constraint");
-
-        expect(cleanupCreatedArtifacts).toHaveBeenCalled();
-        expect(clearPendingMediaArtifacts).toHaveBeenCalledWith("pending-2.json");
-    });
-
-    it("still creates the media when the pending marker cannot be recorded", async () => {
-        // The artifacts are already on disk and the user asked for them, so losing the
-        // crash-recovery hint must not cost the media itself.
-        const normalizedInput = {
-            channelId: 10,
-            title: "Video A",
-            sourceMode: "local" as const,
-            sourceValue: "/tmp/a.mp4",
-            thumbnailSourcePath: null,
-            mediaType: "video" as const,
-            importMode: "copy" as const,
-            libraryPath: "/library",
-            publishedAt: null,
-            ytDlpRunId: "",
-            ytDlpFormatId: "",
-            ytDlpYoutubeVideoId: null,
-            downloadComments: false,
-            downloadLiveChat: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        };
-
-        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(normalizedInput);
-        vi.mocked(prepareLocalArtifacts).mockResolvedValueOnce({
-            filePath: "video/a.mp4",
-            thumbnailPath: null,
-            youtubeVideoId: null,
-            publishedAt: null,
-            mediaType: "video",
-            isLive: false,
-            liveChatFilePath: null,
-        });
-        vi.mocked(recordPendingMediaArtifacts).mockRejectedValueOnce(new Error("cache read-only"));
-        vi.mocked(findMediaByChannelAndFilePath).mockResolvedValueOnce(null);
-        vi.mocked(readMediaDurationInSeconds).mockResolvedValueOnce(10);
-        vi.mocked(insertMedia).mockResolvedValueOnce(88);
-
-        await expect(createMedia(normalizedInput)).resolves.toEqual({ id: 88 });
-
-        // No marker was obtained, so there is nothing to clear.
-        expect(clearPendingMediaArtifacts).not.toHaveBeenCalled();
-        expect(logError).toHaveBeenCalledWith(
-            "media-service",
-            expect.stringContaining("pending media artifacts"),
-            expect.anything(),
-            expect.anything()
-        );
+        expect(messages).toContain("Live chat replay was not found for this media.");
     });
 
     it("deletes media through the atomic backend command without logging when nothing failed", async () => {

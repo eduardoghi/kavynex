@@ -222,7 +222,35 @@
 # The `>=` mutants on the new bound are killed by a boundary test rather than by a wall-clock wait,
 # which is why the predicate takes `now` as an argument instead of reading the clock - the same
 # shape, and the same reason, as `duration_is_recent` in db_backup.
+# `src/services/media_creation.rs` - the media creation transaction, which moved here out of the
+# renderer. It belongs in this gate for the reason the whole gate exists: every decision it makes
+# stands in front of the user's library. `fetched_thumbnail_to_discard` decides an unlink, and
+# inverted it removes the thumbnail the row is about to point at while keeping the one nothing
+# references. `nothing_to_clean_up` decides whether a failed creation cleans up at all, and weakened
+# from `&&` to `||` it answers "nothing to do" for the ordinary case (a media file with no live chat
+# replay), so the cleanup is skipped and the file it just wrote is stranded.
+# `needs_youtube_duplicate_pre_check` decides whether a re-added video is refused
+# now or after a full download. `normalize_create_media_request` is the boundary the whole request
+# crosses. All four are pure, and three of them were made pure *for* this gate.
+# ADDED after a measured pass (2026-07-30, `--in-place --no-config --file`): 105 mutants, 22 caught,
+# 66 unviable, 17 missed. Three of the seventeen were real and are now covered rather than excluded,
+# and each needed an extraction because the deciding line sat inside an `AppHandle`-bound async
+# function no unit test can drive - the same resolution as `ssrf_guard.rs` and
+# `thumbnail/display.rs`'s `take_generation_slot`:
+#   - `replace != with == in resolve_downloaded_thumbnail` -> `fetched_thumbnail_to_discard`.
+#   - `replace && with || in cleanup_artifacts_best_effort` (twice) -> `nothing_to_clean_up`.
+#   - `replace == with != in create_media_async` -> `needs_youtube_duplicate_pre_check`.
+# A fourth was a plain gap in the tests rather than in the structure: deleting `media_type` from the
+# struct-update expression in `normalize_create_media_request` left the value untrimmed, and the
+# normalization test only covered the other fields. Re-measured over those four functions
+# (`--examine-re`): 28 mutants, 24 caught, 4 unviable, 0 missed.
+# The rest are excluded below in two groups, and one restructuring is worth recording: the two
+# cleanup wrappers had an identical log-and-swallow body, so the same unkillable log-guard mutant was
+# reported against each. Folding that body into `report_cleanup_outcome` made it one site rather than
+# two - preferable to writing the same exclusion twice, and the same instinct as removing the dead
+# clause in `ssrf_guard` instead of excluding its mutant.
 examine_globs = [
+    "src/services/media_creation.rs",
     "src/services/thumbnail/picked.rs",
     "src/services/thumbnail/display.rs",
     "src/services/pending_media.rs",
@@ -260,6 +288,24 @@ additional_cargo_args = ["--locked"]
 # exclusion below is a function whose behavior is a filesystem/process/env boundary, a
 # cfg-split body cargo-mutants cannot evaluate, or an equivalent mutant.
 exclude_re = [
+    # media_creation.rs survivors (triaged 2026-07-30), in two groups.
+    #
+    # 1. `AppHandle`-bound glue. These need a live handle to reach the shared pool, the library and
+    # the cache directory, none of which exists under the unit-test harness - the same reason the
+    # binaries.rs boundary functions and `sweep_pending_media_artifacts` are excluded above. They are
+    # reported viable rather than unviable because the *function* still compiles when replaced; what
+    # cannot be built is a test that calls it. The decisions inside them are not here: the three that
+    # matter were extracted into pure functions and are in scope and covered (see the note above).
+    'replace cleanup_artifacts_best_effort(_locked)? with \(\)',
+    'replace record_marker_best_effort -> Option<String>',
+    'replace clear_marker_best_effort with \(\)',
+    # 2. Equivalent: `report_cleanup_outcome` writes a `logger::warn` line and does nothing else. The
+    # cleanup has already run by then, and its outcome is the report being matched on, so replacing
+    # the function or mutating its `failed_paths` guard changes the log and nothing observable. Same
+    # class, and the same reason, as the `> 0` guards excluded for apply_migration_13/14 below. The
+    # bare name is deliberate: it covers both `replace report_cleanup_outcome with ()` and the
+    # `... in report_cleanup_outcome` guard mutants, which are the same argument twice.
+    'report_cleanup_outcome',
     # thumbnail/display.rs: `generate_display_thumbnail` spawns FFmpeg and polls it to a deadline,
     # which no unit test can pin on an arbitrary machine - the same reason binaries.rs's resolution
     # functions are excluded above. Its four survivors are the return value and the deadline

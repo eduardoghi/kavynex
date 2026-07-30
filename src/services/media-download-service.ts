@@ -1,6 +1,6 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
-import type { DownloadedMediaResult, YtDlpComment, YtDlpFormatsResult } from "../types/media";
+import type { YtDlpComment, YtDlpFormatsResult } from "../types/media";
 import { createAppError } from "../utils/app-error";
 import { normalizeCookiesBrowser } from "../constants/cookies-browsers";
 
@@ -49,48 +49,11 @@ export async function listYtDlpFormats(
     });
 }
 
-export async function downloadMediaFromUrl(
-    url: string,
-    libraryPath: string,
-    runId: string,
-    formatId: string,
-    cookiesBrowser?: string | null,
-    cookiesPath?: string | null,
-    downloadLiveChat = false,
-    skipAutoThumbnailDownload = false
-): Promise<DownloadedMediaResult> {
-    const normalizedUrl = url.trim();
-    const normalizedLibraryPath = libraryPath.trim();
-    const normalizedRunId = runId.trim();
-    const normalizedFormatId = formatId.trim();
-
-    if (!normalizedUrl) {
-        throw createAppError("INVALID_URL", "url is empty");
-    }
-
-    if (!normalizedLibraryPath) {
-        throw createAppError("INVALID_LIBRARY_PATH", "library path is empty");
-    }
-
-    if (!normalizedRunId) {
-        throw createAppError("INVALID_RUN_ID", "run id is empty");
-    }
-
-    if (!normalizedFormatId) {
-        throw createAppError("INVALID_FORMAT_ID", "format id is empty");
-    }
-
-    return invokeCommand(TAURI_COMMANDS.DOWNLOAD_MEDIA_FROM_URL, {
-        url: normalizedUrl,
-        libraryPath: normalizedLibraryPath,
-        runId: normalizedRunId,
-        formatId: normalizedFormatId,
-        downloadLiveChat: Boolean(downloadLiveChat),
-        skipAutoThumbnailDownload: Boolean(skipAutoThumbnailDownload),
-        cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
-        cookiesPath: normalizeCookiesPath(cookiesPath),
-    });
-}
+// The download itself is no longer invoked from here. It is a step of a media creation, and that
+// whole sequence runs in the backend now (`create_media`), so exposing the step would let a caller
+// write a file into the library with no row and no crash marker behind it - the state the marker
+// exists to bound. What remains in this file are the calls that are genuinely their own operation:
+// listing formats, cancelling a run, and fetching comments for a media that already exists.
 
 export async function cancelMediaDownload(runId: string): Promise<void> {
     const normalizedRunId = runId.trim();

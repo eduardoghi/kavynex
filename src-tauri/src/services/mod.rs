@@ -15,6 +15,7 @@ pub mod library;
 pub mod live_chat_storage;
 pub mod logger;
 pub mod media_comments;
+pub mod media_creation;
 pub mod pending_media;
 pub mod process_registry;
 pub mod ssrf_guard;

@@ -223,6 +223,34 @@ single-user desktop model - the import is user-triggered on a file the user just
 re-hashing immediately before the delete would only narrow, not close, the window (the classic
 TOCTOU shape). Recorded as an accepted residual rather than left implicit.
 
+#### Creating a media is one command, and that is a boundary decision
+
+`create_media` (`commands/media.rs`, `services/media_creation.rs`) produces a media's artifacts,
+records the crash marker, inserts the row and clears the marker as a single backend operation. It
+replaced a sequence the renderer drove across seven IPC calls, and the reason it is in this document
+rather than only in the architecture guide is that the sequence had two properties a security review
+has to care about.
+
+**The artifacts-without-a-row window used to cross the process boundary.** Between the file landing
+in the library and the row pointing at it, the library holds bytes nothing references. That window
+still exists - it is inherent, since a file cannot join a SQLite transaction - but it is now the
+inside of one function instead of the span of five round trips, and no step of it is separately
+reachable.
+
+**The steps are no longer exposed.** `import_media_file`, `download_media_from_url`,
+`download_thumbnail_from_url`, `media_exists_for_channel_and_youtube_id` and the two crash-marker
+commands (`record_pending_media_artifacts` / `clear_pending_media_artifacts`) were removed from the
+IPC surface with the same change, because each existed only so the renderer could run one step of the
+sequence. Two of them mattered more than the rest: a caller invoking the download or the import
+directly wrote into the library and produced exactly that artifacts-with-no-row state, with no marker
+behind it - the marker was the renderer's job to write. The rule for a command added later is that
+the IPC surface exposes an operation, not its steps.
+
+`insert_media` and `find_media_by_channel_and_file_path` remain registered. Their callers moved into
+`media_creation` too, but `insert_media` is what every IPC test in `commands/videos.rs` seeds rows
+with; pruning them is its own change. Both validate what they write (managed library-relative paths,
+title, media type), so the residual is a bogus row rather than a file.
+
 ##### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
 `cleanup_unreferenced_media_artifacts` reference-counts each artifact path against the database and
@@ -230,34 +258,38 @@ then unlinks the files nothing points at (`services/library/cleanup.rs`). Foldin
 unlink into one backend call closed the multi-round-trip race the frontend used to have, but the two
 steps are still not atomic against a *concurrent* media creation that resolves to the same
 content-addressed path. A wrapping transaction cannot help - the unlink necessarily happens after
-any commit, since the filesystem cannot join a SQLite transaction - so only a lock keyed by artifact
-path, held across both the count and the unlink and taken by `insert_media` too, would close it.
+any commit, since the filesystem cannot join a SQLite transaction.
 
-That lock is deliberately not built. There are exactly two callers, and each is kept out of the
-window by a different mechanism:
+What closes it is a lock: `library::cleanup::MEDIA_REGISTRATION_LOCK`, taken by the cleanup around
+its count-and-unlink and by `media_creation::register_prepared_media` around its
+marker/duplicate-check/insert. A creation and a cleanup can therefore no longer interleave, whichever
+order they arrive in. The lock is a single static rather than a map keyed by artifact path, because
+the section it guards is milliseconds long - the download and the import run outside it - so
+serializing it costs nothing a user waits on, and a keying scheme would only add a way to get the key
+wrong.
 
-- The **manual/Diagnostics path** (`cleanup_unreferenced_media_artifacts`, and the failure path of an
-  add-media run) needs two creations in flight at once resolving to the same path, and the add-media
-  modal is locked for the duration of one (`isModalLocked` covers the whole run), so a second cannot
-  start. This is the one guarantee in this document that rests on frontend behavior rather than on the
-  Rust layer alone, so a later change to that locking - a queue, a batch import, a background
-  re-download, or a compromised renderer firing `insert_media` /
-  `cleanup_unreferenced_media_artifacts` directly - reopens it.
-- The **startup sweep** (`services/pending_media.rs`, which hands a crashed creation's artifacts to
-  the same cleanup) is a backend caller and is *not* covered by that modal lock, so it carries its own
-  guard instead. Reference-counting cannot tell a creation that died before its row from one that has
-  simply not reached `insert_media` yet, so the sweep refuses any marker that is either registered as
-  in flight by this process or whose mtime is not older than the process itself
-  (`pending_media::marker_is_sweepable`). Without that, a creation running while the sweep fires would
-  have the file it just wrote unlinked and its marker deleted, leaving the row that lands moments
-  later pointing at nothing with nothing left to reconcile it. Every uncertain input to that decision
-  (an unreadable mtime, a same-tick write, a clock that moved backwards between runs) answers "leave
-  it alone", since refusing only defers a leftover by one launch while acting wrongly deletes a file
-  the user still wants.
+This paragraph used to say that lock was deliberately not built, and that the exclusion rested
+instead on the add-media modal refusing to start a second creation (`isModalLocked`) - the one
+guarantee in this document that depended on frontend behavior. That is what the move above removed.
+A queue, a batch import or a background re-download no longer reopens anything, because none of them
+can produce a second creation that is not behind the same lock.
 
-It is called out here, against the rest of the document's "the Rust layer holds regardless of what the
-frontend sends" posture, so the exception and the asymmetry between the two callers are explicit rather
-than living only in the `plan_unreferenced_artifacts` code comment.
+The **startup sweep** (`services/pending_media.rs`, which hands a crashed creation's artifacts to the
+same cleanup) keeps its own, separate guard on top, because the lock cannot answer its question.
+Reference-counting cannot tell a creation that died before its row from one that has simply not
+reached `insert_media` yet, so the sweep refuses any marker that is either registered as in flight by
+this process or whose mtime is not older than the process itself
+(`pending_media::marker_is_sweepable`). Without that, a creation running while the sweep fires would
+have the file it just wrote unlinked and its marker deleted, leaving the row that lands moments later
+pointing at nothing with nothing left to reconcile it. Every uncertain input to that decision (an
+unreadable mtime, a same-tick write, a clock that moved backwards between runs) answers "leave it
+alone", since refusing only defers a leftover by one launch while acting wrongly deletes a file the
+user still wants.
+
+The residual that remains is the ordinary one: the unlink happens after the count, so a *third* party
+writing into the managed tree outside the app entirely is not covered. Nothing in this app does that,
+and reaching it requires write access to the library folder, at which point an attacker has better
+options.
 
 The security boundary these share is the same one this whole document is about: the Rust
 command layer holds regardless of what the frontend sends. React's default escaping (see

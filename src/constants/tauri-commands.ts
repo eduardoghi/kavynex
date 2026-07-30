@@ -16,26 +16,26 @@ export const TAURI_COMMANDS = {
     CHECK_LIBRARY_INTEGRITY: "check_library_integrity",
     OPEN_PATH_IN_SYSTEM: "open_path_in_system",
 
-    IMPORT_MEDIA_FILE: "import_media_file",
+    // Creating a media is one command rather than the chain of steps this list used to name
+    // (import/download, the two crash-marker ends, the duplicate pre-check, insert). The backend
+    // owns that sequence now, so the steps are no longer reachable from here - see
+    // src-tauri/src/commands/media.rs for why they were removed rather than left registered.
+    CREATE_MEDIA: "create_media",
     STREAM_LIVE_CHAT_FILE: "stream_live_chat_file",
     DELETE_LIVE_CHAT_FILE: "delete_live_chat_file",
     LIST_LIVE_CHAT_FILES: "list_live_chat_files",
     MIGRATE_LIVE_CHAT_TO_LIBRARY: "migrate_live_chat_to_library",
     CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS: "cleanup_unreferenced_media_artifacts",
-    RECORD_PENDING_MEDIA_ARTIFACTS: "record_pending_media_artifacts",
-    CLEAR_PENDING_MEDIA_ARTIFACTS: "clear_pending_media_artifacts",
 
     GENERATE_TEMP_THUMBNAIL: "generate_temporary_thumbnail",
     STAGE_MANUAL_THUMBNAIL: "stage_manual_thumbnail",
     PERSIST_THUMBNAIL_FILE: "persist_thumbnail_file",
-    DOWNLOAD_THUMBNAIL_FROM_URL: "download_thumbnail_from_url",
     DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE: "download_channel_avatar_from_handle",
     RESOLVE_DISPLAY_THUMBNAILS: "resolve_display_thumbnails",
     DELETE_TEMP_THUMBNAIL: "delete_temporary_thumbnail",
     DELETE_THUMBNAIL_FILE: "delete_thumbnail_file",
 
     LIST_YT_DLP_FORMATS: "list_yt_dlp_formats",
-    DOWNLOAD_MEDIA_FROM_URL: "download_media_from_url",
     CANCEL_MEDIA_DOWNLOAD: "cancel_media_download",
     FETCH_YOUTUBE_COMMENTS: "fetch_youtube_comments",
     REPLACE_MEDIA_COMMENTS: "replace_media_comments",
@@ -66,13 +66,13 @@ export const TAURI_COMMANDS = {
 
     UPDATE_MEDIA_TITLE: "update_media_title",
     LIST_MEDIA_PAGE: "list_media_page",
-    FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH: "find_media_by_channel_and_file_path",
-    MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID: "media_exists_for_channel_and_youtube_id",
-    INSERT_MEDIA: "insert_media",
     LIST_MEDIA_COMMENTS_BY_MEDIA_ID: "list_media_comments_by_media_id",
     DELETE_MEDIA_WITH_ARTIFACTS: "delete_media_with_artifacts",
     MARK_MEDIA_AS_WATCHED: "mark_media_as_watched",
     MARK_MEDIA_AS_UNWATCHED: "mark_media_as_unwatched",
+    // Written after the row exists, from the media element that measured it - the probe is a
+    // webview capability, so it stays here while the creation itself does not.
+    UPDATE_MEDIA_DURATION: "update_media_duration",
     UPDATE_MEDIA_PROGRESS: "update_media_progress",
     GET_MEDIA_REPOSITORY_STATS: "get_media_repository_stats",
     LIST_MEDIA_INTEGRITY_REFERENCES: "list_media_integrity_references",

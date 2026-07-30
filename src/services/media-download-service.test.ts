@@ -6,11 +6,7 @@ vi.mock("../lib/tauri-client", () => ({
 }));
 
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
-import {
-    cancelMediaDownload,
-    downloadMediaFromUrl,
-    listYtDlpFormats,
-} from "./media-download-service";
+import { cancelMediaDownload, listYtDlpFormats } from "./media-download-service";
 
 describe("media-download-service", () => {
     beforeEach(() => {
@@ -51,67 +47,9 @@ describe("media-download-service", () => {
         });
     });
 
-    it("downloads media when all arguments are valid", async () => {
-        vi.mocked(invokeCommand).mockResolvedValueOnce({
-            file_path: "video/a.mp4",
-            suggested_title: "Video A",
-            youtube_video_id: "abc123",
-            published_at: "2026-03-31",
-            media_type: "video",
-            thumbnail_url: "https://example.com/thumb.jpg",
-            thumbnail_path: null,
-            is_live: false,
-            live_chat_file_path: null,
-        });
-
-        await expect(
-            downloadMediaFromUrl(
-                "https://youtube.com/watch?v=abc",
-                "/library",
-                "run-1",
-                "best"
-            )
-        ).resolves.toEqual({
-            file_path: "video/a.mp4",
-            suggested_title: "Video A",
-            youtube_video_id: "abc123",
-            published_at: "2026-03-31",
-            media_type: "video",
-            thumbnail_url: "https://example.com/thumb.jpg",
-            thumbnail_path: null,
-            is_live: false,
-            live_chat_file_path: null,
-        });
-
-        expect(invokeCommand).toHaveBeenCalledWith("download_media_from_url", {
-            url: "https://youtube.com/watch?v=abc",
-            libraryPath: "/library",
-            runId: "run-1",
-            formatId: "best",
-            downloadLiveChat: false,
-            skipAutoThumbnailDownload: false,
-            cookiesBrowser: null,
-            cookiesPath: null,
-        });
-    });
-
-    it("rejects empty download arguments", async () => {
-        await expect(downloadMediaFromUrl("", "/library", "run-1", "best")).rejects.toThrow(
-            "url is empty"
-        );
-
-        await expect(
-            downloadMediaFromUrl("https://youtube.com/watch?v=abc", "", "run-1", "best")
-        ).rejects.toThrow("library path is empty");
-
-        await expect(
-            downloadMediaFromUrl("https://youtube.com/watch?v=abc", "/library", "", "best")
-        ).rejects.toThrow("run id is empty");
-
-        await expect(
-            downloadMediaFromUrl("https://youtube.com/watch?v=abc", "/library", "run-1", "")
-        ).rejects.toThrow("format id is empty");
-    });
+    // The download itself is no longer invoked from this module: it is a step of a media creation,
+    // and the backend owns that sequence now (`create_media`). Its argument validation moved with
+    // it, into `media_creation::normalize_create_media_request`, which is tested there.
 
     it("cancels media download", async () => {
         vi.mocked(invokeVoid).mockResolvedValueOnce(undefined);

@@ -10,12 +10,11 @@
 import type { TauriCommandName } from "../constants/tauri-commands";
 import type {
     Channel,
-    DownloadedMediaResult,
     MediaCommentRow,
-    MediaRow,
     YtDlpComment,
     YtDlpFormatsResult,
 } from "../types/media";
+import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type {
     ExternalToolsStatus,
     LibraryIntegrityReport,
@@ -50,20 +49,19 @@ export type TauriCommandReturns = {
     check_library_integrity: LibraryIntegrityReport;
     open_path_in_system: void;
 
-    import_media_file: string;
+    // The whole creation, not a step of it: the backend produces the artifacts, records the crash
+    // marker, inserts the row and clears the marker, and answers with the registered media.
+    create_media: CreatedMedia;
     stream_live_chat_file: void;
     delete_live_chat_file: void;
     list_live_chat_files: string[];
     migrate_live_chat_to_library: void;
     cleanup_unreferenced_media_artifacts: ArtifactCleanupReport;
-    record_pending_media_artifacts: string;
-    clear_pending_media_artifacts: void;
 
     generate_temporary_thumbnail: string;
     // The path of the staged copy in the preview directory, not the path the user picked.
     stage_manual_thumbnail: string;
     persist_thumbnail_file: string;
-    download_thumbnail_from_url: string;
     download_channel_avatar_from_handle: string;
     // One entry per requested path, in order. Not a nullable string: "no derivative" carries
     // whether asking again could change the answer, which is what stops the caller re-asking
@@ -73,7 +71,6 @@ export type TauriCommandReturns = {
     delete_thumbnail_file: void;
 
     list_yt_dlp_formats: YtDlpFormatsResult;
-    download_media_from_url: DownloadedMediaResult;
     cancel_media_download: void;
     fetch_youtube_comments: YtDlpComment[];
     replace_media_comments: number;
@@ -104,13 +101,11 @@ export type TauriCommandReturns = {
 
     update_media_title: void;
     list_media_page: MediaPage;
-    find_media_by_channel_and_file_path: MediaRow | null;
-    media_exists_for_channel_and_youtube_id: boolean;
-    insert_media: number;
     list_media_comments_by_media_id: MediaCommentRow[];
     delete_media_with_artifacts: ArtifactCleanupReport;
     mark_media_as_watched: string;
     mark_media_as_unwatched: void;
+    update_media_duration: void;
     update_media_progress: void;
     get_media_repository_stats: MediaRepositoryStats;
     list_media_integrity_references: MediaIntegrityReference[];

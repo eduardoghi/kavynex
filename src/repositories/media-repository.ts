@@ -1,6 +1,8 @@
-import type { MediaCommentRow, MediaRow, MediaType } from "../types/media";
+import type { MediaCommentRow } from "../types/media";
 import type { MediaIntegrityReference, MediaRepositoryStats } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
+import type { CreateMediaRequest } from "../types/generated/CreateMediaRequest";
+import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { MediaPageQuery } from "../types/generated/MediaPageQuery";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
@@ -17,45 +19,15 @@ export async function listMediaPage(
     return invokeCommand(TAURI_COMMANDS.LIST_MEDIA_PAGE, { channelId, query });
 }
 
-export async function findMediaByChannelAndFilePath(
-    channelId: number,
-    filePath: string
-): Promise<MediaRow | null> {
-    return invokeCommand(
-        TAURI_COMMANDS.FIND_MEDIA_BY_CHANNEL_AND_FILE_PATH,
-        { channelId, filePath }
-    );
-}
-
-export async function mediaExistsForChannelAndYoutubeId(
-    channelId: number,
-    youtubeVideoId: string
-): Promise<boolean> {
-    return invokeCommand(TAURI_COMMANDS.MEDIA_EXISTS_FOR_CHANNEL_AND_YOUTUBE_ID, {
-        channelId,
-        youtubeVideoId,
-    });
-}
-
-// Named rather than positional, unlike its siblings here, because ten arguments in a row put four
-// `string | null`s next to each other: swapping youtubeVideoId and publishedAt at the call site
-// type-checks cleanly and only shows up as wrong data in the database. The parameter names are the
-// only thing that can catch that, so they have to be at the call site rather than in this file.
-export type InsertMediaInput = {
-    channelId: number;
-    title: string;
-    filePath: string;
-    thumbnailPath: string | null;
-    mediaType: MediaType;
-    youtubeVideoId: string | null;
-    publishedAt: string | null;
-    durationSeconds: number | null;
-    isLive: boolean;
-    liveChatFilePath: string | null;
-};
-
-export async function insertMedia(input: InsertMediaInput): Promise<number> {
-    return invokeCommand(TAURI_COMMANDS.INSERT_MEDIA, input);
+// Creates a media end to end. One call rather than the chain this file used to expose (duplicate
+// pre-check, download or import, crash marker, duplicate check, insert, clear marker), because the
+// backend owns that sequence now - see src-tauri/src/services/media_creation.rs.
+//
+// The request is passed as one named object for the reason the old `insertMedia` input was: it
+// carries four `string | null` fields in a row, and a positional list would let two of them be
+// swapped at the call site with the mistake showing up only as wrong data in the database.
+export async function createMedia(request: CreateMediaRequest): Promise<CreatedMedia> {
+    return invokeCommand(TAURI_COMMANDS.CREATE_MEDIA, { request });
 }
 
 export async function listMediaCommentsByMediaId(mediaId: number): Promise<MediaCommentRow[]> {
@@ -96,23 +68,14 @@ export async function cleanupUnreferencedMediaArtifacts(
     );
 }
 
-// Records, before the row exists, that these artifacts are already written to the library, and
-// returns the marker name to hand back once the row lands. Covers the one window the caller's own
-// error handling structurally cannot: the process not surviving between the two steps, where no
-// `catch` runs. See src-tauri/src/services/pending_media.rs.
-export async function recordPendingMediaArtifacts(
-    filePath: string | null,
-    thumbnailPath: string | null,
-    liveChatFilePath: string | null
-): Promise<string> {
-    return invokeCommand(
-        TAURI_COMMANDS.RECORD_PENDING_MEDIA_ARTIFACTS,
-        { filePath, thumbnailPath, liveChatFilePath }
-    );
-}
-
-export async function clearPendingMediaArtifacts(marker: string): Promise<void> {
-    await invokeVoid(TAURI_COMMANDS.CLEAR_PENDING_MEDIA_ARTIFACTS, { marker });
+// Records the duration measured for an already-created media. Separate from `createMedia` because
+// the measurement is: the probe decodes the file through a media element, which only the webview
+// can do, so it runs here once the row exists rather than inside the creation.
+export async function updateMediaDuration(
+    mediaId: number,
+    durationSeconds: number | null
+): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.UPDATE_MEDIA_DURATION, { mediaId, durationSeconds });
 }
 
 export async function getMediaRepositoryStats(): Promise<MediaRepositoryStats> {

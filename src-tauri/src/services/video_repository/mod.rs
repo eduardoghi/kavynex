@@ -424,6 +424,33 @@ pub async fn mark_media_as_unwatched(pool: &SqlitePool, media_id: i64) -> AppRes
     Ok(())
 }
 
+/// Writes the duration a media was measured at, once its row exists.
+///
+/// Split from the insert because the measurement is: the renderer probes the file through a media
+/// element after `create_media` returns, since that decoder is a webview capability and running one
+/// FFmpeg per import to re-derive a number the player already knows would be the wrong trade. The
+/// column is nullable, so a row simply carries no duration until this lands - and carries none
+/// forever if the probe cannot read the file, which is the pre-existing behavior for an unreadable
+/// or exotic container.
+///
+/// Idempotent, and deliberately not an error when it matches no row: the media may have been deleted
+/// between the insert and the probe settling, which is a harmless no-op rather than a failure worth
+/// surfacing to someone who has already moved on.
+pub async fn update_media_duration(
+    pool: &SqlitePool,
+    media_id: i64,
+    duration_seconds: Option<i64>,
+) -> AppResult<()> {
+    sqlx::query("UPDATE videos SET duration_seconds = ? WHERE id = ?")
+        .bind(duration_seconds)
+        .bind(media_id)
+        .execute(pool)
+        .await
+        .map_err(|error| db_error("failed to update media duration", error))?;
+
+    Ok(())
+}
+
 pub async fn update_media_progress(
     pool: &SqlitePool,
     media_id: i64,
