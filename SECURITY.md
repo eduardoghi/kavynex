@@ -587,13 +587,26 @@ reading the environment during a release build. `minimumReleaseAge` and `blockEx
 a dependency arriving in the first place; nothing in the current workflow removes the exposure
 itself. Rotating the minisign key is the response if a compromise is ever suspected.
 
-One asymmetry is worth stating plainly: the `minimumReleaseAge` cooling-off (refuse a package
-published in the last two days, so a freshly-compromised release is not picked up before the
-community flags it) applies **only to the npm tree**. The Cargo tree has no equivalent - `cargo-deny`
-restricts the *source* (crates.io only), the license and duplicate/wildcard bans, not the *publish
-age* - so a newly-published malicious version of an already-allowed crate is a residual gap on the
-Rust side. What limits it there is the pinned `Cargo.lock` (a bump is a reviewed, deliberate commit,
-never an automatic resolution) plus the same draft-and-publish-by-hand release flow.
+One asymmetry is worth stating plainly, because the two ecosystems get their publish-age
+cooling-off from different places and the two places do not cover the same thing:
+
+- **npm** has `minimumReleaseAge` (`pnpm-workspace.yaml`, 2880 minutes), which pnpm enforces on
+  *every install* - including CI's `pnpm install --frozen-lockfile`. It is a property of the
+  package manager, so nothing can add a too-new package to the tree, however the bump was
+  authored.
+- **Both trees, plus the actions** have Dependabot's `cooldown: default-days: 5`
+  (`.github/dependabot.yml`), which delays the *pull request* Dependabot would open. It is a
+  property of the bot, not of the resolver.
+
+So the Cargo tree is not without a cooling-off, but the one it has is weaker in a specific way:
+it only governs bumps Dependabot proposes. A hand-run `cargo update`, or a version edited into
+`Cargo.toml` directly, is subject to no age gate at all, because `cargo-deny` restricts the
+*source* (crates.io only), the license and duplicate/wildcard bans, and never the *publish age*.
+A newly-published malicious version of an already-allowed crate reaching the tree that way is the
+residual gap on the Rust side. What limits it is the pinned `Cargo.lock` (any bump is a reviewed,
+deliberate commit, never an automatic resolution at build time - and `release.yml` now proves that
+with `cargo metadata --locked` plus a `--locked` build), the weekly `scheduled-audit` workflow, and
+the same draft-and-publish-by-hand release flow.
 
 ## Reporting a vulnerability
 
