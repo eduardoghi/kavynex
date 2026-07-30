@@ -42,7 +42,14 @@ fn is_executable_file(path: &Path) -> bool {
     path.is_file()
 }
 
-fn resolve_from_path(candidates: &[&str]) -> Option<String> {
+/// Resolves the first of `candidates` that names an executable in a directory listed in `PATH`.
+///
+/// `pub(crate)` rather than private because it is the project's one hardened executable lookup and
+/// yt-dlp/ffmpeg are not its only callers: `library::open_path_in_system_sync` resolves the Linux
+/// file manager (`xdg-open`) through it too, so that spawn follows the same no-working-directory
+/// rule instead of handing a bare name to the OS search order. See `resolve_from_path_var` for what
+/// the rule actually is.
+pub(crate) fn resolve_from_path(candidates: &[&str]) -> Option<String> {
     let path_var = std::env::var_os("PATH")?;
     resolve_from_path_var(&path_var, candidates)
 }
