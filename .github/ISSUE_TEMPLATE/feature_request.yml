@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest something Kavynex should be able to do
+labels: ["enhancement"]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Ideas are welcome. One thing worth knowing before you write it up: Kavynex has a
+              single maintainer, so the scope that stays maintainable for years is narrower than
+              the scope that would be nice to have. A request may be declined for that reason
+              alone, and that is not a judgement of the idea.
+
+    - type: textarea
+      id: problem
+      attributes:
+          label: What are you trying to do
+          description: >
+              The problem rather than the solution. Knowing what you are actually trying to
+              accomplish often surfaces an answer that already exists, or a smaller change that
+              solves it.
+          placeholder: >
+              I archive several channels and I cannot tell which videos I have already watched
+              across all of them without opening each channel in turn.
+      validations:
+          required: true
+
+    - type: textarea
+      id: proposal
+      attributes:
+          label: What you have in mind
+          description: How you picture it working, if you have a specific shape in mind.
+      validations:
+          required: false
+
+    - type: textarea
+      id: alternatives
+      attributes:
+          label: What you do today instead
+          description: >
+              The workaround you currently use, if any. This is genuinely useful - it shows how
+              much the gap costs, and sometimes the workaround is good enough that the feature
+              is not worth its maintenance.
+      validations:
+          required: false

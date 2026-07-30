@@ -1,0 +1,91 @@
+name: Bug report
+description: Something in Kavynex does not work the way it should
+labels: ["bug"]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Thanks for taking the time to report this.
+
+              **If this is a security vulnerability, close this form** and open a
+              [private advisory](https://github.com/eduardoghi/kavynex/security/advisories/new)
+              instead. A public issue discloses it to everyone before there is a release that
+              fixes it.
+
+              The README's Troubleshooting section already covers the most common ones (yt-dlp
+              or FFmpeg not found, a blank window on Windows, the "library was released earlier
+              in this session" message, and a database reported as corrupted).
+
+    - type: textarea
+      id: what-happened
+      attributes:
+          label: What happened
+          description: What you did, what you expected, and what happened instead.
+          placeholder: |
+              1. Opened the add-media dialog and pasted a URL
+              2. Picked the 1080p format and clicked Add
+              3. Expected the video in the library; got an error dialog saying ...
+      validations:
+          required: true
+
+    - type: input
+      id: version
+      attributes:
+          label: Kavynex version
+          description: Shown in Settings.
+          placeholder: 1.2.0
+      validations:
+          required: true
+
+    - type: dropdown
+      id: os
+      attributes:
+          label: Operating system
+          description: >
+              Behavior differs by platform more than you would expect - path handling, the
+              webview engine and how external processes are launched are all platform-specific.
+          options:
+              - Windows
+              - macOS
+              - Linux
+      validations:
+          required: true
+
+    - type: input
+      id: os-version
+      attributes:
+          label: OS version and architecture
+          placeholder: Windows 11 24H2, x64 / Ubuntu 24.04, arm64 / macOS 15, Apple Silicon
+      validations:
+          required: true
+
+    - type: textarea
+      id: diagnostics
+      attributes:
+          label: Diagnostics output
+          description: >
+              If the problem involves downloads, imports or missing media, open the in-app
+              Diagnostics dialog and paste what it reports. It resolves the yt-dlp and FFmpeg
+              paths and versions (or the exact reason each failed its health check) and
+              reconciles the database against the files on disk, which answers most of what
+              would otherwise be a round trip of questions.
+      validations:
+          required: false
+
+    - type: textarea
+      id: logs
+      attributes:
+          label: Relevant log lines
+          description: >
+              From kavynex.log - docs/DIRECTORIES.md lists where it lives on each platform.
+              Paste the lines around the failure rather than the whole file.
+
+
+              **Read them through first.** Cookie values are never logged and a cookies file
+              path is redacted, but log lines do carry local file paths (on Windows these
+              embed your account name), and a run that *failed* also records yt-dlp's verbose
+              output, which can include the full URL you pasted. If something in them is
+              sensitive, describe the failure instead of pasting it.
+          render: text
+      validations:
+          required: false
