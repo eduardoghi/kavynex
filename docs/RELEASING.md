@@ -35,6 +35,18 @@ actually act on what it says.
    thing that leg needed was `xdg-utils`, which the arm64 runner image does not carry and the
    AppImage bundler refuses to run without (the apt step installs it explicitly on both Linux
    legs for that reason).
+   Each leg then **starts the binary it just built**, twice, before anything is attested.
+   `--smoke-test` runs the whole of `setup()` and exits, proving the process loads, every plugin
+   registers and the database path resolves. `--webview-check` goes further: it lets the window
+   open and has the renderer report whether it could call `getVersion`, subscribe and unsubscribe
+   from an event, and load an image through `convertFileSrc` - i.e. whether the capability grants
+   in `src-tauri/capabilities/` and the packaged CSP actually work. Neither is reachable from
+   `cargo test` (which never initializes the Tauri runtime) or from `pnpm tauri dev` (which serves
+   the page from the Vite origin, with no CSP header). Both are skipped on the x86_64 macOS leg
+   alone, which is a cross-compile on an arm64 runner and cannot execute its own output. A failure
+   in either turns the run red with assets already on the draft, which is the intended outcome:
+   the draft is published by hand, and a red run must not be published. See `SECURITY.md` for what
+   the webview check covers and what it deliberately leaves to a manual pass.
 4. The workflow creates a **draft** GitHub release tagged `v<version>` whose body is a single
    line pointing at the release page, and uploads the built installers plus signed updater
    artifacts. That body is deliberately short rather than a commit log: `tauri-action` copies

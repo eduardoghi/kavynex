@@ -343,6 +343,39 @@ The seam rule is what makes this auditable rather than a guess: `src/lib/tauri-c
 its permission belongs in this list - and the failure mode if it is forgotten is loud and
 immediate (the call rejects with a permission error), unlike the silent over-grant it replaces.
 
+#### How the grant list is actually verified
+
+"Loud and immediate" is true for whoever hits the refused call, and that used to be the whole
+story - which was the weak point of a hand-picked list. The ACL is evaluated at runtime and only
+in the renderer, so nothing in the pipeline reached it: `cargo test` links the `rlib` and never
+initializes the Tauri runtime or the webview, `pnpm build` only emits the frontend bundle, and
+`--smoke-test` (the release workflow's startup self-check) exits inside `setup()` before the event
+loop starts. A permission missing from the list above would therefore have crossed six green build
+legs and surfaced on the first click a user made.
+
+`--webview-check` closes that. It is a second startup flag
+(`src-tauri/src/commands/webview_check.rs`) that lets the launch proceed normally and has the
+renderer report what it could actually do, then exits 0 or 1. The release workflow runs it on the
+built binary on every leg it can execute one, right after `--smoke-test` and before the build
+provenance is attested, so a binary that fails it is never vouched for. Three probes:
+
+- `getVersion()`, for `core:app:allow-version`.
+- `listen()` followed by its unsubscribe, for `core:event:allow-listen` and
+  `core:event:allow-unlisten` - both, since they are separate grants and a build holding only the
+  first must not pass.
+- an `<img>` pointed at `convertFileSrc` of a real file in the granted cache directory, which is
+  the only automated exercise of the asset-protocol scope *and* of the CSP (see below for why a
+  packaged build is the only thing that applies one).
+
+A renderer that never loads at all reports nothing, which a watchdog turns into a non-zero exit
+naming that outcome rather than a hang - the case that covers a bundle the webview refuses or a
+CSP that blocks the entry script.
+
+The four plugin grants are **not** covered and stay a manual check, because none can be exercised
+without a side effect: `dialog:allow-open`/`allow-save` would open a file picker,
+`opener:allow-open-url` would launch a browser, `updater:default` would reach the network, and
+`process:allow-restart` would restart the app.
+
 One trap worth naming, since it is the one case where the tight list could bite: the `Update`
 object returned by the updater plugin extends `Resource`, and calling `.close()` on it would
 invoke `plugin:resources|close`, which is **not** granted. Nothing calls it today - the flow is

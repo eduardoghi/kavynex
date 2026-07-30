@@ -23,7 +23,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 - **Commands** (`src-tauri/src/commands/`) are the only `#[tauri::command]` functions,
   one module per feature area (`channels.rs`, `videos.rs`, `media.rs`, `thumbnail.rs`,
   `live_chat.rs`, `yt_dlp.rs`, `database.rs`, `security.rs`, `settings.rs`, `comments.rs`,
-  `library.rs`, `logging.rs`). A command's job is to take the request from IPC, open the
+  `library.rs`, `logging.rs`, `webview_check.rs`). A command's job is to take the request from IPC, open the
   shared database pool or resolve an app path, and delegate to a service. It holds
   essentially no logic of its own. Example (`commands/channels.rs`):
 
@@ -222,6 +222,7 @@ seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` p
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/use-app-settings*.ts` |
 | Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/cleanup.rs` | - |
+| Startup self-checks (`--smoke-test`, `--webview-check`) | `lib.rs`, `commands/webview_check.rs` | `lib/webview-check.ts` |
 
 See `docs/DATABASE.md` for the schema/migration/backup model and `docs/DIRECTORIES.md` for
 the on-disk layout these services read and write.
