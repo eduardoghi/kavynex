@@ -63,16 +63,31 @@ reachable in one IPC call, not merely an authentication the user did not ask for
 the check for a while after the import side gained it, which is why it is called out rather than
 left to blend into the list.
 
-**One command deliberately does not apply the rule: `set_external_backup_dir`.** Its whole purpose
-is a copy of the database that survives a failure of the volume the database lives on, and a NAS is
-the ordinary answer to that - the README's Privacy section documents "another drive or a network
-share" as supported. So the SMB authentication is the cost of the feature working at all rather
-than an oversight. What bounds it: the directory is write-only (the mirror is never read back, and
-nothing serves it through the asset scope), it is chosen through a folder dialog rather than
-derived from anything, and it is refused unless it already exists as a directory outside the app
-config directory. Note also that `mirror_database_to_external_dir` calls the `export_database`
-*service* function directly, so the command-level refusal above does not reach the daily mirror -
-gating the export command costs this feature nothing.
+**Two groups of commands deliberately do not apply the rule**, for different reasons. They are
+enumerated rather than left implicit because this list is what a review of a new command is checked
+against, and "everything not named above applies the rule" was the wrong reading to invite.
+
+**`set_external_backup_dir`.** Its whole purpose is a copy of the database that survives a failure
+of the volume the database lives on, and a NAS is the ordinary answer to that - the README's Privacy
+section documents "another drive or a network share" as supported. So the SMB authentication is the
+cost of the feature working at all rather than an oversight. What bounds it: the directory is
+write-only (the mirror is never read back, and nothing serves it through the asset scope), it is
+chosen through a folder dialog rather than derived from anything, and it is refused unless it
+already exists as a directory outside the app config directory. Note also that
+`mirror_database_to_external_dir` calls the `export_database` *service* function directly, so the
+command-level refusal above does not reach the daily mirror - gating the export command costs this
+feature nothing.
+
+**The library-selection helpers: `ensure_directory_exists`, `resolve_existing_directory` and
+`is_directory_empty`**, all reaching the filesystem through
+`services/library/paths.rs::library_input_path`. These run on the *selection* path - onboarding and
+the change-library flow both probe a candidate folder before it is persisted - and a library kept on
+a share is a supported configuration, so refusing a UNC here would not harden anything, it would
+remove the ability to choose such a library at all. The bound is what these three do rather than
+where they point: two only read directory metadata, and the third creates an empty directory. The
+NTLM exposure is real and accepted, narrowed by the path always coming from a folder dialog the user
+drove rather than from an unattended caller redirecting a delete or a move. See the residual below
+for what a compromised renderer can still do with them.
 
 #### Commands that intentionally take a caller-supplied path
 
@@ -167,6 +182,34 @@ separates "the user picked this folder in the dialog" from "the renderer invoked
 the oracle is inherent to supporting the preview at all. It is recorded here as an accepted residual
 rather than left implicit, in the same spirit as the export-overwrite and updater-rollback residuals
 above.
+
+##### Accepted residual: the library-selection helpers create and probe arbitrary directories
+
+`ensure_directory_exists`, `resolve_existing_directory` and `is_directory_empty` are the third
+group of commands acting on a caller-supplied path, and they are the ones easiest to miss: they
+read as plumbing rather than as a boundary, and they predate the rest of this section. They take a
+path for the same reason the two above do - onboarding and the change-library flow both act on a
+folder that is not yet the configured library, so there is nothing persisted to re-derive from and
+no containment check that would not break the feature.
+
+Two things follow, and both are accepted rather than closed:
+
+- **They join the file-existence oracle above.** All three answer, by succeeding or failing,
+  whether an arbitrary absolute path exists and whether it is a directory; `is_directory_empty`
+  additionally answers whether it holds anything. Disclosure only, exactly as for the three
+  commands named above.
+- **`ensure_directory_exists` writes.** It is the one command in this document that creates
+  something at a path the caller fully chooses, so it is worth stating plainly rather than leaving
+  inside the oracle paragraph. What it creates is an empty directory: `create_dir_all` and nothing
+  else. It writes no content, cannot overwrite an existing file (`create_dir_all` fails on one),
+  and grants no later access - a directory it created is not in the asset scope, and no other
+  command will act inside it unless it becomes the configured library, which requires the settings
+  write that `validate_settings_library_path` gates. So the worst case is litter in writable
+  locations, not a foothold.
+
+These three also do not apply the UNC refusal, deliberately and for the reason given with the rule
+above: a library on a share is supported, and the refusal would remove that. `is_network_path` is
+therefore not the missing guard here - adding it would be a functional regression, not a fix.
 
 ##### Accepted residual: a move-import hashes the source once
 
