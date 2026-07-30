@@ -198,6 +198,12 @@
 # again, which is fine now precisely because the branch it guards has an observable outcome. The
 # general lesson, since this file exists to record them: a mutant that cannot be killed is often not
 # a testing gap but a type that has collapsed two decisions into one value.
+# Re-measured 2026-07-30 after the call gained a wall-clock budget alongside the count-based one
+# (`--in-place --no-config --file`, scoped with `--examine-re`): `call_budget_spent` 3 mutants, 3
+# caught; `resolve_one` 2 mutants, 1 caught, 1 unviable. 0 missed in both, so the glob stays green.
+# The `>=` mutants on the new bound are killed by a boundary test rather than by a wall-clock wait,
+# which is why the predicate takes `now` as an argument instead of reading the clock - the same
+# shape, and the same reason, as `duration_is_recent` in db_backup.
 examine_globs = [
     "src/services/thumbnail/display.rs",
     "src/services/pending_media.rs",
