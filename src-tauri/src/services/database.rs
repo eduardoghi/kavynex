@@ -128,6 +128,81 @@ pub struct StoredAppSettings {
     pub external_backup_dir: Option<String>,
 }
 
+/// One entry per key `app_settings` holds.
+///
+/// The read query, the row-to-field dispatch and the whole-row write all derive from this table,
+/// so adding a setting is a field on [`StoredAppSettings`] plus a line here. Before it, the same
+/// setting had to be added to a hand-counted `IN (?, ?, ?, ?, ?)` list, an `if key == ...` chain
+/// and a positional parameter list, each of which could be forgotten on its own - and forgetting
+/// the first two is silent, since a key that is never selected simply reads back as "never set".
+struct SettingSpec {
+    key: &'static str,
+    /// Puts a value read from the database into its field.
+    load: fn(&mut StoredAppSettings, String),
+    /// Reads the field back on the way out. `None` means "leave this key untouched", which is how
+    /// a partial write (the whole-row write does not own `external_backup_dir`) skips a key rather
+    /// than clearing it.
+    store: fn(&StoredAppSettings) -> Option<&str>,
+    /// Validates and normalizes a value before it is written. Runs for every key ahead of the
+    /// transaction, so a rejected value persists nothing at all.
+    normalize: fn(&str) -> AppResult<String>,
+}
+
+/// The normalizer for a setting whose value the app does not constrain: a path, a flag already
+/// rendered by the caller. Stored as given.
+fn store_as_given(value: &str) -> AppResult<String> {
+    Ok(value.to_string())
+}
+
+const SETTINGS: &[SettingSpec] = &[
+    SettingSpec {
+        key: IMPORT_MODE_KEY,
+        load: |settings, value| settings.import_mode = Some(value),
+        store: |settings| settings.import_mode.as_deref(),
+        // The one setting with a closed set of legal values, so the only one whose normalizer
+        // can reject rather than pass through.
+        normalize: |value| validate_import_mode(value).map(str::to_string),
+    },
+    SettingSpec {
+        key: LIBRARY_PATH_KEY,
+        load: |settings, value| settings.library_path = Some(value),
+        store: |settings| settings.library_path.as_deref(),
+        // Deliberately unconstrained here: it is re-derived and canonicalized downstream
+        // (library::guard, ensure_library_dir), gated at the command boundary by
+        // validate_settings_library_path, and an empty value is the valid "not configured yet"
+        // state.
+        normalize: store_as_given,
+    },
+    SettingSpec {
+        key: LOAD_REMOTE_IMAGES_KEY,
+        load: |settings, value| settings.load_remote_images = Some(value),
+        store: |settings| settings.load_remote_images.as_deref(),
+        normalize: store_as_given,
+    },
+    SettingSpec {
+        key: CHECK_UPDATES_ON_STARTUP_KEY,
+        load: |settings, value| settings.check_updates_on_startup = Some(value),
+        store: |settings| settings.check_updates_on_startup.as_deref(),
+        normalize: store_as_given,
+    },
+    SettingSpec {
+        key: EXTERNAL_BACKUP_DIR_KEY,
+        load: |settings, value| settings.external_backup_dir = Some(value),
+        store: |settings| settings.external_backup_dir.as_deref(),
+        // Validated at the command boundary (set_external_backup_dir), which is also the only
+        // writer: the whole-row write below leaves this field `None` and therefore skips the key.
+        normalize: store_as_given,
+    },
+];
+
+/// Renders a boolean setting the way the table stores it. The `app_settings` value column is
+/// TEXT, so every flag is `"true"`/`"false"`; keeping the conversion in one place is what stops a
+/// second spelling (`"1"`, `"yes"`) from being introduced by a later caller, since the read side
+/// treats anything that is not exactly `"true"` as false.
+pub(crate) fn bool_setting(value: bool) -> Option<String> {
+    Some(if value { "true" } else { "false" }.to_string())
+}
+
 pub(crate) fn db_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
     AppError::from_code_with_details(AppErrorCode::AppError, message, error.to_string())
 }
@@ -300,30 +375,22 @@ pub fn is_pool_initialized(app: &AppHandle) -> bool {
 }
 
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
-    let rows: Vec<(String, String)> =
-        sqlx::query_as("SELECT key, value FROM app_settings WHERE key IN (?, ?, ?, ?, ?)")
-            .bind(IMPORT_MODE_KEY)
-            .bind(LIBRARY_PATH_KEY)
-            .bind(LOAD_REMOTE_IMAGES_KEY)
-            .bind(CHECK_UPDATES_ON_STARTUP_KEY)
-            .bind(EXTERNAL_BACKUP_DIR_KEY)
-            .fetch_all(pool)
-            .await
-            .map_err(|error| db_error("failed to read app settings", error))?;
+    // Every row, with no `IN (?, ?, ...)` filter. The filter used to be the thing that had to
+    // grow a placeholder per setting, and building that list dynamically would mean handing sqlx
+    // a non-literal SQL string - which it refuses outright (`SqlSafeStr`), correctly, since that
+    // is the shape injection arrives in. Selecting the whole table sidesteps both: it is a
+    // handful of rows on a local database, the dispatch below already ignores a key it does not
+    // recognize, and adding a setting now touches the query not at all.
+    let rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM app_settings")
+        .fetch_all(pool)
+        .await
+        .map_err(|error| db_error("failed to read app settings", error))?;
 
     let mut settings = StoredAppSettings::default();
 
     for (key, value) in rows {
-        if key == IMPORT_MODE_KEY {
-            settings.import_mode = Some(value);
-        } else if key == LIBRARY_PATH_KEY {
-            settings.library_path = Some(value);
-        } else if key == LOAD_REMOTE_IMAGES_KEY {
-            settings.load_remote_images = Some(value);
-        } else if key == CHECK_UPDATES_ON_STARTUP_KEY {
-            settings.check_updates_on_startup = Some(value);
-        } else if key == EXTERNAL_BACKUP_DIR_KEY {
-            settings.external_backup_dir = Some(value);
+        if let Some(spec) = SETTINGS.iter().find(|spec| spec.key == key) {
+            (spec.load)(&mut settings, value);
         }
     }
 
@@ -391,20 +458,28 @@ pub async fn set_external_backup_dir_in_pool(
         .map_err(|error| db_error("failed to persist the external backup directory", error))
 }
 
+/// Writes every field `settings` carries a value for, in one transaction. A field left `None` is
+/// skipped rather than cleared, which is what lets a caller own a subset of the keys - the
+/// settings form owns four, while `external_backup_dir` is written by its own command.
+///
+/// Takes the whole struct rather than one parameter per key so adding a setting does not grow a
+/// positional argument list that a caller could pass in the wrong order (all four of the current
+/// values are strings or bools, so a swap would compile).
 pub async fn set_app_settings_in_pool(
     pool: &SqlitePool,
-    import_mode: &str,
-    library_path: &str,
-    load_remote_images: bool,
-    check_updates_on_startup: bool,
+    settings: &StoredAppSettings,
 ) -> AppResult<()> {
-    let import_mode = validate_import_mode(import_mode)?;
-    let load_remote_images = if load_remote_images { "true" } else { "false" };
-    let check_updates_on_startup = if check_updates_on_startup {
-        "true"
-    } else {
-        "false"
-    };
+    // Normalize every value before the transaction opens, so a rejected one persists nothing at
+    // all rather than leaving the keys ahead of it written.
+    let mut pending: Vec<(&'static str, String)> = Vec::new();
+
+    for spec in SETTINGS {
+        let Some(value) = (spec.store)(settings) else {
+            continue;
+        };
+
+        pending.push((spec.key, (spec.normalize)(value)?));
+    }
 
     let mut tx = pool
         .begin()
@@ -412,15 +487,10 @@ pub async fn set_app_settings_in_pool(
         .map_err(|error| db_error("failed to begin settings transaction", error))?;
 
     let result = async {
-        upsert_setting(&mut *tx, IMPORT_MODE_KEY, import_mode).await?;
-        upsert_setting(&mut *tx, LIBRARY_PATH_KEY, library_path).await?;
-        upsert_setting(&mut *tx, LOAD_REMOTE_IMAGES_KEY, load_remote_images).await?;
-        upsert_setting(
-            &mut *tx,
-            CHECK_UPDATES_ON_STARTUP_KEY,
-            check_updates_on_startup,
-        )
-        .await?;
+        for (key, value) in &pending {
+            upsert_setting(&mut *tx, key, value).await?;
+        }
+
         Ok::<(), sqlx::Error>(())
     }
     .await;
@@ -467,6 +537,24 @@ mod tests {
         pool
     }
 
+    /// The four keys the settings form owns, shaped the way `commands::settings` builds them.
+    /// `external_backup_dir` stays `None` here for the same reason it does there: it has its own
+    /// command, and a `None` field is skipped rather than cleared.
+    fn form_settings(
+        import_mode: &str,
+        library_path: &str,
+        load_remote_images: bool,
+        check_updates_on_startup: bool,
+    ) -> StoredAppSettings {
+        StoredAppSettings {
+            import_mode: Some(import_mode.to_string()),
+            library_path: Some(library_path.to_string()),
+            load_remote_images: bool_setting(load_remote_images),
+            check_updates_on_startup: bool_setting(check_updates_on_startup),
+            external_backup_dir: None,
+        }
+    }
+
     #[tokio::test]
     async fn get_app_settings_returns_none_when_empty() {
         let pool = create_test_pool().await;
@@ -481,7 +569,7 @@ mod tests {
     async fn set_then_get_app_settings_roundtrip() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "move", "/library", true, true)
+        set_app_settings_in_pool(&pool, &form_settings("move", "/library", true, true))
             .await
             .unwrap();
 
@@ -496,7 +584,7 @@ mod tests {
     async fn set_app_settings_persists_the_remote_images_preference() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "copy", "/library", false, false)
+        set_app_settings_in_pool(&pool, &form_settings("copy", "/library", false, false))
             .await
             .unwrap();
 
@@ -508,10 +596,10 @@ mod tests {
     async fn set_app_settings_upserts_existing_keys() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "copy", "/old", true, false)
+        set_app_settings_in_pool(&pool, &form_settings("copy", "/old", true, false))
             .await
             .unwrap();
-        set_app_settings_in_pool(&pool, "move", "/new", false, true)
+        set_app_settings_in_pool(&pool, &form_settings("move", "/new", false, true))
             .await
             .unwrap();
 
@@ -529,12 +617,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_none_field_leaves_its_key_alone_instead_of_clearing_it() {
+        // The property the whole-row write depends on, and the reason it takes a struct of
+        // options rather than a value per key: the settings form owns four of the five keys, so
+        // saving it must not touch `external_backup_dir`. Writing every field unconditionally
+        // would turn every save of the Settings modal into a silent "external backup off".
+        let pool = create_test_pool().await;
+
+        set_external_backup_dir_in_pool(&pool, "/mnt/backup")
+            .await
+            .unwrap();
+
+        set_app_settings_in_pool(&pool, &form_settings("move", "/library", true, true))
+            .await
+            .unwrap();
+
+        let settings = get_app_settings_from_pool(&pool).await.unwrap();
+
+        assert_eq!(
+            settings.external_backup_dir.as_deref(),
+            Some("/mnt/backup"),
+            "a field the caller left None must survive a whole-row write"
+        );
+        // The four the form does own still landed.
+        assert_eq!(settings.import_mode.as_deref(), Some("move"));
+        assert_eq!(settings.library_path.as_deref(), Some("/library"));
+    }
+
+    #[test]
+    fn each_spec_entry_loads_and_stores_its_own_distinct_field() {
+        // The failure this table makes possible: a copy-pasted entry whose `load` writes one field
+        // while its `store` reads another, or two entries sharing a field. Neither shows up as a
+        // round-trip failure - the value still comes back, just under the wrong key, which surfaces
+        // as one setting silently taking another's value.
+        //
+        // Loading a single entry and requiring every *other* entry to still read None is what
+        // catches both, and it covers a setting added later without needing its own assertion.
+        // Deliberately not routed through the pool: `import_mode`'s normalizer rejects anything
+        // outside its closed set, so a generic value per entry cannot be written, and the pairing
+        // this asserts is a property of the table rather than of the SQL.
+        for spec in SETTINGS {
+            let mut settings = StoredAppSettings::default();
+            (spec.load)(&mut settings, "loaded".to_string());
+
+            for other in SETTINGS {
+                let expected = if std::ptr::eq(other, spec) {
+                    Some("loaded")
+                } else {
+                    None
+                };
+
+                assert_eq!(
+                    (other.store)(&settings),
+                    expected,
+                    "loading {} left {} reading {:?}",
+                    spec.key,
+                    other.key,
+                    (other.store)(&settings)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn setting_keys_are_unique() {
+        // A duplicated key would make the read dispatch pick whichever entry `find` reached first
+        // and the write emit two upserts for one key, with the second silently winning.
+        for (index, spec) in SETTINGS.iter().enumerate() {
+            assert!(
+                !SETTINGS[..index].iter().any(|other| other.key == spec.key),
+                "{} appears more than once in SETTINGS",
+                spec.key
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn set_app_settings_rejects_an_unknown_import_mode() {
         let pool = create_test_pool().await;
 
-        let error = set_app_settings_in_pool(&pool, "teleport", "/library", true, false)
-            .await
-            .unwrap_err();
+        let error =
+            set_app_settings_in_pool(&pool, &form_settings("teleport", "/library", true, false))
+                .await
+                .unwrap_err();
         assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
 
         // Validation happens before the transaction opens, so nothing is persisted.
@@ -547,7 +712,7 @@ mod tests {
     async fn set_app_settings_accepts_and_trims_valid_modes() {
         let pool = create_test_pool().await;
 
-        set_app_settings_in_pool(&pool, "  move  ", "/library", true, false)
+        set_app_settings_in_pool(&pool, &form_settings("  move  ", "/library", true, false))
             .await
             .unwrap();
 

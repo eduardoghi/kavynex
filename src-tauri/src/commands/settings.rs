@@ -1,8 +1,8 @@
 use tauri::State;
 
 use crate::services::database::{
-    get_app_settings_from_pool, set_app_settings_in_pool, set_external_backup_dir_in_pool, Db,
-    StoredAppSettings,
+    bool_setting, get_app_settings_from_pool, set_app_settings_in_pool,
+    set_external_backup_dir_in_pool, Db, StoredAppSettings,
 };
 use std::path::Path;
 
@@ -78,12 +78,19 @@ pub async fn set_app_settings(
     .await?;
 
     let pool = db.pool().await?;
+
+    // The four keys this form owns. `external_backup_dir` stays `None` on purpose: it has its own
+    // command, and a `None` field is skipped rather than cleared, so saving the settings form
+    // cannot wipe a configured backup folder.
     set_app_settings_in_pool(
         &pool,
-        import_mode.trim(),
-        &trimmed_library_path,
-        load_remote_images,
-        check_updates_on_startup,
+        &StoredAppSettings {
+            import_mode: Some(import_mode.trim().to_string()),
+            library_path: Some(trimmed_library_path),
+            load_remote_images: bool_setting(load_remote_images),
+            check_updates_on_startup: bool_setting(check_updates_on_startup),
+            external_backup_dir: None,
+        },
     )
     .await
 }
