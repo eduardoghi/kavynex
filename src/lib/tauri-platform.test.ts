@@ -20,6 +20,25 @@ const REQUIRED_ASSET_SOURCES = ["asset:", "http://asset.localhost"];
 // The directives that actually serve library files: thumbnails/avatars, and video/audio.
 const ASSET_DIRECTIVES = ["img-src", "media-src"];
 
+// Directives that must be present with exactly this source list, because each one closes a way
+// out of the document that `default-src` does not cover.
+//
+// `form-action` is the one worth naming: unlike script-src/frame-src/worker-src, it does NOT fall
+// back to `default-src`, so leaving it out means "any destination". Every other outbound channel
+// is already shut (`connect-src 'self' ipc:` blocks fetch/XHR/WebSocket, `object-src 'none'` blocks
+// plugin content), which would leave a submitted form as the only way to navigate the document to
+// an external origin with data attached. The app has no form that submits - every input is a React
+// handler that goes over IPC - so 'none' costs nothing.
+//
+// The other two are pinned here rather than only in tauri.conf.json for the same reason the asset
+// tokens are: a packaged build is the first thing that exercises the real CSP, so a directive
+// dropped in an edit would not surface until a release.
+const LOCKED_DOWN_DIRECTIVES: ReadonlyArray<readonly [string, string]> = [
+    ["form-action", "'none'"],
+    ["object-src", "'none'"],
+    ["frame-ancestors", "'none'"],
+];
+
 type TauriConfig = {
     app: { security: { csp: string; devCsp: string } };
 };
@@ -62,6 +81,15 @@ describe("asset protocol CSP", () => {
                     // each platform's webview needs.
                     expect(sources).toContain(required);
                 }
+            });
+        }
+
+        for (const [directive, expected] of LOCKED_DOWN_DIRECTIVES) {
+            it(`${label} pins ${directive} to ${expected}`, () => {
+                // Asserted as the exact source list, not just presence: a directive widened to
+                // `'self'` (or to a host) is the regression worth failing on, and a containment
+                // check would pass on it.
+                expect(directiveSources(csp, directive)).toEqual([expected]);
             });
         }
     }
