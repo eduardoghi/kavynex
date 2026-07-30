@@ -416,6 +416,71 @@ jobs:
                   prerelease: false
                   args: ${{ matrix.args }}
 
+            # Start the binary that was just built, and require it to complete startup.
+            #
+            # This is the only step in the entire pipeline that runs the application. Everything
+            # above proves the code compiles and its tests pass: `cargo test` links the `rlib` and
+            # never initializes the Tauri runtime, the webview or `setup()`, and `pnpm build` only
+            # emits the frontend bundle. So every failure that lives between "compiles" and "opens"
+            # - an application manifest the loader rejects, a runtime library the bundle does not
+            # resolve, a plugin that fails to register, a panic in `setup()` - crossed six green
+            # matrix legs and reached the user as an app that does not open, with a provenance
+            # attestation vouching for it. This project has already shipped one such bug.
+            #
+            # `--smoke-test` (src-tauri/src/lib.rs) runs the whole of `setup()` and exits 0 without
+            # entering the event loop. It is placed after the build so the real artifact is what
+            # gets exercised, and before the attestation below so a broken binary is never attested.
+            # A failure here leaves assets on the draft and turns the run red, which is the intended
+            # outcome: the draft is published by hand, and the maintainer must not publish a red run.
+            #
+            # xvfb on Linux because the webview needs a display to initialize at all - the check
+            # would otherwise fail for the wrong reason. Windows and macOS runners have a session.
+            - name: Smoke-test the built binary (Linux)
+              if: startsWith(matrix.platform, 'ubuntu-')
+              run: |
+                  sudo apt-get install -y xvfb
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
+
+                  if [ -z "$binary" ]; then
+                      echo "::error::no built kavynex binary was found to smoke-test" >&2
+                      exit 1
+                  fi
+
+                  echo "Smoke-testing $binary"
+                  xvfb-run -a "$binary" --smoke-test
+
+            - name: Smoke-test the built binary (Windows)
+              if: startsWith(matrix.platform, 'windows-')
+              shell: bash
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex.exe' | head -n1)
+
+                  if [ -z "$binary" ]; then
+                      echo "::error::no built kavynex.exe was found to smoke-test" >&2
+                      exit 1
+                  fi
+
+                  echo "Smoke-testing $binary"
+                  "$binary" --smoke-test
+
+            # The x86_64 macOS leg is a cross-compile: `macos-26` is an arm64 runner, so its output
+            # cannot be executed here without Rosetta, which the image is not guaranteed to carry.
+            # Skipping it is honest rather than convenient - that one binary is built and signed
+            # without ever being run, and nothing in this workflow can change that. The aarch64 leg
+            # is native and covers the same code on the same OS.
+            - name: Smoke-test the built binary (macOS)
+              if: startsWith(matrix.platform, 'macos-') && !contains(matrix.args, 'x86_64')
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
+
+                  if [ -z "$binary" ]; then
+                      echo "::error::no built kavynex binary was found to smoke-test" >&2
+                      exit 1
+                  fi
+
+                  echo "Smoke-testing $binary"
+                  "$binary" --smoke-test
+
             # Records a signed, keyless (Sigstore) statement that these exact installer bytes
             # were built by this workflow, from this commit. Independent of the minisign updater
             # signature: users can run `gh attestation verify <file> --repo eduardoghi/kavynex`

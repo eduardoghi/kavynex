@@ -292,6 +292,27 @@ fn spawn_periodic_backup(app_handle: AppHandle) {
     });
 }
 
+/// The flag that turns a launch into a startup self-check: run the whole of `setup()` and exit 0
+/// without ever entering the event loop. See [`is_smoke_test_run`].
+const SMOKE_TEST_FLAG: &str = "--smoke-test";
+
+/// True when this process was launched to prove it starts, rather than to be used.
+///
+/// This exists because nothing else in the pipeline runs the binary. `cargo test` links the
+/// `rlib` and never initializes the Tauri runtime, the webview, or `setup()`; `pnpm build` only
+/// produces the frontend bundle. So the entire class of failure that happens between "the code
+/// compiles" and "the window opens" - a bad application manifest, a runtime library the bundle
+/// does not resolve, a plugin that fails to register, a panic in `setup()` - passes every gate in
+/// `ci.yml` and `release.yml` and reaches the user as an app that does not open. This project has
+/// already shipped one such bug (a `build.rs` manifest gate that made the process fail to load at
+/// all, invisible to `cargo test`).
+///
+/// Kept a pure function over an iterator rather than reading `std::env::args()` directly so the
+/// matching can be unit-tested; the caller passes the real arguments.
+fn is_smoke_test_run(args: impl IntoIterator<Item = String>) -> bool {
+    args.into_iter().any(|arg| arg == SMOKE_TEST_FLAG)
+}
+
 /// Reports a fatal startup failure and terminates with a non-zero code. The app is built with
 /// `windows_subsystem = "windows"` (no console), so a panic here would be invisible - the user
 /// would just see the app fail to open. This logs the reason (stderr, plus the file log if it
@@ -455,6 +476,20 @@ pub fn run() {
             spawn_periodic_backup(app_handle);
             services::logger::info("app", "application setup finished");
 
+            // Startup self-check (see is_smoke_test_run): everything above this line has run, so
+            // the process loaded, the runtime and every plugin initialized, the database path
+            // resolved and any staged import applied. That is the whole of what a release can
+            // verify without a human, and it is exactly what no other gate covers.
+            //
+            // `std::process::exit` rather than `AppHandle::exit`, matching fail_startup above: the
+            // event loop has not started yet, so there is nothing to unwind and an unconditional
+            // exit keeps the check's outcome unambiguous - the process either reaches this line
+            // and returns 0, or it does not.
+            if is_smoke_test_run(std::env::args()) {
+                services::logger::info("app", "smoke test passed");
+                std::process::exit(0);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -534,4 +569,36 @@ pub fn run() {
                 services::process_registry::kill_all_tracked_blocking();
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn smoke_test_flag_is_recognized_anywhere_in_the_argument_list() {
+        // argv[0] is the executable path, and a launcher may append its own arguments, so the flag
+        // must be matched positionally-independently rather than only as the first argument.
+        assert!(is_smoke_test_run(args(&["kavynex", SMOKE_TEST_FLAG])));
+        assert!(is_smoke_test_run(args(&[
+            "/usr/bin/kavynex",
+            "--other",
+            SMOKE_TEST_FLAG,
+        ])));
+    }
+
+    #[test]
+    fn a_normal_launch_is_not_a_smoke_test() {
+        // The consequence of a false positive here is an app that exits instead of opening, so a
+        // near-miss must not match: no prefix, no substring, no bare word.
+        assert!(!is_smoke_test_run(args(&["kavynex"])));
+        assert!(!is_smoke_test_run(args(&["kavynex", "--smoke-test-mode"])));
+        assert!(!is_smoke_test_run(args(&["kavynex", "smoke-test"])));
+        assert!(!is_smoke_test_run(args(&["kavynex", "--smoke"])));
+        assert!(!is_smoke_test_run(Vec::new()));
+    }
 }
