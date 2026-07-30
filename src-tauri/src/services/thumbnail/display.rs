@@ -26,8 +26,14 @@
 //! - **It is retroactive.** A thumbnail that has been in the library for a year gets a derivative
 //!   the first time it is asked for, which is what the format switch could not do.
 //! - **It fails open.** Every failure path - an unreadable source, a missing FFmpeg, a refused
-//!   cache directory - returns `None` for that entry, and the caller renders the canonical file
-//!   exactly as before. A slow card is better than a blank one.
+//!   cache directory - answers that entry with no derivative, and the caller renders the canonical
+//!   file exactly as before. A slow card is better than a blank one.
+//!
+//! What an answer does carry, on top of the derivative or its absence, is whether asking again
+//! could change it ([`DisplayThumbnail`]). That is not a detail of the encoding: the caller re-asks
+//! about every path it has not settled, so conflating "no slots left this call" with "this path can
+//! never resolve" made a permanently unresolvable path ride along on every request for the rest of
+//! the session.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -64,7 +70,7 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 ///
 /// Sized to a **full** page (`shared/media-page-size.json`, pinned by
 /// `the_generation_budget_covers_a_full_page_of_the_grid` below), which it was not: at 64 against a
-/// page of 100, the first visit to a channel generated 64 derivatives and answered `None` for the
+/// page of 100, the first visit to a channel generated 64 derivatives and had nothing left for the
 /// remaining 36. That is not the self-correcting miss the comment above describes, because the
 /// caller only re-asks when its item list changes: a channel that fits in one page (`hasMore` false)
 /// has nothing left to trigger a retry, so those 36 cards kept decoding the full-resolution stored
@@ -81,9 +87,11 @@ const MAX_GENERATIONS_PER_CALL: usize = 100;
 /// `MAX_MEDIA_COMMENTS_LOADED`, `MAX_SEARCH_TERM_CHARS`, `MAX_RUN_ID_LEN`): the backend is the trust
 /// boundary, so it states its own limit rather than inheriting whatever the caller sends.
 ///
-/// A page of the grid is at most a few dozen rows, so this is generous for every legitimate call.
-/// Entries past it answer `None`, which the caller already renders as the stored thumbnail - the
-/// same benign fallback as a name this app did not write.
+/// A page of the grid is a hundred rows (`shared/media-page-size.json`), so this is generous for
+/// every legitimate call. Entries past it answer [`DisplayThumbnail::BudgetSpent`] - the caller
+/// renders the stored thumbnail for them, and asks again, which is right: nothing was decided about
+/// those paths, so recording them as final would strand cards that a smaller later request would
+/// have resolved.
 const MAX_RESOLVED_PER_CALL: usize = 512;
 
 /// Ceiling on the total size of the derivative cache directory.
@@ -102,6 +110,51 @@ const MAX_RESOLVED_PER_CALL: usize = 512;
 /// overshoot is bounded by what one session can draw and costs disk in a directory that is
 /// disposable by construction, which is the cheaper side of the trade.
 const DISPLAY_CACHE_MAX_BYTES: u64 = 200 * 1024 * 1024;
+
+/// What one requested thumbnail got, and - when it got nothing - whether asking again could ever
+/// change that.
+///
+/// This distinction is the whole reason the answer is not an `Option<String>`. There are five ways
+/// an entry ends up without a derivative and only one of them is worth retrying, but the caller
+/// could not tell them apart: it received `null` for a page whose generation budget ran out and
+/// `null` for a name this app did not write, so it had to pick one behavior for both. It picked
+/// retry, which is correct for the first and wrong for every other - and being wrong there is not
+/// harmless. The caller asks about every loaded row, so a path that can never be resolved comes back
+/// on every page append, forever: on a machine without FFmpeg, or a library holding rows written
+/// before thumbnails were content-addressed, that restores exactly the quadratic growth
+/// `useDisplayThumbnails` was built to remove, and past
+/// [`MAX_RESOLVED_PER_CALL`] it also logs a truncation warning per page whose text says no
+/// legitimate flow reaches it.
+///
+/// So the backend states which it is, because the backend is the only side that knows. Only
+/// [`DisplayThumbnail::BudgetSpent`] means "ask again"; everything else is final for this library.
+///
+/// The uncertain cases resolve to [`DisplayThumbnail::Unavailable`] deliberately. A source that is
+/// gone might come back, and an FFmpeg run that failed might succeed on a retry - but the cost of
+/// treating those as permanent is one session of drawing the stored thumbnail, which is the fallback
+/// this whole module already declares acceptable, while the cost of treating them as retryable is
+/// the unbounded re-asking above. A fresh launch retries all of them anyway, since the cache is
+/// consulted by content hash and nothing is remembered across sessions.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub enum DisplayThumbnail {
+    /// The absolute path of the display-sized copy.
+    Resolved { path: String },
+    /// No derivative *this call*: the per-call generation budget was already spent, or the entry
+    /// fell past the per-call ceiling. The only answer worth asking about again.
+    BudgetSpent,
+    /// No derivative, and no later call will produce one for this path in this library.
+    Unavailable,
+}
+
+impl DisplayThumbnail {
+    fn resolved(path: PathBuf) -> Self {
+        Self::Resolved {
+            path: path.to_string_lossy().to_string(),
+        }
+    }
+}
 
 /// One cached derivative, as [`plan_display_cache_eviction`] sees it. Carries only what the decision
 /// reads, so that decision can be made without a filesystem.
@@ -334,47 +387,75 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
 /// not cached yet. `ffmpeg` is resolved once by the caller and passed in, so a page of misses does
 /// not re-resolve the binary per entry.
 ///
-/// Returns `None` on every failure, which the caller turns into "render the canonical file".
+/// Never fails: every outcome is a [`DisplayThumbnail`], and the caller turns anything that is not
+/// `Resolved` into "render the canonical file". Which variant it is decides only whether the caller
+/// asks about this path again.
 fn resolve_one(
     library_path: &str,
     relative_path: &str,
     display_dir: &Path,
     ffmpeg: Option<&str>,
     generations_left: &mut usize,
-) -> Option<PathBuf> {
-    let cache_key = display_cache_key(relative_path)?;
+) -> DisplayThumbnail {
+    // A name this app did not write. Permanent: the name comes off the row and does not change.
+    let Some(cache_key) = display_cache_key(relative_path) else {
+        return DisplayThumbnail::Unavailable;
+    };
+
     let out_path = display_dir.join(display_thumbnail_file_name(&cache_key));
 
     // The hit path: a stat, and nothing else. This is the case that has to stay cheap, since it is
     // every page view after the first.
     if is_usable_file(&out_path) {
-        return Some(out_path);
+        return DisplayThumbnail::resolved(out_path);
     }
 
     // Only now does the source have to be located and validated, so a warmed cache never pays for
-    // the containment check either.
-    ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_THUMBNAILS).ok()?;
-    let source_path = absolute_path_from_relative(Path::new(library_path), relative_path).ok()?;
-
-    if !is_usable_file(&source_path) {
-        return None;
+    // the containment check either. Both refusals are permanent - a path outside `thumbnails/`, or
+    // one that will not resolve inside the library, is a property of the stored value.
+    if ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_THUMBNAILS).is_err() {
+        return DisplayThumbnail::Unavailable;
     }
 
-    take_generation_slot(generations_left)?;
+    let Ok(source_path) = absolute_path_from_relative(Path::new(library_path), relative_path)
+    else {
+        return DisplayThumbnail::Unavailable;
+    };
 
-    generate_display_thumbnail(ffmpeg?, &source_path, &out_path).then_some(out_path)
+    if !is_usable_file(&source_path) {
+        return DisplayThumbnail::Unavailable;
+    }
+
+    // Checked before the budget rather than after it. Without FFmpeg no entry in this call can
+    // produce anything, so spending a slot to discover that once per entry burns the whole budget
+    // on nothing and starves the entries behind it - which mattered less when every miss was
+    // re-asked anyway, and matters now that a miss is final.
+    let Some(ffmpeg) = ffmpeg else {
+        return DisplayThumbnail::Unavailable;
+    };
+
+    if take_generation_slot(generations_left).is_none() {
+        return DisplayThumbnail::BudgetSpent;
+    }
+
+    if generate_display_thumbnail(ffmpeg, &source_path, &out_path) {
+        DisplayThumbnail::resolved(out_path)
+    } else {
+        DisplayThumbnail::Unavailable
+    }
 }
 
 /// Resolves display-sized copies for a page of thumbnails, in the order given.
 ///
-/// Each entry is `Some(absolute path to the derivative)` or `None`, and `None` is a normal answer,
-/// never an error: the caller renders the canonical file for it. The whole call likewise returns
-/// `Ok` with every entry `None` rather than failing when the cache directory or FFmpeg cannot be
-/// resolved - the grid must render either way, and a thumbnail cache is not worth an error modal.
+/// Each entry is a [`DisplayThumbnail`] for the requested path at the same index, and anything other
+/// than `Resolved` is a normal answer rather than an error: the caller renders the canonical file for
+/// it. The whole call likewise returns `Ok` with nothing resolved rather than failing when the cache
+/// directory or FFmpeg cannot be resolved - the grid must render either way, and a thumbnail cache is
+/// not worth an error modal.
 ///
 /// The returned vector is always as long as `relative_paths`, because the caller reads it by
-/// position; entries the per-call ceiling ([`MAX_RESOLVED_PER_CALL`]) excluded are `None` like any
-/// other unresolved one.
+/// position. Entries the per-call ceiling ([`MAX_RESOLVED_PER_CALL`]) excluded are `BudgetSpent`
+/// rather than `Unavailable`: nothing was decided about them, so the caller should ask again.
 ///
 /// `library_path` is the caller's, and is verified by the command layer
 /// (`verify_library_path_then_blocking`) before this runs, exactly like every other library read.
@@ -382,14 +463,17 @@ pub fn resolve_display_thumbnails_sync(
     app: &AppHandle,
     library_path: &str,
     relative_paths: &[String],
-) -> AppResult<Vec<Option<String>>> {
+) -> AppResult<Vec<DisplayThumbnail>> {
     let Ok(display_dir) = thumb_display_dir(app) else {
         logger::warn(
             "thumbnail_display",
             "could not resolve the display thumbnail cache directory; serving the stored thumbnails",
         );
 
-        return Ok(vec![None; relative_paths.len()]);
+        // Unavailable rather than BudgetSpent: a cache directory that cannot be resolved will not
+        // resolve on the next page either, so inviting the caller to re-ask would put this warning
+        // in the log once per page for the rest of the session.
+        return Ok(vec![DisplayThumbnail::Unavailable; relative_paths.len()]);
     };
 
     let considered = within_call_ceiling(relative_paths);
@@ -415,7 +499,7 @@ pub fn resolve_display_thumbnails_sync(
     let ffmpeg = resolve_ffmpeg_binary(app).ok();
     let mut generations_left = MAX_GENERATIONS_PER_CALL;
 
-    let mut resolved: Vec<Option<String>> = considered
+    let mut resolved: Vec<DisplayThumbnail> = considered
         .iter()
         .map(|relative_path| {
             resolve_one(
@@ -425,12 +509,13 @@ pub fn resolve_display_thumbnails_sync(
                 ffmpeg.as_deref(),
                 &mut generations_left,
             )
-            .map(|path| path.to_string_lossy().to_string())
         })
         .collect();
 
-    // Restore the positional contract the caller indexes by.
-    resolved.resize(relative_paths.len(), None);
+    // Restore the positional contract the caller indexes by. The tail the ceiling excluded is
+    // BudgetSpent, not Unavailable: nothing was decided about those paths, and a later call carrying
+    // fewer of them can still answer properly.
+    resolved.resize(relative_paths.len(), DisplayThumbnail::BudgetSpent);
 
     Ok(resolved)
 }
@@ -795,10 +880,128 @@ mod tests {
             &mut generations_left,
         );
 
-        assert_eq!(resolved, None);
+        // Unavailable, not BudgetSpent: the name came off the row and will not change, so telling
+        // the caller to ask again would have it re-ask about this path on every page for the rest
+        // of the session.
+        assert_eq!(resolved, DisplayThumbnail::Unavailable);
         assert_eq!(generations_left, 1, "a refused name must not spend budget");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_exhausted_budget_is_reported_as_retryable_rather_than_final() {
+        // The distinction this enum exists for, and the one case that is genuinely worth asking
+        // about again: the path is fine, the source is there, and the only reason there is no
+        // derivative is that this call had no slots left.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-display-budget-spent-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let hash = "e".repeat(64);
+        let relative = format!("thumbnails/thumb_{hash}.jpg");
+        // The source has to exist *at the path the relative one resolves to*, or the miss is
+        // classified before the budget is ever consulted and this asserts nothing.
+        std::fs::create_dir_all(dir.join(LIBRARY_DIR_THUMBNAILS)).unwrap();
+        std::fs::write(dir.join(&relative), b"\xff\xd8\xff").unwrap();
+
+        let mut generations_left = 0usize;
+        let resolved = resolve_one(
+            &dir.to_string_lossy(),
+            &relative,
+            &dir,
+            Some("ffmpeg"),
+            &mut generations_left,
+        );
+
+        assert_eq!(resolved, DisplayThumbnail::BudgetSpent);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_ffmpeg_is_final_and_never_spends_the_budget() {
+        // Both halves matter. Final, because no entry in any later call can produce a derivative
+        // without FFmpeg either - and marking it retryable is precisely what made a machine without
+        // FFmpeg re-ask about its whole library on every page. And free, because the check now runs
+        // before the slot is taken: paying a slot per entry to rediscover the same missing binary
+        // would exhaust the budget on nothing.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-display-no-ffmpeg-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let hash = "f".repeat(64);
+        let relative = format!("thumbnails/thumb_{hash}.jpg");
+        // Same trap as the budget test above: without a source at the resolved path this would
+        // return Unavailable for the wrong reason and pass while asserting nothing about FFmpeg.
+        std::fs::create_dir_all(dir.join(LIBRARY_DIR_THUMBNAILS)).unwrap();
+        std::fs::write(dir.join(&relative), b"\xff\xd8\xff").unwrap();
+
+        let mut generations_left = 3usize;
+        let resolved = resolve_one(
+            &dir.to_string_lossy(),
+            &relative,
+            &dir,
+            None,
+            &mut generations_left,
+        );
+
+        assert_eq!(resolved, DisplayThumbnail::Unavailable);
+        assert_eq!(
+            generations_left, 3,
+            "a machine without FFmpeg must not spend the budget discovering that"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_path_outside_the_thumbnails_directory_is_final() {
+        // A containment refusal is a property of the stored value, so it can never become
+        // resolvable. It also must not be reachable at all through this command, which is why the
+        // check stays even though the answer is the same as an unwritable name.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-display-scope-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let hash = "a".repeat(64);
+        let mut generations_left = 2usize;
+
+        let resolved = resolve_one(
+            &dir.to_string_lossy(),
+            &format!("video/thumb_{hash}.jpg"),
+            &dir,
+            Some("ffmpeg"),
+            &mut generations_left,
+        );
+
+        assert_eq!(resolved, DisplayThumbnail::Unavailable);
+        assert_eq!(generations_left, 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_budget_spent_invites_another_request() {
+        // The property the caller depends on, asserted over the whole enum rather than per case: it
+        // records everything that is not BudgetSpent and stops asking about it. A new variant that
+        // is really "try later" has to be added to this list deliberately.
+        let retryable = [
+            DisplayThumbnail::BudgetSpent,
+            DisplayThumbnail::Unavailable,
+            DisplayThumbnail::resolved(PathBuf::from("/cache/a.jpg")),
+        ]
+        .into_iter()
+        .filter(|answer| matches!(answer, DisplayThumbnail::BudgetSpent))
+        .count();
+
+        assert_eq!(retryable, 1);
     }
 
     #[test]
@@ -825,7 +1028,7 @@ mod tests {
             &mut generations_left,
         );
 
-        assert_eq!(resolved, Some(cached));
+        assert_eq!(resolved, DisplayThumbnail::resolved(cached));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -850,7 +1053,11 @@ mod tests {
             &mut generations_left,
         );
 
-        assert_eq!(resolved, None);
+        // Final rather than retryable, which is a judgment worth stating: the file could come back
+        // (a drive remounted), but re-asking on every page will not be what brings it back, and a
+        // fresh launch retries it anyway. Being wrong here costs one session of drawing the stored
+        // thumbnail; being wrong the other way costs the unbounded re-asking this change removes.
+        assert_eq!(resolved, DisplayThumbnail::Unavailable);
         assert_eq!(
             generations_left, 4,
             "a source that is not there must not spend budget either"

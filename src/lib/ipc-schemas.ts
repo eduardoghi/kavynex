@@ -48,6 +48,7 @@ import type {
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
+import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
@@ -262,6 +263,15 @@ const databaseIntegrityReportSchema = z.object({
     truncated: z.boolean(),
 });
 
+// A discriminated union rather than a nullable string: the caller re-asks about every path it has
+// not settled, so "no derivative" has to say whether asking again could change the answer. Discarding
+// that here would put the distinction back at the seam where the backend cannot be consulted.
+const displayThumbnailSchema = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("resolved"), path: z.string() }),
+    z.object({ kind: z.literal("budgetSpent") }),
+    z.object({ kind: z.literal("unavailable") }),
+]);
+
 const webviewCheckPlanSchema = z.object({
     assetPath: z.string(),
 });
@@ -299,7 +309,9 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     // Positional: entry i answers requested path i, so a shorter or reordered array would silently
     // map a derivative onto the wrong media. The array shape is what this pins; the caller zips it
     // back against the paths it sent.
-    resolve_display_thumbnails: z.array(z.string().nullable()),
+    resolve_display_thumbnails: z.array(
+        displayThumbnailSchema
+    ) satisfies z.ZodType<DisplayThumbnail[]>,
     list_yt_dlp_formats: ytDlpFormatsResultSchema satisfies z.ZodType<YtDlpFormatsResult>,
     download_media_from_url: downloadedMediaResultSchema satisfies z.ZodType<DownloadedMediaResult>,
     fetch_youtube_comments: z.array(ytDlpCommentSchema) satisfies z.ZodType<YtDlpComment[]>,

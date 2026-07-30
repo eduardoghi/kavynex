@@ -10,8 +10,31 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import { resolveDisplayThumbnails } from "../services/thumbnail-service";
+import type { DisplayThumbnailResolution } from "../services/thumbnail-service";
 import { logError } from "../utils/app-logger";
 import { useDisplayThumbnails } from "./use-display-thumbnails";
+
+/**
+ * A resolution where every listed path resolved to a derivative. The common case, and the one where
+ * "settled" and "has a derivative" coincide - which is exactly why the two have to be given
+ * separately in the tests below that pull them apart.
+ */
+function resolvedAll(entries: Record<string, string>): DisplayThumbnailResolution {
+    return {
+        displayPaths: new Map(Object.entries(entries)),
+        settledPaths: new Set(Object.keys(entries)),
+    };
+}
+
+/** A resolution where nothing resolved and nothing was settled: every path is worth asking again. */
+function retryable(): DisplayThumbnailResolution {
+    return { displayPaths: new Map(), settledPaths: new Set() };
+}
+
+/** A resolution where the listed paths will never have a derivative, so asking again is pointless. */
+function permanentlyUnavailable(paths: string[]): DisplayThumbnailResolution {
+    return { displayPaths: new Map(), settledPaths: new Set(paths) };
+}
 
 describe("useDisplayThumbnails", () => {
     beforeEach(() => {
@@ -21,7 +44,7 @@ describe("useDisplayThumbnails", () => {
     it("starts empty so the first paint uses the stored thumbnails", () => {
         // The point of the hook is that nothing waits on it: the grid renders immediately with what
         // it already had, and derivatives arrive afterwards.
-        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(new Map());
+        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(retryable());
 
         const { result } = renderHook(() =>
             useDisplayThumbnails(["thumbnails/thumb_a.jpg"], "/library")
@@ -32,7 +55,7 @@ describe("useDisplayThumbnails", () => {
 
     it("exposes the resolved derivatives keyed by the stored path", async () => {
         vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
-            new Map([["thumbnails/thumb_a.jpg", "/cache/a.jpg"]])
+            resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" })
         );
 
         const { result } = renderHook(() =>
@@ -49,8 +72,8 @@ describe("useDisplayThumbnails", () => {
         // per page would swap every already-resolved card back to its full-size thumbnail mid-scroll
         // - the opposite of what the hook is for.
         vi.mocked(resolveDisplayThumbnails)
-            .mockResolvedValueOnce(new Map([["thumbnails/thumb_a.jpg", "/cache/a.jpg"]]))
-            .mockResolvedValueOnce(new Map([["thumbnails/thumb_b.jpg", "/cache/b.jpg"]]));
+            .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }))
+            .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_b.jpg": "/cache/b.jpg" }));
 
         const { result, rerender } = renderHook(
             ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
@@ -75,7 +98,7 @@ describe("useDisplayThumbnails", () => {
         // several times a second. Keying on the contents rather than the array identity is what keeps
         // that from becoming a stream of IPC calls.
         vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
-            new Map([["thumbnails/thumb_a.jpg", "/cache/a.jpg"]])
+            resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" })
         );
 
         const { rerender } = renderHook(
@@ -93,13 +116,13 @@ describe("useDisplayThumbnails", () => {
         expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
     });
 
-    it("asks only about the paths that do not have a derivative yet", async () => {
+    it("asks only about the paths that are not settled yet", async () => {
         // Every request used to carry every loaded path, so appending page k re-asked about all k
         // pages and the backend paid a stat per entry to answer "already cached" - quadratic in the
-        // number of pages, for an answer this side already had. Only the new page is unresolved.
+        // number of pages, for an answer this side already had. Only the new page is unsettled.
         vi.mocked(resolveDisplayThumbnails)
-            .mockResolvedValueOnce(new Map([["thumbnails/thumb_a.jpg", "/cache/a.jpg"]]))
-            .mockResolvedValueOnce(new Map([["thumbnails/thumb_b.jpg", "/cache/b.jpg"]]));
+            .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }))
+            .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_b.jpg": "/cache/b.jpg" }));
 
         const { rerender } = renderHook(
             ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
@@ -122,12 +145,12 @@ describe("useDisplayThumbnails", () => {
         );
     });
 
-    it("asks again about a path that came back without a derivative", async () => {
-        // The other direction of the same filter, and it has to hold: a miss is not a final answer.
-        // The backend caps how many derivatives one call may generate, so a page whose misses hit
-        // that ceiling only ever gets them by being asked a second time. Skipping on "was requested"
-        // rather than on "was resolved" would strand those cards on the stored file forever.
-        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(new Map());
+    it("asks again about a path the backend left unsettled", async () => {
+        // The retryable miss, and it has to stay retryable: the backend caps how many derivatives one
+        // call may generate, so a page whose misses hit that ceiling only ever gets them by being
+        // asked a second time. Skipping on "was requested" rather than on "was settled" would strand
+        // those cards on the stored file forever.
+        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(retryable());
 
         const { rerender } = renderHook(
             ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
@@ -150,12 +173,77 @@ describe("useDisplayThumbnails", () => {
         );
     });
 
-    it("drops everything it resolved when the library path changes", async () => {
+    it("stops asking about a path that can never have a derivative", async () => {
+        // The other half of the same decision, and the one this change added. A path the backend
+        // settled without resolving - a name this app did not write, a machine with no FFmpeg, a
+        // source that is gone - must drop out of every later request. Without this it rode along on
+        // every page append, which is the quadratic growth the hook exists to prevent and, past the
+        // backend's per-call ceiling, a truncation warning per page.
+        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
+            permanentlyUnavailable(["thumbnails/thumb_a.jpg"])
+        );
+
+        const { rerender } = renderHook(
+            ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
+            { initialProps: { paths: ["thumbnails/thumb_a.jpg"] } }
+        );
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
+        });
+
+        rerender({ paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"] });
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(2);
+        });
+
+        // Only the new path. The unavailable one is settled and never travels again.
+        expect(resolveDisplayThumbnails).toHaveBeenLastCalledWith(
+            ["thumbnails/thumb_b.jpg"],
+            "/library"
+        );
+    });
+
+    it("records the settled paths even when the call resolved no derivative at all", async () => {
+        // The ordering that makes the case above work. A call answering only "unavailable" produces
+        // an empty derivative map, and returning early on that - which is where the early return used
+        // to sit - would throw the settled set away and re-ask about all of them on the next page.
+        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
+            permanentlyUnavailable(["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"])
+        );
+
+        const { rerender } = renderHook(
+            ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
+            { initialProps: { paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"] } }
+        );
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
+        });
+
+        rerender({
+            paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg", "thumbnails/thumb_c.jpg"],
+        });
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(2);
+        });
+
+        expect(resolveDisplayThumbnails).toHaveBeenLastCalledWith(
+            ["thumbnails/thumb_c.jpg"],
+            "/library"
+        );
+    });
+
+    it("drops everything it settled when the library path changes", async () => {
         // The derivatives are addressed by content, but the paths they answer are relative to a
         // library that is no longer in use, so carrying them across would map a new library's
-        // thumbnail onto an old library's derivative.
+        // thumbnail onto an old library's derivative. The settled set has to be cleared with the map,
+        // or a path marked unavailable under the old library would never be asked about under the
+        // new one - where it may resolve perfectly well.
         vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
-            new Map([["thumbnails/thumb_a.jpg", "/cache/a.jpg"]])
+            resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" })
         );
 
         const { result, rerender } = renderHook(
@@ -168,11 +256,19 @@ describe("useDisplayThumbnails", () => {
             expect(result.current.size).toBe(1);
         });
 
-        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(new Map());
+        vi.mocked(resolveDisplayThumbnails).mockResolvedValue(retryable());
         rerender({ libraryPath: "/other-library" });
 
         await waitFor(() => {
             expect(result.current.size).toBe(0);
+        });
+
+        // Asked about again under the new library rather than skipped as already settled.
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenLastCalledWith(
+                ["thumbnails/thumb_a.jpg"],
+                "/other-library"
+            );
         });
     });
 
@@ -207,7 +303,7 @@ describe("useDisplayThumbnails", () => {
     it("ignores a resolution that lands after the hook is unmounted", async () => {
         // A channel switch unmounts the grid while a resolve is in flight; setting state then is a
         // no-op in React 18+, but the guard keeps the intent explicit and the test pins it.
-        let settle: (value: ReadonlyMap<string, string>) => void = () => {};
+        let settle: (value: DisplayThumbnailResolution) => void = () => {};
         vi.mocked(resolveDisplayThumbnails).mockReturnValue(
             new Promise((resolve) => {
                 settle = resolve;
@@ -221,7 +317,7 @@ describe("useDisplayThumbnails", () => {
         unmount();
 
         await act(async () => {
-            settle(new Map([["thumbnails/thumb_a.jpg", "/cache/a.jpg"]]));
+            settle(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }));
         });
 
         expect(logError).not.toHaveBeenCalled();

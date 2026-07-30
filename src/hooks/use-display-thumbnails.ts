@@ -43,12 +43,19 @@ const REQUEST_KEY_SEPARATOR = "\n";
  *   entry to answer "already cached" - quadratic in the number of pages for an answer this side
  *   already had. Skipping the resolved ones leaves each append asking about its own page.
  *
- * The set of resolved paths is mirrored in a ref rather than read off the map, so it can be consulted
+ * The set of settled paths is mirrored in a ref rather than read off the map, so it can be consulted
  * without the map becoming an effect dependency: with the map in the deps, every resolution would
- * re-run the effect and turn one request per page into a chain of them. An entry that came back
- * *without* a derivative is deliberately not recorded, so it is asked about again on the next page -
- * which is what lets a page whose misses exhausted the backend's per-call generation budget still
- * get its derivatives later.
+ * re-run the effect and turn one request per page into a chain of them.
+ *
+ * "Settled" is the backend's word, not this hook's guess, and that is the point. An entry that came
+ * back without a derivative used to be left unrecorded so it would be asked about again - which is
+ * right for a page whose misses exhausted the per-call generation budget, and wrong for every other
+ * way a path can fail to resolve. Those other ways are permanent (a name this app did not write, a
+ * machine with no FFmpeg, a source that is gone), so re-asking about them meant every page append
+ * carried them again: the request grew with the number of pages scrolled instead of staying one
+ * page's worth, which is the quadratic cost this hook exists to remove, and past the backend's
+ * per-call ceiling it also logged a truncation warning per page. The backend now says which kind of
+ * miss it was (`DisplayThumbnail`), and only the retryable kind is left out of the set.
  */
 export function useDisplayThumbnails(
     thumbnailPaths: readonly (string | null | undefined)[],
@@ -58,9 +65,10 @@ export function useDisplayThumbnails(
         EMPTY_DISPLAY_THUMBNAILS
     );
 
-    // The paths already answered with a derivative. Mirrors the map's keys; see the note above on
-    // why this is a ref and not a read of the map itself.
-    const resolvedPathsRef = useRef<Set<string>>(new Set());
+    // The paths the backend has answered for good - resolved or permanently unavailable. A superset
+    // of the map's keys, since a path that will never have a derivative is settled without appearing
+    // there. See the note above on why this is a ref and not a read of the map itself.
+    const settledPathsRef = useRef<Set<string>>(new Set());
 
     // A stable identity for "which paths are being asked about", so the effect below re-runs when
     // the set changes and not when the array is merely rebuilt with the same contents - which the
@@ -80,14 +88,14 @@ export function useDisplayThumbnails(
         // use), so the accumulated map is dropped rather than merged into. The ref has to be cleared
         // with it, or the next request would skip paths whose derivatives no longer apply. This
         // effect is declared before the fetch below so it runs first in the same commit.
-        resolvedPathsRef.current = new Set();
+        settledPathsRef.current = new Set();
         setDisplayThumbnails(EMPTY_DISPLAY_THUMBNAILS);
     }, [libraryPath]);
 
     useEffect(() => {
         const requested = requestKey
             .split(REQUEST_KEY_SEPARATOR)
-            .filter((path) => path.length > 0 && !resolvedPathsRef.current.has(path));
+            .filter((path) => path.length > 0 && !settledPathsRef.current.has(path));
 
         if (requested.length === 0 || !libraryPath.trim()) {
             return;
@@ -97,22 +105,34 @@ export function useDisplayThumbnails(
 
         void (async () => {
             try {
-                const resolved = await resolveDisplayThumbnails(requested, libraryPath);
+                const { displayPaths, settledPaths } = await resolveDisplayThumbnails(
+                    requested,
+                    libraryPath
+                );
 
-                if (disposed || resolved.size === 0) {
+                if (disposed) {
                     return;
                 }
 
                 // Recorded before the state update rather than inside it: a state updater must stay
-                // pure, and React may call it more than once for a single commit.
-                for (const path of resolved.keys()) {
-                    resolvedPathsRef.current.add(path);
+                // pure, and React may call it more than once for a single commit. Every settled path
+                // is recorded, including the ones with no derivative - that is what stops a path
+                // that can never resolve from riding along on every later request.
+                for (const path of settledPaths) {
+                    settledPathsRef.current.add(path);
+                }
+
+                // Checked after the ref update, not before it: a call that settled paths without
+                // resolving any still has to be remembered, and returning early on an empty map
+                // would throw that away and re-ask about all of them on the next page.
+                if (displayPaths.size === 0) {
+                    return;
                 }
 
                 setDisplayThumbnails((previous) => {
                     const merged = new Map(previous);
 
-                    for (const [path, displayPath] of resolved) {
+                    for (const [path, displayPath] of displayPaths) {
                         merged.set(path, displayPath);
                     }
 

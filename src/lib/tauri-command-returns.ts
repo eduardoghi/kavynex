@@ -23,6 +23,7 @@ import type {
     MediaRepositoryStats,
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
+import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
@@ -62,9 +63,10 @@ export type TauriCommandReturns = {
     persist_thumbnail_file: string;
     download_thumbnail_from_url: string;
     download_channel_avatar_from_handle: string;
-    // One entry per requested path, in order: the display-sized copy's absolute path, or null
-    // when there is none and the caller should render the stored thumbnail instead.
-    resolve_display_thumbnails: (string | null)[];
+    // One entry per requested path, in order. Not a nullable string: "no derivative" carries
+    // whether asking again could change the answer, which is what stops the caller re-asking
+    // forever about a path that can never be resolved. See the DisplayThumbnail doc comment.
+    resolve_display_thumbnails: DisplayThumbnail[];
     delete_temporary_thumbnail: void;
     delete_thumbnail_file: void;
 

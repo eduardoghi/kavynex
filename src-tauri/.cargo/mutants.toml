@@ -184,11 +184,20 @@
 # rounds were needed and both are worth recording. The first left the generation budget's `== 0` and
 # `-= 1` surviving, because the branch that spends it is only reachable through a successful FFmpeg
 # run; extracting `take_generation_slot` put both one call from a test. The second left a `delete !`
-# on the caller's `if !take_generation_slot(..)`, which is genuinely unkillable - with or without the
-# `!` the call returns `None` unless FFmpeg succeeds - so the function returns `Option<()>` and the
-# caller writes `take_generation_slot(..)?`, stating the decision once. Removing the restatement
-# removed the mutant, which beats excluding it (the same resolution as the ssrf_guard dead-code
-# clause).
+# on the caller's `if !take_generation_slot(..)`, which was genuinely unkillable at the time - with
+# or without the `!` the call returned `None` unless FFmpeg succeeded - so the function returned
+# `Option<()>` and the caller wrote `take_generation_slot(..)?`, stating the decision once. Removing
+# the restatement removed the mutant, which beat excluding it (the same resolution as the ssrf_guard
+# dead-code clause).
+#
+# That last paragraph is now history rather than a live constraint, and the reason is worth keeping:
+# the unkillability came entirely from both outcomes being spelled `None`. `resolve_one` returns
+# `DisplayThumbnail`, so an exhausted budget answers `BudgetSpent` and every other miss answers
+# `Unavailable` - two distinguishable values - and `an_exhausted_budget_is_reported_as_retryable_
+# rather_than_final` kills the mutant directly. The caller reads `take_generation_slot(..).is_none()`
+# again, which is fine now precisely because the branch it guards has an observable outcome. The
+# general lesson, since this file exists to record them: a mutant that cannot be killed is often not
+# a testing gap but a type that has collapsed two decisions into one value.
 examine_globs = [
     "src/services/thumbnail/display.rs",
     "src/services/pending_media.rs",

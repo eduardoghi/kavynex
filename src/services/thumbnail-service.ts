@@ -87,6 +87,29 @@ export async function downloadChannelAvatarFromHandle(
 }
 
 /**
+ * What one call learned about the paths it asked about.
+ *
+ * Two collections rather than one map, because "no derivative" is two different facts and the caller
+ * has to act on them differently: it stops asking about a `settled` path and keeps asking about
+ * anything else. Folding them back into a single map here would discard on this side exactly the
+ * distinction the backend was changed to report.
+ */
+export type DisplayThumbnailResolution = {
+    /** Library-relative thumbnail path -> absolute path of its display-sized copy. */
+    displayPaths: ReadonlyMap<string, string>;
+    /**
+     * Every path this call answered for good - both the ones that resolved and the ones that never
+     * will. Asking about any of these again cannot change the answer.
+     */
+    settledPaths: ReadonlySet<string>;
+};
+
+const EMPTY_RESOLUTION: DisplayThumbnailResolution = {
+    displayPaths: new Map(),
+    settledPaths: new Set(),
+};
+
+/**
  * Asks the backend for display-sized copies of a page of stored thumbnails, keyed by the
  * library-relative path each one answers.
  *
@@ -95,18 +118,18 @@ export async function downloadChannelAvatarFromHandle(
  * size regardless of how well it is compressed. This is what lets a card draw a smaller decode
  * instead.
  *
- * A path with no derivative is simply absent from the map, which is the normal answer rather than a
- * failure: the caller keeps rendering the stored file. Blanks and duplicates are dropped before the
- * call so the backend's per-call generation budget is spent on distinct real work.
+ * A path with no derivative is simply absent from `displayPaths`, which is the normal answer rather
+ * than a failure: the caller keeps rendering the stored file. Blanks and duplicates are dropped
+ * before the call so the backend's per-call generation budget is spent on distinct real work.
  */
 export async function resolveDisplayThumbnails(
     relativePaths: readonly (string | null | undefined)[],
     libraryPath: string
-): Promise<ReadonlyMap<string, string>> {
+): Promise<DisplayThumbnailResolution> {
     const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedLibraryPath) {
-        return new Map();
+        return EMPTY_RESOLUTION;
     }
 
     const requested = [
@@ -118,7 +141,7 @@ export async function resolveDisplayThumbnails(
     ];
 
     if (requested.length === 0) {
-        return new Map();
+        return EMPTY_RESOLUTION;
     }
 
     const resolved = await invokeCommand(TAURI_COMMANDS.RESOLVE_DISPLAY_THUMBNAILS, {
@@ -127,16 +150,37 @@ export async function resolveDisplayThumbnails(
     });
 
     const displayPaths = new Map<string, string>();
+    const settledPaths = new Set<string>();
 
     requested.forEach((relativePath, index) => {
-        const displayPath = normalizeString(resolved[index] ?? "");
+        const answer = resolved[index];
 
-        if (displayPath) {
-            displayPaths.set(relativePath, displayPath);
+        // An answer shorter than the request leaves the tail unsettled rather than shifting the
+        // remaining answers onto it: an entry with no answer was not decided, so it is asked about
+        // again rather than recorded as final.
+        if (!answer) {
+            return;
+        }
+
+        if (answer.kind === "resolved") {
+            const displayPath = normalizeString(answer.path);
+
+            if (displayPath) {
+                displayPaths.set(relativePath, displayPath);
+                settledPaths.add(relativePath);
+            }
+
+            return;
+        }
+
+        // `budgetSpent` is the one answer worth asking about again, so it is deliberately not
+        // settled; `unavailable` is final.
+        if (answer.kind === "unavailable") {
+            settledPaths.add(relativePath);
         }
     });
 
-    return displayPaths;
+    return { displayPaths, settledPaths };
 }
 
 export async function deleteTemporaryThumbnail(tempThumbnailPath: string): Promise<void> {

@@ -4,6 +4,7 @@ use crate::services::library::guard::{
     ensure_configured_library_path, verify_library_path_then_blocking,
 };
 use crate::services::thumbnail;
+use crate::services::thumbnail::display::DisplayThumbnail;
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
@@ -49,10 +50,14 @@ pub async fn download_channel_avatar_from_handle(
 /// Resolves display-sized copies of a page of the grid's thumbnails, generating the ones that are
 /// not cached yet (see `services::thumbnail::display`).
 ///
-/// Each entry answers the corresponding `relative_paths` entry with either an absolute path to the
-/// derivative or `null`, and `null` is an ordinary answer rather than a failure - the caller renders
-/// the stored thumbnail for it, which is what it did before this existed. The command as a whole
-/// therefore only fails if the library path itself does not check out.
+/// Each entry answers the corresponding `relative_paths` entry, and "no derivative" is an ordinary
+/// answer rather than a failure - the caller renders the stored thumbnail for it, which is what it
+/// did before this existed. The command as a whole therefore only fails if the library path itself
+/// does not check out.
+///
+/// The answer distinguishes a miss that is worth asking about again (`budgetSpent`) from one that is
+/// final (`unavailable`), because only this side can tell them apart and the caller re-asks about
+/// every path it has not settled. See [`DisplayThumbnail`] for what conflating them cost.
 ///
 /// The library path goes through `verify_library_path_then_blocking` like every other library read,
 /// so a caller cannot point this at a directory the user has not configured.
@@ -61,7 +66,7 @@ pub async fn resolve_display_thumbnails(
     app: AppHandle,
     relative_paths: Vec<String>,
     library_path: String,
-) -> AppResult<Vec<Option<String>>> {
+) -> AppResult<Vec<DisplayThumbnail>> {
     let app_for_resolve = app.clone();
 
     verify_library_path_then_blocking(&app, library_path, move |library_path| {
