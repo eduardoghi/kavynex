@@ -75,6 +75,20 @@ pub async fn resolve_display_thumbnails(
     .await
 }
 
+/// Stages an image the user picked from the file dialog into the preview directory and returns its
+/// path there, so the manual-thumbnail preview can be drawn without widening the asset scope to the
+/// file the user chose.
+///
+/// This replaced `allow_asset_file`, which granted that exact file in the asset-protocol scope.
+/// Tauri's scope offers no way to withdraw a grant, so those accumulated for the whole session, and
+/// the obvious cleanup is worse than the problem: a forbid outranks every later allow, so revoking a
+/// preview would make the same image picked for a second media silently render nothing. Staging a
+/// copy in a directory that is already authorized removes the grant entirely instead of managing it.
+#[tauri::command]
+pub async fn stage_manual_thumbnail(app: AppHandle, path: String) -> AppResult<String> {
+    run_blocking(move || thumbnail::stage_manual_thumbnail_sync(&app, &path)).await
+}
+
 #[tauri::command]
 pub async fn delete_temporary_thumbnail(app: AppHandle, path: String) -> AppResult<()> {
     run_blocking(move || thumbnail::delete_temporary_thumbnail_sync(&app, &path)).await

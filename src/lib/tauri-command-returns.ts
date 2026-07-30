@@ -60,6 +60,8 @@ export type TauriCommandReturns = {
     clear_pending_media_artifacts: void;
 
     generate_temporary_thumbnail: string;
+    // The path of the staged copy in the preview directory, not the path the user picked.
+    stage_manual_thumbnail: string;
     persist_thumbnail_file: string;
     download_thumbnail_from_url: string;
     download_channel_avatar_from_handle: string;
@@ -79,7 +81,6 @@ export type TauriCommandReturns = {
     is_directory_empty: boolean;
 
     register_library_asset_scope: void;
-    allow_asset_file: void;
 
     ensure_database_ready: void;
     get_database_backup_status: DatabaseBackupStatus;

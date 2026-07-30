@@ -26,6 +26,7 @@ export const TAURI_COMMANDS = {
     CLEAR_PENDING_MEDIA_ARTIFACTS: "clear_pending_media_artifacts",
 
     GENERATE_TEMP_THUMBNAIL: "generate_temporary_thumbnail",
+    STAGE_MANUAL_THUMBNAIL: "stage_manual_thumbnail",
     PERSIST_THUMBNAIL_FILE: "persist_thumbnail_file",
     DOWNLOAD_THUMBNAIL_FROM_URL: "download_thumbnail_from_url",
     DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE: "download_channel_avatar_from_handle",
@@ -42,7 +43,6 @@ export const TAURI_COMMANDS = {
     IS_DIRECTORY_EMPTY: "is_directory_empty",
 
     REGISTER_LIBRARY_ASSET_SCOPE: "register_library_asset_scope",
-    ALLOW_ASSET_FILE: "allow_asset_file",
 
     ENSURE_DATABASE_READY: "ensure_database_ready",
     GET_DATABASE_BACKUP_STATUS: "get_database_backup_status",

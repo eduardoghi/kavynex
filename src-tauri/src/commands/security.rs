@@ -6,8 +6,6 @@ use tauri::{AppHandle, Manager};
 
 use crate::services::library::guard::ensure_configured_library_path;
 use crate::services::logger;
-use crate::utils::format::is_allowed_thumbnail_extension;
-use crate::utils::path::extension_from_path;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -245,68 +243,23 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
     .await
 }
 
-/// Authorizes the asset protocol to read a single user-selected image file.
-///
-/// Used for the manual thumbnail preview: the user picks an image from an arbitrary
-/// location and it is previewed via `convertFileSrc` before being imported into the
-/// library. To keep this from becoming a general arbitrary-file read primitive, only an
-/// existing regular file whose extension is an allowed thumbnail image type can be
-/// authorized, and only that exact file is granted (never its directory).
-/// Validates that `path` is something that may be authorized for the manual-thumbnail
-/// preview: an existing regular file with an allowed image extension. Extracted from the
-/// command (which additionally needs the Tauri runtime to register the asset scope) so this
-/// security check can be unit-tested without a runtime - the `AppHandle` command itself cannot
-/// run under the mock runtime used in tests.
-fn validate_asset_file_for_preview(path: &str) -> AppResult<()> {
-    if path.trim().is_empty() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidTargetPath,
-            "path is empty",
-        ));
-    }
-
-    let candidate = Path::new(path);
-
-    if !candidate.is_file() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidThumbnailFile,
-            "path is not an existing file",
-        ));
-    }
-
-    if !is_allowed_thumbnail_extension(&extension_from_path(candidate)) {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidThumbnailFile,
-            "only image files can be authorized for preview",
-        ));
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn allow_asset_file(app: AppHandle, path: String) -> AppResult<()> {
-    let trimmed = path.trim().to_string();
-
-    // is_file()/canonicalize() and the asset scope registration are blocking filesystem/IPC
-    // calls; run them off the async runtime's worker threads, consistent with other commands
-    // (e.g. commands/library.rs, commands/thumbnail.rs).
-    run_blocking(move || {
-        validate_asset_file_for_preview(&trimmed)?;
-
-        grant_path_with_canonical(Path::new(&trimmed), "asset file", |file| {
-            app.asset_protocol_scope()
-                .allow_file(file)
-                .map_err(|error| {
-                    AppError::from_code(
-                        AppErrorCode::AssetScopeRegisterFailed,
-                        format!("failed to allow file in asset scope: {error}"),
-                    )
-                })
-        })
-    })
-    .await
-}
+// There used to be an `allow_asset_file` command here: it granted one user-picked image in the
+// asset-protocol scope so the manual-thumbnail preview could draw it through `convertFileSrc`. It is
+// gone rather than fixed, and the reason is worth keeping where the scope machinery lives.
+//
+// Tauri's scope has no way to withdraw a grant, so every picked image stayed authorized for the rest
+// of the session - a set that only grew, in the one command whose whole job was to widen this app's
+// arbitrary-local-file-read boundary to a caller-chosen path. The obvious cleanup is worse than the
+// problem: a forbid outranks every later allow (see `session_forbidden_dirs` above), so revoking a
+// discarded preview would make the same image picked for a second media silently render nothing.
+//
+// `commands::thumbnail::stage_manual_thumbnail` replaced it by copying the picked image into
+// `thumbs-temp/`, which `register_cache_asset_scope` already authorizes as a directory. The preview
+// then needs no grant at all, the copy is swept and deleted like every other preview, and the file
+// that eventually lands in the library is byte-identical because the copy is. It also closed a gap
+// this command carried: it called `is_file()` straight on the caller's path with no network-location
+// refusal, so a `\\host\share\x.png` handed over IPC would have authenticated to `host` over SMB -
+// the guard every other caller-supplied path in this codebase applies.
 
 #[cfg(test)]
 mod tests {
@@ -321,10 +274,10 @@ mod tests {
         ))
     }
 
-    // The asset-scope registration itself needs the Tauri runtime, which does not run under
-    // the mock runtime; these cover the gate that decides what allow_asset_file will ever
-    // authorize. The library-path guard behind register_library_asset_scope is covered by
-    // services::library::guard's paths_refer_to_same_location tests.
+    // The asset-scope registration itself needs the Tauri runtime, which does not run under the
+    // mock runtime; these cover the grant helpers and the managed-directory lists that decide what
+    // the scope is ever widened to. The library-path guard behind register_library_asset_scope is
+    // covered by services::library::guard's paths_refer_to_same_location tests.
 
     /// Records every path a `grant_path_with_canonical` run authorized, so its two-grant contract
     /// can be asserted without a Tauri runtime. The closure is `Fn`, not `FnMut`, so the recording
@@ -541,57 +494,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn validate_asset_file_rejects_an_empty_path() {
-        let error = validate_asset_file_for_preview("   ").unwrap_err();
-        assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
-    }
-
-    #[test]
-    fn validate_asset_file_rejects_a_missing_file() {
-        let missing = unique_test_dir("missing").join("nope.png");
-        let error = validate_asset_file_for_preview(&missing.to_string_lossy()).unwrap_err();
-        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
-    }
-
-    #[test]
-    fn validate_asset_file_rejects_an_existing_non_image_file() {
-        let dir = unique_test_dir("nonimage");
-        fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("notes.txt");
-        fs::write(&file, b"x").unwrap();
-
-        let error = validate_asset_file_for_preview(&file.to_string_lossy()).unwrap_err();
-        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn validate_asset_file_rejects_a_directory_with_an_image_name() {
-        // A directory named like an image must not be authorized - only regular files are.
-        let dir = unique_test_dir("dir");
-        let fake = dir.join("thumb.png");
-        fs::create_dir_all(&fake).unwrap();
-
-        let error = validate_asset_file_for_preview(&fake.to_string_lossy()).unwrap_err();
-        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn validate_asset_file_accepts_an_existing_image() {
-        let dir = unique_test_dir("image");
-        fs::create_dir_all(&dir).unwrap();
-
-        for name in ["thumb.png", "photo.JPG", "art.webp"] {
-            let file = dir.join(name);
-            fs::write(&file, b"\x89PNG\r\n").unwrap();
-            validate_asset_file_for_preview(&file.to_string_lossy())
-                .unwrap_or_else(|error| panic!("{name} should be accepted: {error}"));
-        }
-
-        let _ = fs::remove_dir_all(&dir);
-    }
+    // The gate that decided what could be authorized for the manual-thumbnail preview moved with
+    // the flow it served: it is now `validate_picked_thumbnail_path` in
+    // `services::thumbnail::temp`, tested there, and with a network-location refusal it did not
+    // have here.
 }

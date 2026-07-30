@@ -17,4 +17,6 @@ pub use download::{download_channel_avatar_from_handle_async, download_thumbnail
 pub use persist::{
     delete_thumbnail_file_sync, persist_thumbnail_file_sync, persist_thumbnail_from_source,
 };
-pub use temp::{delete_temporary_thumbnail_sync, generate_temporary_thumbnail_sync};
+pub use temp::{
+    delete_temporary_thumbnail_sync, generate_temporary_thumbnail_sync, stage_manual_thumbnail_sync,
+};

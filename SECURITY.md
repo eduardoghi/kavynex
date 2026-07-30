@@ -388,17 +388,32 @@ Add it if and when a `.close()` call appears.
 The webview loads local files (video/audio/thumbnails) through Tauri's `asset:` protocol
 plus `convertFileSrc`, which only serves files inside directories/files explicitly
 "allowed" in the asset-protocol scope (`tauri.conf.json`'s `assetProtocol.scope` starts
-empty). Two commands populate that scope at runtime, and both are careful about what they
-grant, because the scope plus `convertFileSrc` is effectively an arbitrary local-file-read
-primitive if it is ever widened too far:
+empty). Exactly one command populates that scope at runtime, and it is careful about what it grants,
+because the scope plus `convertFileSrc` is effectively an arbitrary local-file-read primitive if it
+is ever widened too far:
 
 - `register_library_asset_scope` (`commands/security.rs`) authorizes the *library*
   directory, but only after `ensure_configured_library_path` confirms the requested path
   matches the persisted settings (the same check described above) - so a compromised
   frontend cannot widen the scope to an arbitrary directory.
-- `allow_asset_file` authorizes exactly one file (never its containing directory) for the
-  manual-thumbnail-preview flow, and only after confirming it is an existing regular file
-  with an allowed image extension.
+
+There used to be a second one, `allow_asset_file`, which granted a single user-picked image so the
+manual-thumbnail preview could draw it. It is gone rather than tightened, and the reasoning is the
+useful part. Tauri's scope has no way to *withdraw* a grant, so every image a user previewed stayed
+authorized for the rest of the session - a set that only ever grew, in the one command whose purpose
+was to widen this boundary to a caller-chosen path. The obvious cleanup is worse than the problem: a
+forbid outranks every later allow (the same asymmetry `session_forbidden_dirs` exists to work
+around), so revoking a discarded preview would make the same image, picked again for a second media,
+silently render nothing.
+
+`commands::thumbnail::stage_manual_thumbnail` replaced it by copying the picked image into
+`thumbs-temp/`, which is already authorized as a directory (below). The preview then needs no grant
+at all, the copy is swept and deleted like every other preview, and the file that eventually reaches
+the library is byte-identical because the copy is. Removing the command also closed a gap it
+carried: it called `is_file()` directly on the caller's path with no network-location refusal, so a
+`\\host\share\x.png` arriving over IPC would have authenticated to `host` over SMB and leaked the
+user's NTLM hash - the guard every other caller-supplied path here applies. The replacement refuses
+one before it touches the filesystem.
 
 Two subdirectories of the app's cache directory are authorized once, in `lib.rs`'s `setup()`
 (`register_cache_asset_scope`): `thumbs-temp/`, which holds the preview shown before a thumbnail is

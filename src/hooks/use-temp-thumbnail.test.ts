@@ -33,7 +33,7 @@ describe("useTempThumbnail", () => {
         const { result } = renderHook(() => useTempThumbnail());
 
         await act(async () => {
-            await result.current.setManualThumbPath("/tmp/thumb.jpg");
+            await result.current.setManualThumbPath("/tmp/thumb.jpg", false);
         });
 
         expect(result.current.thumbPath).toBe("/tmp/thumb.jpg");
@@ -73,7 +73,7 @@ describe("useTempThumbnail", () => {
         const { result } = renderHook(() => useTempThumbnail());
 
         await act(async () => {
-            await result.current.setManualThumbPath("/tmp/thumb.jpg");
+            await result.current.setManualThumbPath("/tmp/thumb.jpg", false);
             await result.current.generateThumbForMedia("/tmp/audio.mp3");
         });
 
@@ -86,7 +86,7 @@ describe("useTempThumbnail", () => {
         const { result } = renderHook(() => useTempThumbnail());
 
         await act(async () => {
-            await result.current.setManualThumbPath("/tmp/thumb.jpg");
+            await result.current.setManualThumbPath("/tmp/thumb.jpg", false);
             await result.current.resetThumbState();
         });
 
@@ -129,7 +129,7 @@ describe("useTempThumbnail", () => {
         expect(result.current.isGeneratingThumb).toBe(true);
 
         await act(async () => {
-            await result.current.setManualThumbPath("/tmp/manual.jpg");
+            await result.current.setManualThumbPath("/tmp/manual.jpg", false);
         });
 
         expect(result.current.thumbPath).toBe("/tmp/manual.jpg");
@@ -192,18 +192,73 @@ describe("useTempThumbnail", () => {
         expect(result.current.thumbPath).toBe("/tmp/generated.jpg");
 
         await act(async () => {
-            await result.current.setManualThumbPath("  /tmp/manual.jpg  ");
+            await result.current.setManualThumbPath("  /tmp/manual.jpg  ", false);
         });
 
         expect(deleteTemporaryThumbnail).toHaveBeenCalledWith("/tmp/generated.jpg");
         expect(result.current.thumbPath).toBe("/tmp/manual.jpg");
     });
 
+    it("cleans up a staged manual thumbnail when it is replaced", async () => {
+        // A picked image is copied into the preview directory so it can be shown without widening
+        // the asset scope, which makes it a temp file this app owns. Replacing it has to delete the
+        // previous copy, exactly as replacing a generated preview does - otherwise every image the
+        // user tries leaks into the cache until the age sweep runs.
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.setManualThumbPath("/cache/thumbs-temp/picked_a.png", true);
+        });
+
+        await act(async () => {
+            await result.current.setManualThumbPath("/cache/thumbs-temp/picked_b.png", true);
+        });
+
+        expect(deleteTemporaryThumbnail).toHaveBeenCalledWith("/cache/thumbs-temp/picked_a.png");
+        expect(result.current.thumbPath).toBe("/cache/thumbs-temp/picked_b.png");
+    });
+
+    it("never deletes a manual path the app did not stage", async () => {
+        // The fallback when staging fails: the path is the user's own file, somewhere on their disk.
+        // Handing it to the delete command would be pointing a remove at a file outside the app's
+        // own directories - refused by the backend's containment check, but it must not be asked in
+        // the first place.
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.setManualThumbPath("/home/user/Pictures/cover.png", false);
+        });
+
+        await act(async () => {
+            await result.current.resetThumbState();
+        });
+
+        expect(deleteTemporaryThumbnail).not.toHaveBeenCalled();
+    });
+
+    it("does not delete a staged thumbnail that is re-selected unchanged", async () => {
+        // Staging is content-addressed, so picking the same image twice returns the same path. The
+        // guard has to compare before deleting, or the second selection would delete the very file
+        // it is about to preview.
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.setManualThumbPath("/cache/thumbs-temp/picked_a.png", true);
+        });
+
+        await act(async () => {
+            await result.current.setManualThumbPath("/cache/thumbs-temp/picked_a.png", true);
+        });
+
+        expect(deleteTemporaryThumbnail).not.toHaveBeenCalled();
+        expect(result.current.thumbPath).toBe("/cache/thumbs-temp/picked_a.png");
+    });
+
     it("does not delete anything when setting a manual path with no generated temp", async () => {
         const { result } = renderHook(() => useTempThumbnail());
 
         await act(async () => {
-            await result.current.setManualThumbPath("/tmp/manual.jpg");
+            await result.current.setManualThumbPath("/tmp/manual.jpg", false);
         });
 
         expect(deleteTemporaryThumbnail).not.toHaveBeenCalled();

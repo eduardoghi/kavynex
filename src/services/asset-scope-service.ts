@@ -24,18 +24,9 @@ export async function registerLibraryAssetScope(libraryPath: string): Promise<vo
     });
 }
 
-/**
- * Authorizes the asset protocol to read a single user-selected file, used to preview a
- * manually chosen thumbnail before it is imported into the library.
- */
-export async function allowAssetFile(path: string): Promise<void> {
-    const normalized = path.trim();
-
-    if (!normalized) {
-        return;
-    }
-
-    await invokeVoid(TAURI_COMMANDS.ALLOW_ASSET_FILE, {
-        path: normalized,
-    });
-}
+// There used to be an `allowAssetFile` here, which authorized one user-picked image so the manual
+// thumbnail preview could load it. It is gone: the scope has no way to withdraw a grant, so those
+// accumulated for the whole session, and revoking one would have been worse (a forbid outranks every
+// later allow, so the same image picked twice would stop rendering). The preview now draws a staged
+// copy from a directory that is already authorized - see `stageManualThumbnail` in
+// `services/thumbnail-service.ts`. This module is therefore down to the library grant alone.

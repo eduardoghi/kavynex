@@ -9,7 +9,8 @@ use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
 use crate::services::binaries::resolve_ffmpeg_binary;
 use crate::services::temp_paths::thumbs_temp_dir;
 use crate::utils::format::{
-    allowed_media_extensions_label, is_allowed_media_extension, media_subdir_from_extension,
+    allowed_media_extensions_label, allowed_thumbnail_extensions_label, is_allowed_media_extension,
+    is_allowed_thumbnail_extension, media_subdir_from_extension,
 };
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path, is_network_path};
@@ -367,6 +368,105 @@ pub fn generate_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResu
     Ok(out_thumbnail.to_string_lossy().to_string())
 }
 
+/// Validates an image the user picked from the file dialog, before anything stats or reads it.
+///
+/// The network refusal comes first and is the reason this is a separate validator rather than a
+/// reuse of [`validate_source_media_path`]: this path arrives raw over IPC, and on Windows merely
+/// `is_file()`-ing `\\host\share\x.png` authenticates to `host` over SMB and hands it the user's
+/// NTLM hash. Every sibling that takes a caller-supplied path already refuses one
+/// (`library::resolve_path_inside_library`, `validate_source_media_path`, `db_backup`'s import and
+/// export gates, `yt_dlp::cookies::normalize_cookies_path`); the preview path this replaced was the
+/// last one that did not.
+///
+/// The extension gate is the same one the preview needs anyway: only an image is worth staging, and
+/// refusing anything else here means the copy below can never be pointed at an arbitrary file.
+fn validate_picked_thumbnail_path(path: &str) -> AppResult<PathBuf> {
+    let trimmed = path.trim();
+
+    if trimmed.is_empty() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailPath,
+            "thumbnail path is empty",
+        ));
+    }
+
+    if is_network_path(trimmed) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailPath,
+            "thumbnail path must not be a network location",
+        ));
+    }
+
+    let source_path = PathBuf::from(trimmed);
+
+    if !source_path.is_file() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            "thumbnail path is not an existing file",
+        ));
+    }
+
+    if !is_allowed_thumbnail_extension(&extension_from_path(&source_path)) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            format!(
+                "only image files can be used as a thumbnail ({})",
+                allowed_thumbnail_extensions_label()
+            ),
+        ));
+    }
+
+    Ok(source_path)
+}
+
+/// The name a picked image lands under in the preview directory.
+///
+/// A distinct prefix from [`temporary_thumbnail_file_name`] so the two producers sharing this
+/// directory can never name the same file, and the source's own extension rather than
+/// [`THUMBNAIL_OUTPUT_FORMAT`] because the staged copy is byte-identical to what the user picked -
+/// naming a PNG `.jpg` would make the extension disagree with the bytes, and the persist step
+/// downstream derives the stored name from this one.
+///
+/// Content-addressed like everything else here, which is what makes picking the same image twice
+/// free: the second stage finds the file already there.
+fn staged_thumbnail_file_name(source_hash: &str, extension: &str) -> String {
+    format!("picked_{source_hash}.{extension}")
+}
+
+/// Copies an image the user picked into the preview directory and returns its path there.
+///
+/// This exists so the manual-thumbnail flow does not need the asset scope widened to the file the
+/// user chose. The preview directory is already authorized wholesale
+/// (`commands::security::register_cache_asset_scope`), so a staged copy is renderable through
+/// `convertFileSrc` with no per-file grant at all - which matters because Tauri's asset scope has no
+/// way to withdraw a grant, so per-file grants accumulated for the lifetime of the session and the
+/// obvious cleanup (forbid the file when the preview is discarded) is worse than the disease: a
+/// forbid outranks every later allow, so picking the same image for a second media would silently
+/// render nothing.
+///
+/// The copy is byte-identical, so the content hash the persist step computes is unchanged and the
+/// file that eventually lands in the library is exactly what it was before. Staging also gives the
+/// picked image the same lifecycle every generated preview already has: it is swept by age, and the
+/// frontend deletes it through the existing `delete_temporary_thumbnail`.
+pub fn stage_manual_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult<String> {
+    let source_path = validate_picked_thumbnail_path(path)?;
+    let extension = extension_from_path(&source_path);
+
+    let thumbs_dir = thumbs_temp_dir(app)?;
+    let hash = file_hash(&source_path)?;
+    let staged = thumbs_dir.join(staged_thumbnail_file_name(&hash, &extension));
+
+    // Already staged: the same image picked again, in this session or a previous one whose sweep has
+    // not run yet. Content-addressed, so the existing file is the same bytes by construction.
+    if staged.is_file() {
+        return Ok(staged.to_string_lossy().to_string());
+    }
+
+    crate::services::filesystem::copy_file_atomic(&source_path, &staged)?;
+
+    Ok(staged.to_string_lossy().to_string())
+}
+
 pub fn delete_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult<()> {
     let Some(target_path) = validate_temporary_thumbnail_delete_path(path)? else {
         return Ok(());
@@ -388,6 +488,102 @@ pub fn delete_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // These moved here with the flow they gate: the manual-thumbnail preview used to widen the
+    // asset scope to the picked file (`commands::security::allow_asset_file`), and the checks lived
+    // beside that command. Staging a copy replaced it, so the gate belongs to this module now.
+
+    #[test]
+    fn validate_picked_thumbnail_rejects_a_network_location() {
+        // The check the previous gate did not have, and the reason it matters more here than
+        // anywhere else: this path arrives raw over IPC, and on Windows `is_file()` alone on a UNC
+        // share authenticates to that host over SMB and leaks the user's NTLM hash. Every spelling
+        // Windows resolves to a share is covered, and each carries a valid image extension so only
+        // the network check can be what rejects it.
+        for value in [
+            r"\\evil\share\cover.png",
+            "//evil/share/cover.png",
+            r"/\evil\share\cover.png",
+            r"\/evil\share\cover.png",
+            r"\\?\UNC\evil\share\cover.png",
+        ] {
+            let error = validate_picked_thumbnail_path(value)
+                .expect_err(&format!("{value} should be rejected as a network path"));
+            assert_eq!(error.code, AppErrorCode::InvalidThumbnailPath.as_str());
+        }
+    }
+
+    #[test]
+    fn validate_picked_thumbnail_rejects_an_empty_path() {
+        let error = validate_picked_thumbnail_path("   ").unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailPath.as_str());
+    }
+
+    #[test]
+    fn validate_picked_thumbnail_rejects_a_missing_file() {
+        let missing = unique_test_dir().join("nope.png");
+        let error = validate_picked_thumbnail_path(&missing.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+    }
+
+    #[test]
+    fn validate_picked_thumbnail_rejects_an_existing_non_image_file() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("notes.txt");
+        fs::write(&file, b"x").unwrap();
+
+        let error = validate_picked_thumbnail_path(&file.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_picked_thumbnail_rejects_a_directory_with_an_image_name() {
+        // A directory named like an image must not be staged - only regular files are.
+        let dir = unique_test_dir();
+        let fake = dir.join("thumb.png");
+        fs::create_dir_all(&fake).unwrap();
+
+        let error = validate_picked_thumbnail_path(&fake.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_picked_thumbnail_accepts_an_existing_image() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+
+        for name in ["thumb.png", "photo.JPG", "art.webp"] {
+            let file = dir.join(name);
+            fs::write(&file, b"\x89PNG\r\n").unwrap();
+            validate_picked_thumbnail_path(&file.to_string_lossy())
+                .unwrap_or_else(|error| panic!("{name} should be accepted: {error}"));
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_staged_name_keeps_the_source_extension_and_cannot_collide_with_a_generated_preview() {
+        // Two producers share the preview directory. The prefixes have to differ, or a generated
+        // preview and a picked image could name the same file - and the extension has to be the
+        // source's, because the staged copy is byte-identical and the persist step downstream names
+        // the stored file from this one.
+        let hash = "a".repeat(64);
+
+        assert_eq!(
+            staged_thumbnail_file_name(&hash, "png"),
+            format!("picked_{hash}.png")
+        );
+        assert_ne!(
+            staged_thumbnail_file_name(&hash, THUMBNAIL_OUTPUT_FORMAT),
+            temporary_thumbnail_file_name(&hash)
+        );
+    }
 
     #[test]
     fn validate_temporary_thumbnail_delete_path_rejects_directory_path_before_app_access() {

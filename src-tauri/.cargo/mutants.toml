@@ -140,9 +140,14 @@
 #   `src/services/yt_dlp/cookies.rs` - the `.txt` gate and the network-path refusal on the
 #   `--cookies` argument, plus the browser allow-list that decides which cookie store yt-dlp is
 #   allowed to read. 11 mutants, 0 unviable, 11 caught, 0 missed. Goes in clean.
-#   `src/commands/security.rs` - `validate_asset_file_for_preview`, the only gate on the only
-#   command that widens the asset scope to a caller-chosen file: a dropped `!` there turns
-#   `allow_asset_file` into an arbitrary-file read through `convertFileSrc`. 32 mutants, 23
+#   `src/commands/security.rs` - the grant helpers behind the asset scope. Originally added for
+#   `validate_asset_file_for_preview`, the gate on the only command that widened the scope to a
+#   caller-chosen file (`allow_asset_file`), where a dropped `!` turned it into an arbitrary-file
+#   read through `convertFileSrc`. That command is gone - the manual preview now draws a staged copy
+#   from an already-authorized directory, see the module comment there - so its gate moved to
+#   `services::thumbnail::temp::validate_picked_thumbnail_path` and is tested with it. The file
+#   stays in scope for the grant helpers, which is where the surviving mutant of that pass was.
+#   32 mutants, 23
 #   unviable (the AppHandle command glue does not build under mutation, as in live_chat.rs), 8
 #   caught, 1 missed. The survivor was real and is now covered: `canonical != primary` in
 #   `grant_path_with_canonical` had no test at all, and inverting it skips the canonical grant in

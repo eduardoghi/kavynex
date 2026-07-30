@@ -10,7 +10,7 @@ import { useRequestGuard } from "./use-request-guard";
 type UseTempThumbnailReturn = {
     thumbPath: string;
     isGeneratingThumb: boolean;
-    setManualThumbPath: (nextPath: string) => Promise<void>;
+    setManualThumbPath: (nextPath: string, tracksTempFile: boolean) => Promise<void>;
     generateThumbForMedia: (path: string) => Promise<void>;
     resetThumbState: () => Promise<void>;
 };
@@ -70,19 +70,24 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
         [cleanupTempThumb]
     );
 
+    // `tracksTempFile` says whether `nextPath` is a file this app wrote into the preview directory
+    // and is therefore ours to delete. A manually picked thumbnail is staged there (so it can be
+    // previewed without widening the asset scope to the user's own file), which makes it a temp file
+    // with the same lifecycle as a generated one; if that staging failed the caller falls back to
+    // the path the user picked, which is *not* ours and must never be handed to the delete command.
     const setManualThumbPath = useCallback(
-        async (nextPath: string): Promise<void> => {
+        async (nextPath: string, tracksTempFile: boolean): Promise<void> => {
             const normalizedNextPath = nextPath.trim();
             const previousTempPath = currentTempThumbRef.current.trim();
 
             thumbGenerationGuard.invalidate();
             setIsGeneratingThumb(false);
 
-            if (previousTempPath) {
+            if (previousTempPath && previousTempPath !== normalizedNextPath) {
                 await cleanupTempThumb(previousTempPath);
             }
 
-            currentTempThumbRef.current = "";
+            currentTempThumbRef.current = tracksTempFile ? normalizedNextPath : "";
             setThumbPath(normalizedNextPath);
         },
         [cleanupTempThumb, thumbGenerationGuard]

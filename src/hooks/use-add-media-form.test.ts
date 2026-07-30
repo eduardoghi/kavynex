@@ -20,6 +20,14 @@ vi.mock("../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
+// A picked image is copied into the preview directory before it is previewed, so the path the form
+// hands on is the staged copy's, not the one the dialog returned.
+const mockStageManualThumbnail = vi.fn();
+
+vi.mock("../services/thumbnail-service", () => ({
+    stageManualThumbnail: (path: string) => mockStageManualThumbnail(path),
+}));
+
 const mockSetManualThumbPath = vi.fn().mockResolvedValue(undefined);
 const mockGenerateThumbForMedia = vi.fn().mockResolvedValue(undefined);
 const mockResetThumbState = vi.fn().mockResolvedValue(undefined);
@@ -304,8 +312,12 @@ describe("useAddMediaForm", () => {
         expect(result.current.title).toBe("Untitled");
     });
 
-    it("picks thumbnail through dialog", async () => {
+    it("picks thumbnail through dialog and previews the staged copy", async () => {
+        // The staged copy is what the preview must point at: it lives in a directory the asset
+        // protocol already serves, which is what replaced granting the user's own file. It is also
+        // flagged as a temp file, so the hook that owns it will delete it.
         vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/thumb.jpg");
+        mockStageManualThumbnail.mockResolvedValueOnce("/cache/thumbs-temp/picked_abc.jpg");
 
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -314,7 +326,29 @@ describe("useAddMediaForm", () => {
         });
 
         expect(openFileDialog).toHaveBeenCalled();
-        expect(mockSetManualThumbPath).toHaveBeenCalledWith("/tmp/thumb.jpg");
+        expect(mockStageManualThumbnail).toHaveBeenCalledWith("/tmp/thumb.jpg");
+        expect(mockSetManualThumbPath).toHaveBeenCalledWith(
+            "/cache/thumbs-temp/picked_abc.jpg",
+            true
+        );
+    });
+
+    it("keeps the picked thumbnail when staging it fails", async () => {
+        // Staging is an optimization of where the preview reads from, not of what gets imported, so
+        // its failure must not lose the selection - the import still persists the right image, only
+        // the preview is missing. The path is flagged as not-ours so nothing later tries to delete
+        // a file in the user's own pictures folder.
+        vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/thumb.jpg");
+        mockStageManualThumbnail.mockRejectedValueOnce(new Error("cache is read-only"));
+
+        const { result } = renderHook(() => useAddMediaForm());
+
+        await act(async () => {
+            await result.current.pickThumbViaDialog();
+        });
+
+        expect(mockSetManualThumbPath).toHaveBeenCalledWith("/tmp/thumb.jpg", false);
+        expect(logError).toHaveBeenCalled();
     });
 
     it("ignores a thumbnail selection with an unsupported extension", async () => {

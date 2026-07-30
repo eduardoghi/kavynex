@@ -5,7 +5,7 @@ import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/m
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
 import { ClientError } from "../utils/app-error";
-import { allowAssetFile } from "../services/asset-scope-service";
+import { stageManualThumbnail } from "../services/thumbnail-service";
 import { useAddMediaFormState } from "./use-add-media-form-state";
 import { useTempThumbnail } from "./use-temp-thumbnail";
 import { useYtDlpFormatLoader } from "./use-yt-dlp-format-loader";
@@ -191,16 +191,28 @@ export function useAddMediaForm({
                 return;
             }
 
-            // The picked thumbnail lives outside the library. Authorize the asset
-            // protocol to read this specific file so the preview can load. Failure is
-            // non-fatal: only the preview thumbnail would be missing.
+            // The picked image lives outside the library, where the asset protocol cannot read it.
+            // Stage a copy in the preview directory - which is authorized as a whole - and preview
+            // that, rather than widening the scope to the file the user chose (see
+            // stageManualThumbnail for why granting it was the worse option). The staged copy is
+            // byte-identical, so persisting from it stores exactly the same file.
+            //
+            // A failure falls back to the picked path: the preview will not render, but the
+            // selection still stands and the import still persists the right image. That is the
+            // same non-fatal shape the grant had, for the same reason - a missing preview must not
+            // block adding media.
+            let previewPath = normalizedPath;
+            let staged = false;
+
             try {
-                await allowAssetFile(normalizedPath);
+                previewPath = await stageManualThumbnail(normalizedPath);
+                staged = true;
             } catch (error) {
-                logError("add-media-form", "Failed to authorize thumbnail preview.", error);
+                logError("add-media-form", "Failed to stage the thumbnail preview.", error);
             }
 
-            await setManualThumbPath(normalizedPath);
+            // Only a staged copy is ours to delete later; the fallback is the user's own file.
+            await setManualThumbPath(previewPath, staged);
         },
         [setManualThumbPath]
     );
