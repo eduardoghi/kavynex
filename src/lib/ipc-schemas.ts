@@ -53,6 +53,7 @@ import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
+import type { WebviewCheckPlan } from "../types/generated/WebviewCheckPlan";
 
 const mediaTypeSchema = z.enum(["video", "audio"]);
 
@@ -261,6 +262,10 @@ const databaseIntegrityReportSchema = z.object({
     truncated: z.boolean(),
 });
 
+const webviewCheckPlanSchema = z.object({
+    assetPath: z.string(),
+});
+
 const storedAppSettingsPayloadSchema = z.object({
     importMode: z.string().nullable(),
     libraryPath: z.string().nullable(),
@@ -279,6 +284,8 @@ type IpcResultSchemas = {
 
 const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     check_external_tools: externalToolsStatusSchema satisfies z.ZodType<ExternalToolsStatus>,
+    // Nullable because a normal launch answers null; only a `--webview-check` run gets a plan.
+    begin_webview_check: webviewCheckPlanSchema.nullable() satisfies z.ZodType<WebviewCheckPlan | null>,
     get_library_summary: librarySummaryInfoSchema satisfies z.ZodType<LibrarySummaryInfo>,
     check_library_integrity: libraryIntegrityReportSchema satisfies z.ZodType<LibraryIntegrityReport>,
     migrate_library_directory:

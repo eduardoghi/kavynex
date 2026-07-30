@@ -29,10 +29,17 @@ import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
+import type { WebviewCheckPlan } from "../types/generated/WebviewCheckPlan";
 
 export type TauriCommandReturns = {
     check_external_tools: ExternalToolsStatus;
     log_frontend_error: void;
+
+    // null on every launch that is not a `--webview-check` run, which is what lets the frontend ask
+    // unconditionally at boot. `report_webview_check` never resolves during a check: the backend
+    // terminates the process with the outcome instead of answering.
+    begin_webview_check: WebviewCheckPlan | null;
+    report_webview_check: void;
 
     resolve_default_library_directory: string;
     ensure_directory_exists: string;

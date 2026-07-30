@@ -2,6 +2,12 @@ export const TAURI_COMMANDS = {
     CHECK_EXTERNAL_TOOLS: "check_external_tools",
     LOG_FRONTEND_ERROR: "log_frontend_error",
 
+    // The startup self-check that runs inside the webview (src/lib/webview-check.ts). Only ever
+    // called by that module: BEGIN returns null on every normal launch, and REPORT terminates the
+    // process with the check's outcome.
+    BEGIN_WEBVIEW_CHECK: "begin_webview_check",
+    REPORT_WEBVIEW_CHECK: "report_webview_check",
+
     RESOLVE_DEFAULT_LIBRARY_DIRECTORY: "resolve_default_library_directory",
     ENSURE_DIRECTORY_EXISTS: "ensure_directory_exists",
     RESOLVE_EXISTING_DIRECTORY: "resolve_existing_directory",

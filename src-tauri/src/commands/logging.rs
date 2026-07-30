@@ -6,7 +6,10 @@ use crate::services::logger;
 const MAX_SCOPE_CHARS: usize = 64;
 const MAX_MESSAGE_CHARS: usize = 8 * 1024;
 
-fn sanitize_log_text(value: &str, max_chars: usize) -> String {
+/// `pub(crate)` because `commands::webview_check` reports caller-controlled text from the renderer
+/// too, and that report deserves the same treatment as a crash report rather than a second copy of
+/// this rule that could drift from it.
+pub(crate) fn sanitize_log_text(value: &str, max_chars: usize) -> String {
     value
         .trim()
         .chars()

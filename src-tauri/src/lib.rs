@@ -296,6 +296,39 @@ fn spawn_periodic_backup(app_handle: AppHandle) {
 /// without ever entering the event loop. See [`is_smoke_test_run`].
 const SMOKE_TEST_FLAG: &str = "--smoke-test";
 
+/// How long a `--webview-check` run waits for the renderer to report before giving up.
+///
+/// The whole point of the watchdog is that a webview which never loads reports *nothing*: there is
+/// no error to catch and no callback to fail, so without a deadline the run would hang until the
+/// job timeout and say nothing about why. Generous enough for a cold start on a CI runner under
+/// Xvfb (where the first WebKit initialization is by far the slowest part), and far below the
+/// release job's own 90-minute bound so this is what fails, with a message, rather than the job.
+const WEBVIEW_CHECK_TIMEOUT_SECS: u64 = 90;
+
+/// Arms the deadline for a `--webview-check` run.
+///
+/// Only the *absence* of a report is handled here. Every reported outcome, pass or fail, exits
+/// through `commands::webview_check::report_webview_check`, which is why this task does nothing but
+/// sleep: reaching the end of the sleep means the renderer never got far enough to call anything,
+/// which is exactly the failure the check was added for (a bundle the webview refuses, a CSP that
+/// blocks the entry script, a window that never opens).
+fn spawn_webview_check_watchdog() {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(WEBVIEW_CHECK_TIMEOUT_SECS)).await;
+
+        services::logger::error(
+            "webview_check",
+            format!(
+                "the webview reported nothing within {WEBVIEW_CHECK_TIMEOUT_SECS}s - the window \
+                 did not open, the frontend bundle did not load, or IPC from the renderer is \
+                 refused"
+            ),
+        );
+
+        std::process::exit(1);
+    });
+}
+
 /// True when this process was launched to prove it starts, rather than to be used.
 ///
 /// This exists because nothing else in the pipeline runs the binary. `cargo test` links the
@@ -490,6 +523,21 @@ pub fn run() {
                 std::process::exit(0);
             }
 
+            // The deeper self-check, and the one this exit is the boundary of: everything past
+            // this line - the window opening, the frontend bundle loading, the packaged CSP, and
+            // every permission in `capabilities/` - is unreachable from `--smoke-test` by
+            // construction. `--webview-check` lets the launch continue normally and has the
+            // renderer report what it could actually do (see commands::webview_check). Checked
+            // after the smoke test so passing both flags keeps the cheaper answer.
+            if commands::webview_check::is_webview_check_run(std::env::args()) {
+                services::logger::info(
+                    "app",
+                    "webview check requested; waiting for the renderer to report",
+                );
+
+                spawn_webview_check_watchdog();
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -533,6 +581,8 @@ pub fn run() {
             commands::database::undo_database_import,
             commands::database::check_database_integrity,
             commands::logging::log_frontend_error,
+            commands::webview_check::begin_webview_check,
+            commands::webview_check::report_webview_check,
             commands::settings::get_app_settings,
             commands::settings::set_app_settings,
             commands::settings::set_external_backup_dir,

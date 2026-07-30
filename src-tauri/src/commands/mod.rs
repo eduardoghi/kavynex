@@ -9,6 +9,7 @@ pub mod security;
 pub mod settings;
 pub mod thumbnail;
 pub mod videos;
+pub mod webview_check;
 pub mod yt_dlp;
 
 #[cfg(test)]

@@ -505,6 +505,79 @@ jobs:
                   echo "Smoke-testing $binary"
                   "$binary" --smoke-test
 
+            # The deeper half of the same idea, and the only thing in this pipeline that opens the
+            # window.
+            #
+            # `--smoke-test` above exits inside `setup()`, before the event loop - so everything the
+            # user actually meets is still unverified at that point: the frontend bundle loading,
+            # the CSP Tauri injects only into a *packaged* app (`pnpm tauri dev` serves the page
+            # from the Vite origin with no CSP header at all), and every permission in
+            # `src-tauri/capabilities/`, which the ACL evaluates at runtime and nowhere else. That
+            # last one is why this step exists: the grant list was narrowed from the scaffolded
+            # `core:default` to the exact set the seam uses, which is right, and is also exactly the
+            # change whose failure mode is a call the renderer makes being silently refused.
+            #
+            # `--webview-check` (src-tauri/src/commands/webview_check.rs) lets the launch proceed
+            # normally, has the renderer drive one call of each family - getVersion, listen/unlisten,
+            # and an image served through convertFileSrc out of the granted cache directory - and
+            # exits 0 or 1. A renderer that never loads reports nothing, which a watchdog turns into
+            # a non-zero exit with a message rather than a hang.
+            #
+            # What it deliberately does not cover, since neither can run without a side effect: the
+            # dialog/opener/updater/process plugin grants. Those stay a manual pass.
+            #
+            # It cannot live in ci.yml: that workflow never builds a bundle, and the CSP and the
+            # embedded frontend only exist in one. Placed beside the smoke test for the same reason
+            # that one is here - after the build so the real artifact is what runs, and before the
+            # attestation so a broken binary is never attested.
+            - name: Webview check on the built binary (Linux)
+              if: startsWith(matrix.platform, 'ubuntu-')
+              # WebKit picks a rendering path that needs a GPU/DMA-BUF it does not have under Xvfb,
+              # and fails to paint rather than falling back. Without these the check would report a
+              # webview that never loaded, for a reason that has nothing to do with this app.
+              env:
+                  WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+                  WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
+
+                  if [ -z "$binary" ]; then
+                      echo "::error::no built kavynex binary was found to webview-check" >&2
+                      exit 1
+                  fi
+
+                  echo "Webview-checking $binary"
+                  xvfb-run -a "$binary" --webview-check
+
+            - name: Webview check on the built binary (Windows)
+              if: startsWith(matrix.platform, 'windows-')
+              shell: bash
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex.exe' | head -n1)
+
+                  if [ -z "$binary" ]; then
+                      echo "::error::no built kavynex.exe was found to webview-check" >&2
+                      exit 1
+                  fi
+
+                  echo "Webview-checking $binary"
+                  "$binary" --webview-check
+
+            # Skipped on the x86_64 macOS leg for the same reason as the smoke test above: that leg
+            # is a cross-compile on an arm64 runner and its output cannot be executed here.
+            - name: Webview check on the built binary (macOS)
+              if: startsWith(matrix.platform, 'macos-') && !contains(matrix.args, 'x86_64')
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
+
+                  if [ -z "$binary" ]; then
+                      echo "::error::no built kavynex binary was found to webview-check" >&2
+                      exit 1
+                  fi
+
+                  echo "Webview-checking $binary"
+                  "$binary" --webview-check
+
             # Records a signed, keyless (Sigstore) statement that these exact installer bytes
             # were built by this workflow, from this commit. Independent of the minisign updater
             # signature: users can run `gh attestation verify <file> --repo eduardoghi/kavynex`
