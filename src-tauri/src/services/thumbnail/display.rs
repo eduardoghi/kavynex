@@ -60,6 +60,24 @@ const DISPLAY_THUMBNAIL_TIMEOUT: std::time::Duration = std::time::Duration::from
 /// How often the bounded wait re-checks for exit. Matches `thumbnail/temp.rs`'s generator.
 const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
+/// How long one resolve call may spend generating before it stops starting new FFmpeg runs.
+///
+/// [`DISPLAY_THUMBNAIL_TIMEOUT`] bounds *one* child; nothing bounded a page of them. The two
+/// multiply: at [`MAX_GENERATIONS_PER_CALL`] generations each allowed the full per-process timeout,
+/// a page where FFmpeg reproducibly hangs could hold one blocking-pool thread for over half an hour,
+/// and the caller cannot see it or cancel it - the request is fire-and-forget, and its failure path
+/// only logs. Every other `run_blocking` caller (import, hashing, cleanup, the other library reads)
+/// competes for that pool, so the cost is not confined to thumbnails.
+///
+/// Sized so a legitimate call never meets it, which is the constraint that matters and the one that
+/// is easy to get wrong. A full page of 100 real generations runs a few seconds; even at 300ms
+/// each (a cold disk on a slow machine) it is 30s. Cutting close to that would recreate the bug
+/// [`MAX_GENERATIONS_PER_CALL`] was raised from 64 to fix: the tail of a first-visited page would
+/// come back unresolved, and a channel that fits in one page has no later append to trigger the
+/// retry, so those cards would keep decoding the stored file for the session. This is four times a
+/// slow full page, and still turns the pathological case from ~33 minutes into two.
+const RESOLVE_CALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Upper bound on how many derivatives one call will generate.
 ///
 /// A resolve call carries one page of the grid, so the normal miss count is a page's worth on first
@@ -323,6 +341,25 @@ fn take_generation_slot(generations_left: &mut usize) -> Option<()> {
     Some(())
 }
 
+/// True once this call has spent its wall-clock budget and must stop starting FFmpeg runs.
+///
+/// Takes `now` rather than reading the clock, for the same reason `duration_is_recent` in
+/// `db_backup` does: a bound whose only observable effect is "some later entry got nothing" cannot
+/// be pinned at its boundary by a test that has to wait for real time to pass. Here both sides of
+/// the comparison are one call away, which is also what kills the `>=` mutants - a `>` would let a
+/// call that has exactly spent its budget start one more child.
+///
+/// `saturating_duration_since` rather than the subtracting form: `Instant` is monotonic per the
+/// standard library, but the arithmetic is on values this function is handed, and a bound in front
+/// of a process spawn should not be able to panic on an argument.
+fn call_budget_spent(
+    started_at: std::time::Instant,
+    now: std::time::Instant,
+    budget: std::time::Duration,
+) -> bool {
+    now.saturating_duration_since(started_at) >= budget
+}
+
 /// True when the file at `path` exists, is a regular file, and is not empty.
 ///
 /// Used both to accept a cached derivative and to accept a freshly written one. The emptiness check
@@ -396,6 +433,7 @@ fn resolve_one(
     display_dir: &Path,
     ffmpeg: Option<&str>,
     generations_left: &mut usize,
+    started_at: std::time::Instant,
 ) -> DisplayThumbnail {
     // A name this app did not write. Permanent: the name comes off the row and does not change.
     let Some(cache_key) = display_cache_key(relative_path) else {
@@ -433,6 +471,18 @@ fn resolve_one(
     let Some(ffmpeg) = ffmpeg else {
         return DisplayThumbnail::Unavailable;
     };
+
+    // Two independent bounds on the same expensive step, and both answer BudgetSpent: each is a
+    // property of *this call* rather than of the path, so a later call can still resolve it. The
+    // clock is checked first so a call that is already over time does not spend a slot to discover
+    // that - the slot would be wasted rather than merely accounted for.
+    //
+    // Neither bound gates the cache hit above. A hit is one stat, and refusing it would make a fully
+    // warmed page fall back to the stored file for no reason, which is the same reasoning
+    // MAX_GENERATIONS_PER_CALL already states.
+    if call_budget_spent(started_at, std::time::Instant::now(), RESOLVE_CALL_BUDGET) {
+        return DisplayThumbnail::BudgetSpent;
+    }
 
     if take_generation_slot(generations_left).is_none() {
         return DisplayThumbnail::BudgetSpent;
@@ -499,6 +549,11 @@ pub fn resolve_display_thumbnails_sync(
     let ffmpeg = resolve_ffmpeg_binary(app).ok();
     let mut generations_left = MAX_GENERATIONS_PER_CALL;
 
+    // Pinned once, here, so every entry measures against the start of the call rather than against
+    // whenever it happened to be reached. Reading it per entry would make the bound a per-entry
+    // timeout, which is what DISPLAY_THUMBNAIL_TIMEOUT already is.
+    let started_at = std::time::Instant::now();
+
     let mut resolved: Vec<DisplayThumbnail> = considered
         .iter()
         .map(|relative_path| {
@@ -508,9 +563,29 @@ pub fn resolve_display_thumbnails_sync(
                 &display_dir,
                 ffmpeg.as_deref(),
                 &mut generations_left,
+                started_at,
             )
         })
         .collect();
+
+    // One line per call, not per entry. Reaching the budget means FFmpeg is taking far longer than
+    // scaling an image should - a hung binary, a failing disk - and that is worth saying once,
+    // because the symptom the user sees is only that some cards stayed on the stored thumbnail.
+    //
+    // The check is "did the call end past its budget" rather than "was an entry refused for time",
+    // which conflates the two bounds when both are hit in the same call. That is deliberate: they
+    // mean the same thing to whoever reads the log (this call gave up early), and distinguishing
+    // them would mean threading a flag back out of `resolve_one` for a log line.
+    if call_budget_spent(started_at, std::time::Instant::now(), RESOLVE_CALL_BUDGET) {
+        logger::warn(
+            "thumbnail_display",
+            format!(
+                "a display thumbnail request used its whole {}s budget; the remaining entries were \
+                 left for a later call and are being served from the stored thumbnails",
+                RESOLVE_CALL_BUDGET.as_secs()
+            ),
+        );
+    }
 
     // Restore the positional contract the caller indexes by. The tail the ceiling excluded is
     // BudgetSpent, not Unavailable: nothing was decided about those paths, and a later call carrying
@@ -524,6 +599,12 @@ pub fn resolve_display_thumbnails_sync(
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    /// The start instant of a call that has only just begun, so the wall-clock budget is nowhere
+    /// near spent and these tests exercise the decision they are actually about.
+    fn fresh_call() -> std::time::Instant {
+        std::time::Instant::now()
+    }
 
     /// A cache entry at a given age and size, for the eviction tests. Ages are expressed as an
     /// offset from a fixed base rather than from `now`, so the ordering under test is exact.
@@ -828,6 +909,127 @@ mod tests {
     }
 
     #[test]
+    fn the_call_budget_is_spent_exactly_at_its_boundary() {
+        // Both sides of the `>=`, on the exact boundary. A `>` here would let a call that has
+        // already spent its budget start one more FFmpeg child, which at the per-process timeout is
+        // another twenty seconds on a blocking-pool thread.
+        let started = std::time::Instant::now();
+        let budget = Duration::from_secs(120);
+
+        assert!(!call_budget_spent(started, started, budget));
+        assert!(!call_budget_spent(
+            started,
+            started + budget - Duration::from_millis(1),
+            budget
+        ));
+        assert!(call_budget_spent(started, started + budget, budget));
+        assert!(call_budget_spent(
+            started,
+            started + budget + Duration::from_secs(60),
+            budget
+        ));
+    }
+
+    #[test]
+    fn a_clock_that_did_not_advance_never_reports_the_budget_as_spent() {
+        // `now` before `started_at` should not be reachable with a monotonic Instant, but this
+        // function guards a process spawn and receives both values from its caller, so the
+        // saturating subtraction is what keeps a wrong argument from panicking there.
+        let started = std::time::Instant::now();
+        let budget = Duration::from_secs(120);
+
+        assert!(!call_budget_spent(
+            started + Duration::from_secs(5),
+            started,
+            budget
+        ));
+    }
+
+    #[test]
+    fn the_call_budget_leaves_room_for_more_than_one_generation() {
+        // The invariant that keeps the bound from silently disabling the feature: if the call budget
+        // were at or below the per-process timeout, a single hung FFmpeg would consume the whole
+        // call, every call, and no derivative would ever be produced again on that machine - with
+        // nothing to show for it but a warning per page.
+        assert!(
+            RESOLVE_CALL_BUDGET > DISPLAY_THUMBNAIL_TIMEOUT,
+            "the call budget ({RESOLVE_CALL_BUDGET:?}) must exceed one generation's timeout \
+             ({DISPLAY_THUMBNAIL_TIMEOUT:?})"
+        );
+    }
+
+    #[test]
+    fn a_call_that_is_out_of_time_reports_retryable_and_keeps_its_slots() {
+        // The bound this exists for, at the level it acts on. Retryable rather than final: the path
+        // is fine and the source is there, so a later call must still be free to resolve it - and
+        // the slot must not be spent discovering that the call is over time, or a page arriving late
+        // would burn its whole budget refusing entries.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-display-out-of-time-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(dir.join(LIBRARY_DIR_THUMBNAILS)).unwrap();
+
+        let hash = "b".repeat(64);
+        let relative = format!("thumbnails/thumb_{hash}.jpg");
+        std::fs::write(dir.join(&relative), b"\xff\xd8\xff").unwrap();
+
+        // A call that started a full budget ago is already over time by the time it reaches here.
+        let started_at = std::time::Instant::now() - RESOLVE_CALL_BUDGET;
+        let mut generations_left = 5usize;
+
+        let resolved = resolve_one(
+            &dir.to_string_lossy(),
+            &relative,
+            &dir,
+            Some("ffmpeg"),
+            &mut generations_left,
+            started_at,
+        );
+
+        assert_eq!(resolved, DisplayThumbnail::BudgetSpent);
+        assert_eq!(
+            generations_left, 5,
+            "a call that is out of time must not spend a slot to find that out"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_out_of_time_call_still_serves_what_is_already_cached() {
+        // The deliberate asymmetry: the budget bounds generations, not answers. A cache hit is one
+        // stat, so refusing it once the call is over time would make a warmed page fall back to the
+        // full-size stored file for no reason - the same reasoning MAX_GENERATIONS_PER_CALL states,
+        // applied to the clock.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-display-hit-out-of-time-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let hash = "c".repeat(64);
+        let cached = dir.join(display_thumbnail_file_name(&hash));
+        std::fs::write(&cached, b"\xff\xd8\xff").unwrap();
+
+        let started_at = std::time::Instant::now() - RESOLVE_CALL_BUDGET;
+        let mut generations_left = 0usize;
+
+        let resolved = resolve_one(
+            "/no/such/library",
+            &format!("thumbnails/thumb_{hash}.jpg"),
+            &dir,
+            None,
+            &mut generations_left,
+            started_at,
+        );
+
+        assert_eq!(resolved, DisplayThumbnail::resolved(cached));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_zero_budget_refuses_before_it_can_underflow() {
         let mut generations_left = 0usize;
 
@@ -878,6 +1080,7 @@ mod tests {
             &dir,
             Some("ffmpeg"),
             &mut generations_left,
+            fresh_call(),
         );
 
         // Unavailable, not BudgetSpent: the name came off the row and will not change, so telling
@@ -914,6 +1117,7 @@ mod tests {
             &dir,
             Some("ffmpeg"),
             &mut generations_left,
+            fresh_call(),
         );
 
         assert_eq!(resolved, DisplayThumbnail::BudgetSpent);
@@ -948,6 +1152,7 @@ mod tests {
             &dir,
             None,
             &mut generations_left,
+            fresh_call(),
         );
 
         assert_eq!(resolved, DisplayThumbnail::Unavailable);
@@ -979,6 +1184,7 @@ mod tests {
             &dir,
             Some("ffmpeg"),
             &mut generations_left,
+            fresh_call(),
         );
 
         assert_eq!(resolved, DisplayThumbnail::Unavailable);
@@ -1026,6 +1232,7 @@ mod tests {
             &dir,
             None,
             &mut generations_left,
+            fresh_call(),
         );
 
         assert_eq!(resolved, DisplayThumbnail::resolved(cached));
@@ -1051,6 +1258,7 @@ mod tests {
             &dir,
             Some("ffmpeg"),
             &mut generations_left,
+            fresh_call(),
         );
 
         // Final rather than retryable, which is a judgment worth stating: the file could come back
