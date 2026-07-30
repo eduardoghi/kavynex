@@ -7,6 +7,8 @@ generated TypeScript bindings work, and commit conventions.
 
 See also `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/DIRECTORIES.md`, and
 `SECURITY.md` for how the app is put together and why its safety checks exist.
+`CODE_OF_CONDUCT.md` covers what is expected of everyone taking part, and `SUPPORT.md` is where
+to send someone who has a bug to report rather than a change to propose.
 
 ## Prerequisites
 

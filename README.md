@@ -269,4 +269,6 @@ repository), and applies to the font files only, not to Kavynex itself.
 - `docs/RELEASING.md` - how a release is cut and published (needs repository write access).
 - `CONTRIBUTING.md` - development setup, commands, and commit conventions.
 - `SECURITY.md` - the threat model and how to report a vulnerability.
+- `SUPPORT.md` - where to report a bug, what to include, and what to expect.
+- `CODE_OF_CONDUCT.md` - the standard expected of everyone taking part, and how to report a problem.
 
