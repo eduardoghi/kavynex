@@ -153,6 +153,18 @@ up on, never the files: the marker stays on disk and its artifacts stay in the l
 Diagnostics dialog reports them as unreferenced. The difference is that the failure is logged once,
 at error level with its count, instead of at warning level on every launch forever.
 
+Two things have to happen together for that to be true, and they are in different functions. The
+incremented count is written back to the marker on *every* failure, including the one that reaches
+the ceiling; and `read_pending_markers` drops a marker whose count is already at the ceiling before
+the sweep ever sees it. With only the first, an abandoned marker sits at five and is re-read on
+every launch. With only the second, it sits at four and never reaches five. Either way the sweep
+would retry the same failing cleanup and re-emit the notice below on every launch - which is worse
+than the unbounded warning line the ceiling replaced, because that one at least stayed in the log.
+
+Giving up is surfaced to the user once, as a notice pointing at Diagnostics
+(`EVENT_PENDING_MEDIA_ABANDONED`, one event per sweep however many markers it covered), rather than
+being left to the log file alone.
+
 On startup, `lib.rs`'s `setup()` authorizes `thumbs-temp/` and `thumb-display/` - and only those
 two - in the Tauri asset-protocol scope (`commands/security.rs::register_cache_asset_scope`, see
 `THREAT-MODEL.md`), so a thumbnail preview can be shown in the webview via `convertFileSrc` before it is

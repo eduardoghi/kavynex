@@ -222,6 +222,12 @@ struct PendingMediaAbandonedEvent {
 /// disk: it names artifacts in the user's library, and giving up on reconciling them is not the
 /// same as being allowed to remove them. What changes is that the failure is logged at `error`
 /// once, with its count, instead of at `warn` on every launch forever.
+///
+/// "Once" is only true because the count is persisted at the same moment and this predicate is
+/// consulted again by [`read_pending_markers`], which drops an exhausted marker before the sweep can
+/// see it. Without both halves the ceiling decides nothing: the marker would be re-read at one below
+/// it on every launch, retry the same failing cleanup, and re-emit the user-facing notice each time -
+/// strictly worse than the unbounded `warn` line this was meant to replace.
 pub(crate) fn marker_retries_are_exhausted(attempts: u32) -> bool {
     attempts >= MAX_MARKER_SWEEP_ATTEMPTS
 }
@@ -437,6 +443,14 @@ fn read_pending_markers<R: Runtime>(
 
         match fs::read_to_string(&path).ok().as_deref() {
             Some(contents) => match decode_marker(contents) {
+                Some(artifacts) if marker_retries_are_exhausted(artifacts.attempts) => {
+                    // Already given up on by an earlier launch. Offering it again would re-run the
+                    // cleanup that has failed every time, and - since the sweep reports abandoning
+                    // it - would put an error line and a user-facing notice on every launch for the
+                    // rest of the library's life. The marker stays on disk regardless: it names
+                    // artifacts in the user's library, which Diagnostics is what reports and removes.
+                    continue;
+                }
                 Some(artifacts) => markers.push((name, artifacts)),
                 // A marker that names nothing usable has no work behind it; drop the file so it is
                 // not re-read on every launch.
@@ -494,6 +508,13 @@ pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> 
                     // has, and reported once instead of every launch.
                     let attempts = artifacts.attempts.saturating_add(1);
 
+                    // Written back in both branches, and the exhausted one is why: without it the
+                    // marker stays at one below the ceiling forever, so every later launch re-runs
+                    // the same failing cleanup, logs the same error and re-emits the notice below.
+                    // The count is what `read_pending_markers` reads to stop offering this marker at
+                    // all, so persisting it is the whole of what "giving up" means.
+                    record_marker_attempt(app, &name, &artifacts, attempts);
+
                     if marker_retries_are_exhausted(attempts) {
                         abandoned_markers += 1;
 
@@ -506,8 +527,6 @@ pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> 
                             ),
                         );
                     } else {
-                        record_marker_attempt(app, &name, &artifacts, attempts);
-
                         logger::warn(
                             "pending_media",
                             format!(
@@ -837,6 +856,75 @@ mod tests {
             .into_iter()
             .find(|(marker_name, _)| marker_name == &name);
         assert_eq!(found, Some((name.clone(), leftover)));
+
+        clear_pending_media_artifacts(handle, &name).unwrap();
+    }
+
+    #[test]
+    fn a_marker_that_exhausted_its_retries_is_never_offered_again() {
+        // The other half of the ceiling, and the half without which it decides nothing. The sweep
+        // reports abandoning a marker, so re-reading one that has already been given up on does not
+        // merely waste a cleanup attempt - it puts an error line and a user-facing notice on every
+        // launch for the rest of the library's life, which is worse than the unbounded warning the
+        // ceiling was added to replace.
+        let app = mock_app();
+        let handle = app.handle();
+
+        let exhausted = PendingMediaArtifacts {
+            attempts: MAX_MARKER_SWEEP_ATTEMPTS,
+            ..artifacts(Some("video/media_given_up.mp4"), None, None)
+        };
+        let name = format!("pending-{}.json", unique_temp_suffix());
+        let marker = pending_media_dir(handle).unwrap().join(&name);
+
+        fs::write(&marker, serde_json::to_string(&exhausted).unwrap()).unwrap();
+        set_modified_before_process_start(&marker);
+
+        let found = read_pending_markers(handle)
+            .unwrap()
+            .into_iter()
+            .any(|(marker_name, _)| marker_name == name);
+
+        assert!(
+            !found,
+            "a marker already given up on must not be offered to the sweep again"
+        );
+
+        // The file itself stays: it names artifacts in the user's library, and abandoning the record
+        // is not the same as being allowed to remove them. Diagnostics is what reports and removes.
+        assert!(
+            marker.exists(),
+            "abandoning the record must not delete the marker"
+        );
+
+        clear_pending_media_artifacts(handle, &name).unwrap();
+    }
+
+    #[test]
+    fn a_marker_one_attempt_short_of_the_ceiling_is_still_offered() {
+        // The boundary from the other side, so the filter above cannot be widened into "stop
+        // reconciling anything that has ever failed". A marker at one below the ceiling is still a
+        // leftover the sweep should try, and the transient case it exists for - a library drive that
+        // mounts late - is exactly the one that resolves on a later launch.
+        let app = mock_app();
+        let handle = app.handle();
+
+        let retrying = PendingMediaArtifacts {
+            attempts: MAX_MARKER_SWEEP_ATTEMPTS - 1,
+            ..artifacts(Some("video/media_retrying.mp4"), None, None)
+        };
+        let name = format!("pending-{}.json", unique_temp_suffix());
+        let marker = pending_media_dir(handle).unwrap().join(&name);
+
+        fs::write(&marker, serde_json::to_string(&retrying).unwrap()).unwrap();
+        set_modified_before_process_start(&marker);
+
+        let found = read_pending_markers(handle)
+            .unwrap()
+            .into_iter()
+            .find(|(marker_name, _)| marker_name == &name);
+
+        assert_eq!(found, Some((name.clone(), retrying)));
 
         clear_pending_media_artifacts(handle, &name).unwrap();
     }
