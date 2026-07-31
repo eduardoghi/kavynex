@@ -309,6 +309,11 @@
 #     viable ones are the whole point: both directions of `hop_budget_exhausted -> bool` and the
 #     `>=` at its boundary, which inside the loop was reachable only by standing up a server that
 #     redirects eleven times, plus the `||` in the absolute-scheme test.
+#     Re-measured 2026-07-31 after `next_hop` gained the image-CDN host gate on the resolved
+#     destination: 13 mutants, 5 caught, 8 unviable, 0 missed. The gate landed here rather than in
+#     the loop precisely so it would be one of those five - it had been applied to the initial URL
+#     only, so a redirect out of an allowed CDN was followed anywhere public, and nothing in
+#     `download.rs` can be mutation-tested to catch that coming back.
 examine_globs = [
     "src/services/live_chat_storage.rs",
     "src/services/thumbnail/redirect.rs",
