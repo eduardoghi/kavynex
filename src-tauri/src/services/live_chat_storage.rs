@@ -384,6 +384,27 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
     Ok(true)
 }
 
+/// Counts a directory entry the OS refused to yield at all, and says so.
+///
+/// Its own function for a reason that is about the mutation gate rather than about readability, and
+/// worth stating because the extraction otherwise looks gratuitous. cargo-mutants names a mutant by
+/// the function it lives in, so the five `+= 1` sites in `compress_existing_live_chat_files` all
+/// shared one description - four of them killable, this one not, since a `read_dir` entry that fails
+/// to yield cannot be produced portably. That made the file ungateable: excluding the description
+/// would have silently dropped four working checks along with the one that needed it. Alone in here,
+/// this one can be excluded by name and the other four stay in scope.
+///
+/// It also gained a log line it did not have. An entry that cannot even be read is the one case in
+/// this pass that left no trace anywhere - the count went up and nothing said why.
+fn record_unreadable_entry(summary: &mut LiveChatCompressionSummary) {
+    summary.failed += 1;
+
+    crate::services::logger::warn(
+        "live_chat_compress",
+        "a live chat directory entry could not be read and was skipped",
+    );
+}
+
 /// Compresses every uncompressed live chat file in `dir`. Best effort: a failure on one file
 /// is logged and counted, never aborting the whole pass.
 pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompressionSummary> {
@@ -402,7 +423,7 @@ pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompre
 
     for entry in entries {
         let Ok(entry) = entry else {
-            summary.failed += 1;
+            record_unreadable_entry(&mut summary);
             continue;
         };
 
@@ -808,5 +829,63 @@ mod tests {
         assert_eq!(second.already_compressed, 2);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn compress_existing_counts_a_file_it_could_not_compress_and_keeps_going() {
+        // The `failed` counter on the compression branch, which had nothing behind it: making one
+        // file fail was assumed to need a permission trick no test can do portably, so the count
+        // went unasserted and a mutation of it would have been invisible.
+        //
+        // It does not need one. `compress_file_in_place` stages through a `<name>.gztmp` sibling, so
+        // putting a *directory* at that path makes the staged write fail on both platforms, with no
+        // permissions involved. The directory itself is skipped by the loop's `is_file` guard, so it
+        // does not disturb the scan.
+        let dir = temp_dir("compress-failure");
+        fs::create_dir_all(&dir).unwrap();
+
+        let doomed = dir.join("blocked.live_chat.json");
+        fs::write(&doomed, b"never compressed\n").unwrap();
+        fs::create_dir_all(dir.join("blocked.live_chat.json.gztmp")).unwrap();
+
+        // A healthy sibling, because "best effort" is the other half of the claim: one file failing
+        // must not abort the pass or skip the files after it.
+        fs::write(dir.join("fine.live_chat.json"), b"compressed\n").unwrap();
+
+        let summary = compress_existing_live_chat_files(&dir).unwrap();
+
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.compressed, 1);
+        assert_eq!(summary.scanned, 2);
+        assert_eq!(summary.already_compressed, 0);
+
+        // The source is left exactly as it was: the staged write is what failed, and nothing
+        // replaces the original until that write and its round-trip check have both succeeded.
+        assert_eq!(fs::read(&doomed).unwrap(), b"never compressed\n");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_directory_entry_is_counted_as_a_failure() {
+        // The one counter in this pass that no portable test can reach through the real loop - a
+        // `read_dir` entry the OS refuses to yield - so it is asserted directly instead. That is
+        // also why it lives in its own function: alone in there, the mutation gate can exclude it
+        // by name without dropping the four counters around it that tests do cover.
+        let mut summary = LiveChatCompressionSummary::default();
+
+        record_unreadable_entry(&mut summary);
+        assert_eq!(summary.failed, 1);
+
+        record_unreadable_entry(&mut summary);
+        assert_eq!(
+            summary.failed, 2,
+            "each unreadable entry counts exactly once"
+        );
+
+        // Only `failed` moves: an entry that never yielded was not scanned, compressed or skipped.
+        assert_eq!(summary.scanned, 0);
+        assert_eq!(summary.compressed, 0);
+        assert_eq!(summary.already_compressed, 0);
     }
 }
