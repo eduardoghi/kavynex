@@ -249,7 +249,41 @@
 # reported against each. Folding that body into `report_cleanup_outcome` made it one site rather than
 # two - preferable to writing the same exclusion twice, and the same instinct as removing the dead
 # clause in `ssrf_guard` instead of excluding its mutant.
+# `src/services/library/migration.rs` - the copy-then-remove that moves the whole library, i.e. the
+# highest-regression-cost path in the tree. It was outside this list while `library/recovery.rs` and
+# `library/cleanup.rs` were inside it, which had no defensible reason behind it.
+#     Measured 2026-07-30 (`--in-place --no-config --file`, together with live_chat_storage.rs):
+#     37 mutants, 2 missed. Both were real gaps, not equivalents. The one that mattered was
+#     `replace && with || in ensure_destination_is_migratable` at the `is_dir() &&
+#     MANAGED_LIBRARY_DIRS.contains(name)` conjunction: weakened to a disjunction, *any*
+#     subdirectory reads as a managed one, so a folder full of the user's own files passes the
+#     "destination must be empty" gate and the library is migrated into it. Nothing failed, because
+#     every existing test placed either a managed directory or a loose file there - never an
+#     unrelated directory. The sibling `&&` on the next line was already caught, which is why the
+#     shared description could not be excluded and had to be killed by a test instead
+#     (`ensure_destination_is_migratable_rejects_a_directory_that_is_not_a_managed_one`, plus two
+#     more pinning the accepted shapes and the loose-file half). The second is excluded below.
+#
+# `src/services/live_chat_storage.rs` is deliberately NOT in the list yet, and the measurement is
+# recorded here rather than left for whoever asks the same question next.
+#     Measured 2026-07-30 the same way: 136 mutants, 11 missed. Six were real gaps and are now
+#     killed by tests, so they are pure gain whether or not the file is ever gated: both
+#     decompression-bomb ceilings (`gzip_decompress_with_limit` and `stream_reader_lines`) had only
+#     their over-the-limit side covered, so tightening `>` to `>=` - which would refuse a payload of
+#     exactly the allowed size, the case the code's own comment promises - was invisible; the
+#     512 MiB ceiling constant had nothing pinning its arithmetic; and both guards in
+#     `list_live_chat_relative_paths` were unpinned, where inverting either makes a populated
+#     library report no live chat files at all.
+#     What blocks the file are the remaining five, and they are one problem twice. Four are the
+#     `summary.failed += 1` counters in `compress_existing_live_chat_files`, on the two branches that
+#     need a `read_dir` entry that fails to yield and a compression that fails - neither producible
+#     portably. They cannot be excluded either: cargo-mutants matches `exclude_re` against a
+#     description carrying the function name and not the line, and the *same* description at three
+#     other lines in that function is caught today, so the exclusion would silently drop six working
+#     checks. Gating the file needs the counter sites made distinguishable first (the restructuring
+#     instinct recorded above for `report_cleanup_outcome`), which is its own change.
 examine_globs = [
+    "src/services/library/migration.rs",
     "src/services/media_creation.rs",
     "src/services/thumbnail/picked.rs",
     "src/services/thumbnail/display.rs",
@@ -288,6 +322,14 @@ additional_cargo_args = ["--locked"]
 # exclusion below is a function whose behavior is a filesystem/process/env boundary, a
 # cfg-split body cargo-mutants cannot evaluate, or an equivalent mutant.
 exclude_re = [
+    # library/migration.rs (triaged 2026-07-30). Equivalent: the `!leftovers.is_empty()` guard in
+    # `remove_old_library_contents` only decides whether a `logger::warn` line naming the entries
+    # left behind is emitted. The removal has already happened by then and the list is the value
+    # being reported, so inverting the guard changes the log and nothing observable - the same
+    # argument as `report_cleanup_outcome` below. Precise rather than broad: this description occurs
+    # once, and the only other mutant in that function (`replace remove_old_library_contents with
+    # ()`) is caught and reads differently, so nothing working is dropped by it.
+    'delete ! in remove_old_library_contents',
     # media_creation.rs survivors (triaged 2026-07-30), in two groups.
     #
     # 1. `AppHandle`-bound glue. These need a live handle to reach the shared pool, the library and

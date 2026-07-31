@@ -710,6 +710,66 @@ mod tests {
     }
 
     #[test]
+    fn ensure_destination_is_migratable_accepts_empty_managed_and_os_litter() {
+        // The three shapes a destination is allowed to have: empty, holding only the managed
+        // subdirectories a previous interrupted migration left, and holding only OS-generated
+        // files the user did not put there.
+        let empty = unique_test_dir("dest-empty");
+        fs::create_dir_all(&empty).unwrap();
+        ensure_destination_is_migratable(&empty).unwrap();
+
+        let managed = unique_test_dir("dest-managed");
+        for name in MANAGED_LIBRARY_DIRS {
+            fs::create_dir_all(managed.join(name)).unwrap();
+        }
+        fs::write(managed.join(".DS_Store"), b"").unwrap();
+        ensure_destination_is_migratable(&managed).unwrap();
+
+        let _ = fs::remove_dir_all(&empty);
+        let _ = fs::remove_dir_all(&managed);
+    }
+
+    #[test]
+    fn ensure_destination_is_migratable_rejects_a_directory_that_is_not_a_managed_one() {
+        // The guard is `is_dir() && MANAGED_LIBRARY_DIRS.contains(name)`, and the conjunction is
+        // load-bearing: weakened to a disjunction, *any* subdirectory reads as managed, so a folder
+        // full of the user's own files would be accepted as a migration destination and the library
+        // would be copied into it. The existing tests only ever placed managed directories or loose
+        // files here, so nothing failed when that happened.
+        let destination = unique_test_dir("dest-unrelated-dir");
+        fs::create_dir_all(destination.join("Documents")).unwrap();
+
+        let error = ensure_destination_is_migratable(&destination)
+            .expect_err("a folder holding an unrelated directory must not be migratable");
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryMigration.as_str());
+
+        let _ = fs::remove_dir_all(&destination);
+    }
+
+    #[test]
+    fn ensure_destination_is_migratable_rejects_an_unrelated_file() {
+        // The other half of the same condition: a loose file that is not OS litter is user content,
+        // even when it is *named* like a managed directory (`video` as a file, not a folder).
+        let destination = unique_test_dir("dest-unrelated-file");
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(destination.join("contract.docx"), b"data").unwrap();
+
+        let error = ensure_destination_is_migratable(&destination)
+            .expect_err("a folder holding unrelated user content must not be migratable");
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryMigration.as_str());
+
+        let named_like_managed = unique_test_dir("dest-file-named-video");
+        fs::create_dir_all(&named_like_managed).unwrap();
+        fs::write(named_like_managed.join("video"), b"data").unwrap();
+
+        ensure_destination_is_migratable(&named_like_managed)
+            .expect_err("a *file* named like a managed directory is still user content");
+
+        let _ = fs::remove_dir_all(&destination);
+        let _ = fs::remove_dir_all(&named_like_managed);
+    }
+
+    #[test]
     fn migrate_library_directory_sync_ignores_os_generated_files_in_destination() {
         let _guard = migration_test_lock().lock().unwrap();
 

@@ -488,6 +488,38 @@ mod tests {
         assert_eq!(ok, payload);
     }
 
+    #[test]
+    fn gzip_decompress_accepts_a_payload_landing_exactly_on_the_limit() {
+        // The comparison is `> max_bytes`, and the function's own comment promises that "a file
+        // that lands exactly on the ceiling still decodes". Only the over-the-limit side was
+        // covered, so relaxing the comparison to `>=` - which would reject a payload of exactly
+        // the allowed size - changed nothing any test could see. Both sides of the boundary are
+        // asserted here, one byte apart.
+        let payload = vec![0u8; 8 * 1024];
+        let compressed = gzip_compress(&payload).unwrap();
+        let exact = payload.len() as u64;
+
+        let at_limit = gzip_decompress_with_limit(&compressed, exact).unwrap();
+        assert_eq!(
+            at_limit, payload,
+            "a payload exactly at the limit must decode"
+        );
+
+        let error = gzip_decompress_with_limit(&compressed, exact - 1)
+            .expect_err("one byte over the limit must be refused");
+        assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+    }
+
+    #[test]
+    fn the_live_chat_decompression_ceiling_is_512_mib() {
+        // Pinned by value, not by re-deriving it from the same multiplication the constant uses:
+        // the ceiling is a decompression-bomb guard, and an arithmetic slip in it (512 + 1024 +
+        // 1024 is 2560 bytes, not 512 MiB) would either break every real replay or, the other way,
+        // remove the bound - neither of which any behavioral test can afford to exercise at that
+        // size. A literal is the only thing that catches it.
+        assert_eq!(MAX_LIVE_CHAT_DECOMPRESSED_BYTES, 536_870_912);
+    }
+
     /// Collects every streamed line into one vector, plus the number of batches `emit` was called
     /// with, so a test can assert both the content and that batching actually happened.
     fn collect_streamed_lines(path: &Path, batch_lines: usize) -> AppResult<(Vec<String>, usize)> {
@@ -616,6 +648,58 @@ mod tests {
         })
         .unwrap();
         assert_eq!(lines, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn stream_reader_lines_accepts_a_stream_landing_exactly_on_the_ceiling() {
+        // Same boundary as the gzip ceiling above, and it was untested for the same reason: the
+        // existing case sits far over the cap, so tightening `>` to `>=` - which would refuse a
+        // stream of exactly the allowed size - was invisible. `a\nb\n` is four bytes, so a cap of
+        // four is the exact boundary and a cap of three is one byte under it.
+        let data = b"a\nb\n".to_vec();
+
+        let mut lines = Vec::new();
+        stream_reader_lines(&data[..], 500, 4, |batch| {
+            lines.extend(batch);
+            Ok(())
+        })
+        .expect("a stream exactly at the ceiling must be accepted");
+        assert_eq!(lines, vec!["a", "b"]);
+
+        let error = stream_reader_lines(&data[..], 500, 3, |_| Ok(()))
+            .expect_err("a stream over the ceiling must be refused");
+        assert_eq!(error.code, AppErrorCode::LiveChatFileUnreadable.as_str());
+    }
+
+    #[test]
+    fn list_live_chat_relative_paths_returns_files_and_skips_directories() {
+        // Two guards in one walk, and both were unpinned: the early return when `live_chat/` does
+        // not exist, and the per-entry skip of anything that is not a file. Dropping the `!` from
+        // either inverts it - the first makes an existing directory report nothing, the second
+        // makes it report its subdirectories and hide its files - and a library that silently
+        // reports no live chat files is how diagnostics would start deleting them as unreferenced.
+        let library = temp_dir("list-relative");
+        let live_chat = library.join("live_chat");
+        fs::create_dir_all(live_chat.join("a-subdirectory")).unwrap();
+        fs::write(live_chat.join("clip.live_chat.json.gz"), b"data").unwrap();
+
+        let paths = list_live_chat_relative_paths(&library).unwrap();
+
+        assert_eq!(paths, vec!["live_chat/clip.live_chat.json.gz".to_string()]);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn list_live_chat_relative_paths_reports_nothing_when_the_directory_is_absent() {
+        // The other side of the early return, so it is the *condition* that is pinned rather than
+        // just the populated path: a library with no live_chat/ yet is an empty list, not an error.
+        let library = temp_dir("list-relative-missing");
+        fs::create_dir_all(&library).unwrap();
+
+        assert!(list_live_chat_relative_paths(&library).unwrap().is_empty());
+
+        let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
