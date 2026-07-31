@@ -4,7 +4,7 @@ use crate::services::library::guard::{
     ensure_configured_library_path, verify_library_path_then_blocking,
 };
 use crate::services::thumbnail;
-use crate::services::thumbnail::display::DisplayThumbnail;
+use crate::services::thumbnail::display::{self, DisplayThumbnail};
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
@@ -50,12 +50,26 @@ pub async fn download_channel_avatar_from_handle(
 ///
 /// The library path goes through `verify_library_path_then_blocking` like every other library read,
 /// so a caller cannot point this at a directory the user has not configured.
+///
+/// Only one of these runs at a time. The per-call budgets inside the service bound what one call may
+/// do and say nothing about how many are doing it, and this request is fire-and-forget - the grid
+/// asks once per page and merely discards a result it no longer wants - so nothing else stops a
+/// scroll from stacking one long-running occupant of the blocking pool per page. A call that finds
+/// the slot taken answers `budgetSpent` for every path it was given, which is the answer the caller
+/// already re-asks about; see `services::thumbnail::display::try_reserve_resolve_slot`.
 #[tauri::command]
 pub async fn resolve_display_thumbnails(
     app: AppHandle,
     relative_paths: Vec<String>,
     library_path: String,
 ) -> AppResult<Vec<DisplayThumbnail>> {
+    // Taken before the library-path check rather than after it, so a refused call costs one atomic
+    // rather than a settings read. That ordering is safe only because the refusal reveals nothing: it
+    // is the same answer for a valid and an invalid library path, and no path is touched either way.
+    let Some(_resolve_slot) = display::try_reserve_resolve_slot() else {
+        return Ok(display::all_retryable(relative_paths.len()));
+    };
+
     let app_for_resolve = app.clone();
 
     verify_library_path_then_blocking(&app, library_path, move |library_path| {

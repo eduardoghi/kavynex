@@ -39,6 +39,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use tauri::AppHandle;
+use tokio::sync::{Semaphore, SemaphorePermit};
 
 use crate::constants::{
     DISPLAY_THUMBNAIL_MAX_WIDTH, LIBRARY_DIR_THUMBNAILS, THUMBNAIL_OUTPUT_FORMAT,
@@ -128,6 +129,43 @@ const MAX_RESOLVED_PER_CALL: usize = 512;
 /// overshoot is bounded by what one session can draw and costs disk in a directory that is
 /// disposable by construction, which is the cheaper side of the trade.
 const DISPLAY_CACHE_MAX_BYTES: u64 = 200 * 1024 * 1024;
+
+/// Admits one resolve call at a time onto the blocking pool.
+///
+/// [`RESOLVE_CALL_BUDGET`] and [`MAX_GENERATIONS_PER_CALL`] bound what *one* call may do; neither
+/// bounds how many calls are doing it. Nothing else does either, because this request is
+/// fire-and-forget: `useDisplayThumbnails` asks once per page of the grid and only discards the
+/// result it no longer wants, so a user scrolling a large channel on a machine where FFmpeg
+/// reproducibly hangs stacks one two-minute occupant per page onto the pool that the import, the
+/// hashing, the cleanup and every other library read share. The cost of that is not confined to
+/// thumbnails, which is the whole reason this is here.
+static RESOLVE_SLOT: Semaphore = Semaphore::const_new(1);
+
+/// Claims the single resolve slot, or `None` when another resolve already holds it.
+///
+/// Deliberately `try_acquire` rather than an await: a queued page is worse than a refused one here.
+/// By the time a waiting call ran, the user would likely have scrolled past the rows it was asked
+/// about - so it would occupy the pool to produce derivatives for cards nobody is looking at, ahead
+/// of the request for the ones they are. A refusal costs nothing instead, because the caller already
+/// knows what to do with it (see [`all_retryable`]).
+///
+/// Both failure kinds collapse to `None` on purpose. `NoPermits` is the case this exists for, and
+/// `Closed` cannot happen - a `static` semaphore is never closed - but if it somehow did, answering
+/// "no slot" degrades to serving the stored thumbnails, which is this module's declared fallback.
+pub(crate) fn try_reserve_resolve_slot() -> Option<SemaphorePermit<'static>> {
+    RESOLVE_SLOT.try_acquire().ok()
+}
+
+/// The answer for a call that was refused a slot: every entry retryable, nothing decided.
+///
+/// [`DisplayThumbnail::BudgetSpent`] and not `Unavailable`, and the distinction is exactly the one
+/// that enum exists for. Nothing was learned about these paths - the sources may be there, FFmpeg
+/// may be present, the derivatives may even be cached - so recording them as final would strand
+/// cards a later call could have resolved. `BudgetSpent` is already what the caller re-asks about,
+/// and a call refused a slot is a per-call condition in exactly the sense that variant means.
+pub(crate) fn all_retryable(count: usize) -> Vec<DisplayThumbnail> {
+    vec![DisplayThumbnail::BudgetSpent; count]
+}
 
 /// What one requested thumbnail got, and - when it got nothing - whether asking again could ever
 /// change that.
@@ -614,6 +652,44 @@ mod tests {
             size_bytes,
             modified_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000) - age,
         }
+    }
+
+    #[test]
+    fn the_resolve_slot_admits_one_caller_and_frees_on_drop() {
+        // The whole contract, in the order that matters. This is the only test that touches the
+        // process-global slot, deliberately: a second one running in parallel would race it and the
+        // failure would look like flakiness rather than like the shared static it is.
+        let held = try_reserve_resolve_slot().expect("the first caller must get the slot");
+
+        assert!(
+            try_reserve_resolve_slot().is_none(),
+            "a second caller must be refused rather than queued - a page whose rows the user has \
+             already scrolled past would otherwise occupy the blocking pool ahead of the one they \
+             are looking at"
+        );
+
+        drop(held);
+
+        assert!(
+            try_reserve_resolve_slot().is_some(),
+            "the slot must come back, or the first hung FFmpeg would disable the cache for the \
+             rest of the session"
+        );
+    }
+
+    #[test]
+    fn a_refused_call_answers_every_path_as_retryable() {
+        // Retryable and not final: nothing was learned about these paths, so recording them as
+        // settled would strand cards a later call could resolve. The length has to match too - the
+        // caller reads the answer by position against the paths it sent.
+        let answers = all_retryable(3);
+
+        assert_eq!(answers.len(), 3);
+        assert!(answers
+            .iter()
+            .all(|answer| *answer == DisplayThumbnail::BudgetSpent));
+
+        assert!(all_retryable(0).is_empty());
     }
 
     #[test]
