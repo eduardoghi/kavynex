@@ -98,7 +98,7 @@ save/open destination chosen in a native dialog. These are a conscious exception
 oversight, and each is constrained so the "the renderer is compromised and sends a hostile path"
 case has limited blast radius:
 
-- `import_media_file`, `generate_temporary_thumbnail` - **writes are content-addressed
+- `create_media` (via `source_value`), `generate_temporary_thumbnail` - **writes are content-addressed
   and extension-gated**: the destination filename is derived from the file's own SHA-256
   and an allowed media/image extension, so a hostile source path cannot choose where the
   output lands inside the managed tree. The *source* path, though, is deliberately
@@ -244,6 +244,29 @@ records the crash marker, inserts the row and clears the marker as a single back
 replaced a sequence the renderer drove across seven IPC calls, and the reason it is in this document
 rather than only in the architecture guide is that the sequence had two properties a security review
 has to care about.
+
+**It carries four caller-supplied paths, and each satisfies the cross-cutting rule above.** They are
+listed here because the grouping is what made them easy to lose sight of: they arrive inside one
+`CreateMediaRequest` rather than as four named parameters, so nothing about the signature says this
+is the app's largest path surface.
+
+| Field | How it satisfies the rule |
+|---|---|
+| `library_path` | Checked against the persisted setting by the command layer (`ensure_configured_library_path`) before any file is written, like every other library write. |
+| `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::import_media_file_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
+| `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch refuses a network location and gates the extension (`services/thumbnail/picked.rs`); the remote branch goes through the image-CDN allow-list and the SSRF guard. |
+| `cookies_path` | Refused as a network location and gated to `.txt` before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). |
+
+Every path the creation *produces* is re-checked as a managed library-relative path before it can
+reach a row (`ensure_managed_prepared_paths`), which is the last point at which a value that escaped
+the managed layout can still be refused for free.
+
+`scripts/verify-command-path-surface.js` holds this list against the code, and this command is the
+reason it had to learn to follow a struct-typed parameter: it matched on parameter *names*, so
+`create_media(app, request: CreateMediaRequest)` was reported as taking no path at all - the exact
+silent growth that check exists to prevent, in the shape this codebase deliberately moved toward.
+`source_value` needs a `// path-surface:` marker on the field even so, because its name is honest
+about being a URL half the time and therefore says nothing about the other half.
 
 **The artifacts-without-a-row window used to cross the process boundary.** Between the file landing
 in the library and the row pointing at it, the library holds bytes nothing references. That window
