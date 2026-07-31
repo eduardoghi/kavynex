@@ -184,6 +184,36 @@ next to the database as `kavynex.db.corrupt` rather than deleted, so it can stil
 live. If the library ever looks incomplete after a restore, run Diagnostics to reconcile the
 database against the files on disk.
 
+### "Open file location" or "Open folder" does not do quite what you expect
+
+Both buttons hand the path to your operating system's own file manager, and the three
+platforms disagree about what "show me this" means. Nothing is broken in the cases below;
+this is the best each file manager offers.
+
+- **Linux: the file is not highlighted.** "Open file location" opens the folder containing
+  the media, but does not select the file inside it. Windows and macOS both highlight it.
+  `xdg-open` has no "reveal this item" mode - it only opens a target - so the folder is
+  opened instead. With many files in `video/`, sorting by modification date is usually the
+  quickest way to spot the one you came for.
+- **macOS: "Open folder" shows the library folder rather than opening it.** Finder opens the
+  folder *containing* your library, with the library itself highlighted; double-click to go
+  in. This is deliberate. A macOS application bundle is a directory, so the plain "open"
+  command would *launch* a folder that happens to be an `.app` instead of showing it, and
+  Kavynex always reveals rather than opens so that can never happen. Windows and Linux open
+  the folder directly.
+
+There is also one case where both buttons fail outright rather than behaving differently:
+
+- **A library reached through a UNC path** (`\\server\share\...`, e.g. a NAS addressed that
+  way). Kavynex refuses to hand such a location to the file manager. On Windows, merely
+  resolving one makes the system authenticate to whatever host is named and hand over your
+  account's password hash, so the path is rejected before it is touched. Everything else about
+  a library on a share is unaffected - playing, downloading, importing and thumbnails all work.
+  The refusal is specific to the `\\server\share` form: a share mounted as a drive letter
+  (`Z:\...`) is an ordinary local path as far as this check is concerned, so mapping the share
+  and pointing the library at the drive letter keeps both buttons working. See `SECURITY.md`
+  for the full reasoning.
+
 ### Where logs live
 
 Kavynex writes a rolling log file in addition to stderr. On the current platform's app
