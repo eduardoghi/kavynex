@@ -91,16 +91,12 @@ for what a compromised renderer can still do with them.
 
 #### Commands that intentionally take a caller-supplied path
 
-A handful of commands deliberately do *not* go through `library::guard`, because they are
-used by the onboarding/settings UI to preview or act on a *candidate* library folder
-before it is persisted (at which point there is no configured library to re-derive from).
-These are a conscious exception, not an oversight, and each is constrained so the "the
-renderer is compromised and sends a hostile path" case has limited blast radius:
+A handful of commands deliberately do *not* go through `library::guard`, because the path they
+act on is one no persisted setting can supply: a file the user picked anywhere on disk, or a
+save/open destination chosen in a native dialog. These are a conscious exception, not an
+oversight, and each is constrained so the "the renderer is compromised and sends a hostile path"
+case has limited blast radius:
 
-- `get_library_summary`, `check_library_integrity` - **read-only**: they only read
-  directory metadata / compare it against caller-supplied path lists. Worst case is
-  narrow information disclosure (filenames under the four managed subfolders of the given
-  directory), never a write or a file-content read.
 - `import_media_file`, `generate_temporary_thumbnail` - **writes are content-addressed
   and extension-gated**: the destination filename is derived from the file's own SHA-256
   and an allowed media/image extension, so a hostile source path cannot choose where the
@@ -144,63 +140,80 @@ renderer is compromised and sends a hostile path" case has limited blast radius:
   command rather than in `stage_database_import` because the undo path
   (`stage_database_import_undo`) reuses that function with the `.pre-import` snapshot, whose
   extension it would reject; that source is written by the backend and never comes from IPC.
-- `open_path_in_system` - spawns the OS file manager on the resolved path. Because it
-  takes both `path` and `library_path` from the caller, its containment check alone cannot
-  be trusted (a caller can pass the same value as both). Two things follow from that, and
-  each is handled where it has to be:
-  - A UNC / network path (`\\host\share`): merely resolving one on Windows triggers an
-    SMB/NTLM authentication handshake, leaking the user's NTLM hash to `host`.
-    `services/library.rs::resolve_path_inside_library` therefore rejects network paths
-    outright, *before* any `canonicalize` call can reach out over SMB. A library kept on a
-    network share loses only the "reveal in file manager" convenience as a result.
-  - On macOS, the command always uses `open -R` (reveal) and never a bare `open`. A `.app`
-    bundle is a directory, so passing one to a bare `open` *launches* the application rather
-    than showing it - and with both arguments caller-supplied, containment does not rule that
-    out (`/Applications` as both `path` and `library_path` contains every installed app).
-    `-R` reveals files and directories alike, so revealing unconditionally costs nothing and
-    keeps the command's worst case at "a Finder window opened somewhere unexpected".
 
-##### Accepted residual: these commands are a file-existence oracle
+#### The three library-reading commands are guarded, and were not always
 
-What the constraints above bound is *blast radius* (no write outside the managed tree, no
-file-content read, no SMB reach-out), not the fact that a caller-supplied `path`/`library_path`
-pair is honored at all. Because both arguments come from the caller, a compromised renderer can
-still learn things it should not from the *outcome* of these read-only commands: `open_path_in_system`
-returns `MEDIA_FILE_NOT_FOUND` for an absent path and a different code otherwise, and
-`get_library_summary` / `check_library_integrity` succeed with metadata only when the given directory
-exists - so any of the three can be driven, path by path, as an oracle for whether an arbitrary
-absolute path exists on the machine (and, for the two summary/integrity commands, the filenames under
-the four managed subfolders of any directory named). It is disclosure only - never a write, a
-file-content read, or code execution - and the NTLM/`.app`-launch escalations that would make it
-worse are closed above.
+`get_library_summary`, `check_library_integrity` and `open_path_in_system` take a `library_path`
+over IPC and verify it against the persisted setting
+(`library::guard::ensure_configured_library_path_in_pool`), like every other command that takes
+one. They are called out here because they used to be listed *above*, as a deliberate exception,
+on the grounds that the onboarding and change-library flows needed them to act on a candidate
+folder before it was persisted.
 
-This one is not closed, on purpose: the whole reason these commands take a caller path is to
-preview or reveal a *candidate* folder before it is persisted - onboarding, and the change-library
-flow, both act on a directory that is not (yet) the configured library, so routing them through
-`library::guard` would break the feature the exception exists for. There is no backend signal that
-separates "the user picked this folder in the dialog" from "the renderer invoked this directly," so
-the oracle is inherent to supporting the preview at all. It is recorded here as an accepted residual
-rather than left implicit, in the same spirit as the export-overwrite and updater-rollback residuals
-above.
+That premise did not hold. No caller ever passed a candidate: the settings modal and the
+diagnostics summary both pass `settings.libraryPath` (the persisted value), and the
+change-library flow (`src/use-cases/change-library-path.ts`) previews a candidate with
+`ensure_directory_exists` / `is_directory_empty`, which are a different group with their own
+residual below. The exception cost the project's central rule and bought nothing, so it is gone.
+
+What it had cost, in order of severity:
+
+- **`check_library_integrity` was a directory enumerator.** Its report carries up to five real
+  filenames per category (`orphan_media_examples` and its siblings), gathered by walking
+  `<library_path>/video`, `/audio`, `/thumbnails` and `/live_chat`. A trusted `library_path`
+  therefore let a compromised renderer name files in any tree on disk holding one of those
+  subdirectories. The names are worth reporting - Diagnostics exists to tell the user which of
+  their own files are unreferenced - so the fix is the guard, not a poorer report.
+- **`get_library_summary` disclosed directory sizes and counts** for any path.
+- **`open_path_in_system`'s containment check was self-referential.**
+  `resolve_path_inside_library` confines `path` to `library_path`, so a caller supplying both
+  satisfied it trivially by passing the same directory as each. The guard is what makes that
+  containment mean something.
+
+Two platform-specific defenses inside `open_path_in_system` predate the guard and stay, because
+defense in depth is the point and neither costs anything:
+
+- A UNC / network path (`\\host\share`): merely resolving one on Windows triggers an
+  SMB/NTLM authentication handshake, leaking the user's NTLM hash to `host`.
+  `services/library/mod.rs::resolve_path_inside_library` rejects network paths outright, *before*
+  any `canonicalize` call can reach out over SMB. A library kept on a network share loses only
+  the "reveal in file manager" convenience as a result.
+- On macOS, the command always uses `open -R` (reveal) and never a bare `open`. A `.app`
+  bundle is a directory, so passing one to a bare `open` *launches* the application rather
+  than showing it. `-R` reveals files and directories alike, so revealing unconditionally costs
+  nothing and keeps the command's worst case at "a Finder window opened somewhere unexpected".
+
+The guard also subsumes part of the cross-cutting UNC rule for the other two: a network
+`library_path` aimed at a local configured library is refused by
+`paths_refer_to_same_location` before anything is canonicalized. A genuinely network-hosted
+library still resolves, which is the supported configuration.
+
+Each command has an IPC-level test pinning the refusal
+(`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`), so the exception
+cannot come back by accident.
 
 ##### Accepted residual: the library-selection helpers create and probe arbitrary directories
 
-`ensure_directory_exists`, `resolve_existing_directory` and `is_directory_empty` are the third
-group of commands acting on a caller-supplied path, and they are the ones easiest to miss: they
-read as plumbing rather than as a boundary, and they predate the rest of this section. They take a
-path for the same reason the two above do - onboarding and the change-library flow both act on a
-folder that is not yet the configured library, so there is nothing persisted to re-derive from and
-no containment check that would not break the feature.
+`ensure_directory_exists`, `resolve_existing_directory` and `is_directory_empty` are the group of
+commands still acting on a caller-supplied path, and they are the ones easiest to miss: they read
+as plumbing rather than as a boundary. They are also the group the candidate-folder argument
+*actually* applies to, and the only one: onboarding and the change-library flow really do act
+through them on a folder that is not yet the configured library, so there is nothing persisted to
+re-derive from and no containment check that would not break the feature. (The three read
+commands above were once justified the same way and should not have been; see that section.)
 
 Two things follow, and both are accepted rather than closed:
 
-- **They join the file-existence oracle above.** All three answer, by succeeding or failing,
-  whether an arbitrary absolute path exists and whether it is a directory; `is_directory_empty`
-  additionally answers whether it holds anything. Disclosure only, exactly as for the three
-  commands named above.
+- **They are a file-existence oracle.** All three answer, by succeeding or failing, whether an
+  arbitrary absolute path exists and whether it is a directory; `is_directory_empty` additionally
+  answers whether it holds anything. Disclosure only - never a write outside the directory named,
+  a file-content read, or code execution. There is no backend signal separating "the user picked
+  this folder in the dialog" from "the renderer invoked this directly," so the oracle is inherent
+  to supporting the preview at all. It is recorded here as an accepted residual rather than left
+  implicit, in the same spirit as the export-overwrite and updater-rollback residuals above.
 - **`ensure_directory_exists` writes.** It is the one command in this document that creates
   something at a path the caller fully chooses, so it is worth stating plainly rather than leaving
-  inside the oracle paragraph. What it creates is an empty directory: `create_dir_all` and nothing
+  it inside the oracle bullet. What it creates is an empty directory: `create_dir_all` and nothing
   else. It writes no content, cannot overwrite an existing file (`create_dir_all` fails on one),
   and grants no later access - a directory it created is not in the asset scope, and no other
   command will act inside it unless it becomes the configured library, which requires the settings

@@ -11,6 +11,7 @@
 
 use std::path::PathBuf;
 
+use sqlx::SqlitePool;
 use tauri::AppHandle;
 
 use crate::services::database::{get_app_settings_from_pool, shared_pool};
@@ -84,6 +85,23 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
 /// path while the migration runs, and the new path is only persisted after the
 /// migration succeeds.
 pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) -> AppResult<()> {
+    let pool = shared_pool(app).await?;
+    ensure_configured_library_path_in_pool(&pool, requested).await
+}
+
+/// [`ensure_configured_library_path`] against a pool the caller already holds.
+///
+/// This is the real implementation; the `AppHandle` version above only resolves the shared pool
+/// and delegates. The split exists so a command can run the guard while taking `State<'_, Db>`
+/// instead of `AppHandle`: an `AppHandle` parameter resolves to the concrete `AppHandle<Wry>`, so
+/// a command taking one cannot be registered with `tauri::generate_handler!` under the mock
+/// runtime and therefore cannot be driven through a real IPC round trip in a test (see the note
+/// in `commands/media.rs`). A guard that could only be applied by giving up the command's test
+/// coverage is a guard that does not get applied.
+pub async fn ensure_configured_library_path_in_pool(
+    pool: &SqlitePool,
+    requested: &str,
+) -> AppResult<()> {
     let trimmed = requested.trim();
 
     if trimmed.is_empty() {
@@ -93,8 +111,7 @@ pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) ->
         ));
     }
 
-    let pool = shared_pool(app).await?;
-    let configured_library_path = get_app_settings_from_pool(&pool)
+    let configured_library_path = get_app_settings_from_pool(pool)
         .await?
         .library_path
         .unwrap_or_default();
@@ -152,6 +169,27 @@ where
     T: Send + 'static,
 {
     ensure_configured_library_path(app, &library_path).await?;
+    run_blocking(move || f(library_path)).await
+}
+
+/// [`verify_library_path_then_blocking`] against a pool the caller already holds, for the same
+/// reason [`ensure_configured_library_path_in_pool`] exists: it lets a command keep `State<'_, Db>`
+/// and stay drivable through a real IPC round trip.
+///
+/// The coupling is the point here too. These are read-only commands, so the risk they carry is not
+/// a destructive write but a *read* through a base directory the caller chose - a directory listing
+/// or a file-manager spawn aimed anywhere on disk. Pairing the check with the work makes running
+/// one without the other impossible rather than merely discouraged.
+pub async fn verify_library_path_then_blocking_in_pool<F, T>(
+    pool: &SqlitePool,
+    library_path: String,
+    f: F,
+) -> AppResult<T>
+where
+    F: FnOnce(String) -> AppResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    ensure_configured_library_path_in_pool(pool, &library_path).await?;
     run_blocking(move || f(library_path)).await
 }
 
