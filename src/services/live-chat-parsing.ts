@@ -400,7 +400,7 @@ function buildMembership(renderer: Record<string, unknown>, offset: number): Liv
     // member's own message.
     const headerText = extractRunsFrom(renderer.headerSubtext);
     const memberMessage = parseRendererMessage(renderer);
-    const text = [headerText, memberMessage].filter(Boolean).join(" — ");
+    const text = [headerText, memberMessage].filter(Boolean).join(" - ");
 
     return makeMessage({
         kind: "membership",

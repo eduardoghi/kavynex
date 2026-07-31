@@ -93,6 +93,25 @@ describe("LibraryFolderSection", () => {
         expect(screen.getByText("A download is in progress.")).toBeInTheDocument();
     });
 
+    it("explains nothing when the change is not blocked, even with a reason on hand", () => {
+        // The other direction of the same guard, and the one nothing asserted. The reason prop is
+        // deliberately non-empty here: the caller keeps its last value around, so "there is a reason
+        // string" must not be what decides whether the alert renders - being blocked is. A guard
+        // weakened to always-true puts a stale explanation under the buttons while they are enabled,
+        // which reads as the app refusing an action it is in fact offering.
+        renderWithMantine(
+            <LibraryFolderSection
+                {...baseProps({
+                    disableLibraryPathChange: false,
+                    libraryPathChangeDisabledReason: "A download is in progress.",
+                })}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: /choose folder/i })).toBeEnabled();
+        expect(screen.queryByText("A download is in progress.")).not.toBeInTheDocument();
+    });
+
     it("shows the summary error when one is reported", () => {
         renderWithMantine(
             <LibraryFolderSection

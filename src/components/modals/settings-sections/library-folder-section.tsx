@@ -113,7 +113,7 @@ export function LibraryFolderSection({
                         </Text>
                         <Text fw={700}>
                             {isLoadingLibrarySummary
-                                ? "—"
+                                ? "-"
                                 : librarySummary.video_files.toLocaleString()}
                         </Text>
                     </Stack>
@@ -126,7 +126,7 @@ export function LibraryFolderSection({
                         </Text>
                         <Text fw={700}>
                             {isLoadingLibrarySummary
-                                ? "—"
+                                ? "-"
                                 : librarySummary.audio_files.toLocaleString()}
                         </Text>
                     </Stack>
@@ -139,7 +139,7 @@ export function LibraryFolderSection({
                         </Text>
                         <Text fw={700}>
                             {isLoadingLibrarySummary
-                                ? "—"
+                                ? "-"
                                 : librarySummary.thumbnail_files.toLocaleString()}
                         </Text>
                     </Stack>
