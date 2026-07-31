@@ -51,6 +51,24 @@ jobs:
             - name: Verify Node version consistency
               run: node scripts/verify-node-version.js
 
+            # `docs/THREAT-MODEL.md` states a cross-cutting rule - every command taking a path from
+            # the caller refuses a UNC/network location before any filesystem call, or reaches it
+            # through the library guard or a strictly-relative path - and then names the commands
+            # satisfying it. Prose cannot hold that list against the code, and it did not: an audit
+            # found the documented list had drifted, and three commands were trusting a
+            # caller-supplied `library_path` on a premise no caller relied on.
+            #
+            # This does not verify that a command applies the right guard - that needs the call
+            # chain, and a check that guessed would hand out false confidence on exactly the surface
+            # it protects. It makes the surface impossible to grow silently: a new path-taking
+            # command, or a path parameter added to an existing one, fails here until the inventory
+            # is refreshed, which is where the author has to decide which case the new path is.
+            #
+            # Node-only and reads the Rust sources as text, so it needs no install step and runs
+            # before one.
+            - name: Verify the command path surface is declared
+              run: node scripts/verify-command-path-surface.js
+
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
 
