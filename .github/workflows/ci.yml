@@ -69,6 +69,40 @@ jobs:
             - name: Verify the command path surface is declared
               run: node scripts/verify-command-path-surface.js
 
+            # This project writes a plain `-` and never a unicode dash, in code and in comments
+            # alike. That is a house style rather than a correctness rule, which is exactly why it
+            # needs enforcing rather than remembering: a convention with no gate behind it drifts
+            # back, and this one already had. There is a `chore: use a plain hyphen in a migration
+            # test comment` in the history, and dashes had reappeared in three places by the time
+            # the next sweep looked - a loading placeholder rendered in Settings, and the separator
+            # between a membership announcement and the member's own message.
+            #
+            # Scoped to the source trees, not the whole repository: the rule is about code, so the
+            # markdown is deliberately left alone. All four unicode dashes are matched, not just the
+            # em dash, because the en dash is the one that arrives by accident - an editor's smart
+            # substitution turns a hyphen into one inside a range without anybody typing it.
+            #
+            # If a test ever needs one of these characters as *data* (the way media-utils.test.ts
+            # pins U+202F for ICU date formatting), write it as a unicode escape - backslash-u
+            # followed by the four hex digits - rather than pasting the character itself. That keeps
+            # the file passing this check while still exercising the codepoint, and it is what a
+            # failure here should prompt.
+            #
+            # Grep-only and reads both trees as text, so it needs no toolchain and runs before the
+            # install, like the three checks above.
+            - name: Verify no unicode dashes are used in place of a hyphen
+              run: |
+                  offenders=$(grep -rn -P '[\x{2012}\x{2013}\x{2014}\x{2015}]' src src-tauri/src scripts \
+                      --include='*.ts' --include='*.tsx' --include='*.rs' --include='*.js' || true)
+
+                  if [ -n "$offenders" ]; then
+                      echo "::error::write a plain hyphen (-) instead of a unicode dash; for a test that needs the character as data, spell it as an escape"
+                      printf '%s\n' "$offenders"
+                      exit 1
+                  fi
+
+                  echo "Every dash in the source trees is a plain hyphen."
+
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
 
