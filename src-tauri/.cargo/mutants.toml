@@ -132,6 +132,13 @@
 #   identical to a working one until the retry never ends - which is the bug the ceiling removes.
 #   `a_failed_attempt_is_written_back_so_the_ceiling_survives_a_restart` now covers it; re-measured
 #   with `--examine-re record_marker_attempt` at 3 mutants, 3 caught.
+#   Re-measured 2026-07-31 after the ceiling gained the half that makes it decide anything - the
+#   exhausted count is written back, and `read_pending_markers` drops a marker already at the ceiling
+#   (`--examine-re read_pending_markers`): 21 mutants, 8 caught, 10 unviable, 3 missed, and all three
+#   missed are the `ErrorKind::NotFound` arms already excluded below (the measurement uses
+#   `--no-config`, which turns `exclude_re` off). The new guard is among the caught, which is the
+#   point: without a test on it the filter could be widened to "stop reconciling anything that has
+#   ever failed" and nothing would notice, since the sweep's own logging is unobservable.
 #   library/recovery.rs - 15 mutants, 1 unviable, 14 caught, 0 missed. Goes in clean.
 # The four remaining pure security gates: every function that decides whether a caller-supplied
 # value is allowed through, which is the profile this whole gate exists for. Each was already
