@@ -528,7 +528,7 @@ exclude_re = [
     # the `resolve_from_path_var` cfg-split exclusion above. The BatBadBut guard itself stays covered
     # by `is_batch_shim_extension_flags_only_bat_and_cmd`, which runs on Windows.
     'is_batch_shim_extension',
-    # `current_version < N` weakened to `<= N` in ensure_schema re-runs the migration the database is
+    # `current < target` weakened to `<=` in needs_migration re-runs the migration the database is
     # already at. Every migration is idempotent by construction - `CREATE TABLE/INDEX/TRIGGER IF NOT
     # EXISTS`, column-existence-guarded `ALTER`, and repairs that are plain `UPDATE ... WHERE` - and
     # each stamps the version it just re-applied, so the end state is byte-identical and only the
@@ -541,5 +541,14 @@ exclude_re = [
     # `every_historical_version_migrates_to_the_current_schema` now asserts every index and trigger
     # in `INDEX_DDLS`/`TRIGGER_DDLS` exists after migrating from each historical version, which is
     # what kills it.
-    'replace < with <= in ensure_schema',
+    #
+    # This entry read `in ensure_schema` until 2026-07-31 and had matched nothing since the guard was
+    # extracted into `needs_migration`: the exclusion was written against the inlined comparison, and
+    # the extraction renamed the mutant out from under it. `in ensure_schema` is not a substring of
+    # `in needs_migration`, so the mutant it names was live and the next scheduled run would have
+    # reported it as a survivor - with nothing in this file to suggest the entry, rather than the
+    # tests, was what had gone stale. That is the second dead entry here. Both were found the same
+    # cheap way: match every pattern in this list against `cargo mutants --list`, which takes seconds
+    # and is worth doing whenever a gated function is renamed or moved.
+    'replace < with <= in needs_migration',
 ]
