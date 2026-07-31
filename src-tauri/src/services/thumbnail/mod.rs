@@ -10,6 +10,7 @@ pub mod display;
 pub mod download;
 pub mod persist;
 pub mod picked;
+pub mod redirect;
 pub mod temp;
 pub mod url;
 

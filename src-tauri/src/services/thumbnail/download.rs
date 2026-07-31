@@ -34,6 +34,7 @@ use crate::services::library::paths::ensure_library_dir;
 use crate::services::ssrf_guard::is_disallowed_ip;
 use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
 use crate::services::thumbnail::persist::persist_thumbnail_from_source;
+use crate::services::thumbnail::redirect::{next_hop, MAX_REDIRECT_HOPS};
 use crate::services::thumbnail::url::is_allowed_thumbnail_image_host;
 use crate::services::yt_dlp::cookies::append_auth_args;
 use crate::services::yt_dlp::url::is_allowed_youtube_url;
@@ -200,7 +201,6 @@ async fn run_thumbnail_yt_dlp_with_timeout(
 
 const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
 const DIRECT_THUMBNAIL_MAX_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
-const DIRECT_THUMBNAIL_MAX_REDIRECTS: usize = 10;
 
 const ALLOWED_THUMBNAIL_CONTENT_TYPES: &[&str] = &[
     "image/png",
@@ -279,66 +279,6 @@ fn build_thumbnail_command_args(
     args.push(url.to_string());
 
     args
-}
-
-/// Resolves a redirect `location` header value against the `current` URI.
-///
-/// Accepts absolute http/https URLs and path-based relatives (`/...` or `path`).
-/// Rejects any other scheme (`file://`, `ftp://`, etc.) with an explicit error.
-fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
-    let location_lc = location.to_ascii_lowercase();
-
-    // Absolute http/https - scheme comparison is case-insensitive per RFC 3986
-    if location_lc.starts_with("http://") || location_lc.starts_with("https://") {
-        return location.parse().map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailFailed,
-                format!("invalid absolute redirect location: {e}"),
-            )
-        });
-    }
-
-    // Protocol-relative: //host/path - inherit current scheme
-    if location.starts_with("//") {
-        let scheme = current.scheme_str().unwrap_or("https");
-        return format!("{scheme}:{location}").parse().map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailFailed,
-                format!("failed to resolve protocol-relative redirect: {e}"),
-            )
-        });
-    }
-
-    // Reject any other scheme (file://, ftp://, etc.)
-    if location.contains("://") {
-        return Err(AppError::from_code(
-            AppErrorCode::YtDlpThumbnailFailed,
-            format!("redirect to non-http scheme rejected: {location}"),
-        ));
-    }
-
-    let scheme = current.scheme_str().unwrap_or("https");
-    let authority = current.authority().map(|a| a.as_str()).unwrap_or_default();
-
-    let path = if location.starts_with('/') {
-        location.to_string()
-    } else {
-        let base = current
-            .path()
-            .rfind('/')
-            .map(|i| &current.path()[..=i])
-            .unwrap_or("/");
-        format!("{base}{location}")
-    };
-
-    format!("{scheme}://{authority}{path}")
-        .parse()
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpThumbnailFailed,
-                format!("failed to resolve redirect location: {e}"),
-            )
-        })
 }
 
 /// Resolves the host of `uri` and rejects it if it maps to any private, loopback or
@@ -432,7 +372,7 @@ impl Service<Name> for PublicOnlyResolver {
     }
 }
 
-/// Downloads `url` over HTTPS (or HTTP), follows up to DIRECT_THUMBNAIL_MAX_REDIRECTS
+/// Downloads `url` over HTTPS (or HTTP), follows up to [`MAX_REDIRECT_HOPS`]
 /// redirects, streams the body with a hard cap of DIRECT_THUMBNAIL_MAX_BYTES, and
 /// validates Content-Type when present. Returns (status, headers, body). The entire
 /// operation (DNS revalidation, headers, redirects and the body stream) runs under a
@@ -448,6 +388,12 @@ impl Service<Name> for PublicOnlyResolver {
 /// check. The thumbnail URL comes from yt-dlp metadata (attacker-influenced), so that per-hop
 /// revalidation is the whole point; keeping this on a minimal hyper stack also avoids pulling
 /// reqwest's cookie jar and automatic-redirect behavior into a request that must stay dumb.
+///
+/// The decision each hop makes - the budget, the refusal of a redirect naming no destination, and
+/// the resolution of `Location` against the URI it arrived on - lives in
+/// [`super::redirect::next_hop`], not here. This function owns the loop, the request and the body;
+/// it makes no redirect decision of its own, which is what lets that decision be mutation-tested
+/// while the network code around it cannot be.
 async fn http_get_image(
     url: &str,
     timeout_secs: u64,
@@ -481,7 +427,11 @@ async fn http_get_image(
     // indefinitely while staying under the DIRECT_THUMBNAIL_MAX_BYTES cap. This command carries no
     // cancel flag, so this deadline is the only thing that can end such a stall.
     timeout(Duration::from_secs(timeout_secs), async move {
-        for _ in 0..=DIRECT_THUMBNAIL_MAX_REDIRECTS {
+        // `hops_used` is what `next_hop` decides against; the range is a structural backstop that
+        // cannot be reached, since `next_hop` refuses at MAX_REDIRECT_HOPS on the last iteration.
+        // Keeping it means a bug in that predicate costs a bounded loop rather than one the outer
+        // deadline is the only thing ending.
+        for hops_used in 0..=MAX_REDIRECT_HOPS {
             assert_url_host_is_public(&uri).await?;
 
             let req = hyper::Request::get(uri.clone())
@@ -503,22 +453,13 @@ async fn http_get_image(
             let status = res.status();
 
             if status.is_redirection() {
-                match res
+                let location = res
                     .headers()
                     .get(http::header::LOCATION)
-                    .and_then(|v| v.to_str().ok())
-                {
-                    Some(loc) => {
-                        uri = resolve_redirect(&uri, loc)?;
-                        continue;
-                    }
-                    None => {
-                        return Err(AppError::from_code(
-                            AppErrorCode::YtDlpThumbnailFailed,
-                            format!("redirect without valid Location header (status {status})"),
-                        ));
-                    }
-                }
+                    .and_then(|value| value.to_str().ok());
+
+                uri = next_hop(&uri, location, hops_used)?;
+                continue;
             }
 
             let headers = res.headers().clone();
@@ -549,6 +490,10 @@ async fn http_get_image(
             return Ok((status, headers, buffer));
         }
 
+        // Unreachable: the loop's last iteration passes `hops_used == MAX_REDIRECT_HOPS`, which
+        // `next_hop` refuses with this same message before it can fall through here. It stays
+        // because the `for` above is a backstop rather than the bound, and a backstop needs a value
+        // to return if it ever does fire.
         Err(AppError::from_code(
             AppErrorCode::YtDlpThumbnailFailed,
             "too many redirects downloading thumbnail",
@@ -1290,85 +1235,9 @@ mod tests {
             .is_ok());
     }
 
-    #[test]
-    fn absolute_https_redirect_accepted() {
-        let result = resolve_redirect(
-            &uri("https://img.example.com/old.jpg"),
-            "https://cdn.example.com/new.jpg",
-        );
-        assert_eq!(result.unwrap(), uri("https://cdn.example.com/new.jpg"));
-    }
-
-    #[test]
-    fn absolute_http_redirect_accepted() {
-        let result = resolve_redirect(
-            &uri("http://img.example.com/old.jpg"),
-            "http://img.example.com/other.jpg",
-        );
-        assert_eq!(result.unwrap(), uri("http://img.example.com/other.jpg"));
-    }
-
-    #[test]
-    fn absolute_path_redirect_resolved_against_authority() {
-        let result = resolve_redirect(
-            &uri("https://img.example.com/path/old.jpg"),
-            "/new/image.jpg",
-        );
-        assert_eq!(
-            result.unwrap(),
-            uri("https://img.example.com/new/image.jpg")
-        );
-    }
-
-    #[test]
-    fn relative_path_redirect_resolved_against_base() {
-        let result = resolve_redirect(&uri("https://img.example.com/a/b/old.jpg"), "new.jpg");
-        assert_eq!(result.unwrap(), uri("https://img.example.com/a/b/new.jpg"));
-    }
-
-    #[test]
-    fn file_scheme_redirect_rejected() {
-        let result = resolve_redirect(
-            &uri("https://img.example.com/thumb.jpg"),
-            "file:///etc/passwd",
-        );
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("non-http scheme rejected"));
-    }
-
-    #[test]
-    fn ftp_scheme_redirect_rejected() {
-        let result = resolve_redirect(
-            &uri("https://img.example.com/thumb.jpg"),
-            "ftp://img.example.com/thumb.jpg",
-        );
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("non-http scheme rejected"));
-    }
-
-    #[test]
-    fn protocol_relative_redirect_resolved() {
-        let result = resolve_redirect(
-            &uri("https://img.example.com/old.jpg"),
-            "//cdn.example.com/image.jpg",
-        );
-        assert_eq!(result.unwrap(), uri("https://cdn.example.com/image.jpg"));
-    }
-
-    #[test]
-    fn uppercase_scheme_redirect_accepted() {
-        let result = resolve_redirect(
-            &uri("https://img.example.com/old.jpg"),
-            "HTTPS://cdn.example.com/new.jpg",
-        );
-        assert_eq!(result.unwrap(), uri("HTTPS://cdn.example.com/new.jpg"));
-    }
+    // The redirect resolution these tests used to cover moved with the decision, to
+    // `services::thumbnail::redirect` - which is under the mutation gate, unlike this file. See that
+    // module's header for why the extraction was worth making.
 
     fn sample_temp_dir() -> PathBuf {
         PathBuf::from(if cfg!(windows) {
