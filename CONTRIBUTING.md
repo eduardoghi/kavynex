@@ -25,8 +25,11 @@ to send someone who has a bug to report rather than a change to propose.
   on `PATH` (see the README's Troubleshooting section for exactly how Kavynex resolves
   them).
 - The OS-level Tauri prerequisites for your platform (WebView2 on Windows - usually
-  already present; `libwebkit2gtk`, `libappindicator3`, `librsvg2` and `patchelf` on
-  Linux, matching `ci.yml`'s Ubuntu setup step). See the
+  already present). On Linux, the authoritative list is `ci.yml`'s "Install Linux
+  dependencies" step, which installs `libwebkit2gtk-4.1-dev`,
+  `libayatana-appindicator3-dev`, `librsvg2-dev` and `patchelf`. Note the *ayatana*
+  spelling: Ubuntu 24.04 dropped `libappindicator3-dev`, so the older name this list used
+  to carry now fails to install on every image the workflows run on. See the
   [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/) if your platform
   needs something not listed here.
 
