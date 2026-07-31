@@ -7,7 +7,7 @@ export type DatabaseBackupStatus = { available: boolean,
 backedUpAtMs: number | null, 
 /**
  * Total bytes the database and every file this module keeps beside it currently occupy
- * (see [`managed_database_paths`]). Annotated `number` because ts-rs emits `bigint` for
+ * (see `managed_database_paths`). Annotated `number` because ts-rs emits `bigint` for
  * `u64` by default, and this crosses IPC as a plain JSON number.
  */
 totalBytes: number, 

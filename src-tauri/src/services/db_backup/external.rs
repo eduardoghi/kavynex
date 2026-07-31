@@ -8,9 +8,12 @@
 
 use std::path::{Path, PathBuf};
 
+// The throttle interval comes from `snapshot` rather than being re-declared here, deliberately:
+// the mirror is throttled to the same once-a-day window as the local `.bak` snapshot, and two
+// constants would let that pair drift silently.
+use super::snapshot::BACKUP_MIN_INTERVAL_SECS;
 use super::{
     backup_error, escape_sql_literal, is_healthy, is_recent, open, rotate_generations, sibling,
-    BACKUP_MIN_INTERVAL_SECS,
 };
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};

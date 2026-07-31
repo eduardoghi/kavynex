@@ -71,7 +71,9 @@
 # `src/services/db_backup/import.rs`, `external.rs` and `integrity.rs` - the rest of the
 # backup/restore/export/import/mirror machinery, the most destructive operations in the app. Joined
 # to `mod.rs` (already in scope) by widening the entry to the directory glob `db_backup/*.rs`, so a
-# future submodule split cannot silently fall out of scope. ADDED after a measured pass (2026-07-24,
+# future submodule split cannot silently fall out of scope. That paid off on 2026-07-31, when
+# `snapshot.rs` and `restore.rs` were split out of `mod.rs`: both were in scope from the moment they
+# existed, with nothing to remember to add here. ADDED after a measured pass (2026-07-24,
 # `--in-place --no-config --file <each>`): 108 mutants, 42 unviable, 49 caught, 17 missed. Five of the
 # missed were the WAL-busy `stage_database_import` branch already excluded below; the rest were killed
 # by new tests in the parent's `mod tests` - the live-chat import invariant's zero-violation and

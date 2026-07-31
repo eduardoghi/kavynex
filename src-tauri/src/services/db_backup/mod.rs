@@ -1,24 +1,32 @@
+//! Backup, restore, export, import: everything this app does with the database *file* rather than
+//! with its rows.
+//!
+//! What lives here is the machinery more than one of those needs, and nothing else. Each of the
+//! four is a submodule of its own, split off as the file outgrew itself:
+//!
+//! - `snapshot.rs` - the automatic `.bak` family and the status report over it.
+//! - `restore.rs` - restoring from one, and finishing a restore a crash interrupted.
+//! - `import.rs` - staging a user-selected database and applying it at the next startup.
+//! - `external.rs` - the user-triggered export and the once-a-day off-volume mirror.
+//! - `integrity.rs` - the throttled full `PRAGMA integrity_check`.
+//!
+//! The tests for all of them stay in this file's `mod tests`. That is deliberate and predates the
+//! last two splits: they share their fixtures (`temp_dir`, `seed_db`, `memory_pool`), and most of
+//! them exercise more than one of the machines together - a snapshot taken, the database corrupted,
+//! the restore checked - which is the behavior worth pinning and would have to be duplicated or
+//! arbitrarily assigned if the tests were split along the same line as the code.
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 
 use crate::services::database::SQLITE_BUSY_TIMEOUT_MS;
 use crate::services::logger;
-use crate::utils::task::run_blocking;
-use crate::{AppError, AppErrorCode, AppResult};
-
-// The DB is snapshotted at most once per day so it does not add cost to every launch; any
-// backup within this window already predates the current launch's migrations.
-const BACKUP_MIN_INTERVAL_SECS: u64 = 24 * 60 * 60;
-
-// Keep several rotated generations of the snapshot (`.bak`, `.bak.1`, ...), not just one, so a
-// corruption that goes unnoticed for a few days cannot overwrite every good snapshot with a
-// degraded one before it is caught. This many *rotated* generations are kept in addition to the
-// current `.bak`.
-const BACKUP_ROTATED_GENERATIONS: usize = 6;
-const CORRUPT_ROTATED_GENERATIONS: usize = 2;
+use crate::{AppError, AppResult};
+// Used by `mod tests` below, which asserts against the codes the submodules return.
+#[cfg(test)]
+use crate::AppErrorCode;
 
 // Serializes `backup_database` so at most one snapshot runs at a time. Two independent schedulers
 // drive it - the pool-init snapshot (services::database) and the periodic loop (lib.rs) - and the
@@ -27,6 +35,9 @@ const CORRUPT_ROTATED_GENERATIONS: usize = 2;
 // too and race it on the shared `.bak.tmp` and the rotate/rename chain, at worst promoting a
 // half-written snapshot or burning a rotated generation. A single static lock is enough: there is
 // one database process-wide and, unlike the pool, this lock holds no state a test needs to inject.
+//
+// `restore_database_from_backup` takes it too, which is why it lives here rather than in
+// `snapshot.rs`: the restore reads the same `.bak` family a rotation rewrites.
 static BACKUP_IN_PROGRESS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
@@ -38,24 +49,13 @@ fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
     db_path.with_file_name(format!("{name}{suffix}"))
 }
 
-fn backup_path(db_path: &Path) -> PathBuf {
-    sibling(db_path, ".bak")
-}
-
-/// The current snapshot is `.bak` (generation 0); older generations are `.bak.1` (newest
-/// rotated) through `.bak.{BACKUP_ROTATED_GENERATIONS}` (oldest kept).
-fn generation_backup_path(db_path: &Path, generation: usize) -> PathBuf {
-    if generation == 0 {
-        backup_path(db_path)
-    } else {
-        sibling(db_path, &format!(".bak.{generation}"))
-    }
-}
-
 /// Shifts a rotated snapshot family up by one generation, dropping the oldest, so a fresh file
 /// can be promoted into generation 0 without discarding the previous ones: generation `N` is
 /// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort - a
 /// generation that cannot be moved is left where it is rather than failing the caller.
+///
+/// Shared by the `.bak`, `.corrupt` and external-mirror families, which is why it takes the
+/// per-generation path function rather than knowing any of their names.
 fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, usize) -> PathBuf) {
     for generation in (1..=generations).rev() {
         let source = path_for(db_path, generation - 1);
@@ -90,16 +90,6 @@ fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, us
             return;
         }
     }
-}
-
-/// Shifts the rotated backup generations up by one so a fresh snapshot can be promoted into
-/// `.bak`: `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`.
-fn rotate_backups(db_path: &Path) {
-    rotate_generations(db_path, BACKUP_ROTATED_GENERATIONS, generation_backup_path);
-}
-
-fn temp_backup_path(db_path: &Path) -> PathBuf {
-    sibling(db_path, ".bak.tmp")
 }
 
 fn backup_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
@@ -164,17 +154,6 @@ async fn is_healthy(pool: &SqlitePool) -> bool {
     }
 }
 
-// The full `PRAGMA integrity_check` and its background throttle live in the `integrity` submodule.
-mod integrity;
-pub use integrity::{
-    integrity_check_is_due, mark_integrity_check_passed, run_full_integrity_check,
-    DatabaseIntegrityReport,
-};
-// The parent module's integrity tests assert against these internals; test-only so a non-test
-// build does not flag them unused.
-#[cfg(test)]
-use integrity::{integrity_check_marker_path, MAX_INTEGRITY_PROBLEMS};
-
 /// Escapes a value for embedding as a single-quoted SQLite string literal by doubling every
 /// `'`. This is the ONE place in the whole database layer where non-constant, externally
 /// influenced data (the `VACUUM INTO` destination - a user-chosen export path, or the internal
@@ -187,191 +166,6 @@ fn escape_sql_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
 
-/// Creates a consistent snapshot of the database (via `VACUUM INTO`) before migrations run,
-/// so a bad migration or corruption can be rolled back. Best effort and throttled to once a
-/// day; a source database that fails `quick_check` is skipped so a corrupt DB never
-/// overwrites a good backup. Keeps several rotated generations (`.bak` plus `.bak.1`..
-/// `.bak.{BACKUP_ROTATED_GENERATIONS}`). Returns true when a new snapshot was written.
-pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
-    if !db_path.exists() {
-        return Ok(false);
-    }
-
-    // Wait for any in-flight backup rather than skipping: once it releases the lock it has already
-    // refreshed `.bak`, so the is_recent() check below then sees it and this caller returns early
-    // without a redundant second vacuum. Waiting (not try_lock) is what makes that de-dup work.
-    let _guard = BACKUP_IN_PROGRESS.lock().await;
-
-    let backup = backup_path(db_path);
-
-    if is_recent(&backup, BACKUP_MIN_INTERVAL_SECS) {
-        return Ok(false);
-    }
-
-    let pool = open(db_path).await?;
-
-    if !is_healthy(&pool).await {
-        pool.close().await;
-        logger::warn(
-            "db_backup",
-            "skipping backup: source database failed quick_check",
-        );
-        return Ok(false);
-    }
-
-    let temp = temp_backup_path(db_path);
-    let _ = std::fs::remove_file(&temp);
-
-    let vacuum_sql = format!(
-        "VACUUM INTO '{}'",
-        escape_sql_literal(&temp.to_string_lossy())
-    );
-    let vacuum_result = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
-        .execute(&pool)
-        .await;
-    pool.close().await;
-    vacuum_result.map_err(|error| backup_error("failed to snapshot database", error))?;
-
-    // Shift the existing generations up, then promote the fresh snapshot into `.bak`.
-    rotate_backups(db_path);
-
-    // Rotation has already moved the previous `.bak` to `.bak.1`, so a failure here leaves
-    // generation 0 absent until the next successful backup. A restore still succeeds - the
-    // candidate list falls through to `.bak.1` and beyond - but the newest snapshot silently
-    // did not land, which is only inferable from backup timestamps. Log it before propagating
-    // so the state is observable.
-    if let Err(error) = std::fs::rename(&temp, &backup) {
-        logger::warn(
-            "db_backup",
-            format!(
-                "failed to promote the fresh snapshot after rotating generations; \
-                 the newest backup slot is empty until the next run: {error}"
-            ),
-        );
-
-        return Err(backup_error("failed to store database backup", error));
-    }
-
-    // Flush the directory entry so a crash right after the rename cannot lose it. The rotation
-    // renames above live in the same directory, so this one flush covers the whole `.bak` family;
-    // without it an unclean shutdown could silently revert to a rotated generation. Mirrors the
-    // fsync the restore/import swaps already do (see resume_interrupted_restore / apply_pending_
-    // database_import). Best effort, like those.
-    crate::services::filesystem::fsync_parent_dir(&backup);
-
-    Ok(true)
-}
-
-/// Whether opening the database will run a schema migration: true when the file is missing
-/// (the schema is created on first open) or its `user_version` is below the version this
-/// build ships. Callers use this to decide whether the pre-migration snapshot must block
-/// startup - only when a migration will actually run - or can be deferred to the background.
-/// When the database cannot be inspected, a migration is assumed pending so the safety
-/// snapshot is still taken.
-pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
-    if !db_path.exists() {
-        return true;
-    }
-
-    let Ok(pool) = open(db_path).await else {
-        return true;
-    };
-
-    let version: Result<(i64,), _> = sqlx::query_as("PRAGMA user_version").fetch_one(&pool).await;
-
-    pool.close().await;
-
-    match version {
-        Ok((current,)) => current < crate::services::db_schema::SCHEMA_VERSION,
-        Err(_) => true,
-    }
-}
-
-#[derive(Debug, Serialize, ts_rs::TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
-pub struct DatabaseBackupStatus {
-    pub available: bool,
-    /// Modification time of the backup that would be restored, in epoch milliseconds.
-    #[ts(type = "number | null")]
-    pub backed_up_at_ms: Option<u64>,
-    /// Total bytes the database and every file this module keeps beside it currently occupy
-    /// (see [`managed_database_paths`]). Annotated `number` because ts-rs emits `bigint` for
-    /// `u64` by default, and this crosses IPC as a plain JSON number.
-    #[ts(type = "number")]
-    pub total_bytes: u64,
-    /// [`total_bytes`](Self::total_bytes) rendered for display, using the same formatter as the
-    /// library summary so the two sizes shown in Settings cannot disagree on units or rounding.
-    pub formatted_total_size: String,
-}
-
-fn corrupt_path(db_path: &Path) -> PathBuf {
-    sibling(db_path, ".corrupt")
-}
-
-/// The database set aside by the most recent restore is `.corrupt` (generation 0); earlier ones
-/// are `.corrupt.1` through `.corrupt.{CORRUPT_ROTATED_GENERATIONS}`.
-fn generation_corrupt_path(db_path: &Path, generation: usize) -> PathBuf {
-    if generation == 0 {
-        corrupt_path(db_path)
-    } else {
-        sibling(db_path, &format!(".corrupt.{generation}"))
-    }
-}
-
-/// Shifts the corrupt snapshots up a generation so a second restore does not discard the
-/// evidence from the first. Fewer generations are kept than for `.bak`: each one is a full copy
-/// of a database that is already known to be broken, so this bounds the disk they can occupy
-/// while still leaving repeated corruption diagnosable.
-fn rotate_corrupt_snapshots(db_path: &Path) {
-    rotate_generations(
-        db_path,
-        CORRUPT_ROTATED_GENERATIONS,
-        generation_corrupt_path,
-    );
-}
-
-/// Where `restore_database_from_backup` stages the chosen snapshot before renaming it into place.
-fn restore_staging_path(db_path: &Path) -> PathBuf {
-    sibling(db_path, ".restore.tmp")
-}
-
-/// Finishes a restore that was interrupted between moving the old database aside and renaming the
-/// staged snapshot into place.
-///
-/// That window is only two renames wide, but if the process dies inside it the database file is
-/// simply absent - and the pool opens with `create_if_missing(true)`, so the next launch would
-/// create a fresh, empty one and present an empty library while the user's data sits untouched in
-/// `.restore.tmp` (and `.corrupt`) right next to it. Nothing would say so: the app would look like
-/// a first run. Recoverable by hand, but only by someone who knows to look.
-///
-/// Deliberately narrow: it acts only when the database is missing *and* a staging file is present,
-/// which is exactly the interrupted state - a normal launch has a database and never reaches the
-/// rename. Runs at startup before the pool can open, and before any pending import is applied, so
-/// an import staged on top of a restore still sets the restored database aside as its undo
-/// snapshot rather than nothing. Returns whether a restore was resumed.
-pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
-    let staged = restore_staging_path(db_path);
-
-    if db_path.exists() || !staged.exists() {
-        return Ok(false);
-    }
-
-    std::fs::rename(&staged, db_path)
-        .map_err(|error| backup_error("failed to resume an interrupted restore", error))?;
-    // Flush the directory entry so the swap survives a crash right after it; otherwise the next
-    // launch could find the database missing again and re-run this from a staging file that the
-    // rename appeared to consume.
-    crate::services::filesystem::fsync_parent_dir(db_path);
-
-    logger::warn(
-        "db_backup",
-        "resumed a restore that was interrupted before the database was renamed into place",
-    );
-
-    Ok(true)
-}
-
 fn modified_ms(path: &Path) -> Option<u64> {
     let modified = std::fs::metadata(path)
         .and_then(|meta| meta.modified())
@@ -382,29 +176,25 @@ fn modified_ms(path: &Path) -> Option<u64> {
         .map(|age| age.as_millis() as u64)
 }
 
-/// The existing backup files, most recent first. Rotation always writes the freshest snapshot
-/// to `.bak` (generation 0), so it precedes the rotated `.bak.1`.. `.bak.N` generations.
-///
-/// `.bak.tmp` is included last. `backup_database` snapshots into it and only renames it into
-/// `.bak` once the `VACUUM INTO` succeeds, so a run that died in that window leaves a complete,
-/// already-health-checked snapshot sitting there that nothing else would ever look at. It goes
-/// last, not first, even though it is the freshest: a run that instead died *during* the vacuum
-/// leaves a partial file under the same name, and there is no way to tell the two apart here.
-/// Every caller re-runs `quick_check` on the candidate it picks, which is what makes offering
-/// this safe - a torn file is rejected there, and a healthy one is only reached when no real
-/// generation survived.
-fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
-    (0..=BACKUP_ROTATED_GENERATIONS)
-        .map(|generation| generation_backup_path(db_path, generation))
-        .chain(std::iter::once(temp_backup_path(db_path)))
-        .filter(|path| path.exists())
-        .collect()
+/// Sums the sizes of whichever of `paths` exist. A path that cannot be stat'd contributes zero
+/// rather than failing the whole report: this feeds a display-only number, and a missing
+/// generation is the normal case, not an error.
+fn total_size_bytes(paths: &[PathBuf]) -> u64 {
+    paths
+        .iter()
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .fold(0u64, |total, size| total.saturating_add(size))
 }
 
 /// Every file this module owns beside the live database in the app config directory: the database
 /// itself, SQLite's WAL sidecars, all seven backup generations, all three corrupt snapshots, the
 /// import undo/staging files, every short-lived scratch file, and the two markers.
 /// `docs/DIRECTORIES.md` documents the same set for the user.
+///
+/// It lives here rather than in any one submodule because it is the only thing that has to know
+/// about all of them at once - which is also why the split left it behind.
 ///
 /// Deliberately pure - it names paths without touching the filesystem, so the set is pinned by a
 /// test rather than by whatever happens to exist on the machine running it. That matters because
@@ -421,20 +211,20 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
 
     // `.bak` plus `.bak.1`..`.bak.N`, and the scratch file a snapshot vacuums into.
     paths.extend(
-        (0..=BACKUP_ROTATED_GENERATIONS)
-            .map(|generation| generation_backup_path(db_path, generation)),
+        (0..=snapshot::BACKUP_ROTATED_GENERATIONS)
+            .map(|generation| snapshot::generation_backup_path(db_path, generation)),
     );
-    paths.push(temp_backup_path(db_path));
+    paths.push(snapshot::temp_backup_path(db_path));
 
     // `.corrupt` plus its rotated generations, and the scratch name a restore moves through.
     paths.extend(
-        (0..=CORRUPT_ROTATED_GENERATIONS)
-            .map(|generation| generation_corrupt_path(db_path, generation)),
+        (0..=restore::CORRUPT_ROTATED_GENERATIONS)
+            .map(|generation| restore::generation_corrupt_path(db_path, generation)),
     );
     paths.push(sibling(db_path, ".corrupt.tmp"));
 
     paths.extend([
-        restore_staging_path(db_path),
+        restore::restore_staging_path(db_path),
         import::pre_import_path(db_path),
         import::import_staged_path(db_path),
         sibling(db_path, ".import-staged.tmp"),
@@ -443,40 +233,6 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
     ]);
 
     paths
-}
-
-/// Sums the sizes of whichever of `paths` exist. A path that cannot be stat'd contributes zero
-/// rather than failing the whole report: this feeds a display-only number, and a missing
-/// generation is the normal case, not an error.
-fn total_size_bytes(paths: &[PathBuf]) -> u64 {
-    paths
-        .iter()
-        .filter_map(|path| std::fs::metadata(path).ok())
-        .filter(|metadata| metadata.is_file())
-        .map(|metadata| metadata.len())
-        .fold(0u64, |total, size| total.saturating_add(size))
-}
-
-/// Reports whether a backup file exists (without verifying its integrity), when the most recent
-/// one was written, and how much disk the database and its snapshots occupy in total.
-///
-/// The size is reported because nothing else in the app makes it visible. Up to eleven full copies
-/// of the database can sit in the app config directory (seven `.bak` generations, three `.corrupt`
-/// ones, one `.pre-import`), the rotation bounds how *many* exist but never how *large* they get,
-/// and that directory is the roaming profile on Windows. A database that grows with every comment
-/// backed up can therefore take gigabytes there with nothing saying so.
-pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {
-    let total_bytes = total_size_bytes(&managed_database_paths(db_path));
-    // Resolved once: backup_candidates stats every generation, and the two fields below both read
-    // the same newest one.
-    let newest_backup = backup_candidates(db_path).into_iter().next();
-
-    DatabaseBackupStatus {
-        available: newest_backup.is_some(),
-        backed_up_at_ms: newest_backup.as_deref().and_then(modified_ms),
-        total_bytes,
-        formatted_total_size: crate::utils::format::format_bytes(total_bytes),
-    }
 }
 
 /// Opens `db_path` and runs `quick_check`, returning whether it passes. A file that cannot even
@@ -504,140 +260,58 @@ async fn database_schema_version(db_path: &Path) -> Option<i64> {
     version.ok().map(|(value,)| value)
 }
 
-/// Restores the database from the most recent backup that passes `quick_check`, preferring
-/// the newest generation and falling back to the rotated one. The current (assumed corrupt)
-/// database and its WAL/`-shm` sidecars are moved aside to `.corrupt` rather than deleted,
-/// so they can still be inspected, and the sidecars are dropped so the restored snapshot is
-/// never combined with a stale write-ahead log.
-///
-/// The restored file is staged and renamed into place so a failure never leaves the live
-/// database missing. The caller must ensure the pool is not already open before calling.
-pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
-    // Serialize against backup_database, which rotates and rewrites the same `.bak` family this
-    // function reads. The periodic backup scheduler starts at launch, and a restore runs during that
-    // same window (it is only reachable after the pool failed to open), so without sharing this lock
-    // a rotation in flight could make a candidate vanish between backup_candidates' exists() filter
-    // and the quick_check/copy on it - failing a recovery exactly when it matters most.
-    let _guard = BACKUP_IN_PROGRESS.lock().await;
-
-    let mut chosen: Option<PathBuf> = None;
-    let mut skipped_newer_schema = false;
-
-    for candidate in backup_candidates(db_path) {
-        if !database_quick_check_ok(&candidate).await {
-            continue;
-        }
-
-        // Refuse a backup whose schema is newer than this build supports: restoring it would only
-        // "succeed" for `ensure_schema` to reject it on the next open (DatabaseSchemaTooNew),
-        // leaving the app unable to start. Catching it here fails the restore itself with a clear
-        // message. A backup written by this or an older build always passes.
-        if let Some(version) = database_schema_version(&candidate).await {
-            if version > crate::services::db_schema::SCHEMA_VERSION {
-                skipped_newer_schema = true;
-                continue;
-            }
-        }
-
-        chosen = Some(candidate);
-        break;
+/// Whether opening the database will run a schema migration: true when the file is missing
+/// (the schema is created on first open) or its `user_version` is below the version this
+/// build ships. Callers use this to decide whether the pre-migration snapshot must block
+/// startup - only when a migration will actually run - or can be deferred to the background.
+/// When the database cannot be inspected, a migration is assumed pending so the safety
+/// snapshot is still taken.
+pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
+    if !db_path.exists() {
+        return true;
     }
 
-    let backup = match chosen {
-        Some(backup) => backup,
-        None if skipped_newer_schema => {
-            return Err(AppError::from_code_with_details(
-                AppErrorCode::DatabaseSchemaTooNew,
-                "the available database backup was created by a newer version of the app",
-                "refused to restore a backup whose schema version is newer than this build supports",
-            ));
-        }
-        None => {
-            return Err(AppError::from_code(
-                AppErrorCode::NoDatabaseBackupAvailable,
-                "no healthy database backup is available to restore",
-            ));
-        }
+    let Ok(pool) = open(db_path).await else {
+        return true;
     };
 
-    // Stage the restored file first so the live database is never left missing on failure. The
-    // copy is a full-file read/write of a possibly large database; run it off the async runtime so
-    // a slow disk (a network share, a cloud-synced folder) never stalls a Tokio worker thread.
-    let staged = restore_staging_path(db_path);
-    let _ = std::fs::remove_file(&staged);
-    {
-        let copy_source = backup.clone();
-        let copy_dest = staged.clone();
-        run_blocking(move || {
-            std::fs::copy(&copy_source, &copy_dest)
-                .map_err(|error| backup_error("failed to stage restored database", error))?;
-            // Flush the staged bytes to disk before the rename below. The rename is atomic against a
-            // process crash, but without this a power loss could leave a truncated staged file that
-            // the rename then makes the live database - and resume_interrupted_restore would finish
-            // that rename on the next launch, trusting the staged file. This matches copy_file_atomic.
-            crate::services::filesystem::fsync_file(&copy_dest)
-        })
-        .await?;
+    let version: Result<(i64,), _> = sqlx::query_as("PRAGMA user_version").fetch_one(&pool).await;
+
+    pool.close().await;
+
+    match version {
+        Ok((current,)) => current < crate::services::db_schema::SCHEMA_VERSION,
+        Err(_) => true,
     }
-
-    // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than
-    // overwrite: a second restore (the restored database degraded again) would otherwise discard
-    // the first failure's evidence, which is exactly the case where repeated corruption most
-    // needs diagnosing.
-    //
-    // Move it under a scratch name *before* rotating. Rotating first would shift the existing
-    // generations - dropping the oldest and emptying the `.corrupt` slot - and a rename that then
-    // failed would leave that loss with nothing put in its place, so a couple of failed restores
-    // would evict every earlier snapshot while adding none. Rotating only once the database is
-    // safely out of the way keeps the generations intact on failure.
-    if db_path.exists() {
-        let pending = sibling(db_path, ".corrupt.tmp");
-        let _ = std::fs::remove_file(&pending);
-
-        if let Err(error) = std::fs::rename(db_path, &pending) {
-            let _ = std::fs::remove_file(&staged);
-            return Err(backup_error(
-                "failed to move aside the corrupt database",
-                error,
-            ));
-        }
-
-        rotate_corrupt_snapshots(db_path);
-
-        if let Err(error) = std::fs::rename(&pending, corrupt_path(db_path)) {
-            // The database is already off the live path, so the restore can still proceed; the
-            // evidence just keeps the scratch name. Say so rather than lose the thread.
-            logger::warn(
-                "db_backup",
-                format!(
-                    "the corrupt database was set aside as .corrupt.tmp because it could not be \
-                     renamed into the .corrupt slot: {error}"
-                ),
-            );
-        }
-    }
-
-    let _ = std::fs::remove_file(sibling(db_path, "-wal"));
-    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
-
-    std::fs::rename(&staged, db_path)
-        .map_err(|error| backup_error("failed to restore database from backup", error))?;
-    // Flush the directory entry so the restored database is durably in place, not just staged.
-    crate::services::filesystem::fsync_parent_dir(db_path);
-
-    logger::info(
-        "db_backup",
-        format!(
-            "database restored from backup: {}",
-            backup
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(".bak")
-        ),
-    );
-
-    Ok(())
 }
+
+// The automatic `.bak` snapshot family and the status report over it.
+mod snapshot;
+pub use snapshot::{backup_database, database_backup_status, DatabaseBackupStatus};
+// The parent module's snapshot tests assert against these internals; test-only so a non-test build
+// does not flag them unused.
+#[cfg(test)]
+use snapshot::{backup_path, temp_backup_path, BACKUP_MIN_INTERVAL_SECS};
+
+// Restoring from a snapshot, and finishing a restore a crash interrupted.
+mod restore;
+#[cfg(test)]
+use restore::{
+    corrupt_path, generation_corrupt_path, restore_staging_path, rotate_corrupt_snapshots,
+    CORRUPT_ROTATED_GENERATIONS,
+};
+pub use restore::{restore_database_from_backup, resume_interrupted_restore};
+
+// The full `PRAGMA integrity_check` and its background throttle live in the `integrity` submodule.
+mod integrity;
+pub use integrity::{
+    integrity_check_is_due, mark_integrity_check_passed, run_full_integrity_check,
+    DatabaseIntegrityReport,
+};
+// The parent module's integrity tests assert against these internals; test-only so a non-test
+// build does not flag them unused.
+#[cfg(test)]
+use integrity::{integrity_check_marker_path, MAX_INTEGRITY_PROBLEMS};
 
 // The user-triggered export and the once-a-day external mirror live in the `external` submodule.
 mod external;

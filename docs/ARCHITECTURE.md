@@ -45,7 +45,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 
   - **A file that outgrew itself becomes a directory of the same name**, with the coupled
     core in `mod.rs` and the separable part split off: `db_schema/` (`ddl.rs`,
-    `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`integrity.rs`,
+    `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`snapshot.rs`,
+    `restore.rs`, `integrity.rs`,
     `external.rs`, `import.rs`), `video_repository/` (`media_page.rs`) and
     `yt_dlp/download/` (`command.rs`, `redaction.rs`).
   - **A feature family that outgrew a shared filename prefix becomes a directory too.**

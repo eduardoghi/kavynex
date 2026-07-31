@@ -329,9 +329,14 @@ state (rather than a process-wide static) also lets tests inject an in-memory po
 
 ## Backup, restore, export, import
 
-All four operations are implemented in the `db_backup/` module: the shared machinery, restore and
-import in `mod.rs`, the throttled full integrity check in `integrity.rs`, and the user-triggered
-export and the external mirror in `external.rs`.
+All four operations are implemented in the `db_backup/` module, one submodule each: the automatic
+snapshot and the status report over it in `snapshot.rs`, the restore in `restore.rs`, the
+startup-deferred import in `import.rs`, the user-triggered export and the external mirror in
+`external.rs`, and the throttled full integrity check in `integrity.rs`. What is left in `mod.rs` is
+the machinery more than one of them needs - the scratch connection pool, the `quick_check` helper,
+the sibling-path builder, the generation rotation - plus `managed_database_paths`, which is the map
+of every file the module owns and therefore belongs to none of the five. The tests for all of them
+are in `mod.rs` too, because most of them exercise more than one machine in the same scenario.
 
 ### Automatic backup (`backup_database`)
 
@@ -508,7 +513,9 @@ live connection pool is a singleton that cannot be reopened mid-session:
   introspection (`introspection.rs`), and `SCHEMA_VERSION` plus `ensure_schema` (`mod.rs`).
 - `src-tauri/src/services/database.rs` - pool creation, connection options, app settings
   key/value helpers.
-- `src-tauri/src/services/db_backup/` - backup, restore and import (`mod.rs`), the throttled
-  integrity check (`integrity.rs`), and export and the external mirror (`external.rs`).
+- `src-tauri/src/services/db_backup/` - the automatic snapshot (`snapshot.rs`), the restore
+  (`restore.rs`), the startup-deferred import (`import.rs`), the throttled integrity check
+  (`integrity.rs`), export and the external mirror (`external.rs`), and the machinery they share
+  plus every test (`mod.rs`).
 - `src-tauri/src/commands/database.rs` - the Tauri commands exposing these operations.
 - `src/services/database-service.ts` - the frontend service calling those commands.
