@@ -99,12 +99,31 @@ jobs:
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
     # signal - the header of this file frames the workflow's whole job as "surfacing" a new
     # advisory, and an email alone barely does that. Open (or comment on) a tracking issue so a
-    # failing audit is visible in the repository itself. Runs only when a gate above actually
-    # failed, and only on the schedule/dispatch this workflow already runs on.
+    # failing audit is visible in the repository itself. Runs only when a gate above did not
+    # succeed, and only on the schedule/dispatch this workflow already runs on.
     alert-on-failure:
         name: Open an issue on failure
         needs: [js-advisories, rust-advisories]
-        if: failure()
+        # Not `if: failure()`, which is what this said and which does not do what it reads as. A job
+        # killed by its own `timeout-minutes` is marked **cancelled**, not failed, and `failure()`
+        # does not match cancelled - so the alert is skipped on exactly the run where the gate
+        # stopped producing a verdict. That is the worse half of the failure: a gate that fails
+        # loudly is merely broken, while a gate that goes silent reads as green.
+        #
+        # It is not hypothetical here. Both jobs above `cargo install` two tools from source with no
+        # build cache under a 30-minute ceiling, which is the shape that hits a timeout first. And it
+        # already happened once in this repository, to mutation.yml's identical job on 2026-07-27;
+        # that job's condition was fixed then and this one was not, even though this file was
+        # revisited afterwards for the GH_REPO half of the same lesson (see below).
+        #
+        # So the dependency results are checked explicitly rather than leaning on a status function.
+        # `always()` is what lets this run at all once a dependency is cancelled; the consequence is
+        # that cancelling the run by hand also opens an issue, which is the right direction to err.
+        # Kept identical to mutation.yml's condition on purpose - the two must not drift again.
+        if: >
+            always() &&
+            (needs.js-advisories.result == 'failure' || needs.js-advisories.result == 'cancelled' ||
+             needs.rust-advisories.result == 'failure' || needs.rust-advisories.result == 'cancelled')
         runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
