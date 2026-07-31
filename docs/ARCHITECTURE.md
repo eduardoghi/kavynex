@@ -170,7 +170,9 @@ never reach a component either. See "The Tauri boundary" below.)
   inlining multi-step orchestration.
 - **Services** (`src/services/`) wrap a feature area's behavior on top of one or more
   repositories/commands - e.g. `media-download-service.ts`, `thumbnail-service.ts`,
-  `library-service.ts`, `live-chat-service.ts`, `diagnostics-service.ts`,
+  `library-service.ts`, `live-chat-service.ts` (with the pure replay parser split into
+  `live-chat-parsing.ts`, which reads JSON this app did not produce and so is kept free of IPC),
+  `diagnostics-service.ts`,
   `app-update-service.ts`. Some call `invokeCommand`/`invokeVoid` directly for commands
   that are not backed by a `videos`/`channels` table row (thumbnails, yt-dlp runs,
   database backup/restore, settings).
@@ -361,7 +363,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Creating a media (download or import, thumbnail, crash marker, row) | `commands/media.rs`, `services/media_creation.rs`, `services/library/media.rs` | `services/media-input-service.ts`, `hooks/use-add-media-workflow.ts` |
 | yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata.rs`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download.rs`, `services/thumbnail/url.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
-| Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts` |
+| Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |
 | Database schema/migrations | `services/db_schema/` | - |
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
