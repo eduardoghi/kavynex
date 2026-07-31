@@ -11,10 +11,22 @@
 
 [licenses]
 # Allowlist of the permissive licenses actually present in the tree (verified with
-# `cargo deny check licenses`). No copyleft (GPL/AGPL) is allowed, so a future dependency that
-# pulls one in fails CI instead of silently shipping inside an MIT-licensed app. The underlying
-# GTK/WebKit system libraries on Linux are (L)GPL C libraries linked dynamically - they are not
-# Rust crates and never appear here; the Rust GTK bindings themselves are MIT.
+# `cargo deny check licenses`). No *strong* copyleft (GPL/LGPL/AGPL) is allowed, so a future
+# dependency that pulls one in fails CI instead of silently shipping inside an MIT-licensed app. The
+# underlying GTK/WebKit system libraries on Linux are (L)GPL C libraries linked dynamically - they
+# are not Rust crates and never appear here; the Rust GTK bindings themselves are MIT.
+#
+# "Strong" is doing real work in that sentence, and it used to be missing. MPL-2.0 below *is*
+# copyleft, so the blanket "no copyleft" this said before described a stricter policy than the list
+# actually enforces - and a comment that overstates its own gate is worse than none, because the next
+# reader trusts it. What MPL-2.0 obliges is file-scoped: the source of the covered files has to reach
+# whoever receives the binary, with no claim on the rest of the app. This project publishes its
+# entire source, so that is satisfied by construction rather than by anything the build does.
+#
+# Five crates arrive under it today, in two groups, neither of them a dependency this project chose:
+# the Servo CSS stack behind the webview (`cssparser`, `cssparser-macros`, `selectors`,
+# `dtoa-short`), reached through tauri, and `option-ext` via `dirs-sys`. Listed here so the entry is
+# a recorded decision rather than something re-litigated each time somebody notices it.
 allow = [
     "MIT",
     "MIT-0",
