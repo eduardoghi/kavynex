@@ -81,3 +81,10 @@ pub const EVENT_YT_DLP_TERMINAL: &str = "yt-dlp-terminal";
 // frontend can surface it proactively instead of leaving it buried in the log file. Payload:
 // `{ "problems": [..] }`.
 pub const EVENT_DATABASE_INTEGRITY_FAILED: &str = "database-integrity-failed";
+
+// Emitted when the startup sweep gives up on one or more pending-media markers, i.e. when a crashed
+// creation's artifacts have failed to reconcile enough times to stop being retried. Payload:
+// `{ "abandoned": <count> }`. It exists for the same reason as the event above: the outcome is disk
+// the user is paying for and a concrete next step (Diagnostics reports the files as unreferenced),
+// and without this the only record of it is a log line nobody opens. See services/pending_media.rs.
+pub const EVENT_PENDING_MEDIA_ABANDONED: &str = "pending-media-abandoned";

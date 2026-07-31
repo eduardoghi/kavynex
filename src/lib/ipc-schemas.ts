@@ -375,6 +375,15 @@ const databaseIntegrityFailedEventSchema = z.object({
 
 export type DatabaseIntegrityFailedEvent = z.infer<typeof databaseIntegrityFailedEventSchema>;
 
+// Payload of the pending-media-abandoned event: how many crashed media creations the startup sweep
+// gave up on. Frontend-owned like the one above, and deliberately just a count - the paths are
+// library-relative names a banner cannot act on, and Diagnostics is what names them.
+const pendingMediaAbandonedEventSchema = z.object({
+    abandoned: z.number(),
+});
+
+export type PendingMediaAbandonedEvent = z.infer<typeof pendingMediaAbandonedEventSchema>;
+
 export const IPC_EVENT_SCHEMAS = {
     ytDlpLog: ytDlpLogEventSchema,
     ytDlpFinished: ytDlpFinishedEventSchema,
@@ -382,6 +391,7 @@ export const IPC_EVENT_SCHEMAS = {
     ytDlpFailed: ytDlpFailedEventSchema,
     ytDlpTerminal: ytDlpTerminalEventSchema,
     databaseIntegrityFailed: databaseIntegrityFailedEventSchema,
+    pendingMediaAbandoned: pendingMediaAbandonedEventSchema,
 } as const;
 
 // The streamed live chat protocol on the `Channel`: a run of `batch` events carrying raw JSON

@@ -16,6 +16,7 @@ import { useHomeLibraryPanel } from "./use-home-library-panel";
 import { useHomePlayerPanel } from "./use-home-player-panel";
 import { useStartupUpdateCheck } from "./use-startup-update-check";
 import { useDatabaseIntegrityAlert } from "./use-database-integrity-alert";
+import { usePendingMediaAlert } from "./use-pending-media-alert";
 
 export function useHomeController(): HomeController {
     const errorState = useErrorModal();
@@ -61,6 +62,13 @@ export function useHomeController(): HomeController {
     // be corrupt, instead of leaving that failure only in the log file.
     useDatabaseIntegrityAlert({
         onIntegrityFailure: errorState.showError,
+    });
+
+    // The same treatment for the startup sweep giving up on a crashed media creation: its files stay
+    // in the library with nothing pointing at them, and Diagnostics is where to deal with them. A
+    // notice rather than an error, since nothing is broken and nothing was lost.
+    usePendingMediaAlert({
+        onArtifactsAbandoned: errorState.showNotice,
     });
 
     const uiGuards = useHomeUiGuards({

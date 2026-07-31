@@ -35,7 +35,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::services::logger;
 use crate::utils::naming::unique_temp_suffix;
@@ -197,6 +197,20 @@ pub(crate) fn marker_is_sweepable(
 /// failure into a tax on every launch, with nothing but a `warn` line nobody reads to show for it,
 /// and a directory of such markers only ever grows.
 const MAX_MARKER_SWEEP_ATTEMPTS: u32 = 5;
+
+/// Payload of the [`EVENT_PENDING_MEDIA_ABANDONED`](crate::constants::EVENT_PENDING_MEDIA_ABANDONED)
+/// event: how many markers this sweep gave up on.
+///
+/// The count and nothing else. The paths would be library-relative names of files the user cannot
+/// act on from a banner, and Diagnostics is the one place that can both name them and remove them -
+/// so the event says that something is there and the dialog says what, rather than the banner trying
+/// to be the dialog. Frontend-owned contract, like the integrity event, so it is a plain serde struct
+/// rather than a ts-rs export.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingMediaAbandonedEvent {
+    abandoned: usize,
+}
 
 /// Whether a marker has been retried enough times that its failure is not transient.
 ///
@@ -447,6 +461,7 @@ fn read_pending_markers<R: Runtime>(
 pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> {
     let markers = read_pending_markers(app)?;
     let mut removed_artifacts = 0usize;
+    let mut abandoned_markers = 0usize;
 
     for (name, artifacts) in markers {
         if !artifacts.is_empty() {
@@ -480,6 +495,8 @@ pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> 
                     let attempts = artifacts.attempts.saturating_add(1);
 
                     if marker_retries_are_exhausted(attempts) {
+                        abandoned_markers += 1;
+
                         logger::error(
                             "pending_media",
                             format!(
@@ -511,6 +528,21 @@ pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> 
                 format!("could not clear a pending media marker: {error}"),
             );
         }
+    }
+
+    // One event for the whole sweep, not one per marker: what the user needs to know is that some
+    // artifacts were left behind and where to look, which is one sentence however many there are.
+    //
+    // Fire and forget, exactly like the integrity event: an emit failure (no window yet - this runs
+    // 30 seconds after launch, so there normally is one, but nothing guarantees it) must not affect
+    // the sweep, and the `error`-level lines above have already recorded each marker regardless.
+    if abandoned_markers > 0 {
+        let _ = app.emit(
+            crate::constants::EVENT_PENDING_MEDIA_ABANDONED,
+            PendingMediaAbandonedEvent {
+                abandoned: abandoned_markers,
+            },
+        );
     }
 
     Ok(removed_artifacts)
