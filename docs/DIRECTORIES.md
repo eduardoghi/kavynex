@@ -155,7 +155,7 @@ at error level with its count, instead of at warning level on every launch forev
 
 On startup, `lib.rs`'s `setup()` authorizes `thumbs-temp/` and `thumb-display/` - and only those
 two - in the Tauri asset-protocol scope (`commands/security.rs::register_cache_asset_scope`, see
-`SECURITY.md`), so a thumbnail preview can be shown in the webview via `convertFileSrc` before it is
+`THREAT-MODEL.md`), so a thumbnail preview can be shown in the webview via `convertFileSrc` before it is
 persisted and a display derivative can be drawn by the grid. The cache **root** is deliberately not
 granted: on Windows it is the parent of the `logs` directory described below and of the WebView2
 profile (`EBWebView/`), and the other three subdirectories here are read by the backend alone. A
@@ -247,4 +247,4 @@ All paths stored in the database (`videos.file_path`, `videos.thumbnail_path`,
 `videos.live_chat_file_path`, `channels.avatar_path`) are relative to the library
 directory, never absolute - so the library can be moved or the app data relocated without
 invalidating every row. `utils/path.rs` is what enforces that any relative path used this
-way stays inside the library directory (see `SECURITY.md`).
+way stays inside the library directory (see `THREAT-MODEL.md`).

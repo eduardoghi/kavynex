@@ -71,7 +71,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   across services:
   - `path.rs` - the path-safety primitives (sanitizing a relative path, canonicalizing and
     containment-checking a path against a base directory). See `docs/DATABASE.md` and
-    `SECURITY.md` for how this backs the library/asset-scope guarantees.
+    `THREAT-MODEL.md` for how this backs the library/asset-scope guarantees.
   - `process.rs` - everything about spawning an external child: suppressing the flashing
     console window Windows would otherwise show from a windowed app (`hide_console`), putting
     the child in its own process group, and killing a whole process tree
@@ -255,7 +255,7 @@ exist would name files that were never created. And the marker is cleared *after
 the cleanup has run, never before, because until then it is the only record of what is on disk.
 
 **Why one command.** This was seven IPC calls until the transaction moved. Two things came with the
-move, and `SECURITY.md` covers both: the artifacts-without-a-row window no longer crosses the process
+move, and `THREAT-MODEL.md` covers both: the artifacts-without-a-row window no longer crosses the process
 boundary, and the exclusion against a concurrent reference-counted cleanup is a backend lock rather
 than the modal refusing to open twice. The individual steps (`import_media_file`,
 `download_media_from_url`, the two crash-marker commands, ...) were removed from the IPC surface at
@@ -277,7 +277,7 @@ than the error modal - the user got the outcome they clicked for.
 **The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
 `isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is
 now UX only - closing the modal mid-run would discard a terminal the user is watching. It used to be
-more than that: `SECURITY.md` recorded it as the one guarantee in that document resting on frontend
+more than that: `THREAT-MODEL.md` recorded it as the one guarantee in that document resting on frontend
 behavior, because it was what kept two creations from racing the reference-counted cleanup. The lock
 in `library::cleanup` holds that property now, so a queue or a batch import is a UX question rather
 than a correctness one.

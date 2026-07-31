@@ -141,7 +141,7 @@ fn strip_windows_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
 /// `Command::new("explorer")` hands the lookup to the OS executable search order, which on Windows
 /// begins with the directory of the running application - the working-directory/app-directory
 /// hijack class `services::binaries` was hardened against for yt-dlp and ffmpeg
-/// (`resolve_from_path_var`, and `SECURITY.md`'s "External binary resolution"). These three spawns
+/// (`resolve_from_path_var`, and `docs/THREAT-MODEL.md`'s "External binary resolution"). These three spawns
 /// sat outside that policy only because they live in a different module, not because a file manager
 /// deserves less care than a downloader: it is spawned with a path the user chose, from a process
 /// that owns their library.

@@ -28,5 +28,5 @@ app actually opening, a real download, a migration against an existing database.
 
 - [ ] A Rust type crossing IPC changed, and the bindings were regenerated
       (`cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings`)
-- [ ] A new command takes a path from the caller, and `SECURITY.md`'s list of those was updated
+- [ ] A new command takes a path from the caller, and `docs/THREAT-MODEL.md`'s list of those was updated (`node scripts/verify-command-path-surface.js --print` refreshes the CI inventory)
 - [ ] The database schema changed, and `docs/DATABASE.md` plus `SCHEMA_VERSION` were updated

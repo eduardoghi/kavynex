@@ -60,7 +60,7 @@ export default defineConfig(
                 { checksVoidReturn: { attributes: false } },
             ],
 
-            // The threat model (SECURITY.md) rests on YouTube-derived text - titles, comments, live
+            // The threat model (docs/THREAT-MODEL.md) rests on YouTube-derived text - titles, comments, live
             // chat, author names - never being rendered as raw HTML: it is always React children,
             // so React's escaping neutralizes it, which is what keeps the relaxed
             // `style-src 'unsafe-inline'` acceptable (there is no injection sink for it to abuse).
@@ -75,12 +75,12 @@ export default defineConfig(
                 {
                     selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
                     message:
-                        "Rendering raw HTML reopens the XSS sink the threat model (SECURITY.md) depends on not existing. Render text as React children so React escapes it.",
+                        "Rendering raw HTML reopens the XSS sink the threat model (docs/THREAT-MODEL.md) depends on not existing. Render text as React children so React escapes it.",
                 },
                 {
                     selector: "AssignmentExpression[left.property.name=/^(inner|outer)HTML$/]",
                     message:
-                        "Assigning innerHTML/outerHTML renders raw HTML and reopens the XSS sink the threat model (SECURITY.md) depends on not existing.",
+                        "Assigning innerHTML/outerHTML renders raw HTML and reopens the XSS sink the threat model (docs/THREAT-MODEL.md) depends on not existing.",
                 },
             ],
 

@@ -13,7 +13,7 @@ use crate::AppResult;
 /// a tidy-up: the window in which artifacts exist with no row pointing at them no longer crosses the
 /// process boundary, and the exclusion that keeps two creations off the same content-addressed path
 /// is a lock in `library::cleanup` instead of the add-media modal refusing to open twice. See
-/// `services::media_creation` for the ordering and `SECURITY.md` for what that changed about the
+/// `services::media_creation` for the ordering and `docs/THREAT-MODEL.md` for what that changed about the
 /// trust boundary.
 ///
 /// The library path is checked against the persisted settings here, before any file is written, like

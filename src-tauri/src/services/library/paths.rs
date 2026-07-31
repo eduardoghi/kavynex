@@ -58,7 +58,7 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
 /// `services::library::resolve_path_inside_library`, which do): these helpers sit on the
 /// library-selection path (onboarding and change-library both call `ensure_directory_exists`/
 /// `resolve_existing_directory`/`is_directory_empty` on the candidate folder), and a library kept
-/// on a network share is a supported configuration (SECURITY.md - it only loses the
+/// on a network share is a supported configuration (docs/THREAT-MODEL.md - it only loses the
 /// "reveal in file manager" convenience). Rejecting network paths here would break choosing such a
 /// library. The NTLM-hash-leak concern that motivates the rejection elsewhere is bounded here
 /// because the path always comes from a native folder picker the user drove, not from an

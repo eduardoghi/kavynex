@@ -35,7 +35,7 @@ please do not treat either as a way to reach the maintainer.
 
 The security row is not a formality. A public issue describing a vulnerability discloses it to
 everyone before there is a release that fixes it, and this project ships to whoever downloaded
-it - there is no way to reach those installs quickly. `SECURITY.md` describes the threat model
+it - there is no way to reach those installs quickly. `docs/THREAT-MODEL.md` describes the threat model
 the report will be assessed against, and security reports are prioritized over other work.
 
 ## What to include in a bug report

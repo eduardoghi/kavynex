@@ -7,7 +7,7 @@ contact_links:
       url: https://github.com/eduardoghi/kavynex/security/advisories/new
       about: >
           Privately, never as a public issue - a public one discloses it before there is a
-          release that fixes it. See SECURITY.md for the threat model it is assessed against.
+          release that fixes it. See docs/THREAT-MODEL.md for the threat model it is assessed against.
 
     - name: Installation and troubleshooting
       url: https://github.com/eduardoghi/kavynex/blob/main/SUPPORT.md

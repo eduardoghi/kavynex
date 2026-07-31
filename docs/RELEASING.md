@@ -45,7 +45,7 @@ actually act on what it says.
    the page from the Vite origin, with no CSP header). Both are skipped on the x86_64 macOS leg
    alone, which is a cross-compile on an arm64 runner and cannot execute its own output. A failure
    in either turns the run red with assets already on the draft, which is the intended outcome:
-   the draft is published by hand, and a red run must not be published. See `SECURITY.md` for what
+   the draft is published by hand, and a red run must not be published. See `RELEASE-SECURITY.md` for what
    the webview check covers and what it deliberately leaves to a manual pass.
 4. The workflow creates a **draft** GitHub release tagged `v<version>` whose body is a single
    line pointing at the release page, and uploads the built installers plus signed updater
@@ -57,7 +57,7 @@ actually act on what it says.
    Rust dependency tree (`kavynex_<version>_sbom.cdx.json`), and a `checksums` job then
    downloads every asset, verifies the release is complete (the asset-completeness check -
    a missing installer or SBOM fails the release loudly rather than shipping silently), and
-   publishes `SHA256SUMS.txt` on the same release (see `SECURITY.md` for why the checksums,
+   publishes `SHA256SUMS.txt` on the same release (see `RELEASE-SECURITY.md` for why the checksums,
    SBOM and build provenance matter given installers are unsigned).
 5. Write the release notes on the draft before publishing. This is where they go rather than
    in the workflow body: editing a draft does not regenerate `latest.json`, so the text
@@ -65,7 +65,7 @@ actually act on what it says.
    body unscrolled.
 6. Review the draft release and publish it manually when ready.
 
-Installers are intentionally not code-signed (see `SECURITY.md`); do not add code-signing
+Installers are intentionally not code-signed (see `RELEASE-SECURITY.md`); do not add code-signing
 steps to the release workflow.
 
 ### What the release builds
@@ -119,5 +119,5 @@ not a corrupted state - and it does **not** cost a version number:
 
 Never delete or re-upload an asset on an *already published* release: `latest.json` and the
 minisign signatures are what the updater trusts, and rewriting a published release is the one
-operation the updater's rollback exposure (see `SECURITY.md`) actually depends on not happening.
+operation the updater's rollback exposure (see `RELEASE-SECURITY.md`) actually depends on not happening.
 

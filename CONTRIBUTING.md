@@ -6,7 +6,7 @@ to review than large ones. This document covers dev setup, day-to-day commands, 
 generated TypeScript bindings work, and commit conventions.
 
 See also `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/DIRECTORIES.md`, and
-`SECURITY.md` for how the app is put together and why its safety checks exist.
+`docs/THREAT-MODEL.md` for how the app is put together and why its safety checks exist.
 `CODE_OF_CONDUCT.md` covers what is expected of everyone taking part, and `SUPPORT.md` is where
 to send someone who has a bug to report rather than a change to propose.
 
@@ -60,6 +60,18 @@ unless you `cd src-tauri` first):
   matching CI (`-D warnings` fails the build on any clippy warning).
 - `cargo fmt --manifest-path src-tauri/Cargo.toml --all` - format (CI runs
   `--check`, i.e. it fails if this would change anything, it does not auto-fix for you).
+
+Repository consistency (plain Node, no install needed - CI runs all three on every push):
+
+- `node scripts/verify-release-version.js` - fails when `package.json`,
+  `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
+- `node scripts/verify-node-version.js` - fails when the Node version in `.nvmrc` and the
+  `node-version:` values in the workflows disagree.
+- `node scripts/verify-command-path-surface.js` - fails when the set of `#[tauri::command]`s
+  taking a path from the caller no longer matches the inventory declared in that script. Adding
+  such a command (or a path parameter to an existing one) is meant to stop here, so the new path
+  gets classified under `docs/THREAT-MODEL.md`'s cross-cutting path rule rather than slipping in
+  unexamined. Run it with `--print` to regenerate the inventory once you have.
 
 `pnpm tauri build` builds release installers for your current platform.
 

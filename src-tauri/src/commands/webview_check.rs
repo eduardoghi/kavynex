@@ -15,7 +15,7 @@
 //!   was narrowed from the scaffolded `core:default` to the exact set the seam uses, which is the
 //!   right thing to have done and also exactly the change where a miss is silent.
 //! - **The packaged CSP.** Tauri injects `tauri.conf.json`'s `csp` only in a bundled app; `pnpm
-//!   tauri dev` serves the page from the Vite origin with no CSP header at all (see `SECURITY.md`).
+//!   tauri dev` serves the page from the Vite origin with no CSP header at all (see `docs/THREAT-MODEL.md`).
 //!   So `img-src`'s `asset:` / `http://asset.localhost` tokens - without which every thumbnail and
 //!   every video silently fails to load - are exercised by a packaged build and nothing else.
 //!

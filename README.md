@@ -65,7 +65,7 @@ not an inconsistency in the build.)
 
 ### Verifying a download
 
-The installers are not code-signed (a deliberate tradeoff - see `SECURITY.md`), so
+The installers are not code-signed (a deliberate tradeoff - see `docs/RELEASE-SECURITY.md`), so
 SmartScreen/Gatekeeper will warn on first run. To confirm a download is authentic:
 
 - Compare its hash against `SHA256SUMS.txt`, published alongside the installers.
@@ -211,7 +211,7 @@ There is also one case where both buttons fail outright rather than behaving dif
   a library on a share is unaffected - playing, downloading, importing and thumbnails all work.
   The refusal is specific to the `\\server\share` form: a share mounted as a drive letter
   (`Z:\...`) is an ordinary local path as far as this check is concerned, so mapping the share
-  and pointing the library at the drive letter keeps both buttons working. See `SECURITY.md`
+  and pointing the library at the drive letter keeps both buttons working. See `docs/THREAT-MODEL.md`
   for the full reasoning.
 
 ### Where logs live
@@ -252,7 +252,7 @@ activity Kavynex initiates is:
 The optional "cookies from browser" option (used to back up member-only or otherwise
 authenticated content) reads cookies directly from your local browser profile and hands
 them to yt-dlp for that request only; Kavynex does not transmit, store, or display those
-cookie values. See `docs/DATABASE.md` and `SECURITY.md` for more detail on what is stored
+cookie values. See `docs/DATABASE.md` and `docs/THREAT-MODEL.md` for more detail on what is stored
 locally and how it is protected.
 
 ### Taking your data with you, or removing it
@@ -298,7 +298,11 @@ repository), and applies to the font files only, not to Kavynex itself.
 - `docs/DIRECTORIES.md` - the runtime directories and library layout the app uses on disk.
 - `docs/RELEASING.md` - how a release is cut and published (needs repository write access).
 - `CONTRIBUTING.md` - development setup, commands, and commit conventions.
-- `SECURITY.md` - the threat model and how to report a vulnerability.
+- `docs/THREAT-MODEL.md` - what the app defends against at runtime: the IPC trust boundary, path
+  safety, the capability grants, the asset-protocol scope and the CSP.
+- `docs/RELEASE-SECURITY.md` - what makes a shipped build verifiable: the updater, why installers
+  are unsigned, checksums, build provenance, the SBOM and the dependency supply chain.
+- `SECURITY.md` - how to report a vulnerability, and which versions are supported.
 - `SUPPORT.md` - where to report a bug, what to include, and what to expect.
 - `CODE_OF_CONDUCT.md` - the standard expected of everyone taking part, and how to report a problem.
 

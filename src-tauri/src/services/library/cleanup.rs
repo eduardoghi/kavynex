@@ -538,7 +538,7 @@ pub async fn delete_channel_with_artifacts(
 /// that has written its artifacts but not yet reached `insert_media` is indistinguishable *by
 /// reference count* from one that died there.
 ///
-/// See the matching section in `SECURITY.md` for the same split written for a reader auditing the
+/// See the matching section in `docs/THREAT-MODEL.md` for the same split written for a reader auditing the
 /// trust boundary rather than this function.
 async fn plan_unreferenced_artifacts(
     conn: &mut SqliteConnection,

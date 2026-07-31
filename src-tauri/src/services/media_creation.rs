@@ -14,7 +14,7 @@
 //!   the inside of one function rather than the span of five round trips.
 //! - **The exclusion rested on the frontend.** Nothing kept two creations from resolving to the same
 //!   content-addressed path except the add-media modal refusing to start a second one, which
-//!   `SECURITY.md` recorded as the one guarantee in that document depending on renderer behavior. It
+//!   `docs/THREAT-MODEL.md` recorded as the one guarantee in that document depending on renderer behavior. It
 //!   is now [`library::cleanup::media_registration_guard`], a lock the reference-counted cleanup
 //!   takes too, so a queue or a batch import cannot reopen it by construction.
 //!
