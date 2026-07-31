@@ -1,23 +1,23 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": [
-    "main"
-  ],
-  "permissions": [
-    "core:app:allow-version",
-    "core:event:allow-listen",
-    "core:event:allow-unlisten",
-    {
-      "identifier": "opener:allow-open-url",
-      "allow": [
-        { "url": "https://www.youtube.com/*" },
-        { "url": "https://youtube.com/*" },
-        { "url": "https://youtu.be/*" }
-      ]
-    },
-    "dialog:allow-open",
-    "dialog:allow-save"
-  ]
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "default",
+    "description": "Capability for the main window",
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "core:app:allow-version",
+        "core:event:allow-listen",
+        "core:event:allow-unlisten",
+        {
+            "identifier": "opener:allow-open-url",
+            "allow": [
+                { "url": "https://www.youtube.com/*" },
+                { "url": "https://youtube.com/*" },
+                { "url": "https://youtu.be/*" }
+            ]
+        },
+        "dialog:allow-open",
+        "dialog:allow-save"
+    ]
 }
