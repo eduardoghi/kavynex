@@ -74,13 +74,24 @@ jobs:
                 # keep in step. Spelling the count in two places is what this avoids, and the
                 # failure it avoids is silent - a matrix of three against a hardcoded `/4` would
                 # simply never run the fourth shard's mutants, and the run would go green.
-                shard: [1, 2, 3]
+                #
+                # Four since 2026-07-31, and the reasoning is worth keeping because this is the knob
+                # to reach for again. The scope was 1234 mutants across three shards on 2026-07-29,
+                # whose legs took 68, 75 and 79 minutes against the ceiling below; adding
+                # `live_chat_storage.rs` and `thumbnail/redirect.rs` took it to 1383, which puts the
+                # slowest leg at roughly 88 - inside the ceiling by a margin that is not one. The
+                # alternative was raising the ceiling, and that is the wrong direction: it exists to
+                # be a number nothing approaches, and a leg killed by it reports as *cancelled*
+                # rather than failed, which is exactly the outcome that went unreported on
+                # 2026-07-27. A fourth shard puts each leg back around 346 mutants instead.
+                shard: [1, 2, 3, 4]
         # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
         # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
         # was killed at 2h00m having produced no verdict - the two runs before it took ~56 minutes.
-        # The scope is 1047 mutants today (`cargo mutants --list | wc -l`), so a third of it plus one
-        # baseline build sits well inside this, and the ceiling stays low enough to be a real signal
-        # rather than a number nothing ever approaches.
+        # The scope is 1383 mutants today (`cargo mutants --list | wc -l`), so a quarter of it plus
+        # one baseline build sits well inside this, and the ceiling stays low enough to be a real
+        # signal rather than a number nothing ever approaches. When a leg starts creeping toward it,
+        # add a shard rather than minutes - see the matrix above.
         timeout-minutes: 90
         # Trim debuginfo like ci.yml's Rust job: cargo-mutants rebuilds the tree once per mutant, so
         # keeping the per-build cost down matters more here than anywhere else.
