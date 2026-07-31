@@ -106,11 +106,32 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 /// valid header text. Both mean the same thing to this decision - a redirect naming no destination -
 /// so they arrive as one case rather than two.
 ///
-/// The order of the three checks is not interchangeable. The budget comes first so a chain that has
+/// `host_is_allowed` is the caller's host gate, applied to the *resolved* destination. It is a
+/// parameter rather than a direct call to `super::url::is_allowed_thumbnail_image_host` so this
+/// module stays free of the allow-list it enforces, and so a test can drive both answers without
+/// naming a real CDN. See the note on the check order below for why it is here at all.
+///
+/// The order of the four checks is not interchangeable. The budget comes first so a chain that has
 /// already gone too far is refused as a chain rather than being reported as whatever happens to be
-/// wrong with its next `Location`, and the missing-destination refusal comes before the resolution
-/// so `resolve_redirect` never has to describe an absence.
-pub(crate) fn next_hop(current: &Uri, location: Option<&str>, hops_used: usize) -> AppResult<Uri> {
+/// wrong with its next `Location`; the missing-destination refusal comes before the resolution so
+/// `resolve_redirect` never has to describe an absence; and the host gate comes last because it is
+/// the only one of the four that needs the destination already resolved - a relative `Location`
+/// carries no host of its own.
+///
+/// That last check is the one worth explaining, because for a while it was not here and the loop
+/// did not have it either. The caller gates the *initial* URL against the image CDNs before the
+/// fetch starts, which reads as a gate on the whole operation and is not one: only
+/// `assert_url_host_is_public` re-ran per hop, so a `302` out of an allowed CDN was followed to any
+/// public host. The SSRF guard kept that off internal addresses, and the response was still capped,
+/// content-type checked and magic-byte sniffed - but none of that stops the *request*, which is the
+/// outbound channel `super::url` exists to close. Deciding it here rather than in the loop is what
+/// puts it under the mutation gate, like every other decision this module holds.
+pub(crate) fn next_hop(
+    current: &Uri,
+    location: Option<&str>,
+    hops_used: usize,
+    host_is_allowed: fn(&Uri) -> bool,
+) -> AppResult<Uri> {
     if hop_budget_exhausted(hops_used) {
         return Err(AppError::from_code(
             AppErrorCode::YtDlpThumbnailFailed,
@@ -125,7 +146,16 @@ pub(crate) fn next_hop(current: &Uri, location: Option<&str>, hops_used: usize) 
         ));
     };
 
-    resolve_redirect(current, location)
+    let destination = resolve_redirect(current, location)?;
+
+    if !host_is_allowed(&destination) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "thumbnail redirect left the allowed image cdns",
+        ));
+    }
+
+    Ok(destination)
 }
 
 #[cfg(test)]
@@ -134,6 +164,18 @@ mod tests {
 
     fn uri(value: &str) -> Uri {
         value.parse().unwrap()
+    }
+
+    /// A host gate that admits everything, for the tests about the other three decisions.
+    fn any_host(_uri: &Uri) -> bool {
+        true
+    }
+
+    /// A host gate standing in for the real allow-list, so these tests pin the *wiring* of the gate
+    /// rather than the contents of `super::url`'s list - which has its own tests, and which this
+    /// module deliberately does not import.
+    fn only_cdn_example(uri: &Uri) -> bool {
+        uri.host() == Some("cdn.example.com")
     }
 
     #[test]
@@ -240,6 +282,7 @@ mod tests {
             &uri("https://img.example.com/old.jpg"),
             Some("https://cdn.example.com/new.jpg"),
             MAX_REDIRECT_HOPS - 1,
+            any_host,
         )
         .unwrap();
 
@@ -255,6 +298,7 @@ mod tests {
             &uri("https://img.example.com/old.jpg"),
             Some("https://cdn.example.com/new.jpg"),
             MAX_REDIRECT_HOPS,
+            any_host,
         )
         .unwrap_err();
 
@@ -267,10 +311,75 @@ mod tests {
         // A 3xx with no usable Location has nowhere to go. Refusing is what stops the loop from
         // re-requesting the same URI forever, which is what "keep the current uri and continue"
         // would have done.
-        let error = next_hop(&uri("https://img.example.com/old.jpg"), None, 0).unwrap_err();
+        let error =
+            next_hop(&uri("https://img.example.com/old.jpg"), None, 0, any_host).unwrap_err();
 
         assert_eq!(error.code, AppErrorCode::YtDlpThumbnailFailed.as_str());
         assert!(error.to_string().contains("Location header"));
+    }
+
+    #[test]
+    fn a_hop_leaving_the_allowed_hosts_is_refused() {
+        // The gap this parameter closes. The caller gates the initial URL, so a fetch *starts* on an
+        // allowed CDN; without this check a single 302 carried it to any public host, which is the
+        // outbound channel the allow-list exists to close. The SSRF guard does not cover it - the
+        // destination here is perfectly public.
+        let error = next_hop(
+            &uri("https://cdn.example.com/thumb.jpg"),
+            Some("https://attacker.example/ZXhmaWx0cmF0ZWQ.jpg"),
+            0,
+            only_cdn_example,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+        assert!(error.to_string().contains("allowed image cdns"));
+    }
+
+    #[test]
+    fn a_relative_hop_is_gated_on_the_host_it_resolves_to() {
+        // A relative Location carries no host of its own, which is why the gate runs *after* the
+        // resolution rather than on the raw header value: the destination inherits the current
+        // authority, so this one is allowed while the same path on another origin would not be.
+        let followed = next_hop(
+            &uri("https://cdn.example.com/a/b/old.jpg"),
+            Some("/new/image.jpg"),
+            0,
+            only_cdn_example,
+        )
+        .unwrap();
+
+        assert_eq!(followed, uri("https://cdn.example.com/new/image.jpg"));
+    }
+
+    #[test]
+    fn a_protocol_relative_hop_is_gated_on_its_new_host() {
+        // The one relative form that *does* change host. Reading it as "relative, therefore same
+        // origin" would let `//attacker.example/x.jpg` through the gate entirely.
+        let error = next_hop(
+            &uri("https://cdn.example.com/old.jpg"),
+            Some("//attacker.example/x.jpg"),
+            0,
+            only_cdn_example,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+    }
+
+    #[test]
+    fn the_budget_is_still_what_refuses_a_hop_that_would_also_pass_the_host_gate() {
+        // Both refusals apply to the same hop, and the budget has to win: reporting an over-long
+        // chain as a host problem would send whoever reads the log looking at the allow-list.
+        let error = next_hop(
+            &uri("https://cdn.example.com/old.jpg"),
+            Some("https://cdn.example.com/new.jpg"),
+            MAX_REDIRECT_HOPS,
+            only_cdn_example,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::YtDlpThumbnailFailed.as_str());
     }
 
     #[test]
@@ -281,6 +390,7 @@ mod tests {
             &uri("https://img.example.com/thumb.jpg"),
             Some("file:///etc/passwd"),
             0,
+            any_host,
         )
         .unwrap_err();
 

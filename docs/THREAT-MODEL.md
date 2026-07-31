@@ -363,7 +363,8 @@ URL, and **both gate the host**:
 
 The direct fetch is additionally constrained on the way back: a hard 10 MiB cap, an allow-listed
 `Content-Type`, and a magic-byte sniff (the header is attacker-controlled, so it is only a first
-filter). It follows redirects **manually**, re-running the address check on every hop, and dials
+filter). It follows redirects **manually**, re-running *both* checks on every hop - the address
+check and the host allow-list - and dials
 through a DNS resolver that drops every private/loopback/reserved answer
 (`services::ssrf_guard`, `PublicOnlyResolver`) - so the address that is validated is the address
 that is dialed, closing the rebinding window a pre-connection check alone leaves open. This is why
@@ -376,6 +377,16 @@ addresses but nothing kept it off the open internet, which left a compromised fr
 channel (a path ending in `.jpg` on a host of its choosing). It cost no functionality to close - the
 manual thumbnail control is a file picker, never a URL field, and the only remote value that reaches
 the command is yt-dlp's own `thumbnail` metadata.
+
+That gate was then per *fetch* rather than per *hop* for a while, which is a narrower version of the
+same gap and worth recording separately, because the code read as though it were closed. The initial
+URL was checked before the request went out, and only `assert_url_host_is_public` re-ran on each
+redirect - so a `302` out of `i.ytimg.com` to `https://attacker.example/<data>.jpg` was followed. The
+address guard does not cover that (the destination is perfectly public), and neither do the response
+constraints, which all apply after the request has already been made. The check now lives in
+`services::thumbnail::redirect::next_hop`, which decides the whole of a hop and is under the mutation
+gate; the caller still gates the initial URL, since that is a different question (may this fetch
+start at all) about a URI no redirect produced.
 
 ## External binary resolution (no working-directory hijack)
 

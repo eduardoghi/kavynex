@@ -389,11 +389,18 @@ impl Service<Name> for PublicOnlyResolver {
 /// revalidation is the whole point; keeping this on a minimal hyper stack also avoids pulling
 /// reqwest's cookie jar and automatic-redirect behavior into a request that must stay dumb.
 ///
-/// The decision each hop makes - the budget, the refusal of a redirect naming no destination, and
-/// the resolution of `Location` against the URI it arrived on - lives in
-/// [`super::redirect::next_hop`], not here. This function owns the loop, the request and the body;
-/// it makes no redirect decision of its own, which is what lets that decision be mutation-tested
-/// while the network code around it cannot be.
+/// The decision each hop makes - the budget, the refusal of a redirect naming no destination, the
+/// resolution of `Location` against the URI it arrived on, and the image-CDN host gate on the
+/// destination - lives in [`super::redirect::next_hop`], not here. This function owns the loop, the
+/// request and the body; it makes no redirect decision of its own, which is what lets that decision
+/// be mutation-tested while the network code around it cannot be.
+///
+/// That host gate is per hop and not only per fetch, which it was not at first: the caller checks
+/// where the fetch *starts*, so a `302` out of an allowed CDN used to be followed anywhere public.
+/// Everything else here constrains the *response* (the size cap, the content type, the magic-byte
+/// sniff) and the SSRF guard constrains the *address*; none of the four stops the request itself
+/// from reaching a host of the redirecting server's choosing, which is the outbound channel
+/// [`super::url`] exists to close.
 async fn http_get_image(
     url: &str,
     timeout_secs: u64,
@@ -458,7 +465,11 @@ async fn http_get_image(
                     .get(http::header::LOCATION)
                     .and_then(|value| value.to_str().ok());
 
-                uri = next_hop(&uri, location, hops_used)?;
+                // The host gate travels with the hop, not only with the initial URL: the caller
+                // gates where the fetch *starts*, and without this a single 302 out of an allowed
+                // CDN carried it to any public host. `next_hop` owns that decision so it can be
+                // mutation-tested; see its doc comment.
+                uri = next_hop(&uri, location, hops_used, is_allowed_thumbnail_image_host)?;
                 continue;
             }
 
@@ -732,6 +743,10 @@ pub async fn download_thumbnail_from_url_async(
             // back, but all three constrain the *response* - none of them stopped the request from
             // reaching an arbitrary public host in the first place. See
             // services::thumbnail::url for the list and why it is not the yt-dlp one.
+            //
+            // This gates where the fetch starts; the same predicate is applied to every redirect
+            // destination inside `http_get_image` (through `redirect::next_hop`), because for a
+            // while this check alone read as a gate on the whole operation and was not one.
             let direct_uri: Uri = normalized_url.parse().map_err(|e| {
                 AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
             })?;
