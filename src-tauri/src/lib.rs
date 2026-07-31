@@ -591,8 +591,6 @@ pub fn run() {
             commands::channels::delete_channel_with_artifacts,
             commands::videos::update_media_title,
             commands::videos::list_media_page,
-            commands::videos::find_media_by_channel_and_file_path,
-            commands::videos::insert_media,
             commands::videos::list_media_comments_by_media_id,
             commands::videos::delete_media_with_artifacts,
             commands::videos::mark_media_as_watched,

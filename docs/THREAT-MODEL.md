@@ -260,10 +260,19 @@ directly wrote into the library and produced exactly that artifacts-with-no-row 
 behind it - the marker was the renderer's job to write. The rule for a command added later is that
 the IPC surface exposes an operation, not its steps.
 
-`insert_media` and `find_media_by_channel_and_file_path` remain registered. Their callers moved into
-`media_creation` too, but `insert_media` is what every IPC test in `commands/videos.rs` seeds rows
-with; pruning them is its own change. Both validate what they write (managed library-relative paths,
-title, media type), so the residual is a bogus row rather than a file.
+`insert_media` and `find_media_by_channel_and_file_path` stayed registered for a while after that,
+and are now gone too. The reason they lingered was not a security judgment: `insert_media` was what
+every IPC test in `commands/videos.rs` seeded its rows with, so removing it was test surgery rather
+than a line in the same change. Those tests seed through `services::video_repository` directly now,
+which is what let the surface actually shrink to what the rule says.
+
+The validation `insert_media` carried moved rather than being deleted with it, and where it moved to
+is the point. As a command-layer check it was a property of *arriving over IPC*, which left
+`media_creation` - the one remaining caller - trusted to have validated on its own. It mostly had,
+with one gap: the `media_type` a yt-dlp creation stores is the download's own value and never passes
+through `normalize_create_media_request`, so nothing but the table's `CHECK` stood behind it. The
+checks now live in `video_repository::insert_media`, which is the write boundary every caller
+reaches - the rule this document applies everywhere else, applied here.
 
 #### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 

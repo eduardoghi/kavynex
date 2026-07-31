@@ -65,10 +65,12 @@ pub async fn cleanup_unreferenced_media_artifacts(
 // `services::pending_media`, `services::yt_dlp` and `services::library::media` still expose all of
 // these to the backend, which is now their only caller.
 //
-// Two related commands deliberately stay: `insert_media` and `find_media_by_channel_and_file_path`
-// (`commands/videos.rs`). Their callers moved into `media_creation` too, but `insert_media` is what
-// every IPC test in that file seeds rows with, so pruning them is its own change with its own test
-// surgery rather than a line in this one.
+// `insert_media` and `find_media_by_channel_and_file_path` (`commands/videos.rs`) were the two that
+// stayed behind, because every IPC test in that file seeded its rows through the first one - test
+// surgery rather than a line in this change. That surgery has since been done: those tests seed
+// through `services::video_repository` directly, and both commands are gone. The validation
+// `insert_media` performed moved down into the repository rather than away, so it applies to every
+// caller instead of only to the one that arrived over IPC.
 
 // No command in this file can be driven through a true IPC round trip with the
 // harness `commands/library.rs` uses (`tauri::test::mock_builder` + `get_ipc_response`).

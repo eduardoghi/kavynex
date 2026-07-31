@@ -6,10 +6,8 @@ use crate::services::library::cleanup::ArtifactCleanupReport;
 use crate::services::video_repository as repo;
 use crate::services::video_repository::{
     MediaCommentRow, MediaIntegrityReference, MediaPage, MediaPageQuery, MediaRepositoryStats,
-    MediaRow,
 };
-use crate::utils::path::ensure_managed_library_relative_path;
-use crate::utils::validation::{ensure_valid_media_title, ensure_valid_media_type};
+use crate::utils::validation::ensure_valid_media_title;
 use crate::AppResult;
 
 /// Deletes a media row and its now-unreferenced files (media file, thumbnail, live chat)
@@ -47,76 +45,21 @@ pub async fn list_media_page(
     repo::list_media_page(&pool, channel_id, &query).await
 }
 
-#[tauri::command]
-pub async fn find_media_by_channel_and_file_path(
-    db: State<'_, Db>,
-    channel_id: i64,
-    file_path: String,
-) -> AppResult<Option<MediaRow>> {
-    let pool = db.pool().await?;
-    repo::find_media_by_channel_and_file_path(&pool, channel_id, &file_path).await
-}
-
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn insert_media(
-    db: State<'_, Db>,
-    channel_id: i64,
-    title: String,
-    file_path: String,
-    thumbnail_path: Option<String>,
-    media_type: String,
-    youtube_video_id: Option<String>,
-    published_at: Option<String>,
-    duration_seconds: Option<i64>,
-    is_live: bool,
-    live_chat_file_path: Option<String>,
-) -> AppResult<i64> {
-    // Validate the text fields at this write boundary too, mirroring the frontend's checks so
-    // the backend (the only durable trust boundary) does not depend on them.
-    ensure_valid_media_title(&title)?;
-    ensure_valid_media_type(&media_type)?;
-
-    // Validate every stored path at this write boundary: each must be a managed,
-    // library-relative path (no traversal, rooted at video/audio/thumbnails/live_chat). The
-    // deletion path trusts these rows, so a bare or traversing path persisted here would let a
-    // later delete/move command act outside the app's own layout.
-    ensure_managed_library_relative_path(&file_path)?;
-
-    if let Some(path) = thumbnail_path.as_deref() {
-        ensure_managed_library_relative_path(path)?;
-    }
-
-    if let Some(path) = live_chat_file_path.as_deref() {
-        ensure_managed_library_relative_path(path)?;
-    }
-
-    // Store the normalized (trimmed) text: validation checks the trimmed form, and the partial
-    // unique index on `youtube_video_id` compares the stored column verbatim, so a padded value
-    // would dodge the dedupe. A blank youtube id is "no id", so normalize a whitespace-only value
-    // to NULL rather than storing an empty string the index would treat as present.
-    let title = title.trim();
-    let media_type = media_type.trim();
-    let youtube_video_id = youtube_video_id
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-
-    let pool = db.pool().await?;
-    repo::insert_media(
-        &pool,
-        channel_id,
-        title,
-        &file_path,
-        thumbnail_path.as_deref(),
-        media_type,
-        youtube_video_id.as_deref(),
-        published_at.as_deref(),
-        duration_seconds,
-        is_live,
-        live_chat_file_path.as_deref(),
-    )
-    .await
-}
+// `insert_media` and `find_media_by_channel_and_file_path` used to be commands here, and are gone
+// for the reason the six removed from `commands/media.rs` were: each was a *step* of creating a
+// media, exposed only because the renderer once ran that sequence itself. `create_media` is the
+// sequence now, so `services::media_creation` is the only caller of either, and the comment in
+// `commands/media.rs` that recorded them as a deliberate leftover no longer has to.
+//
+// They outlived that change because every IPC test below seeded its rows through `insert_media`,
+// which made removing them test surgery rather than a line in the same commit. The tests seed
+// through `repo::insert_media` directly now.
+//
+// The validation `insert_media` carried moved with it, into `repo::insert_media`, rather than being
+// deleted along with the command. It belongs at the write boundary rather than at the IPC one: as a
+// command-layer check it applied to arriving over IPC, which left the one remaining caller trusted
+// to have validated on its own - and it mostly had, except that a yt-dlp download's `media_type` is
+// the download's own value and never the normalized request's.
 
 #[tauri::command]
 pub async fn list_media_comments_by_media_id(
@@ -205,13 +148,11 @@ mod tests {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![
                 crate::commands::channels::insert_channel,
-                insert_media,
                 update_media_title,
                 list_media_page,
                 mark_media_as_watched,
                 mark_media_as_unwatched,
                 update_media_progress,
-                find_media_by_channel_and_file_path,
                 list_media_comments_by_media_id,
                 get_media_repository_stats,
                 list_media_integrity_references
@@ -226,6 +167,17 @@ mod tests {
             .unwrap()
     }
 
+    /// The pool the mock app manages, for seeding rows the commands under test then read.
+    ///
+    /// These tests used to seed through the `insert_media` command, which is what kept that command
+    /// registered long after `create_media` had made it dead IPC surface. Seeding through the
+    /// repository instead is what let it be removed: the row is what these tests need, and how it got
+    /// there is not what any of them is about.
+    fn seed_pool(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> sqlx::SqlitePool {
+        let db = webview.state::<Db>();
+        tauri::async_runtime::block_on(db.pool()).expect("the managed pool must open")
+    }
+
     fn seed_channel(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> i64 {
         invoke(
             webview,
@@ -238,34 +190,16 @@ mod tests {
         .expect("channel id")
     }
 
-    fn insert_media_body(channel_id: i64, file_path: &str) -> serde_json::Value {
-        serde_json::json!({
-            "channelId": channel_id,
-            "title": "Video",
-            "filePath": file_path,
-            "thumbnailPath": null,
-            "mediaType": "video",
-            "youtubeVideoId": null,
-            "publishedAt": null,
-            "durationSeconds": null,
-            "isLive": false,
-            "liveChatFilePath": null
-        })
-    }
-
     fn insert_media_row(
         webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
         channel_id: i64,
         file_path: &str,
     ) -> i64 {
-        invoke(
-            webview,
-            "insert_media",
-            insert_media_body(channel_id, file_path),
-        )
-        .unwrap()
-        .deserialize::<Option<i64>>()
-        .unwrap()
+        let pool = seed_pool(webview);
+
+        tauri::async_runtime::block_on(repo::insert_media(
+            &pool, channel_id, "Video", file_path, None, "video", None, None, None, false, None,
+        ))
         .expect("media id")
     }
 
@@ -299,19 +233,10 @@ mod tests {
     }
 
     #[test]
-    fn insert_and_page_media_round_trips_through_ipc() {
+    fn paging_media_round_trips_through_ipc() {
         let webview = test_webview(memory_db());
         let channel_id = seed_channel(&webview);
-
-        let media_id = invoke(
-            &webview,
-            "insert_media",
-            insert_media_body(channel_id, "video/media_x.mp4"),
-        )
-        .unwrap()
-        .deserialize::<Option<i64>>()
-        .unwrap();
-        assert!(media_id.is_some(), "insert should return the new row id");
+        insert_media_row(&webview, channel_id, "video/media_x.mp4");
 
         // Read the row back through the real paginated-list command the library uses (there is no
         // separate unpaginated list command); this exercises the MediaPageQuery deserialization and
@@ -332,120 +257,17 @@ mod tests {
         assert_eq!(items[0]["title"], "Video");
     }
 
-    #[test]
-    fn insert_media_stores_a_trimmed_youtube_video_id_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-
-        // A padded youtube id must be stored trimmed, so the partial unique index and the id
-        // lookup (both of which compare the column verbatim) see the same value. This pins that
-        // the trim + non-empty filter actually runs: without the filter's `!`, a real id would be
-        // dropped to NULL instead of stored.
-        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
-        body["youtubeVideoId"] = serde_json::json!("  vid123  ");
-
-        invoke(&webview, "insert_media", body).unwrap();
-
-        let page = invoke(
-            &webview,
-            "list_media_page",
-            serde_json::json!({ "channelId": channel_id, "query": default_media_page_query() }),
-        )
-        .unwrap()
-        .deserialize::<serde_json::Value>()
-        .unwrap();
-
-        let items = page["items"].as_array().unwrap();
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0]["youtube_video_id"], "vid123");
-    }
-
-    #[test]
-    fn insert_media_normalizes_a_blank_youtube_video_id_to_null_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-
-        // A whitespace-only youtube id is "no id": it must be stored as NULL, not the empty string
-        // the partial unique index would treat as present (and collide a second blank-id insert
-        // on). With the trim/filter dropped, a blank id would persist as "" instead of NULL.
-        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
-        body["youtubeVideoId"] = serde_json::json!("   ");
-
-        invoke(&webview, "insert_media", body).unwrap();
-
-        let page = invoke(
-            &webview,
-            "list_media_page",
-            serde_json::json!({ "channelId": channel_id, "query": default_media_page_query() }),
-        )
-        .unwrap()
-        .deserialize::<serde_json::Value>()
-        .unwrap();
-
-        let items = page["items"].as_array().unwrap();
-        assert_eq!(items.len(), 1);
-        assert!(items[0]["youtube_video_id"].is_null());
-    }
-
-    #[test]
-    fn insert_media_rejects_an_unmanaged_file_path_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-
-        // The managed-path guard runs at the IPC boundary before the row is written.
-        let error = invoke(
-            &webview,
-            "insert_media",
-            insert_media_body(channel_id, "../escape.mp4"),
-        )
-        .unwrap_err();
-
-        assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
-    }
-
-    #[test]
-    fn insert_media_rejects_an_empty_title_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-
-        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
-        body["title"] = serde_json::json!("   ");
-
-        let error = invoke(&webview, "insert_media", body).unwrap_err();
-
-        assert_eq!(error["code"], AppErrorCode::InvalidMediaTitle.as_str());
-    }
-
-    #[test]
-    fn insert_media_rejects_an_invalid_media_type_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-
-        let mut body = insert_media_body(channel_id, "video/media_x.mp4");
-        body["mediaType"] = serde_json::json!("image");
-
-        let error = invoke(&webview, "insert_media", body).unwrap_err();
-
-        assert_eq!(
-            error["code"],
-            AppErrorCode::InvalidMediaCreationArguments.as_str()
-        );
-    }
+    // The five tests that pinned `insert_media`'s validation over IPC moved with that validation,
+    // into `services::video_repository`'s own test module: the trimmed and blank youtube id, the
+    // unmanaged file path, the empty title and the invalid media type. They assert the same
+    // behaviors against the function that now performs them, which is also the one every caller
+    // reaches - the command layer was never the only way in, it was just the only one being tested.
 
     #[test]
     fn update_media_title_rejects_an_empty_title_over_ipc() {
         let webview = test_webview(memory_db());
         let channel_id = seed_channel(&webview);
-
-        let media_id = invoke(
-            &webview,
-            "insert_media",
-            insert_media_body(channel_id, "video/media_x.mp4"),
-        )
-        .unwrap()
-        .deserialize::<Option<i64>>()
-        .unwrap()
-        .expect("media id");
+        let media_id = insert_media_row(&webview, channel_id, "video/media_x.mp4");
 
         let error = invoke(
             &webview,
@@ -461,16 +283,7 @@ mod tests {
     fn mark_media_as_watched_returns_a_persisted_timestamp_over_ipc() {
         let webview = test_webview(memory_db());
         let channel_id = seed_channel(&webview);
-
-        let media_id = invoke(
-            &webview,
-            "insert_media",
-            insert_media_body(channel_id, "video/media_x.mp4"),
-        )
-        .unwrap()
-        .deserialize::<Option<i64>>()
-        .unwrap()
-        .expect("media id");
+        let media_id = insert_media_row(&webview, channel_id, "video/media_x.mp4");
 
         let watched_at = invoke(
             &webview,
@@ -485,34 +298,6 @@ mod tests {
             !watched_at.trim().is_empty(),
             "a watched timestamp should be returned"
         );
-    }
-
-    #[test]
-    fn find_media_by_channel_and_file_path_returns_the_row_or_null_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-        insert_media_row(&webview, channel_id, "video/media_x.mp4");
-
-        let found = invoke(
-            &webview,
-            "find_media_by_channel_and_file_path",
-            serde_json::json!({ "channelId": channel_id, "filePath": "video/media_x.mp4" }),
-        )
-        .unwrap()
-        .deserialize::<serde_json::Value>()
-        .unwrap();
-        assert_eq!(found["file_path"], "video/media_x.mp4");
-
-        // A path this channel never stored resolves to null, not an error.
-        let missing = invoke(
-            &webview,
-            "find_media_by_channel_and_file_path",
-            serde_json::json!({ "channelId": channel_id, "filePath": "video/nope.mp4" }),
-        )
-        .unwrap()
-        .deserialize::<serde_json::Value>()
-        .unwrap();
-        assert!(missing.is_null());
     }
 
     #[test]

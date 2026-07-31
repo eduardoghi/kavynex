@@ -5,7 +5,9 @@ use ts_rs::TS;
 use crate::services::database::{
     database_error_message, db_error, is_foreign_key_violation, is_unique_violation,
 };
+use crate::utils::path::ensure_managed_library_relative_path;
 use crate::utils::text::normalize_search_text;
+use crate::utils::validation::{ensure_valid_media_title, ensure_valid_media_type};
 use crate::{AppError, AppErrorCode, AppResult};
 
 // `id`/counts/flags are i64 in Rust but ts-rs would emit `bigint`; the Tauri IPC layer
@@ -285,6 +287,23 @@ pub async fn clear_live_chat_reference(pool: &SqlitePool, relative_path: &str) -
 /// `thumbnail_path`, `duration_seconds`, etc. untouched. A caller that needs to change an
 /// existing row's metadata must use the dedicated update path (e.g. `update_media_title`), not
 /// re-`insert_media`, which will silently leave every field but the id as it was.
+///
+/// # The write boundary is here
+///
+/// The validation below used to live one layer up, in the `insert_media` Tauri command, which made
+/// it a property of *arriving over IPC* rather than of writing a row. That was the wrong place for
+/// it twice over: the command has since been removed from the IPC surface (a media is created
+/// through `create_media`, which exposes an operation rather than its steps), and the remaining
+/// caller - `services::media_creation` - would then have been trusted to have done it itself.
+/// It mostly had, but not entirely: the `media_type` a yt-dlp download reports is the download's
+/// own, never the normalized request's, so it reached the row with nothing but the table's `CHECK`
+/// behind it.
+///
+/// So the rule the rest of the backend follows applies here too: every write boundary calls the
+/// shared validators. The paths must be managed and library-relative, because the deletion path acts
+/// on whatever a row holds; the text fields are validated and stored trimmed, because the partial
+/// unique index on `youtube_video_id` compares the stored column verbatim and a padded value would
+/// dodge the dedupe.
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_media(
     pool: &SqlitePool,
@@ -299,6 +318,28 @@ pub async fn insert_media(
     is_live: bool,
     live_chat_file_path: Option<&str>,
 ) -> AppResult<i64> {
+    ensure_valid_media_title(title)?;
+    ensure_valid_media_type(media_type)?;
+
+    ensure_managed_library_relative_path(file_path)?;
+
+    if let Some(path) = thumbnail_path {
+        ensure_managed_library_relative_path(path)?;
+    }
+
+    if let Some(path) = live_chat_file_path {
+        ensure_managed_library_relative_path(path)?;
+    }
+
+    // A blank youtube id is "no id": stored as an empty string it would sit in the partial unique
+    // index as a *present* value and collide with the next blank one, which is the opposite of what
+    // that index is for.
+    let title = title.trim();
+    let media_type = media_type.trim();
+    let youtube_video_id = youtube_video_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
     let normalized_live_chat = live_chat_file_path
         .map(str::trim)
         .filter(|value| !value.is_empty());
@@ -842,7 +883,7 @@ mod tests {
             1,
             "Video A",
             "video/a.mp4",
-            Some("thumb/a.jpg"),
+            Some("thumbnails/a.jpg"),
             "video",
             Some("yt1"),
             Some("2026-01-01"),
@@ -1376,7 +1417,7 @@ mod tests {
             1,
             "A",
             "video/a.mp4",
-            Some("thumb/s.jpg"),
+            Some("thumbnails/s.jpg"),
             "video",
             None,
             None,
@@ -1391,7 +1432,7 @@ mod tests {
             2,
             "B",
             "video/a.mp4",
-            Some("thumb/s.jpg"),
+            Some("thumbnails/s.jpg"),
             "audio",
             None,
             None,
@@ -1403,7 +1444,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            count_media_using_thumbnail_outside_media(&pool, "thumb/s.jpg", a)
+            count_media_using_thumbnail_outside_media(&pool, "thumbnails/s.jpg", a)
                 .await
                 .unwrap(),
             1
@@ -1758,6 +1799,165 @@ mod tests {
         assert_eq!(
             list_media_page(&pool, 1, &query).await.unwrap_err().code,
             AppErrorCode::InvalidInput.as_str()
+        );
+    }
+
+    /// `insert_media` with only the fields a validation test cares about, so each one below names
+    /// the value it is actually about.
+    async fn insert_with(
+        pool: &SqlitePool,
+        title: &str,
+        file_path: &str,
+        media_type: &str,
+        youtube_video_id: Option<&str>,
+    ) -> AppResult<i64> {
+        insert_media(
+            pool,
+            1,
+            title,
+            file_path,
+            None,
+            media_type,
+            youtube_video_id,
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+    }
+
+    /// What the row actually holds, which is the only thing these tests can assert about a value
+    /// that was normalized on the way in.
+    async fn stored_youtube_video_id(pool: &SqlitePool, media_id: i64) -> Option<String> {
+        sqlx::query_as::<_, (Option<String>,)>("SELECT youtube_video_id FROM videos WHERE id = ?")
+            .bind(media_id)
+            .fetch_one(pool)
+            .await
+            .expect("the inserted row must be readable")
+            .0
+    }
+
+    // The five tests below moved here with the validation they pin, from the `insert_media` Tauri
+    // command that used to perform it and has since been removed from the IPC surface. They assert
+    // the same behaviors against the function that performs them now - which is also the function
+    // every caller reaches, where the command was only one of them.
+
+    #[tokio::test]
+    async fn insert_media_stores_a_trimmed_youtube_video_id() {
+        // A padded youtube id has to be stored trimmed, so the partial unique index and the id
+        // lookup - both of which compare the column verbatim - see the same value. This also pins
+        // that the non-empty filter does not swallow a real id: without its `!`, every id would be
+        // dropped to NULL instead of stored.
+        let pool = create_test_pool().await;
+
+        let media_id = insert_with(&pool, "A", "video/a.mp4", "video", Some("  vid123  "))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_youtube_video_id(&pool, media_id).await.as_deref(),
+            Some("vid123")
+        );
+    }
+
+    #[tokio::test]
+    async fn insert_media_normalizes_a_blank_youtube_video_id_to_null() {
+        // A whitespace-only id is "no id". Stored as an empty string it would sit in the partial
+        // unique index as a *present* value and collide with the next blank one, which is the
+        // opposite of what that index is for.
+        let pool = create_test_pool().await;
+
+        let media_id = insert_with(&pool, "A", "video/a.mp4", "video", Some("   "))
+            .await
+            .unwrap();
+
+        assert_eq!(stored_youtube_video_id(&pool, media_id).await, None);
+    }
+
+    #[tokio::test]
+    async fn insert_media_rejects_a_path_outside_the_managed_layout() {
+        // The deletion path acts on whatever a row holds, so a traversing or bare path persisted
+        // here would let a later delete or move operate outside the app's own tree. Every stored
+        // path is checked, not only the media file.
+        let pool = create_test_pool().await;
+
+        assert_eq!(
+            insert_with(&pool, "A", "../escape.mp4", "video", None)
+                .await
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidRelativePath.as_str()
+        );
+
+        assert_eq!(
+            insert_media(
+                &pool,
+                1,
+                "A",
+                "video/a.mp4",
+                Some("/etc/passwd"),
+                "video",
+                None,
+                None,
+                None,
+                false,
+                None,
+            )
+            .await
+            .unwrap_err()
+            .code,
+            AppErrorCode::InvalidRelativePath.as_str()
+        );
+
+        assert_eq!(
+            insert_media(
+                &pool,
+                1,
+                "A",
+                "video/a.mp4",
+                None,
+                "video",
+                None,
+                None,
+                None,
+                false,
+                Some("../outside.json.gz"),
+            )
+            .await
+            .unwrap_err()
+            .code,
+            AppErrorCode::InvalidRelativePath.as_str()
+        );
+    }
+
+    #[tokio::test]
+    async fn insert_media_rejects_an_empty_title() {
+        let pool = create_test_pool().await;
+
+        assert_eq!(
+            insert_with(&pool, "   ", "video/a.mp4", "video", None)
+                .await
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidMediaTitle.as_str()
+        );
+    }
+
+    #[tokio::test]
+    async fn insert_media_rejects_a_media_type_the_schema_would_refuse() {
+        // The table's own CHECK would refuse this too, so what this buys is the message: a named
+        // validation failure rather than a constraint violation. It is also the one field a yt-dlp
+        // creation does not route through the request normalizer - the value comes off the download -
+        // so before this check moved here, nothing but that CHECK stood behind it.
+        let pool = create_test_pool().await;
+
+        assert_eq!(
+            insert_with(&pool, "A", "video/a.mp4", "image", None)
+                .await
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidMediaCreationArguments.as_str()
         );
     }
 }

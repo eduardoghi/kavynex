@@ -24,14 +24,12 @@ mod tests {
     use tauri::test::{mock_builder, mock_context, noop_assets};
     use tauri::Manager;
 
-    // replace_media_comments now takes State<Db>, so it runs under the mock runtime. The channel
-    // and media inserts are registered too so a real video row exists (foreign key) before
-    // comments are replaced for it.
+    // replace_media_comments now takes State<Db>, so it runs under the mock runtime. insert_channel
+    // is registered too so a real channel row exists before the media row that references it.
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![
                 crate::commands::channels::insert_channel,
-                crate::commands::videos::insert_media,
                 replace_media_comments
             ])
             .build(mock_context(noop_assets()))
@@ -44,6 +42,11 @@ mod tests {
             .unwrap()
     }
 
+    /// Seeds the video row these tests attach comments to.
+    ///
+    /// The media row goes in through the repository rather than through an `insert_media` command,
+    /// which no longer exists: a media is created by `create_media`, and the individual steps are
+    /// not on the IPC surface. What this test needs is the row, not a particular way of producing it.
     fn seed_media(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> i64 {
         let channel_id = invoke(
             webview,
@@ -55,25 +58,22 @@ mod tests {
         .unwrap()
         .expect("channel id");
 
-        invoke(
-            webview,
-            "insert_media",
-            serde_json::json!({
-                "channelId": channel_id,
-                "title": "Video",
-                "filePath": "video/media_x.mp4",
-                "thumbnailPath": null,
-                "mediaType": "video",
-                "youtubeVideoId": null,
-                "publishedAt": null,
-                "durationSeconds": null,
-                "isLive": false,
-                "liveChatFilePath": null
-            }),
-        )
-        .unwrap()
-        .deserialize::<Option<i64>>()
-        .unwrap()
+        let pool = tauri::async_runtime::block_on(webview.state::<Db>().pool())
+            .expect("the managed pool must open");
+
+        tauri::async_runtime::block_on(crate::services::video_repository::insert_media(
+            &pool,
+            channel_id,
+            "Video",
+            "video/media_x.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
+        ))
         .expect("media id")
     }
 
