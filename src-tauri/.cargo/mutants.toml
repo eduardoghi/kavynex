@@ -323,7 +323,29 @@
 #     the loop precisely so it would be one of those five - it had been applied to the initial URL
 #     only, so a redirect out of an allowed CDN was followed anywhere public, and nothing in
 #     `download.rs` can be mutation-tested to catch that coming back.
+# `src/services/video_repository/media_page.rs` - the grid's paginated query: the `ORDER BY`
+# resolver, the `WHERE` builder, and the enum validators in front of both. It is the app's hottest
+# read path, and `resolve_order_by` is exactly the shape this gate exists for - a `match` returning a
+# `&'static str`, where a swapped arm is not a crash and not an error but the wrong rows in the wrong
+# order, which surfaces as "the sort is broken" with nothing pointing at the query. The whole file is
+# pure or pool-only (no `AppHandle`), which is why the glob is the file rather than an extraction -
+# the first entry here that needed neither.
+#     ADDED after a measured pass (2026-07-31, `--in-place --no-config --file`): 21 mutants, 6
+#     caught, 15 unviable, 0 missed, in 3 minutes. The fifteen unviable are cargo-mutants trying to
+#     build a `MediaPage`/`QueryBuilder` out of `Default`, which neither implements - noise, not a
+#     gap.
+#     It goes in clean because `every_media_page_sort_is_served_by_an_index` was already doing the
+#     hard part: it runs `EXPLAIN QUERY PLAN` for each of the five sort categories *in both
+#     directions* against the real schema, so an arm returning another category's clause loses its
+#     index and fails there.
+#     Worth recording what this pass did *not* establish, since a clean first measurement invites the
+#     wrong conclusion. The file is covered because of a test written for a different purpose (index
+#     coverage), not because each clause is pinned on its own. A sixth sort category added later with
+#     no index would be caught by that same test; one added *with* an index but the wrong direction
+#     would not be, and this gate would not see it either - the mutants are generated from the arms
+#     that exist, never from the one somebody forgot to add.
 examine_globs = [
+    "src/services/video_repository/media_page.rs",
     "src/services/live_chat_storage.rs",
     "src/services/thumbnail/redirect.rs",
     "src/services/library/migration.rs",
