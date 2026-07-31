@@ -68,6 +68,29 @@ actually act on what it says.
 Installers are intentionally not code-signed (see `SECURITY.md`); do not add code-signing
 steps to the release workflow.
 
+### What the release builds
+
+`bundle.targets` in `src-tauri/tauri.conf.json` names the seven bundlers explicitly (`nsis`,
+`msi`, `app`, `dmg`, `appimage`, `deb`, `rpm`) rather than using `"all"`. Tauri runs only the
+ones applicable to each runner, so the one list serves all six matrix legs.
+
+Today that list *is* every value of the CLI's `BundleType` enum, so the change was deliberately
+behavior-neutral - the point is what happens next time the enum grows. Under `"all"`, a Tauri
+upgrade that adds a bundler changes what this project ships without a commit here, and nothing
+downstream would say so: the asset-completeness check in `release.yml` only verifies that each
+*expected* name is present and never flags an unexpected extra, and `SHA256SUMS.txt` is generated
+with `sha256sum -- *` over whatever was attached. The provenance attestation, though, matches a
+fixed list of extensions, so the new artifact would not be covered by it.
+
+That combination is the failure worth avoiding: an installer on the release page, listed in
+`SHA256SUMS.txt`, that fails the `gh attestation verify` the README tells users to run - while
+every artifact beside it passes. Naming the targets makes a new bundler a no-op until someone
+adds it here, and adding it then forces the two matching edits (the completeness list and the
+attestation's `subject-path`) instead of leaving them to be noticed.
+
+Dropping a target is the other thing this makes expressible: with `"all"` there was nowhere to
+say that a format is not shipped.
+
 ### When a release dispatch fails
 
 The tag is created by `tauri-action` in step 3, i.e. *before* the `sbom` and `checksums` jobs
