@@ -391,8 +391,15 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
 /// the function it lives in, so the five `+= 1` sites in `compress_existing_live_chat_files` all
 /// shared one description - four of them killable, this one not, since a `read_dir` entry that fails
 /// to yield cannot be produced portably. That made the file ungateable: excluding the description
-/// would have silently dropped four working checks along with the one that needed it. Alone in here,
-/// this one can be excluded by name and the other four stay in scope.
+/// would have silently dropped four working checks along with the one that needed it.
+///
+/// The extraction was made to allow that exclusion, and then made it unnecessary, which is the part
+/// worth recording. A counter reachable only through a `read_dir` failure is unreachable; the same
+/// counter behind a named function is one call from a test, and
+/// `an_unreadable_directory_entry_is_counted_as_a_failure` kills both of its mutants directly. The
+/// lesson generalizes past this file: "no portable way to trigger the branch" is a statement about
+/// the *caller*, not about the decision, and moving the decision out is what turns an exclusion into
+/// a test.
 ///
 /// It also gained a log line it did not have. An entry that cannot even be read is the one case in
 /// this pass that left no trace anywhere - the count went up and nothing said why.

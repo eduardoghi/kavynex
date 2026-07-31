@@ -264,25 +264,54 @@
 #     (`ensure_destination_is_migratable_rejects_a_directory_that_is_not_a_managed_one`, plus two
 #     more pinning the accepted shapes and the loose-file half). The second is excluded below.
 #
-# `src/services/live_chat_storage.rs` is deliberately NOT in the list yet, and the measurement is
-# recorded here rather than left for whoever asks the same question next.
-#     Measured 2026-07-30 the same way: 136 mutants, 11 missed. Six were real gaps and are now
-#     killed by tests, so they are pure gain whether or not the file is ever gated: both
-#     decompression-bomb ceilings (`gzip_decompress_with_limit` and `stream_reader_lines`) had only
-#     their over-the-limit side covered, so tightening `>` to `>=` - which would refuse a payload of
-#     exactly the allowed size, the case the code's own comment promises - was invisible; the
-#     512 MiB ceiling constant had nothing pinning its arithmetic; and both guards in
-#     `list_live_chat_relative_paths` were unpinned, where inverting either makes a populated
-#     library report no live chat files at all.
-#     What blocks the file are the remaining five, and they are one problem twice. Four are the
-#     `summary.failed += 1` counters in `compress_existing_live_chat_files`, on the two branches that
-#     need a `read_dir` entry that fails to yield and a compression that fails - neither producible
-#     portably. They cannot be excluded either: cargo-mutants matches `exclude_re` against a
-#     description carrying the function name and not the line, and the *same* description at three
-#     other lines in that function is caught today, so the exclusion would silently drop six working
-#     checks. Gating the file needs the counter sites made distinguishable first (the restructuring
-#     instinct recorded above for `report_cleanup_outcome`), which is its own change.
+# `src/services/live_chat_storage.rs` - the gzip storage behind every live chat replay, including
+# both decompression-bomb ceilings. It reads data this app did not produce (a gzip stream yt-dlp
+# fetched from YouTube), which is the profile this gate exists for, and it was the largest file
+# outside it.
+#     First measured 2026-07-30: 136 mutants, 11 missed. Six were real gaps and were killed by tests
+#     then: both decompression-bomb ceilings (`gzip_decompress_with_limit` and `stream_reader_lines`)
+#     had only their over-the-limit side covered, so tightening `>` to `>=` - which would refuse a
+#     payload of exactly the allowed size, the case the code's own comment promises - was invisible;
+#     the 512 MiB ceiling constant had nothing pinning its arithmetic; and both guards in
+#     `list_live_chat_relative_paths` were unpinned, where inverting either makes a populated library
+#     report no live chat files at all.
+#     What blocked the file were the remaining five, and the note here used to say gating it needed
+#     the `summary.failed` counter sites "made distinguishable" so they could be excluded. That was
+#     half right, and the half it got wrong is the useful part. Both counters are now *killed*, not
+#     excluded, and neither needed a distinguishable name to get there:
+#       - The compression-failure branch was assumed to need a permission trick no test can do
+#         portably. It does not. `compress_file_in_place` stages through a `<name>.gztmp` sibling, so
+#         a *directory* at that path makes the staged write fail on every platform, with no
+#         permissions involved - and the directory is skipped by the loop's own `is_file` guard, so
+#         it does not disturb the scan.
+#       - The unreadable-`read_dir`-entry branch really is unreachable portably, so it moved into
+#         `record_unreadable_entry` - which was done to make an exclusion precise and instead made
+#         one unnecessary, because a counter behind a named function is one call from a test. Both of
+#         its mutants are caught by `an_unreadable_directory_entry_is_counted_as_a_failure`.
+#     That is worth generalizing, since this file exists to record such things: "there is no portable
+#     way to trigger this branch" is a statement about the caller, not about the decision. Moving the
+#     decision out is what turns a planned exclusion into a test - the same shape as
+#     `thumbnail::display::take_generation_slot` and `media_creation`'s three extractions, arrived at
+#     from the opposite direction.
+#     Re-measured 2026-07-31 after both: 137 mutants, 44 caught, 93 unviable, 0 missed. Goes in with
+#     no exclusions at all.
+# `src/services/thumbnail/redirect.rs` - the per-hop decision behind the thumbnail downloader's
+# manual redirect following: the hop budget, the refusal of a 3xx naming no destination, and the
+# resolution of `Location` against the URI it arrived on. This one is here for the strongest reason
+# any of these extractions has had. `thumbnail/download.rs` uses a hand-rolled hyper client instead
+# of the `reqwest` already in the tree *because* it follows redirects manually, so the SSRF guard
+# re-runs on every hop - and that per-hop decision was the one part of the module no gate could
+# reach, since the rest of the file is async network orchestration a unit test cannot drive. The
+# module's whole justification was untested.
+#     ADDED after a measured pass (2026-07-31, `--in-place --no-config --file`): 12 mutants, 4
+#     caught, 8 unviable, 0 missed. The eight unviable are cargo-mutants trying to build an
+#     `AppResult<Uri>` out of `Default`, which `Uri` does not implement - noise, not a gap. The four
+#     viable ones are the whole point: both directions of `hop_budget_exhausted -> bool` and the
+#     `>=` at its boundary, which inside the loop was reachable only by standing up a server that
+#     redirects eleven times, plus the `||` in the absolute-scheme test.
 examine_globs = [
+    "src/services/live_chat_storage.rs",
+    "src/services/thumbnail/redirect.rs",
     "src/services/library/migration.rs",
     "src/services/media_creation.rs",
     "src/services/thumbnail/picked.rs",
