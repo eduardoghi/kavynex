@@ -5,15 +5,39 @@ import {
     diffSurface,
     extractPathTakingCommands,
     formatSurface,
+    isCrateStructType,
     isPathParameter,
     parameterName,
+    parameterType,
     splitParameters,
+    structPathFields,
     verifyCommandPathSurface,
 } from "./verify-command-path-surface.js";
 
 const file = (content) => ({ name: "test.rs", content });
 
 const command = (signature) => `#[tauri::command]\npub async fn ${signature} -> AppResult<()> {\n}\n`;
+
+// A stand-in for `CreateMediaRequest`, carrying the four shapes that matter: a path-named field, a
+// field whose name says nothing and is declared by the marker, the near-miss sibling that must stay
+// out, and an attribute between the comments and the field.
+const requestStruct = `
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMediaRequest {
+    #[ts(type = "number")]
+    pub channel_id: i64,
+    pub title: String,
+    pub source_mode: MediaSourceMode,
+    /// A URL for a yt-dlp run, an absolute path for a local import.
+    // path-surface: an absolute path in local-import mode.
+    pub source_value: String,
+    #[serde(default)]
+    pub thumbnail_source_path: Option<String>,
+    pub library_path: String,
+    pub download_live_chat: bool,
+}
+`;
 
 describe("isPathParameter", () => {
     it("matches the parameter names that carry a filesystem path", () => {
@@ -83,6 +107,119 @@ describe("parameterName", () => {
     });
 });
 
+describe("parameterType", () => {
+    it("returns the type after the annotation colon", () => {
+        expect(parameterType("request: CreateMediaRequest")).toBe("CreateMediaRequest");
+        expect(parameterType("db: State<'_, Db>")).toBe("State<'_, Db>");
+    });
+
+    it("splits at the annotation colon, not at a path type's own", () => {
+        // `library::migration::Report` carries four colons; taking the first would yield a type of
+        // `:library::migration::Report`, which no struct lookup could match.
+        expect(parameterType("report: library::migration::Report")).toBe(
+            "library::migration::Report"
+        );
+    });
+
+    it("returns null for a parameter with no annotation", () => {
+        expect(parameterType("self")).toBeNull();
+    });
+});
+
+describe("isCrateStructType", () => {
+    it("accepts a bare PascalCase type that could name a struct in this crate", () => {
+        for (const type of ["CreateMediaRequest", "MediaPageQuery", "Db"]) {
+            expect(isCrateStructType(type), type).toBe(true);
+        }
+    });
+
+    it("rejects anything that cannot be a bare struct name", () => {
+        // A generic, a reference, a qualified path and a primitive are all types no `pub struct
+        // <name>` lookup should be attempted for. `String` is deliberately absent from this list:
+        // it matches the shape, and is rejected one step later by simply having no declaration in
+        // the tree - which is what keeps this from needing a built-in list that would go stale.
+        for (const type of [
+            "State<'_, Db>",
+            "Option<String>",
+            "Vec<String>",
+            "&str",
+            "library::migration::Report",
+            "i64",
+            "bool",
+            null,
+        ]) {
+            expect(isCrateStructType(type), String(type)).toBe(false);
+        }
+    });
+});
+
+describe("structPathFields", () => {
+    const sources = [file(requestStruct)];
+
+    it("finds the path-named fields of a struct, in declaration order", () => {
+        expect(structPathFields("CreateMediaRequest", sources)).toEqual([
+            "source_value",
+            "thumbnail_source_path",
+            "library_path",
+        ]);
+    });
+
+    it("includes a field the marker declares even though its name says nothing", () => {
+        // This is the case a naming rule cannot reach: `source_value` is an absolute path for a
+        // local import and a URL for a yt-dlp run, so the name is honest and still says nothing.
+        expect(structPathFields("CreateMediaRequest", sources)).toContain("source_value");
+    });
+
+    it("leaves the near-miss sibling out", () => {
+        // `source_mode` is a two-value enum sitting directly above the marked field, and it is why
+        // a `source_` prefix rule was rejected in favour of the marker.
+        const fields = structPathFields("CreateMediaRequest", sources);
+
+        expect(fields).not.toContain("source_mode");
+        expect(fields).not.toContain("channel_id");
+        expect(fields).not.toContain("download_live_chat");
+    });
+
+    it("does not let a marker drift onto the field below the one it was written for", () => {
+        // The marker applies to the field its comment block sits on. If a plain field intervened
+        // and still picked it up, any struct with one marked field would report every field after
+        // it - which would read as a much larger surface than there is.
+        const source = file(`
+pub struct Drifting {
+    // path-surface: the marked one.
+    pub marked_value: String,
+    pub unmarked_value: String,
+}
+`);
+
+        expect(structPathFields("Drifting", [source])).toEqual(["marked_value"]);
+    });
+
+    it("does not read prose mentioning the checker's filename as a marker", () => {
+        // This was a real bug in the first version of the marker, not a hypothetical. The test was
+        // `includes("path-surface")`, and the checker is called `verify-command-path-surface.js` -
+        // so any comment pointing a reader at it contained the marker text, and prose *explaining*
+        // the convention applied it to whatever field it happened to sit above. The marker is a
+        // directive now, anchored and requiring its colon.
+        const source = file(`
+pub struct Documented {
+    // See scripts/verify-command-path-surface.js for how the inventory is regenerated.
+    pub title: String,
+    // path-surface: this one really is a path.
+    pub opaque_value: String,
+}
+`);
+
+        expect(structPathFields("Documented", [source])).toEqual(["opaque_value"]);
+    });
+
+    it("returns nothing for a type with no declaration in the sources", () => {
+        // What makes `isCrateStructType` safe to leave permissive: `AppHandle` matches its shape
+        // and simply resolves to no fields.
+        expect(structPathFields("AppHandle", sources)).toEqual([]);
+    });
+});
+
 describe("extractPathTakingCommands", () => {
     it("finds a command taking a path", () => {
         const source = command("get_library_summary(db: State<'_, Db>, library_path: String)");
@@ -128,6 +265,37 @@ describe("extractPathTakingCommands", () => {
         const source = command("a(path: String)") + command("b(app: AppHandle)") + command("c(dir: String)");
 
         expect(extractPathTakingCommands(source).map((entry) => entry.command)).toEqual(["a", "c"]);
+    });
+
+    it("follows a struct-typed parameter into the paths it carries", () => {
+        // The blind spot this closes, and the one that mattered most: `create_media` groups its
+        // whole request into one struct, so matching on parameter names alone reported the app's
+        // largest write command as taking no path at all. It is not an exotic shape either - it is
+        // the direction this codebase deliberately moved in when the seven media-creation commands
+        // became one, so every future command that groups its steps inherits it.
+        const source = command("create_media(app: AppHandle, request: CreateMediaRequest)");
+
+        expect(extractPathTakingCommands(source, [file(requestStruct)])).toEqual([
+            {
+                command: "create_media",
+                parameters: ["source_value", "thumbnail_source_path", "library_path"],
+            },
+        ]);
+    });
+
+    it("reports a struct parameter as no path surface when the struct carries none", () => {
+        const source = command("save(app: AppHandle, request: PlainRequest)");
+        const structSource = file("pub struct PlainRequest {\n    pub title: String,\n}\n");
+
+        expect(extractPathTakingCommands(source, [structSource])).toEqual([]);
+    });
+
+    it("behaves as before when no struct sources are supplied", () => {
+        // The struct lookup is additive: a caller that passes none (every existing test, and the
+        // exported helpers' default) still gets exactly the name-matched surface.
+        const source = command("create_media(app: AppHandle, request: CreateMediaRequest)");
+
+        expect(extractPathTakingCommands(source)).toEqual([]);
     });
 });
 

@@ -77,6 +77,12 @@ pub struct CreateMediaRequest {
     #[ts(type = "\"local\" | \"yt-dlp\"")]
     pub source_mode: MediaSourceMode,
     /// A URL for a yt-dlp run, an absolute path for a local import.
+    // path-surface: an absolute path in local-import mode, so it belongs to the caller-supplied
+    // path surface the command inventory gates, and no naming rule can tell. `source_value` is the
+    // honest name (it is a URL in the other mode), a `source_` prefix rule would also match
+    // `source_mode` right above, and renaming it would make the name lie for yt-dlp runs and churn
+    // the generated binding. Removing this line shrinks what the inventory check reports, which
+    // fails that check rather than passing quietly.
     pub source_value: String,
     /// A managed `thumbnails/...` path, a remote URL, or an absolute path the user picked. Absent
     /// means "derive one" - from the download's own thumbnail, or from the media file itself.

@@ -72,9 +72,10 @@ export function splitParameters(parameterList) {
     return parameters.map((parameter) => parameter.trim()).filter(Boolean);
 }
 
-// The parameter's name, i.e. everything before the type annotation. Returns null for a parameter
-// with no `:` at depth 0 (`self`, or a malformed signature), which is skipped rather than guessed at.
-export function parameterName(parameter) {
+// The offset of the annotation colon - the first `:` at depth 0 - or -1 when the parameter has
+// none. Shared by `parameterName` and `parameterType` so the two cannot disagree about where the
+// name ends and the type begins.
+function annotationColonAt(parameter) {
     let depth = 0;
 
     for (let index = 0; index < parameter.length; index += 1) {
@@ -85,17 +86,152 @@ export function parameterName(parameter) {
         } else if (character === ">" || character === ")" || character === "]") {
             depth -= 1;
         } else if (character === ":" && depth === 0) {
-            return parameter.slice(0, index).trim().replace(/^mut\s+/, "");
+            return index;
         }
     }
 
-    return null;
+    return -1;
+}
+
+// The parameter's name, i.e. everything before the type annotation. Returns null for a parameter
+// with no `:` at depth 0 (`self`, or a malformed signature), which is skipped rather than guessed at.
+export function parameterName(parameter) {
+    const colonAt = annotationColonAt(parameter);
+
+    if (colonAt === -1) {
+        return null;
+    }
+
+    return parameter.slice(0, colonAt).trim().replace(/^mut\s+/, "");
+}
+
+// The parameter's type, i.e. everything after the annotation colon. Null when there is none.
+export function parameterType(parameter) {
+    const colonAt = annotationColonAt(parameter);
+
+    if (colonAt === -1) {
+        return null;
+    }
+
+    return parameter.slice(colonAt + 1).trim();
+}
+
+// True for a type that could name a struct declared in this crate: a bare PascalCase identifier,
+// with no generic argument, reference or path qualifier.
+//
+// Deliberately permissive, because it decides only whether to *look* for a declaration - a type
+// that matches but has no `pub struct` behind it (`AppHandle`, `String`) resolves to no fields and
+// is dropped. That is what keeps this from needing a list of built-in types to exclude, which is
+// the kind of list that goes stale silently.
+export function isCrateStructType(type) {
+    return type !== null && /^[A-Z][A-Za-z0-9]*$/.test(type);
+}
+
+// The marker that declares a struct field to be part of the path surface even though its name does
+// not say so, written as a `// path-surface: <reason>` comment on the field it applies to.
+//
+// It exists because one real field needs it and a naming rule cannot reach it.
+// `CreateMediaRequest::source_value` is an absolute path for a local import and a URL for a yt-dlp
+// run, so `source_value` is the honest name - and the obvious widenings all misfire. Matching a
+// `source_` prefix would also catch `source_mode` (a two-value enum) in the very same struct.
+// Renaming the field to `source_path` would make the name lie in the other mode and would churn the
+// generated TypeScript binding.
+//
+// So the author states it instead. Removing the marker is not a way to quietly shrink the surface:
+// it changes what this script reports, which fails the diff against the declared inventory below.
+//
+// Anchored to the start of the comment and requiring the colon, rather than tested with a bare
+// `includes`. A loose substring test is not a style preference here - it was wrong, and this
+// script's own name is what made it wrong: any comment that points a reader at
+// `verify-command-path-surface.js` contains the marker text, so prose *explaining* the convention
+// silently applied it to whatever field it sat above. Found by removing the real marker and
+// watching the gate still pass. Same substring trap `isPathParameter` is deliberately written to
+// avoid.
+const PATH_SURFACE_MARKER = /^\/\/+\s*path-surface\s*:/;
+
+// The fields of `pub struct <typeName>` that carry a caller-supplied path, in declaration order.
+//
+// This exists because the path surface is not only spelled as bare parameters any more. A command
+// that groups its request into one struct - the shape this codebase deliberately moved toward, since
+// `docs/THREAT-MODEL.md` states that the IPC surface exposes an operation rather than its steps -
+// puts every one of those paths behind a parameter named something like `request`, which no
+// name-based rule can see. `create_media(app, request: CreateMediaRequest)` is that case: it carries
+// four caller-supplied paths and was reported as taking none.
+//
+// Returns an empty list for a type with no declaration in the sources, which is what makes
+// `isCrateStructType` safe to leave permissive.
+export function structPathFields(typeName, sources) {
+    const declaration = new RegExp(`\\bpub struct\\s+${typeName}\\s*\\{`);
+
+    for (const { content } of sources) {
+        const match = declaration.exec(content);
+
+        if (!match) {
+            continue;
+        }
+
+        const bodyStart = match.index + match[0].length;
+        let depth = 1;
+        let bodyEnd = bodyStart;
+
+        while (bodyEnd < content.length && depth > 0) {
+            const character = content[bodyEnd];
+
+            if (character === "{") {
+                depth += 1;
+            } else if (character === "}") {
+                depth -= 1;
+
+                if (depth === 0) {
+                    break;
+                }
+            }
+
+            bodyEnd += 1;
+        }
+
+        const fields = [];
+        // Whether the contiguous run of comment lines directly above the next field carried the
+        // marker. Reset by every field and by any non-comment, non-attribute line, so a marker
+        // cannot drift onto a field it was not written for.
+        let markerPending = false;
+
+        for (const line of content.slice(bodyStart, bodyEnd).split("\n")) {
+            const trimmed = line.trim();
+
+            if (trimmed.startsWith("//")) {
+                markerPending = markerPending || PATH_SURFACE_MARKER.test(trimmed);
+                continue;
+            }
+
+            // Attributes (`#[serde(...)]`, `#[ts(...)]`) sit between the comments and the field, so
+            // they must not clear a pending marker.
+            if (trimmed.startsWith("#[") || trimmed.length === 0) {
+                continue;
+            }
+
+            const fieldMatch = /^(?:pub(?:\([^)]*\))?\s+)?([a-z_][a-z0-9_]*)\s*:/.exec(trimmed);
+
+            if (fieldMatch && (markerPending || isPathParameter(fieldMatch[1]))) {
+                fields.push(fieldMatch[1]);
+            }
+
+            markerPending = false;
+        }
+
+        return fields;
+    }
+
+    return [];
 }
 
 // Every `#[tauri::command]` in one source file that takes at least one path parameter, as
 // `{ command, parameters }` with the path parameters in declaration order. A command with no path
 // parameter is omitted entirely - the inventory is about the path surface, not about every command.
-export function extractPathTakingCommands(source) {
+//
+// `structSources` are the files searched for a struct declaration when a parameter's type names one;
+// pass none and the function behaves exactly as it did before struct parameters were followed.
+export function extractPathTakingCommands(source, structSources = []) {
     const found = [];
     let searchFrom = 0;
 
@@ -136,10 +272,31 @@ export function extractPathTakingCommands(source) {
             closeParenAt += 1;
         }
 
-        const parameters = splitParameters(source.slice(openParenAt, closeParenAt))
-            .map(parameterName)
-            .filter((name) => name !== null)
-            .filter(isPathParameter);
+        // A parameter contributes either its own name (when that name says it carries a path) or,
+        // when its type names a struct declared in this crate, that struct's path-carrying fields.
+        // The two are mutually exclusive in practice - a struct parameter is called `request`, not
+        // `request_path` - but the flatMap does not need them to be.
+        const parameters = splitParameters(source.slice(openParenAt, closeParenAt)).flatMap(
+            (parameter) => {
+                const name = parameterName(parameter);
+
+                if (name === null) {
+                    return [];
+                }
+
+                if (isPathParameter(name)) {
+                    return [name];
+                }
+
+                const type = parameterType(parameter);
+
+                if (!isCrateStructType(type)) {
+                    return [];
+                }
+
+                return structPathFields(type, structSources);
+            }
+        );
 
         if (parameters.length > 0) {
             found.push({ command, parameters });
@@ -151,8 +308,15 @@ export function extractPathTakingCommands(source) {
 
 // The whole path surface across every command module, sorted by command name so the comparison and
 // the `--print` output are stable regardless of file or declaration order.
-export function collectPathSurface(files) {
-    const surface = files.flatMap(({ content }) => extractPathTakingCommands(content));
+//
+// `structSources` are searched for the declaration of a struct-typed parameter. They are a separate
+// argument from `files` because the two sets differ: the commands live in `commands/`, while the
+// request struct one of them takes is declared beside the service that consumes it
+// (`services/media_creation.rs`).
+export function collectPathSurface(files, structSources = []) {
+    const surface = files.flatMap(({ content }) =>
+        extractPathTakingCommands(content, structSources)
+    );
 
     return surface.sort((left, right) => left.command.localeCompare(right.command));
 }
@@ -192,6 +356,7 @@ export function diffSurface(actual, declared) {
 export const DECLARED_PATH_SURFACE = [
     { command: "check_library_integrity", parameters: ["library_path", "media_paths", "thumbnail_paths", "live_chat_paths"] },
     { command: "cleanup_unreferenced_media_artifacts", parameters: ["file_path", "thumbnail_path", "live_chat_file_path"] },
+    { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"] },
     { command: "delete_live_chat_file", parameters: ["relative_path"] },
     { command: "delete_temporary_thumbnail", parameters: ["path"] },
     { command: "delete_thumbnail_file", parameters: ["thumbnail_path", "library_path"] },
@@ -228,21 +393,52 @@ export function readCommandFiles(commandsDir) {
         }));
 }
 
-export function verifyCommandPathSurface(files, declared = DECLARED_PATH_SURFACE) {
-    return diffSurface(collectPathSurface(files), declared);
+// Every `.rs` file under `root`, for resolving a struct-typed parameter's declaration. The whole
+// backend tree rather than only `commands/`, because a request struct is declared beside the service
+// that consumes it, not beside the command that receives it.
+export function readRustSources(root) {
+    return readdirSync(root, { withFileTypes: true })
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .flatMap((entry) => {
+            const entryPath = join(root, entry.name);
+
+            if (entry.isDirectory()) {
+                return readRustSources(entryPath);
+            }
+
+            if (!entry.name.endsWith(".rs")) {
+                return [];
+            }
+
+            return [{ name: entryPath, content: readFileSync(entryPath, "utf8") }];
+        });
+}
+
+export function verifyCommandPathSurface(
+    files,
+    declared = DECLARED_PATH_SURFACE,
+    structSources = []
+) {
+    return diffSurface(collectPathSurface(files, structSources), declared);
 }
 
 function main() {
     const scriptDir = dirname(fileURLToPath(import.meta.url));
-    const commandsDir = resolve(scriptDir, "..", "src-tauri", "src", "commands");
+    const backendDir = resolve(scriptDir, "..", "src-tauri", "src");
+    const commandsDir = join(backendDir, "commands");
     const files = readCommandFiles(commandsDir);
+    const structSources = readRustSources(backendDir);
 
     if (process.argv.includes("--print")) {
-        console.log(formatSurface(collectPathSurface(files)));
+        console.log(formatSurface(collectPathSurface(files, structSources)));
         return;
     }
 
-    const { added, removed } = verifyCommandPathSurface(files);
+    const { added, removed } = verifyCommandPathSurface(
+        files,
+        DECLARED_PATH_SURFACE,
+        structSources
+    );
 
     if (added.length === 0 && removed.length === 0) {
         console.log(
