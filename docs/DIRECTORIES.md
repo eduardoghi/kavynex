@@ -53,6 +53,16 @@ second import. If you ever see one sitting next to `kavynex.db` on a healthy ins
 failed midway and `.pre-import` is the database to go back to. See `docs/DATABASE.md` for why it is
 written after the move-aside rather than before it.
 
+One file here is not ours and is listed so the inventory above stays complete rather than
+almost-complete:
+
+- `.window-state.json` - the main window's size, position and maximized state, written by
+  `tauri-plugin-window-state` when the app closes and read back on the next launch (see
+  `docs/ARCHITECTURE.md` for where that plugin is registered). Kavynex never reads or writes it
+  itself; the name and the location are the plugin's defaults, not something this codebase chooses,
+  so treat the file on your machine as authoritative if it differs. Safe to delete at any time: the
+  next launch opens at the size in `src-tauri/tauri.conf.json` and writes a fresh one.
+
 See `docs/DATABASE.md` for the rotation, restore and import rules these files follow - the
 counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in
 `db_backup/snapshot.rs` and `db_backup/restore.rs`, which is what to read if this list and the code

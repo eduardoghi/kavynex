@@ -481,6 +481,16 @@ That surface is granted as the exact list the app uses, not a preset:
 string in the renderer, and the second is part of the IPC mechanism rather than a command. What
 serves an `asset:` URL is the scope described below, not a permission.
 
+**Two registered plugins hold no grant at all, and that is the correct state rather than an
+omission.** `tauri-plugin-single-instance` and `tauri-plugin-window-state` (`lib.rs`) do their whole
+job from the Rust side - a launch hook that focuses the existing window, and a window-event hook
+that persists size and position. Neither is reachable from `src/lib/`, so neither belongs in
+`capabilities/`, and adding one would be granting a permission nothing calls. This is stated rather
+than left to be inferred from the absence, because the list above otherwise reads as a complete
+accounting of the plugin surface and a reader counting six plugins against four grants deserves the
+answer here rather than in a diff. If either ever grows a call from the seam, its permission joins
+the list - and the failure mode if that is forgotten is the loud one described below.
+
 The list started as the scaffolded `core:default` and stayed that way through four rounds of
 capability hardening, because each of those rounds was framed as narrowing *plugin* permissions
 (the opener's URL scope, dropping `reveal_item_in_dir`, replacing `dialog:default` and

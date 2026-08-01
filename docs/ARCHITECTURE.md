@@ -106,12 +106,32 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   `std::fs` for the filesystem, and `std::process::Command` / `tokio::process::Command` to
   run yt-dlp and FFmpeg (resolved via `services/binaries.rs`).
 
-`src-tauri/src/lib.rs` wires all of this together: it builds the Tauri app, registers every
-command in `invoke_handler(tauri::generate_handler![...])`, and in `setup()` initializes the
+`src-tauri/src/lib.rs` wires all of this together: it registers the plugins (below), registers
+every command in `invoke_handler(tauri::generate_handler![...])`, and in `setup()` initializes the
 file logger, applies any staged database import before the connection pool opens, authorizes
 the cache directory in the asset-protocol scope, and spawns a background cleanup of stale
 temp files. On `ExitRequested` it cancels any in-flight yt-dlp/FFmpeg downloads so they are
 not left running as orphans.
+
+### The plugin chain, and why its order matters once
+
+Six plugins are registered, and the order of the list is not arbitrary at its head.
+`tauri-plugin-single-instance` **must be first**. A second launch is redirected into the running
+process's callback (which focuses the existing window) instead of starting a second instance - and a
+second instance would open a second `SqlitePool` onto the same database file and a second
+per-process download registry, which is a data-integrity problem rather than a cosmetic one.
+Registering it after a plugin that can fail or block would leave that window open. The invariant is
+stated here as well as in the code comment because a plugin list reads as an unordered set.
+
+Four of the six are the ones the frontend actually calls, and each has a matching grant in
+`src-tauri/capabilities/`: `tauri-plugin-process` (relaunch after an update),
+`tauri-plugin-updater`, `tauri-plugin-opener` (YouTube links) and `tauri-plugin-dialog` (the file
+and folder pickers). The remaining two - `tauri-plugin-single-instance` and
+`tauri-plugin-window-state`, which persists the window's size and position across launches - do
+their whole job from the Rust side, through a launch hook and a window-event hook. Nothing in
+`src/lib/` calls either, so neither appears in `capabilities/` and neither needs to; see
+`docs/THREAT-MODEL.md` for why that is the correct state rather than a missing grant, and
+`docs/DIRECTORIES.md` for the file window-state writes.
 
 ### Generated TypeScript bindings (ts-rs)
 
