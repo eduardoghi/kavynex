@@ -24,6 +24,12 @@ For normal use, Kavynex requires:
 
 Make sure `yt-dlp` and `ffmpeg` are installed and available in your system PATH.
 
+If you cannot change your PATH (a locked-down work machine, or a portable install you want to
+keep self-contained), drop the executables into a `tools/` folder inside the app's data directory
+instead - Kavynex falls back to it when the PATH lookup finds nothing. `docs/DIRECTORIES.md` lists
+that directory per OS, and the Troubleshooting section below covers how the lookup works and what
+the in-app Diagnostics dialog reports about it.
+
 ## Installation
 
 Prebuilt installers and packages are available on the latest GitHub release:
