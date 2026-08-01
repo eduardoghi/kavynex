@@ -19,7 +19,23 @@ use crate::utils::process::{
 use crate::{AppError, AppErrorCode, AppResult};
 
 fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<PathBuf>> {
-    let target_path = PathBuf::from(path.trim());
+    let trimmed = path.trim();
+
+    // Refuse a UNC/network location before the `exists()` below, for the reason the whole
+    // cross-cutting rule exists: on Windows, merely stat-ing `\\host\share\...` makes the OS
+    // authenticate to `host` over SMB and hand it the user's NTLM hash. The caller's path reaches
+    // this function raw over IPC, and the containment check the delete itself runs
+    // (`ensure_existing_path_inside_dir` against `thumbs-temp/`) happens *after* the stat - so it
+    // refuses the delete while the handshake has already been paid for. Its sibling
+    // `validate_source_media_path` below has had this since it was written; this one had not.
+    if is_network_path(trimmed) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidTempThumbnailPath,
+            "temporary thumbnail path must not be a network location",
+        ));
+    }
+
+    let target_path = PathBuf::from(trimmed);
 
     if !target_path.exists() {
         return Ok(None);
@@ -422,6 +438,46 @@ pub fn delete_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_temporary_thumbnail_delete_path_refuses_a_network_location_before_stating_it() {
+        // The refusal has to come before the `exists()`, not after it: the delete's own containment
+        // check runs later and would refuse the operation, but by then the stat has already made
+        // Windows authenticate to the named host over SMB - which is the whole cost this guard
+        // exists to avoid, and the reason the rule is stated as "before any filesystem call".
+        //
+        // Every spelling Windows still resolves to a share, including the mixed separators a literal
+        // `\\` prefix match would miss - the same set `is_network_path`'s own test pins.
+        for value in [
+            r"\\host\share\thumb_abc.jpg",
+            "//host/share/thumb_abc.jpg",
+            r"/\host\share\thumb_abc.jpg",
+            r"\/host\share\thumb_abc.jpg",
+        ] {
+            let error = validate_temporary_thumbnail_delete_path(value)
+                .expect_err("a network location must be refused, not stat'd");
+
+            assert_eq!(
+                error.code,
+                AppErrorCode::InvalidTempThumbnailPath.as_str(),
+                "should refuse: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_temporary_thumbnail_delete_path_still_ignores_a_path_that_is_not_there() {
+        // The other direction, so the refusal above cannot be widened into "refuse everything". A
+        // missing file is the ordinary case - the sweep may have removed the preview already - and
+        // has to answer `None` rather than an error, or every discarded preview would surface as a
+        // failure the user sees.
+        let missing = unique_test_dir().join("thumb_missing.jpg");
+
+        assert_eq!(
+            validate_temporary_thumbnail_delete_path(missing.to_string_lossy().as_ref()).unwrap(),
+            None
+        );
+    }
 
     #[test]
     fn validate_temporary_thumbnail_delete_path_rejects_directory_path_before_app_access() {
