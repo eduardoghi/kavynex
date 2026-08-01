@@ -173,6 +173,116 @@ describe("useDisplayThumbnails", () => {
         );
     });
 
+    it("asks again on its own when a request settled nothing and the item list will not change", async () => {
+        // The gap this closes. The backend admits one resolve call at a time and answers a refused
+        // one entirely "retryable", and its note on that says the caller already re-asks - which was
+        // true of the case it was written for and not of the case that produces it. The request key
+        // is derived from the items, so a re-ask otherwise needs a page to be appended, and the last
+        // page of a channel has no later append behind it. Without a timer of its own, that page
+        // would keep decoding full-resolution stored files for the rest of the session.
+        //
+        // Fake timers here rather than a real wait: the delay is the behavior under test, so the
+        // test should assert it fires rather than sleep for it.
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+
+        try {
+            vi.mocked(resolveDisplayThumbnails).mockResolvedValue(retryable());
+
+            renderHook(() => useDisplayThumbnails(["thumbnails/thumb_a.jpg"], "/library"));
+
+            await waitFor(() => {
+                expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
+            });
+
+            // Nothing about the props changed, so the old behavior would stop here forever.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2000);
+            });
+
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(2);
+            expect(resolveDisplayThumbnails).toHaveBeenLastCalledWith(
+                ["thumbnails/thumb_a.jpg"],
+                "/library"
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("gives up re-asking once the retry budget is spent", async () => {
+        // The bound, and it is what keeps the retry above from being a background timer for the rest
+        // of the session. Contention clears in a round or two - the call holding the slot finishes -
+        // so a request still settling nothing after that is not contended, it is one the backend
+        // cannot answer (a machine where FFmpeg hangs). Polling that forever re-derives the same
+        // answer at a cost, while stopping costs one session of drawing the stored thumbnail, which
+        // is the fallback this hook already declares.
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+
+        try {
+            vi.mocked(resolveDisplayThumbnails).mockResolvedValue(retryable());
+
+            renderHook(() => useDisplayThumbnails(["thumbnails/thumb_a.jpg"], "/library"));
+
+            await waitFor(() => {
+                expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
+            });
+
+            // Far more time than the budget allows retries for.
+            for (let round = 0; round < 8; round += 1) {
+                await act(async () => {
+                    await vi.advanceTimersByTimeAsync(2000);
+                });
+            }
+
+            // The first call plus the three retries the budget allows, and nothing after that.
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(4);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("gives a newly appended page a fresh retry budget", async () => {
+        // The counter is per request, not per hook. A page that exhausted its retries must not leave
+        // the next one unable to retry at all - that would turn a transient stretch of contention
+        // into a permanent loss of the feature for the rest of the session, which is a worse version
+        // of the bug the retry was added to fix.
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+
+        try {
+            vi.mocked(resolveDisplayThumbnails).mockResolvedValue(retryable());
+
+            const { rerender } = renderHook(
+                ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
+                { initialProps: { paths: ["thumbnails/thumb_a.jpg"] } }
+            );
+
+            for (let round = 0; round < 8; round += 1) {
+                await act(async () => {
+                    await vi.advanceTimersByTimeAsync(2000);
+                });
+            }
+
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(4);
+
+            rerender({ paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"] });
+
+            await waitFor(() => {
+                expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(5);
+            });
+
+            // The append's own call, then its own three retries.
+            for (let round = 0; round < 8; round += 1) {
+                await act(async () => {
+                    await vi.advanceTimersByTimeAsync(2000);
+                });
+            }
+
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(8);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("stops asking about a path that can never have a derivative", async () => {
         // The other half of the same decision, and the one this change added. A path the backend
         // settled without resolving - a name this app did not write, a machine with no FFmpeg, a

@@ -12,6 +12,21 @@ const EMPTY_DISPLAY_THUMBNAILS: ReadonlyMap<string, string> = new Map();
 // path on Windows and is not producible by any of this app's writers.
 const REQUEST_KEY_SEPARATOR = "\n";
 
+// How long to wait before re-asking after a request that settled nothing at all. Short enough that
+// the grid catches up while the user is still looking at the page, long enough that a backend busy
+// with another page has a real chance to finish and free the slot this is waiting on.
+const DISPLAY_RETRY_DELAY_MS = 1500;
+
+// How many times one request may be re-asked without settling anything before the hook gives up.
+//
+// The contention this recovers from clears in a round or two: the call holding the backend's resolve
+// slot finishes and releases it. A request still making no progress after that is not contended, it
+// is one the backend cannot answer - a machine where FFmpeg hangs, so every entry spends the call
+// budget instead of producing a derivative. Re-asking *that* forever would leave a timer running for
+// the rest of the session to re-derive the same answer, and the cost of stopping is one session of
+// drawing the stored thumbnail, which is this hook's declared fallback.
+const MAX_DISPLAY_RETRIES = 3;
+
 /**
  * Resolves display-sized copies of the thumbnails a list of media points at, so the grid can draw a
  * smaller decode than the stored file.
@@ -56,6 +71,17 @@ const REQUEST_KEY_SEPARATOR = "\n";
  * page's worth, which is the quadratic cost this hook exists to remove, and past the backend's
  * per-call ceiling it also logged a truncation warning per page. The backend now says which kind of
  * miss it was (`DisplayThumbnail`), and only the retryable kind is left out of the set.
+ *
+ * **Asking again is this hook's job, and waiting for the item list to change is not enough.** The
+ * backend's own note on its refused-slot answer says "the caller already re-asks about this", which
+ * was true of the case it was written for and not of the case that produces it. The request key is
+ * derived from the items, so a re-ask only happens when a page is appended - and the backend admits
+ * one resolve call at a time, so a page arriving while another holds that slot comes back entirely
+ * retryable having decided nothing. On the *last* page of a channel there is no later append, so
+ * that page would keep drawing full-resolution stored files for the rest of the session. That is
+ * precisely the failure `MAX_GENERATIONS_PER_CALL` was raised from 64 to 100 to remove, reached
+ * through a different door. So a request that settles nothing schedules its own re-ask, bounded by
+ * `MAX_DISPLAY_RETRIES` so a backend that genuinely cannot answer is not polled forever.
  */
 export function useDisplayThumbnails(
     thumbnailPaths: readonly (string | null | undefined)[],
@@ -69,6 +95,19 @@ export function useDisplayThumbnails(
     // of the map's keys, since a path that will never have a derivative is settled without appearing
     // there. See the note above on why this is a ref and not a read of the map itself.
     const settledPathsRef = useRef<Set<string>>(new Set());
+
+    // Bumped when a request settled nothing, so the effect below re-runs without the item list
+    // having had to change. See the "asking again" note in the doc comment for why waiting on the
+    // list is not enough.
+    const [retryTick, setRetryTick] = useState(0);
+
+    // Retries already spent on the current request, and which request they belong to. Refs rather
+    // than state: resetting a counter when the request changes must not itself cause a render in the
+    // commit where the fetch effect is already running, which is what a second piece of state here
+    // would do (and it would fetch twice for it).
+    const retriesSpentRef = useRef(0);
+    const retriedRequestRef = useRef<string | null>(null);
+    const retryTimerRef = useRef<number | null>(null);
 
     // A stable identity for "which paths are being asked about", so the effect below re-runs when
     // the set changes and not when the array is merely rebuilt with the same contents - which the
@@ -90,9 +129,20 @@ export function useDisplayThumbnails(
         // effect is declared before the fetch below so it runs first in the same commit.
         settledPathsRef.current = new Set();
         setDisplayThumbnails(EMPTY_DISPLAY_THUMBNAILS);
+        // Forces the retry budget below to reset on the next request too: every path it was
+        // counting attempts for belongs to a library that is no longer in use.
+        retriedRequestRef.current = null;
     }, [libraryPath]);
 
     useEffect(() => {
+        // A different set of paths is a different request, so it starts with a full retry budget.
+        // Compared against a ref rather than reset by its own effect, because this runs again for
+        // the *same* request on every retry tick and must not clear the count then.
+        if (retriedRequestRef.current !== requestKey) {
+            retriedRequestRef.current = requestKey;
+            retriesSpentRef.current = 0;
+        }
+
         const requested = requestKey
             .split(REQUEST_KEY_SEPARATOR)
             .filter((path) => path.length > 0 && !settledPathsRef.current.has(path));
@@ -122,6 +172,22 @@ export function useDisplayThumbnails(
                     settledPathsRef.current.add(path);
                 }
 
+                // Nothing at all was settled, so this call decided nothing about any of these
+                // paths: the backend was busy rather than unable to answer, which is what its
+                // "budgetSpent" means. Re-ask on a timer instead of waiting for the item list to
+                // change, because the list may never change again - the last page of a channel has
+                // no later append behind it, so a request refused here would otherwise leave those
+                // cards decoding the full-resolution stored file for the rest of the session. That
+                // is the same outcome MAX_GENERATIONS_PER_CALL was raised from 64 to 100 to remove,
+                // reached through a different door: the backend's single resolve slot.
+                if (settledPaths.size === 0 && retriesSpentRef.current < MAX_DISPLAY_RETRIES) {
+                    retriesSpentRef.current += 1;
+                    retryTimerRef.current = window.setTimeout(() => {
+                        retryTimerRef.current = null;
+                        setRetryTick((tick) => tick + 1);
+                    }, DISPLAY_RETRY_DELAY_MS);
+                }
+
                 // Checked after the ref update, not before it: a call that settled paths without
                 // resolving any still has to be remembered, and returning early on an empty map
                 // would throw that away and re-ask about all of them on the next page.
@@ -147,8 +213,15 @@ export function useDisplayThumbnails(
 
         return () => {
             disposed = true;
+
+            // A pending retry belongs to the request that scheduled it; a new request supersedes it
+            // rather than running alongside it, and an unmount must not leave a timer setting state.
+            if (retryTimerRef.current !== null) {
+                window.clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
+            }
         };
-    }, [requestKey, libraryPath]);
+    }, [requestKey, libraryPath, retryTick]);
 
     return displayThumbnails;
 }
