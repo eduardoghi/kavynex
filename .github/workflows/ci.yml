@@ -64,6 +64,15 @@ jobs:
             # command, or a path parameter added to an existing one, fails here until the inventory
             # is refreshed, which is where the author has to decide which case the new path is.
             #
+            # It gates a second inventory for the same reason, added after the first proved to cover
+            # less than it read as covering: the enforcement side. That document also enumerates
+            # *which functions* refuse a network location, and that table is what a review is checked
+            # against - but nothing held it, so it drifted again while this step stayed green. One
+            # site applied the rule without being listed, and one command stat'd a caller-supplied
+            # path with no refusal at all; both were correctly in the command inventory, which is
+            # exactly why the command inventory could not see either. Every `is_network_path` call in
+            # the backend now has to appear in that table, and every row in it has to still exist.
+            #
             # Node-only and reads the Rust sources as text, so it needs no install step and runs
             # before one.
             - name: Verify the command path surface is declared

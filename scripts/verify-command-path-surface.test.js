@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+    DECLARED_NETWORK_REFUSAL_SITES,
     DECLARED_PATH_SURFACE,
     collectPathSurface,
     diffSurface,
+    extractNetworkRefusalSites,
     extractPathTakingCommands,
+    stripTestModule,
+    verifyNetworkRefusalSites,
     formatSurface,
     isCrateStructType,
     isPathParameter,
@@ -364,6 +368,134 @@ describe("verifyCommandPathSurface", () => {
         const declared = [{ command: "only", parameters: ["path"] }];
 
         expect(verifyCommandPathSurface(files, declared).added).toEqual(["sneaky(source)"]);
+    });
+});
+
+describe("stripTestModule", () => {
+    it("removes the test module so a call site inside one is not read as production code", () => {
+        const source = `fn real() {\n    is_network_path(x);\n}\n#[cfg(test)]\nmod tests {\n    fn t() { is_network_path(y); }\n}\n`;
+
+        expect(stripTestModule(source)).toContain("fn real()");
+        expect(stripTestModule(source)).not.toContain("fn t()");
+    });
+
+    it("does not truncate at a #[cfg(test)] that is not the test module", () => {
+        // The direction that matters, and the reason the pattern requires `mod tests` rather than
+        // matching the attribute alone: `db_backup/mod.rs` carries `#[cfg(test)] use ...` partway up
+        // the file, and truncating there would drop every call site below it - a false negative in a
+        // gate whose whole job is to notice a missing guard.
+        const source = `#[cfg(test)]\nuse submodule::helper;\n\nfn later() {\n    is_network_path(x);\n}\n`;
+
+        expect(stripTestModule(source)).toContain("fn later()");
+    });
+
+    it("returns the source untouched when there is no test module", () => {
+        expect(stripTestModule("fn only() {}\n")).toBe("fn only() {}\n");
+    });
+});
+
+describe("extractNetworkRefusalSites", () => {
+    it("names the enclosing function of each call, qualified by file", () => {
+        const source = `fn first() {\n    if is_network_path(trimmed) {\n        return Err(e);\n    }\n}\n\nfn second() {\n    if is_network_path(other) {\n        return Err(e);\n    }\n}\n`;
+
+        expect(extractNetworkRefusalSites("services/x.rs", source)).toEqual([
+            "services/x.rs::first",
+            "services/x.rs::second",
+        ]);
+    });
+
+    it("reports a function calling the predicate twice only once", () => {
+        // `paths_refer_to_same_location` tests both sides in one expression; the inventory is about
+        // which functions enforce the rule, not how many times each mentions it.
+        const source = `fn both() {\n    if is_network_path(a) && !is_network_path(b) {\n        return false;\n    }\n}\n`;
+
+        expect(extractNetworkRefusalSites("services/x.rs", source)).toEqual([
+            "services/x.rs::both",
+        ]);
+    });
+
+    it("does not read prose about the rule as an application of it", () => {
+        // Comment lines quoting the call are common in this codebase - the rule is explained where
+        // it is applied - so a doc comment naming `is_network_path(configured)` must not add a site.
+        const source = `fn documented() {\n    // See is_network_path(value) for why this comes first.\n    let x = 1;\n}\n`;
+
+        expect(extractNetworkRefusalSites("utils/path.rs", source)).toEqual([]);
+    });
+
+    it("does not report the predicate's own definition", () => {
+        const source = `pub fn is_network_path(value: &str) -> bool {\n    is_network_path(value)\n}\n`;
+
+        expect(extractNetworkRefusalSites("utils/path.rs", source)).toEqual([]);
+    });
+
+    it("finds a call inside an async function", () => {
+        const source = `pub async fn gated(path: &str) {\n    if is_network_path(path) {\n        return;\n    }\n}\n`;
+
+        expect(extractNetworkRefusalSites("commands/x.rs", source)).toEqual(["commands/x.rs::gated"]);
+    });
+});
+
+describe("verifyNetworkRefusalSites", () => {
+    it("passes when the tree matches the declared sites", () => {
+        const sources = [
+            { name: "services/x.rs", content: `fn gated() {\n    is_network_path(p);\n}\n` },
+        ];
+
+        expect(verifyNetworkRefusalSites(sources, ["services/x.rs::gated"])).toEqual({
+            added: [],
+            removed: [],
+        });
+    });
+
+    it("fails when a new refusal site is added without declaring it", () => {
+        // The direction that closes the drift this check was written for: a guard added to a
+        // command has to reach docs/THREAT-MODEL.md's enumeration before it reaches this list.
+        const sources = [
+            {
+                name: "services/x.rs",
+                content: `fn gated() {\n    is_network_path(p);\n}\nfn added() {\n    is_network_path(q);\n}\n`,
+            },
+        ];
+
+        expect(verifyNetworkRefusalSites(sources, ["services/x.rs::gated"]).added).toEqual([
+            "services/x.rs::added",
+        ]);
+    });
+
+    it("fails when a declared refusal site disappears", () => {
+        // The other direction, and the more dangerous one: a guard silently removed or renamed out
+        // of a function must not leave the document describing a check that is no longer there.
+        const sources = [
+            { name: "services/x.rs", content: `fn gated() {\n    is_network_path(p);\n}\n` },
+        ];
+
+        expect(
+            verifyNetworkRefusalSites(sources, [
+                "services/x.rs::gated",
+                "services/x.rs::was_guarded",
+            ]).removed
+        ).toEqual(["services/x.rs::was_guarded"]);
+    });
+});
+
+describe("the declared network-refusal sites", () => {
+    it("are sorted and free of duplicates", () => {
+        expect(DECLARED_NETWORK_REFUSAL_SITES).toEqual(
+            [...DECLARED_NETWORK_REFUSAL_SITES].sort((left, right) => left.localeCompare(right))
+        );
+        expect(new Set(DECLARED_NETWORK_REFUSAL_SITES).size).toBe(
+            DECLARED_NETWORK_REFUSAL_SITES.length
+        );
+    });
+
+    it("are spelled as a posix file path plus a function name", () => {
+        // The spelling has to be platform-independent: this list is compared against paths derived
+        // from a directory walk, and a Windows separator would make a local run and a Linux CI run
+        // disagree about a list neither of them changed.
+        for (const site of DECLARED_NETWORK_REFUSAL_SITES) {
+            expect(site, site).toMatch(/^[a-z_0-9/]+\.rs::[a-z_0-9]+$/);
+            expect(site, site).not.toContain("\\");
+        }
     });
 });
 

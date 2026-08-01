@@ -1,5 +1,13 @@
-// CI gate: fails when the set of `#[tauri::command]`s that accept a path from the caller changes
-// without the declared inventory below being updated with it.
+// CI gate over the two halves of the cross-cutting path rule: the set of `#[tauri::command]`s that
+// accept a path from the caller, and the set of functions that refuse a network location before
+// touching one. Either changing without its declared inventory below being updated fails the run.
+//
+// The second half was added after the first proved to cover less than it read as covering. The
+// command inventory answers "which commands take a path"; `docs/THREAT-MODEL.md` also enumerates
+// *which functions apply the refusal*, and that second list is what a review of a new command is
+// checked against. Nothing held it: an audit found one enforcement site missing from the document
+// and another command stat-ing a caller-supplied path with no refusal at all, while this gate
+// passed - because both were, correctly, in the command inventory.
 //
 // docs/THREAT-MODEL.md states a cross-cutting rule - every command that accepts a path from the caller
 // refuses a UNC / network location before any filesystem call touches it, and the library-relative
@@ -25,7 +33,7 @@
 //     node scripts/verify-command-path-surface.js --print     # emit the current surface to paste below
 
 import { readFileSync, readdirSync } from "fs";
-import { resolve, join, dirname } from "path";
+import { resolve, join, dirname, relative, sep } from "path";
 import { fileURLToPath } from "url";
 
 const COMMAND_ATTRIBUTE = "#[tauri::command]";
@@ -332,20 +340,115 @@ export function formatSurface(surface) {
         .join("\n");
 }
 
-// Compares the surface found in the tree against the declared inventory, by the exact
-// `command(param, param)` spelling, so a path parameter added to an existing command is a change
-// too - not only a whole new command.
-export function diffSurface(actual, declared) {
-    const render = ({ command, parameters }) => `${command}(${parameters.join(", ")})`;
-
-    const actualEntries = new Set(actual.map(render));
-    const declaredEntries = new Set(declared.map(render));
+// Set difference in both directions, over already-rendered entry strings. Shared by the two
+// inventories below so a change to one cannot report differently from the other.
+export function diffEntries(actual, declared) {
+    const actualEntries = new Set(actual);
+    const declaredEntries = new Set(declared);
 
     return {
         added: [...actualEntries].filter((entry) => !declaredEntries.has(entry)).sort(),
         removed: [...declaredEntries].filter((entry) => !actualEntries.has(entry)).sort(),
     };
 }
+
+// Compares the surface found in the tree against the declared inventory, by the exact
+// `command(param, param)` spelling, so a path parameter added to an existing command is a change
+// too - not only a whole new command.
+export function diffSurface(actual, declared) {
+    const render = ({ command, parameters }) => `${command}(${parameters.join(", ")})`;
+
+    return diffEntries(actual.map(render), declared.map(render));
+}
+
+// The source with its `#[cfg(test)] mod tests { ... }` block removed, so a call site that only
+// exists in a test - or a comment inside one quoting the call - is not read as production code.
+//
+// Anchored to `#[cfg(test)]` *followed by* `mod tests`, not to `#[cfg(test)]` alone. That
+// distinction is load-bearing rather than pedantic: `db_backup/mod.rs` carries `#[cfg(test)] use
+// submodule::{...}` lines partway up the file, and truncating there would silently drop everything
+// below - which in a security gate is a false negative, the one direction that must not happen.
+export function stripTestModule(source) {
+    const testModuleAt = /#\[cfg\(test\)\]\s*mod\s+tests\s*\{/.exec(source);
+
+    return testModuleAt === null ? source : source.slice(0, testModuleAt.index);
+}
+
+// The functions in one source file that call `is_network_path`, i.e. the sites enforcing the
+// cross-cutting network-path rule, as `<file>::<fn>` in the order they appear.
+//
+// This is the second half of what this script gates, and it exists because the first half does not
+// cover it. `DECLARED_PATH_SURFACE` answers "which commands take a path from the caller"; it says
+// nothing about which functions refuse a UNC before touching one, and that second list is the one
+// `docs/THREAT-MODEL.md` enumerates and a review is actually checked against. It drifted: an audit
+// found `thumbnail::picked::validate_picked_thumbnail_path` applying the rule while the document
+// did not list it, and `thumbnail::temp::validate_temporary_thumbnail_delete_path` stat-ing a
+// caller-supplied path with no refusal at all - the exact failure the prose list is meant to make
+// visible, in the one place the command inventory could not see.
+//
+// The enclosing function is found by scanning back for the nearest `fn` declaration, which is
+// enough here because these are all free functions. A line whose trimmed form starts with `//` is
+// skipped so prose *about* the rule is not read as an application of it; a trailing comment on a
+// code line is deliberately not stripped, because a false positive fails loudly and gets fixed
+// while a false negative hides a missing guard.
+export function extractNetworkRefusalSites(fileName, source) {
+    const lines = stripTestModule(source).split("\n");
+    const declaration = /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)/;
+    const sites = [];
+    let enclosing = null;
+
+    for (const line of lines) {
+        const declared = declaration.exec(line);
+
+        if (declared) {
+            enclosing = declared[1];
+        }
+
+        if (line.trim().startsWith("//") || !line.includes("is_network_path(")) {
+            continue;
+        }
+
+        // The predicate's own definition is not an application of it.
+        if (enclosing === null || enclosing === "is_network_path") {
+            continue;
+        }
+
+        const site = `${fileName}::${enclosing}`;
+
+        if (!sites.includes(site)) {
+            sites.push(site);
+        }
+    }
+
+    return sites;
+}
+
+// Every network-refusal site across the backend, sorted so the comparison and the `--print` output
+// do not depend on directory order.
+export function collectNetworkRefusalSites(sources) {
+    return sources
+        .flatMap(({ name, content }) => extractNetworkRefusalSites(name, content))
+        .sort((left, right) => left.localeCompare(right));
+}
+
+// The declared enforcement sites for the network-path rule, matching the list
+// `docs/THREAT-MODEL.md` enumerates under "Path safety". Adding a call to `is_network_path`
+// anywhere in the backend fails this check until both lists learn about it, which is the point:
+// the document is what a review of a new command is checked against, and prose kept in sync by
+// discipline alone is what already drifted once.
+//
+// Regenerate with: node scripts/verify-command-path-surface.js --print
+export const DECLARED_NETWORK_REFUSAL_SITES = [
+    "commands/database.rs::prepare_export_destination",
+    "commands/database.rs::prepare_import_source",
+    "services/library/guard.rs::paths_refer_to_same_location",
+    "services/library/media.rs::import_media_file_sync",
+    "services/library/mod.rs::resolve_path_inside_library",
+    "services/thumbnail/picked.rs::validate_picked_thumbnail_path",
+    "services/thumbnail/temp.rs::validate_source_media_path",
+    "services/thumbnail/temp.rs::validate_temporary_thumbnail_delete_path",
+    "services/yt_dlp/cookies.rs::normalize_cookies_path",
+];
 
 // The declared path surface. Every entry is a command that takes a path from the caller; how each
 // one satisfies the rule (a network refusal, the library guard, a strictly-relative path that
@@ -396,21 +499,30 @@ export function readCommandFiles(commandsDir) {
 // Every `.rs` file under `root`, for resolving a struct-typed parameter's declaration. The whole
 // backend tree rather than only `commands/`, because a request struct is declared beside the service
 // that consumes it, not beside the command that receives it.
-export function readRustSources(root) {
+//
+// `name` is the path relative to `base` in posix spelling, so the refusal-site inventory below reads
+// the same on every platform - a Windows separator would otherwise put `services\library\guard.rs`
+// in a list a Linux CI run spells with slashes.
+export function readRustSources(root, base = root) {
     return readdirSync(root, { withFileTypes: true })
         .sort((left, right) => left.name.localeCompare(right.name))
         .flatMap((entry) => {
             const entryPath = join(root, entry.name);
 
             if (entry.isDirectory()) {
-                return readRustSources(entryPath);
+                return readRustSources(entryPath, base);
             }
 
             if (!entry.name.endsWith(".rs")) {
                 return [];
             }
 
-            return [{ name: entryPath, content: readFileSync(entryPath, "utf8") }];
+            return [
+                {
+                    name: relative(base, entryPath).split(sep).join("/"),
+                    content: readFileSync(entryPath, "utf8"),
+                },
+            ];
         });
 }
 
@@ -422,6 +534,13 @@ export function verifyCommandPathSurface(
     return diffSurface(collectPathSurface(files, structSources), declared);
 }
 
+export function verifyNetworkRefusalSites(
+    sources,
+    declared = DECLARED_NETWORK_REFUSAL_SITES
+) {
+    return diffEntries(collectNetworkRefusalSites(sources), declared);
+}
+
 function main() {
     const scriptDir = dirname(fileURLToPath(import.meta.url));
     const backendDir = resolve(scriptDir, "..", "src-tauri", "src");
@@ -430,46 +549,69 @@ function main() {
     const structSources = readRustSources(backendDir);
 
     if (process.argv.includes("--print")) {
+        console.log("// DECLARED_PATH_SURFACE");
         console.log(formatSurface(collectPathSurface(files, structSources)));
+        console.log("\n// DECLARED_NETWORK_REFUSAL_SITES");
+        for (const site of collectNetworkRefusalSites(structSources)) {
+            console.log(`    "${site}",`);
+        }
         return;
     }
 
-    const { added, removed } = verifyCommandPathSurface(
-        files,
-        DECLARED_PATH_SURFACE,
-        structSources
+    const surface = verifyCommandPathSurface(files, DECLARED_PATH_SURFACE, structSources);
+    const refusals = verifyNetworkRefusalSites(structSources, DECLARED_NETWORK_REFUSAL_SITES);
+
+    const report = (changed, title) => {
+        if (changed.added.length === 0 && changed.removed.length === 0) {
+            return false;
+        }
+
+        console.error(`${title}\n`);
+
+        if (changed.added.length > 0) {
+            console.error("Not in the declared inventory:");
+            for (const entry of changed.added) {
+                console.error(`  + ${entry}`);
+            }
+            console.error("");
+        }
+
+        if (changed.removed.length > 0) {
+            console.error("Declared but no longer present:");
+            for (const entry of changed.removed) {
+                console.error(`  - ${entry}`);
+            }
+            console.error("");
+        }
+
+        return true;
+    };
+
+    const surfaceChanged = report(
+        surface,
+        "The set of commands accepting a caller-supplied path has changed."
+    );
+    const refusalsChanged = report(
+        refusals,
+        "The set of functions refusing a network path has changed."
     );
 
-    if (added.length === 0 && removed.length === 0) {
+    if (!surfaceChanged && !refusalsChanged) {
         console.log(
-            `The command path surface matches the declared inventory (${DECLARED_PATH_SURFACE.length} commands).`
+            `The command path surface matches the declared inventory ` +
+                `(${DECLARED_PATH_SURFACE.length} commands, ` +
+                `${DECLARED_NETWORK_REFUSAL_SITES.length} network-refusal sites).`
         );
         return;
-    }
-
-    console.error("The set of commands accepting a caller-supplied path has changed.\n");
-
-    if (added.length > 0) {
-        console.error("Not in the declared inventory:");
-        for (const entry of added) {
-            console.error(`  + ${entry}`);
-        }
-        console.error("");
-    }
-
-    if (removed.length > 0) {
-        console.error("Declared but no longer present:");
-        for (const entry of removed) {
-            console.error(`  - ${entry}`);
-        }
-        console.error("");
     }
 
     console.error(
         "Every command taking a path from the caller has to satisfy the cross-cutting path rule in\n" +
             "docs/THREAT-MODEL.md - a UNC/network refusal before any filesystem call, the library\n" +
-            "strictly-relative path - and say which in that document. Once it does, refresh the\n" +
-            "inventory in scripts/verify-command-path-surface.js with:\n\n" +
+            "guard, or a strictly-relative path - and say which in that document. The second list is\n" +
+            "the enforcement side of the same rule: that document enumerates the functions applying\n" +
+            "it, and a new one belongs in the enumeration before it belongs here. Once both are\n" +
+            "right, refresh the inventories with:\n\n" +
             "    node scripts/verify-command-path-surface.js --print\n"
     );
 

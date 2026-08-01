@@ -70,11 +70,14 @@ Repository consistency (plain Node, no install needed - CI runs all three on eve
   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
 - `node scripts/verify-node-version.js` - fails when the Node version in `.nvmrc` and the
   `node-version:` values in the workflows disagree.
-- `node scripts/verify-command-path-surface.js` - fails when the set of `#[tauri::command]`s
-  taking a path from the caller no longer matches the inventory declared in that script. Adding
-  such a command (or a path parameter to an existing one) is meant to stop here, so the new path
-  gets classified under `docs/THREAT-MODEL.md`'s cross-cutting path rule rather than slipping in
-  unexamined. Run it with `--print` to regenerate the inventory once you have.
+- `node scripts/verify-command-path-surface.js` - fails when either half of the cross-cutting path
+  rule no longer matches its declared inventory: the set of `#[tauri::command]`s taking a path from
+  the caller, and the set of functions calling `is_network_path` to refuse a network location.
+  Adding such a command (or a path parameter to an existing one) is meant to stop here, so the new
+  path gets classified under `docs/THREAT-MODEL.md`'s cross-cutting path rule rather than slipping
+  in unexamined; adding or removing a guard stops here too, so that document's table of enforcement
+  sites cannot drift from the code the way it once did. Run it with `--print` to regenerate both
+  inventories once the document is right.
 
 `pnpm tauri build` builds release installers for your current platform.
 

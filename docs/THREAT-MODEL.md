@@ -45,17 +45,39 @@ SMB, handing the user's NTLM hash to whoever controls it. So the refusal has to 
 of the `exists()`/`is_file()`/`canonicalize()` that would otherwise pay the cost the check exists to
 avoid. `utils/path.rs::is_network_path` is the shared predicate (it normalizes separators, so the
 mixed spellings Windows still resolves to a share - `/\host\share`, `\/host\share` - cannot slip
-past a literal prefix match), and the commands applying it are
-`library::resolve_path_inside_library` (reveal in file manager),
-`thumbnail::temp::validate_source_media_path` (the FFmpeg preview source),
-`library::media::import_media_file_sync` (the import source),
-`library::guard::paths_refer_to_same_location` (a network path aimed at a local library),
-`yt_dlp::cookies::normalize_cookies_path` (the `--cookies` file),
-`commands/database.rs::prepare_import_source` (the database import source) and
-`commands/database.rs::prepare_export_destination` (the database export destination). A library or
-a cookies file the user deliberately keeps on a share is not blocked from *existing* - only from
-being reached through a path the renderer supplies; copy it locally and the flow works. When a new
-command takes a caller-supplied path, this is the list it joins.
+past a literal prefix match), and the functions applying it are:
+
+| Site | The path it gates |
+|---|---|
+| `library::resolve_path_inside_library` | reveal in file manager |
+| `thumbnail::temp::validate_source_media_path` | the FFmpeg preview source |
+| `thumbnail::temp::validate_temporary_thumbnail_delete_path` | the preview being discarded |
+| `thumbnail::picked::validate_picked_thumbnail_path` | the image staged for a manual thumbnail |
+| `library::media::import_media_file_sync` | the import source |
+| `library::guard::paths_refer_to_same_location` | a network path aimed at a local library |
+| `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
+| `commands/database.rs::prepare_import_source` | the database import source |
+| `commands/database.rs::prepare_export_destination` | the database export destination |
+
+A library or a cookies file the user deliberately keeps on a share is not blocked from *existing* -
+only from being reached through a path the renderer supplies; copy it locally and the flow works.
+When a new command takes a caller-supplied path, this is the list it joins.
+
+**And joining it is enforced rather than remembered.** This table is what a review of a new command
+is checked against, and keeping it in step with the code was left to discipline while the *command*
+inventory next door already had a CI gate. That asymmetry was a real gap, not a tidy one: two sites
+were wrong when an audit last looked. `thumbnail::picked::validate_picked_thumbnail_path` applied
+the rule without appearing here at all, and `thumbnail::temp::validate_temporary_thumbnail_delete_path`
+did not apply it - it called `exists()` straight on a path the renderer supplied, so the containment
+check that follows refused the *delete* only after the SMB handshake had already been paid for.
+Neither was visible to `scripts/verify-command-path-surface.js`, because both commands were, quite
+correctly, in the inventory it did hold.
+
+That script now holds both halves of the rule. Every `is_network_path` call in the backend has to
+appear in this table, and every row here has to still exist in the code, so a guard added, removed
+or renamed fails CI until the two agree. It is still not a claim that each site applies the *right*
+guard - that needs the call chain, which the script deliberately does not try to follow - only that
+the surface and its enforcement cannot drift apart silently again.
 
 The export is the one entry where the refusal stops more than the NTLM leak. Everything else on
 that list only *reads* through the supplied path; the export *writes the whole database* to it -
