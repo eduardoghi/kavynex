@@ -29,7 +29,7 @@ a check exists rather than only that it does:
   asset-protocol scope and the CSP. Includes the accepted residuals of each.
 - [`docs/RELEASE-SECURITY.md`](docs/RELEASE-SECURITY.md) - what makes a shipped build verifiable.
   The updater and its rollback exposure, why installers are unsigned, checksums, build provenance,
-  the SBOM, and the dependency supply chain.
+  the SBOM, where the CodeQL static analysis lives, and the dependency supply chain.
 
 These two were one 800-line `SECURITY.md` until they were split: the reporting instructions every
 security policy is expected to carry sat at the bottom of it, behind everything above.

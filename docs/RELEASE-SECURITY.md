@@ -131,6 +131,25 @@ advisory- and license-gated (`frontend-audit` job, `scripts/check-js-advisories.
 provenance attestation, the SBOM applies from v1.2.0 onward, not retroactively (see "When these
 three controls started applying" above).
 
+## Static analysis (CodeQL) lives outside this repository
+
+CodeQL runs on this repository through GitHub's **default setup**, which means there is no workflow
+file for it in `.github/workflows/`. That absence is the reason this section exists: someone reading
+the four workflows to find out what gates a change would reasonably conclude there is no static
+analysis at all, and would be wrong.
+
+It analyses three languages - `rust`, `javascript-typescript` and `actions` - on pushes to `main` and
+on a schedule, and its results are on the repository's **Security > Code scanning** tab rather than
+in a job log. `gh api repos/eduardoghi/kavynex/code-scanning/alerts` answers the same question from a
+terminal.
+
+Two properties are worth knowing before relying on it. It is configured in GitHub's UI, not in this
+repository, so unlike every other gate here it is not reviewable in a diff and does not travel with a
+fork. And it analyses **what has been pushed**, which is not always what has been written: a run
+green against `origin/main` says nothing about commits that exist only on a maintainer's machine.
+That is an argument for pushing often rather than against the tool, and it is the one gate in this
+document that cannot be run locally before a release.
+
 ## Accepted risk: the signing key is present while dependencies build
 
 The release workflow's build step (`.github/workflows/release.yml`, `tauri-apps/tauri-action`)

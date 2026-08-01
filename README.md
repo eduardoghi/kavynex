@@ -301,7 +301,8 @@ repository), and applies to the font files only, not to Kavynex itself.
 - `docs/THREAT-MODEL.md` - what the app defends against at runtime: the IPC trust boundary, path
   safety, the capability grants, the asset-protocol scope and the CSP.
 - `docs/RELEASE-SECURITY.md` - what makes a shipped build verifiable: the updater, why installers
-  are unsigned, checksums, build provenance, the SBOM and the dependency supply chain.
+  are unsigned, checksums, build provenance, the SBOM, static analysis and the dependency supply
+  chain.
 - `SECURITY.md` - how to report a vulnerability, and which versions are supported.
 - `SUPPORT.md` - where to report a bug, what to include, and what to expect.
 - `CODE_OF_CONDUCT.md` - the standard expected of everyone taking part, and how to report a problem.
