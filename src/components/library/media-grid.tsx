@@ -162,6 +162,14 @@ export function MediaGrid({
 
     const virtualRows = rowVirtualizer.getVirtualItems();
 
+    // The index of the last row currently rendered, which is the only thing the infinite-scroll
+    // effect below reads out of the virtualizer. Depending on the number rather than on
+    // `virtualRows` is what keeps that effect from re-running on frames where nothing it cares
+    // about moved: `getVirtualItems()` returns a freshly built array on every render, and this
+    // component re-renders on every scroll tick - that is what `useVirtualizer` does - so the effect
+    // was running, re-evaluating its four guards and returning, once per frame of every scroll.
+    const lastVisibleRowIndex = virtualRows[virtualRows.length - 1]?.index ?? -1;
+
     // Infinite scroll: when the last virtualized row comes into view and the backend reports more
     // matching rows, ask for the next page. isLoadingMore guards against firing repeatedly while a
     // page is in flight.
@@ -170,12 +178,12 @@ export function MediaGrid({
             return;
         }
 
-        const lastRow = virtualRows[virtualRows.length - 1];
-
-        if (lastRow && lastRow.index >= rows.length - 1) {
+        // -1 is "no rows rendered", which the comparison below would otherwise read as the last row
+        // of an empty list and turn into a page request against nothing.
+        if (lastVisibleRowIndex >= 0 && lastVisibleRowIndex >= rows.length - 1) {
             onLoadMore();
         }
-    }, [virtualRows, isVisible, hasMore, isLoadingMore, onLoadMore, rows.length]);
+    }, [lastVisibleRowIndex, isVisible, hasMore, isLoadingMore, onLoadMore, rows.length]);
 
     // Jump to (and briefly highlight) a media requested from elsewhere - e.g. a "missing media"
     // path clicked in Diagnostics. The target channel's media loads asynchronously, so this runs
