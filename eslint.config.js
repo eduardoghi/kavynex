@@ -16,6 +16,14 @@ export default defineConfig(
             "src-tauri/**",
             "src/types/generated/**",
             "**/*.config.{js,cjs,ts}",
+            // Stryker's working copies of the whole tree, and the report it writes. Both are
+            // gitignored, which is not the same thing: eslint reads this list, not .gitignore, and
+            // `pnpm lint` is `eslint .`. A run that finishes cleans its sandboxes up, so this is
+            // invisible until one is interrupted - and then each surviving sandbox is a full second
+            // copy of src/ and scripts/, linted as if it were source. Two of them turned `pnpm lint`
+            // into 7337 errors that named files nobody had written.
+            ".stryker-tmp/**",
+            "reports/**",
         ],
     },
     js.configs.recommended,
