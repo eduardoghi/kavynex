@@ -66,6 +66,9 @@ pub async fn resolve_display_thumbnails(
     // Taken before the library-path check rather than after it, so a refused call costs one atomic
     // rather than a settings read. That ordering is safe only because the refusal reveals nothing: it
     // is the same answer for a valid and an invalid library path, and no path is touched either way.
+    //
+    // `all_retryable` bounds the answer by the module's own per-call ceiling rather than by the
+    // number the caller sent, which this exit used to inherit - the one place in the module that did.
     let Some(_resolve_slot) = display::try_reserve_resolve_slot() else {
         return Ok(display::all_retryable(relative_paths.len()));
     };

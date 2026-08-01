@@ -163,8 +163,24 @@ pub(crate) fn try_reserve_resolve_slot() -> Option<SemaphorePermit<'static>> {
 /// may be present, the derivatives may even be cached - so recording them as final would strand
 /// cards a later call could have resolved. `BudgetSpent` is already what the caller re-asks about,
 /// and a call refused a slot is a per-call condition in exactly the sense that variant means.
+///
+/// `count` is bounded by [`capped_call_length`] rather than taken from the caller. This exit was the
+/// one place in the module that inherited a caller-supplied number instead of stating its own,
+/// which is the rule [`MAX_RESOLVED_PER_CALL`] exists to apply - and it is safe to answer short
+/// here because a missing answer and a `BudgetSpent` one mean the same thing to the caller: it
+/// reads the response by position and leaves an unanswered tail unsettled, which is precisely
+/// "ask again". Nothing is lost by the truncation and nothing is decided by it.
 pub(crate) fn all_retryable(count: usize) -> Vec<DisplayThumbnail> {
-    vec![DisplayThumbnail::BudgetSpent; count]
+    vec![DisplayThumbnail::BudgetSpent; capped_call_length(count)]
+}
+
+/// How many entries of a request of `requested` paths this module will speak about at all.
+///
+/// The single place that knows [`MAX_RESOLVED_PER_CALL`], so the two exits that apply it - the
+/// resolve itself, through [`within_call_ceiling`], and the refused-slot answer above - cannot
+/// disagree about where the ceiling is.
+pub(crate) fn capped_call_length(requested: usize) -> usize {
+    requested.min(MAX_RESOLVED_PER_CALL)
 }
 
 /// What one requested thumbnail got, and - when it got nothing - whether asking again could ever
@@ -283,7 +299,7 @@ pub(crate) fn display_cache_max_bytes() -> u64 {
 /// Pure over the slice so both directions of the ceiling are one call from a test; the entry point
 /// that applies it is `AppHandle`-bound and cannot be driven by one.
 pub(crate) fn within_call_ceiling(relative_paths: &[String]) -> &[String] {
-    &relative_paths[..relative_paths.len().min(MAX_RESOLVED_PER_CALL)]
+    &relative_paths[..capped_call_length(relative_paths.len())]
 }
 
 /// The name a derivative lands under: the canonical thumbnail's own content hash, the width it was
@@ -690,6 +706,42 @@ mod tests {
             .all(|answer| *answer == DisplayThumbnail::BudgetSpent));
 
         assert!(all_retryable(0).is_empty());
+    }
+
+    #[test]
+    fn a_refused_call_is_bounded_by_the_same_ceiling_as_a_resolved_one() {
+        // This exit used to allocate straight from the caller's own count, which is the one thing
+        // MAX_RESOLVED_PER_CALL exists to stop the module doing - and it sat in the file whose
+        // comments state that rule for every other bound. Answering short costs nothing: the caller
+        // reads by position and treats a missing answer exactly as BudgetSpent, i.e. as "ask again".
+        assert_eq!(
+            all_retryable(MAX_RESOLVED_PER_CALL * 10).len(),
+            MAX_RESOLVED_PER_CALL
+        );
+
+        // The boundary itself, from both sides, so the ceiling cannot drift into an off-by-one that
+        // silently drops one entry of a request that legitimately fills it.
+        assert_eq!(
+            all_retryable(MAX_RESOLVED_PER_CALL).len(),
+            MAX_RESOLVED_PER_CALL
+        );
+        assert_eq!(
+            all_retryable(MAX_RESOLVED_PER_CALL - 1).len(),
+            MAX_RESOLVED_PER_CALL - 1
+        );
+    }
+
+    #[test]
+    fn both_ceilings_are_the_same_number() {
+        // The two exits that apply the ceiling read it through one function, so a change to
+        // MAX_RESOLVED_PER_CALL cannot move one and leave the other behind. Asserted over a request
+        // that exceeds it, which is the only size where the two could disagree.
+        let oversized: Vec<String> = vec![String::new(); MAX_RESOLVED_PER_CALL + 7];
+
+        assert_eq!(
+            within_call_ceiling(&oversized).len(),
+            all_retryable(oversized.len()).len()
+        );
     }
 
     #[test]
