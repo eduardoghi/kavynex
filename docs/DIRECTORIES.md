@@ -196,6 +196,16 @@ directory on every startup, and the rule it applies depends on what a directory 
   `spawn_pending_media_sweep`, which decides per marker (see `marker_is_sweepable`) rather than
   by age, and a marker it cannot reconcile is deliberately kept.
 
+So this one directory has no bound at all, and that is worth stating rather than leaving to be
+noticed: an abandoned marker is never removed by anything. The growth is accepted rather than
+overlooked. A marker is a couple of hundred bytes, and producing one that is never reconciled takes
+a media creation that crashed *and* five consecutive launches that could not clean up after it - so
+the directory grows at a rate no user will measure. Against that, a sweep able to delete these files
+would be a sweep able to delete the only record of artifacts sitting in the library, which is
+precisely the decision `marker_is_sweepable` refuses to make whenever it is uncertain. Diagnostics
+reports and removes what an abandoned marker names; the marker itself is safe to delete by hand once
+it has.
+
 ## App log directory - `kavynex.log`
 
 `app.path().app_log_dir()` is where `services/logger.rs` writes:

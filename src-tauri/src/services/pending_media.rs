@@ -194,8 +194,22 @@ pub(crate) fn marker_is_sweepable(
 /// The retry exists for the transient case - the library drive not mounted yet, a lock still held -
 /// which resolves within a launch or two. A failure that survives this many is not transient: the
 /// library was repointed, or the path went permanently invalid. Retrying it forever turns a one-off
-/// failure into a tax on every launch, with nothing but a `warn` line nobody reads to show for it,
-/// and a directory of such markers only ever grows.
+/// failure into a tax on every launch, with nothing but a `warn` line nobody reads to show for it.
+///
+/// What this ceiling bounds is the *retrying*, and it is worth being exact about that because it is
+/// easy to read as bounding more. The directory itself is unbounded: an abandoned marker is
+/// deliberately left on disk (see [`marker_retries_are_exhausted`]), and `services::cleanup`'s
+/// startup sweep does not reach it either - that sweep covers the three scratch directories by age
+/// and the display cache by size, and `pending-media/` is in neither list, by design, since it is
+/// the one cache directory whose contents are a record rather than a derivative.
+///
+/// So the set of abandoned markers only grows. That is the accepted side of the trade rather than an
+/// oversight, and it is cheap on both counts: a marker is a couple of hundred bytes, and reaching
+/// one takes a media creation that crashed *and* five consecutive launches that could not reconcile
+/// it. Against that, a sweep able to delete these files would be a sweep able to delete the only
+/// record of artifacts sitting in the user's library - which is exactly the decision
+/// [`marker_is_sweepable`] refuses to make on anything uncertain. Diagnostics is what reports and
+/// removes what an abandoned marker names.
 const MAX_MARKER_SWEEP_ATTEMPTS: u32 = 5;
 
 /// Payload of the [`EVENT_PENDING_MEDIA_ABANDONED`](crate::constants::EVENT_PENDING_MEDIA_ABANDONED)
