@@ -61,6 +61,14 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
 /// Windows even when running on Unix, where `\` is not a separator and `Path::file_name` would
 /// otherwise return the whole string unredacted. Falls back to `<path>` when no final
 /// component remains (e.g. a root).
+///
+/// The cost of that is worth stating, because it is a real one rather than a theoretical one: on
+/// Unix `\` is an ordinary filename character, so a file legitimately named `my\clip.mp4` is
+/// logged as `clip.mp4`. That is over-redaction, which is the direction this function is allowed
+/// to be wrong in - the alternative is a platform-conditional split that leaves a Windows-synced
+/// path whole on Unix, i.e. exactly the username leak the whole function exists to prevent.
+/// Treating the ambiguous case as a separator therefore loses a little diagnostic detail on a rare
+/// name and never leaks; the other way round would leak on a common one.
 pub fn redact_path(path: impl AsRef<Path>) -> String {
     let raw = path.as_ref().to_string_lossy();
 
@@ -208,5 +216,16 @@ mod tests {
             "clip.mp4"
         );
         assert_eq!(redact_path("C:\\Users\\alice\\library"), "library");
+    }
+
+    #[test]
+    fn redact_path_treats_a_backslash_as_a_separator_even_where_it_is_a_valid_name_character() {
+        // The accepted cost of splitting on both separators everywhere, pinned so it reads as a
+        // decision rather than as an oversight: on Unix this name is one file, and it is redacted
+        // as though it were two segments. Over-redaction is the direction this is allowed to be
+        // wrong in - making the split platform-conditional would leave a Windows-synced path whole
+        // on Unix, which is the username leak the function exists to prevent. A change that
+        // "fixed" this case has to delete this test first.
+        assert_eq!(redact_path("/home/alice/my\\clip.mp4"), "clip.mp4");
     }
 }
