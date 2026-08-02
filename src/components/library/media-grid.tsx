@@ -40,12 +40,47 @@ type MediaGridProps = {
 };
 
 const GRID_GAP = 16;
-const GRID_HEIGHT = "70vh";
+
+// Roughly what sits above the grid inside the viewport: the app shell's padding, the channel
+// header, the filter row and the grid's own title. Deliberately an approximation rather than a
+// measurement - reading it would mean a layout query on a container that re-renders on every scroll
+// tick, which is the cost this file already refuses to pay for row heights (see measureFirstRow).
+// Being a little wrong costs a few pixels of outer page scroll; measuring costs a reflow per frame.
+const GRID_CHROME_ABOVE = 300;
+
+// The inner scroll area the virtualizer measures against. This was a flat `70vh`, which is wrong in
+// both directions once the window is not about 1080 tall: on a short window the grid plus the chrome
+// above it overflow, so the page scrolls behind a grid that is itself scrolling, and on a tall one a
+// fixed fraction leaves viewport unused that a fourth row would have filled.
+//
+// The floor is one full card row plus its gap. Below that the inner area cannot show a single
+// complete card, and the outer page scroll ends up doing all the work - which is the state the
+// nested scroll container exists to avoid.
+const GRID_HEIGHT = `max(${MEDIA_CARD_HEIGHT + GRID_GAP}px, calc(100vh - ${GRID_CHROME_ABOVE}px))`;
+
 // How long a card stays highlighted after the grid scrolls to it (e.g. from a diagnostics
 // "jump to media" action) before the highlight fades.
 const MEDIA_HIGHLIGHT_DURATION_MS = 2600;
 
-function getColumnCount(width: number): number {
+// The widest a card is allowed to get before another column is added instead.
+//
+// A card's thumbnail is drawn from the display-sized derivative, which is capped at
+// DISPLAY_THUMBNAIL_MAX_WIDTH (640) in services/thumbnail/display.rs. Stopping at four columns meant
+// a 2560-wide window gave each card roughly 620px and a 3840-wide one gave it well past the cap, so
+// the largest monitors were the ones being served an upscaled image - the opposite of what the
+// derivative cache is for. Adding columns keeps the drawn width under the cap and fits more of the
+// library on screen, which is what the extra width is for.
+const MAX_CARD_WIDTH = 420;
+
+export function getColumnCount(width: number): number {
+    if (width >= 6 * MAX_CARD_WIDTH) {
+        return 6;
+    }
+
+    if (width >= 5 * MAX_CARD_WIDTH) {
+        return 5;
+    }
+
     if (width >= 1200) {
         return 4;
     }

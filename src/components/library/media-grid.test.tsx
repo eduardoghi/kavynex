@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { MediaGrid } from "./media-grid";
+import { MediaGrid, getColumnCount } from "./media-grid";
 import { createMedia } from "../../test/factories/media";
 import { renderWithMantine } from "../../test/test-utils";
 
@@ -287,6 +287,52 @@ describe("MediaGrid", () => {
             for (const item of screen.getAllByRole("listitem")) {
                 expect(item.getAttribute("aria-setsize")).toBe("-1");
             }
+        });
+    });
+
+    // The breakpoints decide how wide a card is drawn, and a card's thumbnail comes from a
+    // derivative capped at 640px (DISPLAY_THUMBNAIL_MAX_WIDTH). The grid renders in jsdom at width
+    // 0, so nothing above this reaches any branch but the last one - which is why the function is
+    // exercised directly rather than through a render.
+    describe("getColumnCount", () => {
+        it("keeps a card under the width its thumbnail derivative is capped at", () => {
+            // The property the upper breakpoints exist for: past four columns a card would be drawn
+            // wider than the 640px derivative it renders, so the largest monitors were the ones
+            // getting an upscaled image. Asserted as the property rather than as the two thresholds,
+            // so tuning MAX_CARD_WIDTH cannot quietly reintroduce the case it was added to remove.
+            for (const width of [1920, 2230, 2560, 3440, 3840]) {
+                const cardWidth = width / getColumnCount(width);
+
+                expect(cardWidth).toBeLessThanOrEqual(640);
+            }
+        });
+
+        it("adds a column at each boundary and never below it", () => {
+            // Both sides of the two new thresholds. One pixel short must keep the lower count, or
+            // the grid reflows a column earlier than the width justifies.
+            expect(getColumnCount(5 * 420)).toBe(5);
+            expect(getColumnCount(5 * 420 - 1)).toBe(4);
+
+            expect(getColumnCount(6 * 420)).toBe(6);
+            expect(getColumnCount(6 * 420 - 1)).toBe(5);
+        });
+
+        it("leaves the original breakpoints untouched", () => {
+            // These are the widths a normal window actually hits, and they behaved correctly
+            // before: the change is meant to be invisible below 2100px.
+            expect(getColumnCount(1200)).toBe(4);
+            expect(getColumnCount(1199)).toBe(3);
+            expect(getColumnCount(992)).toBe(3);
+            expect(getColumnCount(991)).toBe(2);
+            expect(getColumnCount(768)).toBe(2);
+            expect(getColumnCount(767)).toBe(1);
+        });
+
+        it("never returns zero columns, whatever the measured width", () => {
+            // useElementSize reports 0 before the first layout pass, and the row grouping divides by
+            // this value - a zero would produce an infinite loop building the rows.
+            expect(getColumnCount(0)).toBe(1);
+            expect(getColumnCount(-1)).toBe(1);
         });
     });
 });
