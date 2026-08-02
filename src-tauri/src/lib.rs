@@ -47,7 +47,7 @@ const PENDING_MEDIA_SWEEP_DELAY_SECS: u64 = 30;
 
 fn spawn_startup_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
-        match services::cleanup::cleanup_stale_temp_files_sync(&app_handle) {
+        match services::temp_cleanup::cleanup_stale_temp_files_sync(&app_handle) {
             Ok(summary) => {
                 services::logger::info(
                     "startup_cleanup",
@@ -83,7 +83,7 @@ fn spawn_startup_library_cleanup(app_handle: AppHandle) {
         };
 
         let sweep = utils::task::run_blocking(move || {
-            services::cleanup::cleanup_library_leftovers_sync(&library_dir)
+            services::temp_cleanup::cleanup_library_leftovers_sync(&library_dir)
         })
         .await;
 

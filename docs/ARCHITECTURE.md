@@ -62,10 +62,18 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   Within a family, siblings reach each other through `super::` (matching `db_schema/`,
   `db_backup/` and `video_repository/`); everything outside it uses the full path, so a
   call site reads `library::cleanup::delete_media_with_artifacts` rather than a bare
-  `cleanup::` that would collide with the unrelated `services::cleanup` (stale temp files).
+  `cleanup::` that says nothing about which tree it belongs to.
+
+  That rule used to carry a second job, and it is worth recording that it no longer does. The flat
+  sweep of the disposable cache directories was called `services::cleanup`, so a bare `cleanup::`
+  was not merely vague but *ambiguous* - it could have meant either that module or
+  `library::cleanup`, which reference-counts and unlinks the user's media. The import convention
+  was what kept them apart, which made two unrelated concerns distinguishable only by how a call
+  site chose to spell them. It is `services::temp_cleanup` now, so the names carry the distinction
+  and the convention above is back to being about readability alone.
 
   What stays a flat file is a concern with no family: `database.rs`, `binaries.rs`,
-  `cleanup.rs`, `logger.rs`, `filesystem.rs`, `live_chat_storage.rs`, `media_comments.rs`,
+  `temp_cleanup.rs`, `logger.rs`, `filesystem.rs`, `live_chat_storage.rs`, `media_comments.rs`,
   `media_creation.rs`, `pending_media.rs`, `process_registry.rs`, `ssrf_guard.rs`,
   `temp_paths.rs`, `channel_repository.rs`.
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
@@ -390,7 +398,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/use-app-settings*.ts` |
-| Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/cleanup.rs` | - |
+| Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/temp_cleanup.rs` | - |
 | Startup self-checks (`--smoke-test`, `--webview-check`) | `lib.rs`, `commands/webview_check.rs` | `lib/webview-check.ts` |
 
 See `docs/DATABASE.md` for the schema/migration/backup model and `docs/DIRECTORIES.md` for

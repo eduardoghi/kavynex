@@ -185,11 +185,11 @@ persisted and a display derivative can be drawn by the grid. The cache **root** 
 granted: on Windows it is the parent of the `logs` directory described below and of the WebView2
 profile (`EBWebView/`), and the other three subdirectories here are read by the backend alone. A
 background task
-(`services::cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the cache
+(`services::temp_cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the cache
 directory on every startup, and the rule it applies depends on what a directory holds:
 
 - The three scratch directories (`thumbs-temp/`, `yt-dlp-temp/`, `yt-dlp-thumb-temp/`) lose any
-  entry older than 7 days (`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/cleanup.rs`), so an
+  entry older than 7 days (`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/temp_cleanup.rs`), so an
   interrupted download/thumbnail generation does not leak disk space indefinitely.
 - `thumb-display/` is bounded by total size instead, for the reason given above.
 - `pending-media/` is swept by neither: its markers are reconciled by

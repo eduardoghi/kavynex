@@ -21,7 +21,7 @@
 //!   pointing at the canonical file in the library. A derivative is addressed *by* the canonical
 //!   file's content hash, which is already in its name, so the mapping needs no storage of its own.
 //! - **It is disposable.** The cache directory is already swept of stale entries on startup
-//!   (`services::cleanup`), and a missing derivative regenerates on demand, so losing the whole
+//!   (`services::temp_cleanup`), and a missing derivative regenerates on demand, so losing the whole
 //!   directory costs one re-encode and never a user's data.
 //! - **It is retroactive.** A thumbnail that has been in the library for a year gets a derivative
 //!   the first time it is asked for, which is what the format switch could not do.
@@ -120,7 +120,7 @@ const MAX_RESOLVED_PER_CALL: usize = 512;
 /// because the directory otherwise has no bound at all - a derivative is never deleted when its
 /// media is, since nothing in the database refers to one (see the module docs).
 ///
-/// **Enforced by the startup sweep** (`services::cleanup::cleanup_stale_temp_files_sync`), not on
+/// **Enforced by the startup sweep** (`services::temp_cleanup::cleanup_stale_temp_files_sync`), not on
 /// write: a session that draws more than this grows past it and is trimmed back on the next launch.
 /// That is deliberate rather than an oversight, and worth stating because "ceiling" otherwise reads
 /// as a continuous invariant. Checking it per generated entry would mean summing the directory on
@@ -289,7 +289,7 @@ pub(crate) fn plan_display_cache_eviction(
     evicted
 }
 
-/// The cache's own size budget, for the startup sweep that enforces it (`services::cleanup`).
+/// The cache's own size budget, for the startup sweep that enforces it (`services::temp_cleanup`).
 pub(crate) fn display_cache_max_bytes() -> u64 {
     DISPLAY_CACHE_MAX_BYTES
 }

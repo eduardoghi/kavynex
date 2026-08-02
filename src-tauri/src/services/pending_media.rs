@@ -204,7 +204,7 @@ pub(crate) fn marker_is_sweepable(
 ///
 /// What this ceiling bounds is the *retrying*, and it is worth being exact about that because it is
 /// easy to read as bounding more. The directory itself is unbounded: an abandoned marker is
-/// deliberately left on disk (see [`marker_retries_are_exhausted`]), and `services::cleanup`'s
+/// deliberately left on disk (see [`marker_retries_are_exhausted`]), and `services::temp_cleanup`'s
 /// startup sweep does not reach it either - that sweep covers the three scratch directories by age
 /// and the display cache by size, and `pending-media/` is in neither list, by design, since it is
 /// the one cache directory whose contents are a record rather than a derivative.
