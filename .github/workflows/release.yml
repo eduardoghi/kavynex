@@ -802,6 +802,31 @@ jobs:
 
                   echo "The draft release v$VERSION has every expected asset."
 
+            # README.md's Installation section is a third inventory of these same names, after the
+            # completeness list above and the attestation's subject-path - and it was the only one
+            # with nothing holding it. It is also the one a *user* reads to choose a download, so a
+            # name that drifted there sends someone looking for a file the release page does not
+            # serve, and an architecture that shipped without being added there is a download
+            # nothing announces.
+            #
+            # Both halves already happened, around the same release. The macOS `.app.tar.gz` names
+            # gained a version between v1.1.1 and v1.2.0 (see the completeness list's own comment on
+            # treating these as perishable), and the Windows-on-ARM and Linux aarch64 installers
+            # first shipped in v1.2.0 and had to be added to the README by hand afterwards.
+            #
+            # Checked against the assets the release actually carries rather than against the list
+            # above, so a release where both lists drifted together - the case a cross-check between
+            # them would pass - still fails here. Runs after the completeness check because that one
+            # is the stronger signal: when installers are missing, the README is not the problem to
+            # report first.
+            - name: Verify the README documents this release's installers
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  gh release view "v$VERSION" --json assets --jq '.assets[].name' > release-assets.txt
+                  node scripts/verify-readme-asset-names.js release-assets.txt
+
             # The check above proves latest.json is *present*, which is not the same as it being
             # complete. Every build leg merges its own entries into that one file on the release, so
             # a leg that uploaded its installer but lost the merge (a transient API error, two legs

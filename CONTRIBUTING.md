@@ -100,6 +100,19 @@ on every push:
   mutant the exclusions name, so every pattern would read as dead. It also drops `examine_globs`,
   which is why the scope is passed back in from that same list via `--file-args`.
 
+A fifth needs a real release to check against, so it runs in `release.yml`'s `checksums` job:
+
+- `node scripts/verify-readme-asset-names.js <file with one asset name per line>` - fails when
+  `README.md`'s download list and the assets a release carries disagree, in either direction: a
+  name the README offers that is not there, or an installer the release ships that the README never
+  mentions. Both have already happened (see `docs/RELEASING.md`). To run it against a published
+  release:
+
+  ```bash
+  gh release view v1.2.0 --json assets --jq '.assets[].name' > /tmp/assets.txt
+  node scripts/verify-readme-asset-names.js /tmp/assets.txt
+  ```
+
 `pnpm tauri build` builds release installers for your current platform.
 
 ## Regenerating the TypeScript bindings

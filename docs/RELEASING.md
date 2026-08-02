@@ -59,6 +59,16 @@ actually act on what it says.
    a missing installer or SBOM fails the release loudly rather than shipping silently), and
    publishes `SHA256SUMS.txt` on the same release (see `RELEASE-SECURITY.md` for why the checksums,
    SBOM and build provenance matter given installers are unsigned).
+
+   That job also checks `README.md`'s download list against the assets the release actually
+   carries (`scripts/verify-readme-asset-names.js`), in both directions - a name the README
+   offers that is not there, and an installer the release ships that the README never mentions.
+   It is a third inventory of the same filenames, after the completeness list and the
+   attestation's `subject-path`, and it was the only one with nothing holding it: the README is
+   what a user reads to pick their download. Both failures it covers have already happened around
+   v1.2.0 (see "When a release dispatch fails" below for the renamed macOS bundles, and the
+   Windows-on-ARM and Linux aarch64 installers, which shipped in that release and were added to
+   the README by hand afterwards).
 5. Write the release notes on the draft before publishing. This is where they go rather than
    in the workflow body: editing a draft does not regenerate `latest.json`, so the text
    reaches the release page without reaching the in-app update notice, which renders that
