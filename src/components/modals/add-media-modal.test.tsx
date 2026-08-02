@@ -3,6 +3,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AddMediaModal } from "./add-media-modal";
 import { renderWithMantine } from "../../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
 function createDefaultProps(): React.ComponentProps<typeof AddMediaModal> {
     return {
@@ -206,5 +207,21 @@ describe("AddMediaModal", () => {
         fireEvent.submit(form!);
 
         expect(onAdd).not.toHaveBeenCalled();
+    });
+
+    it("has no detectable accessibility violations in each source mode", async () => {
+        // Both modes, because they render different form sections and the labelling is per-section:
+        // the local mode has the file picker and the import-mode radio group, the yt-dlp mode has
+        // the URL field, the format picker and the terminal. A missing label on either is a form
+        // control a screen reader cannot name, which is the whole failure this catches.
+        for (const sourceMode of ["local", "yt-dlp"] as const) {
+            const { container, unmount } = renderAddMediaModal({ sourceMode });
+
+            const violations = await findAccessibilityViolations(container);
+
+            expect(describeViolations(violations), `source mode: ${sourceMode}`).toBe("");
+
+            unmount();
+        }
     });
 });

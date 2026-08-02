@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsModal } from "./settings-modal";
 import { renderWithMantine } from "../../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
 vi.mock("../../services/library-service", () => ({
     getLibrarySummary: vi.fn(),
@@ -329,5 +330,52 @@ describe("SettingsModal", () => {
         });
 
         consoleErrorSpy.mockRestore();
+    });
+
+    it("has no detectable accessibility violations", async () => {
+        // Every destructive control the app has lives behind this modal - the library folder move,
+        // the database export/import/restore - and each is a button whose accessible name is the
+        // only thing telling a screen-reader user which of them they are about to press.
+        vi.mocked(getLibrarySummary).mockResolvedValueOnce({
+            total_bytes: 1024,
+            formatted_size: "1 KB",
+            video_files: 2,
+            audio_files: 3,
+            thumbnail_files: 4,
+        });
+
+        const { container } = renderWithMantine(
+            <SettingsModal
+                opened
+                onClose={vi.fn()}
+                importMode="copy"
+                libraryPath="/library"
+                onChangeImportMode={vi.fn()}
+                onChooseLibraryPath={vi.fn()}
+                onOpenLibraryPath={vi.fn()}
+                onOpenDiagnostics={vi.fn()}
+                disableLibraryPathChange={false}
+                libraryPathChangeDisabledReason=""
+                isMigratingLibraryPath={false}
+                externalBackupDir=""
+                isSavingExternalBackupDir={false}
+                onChooseExternalBackupDir={vi.fn()}
+                onClearExternalBackupDir={vi.fn()}
+                loadRemoteImages={true}
+                checkUpdatesOnStartup={false}
+                onChangeLoadRemoteImages={vi.fn()}
+                onChangeCheckUpdatesOnStartup={vi.fn()}
+            />
+        );
+
+        // The summary lands asynchronously and adds a whole section, so checking before it settles
+        // would run axe over a tree missing the part this modal is mostly made of.
+        await waitFor(() => {
+            expect(screen.getByText("1 KB")).toBeInTheDocument();
+        });
+
+        const violations = await findAccessibilityViolations(container);
+
+        expect(describeViolations(violations)).toBe("");
     });
 });

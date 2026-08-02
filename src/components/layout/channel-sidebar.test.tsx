@@ -2,6 +2,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelSidebar } from "./channel-sidebar";
 import { renderWithMantine } from "../../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
 vi.mock("../../utils/media-utils", () => ({
     initials: vi.fn((value: string) => value.slice(0, 2).toUpperCase()),
@@ -409,5 +410,48 @@ describe("ChannelSidebar", () => {
         expect(items).toHaveLength(2);
         expect(items.map((item) => item.getAttribute("aria-posinset"))).toEqual(["1", "2"]);
         expect(items.map((item) => item.getAttribute("aria-setsize"))).toEqual(["2", "2"]);
+    });
+
+    it("has no detectable accessibility violations with channels rendered", async () => {
+        // Structural smoke check. The assertions above pin the list semantics this component has to
+        // restore by hand, because virtualization means assistive technology cannot count the rows
+        // by walking the DOM - this catches the rest of the tree those attributes sit in, which
+        // nothing else asserts. See src/test/axe.ts for what jsdom cannot answer here.
+        const { container } = renderWithMantine(
+            <ChannelSidebar
+                channels={[
+                    {
+                        id: 10,
+                        name: "Canal A",
+                        youtube_handle: "@canala",
+                        avatar_path: null,
+                        created_at: "2026-03-31T10:00:00.000Z",
+                    },
+                ]}
+                selectedChannelId={10}
+                viewMode="library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                deletingChannelId={null}
+                updatingChannelAvatarId={null}
+                libraryPath="/library"
+                appIconSrc="/icon.svg"
+                onOpenCreateChannel={vi.fn()}
+                onOpenSettings={vi.fn()}
+                onSelectChannel={vi.fn()}
+                onRequestEditChannel={vi.fn()}
+                onRequestDeleteChannel={vi.fn()}
+                onUpdateChannelAvatarFromFile={vi.fn()}
+                onUpdateChannelAvatarFromYouTube={vi.fn()}
+                onRemoveChannelAvatar={vi.fn()}
+                onClosePlayer={vi.fn()}
+            />,
+            { withAppShell: true }
+        );
+
+        const violations = await findAccessibilityViolations(container);
+
+        expect(describeViolations(violations)).toBe("");
     });
 });

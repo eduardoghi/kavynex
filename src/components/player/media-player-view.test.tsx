@@ -4,6 +4,7 @@ import type { MediaRow } from "../../types/media";
 import { MediaPlayerView } from "./media-player-view";
 import { createMedia } from "../../test/factories/media";
 import { renderWithMantine } from "../../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
 vi.mock("../../services/media-service", () => ({
     listMediaComments: vi.fn().mockResolvedValue([]),
@@ -69,6 +70,40 @@ describe("MediaPlayerView", () => {
 
         expect(screen.getByText("LIVE")).toBeInTheDocument();
         expect(screen.getByText("Live chat replay")).toBeInTheDocument();
+    });
+
+    // A longer timeout than the suite default, and this is the one place that needs it. This is the
+    // largest tree the app renders, and axe walks every node against every enabled rule in jsdom -
+    // which has no layout engine to short-circuit anything - so it runs several times longer here
+    // than over the grid or the sidebar. The default 5s is what it exceeded; this is well clear of
+    // the measured time rather than just above it.
+    it("has no detectable accessibility violations", { timeout: 30_000 }, async () => {
+        // The largest surface in the app and the one with the most controls: transport buttons, the
+        // header actions, the comments panel and the chat replay all render into one subtree. Its
+        // aria-live regions are also the ones deliberately decoupled from the lists they describe
+        // (virtualization breaks aria-live over a sliding window), which is the kind of structure a
+        // refactor can quietly undo. See src/test/axe.ts for what this cannot answer.
+        const { container } = renderWithMantine(
+            <MediaPlayerView
+                media={createMedia({ title: "A media" })}
+                mediaSrc="file:///media/test.mp4"
+                thumbnailSrc=""
+                isAudio={false}
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube
+                isWatched={false}
+                libraryPath="/library"
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        const violations = await findAccessibilityViolations(container);
+
+        expect(describeViolations(violations)).toBe("");
     });
 
     it("does not show a chat replay panel when the media has no live chat file", () => {

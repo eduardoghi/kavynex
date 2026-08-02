@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MediaGrid, getColumnCount } from "./media-grid";
 import { createMedia } from "../../test/factories/media";
 import { renderWithMantine } from "../../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
 const { scrollToIndexMock } = vi.hoisted(() => ({ scrollToIndexMock: vi.fn() }));
 
@@ -287,6 +288,32 @@ describe("MediaGrid", () => {
             for (const item of screen.getAllByRole("listitem")) {
                 expect(item.getAttribute("aria-setsize")).toBe("-1");
             }
+        });
+
+        it("has no detectable accessibility violations", async () => {
+            // Structural smoke check over the tree the assertions above sit in. This grid nests a
+            // presentational row and a presentational column grid between the list and its items,
+            // which is exactly the shape a stray role would break without failing anything else.
+            const { container } = renderWithMantine(
+                <MediaGrid
+                    items={[
+                        createMedia({ id: 1, title: "First" }),
+                        createMedia({ id: 2, title: "Second" }),
+                    ]}
+                    libraryPath="/library"
+                    shellBorder="rgba(255,255,255,0.1)"
+                    shellSurface="rgba(255,255,255,0.03)"
+                    loading={false}
+                    hasMore={false}
+                    onLoadMore={vi.fn()}
+                    onOpen={vi.fn()}
+                    onRequestDelete={vi.fn()}
+                />
+            );
+
+            const violations = await findAccessibilityViolations(container);
+
+            expect(describeViolations(violations)).toBe("");
         });
     });
 
