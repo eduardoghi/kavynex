@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { validateIpcResult } from "./ipc-schemas";
+import { z } from "zod";
+import { describeIssues, validateIpcResult } from "./ipc-schemas";
 import { APP_ERROR_CODE } from "../constants/error-codes";
 import type { AppErrorShape } from "../utils/app-error";
 
@@ -70,5 +71,74 @@ describe("validateIpcResult", () => {
         // insert_channel returns a bare number - there is no shape for a wrong value to hide in, so
         // it is not registered and the value is returned as-is.
         expect(validateIpcResult("insert_channel", 42)).toBe(42);
+    });
+});
+
+// The diagnostic line a rejected payload leaves behind, and the only record of *which* field was
+// wrong: the user is shown a generic message by design, so a bug report about this is the log line.
+// Nothing above reaches it - both callers hand the result to `console.error` and nothing else - so
+// every part of it survived a mutation pass while the polarity decisions around it were killed.
+// These assert the exact output rather than that it is non-empty, which is what makes the joins and
+// the fallback killable.
+describe("describeIssues", () => {
+    /** The ZodError a failed parse of `schema` against `value` produces. */
+    function issuesFrom(schema: z.ZodTypeAny, value: unknown): z.ZodError {
+        const parsed = schema.safeParse(value);
+
+        if (parsed.success) {
+            throw new Error("the fixture must fail to parse or this test asserts nothing");
+        }
+
+        return parsed.error;
+    }
+
+    it("names the failing field by its dotted path", () => {
+        const schema = z.object({ outer: z.object({ inner: z.string() }) });
+
+        const described = describeIssues(issuesFrom(schema, { outer: { inner: 1 } }));
+
+        // The `.` is what makes a nested field identifiable at all. Joined with "" it reads
+        // "outerinner", which names no field in the payload the report is about.
+        expect(described).toMatch(/^outer\.inner: /);
+    });
+
+    it("falls back to (root) when the failure is the value itself", () => {
+        // Nothing has a path when the whole payload is the wrong type, and an empty path would
+        // render as ": Invalid input" - a line that says something failed and not what.
+        const described = describeIssues(issuesFrom(z.object({ a: z.string() }), 42));
+
+        expect(described).toMatch(/^\(root\): /);
+    });
+
+    it("separates the path from the message", () => {
+        const schema = z.object({ title: z.string() });
+        const error = issuesFrom(schema, { title: 7 });
+
+        const described = describeIssues(error);
+
+        // Pinned against zod's own message rather than a literal, so a wording change upstream does
+        // not fail this - what is asserted is that both halves are present and in that order.
+        expect(described).toBe(`title: ${error.issues[0]?.message}`);
+    });
+
+    it("puts every failing field in one line, separated", () => {
+        // A malformed payload usually fails several fields at once. Joined with "" they run
+        // together into one unreadable string, which is the state this separator prevents.
+        const schema = z.object({ a: z.string(), b: z.number() });
+
+        const described = describeIssues(issuesFrom(schema, { a: 1, b: "x" }));
+
+        expect(described.split("; ")).toHaveLength(2);
+        expect(described).toContain("a: ");
+        expect(described).toContain("b: ");
+    });
+
+    it("describes a single issue with no separator", () => {
+        // The boundary of the join: one issue must not carry a trailing or leading separator into
+        // the log line.
+        const described = describeIssues(issuesFrom(z.object({ a: z.string() }), { a: 1 }));
+
+        expect(described).not.toContain(";");
+        expect(described.length).toBeGreaterThan(0);
     });
 });

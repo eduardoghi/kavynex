@@ -426,7 +426,17 @@ export function parseEventPayload<TSchema extends z.ZodTypeAny>(
 
 // Compact, path-annotated summary of what did not match, for the log line below. Kept off zod's
 // prettifier so the message shape stays stable across zod point releases.
-function describeIssues(error: z.ZodError): string {
+//
+// Exported for its tests rather than for a caller, and that is the point. Both functions above hand
+// their result to `console.error` and nothing else, so nothing an assertion can reach observes what
+// this produces - a mutation pass over this file reported every one of its parts surviving (the
+// `(root)` fallback, the `.` path join, the `: ` between path and message, the `; ` between issues)
+// while the polarity decisions around it were killed. That asymmetry is the argument for pinning it
+// rather than accepting it: this string is the whole of what a malformed payload leaves behind. The
+// user sees a generic message by design, so a bug report is the log line, and a log line that says
+// "the backend sent something wrong" without saying *which field* costs the one detail the report
+// was worth making. Same reasoning, and the same shape, as the argv redaction gated on the Rust side.
+export function describeIssues(error: z.ZodError): string {
     return error.issues
         .map((issue) => {
             const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
