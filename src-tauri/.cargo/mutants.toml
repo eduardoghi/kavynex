@@ -417,13 +417,23 @@ exclude_re = [
     # which no unit test can pin on an arbitrary machine - the same reason binaries.rs's resolution
     # functions are excluded above. Its four survivors are the return value and the deadline
     # arithmetic, all of which need a real FFmpeg to distinguish. Nothing is excluded for
-    # `resolve_display_thumbnails_sync`: it is AppHandle-bound, so its mutants are reported unviable
-    # rather than missed, and an exclusion matching nothing is the dead entry this file has already
-    # had to remove once. The decisions that matter are not in either function -
-    # `display_cache_key` (which stored file a derivative answers for), `is_usable_file` (which stops
-    # a zero-byte output being cached as a valid hit) and `take_generation_slot` (the FFmpeg budget)
-    # are pure, in scope, and covered.
+    # `resolve_display_thumbnails_sync`. Nothing is excluded for it, and the reason this file used to
+    # give was wrong: it said that being AppHandle-bound made its mutants unviable rather than missed.
+    # Unviable means the mutated tree does not *compile*, which has nothing to do with whether a test
+    # can reach the function - so a comparison inside its body compiles fine and comes back missed.
+    # The 2026-08-01 run duly reported `<` swapped for `>` and for `<=` on the truncation guard.
+    # The fix was to extract that comparison (`request_was_truncated`), not to exclude it. Kept as a
+    # note rather than deleted: the same mistaken reasoning would readmit the next one.
     'generate_display_thumbnail',
+    # commands/security.rs (triaged 2026-08-01). `register_cache_asset_scope` is what is left of that
+    # function once the half with an observable effect was extracted into `prepare_cache_scope_dirs`
+    # (created and covered in the same change): a loop that hands each prepared directory to
+    # `allow_directory_in_asset_scope`, which needs a live `AppHandle`. Replacing it with `()` still
+    # compiles and still cannot be observed, so it is excluded rather than left to fail the gate
+    # forever. Narrow on purpose - `prepare_cache_scope_dirs`, `managed_cache_scope_dirs` and
+    # `grant_path_with_canonical` all stay in scope, and the first two are what a gutted body would
+    # have to defeat to leave the webview unable to read a thumbnail.
+    'replace register_cache_asset_scope with \(\)',
     # pending_media.rs survivors (triaged 2026-07-27), in three groups.
     #
     # 1. `pin_process_start` exists to initialize a process-global OnceLock early, while the launch
