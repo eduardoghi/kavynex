@@ -25,6 +25,10 @@ type UseMediaActionsOptions = {
     // Notifies the pager that `count` rows left the in-memory list (a delete), so the filtered and
     // channel totals stay correct without a full refetch.
     onItemsRemoved: (count: number) => void;
+    // Notifies the pager that an in-place edit changed a loaded row's sort key (a rename), so the
+    // row that displaced across the page boundary is fetched rather than skipped. See
+    // `useChannelMediaList.handleItemReordered` for why one position is the exact correction.
+    onItemReordered: () => void;
     mediaPlayer: {
         activeMedia: MediaRow | null;
         setActiveMedia: (media: MediaRow | null) => void;
@@ -61,6 +65,7 @@ export function useMediaActions({
     libraryPath,
     setMediaItems,
     onItemsRemoved,
+    onItemReordered,
     mediaPlayer,
     onError,
     onNotice,
@@ -355,6 +360,18 @@ export function useMediaActions({
                         )
                     );
 
+                    // The row is updated in place rather than reloaded, deliberately - a rename
+                    // should not throw away the pages the user scrolled. What that costs is that
+                    // the loaded list and the backend's sorted set now disagree: every ORDER BY
+                    // ties on `title_normalized`, so a rename moves the row in any sort category,
+                    // not only the title one. Told about it, the pager gives back the one position
+                    // that keeps the next page from starting past the row this edit displaced.
+                    //
+                    // Called for every successful rename rather than only when the position really
+                    // moved, because only the backend's sort can answer that and asking would cost
+                    // the round trip this avoids. The correction is free when it was unnecessary.
+                    onItemReordered();
+
                     const active = activeMediaRef.current;
 
                     if (active?.id === media.id) {
@@ -372,7 +389,7 @@ export function useMediaActions({
                 }
             });
         },
-        [setActiveMedia, onError, runUpdateTitleAction, setMediaItems]
+        [setActiveMedia, onError, onItemReordered, runUpdateTitleAction, setMediaItems]
     );
 
     const openMediaFileLocation = useCallback(

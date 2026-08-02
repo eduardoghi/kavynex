@@ -495,6 +495,127 @@ describe("useChannelMediaList", () => {
         );
     });
 
+    it("fetches the row a rename displaced past the window instead of skipping it", async () => {
+        // The failure this closes, end to end. Three rows are loaded out of six, so the cursor sits
+        // at 3. Renaming a loaded row moves it in the backend's sort - every ORDER BY ties on
+        // title_normalized - and if it lands at or past position 3, the row that was first on the
+        // next page shifts onto position 2. Asking for offset 3 then starts one row too late and
+        // that row is never fetched: it is not on screen, and nothing would ever ask for it again.
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(
+                page(
+                    [createMediaRow({ id: 1 }), createMediaRow({ id: 2 }), createMediaRow({ id: 3 })],
+                    6
+                )
+            )
+            // The backend's view after the rename: id 4 has shifted onto position 2, so a request
+            // from offset 2 is what returns it.
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 4 }), createMediaRow({ id: 5 })], 6)
+            );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        act(() => {
+            result.current.handleItemReordered();
+        });
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 2 })
+        );
+        // The displaced row is on screen, and the cursor is back where the rows handed out put it.
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it("costs nothing when the rename did not move the row across the boundary", async () => {
+        // The other direction, and why calling this on every rename is safe: refetching one
+        // position earlier normally returns a row the list already holds, which the append's own
+        // dedup drops. The cursor still advances by what the backend returned, so it cannot stall
+        // and re-request the same offset forever - which is what taking it from the list length
+        // would do.
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(
+                page(
+                    [createMediaRow({ id: 1 }), createMediaRow({ id: 2 }), createMediaRow({ id: 3 })],
+                    6
+                )
+            )
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 3 }), createMediaRow({ id: 4 })], 6)
+            );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        act(() => {
+            result.current.handleItemReordered();
+        });
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2, 3, 4]);
+        // 2 + the 2 rows returned, not 3 + 2: the cursor counts what was handed out, so the
+        // position given back is taken again rather than lost.
+        expect(result.current.hasMore).toBe(true);
+
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow({ id: 5 })], 6));
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 4 })
+        );
+    });
+
+    it("does not take the cursor below zero", async () => {
+        // A rename on the very first row of a channel small enough that nothing was paged. There is
+        // no position to give back, and a negative offset would be rejected by the backend (which
+        // floors it) after being a nonsense request.
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([], 0));
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        act(() => {
+            result.current.handleItemReordered();
+        });
+
+        // Nothing to load, so nothing is asked for: the cursor is 0 and the total is 0.
+        expect(result.current.hasMore).toBe(false);
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenCalledTimes(1);
+    });
+
     it("stops offering more once every row has been handed out", async () => {
         // hasMore reads the cursor rather than the list length, so a list left shorter than the
         // cursor by deduplication must not keep the grid asking for a page that has nothing left.

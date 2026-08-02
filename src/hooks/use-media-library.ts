@@ -58,6 +58,7 @@ export function useMediaLibrary({
         libraryPath,
         setMediaItems,
         onItemsRemoved: mediaList.handleItemsRemoved,
+        onItemReordered: mediaList.handleItemReordered,
         mediaPlayer,
         onError,
         onNotice,

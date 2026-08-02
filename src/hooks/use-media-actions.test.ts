@@ -78,6 +78,7 @@ describe("useMediaActions", () => {
     const onNotice = vi.fn();
     const setMediaItems = vi.fn();
     const onItemsRemoved = vi.fn();
+    const onItemReordered = vi.fn();
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -97,6 +98,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -123,6 +125,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -162,6 +165,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -204,6 +208,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -242,6 +247,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -267,6 +273,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -298,6 +305,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -332,6 +340,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -360,6 +369,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -393,6 +403,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -422,6 +433,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -450,6 +462,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -480,6 +493,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -510,6 +524,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -528,6 +543,60 @@ describe("useMediaActions", () => {
         });
     });
 
+    it("tells the pager a rename moved the row in the backend's sort", async () => {
+        // The row is updated in place rather than reloaded, so the loaded list and the backend's
+        // sorted set now disagree - every ORDER BY ties on title_normalized. Without this the next
+        // page starts past the row the rename displaced, and that row is silently never fetched.
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(updateMediaTitle).mockResolvedValue(undefined);
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                onItemReordered,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        await act(async () => {
+            await result.current.editTitle(mediaPlayer.activeMedia!, "New title");
+        });
+
+        expect(onItemReordered).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not move the cursor when the rename failed", async () => {
+        // Nothing moved in the backend's sort, so giving a position back would refetch a page for
+        // no reason - and, on the last page of a channel, turn `hasMore` back on to do it.
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(updateMediaTitle).mockRejectedValue(new Error("nope"));
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                onItemReordered,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        await act(async () => {
+            await result.current.editTitle(mediaPlayer.activeMedia!, "New title");
+        });
+
+        expect(onError).toHaveBeenCalled();
+        expect(onItemReordered).not.toHaveBeenCalled();
+    });
+
     it("opens media file location", async () => {
         const mediaPlayer = createMediaPlayer();
 
@@ -538,6 +607,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -565,6 +635,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -603,6 +674,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -649,6 +721,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -687,6 +760,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -733,6 +807,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -768,6 +843,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -796,6 +872,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -825,6 +902,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -858,6 +936,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -886,6 +965,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -916,6 +996,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -949,6 +1030,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -983,6 +1065,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1014,6 +1097,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1048,6 +1132,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1092,6 +1177,7 @@ describe("useMediaActions", () => {
                 libraryPath: "/library",
                 setMediaItems,
                 onItemsRemoved,
+                onItemReordered,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1126,6 +1212,7 @@ describe("useMediaActions", () => {
             libraryPath: "/library",
             setMediaItems,
             onItemsRemoved,
+            onItemReordered,
             mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
             onError,
             onNotice,
@@ -1159,6 +1246,7 @@ describe("useMediaActions", () => {
             libraryPath: "/library",
             setMediaItems,
             onItemsRemoved,
+            onItemReordered,
             mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
             onError,
             onNotice,

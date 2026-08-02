@@ -45,6 +45,9 @@ type UseChannelMediaListReturn = {
     // Adjusts the totals after `count` rows are removed in memory (a delete), so "X of Y" stays
     // correct without a full refetch.
     handleItemsRemoved: (count: number) => void;
+    // Gives the pagination cursor a position back after an in-place edit moved a loaded row within
+    // the backend's sort (a rename), so the row it displaced past the window is not skipped.
+    handleItemReordered: () => void;
     clearMedia: () => void;
 };
 
@@ -85,11 +88,10 @@ export function useChannelMediaList({
     // every scroll to the bottom. Counting what the backend *returned* keeps the cursor advancing
     // whatever the append decides to keep.
     //
-    // What this does not close is the other half of the same shift: a row that moved from after the
-    // window to before it is skipped, and stays missing until the list is reloaded (a filter change,
-    // a channel switch, an add). Closing that needs keyset pagination rather than OFFSET, which is a
-    // larger change - the mixed-direction clauses (`publication_date` sorts its group key ASC and
-    // its date DESC) cannot be expressed as a single row-value comparison.
+    // The other half of the same shift - a row moving from *after* the window to before it, and
+    // being skipped - is closed by `handleItemReordered` below rather than by keyset pagination,
+    // which the mixed-direction clauses cannot express as a single row-value comparison anyway
+    // (`publication_date` sorts its group key ASC and its date DESC).
     const selectedChannelIdRef = useRef(selectedChannelId);
     const loadedCountRef = useRef(0);
     const totalRef = useRef(0);
@@ -285,6 +287,30 @@ export function useChannelMediaList({
         [setLoadedRows]
     );
 
+    // Pulls the pagination cursor back by one after an in-place edit changed a loaded row's sort
+    // key, so the row that edit displaced across the window boundary is fetched instead of skipped.
+    //
+    // The arithmetic is exact rather than defensive, which is why one is the right number. The
+    // renamed row sits at some position P inside the loaded window. If its new position Q is still
+    // inside, nothing crossed the boundary. If Q is at or past the cursor, every row between them
+    // shifts down by one, so the row that was first on the *next* page moves onto the last slot of
+    // this one - a row this list does not hold, at an offset `loadMore` has already passed. Exactly
+    // one row moves that way per edit, so exactly one position has to be given back.
+    //
+    // What makes this cheap is that the correction costs nothing when it was not needed: refetching
+    // one position earlier either returns the displaced row (kept) or a row already loaded (dropped
+    // by the append's own dedup), and the cursor advances by what the backend returned either way,
+    // so it cannot stall. That is the same machinery the dedup already rests on, used from the other
+    // end - and it is why this is a subtraction here rather than keyset pagination, or a refetch of
+    // the whole scrolled window, which would throw away the pages a rename should not cost.
+    //
+    // Deliberately also allowed to raise `hasMore` from false: a channel whose last page held the
+    // displaced row has no later append to correct itself, which is precisely the case that would
+    // otherwise stay wrong for the rest of the session. The extra request that follows is one row.
+    const handleItemReordered = useCallback((): void => {
+        setLoadedRows(Math.max(0, loadedCountRef.current - 1));
+    }, [setLoadedRows]);
+
     // Clear when no channel is selected; the section (which drives applyQuery) is unmounted then.
     useEffect(() => {
         if (selectedChannelId === null) {
@@ -304,6 +330,7 @@ export function useChannelMediaList({
         loadMore,
         reloadMedia,
         handleItemsRemoved,
+        handleItemReordered,
         clearMedia,
     });
 }
