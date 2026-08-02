@@ -374,6 +374,21 @@ examine_globs = [
     "src/commands/database.rs",
 ]
 
+# The one file the directory globs above pull in that this gate has nothing to say about.
+#
+# `db_backup/test_support.rs` holds the family's test fixtures (a temp directory, a seeded database,
+# a file mtime setter). It is declared `#[cfg(test)] mod`, so a mutant in it can only make a fixture
+# wrong - and a wrong fixture is a red suite, which is the opposite of the undetected regression this
+# gate exists to find. The directory glob is deliberately kept as a glob (that is what keeps a future
+# submodule split in scope with nothing to remember), so the one file that should not be in it is
+# named here instead.
+#
+# NOT MEASURED, and stated as such rather than left to read like the entries above: cargo-mutants may
+# already skip it by following the `cfg(test)` on the module declaration, and the tool is not
+# installed on the machine this was written on. A redundant exclusion costs nothing; the reverse
+# would put unkillable noise in a weekly run. Drop it if a `--list` ever shows it was never needed.
+exclude_globs = ["src/services/db_backup/test_support.rs"]
+
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the
 # project (ci.yml / release.yml all pass --locked) so a mutation run never silently re-resolves
 # dependencies.
