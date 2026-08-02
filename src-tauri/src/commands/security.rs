@@ -87,18 +87,7 @@ pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
 /// the same reason (see [`grant_path_with_canonical`]). The directories are created on demand by
 /// their writers anyway; doing it here is what makes the canonical grant possible on a first run.
 pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
-    for managed_dir in managed_cache_scope_dirs(cache_root) {
-        if let Err(error) = std::fs::create_dir_all(&managed_dir) {
-            logger::warn(
-                "asset_scope",
-                format!(
-                    "failed to create cache directory {} for the asset scope: {error}",
-                    logger::redact_path(&managed_dir)
-                ),
-            );
-            continue;
-        }
-
+    for managed_dir in prepare_cache_scope_dirs(cache_root) {
         let granted = grant_path_with_canonical(&managed_dir, "cache subdirectory", |dir| {
             allow_directory_in_asset_scope(app, dir)
         });
@@ -113,6 +102,37 @@ pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
             );
         }
     }
+}
+
+/// Creates the cache subdirectories that are about to be granted, and returns the ones that now
+/// exist. A directory that cannot be created is logged and dropped rather than returned, so the
+/// caller never tries to grant a path that is not there.
+///
+/// Split out of [`register_cache_asset_scope`] because it is the whole of what that function does
+/// that a test can observe. The grant itself needs a live `AppHandle`, so the mutation run reported
+/// `replace register_cache_asset_scope with ()` as surviving: the entire body could become a no-op -
+/// no directories created, nothing authorized, every thumbnail preview and display derivative
+/// silently unreadable - and the suite would not notice. It still cannot observe the grant, but the
+/// creation is now one call from a test, which is the half that has an effect on disk.
+fn prepare_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
+    let mut prepared = Vec::new();
+
+    for managed_dir in managed_cache_scope_dirs(cache_root) {
+        if let Err(error) = std::fs::create_dir_all(&managed_dir) {
+            logger::warn(
+                "asset_scope",
+                format!(
+                    "failed to create cache directory {} for the asset scope: {error}",
+                    logger::redact_path(&managed_dir)
+                ),
+            );
+            continue;
+        }
+
+        prepared.push(managed_dir);
+    }
+
+    prepared
 }
 
 /// The managed directories this session has forbidden in the asset scope, i.e. the libraries the
@@ -436,6 +456,57 @@ mod tests {
                 "{excluded} must not be authorized in the asset scope"
             );
         }
+    }
+
+    #[test]
+    fn preparing_the_cache_scope_creates_every_subdirectory_it_returns() {
+        // The half of register_cache_asset_scope that leaves a trace, pinned because the whole
+        // function could be replaced with a no-op and nothing failed: no directory created, nothing
+        // granted, and every thumbnail preview and display derivative unreadable with no error
+        // anywhere. Asserting the returned paths *and* their existence is what makes an empty
+        // return - the shape a gutted body would produce - fail rather than pass vacuously.
+        let cache_root = unique_test_dir("cache-scope-prepare");
+
+        let prepared = prepare_cache_scope_dirs(&cache_root);
+
+        assert_eq!(
+            prepared,
+            managed_cache_scope_dirs(&cache_root),
+            "every managed cache subdirectory should be prepared, in order"
+        );
+        assert!(!prepared.is_empty(), "an empty plan would grant nothing");
+
+        for dir in &prepared {
+            assert!(dir.is_dir(), "{} should have been created", dir.display());
+        }
+
+        let _ = fs::remove_dir_all(&cache_root);
+    }
+
+    #[test]
+    fn preparing_the_cache_scope_drops_a_subdirectory_it_could_not_create() {
+        // A path that cannot become a directory because a file already occupies it. The dropped
+        // entry must not be returned: granting a path that is not there is the case the `continue`
+        // exists for, and a plan that returned it anyway would push that failure into the asset
+        // scope instead of the log.
+        let cache_root = unique_test_dir("cache-scope-blocked");
+        fs::create_dir_all(&cache_root).unwrap();
+
+        let blocked = cache_root.join(crate::constants::TEMP_DIR_THUMBS);
+        fs::write(&blocked, b"not a directory").unwrap();
+
+        let prepared = prepare_cache_scope_dirs(&cache_root);
+
+        assert!(
+            !prepared.contains(&blocked),
+            "a subdirectory that could not be created must not be offered for granting"
+        );
+        assert!(
+            prepared.contains(&cache_root.join(crate::constants::TEMP_DIR_THUMB_DISPLAY)),
+            "one blocked subdirectory must not stop the others"
+        );
+
+        let _ = fs::remove_dir_all(&cache_root);
     }
 
     #[test]

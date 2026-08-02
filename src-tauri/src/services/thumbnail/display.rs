@@ -302,6 +302,19 @@ pub(crate) fn within_call_ceiling(relative_paths: &[String]) -> &[String] {
     &relative_paths[..capped_call_length(relative_paths.len())]
 }
 
+/// True when the per-call ceiling dropped entries the caller asked about.
+///
+/// Its own predicate for the reason every other decision in this module is one, and this time the
+/// reason is not a prediction: the weekly mutation run reported this comparison missed while it was
+/// still inline in [`resolve_display_thumbnails_sync`], which is `AppHandle`-bound and therefore
+/// unreachable from a test. Both replacements matter and neither is loud. A `>` silences the warning
+/// on a genuinely truncated call - the case it exists to announce - and a `<=` fires it on every
+/// exact-fit page, telling whoever reads the log that a caller asked for more than a page when
+/// nothing did.
+pub(crate) fn request_was_truncated(considered: usize, requested: usize) -> bool {
+    considered < requested
+}
+
 /// The name a derivative lands under: the canonical thumbnail's own content hash, the width it was
 /// scaled to, and the shared thumbnail container.
 ///
@@ -585,7 +598,7 @@ pub fn resolve_display_thumbnails_sync(
     // A truncated call means the caller asked about more than a page, which no legitimate flow does,
     // so say so once rather than capping silently - a page of cards quietly falling back to the
     // stored file is otherwise indistinguishable from a machine with no FFmpeg.
-    if considered.len() < relative_paths.len() {
+    if request_was_truncated(considered.len(), relative_paths.len()) {
         logger::warn(
             "thumbnail_display",
             format!(
@@ -856,6 +869,39 @@ mod tests {
             "the per-call ceiling ({MAX_RESOLVED_PER_CALL}) must not truncate a single page \
              ({page_size})"
         );
+    }
+
+    #[test]
+    fn the_display_cache_budget_is_two_hundred_mebibytes() {
+        // Spelled as the resolved byte count rather than as the same product the constant is
+        // written with, so an arithmetic slip in that expression moves one side and not the other.
+        // Nothing else pinned the magnitude at all: every eviction test below passes its own
+        // `max_bytes`, so the constant was free to be any number, and a weekly mutation run duly
+        // reported `*` swapped for `+` and for `/` as surviving. What that would cost is not
+        // theoretical - the startup sweep trims the cache to this value, so a slip downward
+        // discards derivatives the grid is about to redraw, and one upward lets a disposable
+        // directory grow without a bound worth the name.
+        assert_eq!(display_cache_max_bytes(), 209_715_200);
+    }
+
+    #[test]
+    fn a_request_is_truncated_only_when_the_ceiling_dropped_something() {
+        // Both replacements the mutation run found, on the exact boundary. `>` silences the warning
+        // on a genuinely truncated call - the one case it exists to announce - and `<=` fires it on
+        // every exact-fit page, which is the reading that sends whoever opens the log looking for a
+        // caller asking beyond a page when none did.
+        assert!(request_was_truncated(
+            MAX_RESOLVED_PER_CALL,
+            MAX_RESOLVED_PER_CALL + 1
+        ));
+        assert!(!request_was_truncated(
+            MAX_RESOLVED_PER_CALL,
+            MAX_RESOLVED_PER_CALL
+        ));
+        assert!(!request_was_truncated(0, 0));
+
+        // A normal page, which is what every real call is: nothing dropped, so nothing said.
+        assert!(!request_was_truncated(64, 64));
     }
 
     #[test]
