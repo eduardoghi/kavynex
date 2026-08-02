@@ -24,7 +24,9 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// thumbnails and live chat files all live under it, so commands never take the base
 /// directory from the caller - a compromised frontend cannot redirect reads/writes to an
 /// arbitrary location.
-pub async fn configured_library_dir(app: &AppHandle) -> AppResult<PathBuf> {
+/// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is: the bare
+/// `AppHandle` alias is the real runtime, which a mock-runtime test cannot produce.
+pub async fn configured_library_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     let pool = shared_pool(app).await?;
     let settings = get_app_settings_from_pool(&pool).await?;
 

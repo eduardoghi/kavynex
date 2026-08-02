@@ -351,7 +351,13 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
 /// handle from the app and delegates to it; kept as a free function so the many call sites that
 /// only hold an `AppHandle` do not each need to reach into managed state. The returned pool is a
 /// cheap `Arc` clone.
-pub async fn shared_pool(app: &AppHandle) -> AppResult<SqlitePool> {
+///
+/// Generic over the runtime rather than tied to `AppHandle<Wry>`. That is not a style preference:
+/// `AppHandle` alone resolves to the real runtime, and `tauri::test::mock_builder` produces an
+/// `App<MockRuntime>`, so every function in a chain that names the bare alias is unreachable from a
+/// test - which is what kept the media-creation orchestration untested. `try_state` is available on
+/// any runtime, so this costs nothing to widen.
+pub async fn shared_pool<R: tauri::Runtime>(app: &AppHandle<R>) -> AppResult<SqlitePool> {
     // `try_state` (not `state`) so a missing handle surfaces as a normal error instead of a
     // panic. It is only ever absent when the database path could not be resolved at startup
     // (see the setup in lib.rs), which is the same catastrophic case the old code degraded to

@@ -17,7 +17,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use sqlx::{SqliteConnection, SqlitePool};
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::services::database::{db_error, shared_pool};
 use crate::services::library::guard::configured_library_dir;
@@ -442,8 +442,8 @@ fn report_for_unavailable_library(plan: ArtifactCleanupPlan) -> ArtifactCleanupR
     }
 }
 
-async fn execute_plan(
-    app: &AppHandle,
+async fn execute_plan<R: Runtime>(
+    app: &AppHandle<R>,
     mut plan: ArtifactCleanupPlan,
 ) -> AppResult<ArtifactCleanupReport> {
     if plan.deletable.is_empty() {
@@ -599,8 +599,11 @@ pub async fn cleanup_unreferenced_artifacts(
 /// It exists because the creation's own failure path has to clean up while still holding that lock -
 /// taking it a second time would deadlock, and releasing it first would reopen the window between
 /// the failed insert and the unlink. Every other caller goes through the public function above.
-pub(crate) async fn cleanup_unreferenced_artifacts_locked(
-    app: &AppHandle,
+/// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is: the bare
+/// `AppHandle` alias is `AppHandle<Wry>`, which no mock-runtime test can produce, and this is one of
+/// the steps inside the media-registration critical section a test has to be able to drive.
+pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
+    app: &AppHandle<R>,
     file_path: Option<String>,
     thumbnail_path: Option<String>,
     live_chat_file_path: Option<String>,

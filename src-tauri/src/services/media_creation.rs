@@ -34,7 +34,7 @@
 //! the only thing describing the state on disk.
 
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::models::yt_dlp::{DownloadedMediaResult, ImportMode};
 use crate::services::database::shared_pool;
@@ -615,7 +615,10 @@ async fn cleanup_artifacts_best_effort(
 /// The same cleanup, for a caller that already holds the registration lock. Takes the whole
 /// `PreparedArtifacts` because that caller always has one, and it always names a media file - so
 /// there is nothing for [`nothing_to_clean_up`] to decide here.
-async fn cleanup_artifacts_best_effort_locked(app: &AppHandle, prepared: &PreparedArtifacts) {
+async fn cleanup_artifacts_best_effort_locked<R: Runtime>(
+    app: &AppHandle<R>,
+    prepared: &PreparedArtifacts,
+) {
     report_cleanup_outcome(
         library::cleanup::cleanup_unreferenced_artifacts_locked(
             app,
@@ -653,8 +656,8 @@ fn ensure_managed_prepared_paths(prepared: &PreparedArtifacts) -> AppResult<()> 
 /// library and the user asked for them, so failing to record the recovery hint is strictly better
 /// than failing the creation over it. What is lost when it fails is one launch's automatic
 /// reconciliation, and Diagnostics still reports the files.
-async fn record_marker_best_effort(
-    app: &AppHandle,
+async fn record_marker_best_effort<R: Runtime>(
+    app: &AppHandle<R>,
     prepared: &PreparedArtifacts,
 ) -> Option<String> {
     let app = app.clone();
@@ -683,7 +686,7 @@ async fn record_marker_best_effort(
     }
 }
 
-async fn clear_marker_best_effort(app: &AppHandle, marker: Option<String>) {
+async fn clear_marker_best_effort<R: Runtime>(app: &AppHandle<R>, marker: Option<String>) {
     let Some(marker) = marker else {
         return;
     };
@@ -711,8 +714,16 @@ async fn clear_marker_best_effort(app: &AppHandle, marker: Option<String>) {
 ///
 /// It is deliberately short. The download and the import happen before it, so nothing a user waits
 /// on is serialized by this lock; what is inside is a marker write, one query and one insert.
-async fn register_prepared_media(
-    app: &AppHandle,
+/// Generic over the runtime, and `pub(crate)` rather than private, because this is the half of a
+/// creation a test can actually drive: `AppHandle` alone is `AppHandle<Wry>`, and
+/// `tauri::test::mock_builder` produces a `MockRuntime` app, so naming the bare alias anywhere in
+/// this chain put the ordering below out of reach of every test in the crate.
+///
+/// The artifact *production* above it stays runtime-bound and is not covered by this - it runs
+/// yt-dlp, FFmpeg and an HTTP fetch, none of which a unit test drives. What is covered is the part
+/// where an ordering mistake costs a user their data.
+pub(crate) async fn register_prepared_media<R: Runtime>(
+    app: &AppHandle<R>,
     request: &CreateMediaRequest,
     prepared: PreparedArtifacts,
 ) -> AppResult<CreatedMedia> {
@@ -755,8 +766,8 @@ async fn register_prepared_media(
 /// The pre-insert lookup exists for its message rather than for correctness: `(channel_id,
 /// file_path)` is unique in the schema, so a duplicate would be refused either way - just as a
 /// constraint violation rather than as "this media is already registered for the selected channel".
-async fn insert_prepared_media(
-    app: &AppHandle,
+async fn insert_prepared_media<R: Runtime>(
+    app: &AppHandle<R>,
     request: &CreateMediaRequest,
     prepared: &PreparedArtifacts,
 ) -> AppResult<i64> {
@@ -1255,5 +1266,270 @@ mod tests {
         );
         assert!(serde_json::from_str::<MediaSourceMode>("\"ytdlp\"").is_err());
         assert!(serde_json::from_str::<MediaSourceMode>("\"YtDlp\"").is_err());
+    }
+
+    // The registration half of a creation, driven end to end on a mock runtime.
+    //
+    // Everything above this point tests a pure decision. This block tests the *ordering* - the crash
+    // marker written after the artifacts and cleared only once the row has landed or their cleanup
+    // has run - which is the part of this module a mistake in costs a user their data, and which had
+    // no test at all. It could not have one: `AppHandle` alone is `AppHandle<Wry>`, so every
+    // function in the chain was unreachable from `tauri::test::mock_builder`'s `MockRuntime` app.
+    // Widening the chain to `R: Runtime` is what these assert against.
+    //
+    // Deliberately not covered here: the artifact *production* above it. That runs yt-dlp, FFmpeg
+    // and an HTTP fetch, none of which belongs in a unit test - and it is also the half where a
+    // failure is loud. The registration is the quiet one.
+    mod registration {
+        use super::*;
+        use crate::services::database::{get_app_settings_from_pool, set_app_settings_in_pool, Db};
+        use crate::services::video_repository;
+        use std::path::{Path, PathBuf};
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        use tauri::Manager;
+
+        type MockApp = tauri::App<tauri::test::MockRuntime>;
+
+        /// A mock app holding an in-memory database with the real schema and one channel, plus a
+        /// library directory on disk whose path is persisted in settings.
+        ///
+        /// The library is real rather than mocked because the failure path unlinks from it: a
+        /// cleanup that could not reach the library would report "unavailable" and the test would
+        /// pass without proving anything was removed.
+        /// `async` rather than blocking on the setup: these are `#[tokio::test]`s, so a
+        /// `block_on` here starts a runtime from inside one and panics before any assertion runs.
+        async fn app_with_library(label: &str) -> (MockApp, PathBuf) {
+            let library = std::env::temp_dir().join(format!(
+                "kavynex_mediareg_{label}_{}",
+                crate::utils::naming::unique_temp_suffix()
+            ));
+            std::fs::create_dir_all(library.join(crate::constants::LIBRARY_DIR_VIDEO)).unwrap();
+
+            let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .unwrap();
+            crate::services::db_schema::ensure_schema(&pool)
+                .await
+                .unwrap();
+
+            sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+                .execute(&pool)
+                .await
+                .unwrap();
+
+            let mut settings = get_app_settings_from_pool(&pool).await.unwrap();
+            settings.library_path = Some(library.to_string_lossy().to_string());
+            set_app_settings_in_pool(&pool, &settings).await.unwrap();
+
+            app.manage(Db::from_pool(pool));
+
+            (app, library)
+        }
+
+        /// Writes a media file into the library and returns the artifacts naming it, exactly as the
+        /// production step would have left them.
+        fn artifacts_on_disk(library: &Path, name: &str) -> PreparedArtifacts {
+            let relative = format!("{}/{name}", crate::constants::LIBRARY_DIR_VIDEO);
+            std::fs::write(library.join(&relative), b"media bytes").unwrap();
+
+            PreparedArtifacts {
+                file_path: relative,
+                thumbnail_path: None,
+                media_type: "video".to_string(),
+                youtube_video_id: None,
+                published_at: None,
+                is_live: false,
+                live_chat_file_path: None,
+            }
+        }
+
+        /// How many crash markers currently name `file_path`.
+        ///
+        /// Matched on the marker's contents rather than counted, because the cache directory is the
+        /// real per-OS one: another test in this process - or a running app - has markers there too,
+        /// and a bare count would make this assert about them.
+        fn markers_naming(app: &MockApp, file_path: &str) -> usize {
+            let dir = match app.path().app_cache_dir() {
+                Ok(cache) => cache.join(crate::constants::TEMP_DIR_PENDING_MEDIA),
+                Err(_) => return 0,
+            };
+
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                return 0;
+            };
+
+            entries
+                .flatten()
+                .filter(|entry| {
+                    std::fs::read_to_string(entry.path())
+                        .is_ok_and(|contents| contents.contains(file_path))
+                })
+                .count()
+        }
+
+        #[tokio::test]
+        async fn a_registered_media_lands_as_a_row_and_leaves_no_marker_behind() {
+            // The happy path's whole contract in one place: the row exists afterwards, and the
+            // marker that described the window before it does not. A marker left behind is not
+            // cosmetic - the startup sweep reads it and hands its paths to a cleanup that unlinks
+            // files, so a creation that succeeded but failed to clear its marker is a video the next
+            // launch may delete.
+            let (app, library) = app_with_library("registered").await;
+            let prepared = artifacts_on_disk(&library, "media_ok.mp4");
+            let file_path = prepared.file_path.clone();
+
+            let created =
+                register_prepared_media(app.handle(), &request(MediaSourceMode::Local), prepared)
+                    .await
+                    .expect("a valid registration should succeed");
+
+            assert_eq!(created.file_path, file_path);
+            assert!(created.id > 0);
+
+            let pool = crate::services::database::shared_pool(app.handle())
+                .await
+                .unwrap();
+            assert!(
+                video_repository::find_media_by_channel_and_file_path(&pool, 1, &file_path)
+                    .await
+                    .unwrap()
+                    .is_some(),
+                "the row the artifacts were registered as must exist"
+            );
+
+            assert_eq!(
+                markers_naming(&app, &file_path),
+                0,
+                "a creation that reached its row must not leave a crash marker behind"
+            );
+            assert!(
+                library.join(&file_path).exists(),
+                "a successful registration must not touch the artifacts"
+            );
+
+            let _ = std::fs::remove_dir_all(&library);
+        }
+
+        #[tokio::test]
+        async fn a_refused_duplicate_keeps_the_file_the_existing_row_points_at() {
+            // A refused registration cleans up "its" artifacts, and this pins what that must not
+            // mean. The artifacts are content-addressed, so the duplicate the insert refuses
+            // resolves to the *same file* the row already there points at - and the cleanup is
+            // reference-counted precisely so it keeps that one. Deleting it would take the existing
+            // media's file away as a side effect of refusing to add it twice, which is the worst
+            // outcome available on this path: an error the user shrugs off, and a video gone.
+            let (app, library) = app_with_library("duplicate").await;
+            let prepared = artifacts_on_disk(&library, "media_dup.mp4");
+            let file_path = prepared.file_path.clone();
+
+            let pool = crate::services::database::shared_pool(app.handle())
+                .await
+                .unwrap();
+            video_repository::insert_media(
+                &pool,
+                1,
+                "Already there",
+                &file_path,
+                None,
+                "video",
+                None,
+                None,
+                None,
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+
+            let error =
+                register_prepared_media(app.handle(), &request(MediaSourceMode::Local), prepared)
+                    .await
+                    .expect_err("a file path this channel already holds must be refused");
+
+            assert_eq!(
+                error.code,
+                AppErrorCode::VideoAlreadyExistsForChannel.as_str()
+            );
+            assert!(
+                library.join(&file_path).exists(),
+                "the file the registered row points at must survive the refusal"
+            );
+            assert_eq!(
+                markers_naming(&app, &file_path),
+                0,
+                "the marker must be cleared once the cleanup it covered has run"
+            );
+
+            let _ = std::fs::remove_dir_all(&library);
+        }
+
+        #[tokio::test]
+        async fn a_registration_that_cannot_insert_removes_the_artifacts_nothing_references() {
+            // The other half of the failure path: an insert that fails with no row anywhere pointing
+            // at the file, so the reference count really is zero and the artifacts have to go. The
+            // channel is gone (deleted while the download ran, which is how this happens in
+            // practice), so the insert fails on the foreign key.
+            //
+            // All three consequences are asserted together because any one alone can pass while the
+            // ordering is wrong: the error reaches the caller, the unreferenced file is gone, and
+            // the marker is cleared - the marker last, because until the cleanup has run it is the
+            // only record of what is on disk.
+            let (app, library) = app_with_library("orphaned").await;
+            let prepared = artifacts_on_disk(&library, "media_orphan.mp4");
+            let file_path = prepared.file_path.clone();
+
+            let missing_channel = CreateMediaRequest {
+                channel_id: 4242,
+                ..request(MediaSourceMode::Local)
+            };
+
+            register_prepared_media(app.handle(), &missing_channel, prepared)
+                .await
+                .expect_err("an insert against a channel that does not exist must fail");
+
+            assert!(
+                !library.join(&file_path).exists(),
+                "artifacts no row references must not be left in the library"
+            );
+            assert_eq!(
+                markers_naming(&app, &file_path),
+                0,
+                "the marker must be cleared once the cleanup it covered has run"
+            );
+
+            let _ = std::fs::remove_dir_all(&library);
+        }
+
+        #[tokio::test]
+        async fn a_path_outside_the_managed_layout_is_refused_before_a_marker_exists() {
+            // `ensure_managed_prepared_paths` runs before the lock and before the marker, and that
+            // order is the point: a marker naming a path the layout does not own would hand the
+            // startup sweep something to reconcile that this run should never have produced. So the
+            // refusal has to leave nothing at all behind, not merely fail.
+            let (app, library) = app_with_library("escaped").await;
+            let prepared = PreparedArtifacts {
+                file_path: "../outside/media_escape.mp4".to_string(),
+                media_type: "video".to_string(),
+                ..PreparedArtifacts::default()
+            };
+
+            let error =
+                register_prepared_media(app.handle(), &request(MediaSourceMode::Local), prepared)
+                    .await
+                    .expect_err("a path outside the managed layout must be refused");
+
+            assert_eq!(
+                markers_naming(&app, "media_escape.mp4"),
+                0,
+                "nothing may be recorded for a request refused before the marker is written"
+            );
+            assert!(!error.code.is_empty());
+
+            let _ = std::fs::remove_dir_all(&library);
+        }
     }
 }
