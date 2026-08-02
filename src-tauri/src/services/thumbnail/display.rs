@@ -350,6 +350,25 @@ fn display_thumbnail_file_name(cache_key: &str) -> String {
 /// the honest answer - the app cannot have written it, so it is a hand-placed or legacy file - and
 /// `None` costs nothing: the caller renders the canonical file, which is what it did before this
 /// module existed.
+/// Where the derivative of a stored, library-relative thumbnail lives, or `None` when the name is
+/// not one this app produced (see [`display_cache_key`]).
+///
+/// The single spelling of the mapping, so the two callers cannot disagree about it: the resolve
+/// path uses it to find or write a derivative, and `library::cleanup` uses it to remove one whose
+/// canonical thumbnail was just unlinked. That second caller is the reason this is a function
+/// rather than two lines inlined at the resolve site - it has no business knowing that a derivative
+/// is named from a content hash plus a width.
+///
+/// It also means the cleanup needs no reference counting of its own. A derivative is addressed *by*
+/// the canonical thumbnail's content hash, so two rows sharing a thumbnail share its derivative
+/// exactly as they share the file; the count the cleanup already ran before unlinking the canonical
+/// file is therefore the same count, and there is nothing further to decide.
+pub(crate) fn display_derivative_path(display_dir: &Path, relative_path: &str) -> Option<PathBuf> {
+    let cache_key = display_cache_key(relative_path)?;
+
+    Some(display_dir.join(display_thumbnail_file_name(&cache_key)))
+}
+
 fn display_cache_key(relative_path: &str) -> Option<String> {
     let file_name = Path::new(relative_path.trim())
         .file_name()
@@ -503,11 +522,9 @@ fn resolve_one(
     started_at: std::time::Instant,
 ) -> DisplayThumbnail {
     // A name this app did not write. Permanent: the name comes off the row and does not change.
-    let Some(cache_key) = display_cache_key(relative_path) else {
+    let Some(out_path) = display_derivative_path(display_dir, relative_path) else {
         return DisplayThumbnail::Unavailable;
     };
-
-    let out_path = display_dir.join(display_thumbnail_file_name(&cache_key));
 
     // The hit path: a stat, and nothing else. This is the case that has to stay cheap, since it is
     // every page view after the first.

@@ -271,6 +271,11 @@ in-app flows:
   is a complete backup of the media itself.
 - **The database** (channels, titles, watched state, comments) is a single SQLite file. Settings >
   Database > Export writes a snapshot of it wherever you choose, which is the portable copy to keep.
+- **The cache folder** holds nothing of yours that is not already in one of those two: temporary
+  previews, and a smaller copy of each thumbnail the grid has drawn, so a card decodes a few hundred
+  pixels instead of the stored image's full resolution. Deleting a media removes its copy along with
+  it, and the whole folder is safe to delete at any time - anything still needed is regenerated the
+  next time it is drawn. `docs/DIRECTORIES.md` lists where it is per OS.
 
 The database's automatic `.bak` snapshots live next to the database itself, on the same disk, so a
 drive failure takes them with it. To guard against that, **Settings > Database > Automatic external

@@ -23,6 +23,8 @@ use crate::services::database::{db_error, shared_pool};
 use crate::services::library::guard::configured_library_dir;
 use crate::services::library::media::delete_media_file_sync;
 use crate::services::logger;
+use crate::services::temp_paths::thumb_display_dir;
+use crate::services::thumbnail::display::display_derivative_path;
 use crate::services::thumbnail::persist::delete_thumbnail_file_sync;
 
 /// Opens the read-then-write transactions below with `BEGIN IMMEDIATE` rather than sqlx's
@@ -306,11 +308,50 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
     Ok(())
 }
 
+/// Drops the display-sized copy of a thumbnail that has just been unlinked from the library.
+///
+/// Nothing else would ever remove it. A derivative is addressed by the canonical thumbnail's own
+/// content hash and no row refers to one (see `services::thumbnail::display`), so the only bound on
+/// that directory is the size sweep at startup - which trims oldest-first once the whole cache
+/// exceeds its budget, and therefore has no relation to what was deleted. Until this ran, deleting a
+/// media left its thumbnail readable in the cache directory until enough unrelated browsing pushed
+/// the cache past its ceiling.
+///
+/// No reference counting of its own: the caller only reaches here for a path the deletion
+/// transaction already found unreferenced, and the derivative is keyed by that path's content hash,
+/// so two rows sharing a thumbnail share its derivative exactly as they share the file.
+///
+/// Best effort, and deliberately silent on failure. The canonical file is gone, which is what the
+/// user asked for and what the report is about; a derivative left behind is a regenerable cache
+/// entry the size sweep still reclaims, so failing the delete over it - or adding it to
+/// `failed_paths`, which names files the user may need to clean up by hand - would misreport a
+/// cache miss as an orphaned artifact.
+///
+/// A derivative written under an older [`DISPLAY_THUMBNAIL_MAX_WIDTH`] is not matched, since the
+/// width is part of the name. That is the same self-invalidation the width is in the name for:
+/// nothing addresses those any more, and the size sweep is what reclaims them.
+fn drop_display_derivative(display_dir: Option<&Path>, relative_thumbnail_path: &str) {
+    let Some(display_dir) = display_dir else {
+        return;
+    };
+
+    let Some(derivative) = display_derivative_path(display_dir, relative_thumbnail_path) else {
+        return;
+    };
+
+    let _ = std::fs::remove_file(derivative);
+}
+
 /// Removes the planned files from disk. Failures are collected in the report (and
 /// logged) instead of aborting: the rows are already gone, so the caller must always
 /// learn which files may have been left orphaned in the library.
+///
+/// `display_dir` is the display-thumbnail cache, or `None` when it could not be resolved. It is a
+/// parameter rather than something looked up here so this function keeps taking only paths, which
+/// is what lets a test drive the whole removal - the lookup needs an `AppHandle`.
 pub fn remove_planned_artifacts_sync(
     library_dir: &Path,
+    display_dir: Option<&Path>,
     plan: ArtifactCleanupPlan,
 ) -> ArtifactCleanupReport {
     let library_path = library_dir.to_string_lossy().to_string();
@@ -328,7 +369,16 @@ pub fn remove_planned_artifacts_sync(
         };
 
         match result {
-            Ok(()) => report.deleted_paths.push(artifact.path),
+            Ok(()) => {
+                // After the canonical file is gone, not before: the derivative is the cheaper of
+                // the two to lose, so a failure to unlink the thumbnail must not have already
+                // discarded the copy the grid can still draw from.
+                if artifact.kind == ArtifactKind::Thumbnail {
+                    drop_display_derivative(display_dir, &artifact.path);
+                }
+
+                report.deleted_paths.push(artifact.path);
+            }
             Err(error) => {
                 logger::error(
                     "library_cleanup",
@@ -478,7 +528,19 @@ async fn execute_plan<R: Runtime>(
         }
     };
 
-    run_blocking(move || Ok(remove_planned_artifacts_sync(&library_dir, plan))).await
+    // Resolved here, alongside the library directory, because `remove_planned_artifacts_sync` takes
+    // only paths. `None` when the cache directory cannot be resolved, which leaves the derivatives
+    // to the size sweep rather than failing a deletion the user asked for over a cache entry.
+    let display_dir = thumb_display_dir(app).ok();
+
+    run_blocking(move || {
+        Ok(remove_planned_artifacts_sync(
+            &library_dir,
+            display_dir.as_deref(),
+            plan,
+        ))
+    })
+    .await
 }
 
 /// Deletes a media row and removes its now-unreferenced files from disk. The row deletion
@@ -1226,7 +1288,7 @@ mod tests {
             skipped_shared_paths: vec!["video/shared.mp4".to_string()],
         };
 
-        let report = remove_planned_artifacts_sync(&library, plan);
+        let report = remove_planned_artifacts_sync(&library, None, plan);
 
         assert_eq!(
             report.deleted_paths,
@@ -1238,6 +1300,165 @@ mod tests {
         assert!(!library.join("live_chat/a.json.gz").exists());
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    /// The 64-hex stem a content-addressed thumbnail carries, so the derivative naming below is
+    /// spelled out rather than derived from the function under test.
+    const TEST_THUMBNAIL_HASH: &str =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn removing_a_thumbnail_drops_its_display_derivative_too() {
+        // Nothing else ever would. A derivative is addressed by the canonical thumbnail's own
+        // content hash and no row refers to one, so before this the only bound on that directory
+        // was the startup size sweep - which trims oldest-first once the whole cache is over
+        // budget, and therefore has nothing to do with what was deleted. Deleting a media left its
+        // thumbnail readable in the cache until enough unrelated browsing pushed the cache past
+        // its ceiling.
+        let root = unique_test_dir("display-derivative");
+        let library = root.join("library");
+        let display_dir = root.join("thumb-display");
+        fs::create_dir_all(library.join("thumbnails")).unwrap();
+        fs::create_dir_all(&display_dir).unwrap();
+
+        let relative = format!("thumbnails/thumb_{TEST_THUMBNAIL_HASH}.jpg");
+        fs::write(
+            library
+                .join("thumbnails")
+                .join(format!("thumb_{TEST_THUMBNAIL_HASH}.jpg")),
+            b"thumb",
+        )
+        .unwrap();
+
+        // Spelled out rather than built with display_derivative_path, so this pins the name the
+        // resolve path writes under instead of agreeing with whatever that function returns. The
+        // width is in it because changing DISPLAY_THUMBNAIL_MAX_WIDTH has to invalidate the cache.
+        let derivative = display_dir.join(format!("{TEST_THUMBNAIL_HASH}-w640.jpg"));
+        fs::write(&derivative, b"derivative").unwrap();
+
+        // A second derivative for an unrelated thumbnail, to pin that the removal is addressed
+        // rather than a sweep of the directory.
+        let unrelated = display_dir.join(format!("{}-w640.jpg", "f".repeat(64)));
+        fs::write(&unrelated, b"unrelated").unwrap();
+
+        let plan = ArtifactCleanupPlan {
+            deletable: vec![DeletableArtifact {
+                kind: ArtifactKind::Thumbnail,
+                path: relative.clone(),
+            }],
+            skipped_shared_paths: Vec::new(),
+        };
+
+        let report = remove_planned_artifacts_sync(&library, Some(&display_dir), plan);
+
+        assert_eq!(report.deleted_paths, vec![relative]);
+        assert!(
+            !derivative.exists(),
+            "the derivative should be gone with it"
+        );
+        assert!(
+            unrelated.exists(),
+            "only the deleted thumbnail's copy should go"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn removing_a_media_file_leaves_the_display_cache_alone() {
+        // The kind check, in the direction that would be silent. Dropping it would make every
+        // deletion walk the cache for a key derived from a `video/...` path - which yields None
+        // today, so nothing observable happens until some later name change makes it yield a
+        // path, at which point a media delete starts removing an unrelated media's derivative.
+        let root = unique_test_dir("display-derivative-media");
+        let library = root.join("library");
+        let display_dir = root.join("thumb-display");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::create_dir_all(&display_dir).unwrap();
+        fs::write(library.join("video/a.mp4"), b"media").unwrap();
+
+        let derivative = display_dir.join(format!("{TEST_THUMBNAIL_HASH}-w640.jpg"));
+        fs::write(&derivative, b"derivative").unwrap();
+
+        let plan = ArtifactCleanupPlan {
+            deletable: vec![DeletableArtifact {
+                kind: ArtifactKind::MediaFile,
+                path: "video/a.mp4".to_string(),
+            }],
+            skipped_shared_paths: Vec::new(),
+        };
+
+        remove_planned_artifacts_sync(&library, Some(&display_dir), plan);
+
+        assert!(derivative.exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_thumbnail_that_could_not_be_removed_keeps_its_derivative() {
+        // The ordering. The derivative is the cheaper of the two to lose, so a thumbnail whose
+        // unlink failed - it is reported as possibly orphaned, and still on disk - must keep the
+        // copy the grid can still draw from. Forcing the failure with a directory at the
+        // thumbnail's path, which is portable, unlike a permission trick.
+        let root = unique_test_dir("display-derivative-failed");
+        let library = root.join("library");
+        let display_dir = root.join("thumb-display");
+        let relative = format!("thumbnails/thumb_{TEST_THUMBNAIL_HASH}.jpg");
+        fs::create_dir_all(library.join(&relative)).unwrap();
+        fs::create_dir_all(&display_dir).unwrap();
+
+        let derivative = display_dir.join(format!("{TEST_THUMBNAIL_HASH}-w640.jpg"));
+        fs::write(&derivative, b"derivative").unwrap();
+
+        let plan = ArtifactCleanupPlan {
+            deletable: vec![DeletableArtifact {
+                kind: ArtifactKind::Thumbnail,
+                path: relative.clone(),
+            }],
+            skipped_shared_paths: Vec::new(),
+        };
+
+        let report = remove_planned_artifacts_sync(&library, Some(&display_dir), plan);
+
+        assert_eq!(report.failed_paths, vec![relative]);
+        assert!(derivative.exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unresolvable_display_cache_does_not_fail_the_removal() {
+        // `None` is what execute_plan passes when the cache directory cannot be resolved. The
+        // deletion the user asked for must still happen and still be reported - a cache entry is
+        // not worth failing it over, and the size sweep reclaims the derivative regardless.
+        let root = unique_test_dir("display-derivative-none");
+        let library = root.join("library");
+        fs::create_dir_all(library.join("thumbnails")).unwrap();
+
+        let relative = format!("thumbnails/thumb_{TEST_THUMBNAIL_HASH}.jpg");
+        fs::write(
+            library
+                .join("thumbnails")
+                .join(format!("thumb_{TEST_THUMBNAIL_HASH}.jpg")),
+            b"thumb",
+        )
+        .unwrap();
+
+        let plan = ArtifactCleanupPlan {
+            deletable: vec![DeletableArtifact {
+                kind: ArtifactKind::Thumbnail,
+                path: relative.clone(),
+            }],
+            skipped_shared_paths: Vec::new(),
+        };
+
+        let report = remove_planned_artifacts_sync(&library, None, plan);
+
+        assert_eq!(report.deleted_paths, vec![relative]);
+        assert!(report.failed_paths.is_empty());
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1295,7 +1516,7 @@ mod tests {
             skipped_shared_paths: Vec::new(),
         };
 
-        let report = remove_planned_artifacts_sync(&library, plan);
+        let report = remove_planned_artifacts_sync(&library, None, plan);
 
         assert!(report.deleted_paths.is_empty());
         assert_eq!(report.failed_paths, vec!["../outside.txt"]);
