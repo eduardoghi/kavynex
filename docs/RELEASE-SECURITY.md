@@ -131,24 +131,29 @@ advisory- and license-gated (`frontend-audit` job, `scripts/check-js-advisories.
 provenance attestation, the SBOM applies from v1.2.0 onward, not retroactively (see "When these
 three controls started applying" above).
 
-## Static analysis (CodeQL) lives outside this repository
+## Static analysis (CodeQL)
 
-CodeQL runs on this repository through GitHub's **default setup**, which means there is no workflow
-file for it in `.github/workflows/`. That absence is the reason this section exists: someone reading
-the four workflows to find out what gates a change would reasonably conclude there is no static
-analysis at all, and would be wrong.
+CodeQL analyses three languages - `rust`, `javascript-typescript` and `actions` - on pushes to
+`main`, on pull requests, and on a weekly schedule. Its results are on the repository's
+**Security > Code scanning** tab rather than in a job log; `gh api
+repos/eduardoghi/kavynex/code-scanning/alerts` answers the same question from a terminal.
 
-It analyses three languages - `rust`, `javascript-typescript` and `actions` - on pushes to `main` and
-on a schedule, and its results are on the repository's **Security > Code scanning** tab rather than
-in a job log. `gh api repos/eduardoghi/kavynex/code-scanning/alerts` answers the same question from a
-terminal.
+It runs from `.github/workflows/codeql.yml`, and it did not always. Until then it ran through
+GitHub's **default setup**, configured in the repository settings with no file behind it, and this
+section existed mostly to tell a reader that the absence of a workflow did not mean the absence of
+static analysis.
 
-Two properties are worth knowing before relying on it. It is configured in GitHub's UI, not in this
-repository, so unlike every other gate here it is not reviewable in a diff and does not travel with a
-fork. And it analyses **what has been pushed**, which is not always what has been written: a run
-green against `origin/main` says nothing about commits that exist only on a maintainer's machine.
-That is an argument for pushing often rather than against the tool, and it is the one gate in this
-document that cannot be run locally before a release.
+The move to a workflow changed where the configuration lives, not what is analysed - the languages,
+the query suite and the schedule are the ones default setup was running, read back from the API
+before the switch. What it buys is the property every other gate in this repository already had:
+the analysis is pinned (the action by SHA, the runner by OS major), it is reviewable in a diff, and
+it travels with a fork. A language quietly dropped or a suite quietly narrowed now shows up as a
+change to a file rather than as nothing at all.
+
+One property is unchanged and still worth knowing: CodeQL analyses **what has been pushed**, which
+is not always what has been written. A run green against `origin/main` says nothing about commits
+that exist only on a maintainer's machine. That is an argument for pushing often rather than against
+the tool, and it remains the one gate in this document that cannot be run locally before a release.
 
 ## Accepted risk: the signing key is present while dependencies build
 

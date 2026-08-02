@@ -1,0 +1,113 @@
+name: codeql
+
+# Static analysis of the three languages this repository actually holds: the workflow files
+# themselves, the frontend, and the Rust backend.
+#
+# This replaces GitHub's *default setup*, which had been running the same three languages since
+# 2026-07 and doing so correctly. The move is not about coverage - it is about where the
+# configuration lives. Every other gate in this repository pins what it runs: the Rust toolchain
+# (rust-toolchain.toml), Node (.nvmrc plus a consistency check), every action by SHA, every
+# `cargo install` by exact version, and every runner image by OS major. Default setup was the one
+# gate whose behavior lived in the repository *settings* rather than in a file, so a change to it -
+# a language dropped, the query suite narrowed, the schedule loosened - left no trace anybody could
+# review, and nothing in a diff would show that the analysis had changed.
+#
+# The settings this file reproduces are the ones default setup was configured with, read back from
+# the API before the switch (languages actions/javascript-typescript/rust, the `default` query
+# suite, the `remote` threat model, a weekly schedule). The push/pull_request triggers are the
+# additions: default setup ran on push and weekly, and running on PRs as well means a finding
+# arrives on the change that introduced it rather than after it has landed.
+#
+# IMPORTANT, and the reason this file may sit unused for a moment: default setup and advanced setup
+# cannot both be active. While default setup is enabled, this workflow's `upload-sarif` step is
+# refused by the API ("Code scanning default setup is enabled"). Disable it first - Settings > Code
+# security > Code scanning > Set up > Disable CodeQL, or
+# `gh api -X PATCH repos/eduardoghi/kavynex/code-scanning/default-setup -f state=not-configured` -
+# and only then push this file. Dispatch it by hand once afterwards to confirm all three languages
+# analyze before relying on the schedule.
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+    schedule:
+        # Fridays 08:00 UTC. Offset from mutation.yml (Mondays 06:00) and scheduled-audit.yml
+        # (Thursdays 07:00) so the three scheduled workflows never contend for runners, matching
+        # the offset those two already keep from each other.
+        - cron: "0 8 * * 5"
+    workflow_dispatch:
+
+# Read-only by default, like every other workflow here, so a job added later cannot silently
+# inherit write access from the repository default. The analyze job escalates to what CodeQL needs.
+permissions:
+    contents: read
+
+concurrency:
+    group: codeql-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    analyze:
+        name: Analyze (${{ matrix.language }})
+        # Pinned rather than `ubuntu-latest`, for the reason the whole repository pins: `-latest`
+        # moves to a new OS major whenever GitHub decides, and an analysis whose results shift for
+        # that reason is worse than one that shifts because the code did.
+        runs-on: ubuntu-26.04
+        # Well above the observed runtime of the default-setup runs this replaces (~2 minutes for
+        # the whole matrix) while still bounded, so a wedged extractor fails rather than running
+        # toward the 6h default.
+        timeout-minutes: 60
+
+        permissions:
+            # Uploading the SARIF results is what needs a write scope; nothing else here does.
+            security-events: write
+            # Required for the action to read the workflow run's own metadata on a private repo,
+            # and harmless on a public one. Kept explicit rather than inherited.
+            actions: read
+            contents: read
+
+        strategy:
+            fail-fast: false
+            matrix:
+                # One leg per language, exactly the three the default setup was analyzing (the API
+                # additionally listed `javascript` and `typescript`, which are aliases of
+                # `javascript-typescript` and produce no separate analysis - confirmed against the
+                # analyses endpoint, which reported three categories, not five).
+                #
+                # `build-mode: none` for all three: none of them is a compiled language as far as
+                # CodeQL is concerned. That is the mode the Rust extractor supports, and it is why
+                # this workflow needs no toolchain, no apt packages and no build step - it reads
+                # the sources rather than observing a compilation. If a future CodeQL release
+                # requires a build for Rust, that leg fails loudly here rather than silently
+                # analyzing nothing.
+                include:
+                    - language: actions
+                      build-mode: none
+                    - language: javascript-typescript
+                      build-mode: none
+                    - language: rust
+                      build-mode: none
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            - name: Initialize CodeQL
+              uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+              with:
+                  languages: ${{ matrix.language }}
+                  build-mode: ${{ matrix.build-mode }}
+                  # `queries:` is deliberately absent, which selects the same `default` suite the
+                  # API reported for default setup. Naming a suite here would be the one place this
+                  # migration changed what is analyzed rather than only where the configuration
+                  # lives, and the two are worth keeping separate: a red run after the switch should
+                  # mean the switch broke something, never that a wider suite found something the
+                  # old configuration was never asked to look for.
+                  #
+                  # Widening to `security-extended` or `security-and-quality` is a reviewable
+                  # one-line change from here, which is the whole point of the file existing.
+
+            - name: Perform CodeQL analysis
+              uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+              with:
+                  category: /language:${{ matrix.language }}
