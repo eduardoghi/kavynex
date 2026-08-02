@@ -10,11 +10,11 @@ import { runWebviewCheckIfRequested } from "./lib/webview-check";
 installGlobalErrorHandlers();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>
-  </React.StrictMode>,
+    <React.StrictMode>
+        <AppErrorBoundary>
+            <App />
+        </AppErrorBoundary>
+    </React.StrictMode>
 );
 
 // The startup self-check, on a `--webview-check` launch only (see src/lib/webview-check.ts). It

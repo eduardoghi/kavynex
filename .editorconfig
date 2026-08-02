@@ -1,0 +1,30 @@
+# Indentation was the one formatting rule this repo had no gate for. The Rust side has
+# `cargo fmt --check` in ci.yml; the TypeScript side has ESLint, which carries no formatting rules
+# here on purpose - adding Prettier would put a new package into a tree that deliberately runs
+# `minimumReleaseAge` and `blockExoticSubdeps`, for a problem an editor setting already solves.
+#
+# The drift this exists to stop was real rather than hypothetical: every file under `src/` uses four
+# spaces except `src/main.tsx`, which was scaffolded with two and stayed that way because nothing
+# read it.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Markdown treats trailing whitespace as a hard line break, so trimming it would silently rewrite
+# a document's rendering rather than tidy it.
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML's own convention, and what every file in .github/workflows/ already uses.
+[*.{yml,yaml}]
+indent_size = 4
+
+[*.json]
+indent_size = 4
