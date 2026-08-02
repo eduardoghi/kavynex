@@ -12,7 +12,11 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// cancellable-metadata IPC command in a loop) from piling an unbounded backlog ahead of a real
 /// request. Set well above the concurrency cap and any realistic interactive use, so it only trips on
 /// abuse; standalone metadata/comment fetches that opt into cancellation share this registry too.
-const MAX_ACTIVE_RUNS: usize = 16;
+/// `pub(crate)` because `yt_dlp::download` passes it as its permit gate's in-flight ceiling: the
+/// registry entry is taken before that gate is awaited, so this is already the depth of the queue
+/// behind it, and naming the same constant twice would let the two drift into disagreeing about a
+/// bound only one of them enforces.
+pub(crate) const MAX_ACTIVE_RUNS: usize = 16;
 
 /// Tracks one in-flight download. The `cancel_flag` is polled cooperatively by the
 /// download loop (per-run cancellation), while `pid` records the spawned yt-dlp child so

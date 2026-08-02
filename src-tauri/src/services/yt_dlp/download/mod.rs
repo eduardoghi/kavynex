@@ -30,9 +30,10 @@ use crate::services::yt_dlp::metadata::{
     sanitize_filename_component, sanitize_identifier_component,
 };
 use crate::services::yt_dlp::registry::{
-    register_download_run, set_download_pid, DownloadRunReleaseGuard,
+    register_download_run, set_download_pid, DownloadRunReleaseGuard, MAX_ACTIVE_RUNS,
 };
 use crate::services::yt_dlp::url::youtube_ref_for_log;
+use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::format::codec_is_present;
 use crate::utils::io::{read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::naming::unique_temp_suffix;
@@ -68,10 +69,22 @@ const YT_DLP_MAX_RUNTIME_SECS: u64 = 12 * 60 * 60;
 // thrashing.
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
-// One process-wide semaphore; `acquire()` on it only errors if it is closed, which never happens for
-// a 'static.
-static DOWNLOAD_SEMAPHORE: tokio::sync::Semaphore =
-    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_DOWNLOADS);
+// One process-wide gate, through the same `BoundedSemaphore` its two sibling spawn sites already use
+// (`yt_dlp::metadata`, `thumbnail::download`). This was a bare `tokio::sync::Semaphore` whose
+// `acquire()` result was `.expect()`ed on the (true) grounds that a 'static semaphore is never
+// closed - the one production `expect` left in the crate. The reasoning was sound and the shape was
+// still the odd one out: the app is built with `panic = "unwind"` precisely so a webview app degrades
+// rather than aborts, and every other impossible-permit case here already answers with a refusal
+// (`thumbnail::display::try_reserve_resolve_slot` collapses the same `Closed` to "no slot").
+// Refusing this one run is the equivalent, and it is the only degradation that keeps the bound:
+// continuing without a permit would drop the concurrency cap the gate exists to hold.
+//
+// The in-flight ceiling is the registry's, not a second number: `register_download_run` runs *before*
+// this acquire and already refuses past `MAX_ACTIVE_RUNS`, so the queue behind these permits cannot
+// grow deeper than that. Passing the same value states the relationship rather than inventing a
+// ceiling that can never be reached from a different one.
+static DOWNLOAD_SEMAPHORE: BoundedSemaphore =
+    BoundedSemaphore::new(MAX_CONCURRENT_DOWNLOADS, MAX_ACTIVE_RUNS);
 
 /// True when the child has produced no output for longer than the stall threshold.
 fn download_is_stalled(now_ms: u64, last_activity_ms: u64, threshold_ms: u64) -> bool {
@@ -342,9 +355,8 @@ pub async fn download_media_from_url_async(
     // queued download is still cancellable - the wait loop below observes the cancel flag as soon as
     // it starts - and held until this function returns, so the slot covers the whole run.
     let _download_permit = DOWNLOAD_SEMAPHORE
-        .acquire()
-        .await
-        .expect("the download semaphore is a 'static and is never closed");
+        .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
+        .await?;
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
