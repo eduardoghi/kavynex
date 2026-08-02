@@ -116,40 +116,52 @@ mod tests {
         // be silent in both directions: a host added here but not to the CSP downloads a thumbnail
         // the grid then refuses to display, and one added to the CSP but not here is renderable and
         // undownloadable. Read the CSP as the source and assert every entry is covered.
+        //
+        // Both spellings of the policy, because `devCsp` is a *third* copy of the same host list
+        // and it had no gate at all. The two are identical today; a divergence would be silent and
+        // asymmetric - a host reaching only one of them renders a thumbnail under `pnpm tauri dev`
+        // that a packaged build refuses, or the reverse. That is the same dev-versus-packaged
+        // asymmetry `THREAT-MODEL.md` already records for the `asset:`/`http://asset.localhost`
+        // token pair, and the reason `--webview-check` exists at all: nothing in the normal loop
+        // applies the packaged CSP, so a mistake in it is not observable until a release.
         let raw = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"));
         let config: serde_json::Value =
             serde_json::from_str(raw).expect("tauri.conf.json must be valid JSON");
 
-        let csp = config["app"]["security"]["csp"]
-            .as_str()
-            .expect("the CSP must be a string");
+        for policy_key in ["csp", "devCsp"] {
+            let csp = config["app"]["security"][policy_key]
+                .as_str()
+                .unwrap_or_else(|| panic!("the {policy_key} must be a string"));
 
-        let img_src = csp
-            .split(';')
-            .map(str::trim)
-            .find(|directive| directive.starts_with("img-src"))
-            .expect("the CSP must declare img-src");
+            let img_src = csp
+                .split(';')
+                .map(str::trim)
+                .find(|directive| directive.starts_with("img-src"))
+                .unwrap_or_else(|| panic!("the {policy_key} must declare img-src"));
 
-        for domain in ALLOWED_THUMBNAIL_IMAGE_HOSTS {
-            assert!(
-                img_src.contains(domain),
-                "img-src does not cover {domain}, which the direct thumbnail fetch allows: {img_src}"
-            );
-        }
+            for domain in ALLOWED_THUMBNAIL_IMAGE_HOSTS {
+                assert!(
+                    img_src.contains(domain),
+                    "{policy_key}'s img-src does not cover {domain}, which the direct thumbnail \
+                     fetch allows: {img_src}"
+                );
+            }
 
-        // And the other direction: every https host the CSP names must be fetchable here, so a
-        // host added to the CSP alone fails this test instead of silently never downloading.
-        for token in img_src.split_whitespace() {
-            let Some(host) = token.strip_prefix("https://") else {
-                continue;
-            };
+            // And the other direction: every https host the CSP names must be fetchable here, so a
+            // host added to the CSP alone fails this test instead of silently never downloading.
+            for token in img_src.split_whitespace() {
+                let Some(host) = token.strip_prefix("https://") else {
+                    continue;
+                };
 
-            let host = host.trim_start_matches("*.");
+                let host = host.trim_start_matches("*.");
 
-            assert!(
-                ALLOWED_THUMBNAIL_IMAGE_HOSTS.contains(&host),
-                "img-src names {host}, which the direct thumbnail fetch would refuse"
-            );
+                assert!(
+                    ALLOWED_THUMBNAIL_IMAGE_HOSTS.contains(&host),
+                    "{policy_key}'s img-src names {host}, which the direct thumbnail fetch would \
+                     refuse"
+                );
+            }
         }
     }
 }
