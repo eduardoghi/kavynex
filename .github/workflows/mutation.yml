@@ -21,6 +21,11 @@ jobs:
         # Pinned rather than `ubuntu-latest`, matching ci.yml's rust job: `-latest` can silently jump
         # an OS major, which would move a mutation score for a reason unrelated to the tests.
         runs-on: ubuntu-26.04
+        outputs:
+            # "scored" when Stryker reached the end and reported a mutation score, "no-score" when it
+            # aborted before producing one. The alert job turns the two into differently-titled
+            # issues; see the step that sets this for why the distinction is not cosmetic.
+            verdict: ${{ steps.stryker.outputs.verdict }}
         # Generous timeout: a full mutation run is long, and this is a weekly scheduled run rather
         # than a per-PR gate, so a longer wall-clock is fine. A too-tight timeout would also report
         # as a failure indistinguishable from a real mutation-score regression.
@@ -45,8 +50,34 @@ jobs:
 
             # Stryker exits non-zero when the mutation score falls below thresholds.break in
             # stryker.config.json, so a real regression in test strength fails this scheduled run.
+            #
+            # It also exits non-zero when it never got that far, and those two are not the same
+            # finding. A dry-run timeout (see dryRunTimeoutMinutes in stryker.config.json, raised to
+            # 20 after a local run hit the 5-minute default at 6633 mutants without producing any
+            # score at all) aborts the run, and so does an install or instrumentation error. Both
+            # arrive here as "the mutation job failed", which reads as a loss of test strength while
+            # actually meaning the gate stopped answering - the same confusion that let the Rust
+            # leg's timeout go unreported on 2026-07-27, one layer up.
+            #
+            # So the outcome is classified rather than inferred: a run that reported a score leaves a
+            # report behind, one that aborted does not. The step still exits with Stryker's own
+            # status, so the job's pass/fail is unchanged - this only records *which* kind of
+            # non-zero it was. Written before the exit so the output survives a failing step.
             - name: Run mutation testing
-              run: pnpm test:mutation
+              id: stryker
+              run: |
+                  set +e
+                  pnpm test:mutation
+                  status=$?
+                  set -e
+
+                  if [ -n "$(ls -A reports/mutation 2>/dev/null)" ]; then
+                      echo "verdict=scored" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "verdict=no-score" >> "$GITHUB_OUTPUT"
+                  fi
+
+                  exit "$status"
 
             # Without this the HTML report - the only artifact that says *which* mutants survived -
             # dies with the runner, so triaging a red run means reproducing a ~29-minute local run
@@ -239,9 +270,43 @@ jobs:
                   # clone.
                   GH_REPO: ${{ github.repository }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                  # Read through `env:` rather than interpolated into the script body, matching
+                  # release.yml's non-main guard: a `${{ }}` expansion is substituted into the shell
+                  # source before it runs, so anything that could ever carry an unexpected character
+                  # belongs in a variable the shell reads instead.
+                  MUTATION_RESULT: ${{ needs.mutation.result }}
+                  RUST_MUTATION_RESULT: ${{ needs.rust-mutation.result }}
+                  STRYKER_VERDICT: ${{ needs.mutation.outputs.verdict }}
               run: |
-                  TITLE="Scheduled mutation testing failed"
-                  BODY="The weekly scheduled mutation testing run did not succeed - a mutant survived, a test regressed, a shard ran past its timeout (which reports as cancelled, not failed), or the run itself errored. Review the run and shore up the affected tests: $RUN_URL"
+                  # A run that produced a verdict and a run that never got to one are different
+                  # problems with different owners, and collapsing them into one issue title was
+                  # costing the more urgent of the two. "A mutant survived" is a request to write a
+                  # test; "the gate stopped answering" is a request to fix the gate, and it is the
+                  # one that quietly turns a green-looking schedule into no coverage at all. They get
+                  # separate tracking issues so neither is read as the other, and so closing one does
+                  # not silence the next occurrence of the other.
+                  #
+                  # No verdict means: a shard was killed by its own timeout-minutes (GitHub marks
+                  # that *cancelled*, not failed), or Stryker aborted before reporting a score (a
+                  # dry-run timeout is the observed case - see the classification step above).
+                  NO_VERDICT=""
+
+                  if [ "$MUTATION_RESULT" = "cancelled" ] || [ "$RUST_MUTATION_RESULT" = "cancelled" ]; then
+                      NO_VERDICT="yes"
+                  fi
+
+                  if [ "$STRYKER_VERDICT" = "no-score" ]; then
+                      NO_VERDICT="yes"
+                  fi
+
+                  if [ -n "$NO_VERDICT" ]; then
+                      TITLE="Scheduled mutation testing produced no verdict"
+                      BODY="The weekly scheduled mutation testing run ended without a mutation score. Either a job was killed by its timeout-minutes (which GitHub reports as cancelled rather than failed) or Stryker aborted before reporting - a dry-run timeout is the case this has happened for. This is not a loss of test strength; the gate stopped answering, which reads as green until someone looks. Fix the run itself - add a shard, or raise dryRunTimeoutMinutes in stryker.config.json: $RUN_URL"
+                  else
+                      TITLE="Scheduled mutation testing failed"
+                      BODY="The weekly scheduled mutation testing run reported a verdict and it was red - a mutant survived, or the score fell under thresholds.break. Read the uploaded report (Stryker HTML, or the failing shard's mutants.out/missed.txt) and shore up the affected tests: $RUN_URL"
+                  fi
+
                   EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
                   if [ -n "$EXISTING" ]; then
                       gh issue comment "$EXISTING" --body "$BODY"
