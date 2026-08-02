@@ -29,10 +29,10 @@
     "ignoreStatic": true,
     "dryRunTimeoutMinutes_comment": "Stryker's default is 5 minutes, and the dry run outgrew it: it executes the whole instrumented suite once while the TypeScript checker processes compile in parallel, so it is far slower than the 55s a bare `vitest run` takes. A local run on 12 cores timed out here on 2026-08-01 at 6633 mutants / 1707 tests, before producing any score at all. That failure mode is the reason this is set rather than left to the default - a dry-run timeout aborts the run with no score, which reads in the scheduled job exactly like a mutation-score regression while having nothing to do with test strength. Sized well clear of the observed time rather than just above it, because the number that matters is the one on the slowest machine that ever runs this, not this one.",
     "dryRunTimeoutMinutes": 20,
-    "thresholds_comment": "break is what fails the scheduled run (.github/workflows/mutation.yml). The measured score is 71.66% (3287 of 4587 mutants killed; 81.08% counting only covered code), so the previous break of 50 let the score fall 21 points before failing, while 70 would leave under 2 points of headroom and flake on any normal change. 60 matches the 'low' band this config already declares and keeps ~11 points of real headroom. Re-measure before tightening further; the 533 no-coverage mutants are what hold the total below the covered-code score.",
+    "thresholds_comment": "break is what fails the scheduled run (.github/workflows/mutation.yml). Re-measured on CI on 2026-08-01 at 6633 mutants: 73.32%, up from the 71.66% recorded when break was set to 60. That left 13 points of slack rather than the ~11 the previous note claimed, which is most of the way back to the 21-point gap the move off 50 was meant to close - a gate that far below the reading fails only after a regression nobody would need a gate to notice. 68 keeps ~5 points of headroom, which absorbs the normal drift of adding a module before its tests catch up while still failing on a real loss of test strength. Kept equal to 'low' as before, so the band this config declares and the line that fails the run stay the same number. Re-measure before tightening further, and note the measurement has to come from CI or from a local run that reaches the end: a dry-run timeout aborts with no score at all (see dryRunTimeoutMinutes above), which is not a low score.",
     "thresholds": {
         "high": 80,
-        "low": 60,
-        "break": 60
+        "low": 68,
+        "break": 68
     }
 }
