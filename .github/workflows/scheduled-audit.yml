@@ -147,3 +147,42 @@ jobs:
                   else
                       gh issue create --title "$TITLE" --body "$BODY"
                   fi
+
+    # The other half of the job above. It only ever opened or commented, so a tracking issue outlived
+    # the advisory it described and stayed open across every later green run - at which point "there
+    # is an open alert issue" stops meaning "there is a failing gate now", and the next real advisory
+    # arrives as a comment on an issue that already reads as known.
+    #
+    # Kept identical in shape to mutation.yml's, which is where the full reasoning lives, and for the
+    # same reason the two alert conditions are kept identical: these must not drift again.
+    close-on-success:
+        name: Close the tracking issue on a green run
+        needs: [js-advisories, rust-advisories]
+        if: >
+            needs.js-advisories.result == 'success' &&
+            needs.rust-advisories.result == 'success'
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            issues: write
+        steps:
+            - name: Close the tracking issue if one is open
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  # No checkout step here either, so `gh issue` has no git remote to resolve the
+                  # repository from. See the job above.
+                  GH_REPO: ${{ github.repository }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  # Matched exactly rather than by substring: `--search` is full text, so a prefix
+                  # match could close an unrelated issue opened by hand about the same subject.
+                  TITLE="Scheduled dependency audit failed"
+                  NUMBER=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$NUMBER" ]; then
+                      echo "Closing #$NUMBER ($TITLE)"
+                      gh issue close "$NUMBER" \
+                          --comment "A later run of this workflow completed green: $RUN_URL"
+                  fi

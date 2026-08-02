@@ -402,3 +402,61 @@ jobs:
                   else
                       gh issue create --title "$TITLE" --body "$BODY"
                   fi
+
+    # The other half of the job above, and without it that one degrades into noise. It only ever
+    # opens or comments; nothing closed what it opened, so a tracking issue outlived the failure it
+    # described and stayed open across every later green run. That is the same failure mode this
+    # workflow keeps fixing elsewhere, with the sign flipped: "there is an open alert issue" stops
+    # meaning "there is a failure now", and the next real one arrives as a comment on an issue that
+    # already reads as known.
+    #
+    # It happened: #24 was opened on 2026-08-01 for a red run and was still open after the run the
+    # next day went green.
+    #
+    # Closing rather than commenting, because an open issue is the signal. A comment saying "this is
+    # fixed" on an issue that stays open is the state this exists to remove.
+    close-on-success:
+        name: Close the tracking issues on a green run
+        needs: [mutation, verify-exclusions, rust-mutation]
+        # Every job, not just the one whose title matches: a run is only evidence that a gate is
+        # answering again if the whole gate ran. `success()` would be equivalent today, but naming
+        # the dependencies keeps this in step with the condition above, which cannot use it.
+        if: >
+            needs.mutation.result == 'success' &&
+            needs.verify-exclusions.result == 'success' &&
+            needs.rust-mutation.result == 'success'
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            issues: write
+        steps:
+            - name: Close any tracking issue this workflow opened
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  # No checkout step, so `gh issue` has no git remote to resolve the repository
+                  # from - the same reason the job above sets this. See its comment.
+                  GH_REPO: ${{ github.repository }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  # All three titles the alert job can open, closed by the same green run. A verdict
+                  # of "no mutant survived" also answers "the gate is producing a verdict again" and
+                  # "the exclusions still name real mutants", because producing it required both.
+                  #
+                  # The titles are matched exactly rather than by prefix: `gh issue list --search`
+                  # is a full-text search, so a substring match could close an unrelated issue
+                  # somebody opened by hand about the same subject.
+                  while IFS= read -r title; do
+                      number=$(gh issue list --state open --search "$title in:title" \
+                          --json number,title \
+                          --jq "[.[] | select(.title == \"$title\")] | .[0].number // empty")
+
+                      if [ -n "$number" ]; then
+                          echo "Closing #$number ($title)"
+                          gh issue close "$number" \
+                              --comment "A later run of this workflow completed green: $RUN_URL"
+                      fi
+                  done <<'TITLES'
+                  Scheduled mutation testing failed
+                  Scheduled mutation testing produced no verdict
+                  A mutants.toml exclusion no longer names a real mutant
+                  TITLES
