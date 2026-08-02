@@ -231,6 +231,16 @@
 # The `>=` mutants on the new bound are killed by a boundary test rather than by a wall-clock wait,
 # which is why the predicate takes `now` as an argument instead of reading the clock - the same
 # shape, and the same reason, as `duration_is_recent` in db_backup.
+# Re-measured 2026-08-02 after the derivative's addressing was extracted into
+# `display_derivative_path` and `library/cleanup.rs` gained `drop_display_derivative`, which removes
+# a derivative whose canonical thumbnail was just unlinked (`--in-place --no-config --file` over
+# both files, scoped with `--examine-re`): 7 mutants, 7 caught, 0 missed. Both are in scope already,
+# so this records the pass rather than a new glob. The extraction is what makes the cleanup side
+# gateable at all - the naming lived inline in `resolve_one`, which is only reachable through an
+# FFmpeg run, so a second caller spelling it out by hand would have had no mutant of its own. The
+# `kind == Thumbnail` check is the one worth having here: deleting it is silent today (a
+# `video/...` path yields no cache key), and would only start removing an unrelated media's
+# derivative after some later change made it yield one.
 # `src/services/media_creation.rs` - the media creation transaction, which moved here out of the
 # renderer. It belongs in this gate for the reason the whole gate exists: every decision it makes
 # stands in front of the user's library. `fetched_thumbnail_to_discard` decides an unlink, and
