@@ -172,6 +172,49 @@ jobs:
             - name: Install cargo-mutants
               run: cargo install cargo-mutants@27.1.0 --locked
 
+            # Node for the exclusion check below. Pinned like every other workflow here rather than
+            # taking whatever the image preinstalls, which also means verify-node-version.js keeps
+            # this declaration in step with .nvmrc for free.
+            - name: Setup Node.js
+              if: strategy.job-index == 0
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: 26.5.0
+
+            # An `exclude_re` entry that stops matching anything is silent, and costly in both
+            # directions: the mutant it suppressed comes back and turns this run red for a reason
+            # unrelated to the tests, or - the worse case - the function it named was renamed and its
+            # real mutant is now unexcluded and unnoticed among the survivors, with nothing in the
+            # config to suggest that the entry rather than the tests had gone stale.
+            #
+            # Two entries in mutants.toml have already died exactly that way, both after a pure
+            # extraction moved the code they named, and both were found by someone deciding to check
+            # by hand. This is that check, run every time the gate runs.
+            #
+            # `--no-config` is required and is the subtle part: a `--list` that applied the config
+            # would already have removed every mutant the exclusions name, so every pattern would
+            # read as dead and the gate would be inverted. `--no-config` also drops `examine_globs`,
+            # so the scope is passed back in as `--file` arguments generated from that same list -
+            # which is why the script emits them rather than the workflow restating them.
+            #
+            # Read into an array rather than interpolated: two of those globs are directory globs
+            # (`db_backup/*.rs`), and an unquoted expansion would have the shell resolve them into
+            # several paths, which cargo-mutants rejects because `--file` takes one value.
+            #
+            # Runs before the mutation run, on one shard only. Before, because a stale exclusion
+            # makes the verdict of the following 90 minutes untrustworthy for the file it covers, so
+            # failing first is both cheaper and more honest. One shard, because the config is the
+            # same for all four and the tool is already installed here.
+            - name: Verify every mutants.toml exclusion still names a real mutant
+              if: strategy.job-index == 0
+              run: |
+                  mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
+
+                  cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config \
+                      "${FILE_ARGS[@]}" > mutants-list.txt
+
+                  node scripts/verify-mutants-exclusions.js mutants-list.txt
+
             # Mutates only the security-critical modules (see src-tauri/.cargo/mutants.toml's
             # examine_globs): path containment, the library-path guard, the yt-dlp host allow-list,
             # and external-binary resolution. cargo-mutants exits 2 when a mutant survives - a logic

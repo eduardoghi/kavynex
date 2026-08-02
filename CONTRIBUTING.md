@@ -79,6 +79,27 @@ Repository consistency (plain Node, no install needed - CI runs all three on eve
   sites cannot drift from the code the way it once did. Run it with `--print` to regenerate both
   inventories once the document is right.
 
+A fourth consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
+on every push:
+
+- `node scripts/verify-mutants-exclusions.js <cargo mutants --list output>` - fails when an
+  `exclude_re` entry in `src-tauri/.cargo/mutants.toml` matches no mutant. Such an entry is silent
+  in both directions: the mutant it suppressed comes back and reddens the weekly run for a reason
+  unrelated to the tests, or the function it named was renamed and its real mutant is now
+  unexcluded and unnoticed among the survivors. Two entries had already died that way before this
+  existed, both after a pure extraction moved the code they named. To run it locally:
+
+  ```bash
+  mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
+  cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config "${FILE_ARGS[@]}" \
+      > /tmp/mutants.txt
+  node scripts/verify-mutants-exclusions.js /tmp/mutants.txt
+  ```
+
+  `--no-config` is required: a listing that applied the config would already have removed every
+  mutant the exclusions name, so every pattern would read as dead. It also drops `examine_globs`,
+  which is why the scope is passed back in from that same list via `--file-args`.
+
 `pnpm tauri build` builds release installers for your current platform.
 
 ## Regenerating the TypeScript bindings
