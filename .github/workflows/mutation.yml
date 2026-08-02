@@ -90,6 +90,76 @@ jobs:
                   path: reports/mutation
                   retention-days: 30
 
+    # An `exclude_re` entry that stops matching anything is silent, and costly in both directions:
+    # the mutant it suppressed comes back and turns this run red for a reason unrelated to the tests,
+    # or - the worse case - the function it named was renamed and its real mutant is now unexcluded
+    # and unnoticed among the survivors, with nothing in the config to suggest that the entry rather
+    # than the tests had gone stale.
+    #
+    # Two entries in mutants.toml have already died exactly that way, both after a pure extraction
+    # moved the code they named, and both were found by someone deciding to check by hand. This is
+    # that check, run every time the gate runs.
+    #
+    # It is a job rather than a step of the shard below, and the reason is the failure mode this
+    # whole workflow keeps running into. It used to be `if: strategy.job-index == 0` inside
+    # `rust-mutation`, so it lived under that job's 90-minute ceiling - and a job killed by its own
+    # `timeout-minutes` is marked *cancelled*, which is exactly how shard 0 died on 2026-07-27. The
+    # check would then not have run at all, while nothing distinguished that from having run and
+    # passed. The verdict of the following 90 minutes rests on this having happened, so it must be
+    # able to answer on its own.
+    #
+    # It is also nearly free, which is what makes the split obvious in hindsight: `cargo mutants
+    # --list` parses the sources and never builds the tree (measured at 0.5s over the 54 files the
+    # scope names), so this job needs no apt packages, no build cache and no compile - only
+    # `cargo install cargo-mutants` itself, which is the whole of its runtime.
+    verify-exclusions:
+        name: Verify every mutants.toml exclusion still names a real mutant
+        runs-on: ubuntu-26.04
+        # Bounded far below the shards' ceiling. Nothing here compiles the crate, so the only thing
+        # that takes real time is building cargo-mutants - and a ceiling this low stays a signal
+        # instead of a number nothing approaches.
+        timeout-minutes: 30
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            - name: Install Rust toolchain
+              # Pin the exact toolchain (keep in sync with rust-toolchain.toml), matching ci.yml.
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.96.0
+
+            # Pinned like every other tool install in this repository: an unpinned `cargo install`
+            # builds whatever released today, and this must be the same tool the shards below run.
+            - name: Install cargo-mutants
+              run: cargo install cargo-mutants@27.1.0 --locked
+
+            # Pinned like every other workflow here rather than taking whatever the image
+            # preinstalls, which also means verify-node-version.js keeps this declaration in step
+            # with .nvmrc for free.
+            - name: Setup Node.js
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: 26.5.0
+
+            # `--no-config` is required and is the subtle part: a `--list` that applied the config
+            # would already have removed every mutant the exclusions name, so every pattern would
+            # read as dead and the gate would be inverted. `--no-config` also drops `examine_globs`,
+            # so the scope is passed back in as `--file` arguments generated from that same list -
+            # which is why the script emits them rather than the workflow restating them.
+            #
+            # Read into an array rather than interpolated: two of those globs are directory globs
+            # (`db_backup/*.rs`), and an unquoted expansion would have the shell resolve them into
+            # several paths, which cargo-mutants rejects because `--file` takes one value.
+            - name: Verify every mutants.toml exclusion still names a real mutant
+              run: |
+                  mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
+
+                  cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config \
+                      "${FILE_ARGS[@]}" > mutants-list.txt
+
+                  node scripts/verify-mutants-exclusions.js mutants-list.txt
+
     rust-mutation:
         name: Rust mutation testing (shard ${{ strategy.job-index }})
         # Pinned like the job above and ci.yml's rust job; see those comments.
@@ -172,49 +242,6 @@ jobs:
             - name: Install cargo-mutants
               run: cargo install cargo-mutants@27.1.0 --locked
 
-            # Node for the exclusion check below. Pinned like every other workflow here rather than
-            # taking whatever the image preinstalls, which also means verify-node-version.js keeps
-            # this declaration in step with .nvmrc for free.
-            - name: Setup Node.js
-              if: strategy.job-index == 0
-              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-              with:
-                  node-version: 26.5.0
-
-            # An `exclude_re` entry that stops matching anything is silent, and costly in both
-            # directions: the mutant it suppressed comes back and turns this run red for a reason
-            # unrelated to the tests, or - the worse case - the function it named was renamed and its
-            # real mutant is now unexcluded and unnoticed among the survivors, with nothing in the
-            # config to suggest that the entry rather than the tests had gone stale.
-            #
-            # Two entries in mutants.toml have already died exactly that way, both after a pure
-            # extraction moved the code they named, and both were found by someone deciding to check
-            # by hand. This is that check, run every time the gate runs.
-            #
-            # `--no-config` is required and is the subtle part: a `--list` that applied the config
-            # would already have removed every mutant the exclusions name, so every pattern would
-            # read as dead and the gate would be inverted. `--no-config` also drops `examine_globs`,
-            # so the scope is passed back in as `--file` arguments generated from that same list -
-            # which is why the script emits them rather than the workflow restating them.
-            #
-            # Read into an array rather than interpolated: two of those globs are directory globs
-            # (`db_backup/*.rs`), and an unquoted expansion would have the shell resolve them into
-            # several paths, which cargo-mutants rejects because `--file` takes one value.
-            #
-            # Runs before the mutation run, on one shard only. Before, because a stale exclusion
-            # makes the verdict of the following 90 minutes untrustworthy for the file it covers, so
-            # failing first is both cheaper and more honest. One shard, because the config is the
-            # same for all four and the tool is already installed here.
-            - name: Verify every mutants.toml exclusion still names a real mutant
-              if: strategy.job-index == 0
-              run: |
-                  mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
-
-                  cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config \
-                      "${FILE_ARGS[@]}" > mutants-list.txt
-
-                  node scripts/verify-mutants-exclusions.js mutants-list.txt
-
             # Mutates only the security-critical modules (see src-tauri/.cargo/mutants.toml's
             # examine_globs): path containment, the library-path guard, the yt-dlp host allow-list,
             # and external-binary resolution. cargo-mutants exits 2 when a mutant survives - a logic
@@ -281,7 +308,7 @@ jobs:
     # already runs on.
     alert-on-failure:
         name: Open an issue on failure
-        needs: [mutation, rust-mutation]
+        needs: [mutation, verify-exclusions, rust-mutation]
         # `failure()` alone was wrong, and it cost a real run: a job killed by its own
         # `timeout-minutes` is marked **cancelled**, not failed, so on 2026-07-27 the Rust leg died
         # at the 2h ceiling and this job was *skipped*. The gate stopped producing a verdict and the
@@ -296,6 +323,7 @@ jobs:
         if: >
             always() &&
             (needs.mutation.result == 'failure' || needs.mutation.result == 'cancelled' ||
+             needs.verify-exclusions.result == 'failure' || needs.verify-exclusions.result == 'cancelled' ||
              needs.rust-mutation.result == 'failure' || needs.rust-mutation.result == 'cancelled')
         runs-on: ubuntu-26.04
         timeout-minutes: 10
@@ -318,6 +346,7 @@ jobs:
                   # source before it runs, so anything that could ever carry an unexpected character
                   # belongs in a variable the shell reads instead.
                   MUTATION_RESULT: ${{ needs.mutation.result }}
+                  VERIFY_EXCLUSIONS_RESULT: ${{ needs.verify-exclusions.result }}
                   RUST_MUTATION_RESULT: ${{ needs.rust-mutation.result }}
                   STRYKER_VERDICT: ${{ needs.mutation.outputs.verdict }}
               run: |
@@ -329,6 +358,13 @@ jobs:
                   # separate tracking issues so neither is read as the other, and so closing one does
                   # not silence the next occurrence of the other.
                   #
+                  # A third owner joined that split when the exclusion check became a job of its own,
+                  # and it is worth separating for the same reason the other two were: a stale
+                  # `exclude_re` is neither a missing test nor a broken runner. It is a line in
+                  # `src-tauri/.cargo/mutants.toml` naming a mutant that no longer exists, and the
+                  # fix is to that file. Reported first, because it is also the finding that makes
+                  # the rest of the run's verdict untrustworthy for the file the entry covers.
+                  #
                   # No verdict means: a shard was killed by its own timeout-minutes (GitHub marks
                   # that *cancelled*, not failed), or Stryker aborted before reporting a score (a
                   # dry-run timeout is the observed case - see the classification step above).
@@ -338,11 +374,21 @@ jobs:
                       NO_VERDICT="yes"
                   fi
 
+                  # A cancelled exclusion check is the case that job was split out to make visible:
+                  # it never answered, so nothing establishes that the exclusions still name real
+                  # mutants - which is the same "the gate stopped answering" class as the two above.
+                  if [ "$VERIFY_EXCLUSIONS_RESULT" = "cancelled" ]; then
+                      NO_VERDICT="yes"
+                  fi
+
                   if [ "$STRYKER_VERDICT" = "no-score" ]; then
                       NO_VERDICT="yes"
                   fi
 
-                  if [ -n "$NO_VERDICT" ]; then
+                  if [ "$VERIFY_EXCLUSIONS_RESULT" = "failure" ]; then
+                      TITLE="A mutants.toml exclusion no longer names a real mutant"
+                      BODY="The weekly scheduled mutation run found an exclude_re entry in src-tauri/.cargo/mutants.toml that matches nothing. That is silent in both directions: either the mutant it suppressed is back and will redden this run for a reason unrelated to the tests, or the function it named was renamed and its real mutant is now unexcluded and unnoticed among the survivors. The run log lists the dead patterns; fix or delete them in mutants.toml: $RUN_URL"
+                  elif [ -n "$NO_VERDICT" ]; then
                       TITLE="Scheduled mutation testing produced no verdict"
                       BODY="The weekly scheduled mutation testing run ended without a mutation score. Either a job was killed by its timeout-minutes (which GitHub reports as cancelled rather than failed) or Stryker aborted before reporting - a dry-run timeout is the case this has happened for. This is not a loss of test strength; the gate stopped answering, which reads as green until someone looks. Fix the run itself - add a shard, or raise dryRunTimeoutMinutes in stryker.config.json: $RUN_URL"
                   else
