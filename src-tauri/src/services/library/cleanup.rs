@@ -582,8 +582,13 @@ pub async fn media_registration_guard() -> tokio::sync::MutexGuard<'static, ()> 
     MEDIA_REGISTRATION_LOCK.lock().await
 }
 
-pub async fn cleanup_unreferenced_artifacts(
-    app: &AppHandle,
+/// Generic over the runtime for the same reason the `_locked` variant below already is, and the
+/// same reason `media_creation::register_prepared_media` was widened: the bare `AppHandle` alias is
+/// `AppHandle<Wry>`, which `tauri::test::mock_builder` cannot produce, so naming it here put every
+/// caller in the chain out of reach of a test. The startup sweep
+/// (`services::pending_media::sweep_pending_media_artifacts`) is the caller that needed it.
+pub async fn cleanup_unreferenced_artifacts<R: Runtime>(
+    app: &AppHandle<R>,
     file_path: Option<String>,
     thumbnail_path: Option<String>,
     live_chat_file_path: Option<String>,

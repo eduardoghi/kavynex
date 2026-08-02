@@ -196,6 +196,12 @@ pub(crate) fn marker_is_sweepable(
 /// library was repointed, or the path went permanently invalid. Retrying it forever turns a one-off
 /// failure into a tax on every launch, with nothing but a `warn` line nobody reads to show for it.
 ///
+/// What this counts is therefore a property of *one marker*, and one class of failure had to be
+/// kept out of it because it is a property of the run instead: a database that will not open fails
+/// every marker identically, so passing it through the loop would spend an attempt per marker on a
+/// verdict none of them earned. [`sweep_pending_media_artifacts`] refuses before the loop for that
+/// reason rather than classifying the error afterwards.
+///
 /// What this ceiling bounds is the *retrying*, and it is worth being exact about that because it is
 /// easy to read as bounding more. The directory itself is unbounded: an abandoned marker is
 /// deliberately left on disk (see [`marker_retries_are_exhausted`]), and `services::cleanup`'s
@@ -486,7 +492,36 @@ fn read_pending_markers<R: Runtime>(
 /// deletion decision is not made here - it is delegated to the same reference-counting cleanup the
 /// manual path uses, which keeps any file a registered row still points at. A marker is cleared once
 /// its paths have been handled, whether or not anything was actually deleted.
-pub async fn sweep_pending_media_artifacts(app: &AppHandle) -> AppResult<usize> {
+///
+/// Generic over the runtime so the database-unavailable branch below can be driven by a test; see
+/// `library::cleanup::cleanup_unreferenced_artifacts`, which had to be widened for the same reason.
+pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> AppResult<usize> {
+    // Asked once, up front, and the whole sweep gives up when the answer is no.
+    //
+    // [`MAX_MARKER_SWEEP_ATTEMPTS`] bounds how often *one marker* may fail to reconcile, on the
+    // reasoning that a failure surviving that many launches is a property of that marker - a path
+    // gone permanently invalid, a library repointed. A database that will not open is the opposite
+    // kind of failure: it has nothing to do with any particular marker, it fails every one of them
+    // identically, and it is resolved elsewhere entirely (the recovery modal offers a restore on the
+    // very same launch). Letting it through the loop would spend an attempt per marker per launch on
+    // a verdict none of them earned, and five such launches would abandon every pending record the
+    // library holds at once - each one naming artifacts that are still on disk and still
+    // reconcilable the moment the database is back.
+    //
+    // So it is not classified after the fact, it is refused before the loop: nothing is read,
+    // nothing is counted, and every marker is left exactly as it was for the next launch.
+    if let Err(error) = crate::services::database::shared_pool(app).await {
+        logger::warn(
+            "pending_media",
+            format!(
+                "the database is not available, so nothing can be reconciled; leaving every \
+                 pending marker untouched for the next launch: {error}"
+            ),
+        );
+
+        return Ok(0);
+    }
+
     let markers = read_pending_markers(app)?;
     let mut removed_artifacts = 0usize;
     let mut abandoned_markers = 0usize;
@@ -870,6 +905,46 @@ mod tests {
             .into_iter()
             .find(|(marker_name, _)| marker_name == &name);
         assert_eq!(found, Some((name.clone(), leftover)));
+
+        clear_pending_media_artifacts(handle, &name).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_database_that_will_not_open_costs_no_marker_an_attempt() {
+        // The failure this branch exists for, and the reason it is a pre-check rather than an error
+        // classified inside the loop. A mock app manages no `Db`, so `shared_pool` fails exactly the
+        // way it does when the database cannot be opened for real - which is the case the recovery
+        // modal is resolving on the very same launch.
+        //
+        // Both halves are asserted because either alone passes while the bug is live: the marker
+        // surviving proves nothing on its own (the sweep leaves a failed marker in place anyway),
+        // and the count is what decides whether it is ever offered again. Five launches with an
+        // unopenable database used to abandon every pending record in the library, each one naming
+        // artifacts still sitting on disk and still reconcilable the moment the database came back.
+        let app = mock_app();
+        let handle = app.handle();
+
+        let leftover = artifacts(Some("video/media_no_database.mp4"), None, None);
+        let name = format!("pending-{}.json", unique_temp_suffix());
+        let marker = pending_media_dir(handle).unwrap().join(&name);
+
+        fs::write(&marker, serde_json::to_string(&leftover).unwrap()).unwrap();
+        set_modified_before_process_start(&marker);
+
+        let removed = sweep_pending_media_artifacts(handle).await.unwrap();
+
+        assert_eq!(removed, 0, "nothing can be reconciled without the database");
+        assert!(
+            marker.exists(),
+            "a marker must survive a sweep that could not even open the database"
+        );
+
+        let after = decode_marker(&fs::read_to_string(&marker).unwrap()).unwrap();
+        assert_eq!(
+            after.attempts, 0,
+            "a database that will not open is not the marker's failure, so it must not spend one \
+             of its five attempts"
+        );
 
         clear_pending_media_artifacts(handle, &name).unwrap();
     }
