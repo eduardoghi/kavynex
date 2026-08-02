@@ -71,6 +71,11 @@ describe("useChannelMediaList", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        // `clearAllMocks` clears recorded calls but leaves a `mockResolvedValueOnce` queue in
+        // place, so a test that queues more pages than it consumes hands the leftovers to the next
+        // one - which then loads a page it never set up and fails somewhere unrelated to its own
+        // subject. Resetting the queue keeps each test's pages its own.
+        vi.mocked(listChannelMediaPage).mockReset();
     });
 
     it("loads the first page for the selected channel with limit/offset", async () => {
@@ -373,6 +378,150 @@ describe("useChannelMediaList", () => {
 
         expect(result.current.mediaItems).toHaveLength(1);
         expect(result.current.mediaItems[0]?.channel_id).toBe(20);
+    });
+
+    it("does not append a row the list already holds", async () => {
+        // The shape a rename produces. `editTitle` updates the row in place without reloading, and
+        // every ORDER BY in resolve_order_by tie-breaks on title_normalized, so the renamed row can
+        // move under the loaded window and come back inside the next page. The grid keys by id, so
+        // appending it a second time is a duplicate React key and a card drawn twice.
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 4)
+            )
+            // Page two repeats id 2 - the row that shifted - alongside a genuinely new one.
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 2 }), createMediaRow({ id: 3 })], 4)
+            );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2, 3]);
+    });
+
+    it("advances the offset by the rows the backend returned, not by the rows it kept", async () => {
+        // The failure deduplication introduces if the cursor is read off the list length: a page
+        // whose rows were all dropped as duplicates leaves the length unchanged, so the next
+        // loadMore asks for the same offset again - forever, on every scroll to the bottom.
+        // A total of six leaves a page still to fetch after the duplicate one, which is what makes
+        // the third request happen at all.
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 6)
+            )
+            // An entirely duplicate page: nothing is appended.
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 6)
+            )
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 3 }), createMediaRow({ id: 4 })], 6)
+            );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(result.current.mediaItems).toHaveLength(2);
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 2 })
+        );
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        // The third request moved on rather than re-asking for offset 2.
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 4 })
+        );
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2, 3, 4]);
+    });
+
+    it("moves the offset back when loaded rows are removed", async () => {
+        // A deleted row leaves the backend's sorted set and the loaded prefix at the same time, so
+        // the cursor has to shrink with them. Left alone it would skip one row of the next page for
+        // every media deleted.
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(
+                page(
+                    [createMediaRow({ id: 1 }), createMediaRow({ id: 2 }), createMediaRow({ id: 3 })],
+                    6
+                )
+            )
+            .mockResolvedValueOnce(page([createMediaRow({ id: 4 })], 5));
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        act(() => {
+            result.current.setMediaItems((items) => items.filter((item) => item.id !== 2));
+            result.current.handleItemsRemoved(1);
+        });
+
+        expect(result.current.total).toBe(5);
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 2 })
+        );
+    });
+
+    it("stops offering more once every row has been handed out", async () => {
+        // hasMore reads the cursor rather than the list length, so a list left shorter than the
+        // cursor by deduplication must not keep the grid asking for a page that has nothing left.
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(
+                page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 3)
+            )
+            .mockResolvedValueOnce(page([createMediaRow({ id: 2 })], 3));
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        expect(result.current.hasMore).toBe(true);
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        // Two rows on screen against a total of three, and still no more to ask for: the third was
+        // handed out and dropped as a duplicate. Reading the length here would loop.
+        expect(result.current.mediaItems).toHaveLength(2);
+        expect(result.current.hasMore).toBe(false);
     });
 
     it("starts empty and not loading", () => {
