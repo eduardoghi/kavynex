@@ -108,6 +108,11 @@ pub enum AppErrorCode {
     CreateMediaDirFailed,
     RemoveMediaFailed,
     UnsupportedMediaExtension,
+    // A local import the user stopped. Distinct from YtDlpDownloadCancelled rather than reusing it:
+    // the two travel the same way (a cancel unwinds as an error, and the frontend routes both to
+    // the neutral notice channel instead of the error modal) but they are different operations, and
+    // a code named for yt-dlp appearing after a file import would be a lie in the log.
+    MediaImportCancelled,
 
     SourceThumbnailNotFound,
     InvalidSourceThumbnail,
@@ -256,6 +261,7 @@ impl AppErrorCode {
             Self::CreateMediaDirFailed => "CREATE_MEDIA_DIR_FAILED",
             Self::RemoveMediaFailed => "REMOVE_MEDIA_FAILED",
             Self::UnsupportedMediaExtension => "UNSUPPORTED_MEDIA_EXTENSION",
+            Self::MediaImportCancelled => "MEDIA_IMPORT_CANCELLED",
 
             Self::SourceThumbnailNotFound => "SOURCE_THUMBNAIL_NOT_FOUND",
             Self::InvalidSourceThumbnail => "INVALID_SOURCE_THUMBNAIL",

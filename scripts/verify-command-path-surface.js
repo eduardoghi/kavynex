@@ -442,7 +442,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
     "commands/database.rs::prepare_export_destination",
     "commands/database.rs::prepare_import_source",
     "services/library/guard.rs::paths_refer_to_same_location",
-    "services/library/media.rs::import_media_file_sync",
+    "services/library/media.rs::import_media_file_cancellable_sync",
     "services/library/mod.rs::resolve_path_inside_library",
     "services/thumbnail/picked.rs::validate_picked_thumbnail_path",
     "services/thumbnail/temp.rs::validate_source_media_path",

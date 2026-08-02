@@ -1,24 +1,64 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 
 use crate::models::yt_dlp::ImportMode;
-use crate::services::filesystem::{copy_file_atomic, move_or_copy_file_with_known_source_hash};
+use crate::services::filesystem::{copy_file_atomic_cancellable, move_or_copy_file_cancellable};
 use crate::services::library::paths::{ensure_library_dir, resolve_existing_library_dir};
 use crate::services::logger;
 use crate::utils::format::{
     allowed_media_extensions_label, is_allowed_media_extension, media_subdir_from_extension,
 };
-use crate::utils::hash::file_hash;
+use crate::utils::hash::{file_hash_cancellable, is_cancelled};
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir, ensure_path_parent_inside_dir,
     extension_from_path, is_network_path, relative_path_from_base,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// Builds the error a cancelled import unwinds with. One place, so every check reports the same
+/// code - the frontend routes it to the neutral notice channel rather than the error modal, which
+/// only works if the code is exactly this one.
+fn cancelled(stage: &str) -> AppError {
+    AppError::from_code(
+        AppErrorCode::MediaImportCancelled,
+        format!("the import was cancelled {stage}"),
+    )
+}
+
+/// Imports a media file with no way to interrupt it. The shape the tests and any future
+/// non-interactive caller want; the user-facing path goes through
+/// [`import_media_file_cancellable_sync`].
 pub fn import_media_file_sync(
     path: &str,
     mode: ImportMode,
     library_path: &str,
+) -> AppResult<String> {
+    import_media_file_cancellable_sync(path, mode, library_path, None)
+}
+
+/// Imports a media file, abandoning the work when `cancel` is set.
+///
+/// A local import is the only long operation in this app the user had no way out of. A yt-dlp
+/// download has a stall detector, a timeout, a tree-kill and a Cancel button; an import of a 50 GB
+/// file from a slow external drive had none of that, and the add-media modal stays locked while it
+/// runs - so the only exit was killing the app, which the crash marker then had to clean up after.
+///
+/// The flag is polled at three places, which between them cover the whole of the wall clock: before
+/// any work starts, throughout the hash (a full read pass over the source, and the *first* long
+/// step), and throughout the copy. What is deliberately not interruptible is the small tail after
+/// the bytes are in place - the fsync, the rename, the post-write verification - because
+/// abandoning *there* is what would leave a half-finished file where the atomic write was about to
+/// succeed.
+///
+/// Nothing is left behind by a cancel. The hash writes nothing; the copy stages through a `.tmp-`
+/// sibling that its own error path removes; and a cancel before the rename means the library never
+/// saw the file at all.
+pub fn import_media_file_cancellable_sync(
+    path: &str,
+    mode: ImportMode,
+    library_path: &str,
+    cancel: Option<&AtomicBool>,
 ) -> AppResult<String> {
     let trimmed = path.trim();
 
@@ -67,6 +107,12 @@ pub fn import_media_file_sync(
         ));
     }
 
+    // Refused before the library lock is taken, so a cancel that lands while the request is queued
+    // does not first make a concurrent migration wait on a transfer nobody wants any more.
+    if is_cancelled(cancel) {
+        return Err(cancelled("before any file was touched"));
+    }
+
     // Serialize this write against a concurrent library migration so the imported file cannot be
     // dropped in the window between the migration copying and removing the old directory.
     let _library_guard = crate::services::library::lock::library_read_guard();
@@ -82,7 +128,7 @@ pub fn import_media_file_sync(
         )
     })?;
 
-    let hash = file_hash(&source)?;
+    let hash = file_hash_cancellable(&source, cancel)?;
     let destination = media_dir.join(format!("media_{hash}.{ext}"));
 
     ensure_path_parent_inside_dir(&destination, &library_dir)?;
@@ -116,7 +162,7 @@ pub fn import_media_file_sync(
                     ),
                 );
             } else {
-                copy_file_atomic(&source, &destination)?;
+                copy_file_atomic_cancellable(&source, &destination, cancel)?;
             }
         }
         ImportMode::Move => {
@@ -126,7 +172,7 @@ pub fn import_media_file_sync(
             // the source behind, so a Move would not actually free it. Pass the hash we already
             // computed above so the identical-content check does not re-hash the (possibly
             // multi-GB) source a second time.
-            move_or_copy_file_with_known_source_hash(&source, &destination, &hash)?;
+            move_or_copy_file_cancellable(&source, &destination, &hash, cancel)?;
         }
     }
 
@@ -337,6 +383,77 @@ mod tests {
             1,
             "the destination file must not be duplicated"
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_cancelled_import_puts_nothing_in_the_library_and_keeps_the_source() {
+        // Both modes, because the consequence of getting Move wrong is not recoverable: a cancel
+        // that removed the source without landing the destination would delete the user's file to
+        // honour a request to *not* import it. Copy is asserted alongside it so the shared refusal
+        // cannot be weakened for one mode only.
+        for mode in [ImportMode::Copy, ImportMode::Move] {
+            let root = unique_test_dir("cancelled");
+            let source_dir = root.join("source");
+            let library_dir = root.join("library");
+            fs::create_dir_all(&source_dir).unwrap();
+
+            let source = source_dir.join("video.mp4");
+            fs::write(&source, b"video-bytes").unwrap();
+
+            let cancel = AtomicBool::new(true);
+            let error = import_media_file_cancellable_sync(
+                source.to_string_lossy().as_ref(),
+                mode,
+                library_dir.to_string_lossy().as_ref(),
+                Some(&cancel),
+            )
+            .unwrap_err();
+
+            assert_eq!(error.code, AppErrorCode::MediaImportCancelled.as_str());
+            assert!(
+                source.exists(),
+                "a cancelled {mode:?} import must leave the source file alone"
+            );
+            assert!(
+                !library_dir.join("video").exists(),
+                "a cancelled {mode:?} import must not populate the library"
+            );
+
+            let _ = fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn an_import_that_is_never_cancelled_behaves_exactly_as_the_plain_one() {
+        // The flag must be inert when it is not set, including for the content-addressed name -
+        // which is a hash taken through the cancellable reader now, so a check placed one step
+        // wrong would change the name every existing row is stored under.
+        let root = unique_test_dir("not-cancelled");
+        let source_dir = root.join("source");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"video-bytes").unwrap();
+
+        let cancel = AtomicBool::new(false);
+        let with_flag = import_media_file_cancellable_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            root.join("with-flag").to_string_lossy().as_ref(),
+            Some(&cancel),
+        )
+        .unwrap();
+
+        let without_flag = import_media_file_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            root.join("without-flag").to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        assert_eq!(with_flag, without_flag);
 
         let _ = fs::remove_dir_all(root);
     }

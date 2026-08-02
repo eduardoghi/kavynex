@@ -315,7 +315,13 @@ use command::{
     DownloadTermination,
 };
 #[cfg(test)]
-use command::{is_valid_format_id, is_valid_run_id, MAX_RUN_ID_LEN};
+use command::{is_valid_format_id, MAX_RUN_ID_LEN};
+
+// Re-exported because a local media import registers a run id in the same process registry, so
+// `cancel_media_download` reaches an import exactly as it reaches a download. Both therefore have
+// to agree on what a run id may be, and one definition is how that is guaranteed rather than
+// remembered - see the function's own comment.
+pub(crate) use command::is_valid_run_id;
 
 // Redacting the argument vector before it reaches the in-app terminal (and, from there, a public
 // bug report) also lives in its own submodule: it has a privacy consequence and no I/O, which is

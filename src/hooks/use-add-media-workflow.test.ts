@@ -284,6 +284,98 @@ describe("useAddMediaWorkflow", () => {
         expect(onError).not.toHaveBeenCalled();
     });
 
+    it("reports a cancelled local import as a notice rather than an error", async () => {
+        // The import half of the same split. It gets its own code and its own wording because it is
+        // a different operation: an import also has to say what happened to the file it was reading,
+        // which a download has nothing to answer for.
+        vi.mocked(createMedia).mockRejectedValue({
+            code: "MEDIA_IMPORT_CANCELLED",
+            message: "the import was cancelled while copying the file into the library",
+        });
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(onNotice).toHaveBeenCalledWith(
+            "Import cancelled. Nothing was added to your library and the original file was left where it was."
+        );
+        expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("cancels an in-flight local import with the run id the backend registered", async () => {
+        // The whole point of generating a run id in local mode: a file copy is the one long
+        // operation in this app the user had no way out of, and the Cancel button can only reach it
+        // if both sides agree on the id. Asserted as "the id createMedia was given is the id
+        // cancelMediaDownload was called with", so a hook that generated two ids - or cancelled a
+        // stale one - fails here rather than as a button that silently does nothing.
+        mockYtDlpEvents.isYtDlpRunning = false;
+
+        let finishImport: (() => void) | undefined;
+        vi.mocked(createMedia).mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    finishImport = () => resolve({ id: 1 });
+                })
+        );
+        vi.mocked(cancelMediaDownload).mockResolvedValue(undefined);
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        // Deliberately not awaited: the import has to still be running when Cancel is clicked,
+        // which is the only state in which any of this means anything.
+        let addMediaPromise: Promise<void> | undefined;
+        await act(async () => {
+            addMediaPromise = result.current.addMedia();
+            await Promise.resolve();
+        });
+
+        const registeredRunId = vi.mocked(createMedia).mock.calls[0]?.[0].ytDlpRunId;
+        expect(registeredRunId).toBeTruthy();
+
+        await act(async () => {
+            await result.current.cancelYtDlpDownload();
+        });
+
+        expect(cancelMediaDownload).toHaveBeenCalledWith(registeredRunId);
+
+        await act(async () => {
+            finishImport?.();
+            await addMediaPromise;
+        });
+
+        // The run is over, so a later click must reach nothing: the registry has already released
+        // that id, and cancelling it would surface as an error modal for a button that should have
+        // been inert.
+        vi.mocked(cancelMediaDownload).mockClear();
+
+        await act(async () => {
+            await result.current.cancelYtDlpDownload();
+        });
+
+        expect(cancelMediaDownload).not.toHaveBeenCalled();
+    });
+
     it("still reports a real download failure as an error", async () => {
         // The other side of the split: only cancellation is the expected outcome, so an actual
         // failure must keep reaching the error modal.

@@ -56,6 +56,12 @@ export const YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE = "YT_DLP_RUN_ALREADY_ACTIVE" 
 
 export const UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE = "UNSUPPORTED_MEDIA_EXTENSION" as const;
 
+// A local import the user stopped. Deliberately its own code rather than reusing
+// YT_DLP_DOWNLOAD_CANCELLED: the two are routed identically (both are the outcome the user asked
+// for, so both go to the neutral notice channel rather than the error modal), but they are
+// different operations, and a yt-dlp code appearing after a file import would be a lie in the log.
+export const MEDIA_IMPORT_CANCELLED_ERROR_CODE = "MEDIA_IMPORT_CANCELLED" as const;
+
 // The three database-recovery refusals. They surface in Settings > Database and in the
 // restore-from-backup flow the app offers after a failed open, which is the worst possible moment
 // to answer with the generic "check the app log file" line.
@@ -138,6 +144,7 @@ export const KNOWN_ERROR_CODES = [
     YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE,
     YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE,
     UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE,
+    MEDIA_IMPORT_CANCELLED_ERROR_CODE,
     NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE,
     NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE,
     DATABASE_ALREADY_OPEN_ERROR_CODE,

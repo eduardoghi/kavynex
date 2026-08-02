@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::SystemTime;
 
 use crate::utils::hash::file_hash;
@@ -205,7 +206,104 @@ fn file_paths_have_same_content_using(
     Ok(left_digest == file_hash(right)?)
 }
 
-pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
+/// How much of the source is moved per read/write pair by [`copy_file_atomic_cancellable`], and
+/// therefore how often it can notice a cancel. 1 MiB is large enough that the syscall overhead
+/// stays negligible against the disk, and small enough that a cancel is felt as immediate even on a
+/// slow external drive.
+const CANCELLABLE_COPY_CHUNK_BYTES: usize = 1024 * 1024;
+
+/// Copies `source` to `temp_destination` with `std::fs::copy`.
+///
+/// The fast path, and the one every caller but the media import takes. `fs::copy` hands the work to
+/// the platform (`copy_file_range`/`sendfile` on Linux, `CopyFileEx` on Windows), which is
+/// materially faster than moving the bytes through userspace - and it is also why it cannot be
+/// interrupted: it returns when the whole file has been copied and not before.
+fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
+    fs::copy(source, temp_destination).map(|_| ()).map_err(|e| {
+        AppError::fs_error(
+            AppErrorCode::FileCopyFailed,
+            "failed to copy file",
+            temp_destination,
+            &e,
+        )
+    })
+}
+
+/// Copies `source` to `temp_destination` a chunk at a time, giving up when `cancel` is set.
+///
+/// This is the trade [`copy_file_atomic_cancellable`] exists to make, and it is worth stating
+/// rather than leaving to be inferred: moving the bytes through userspace is slower than the
+/// platform copy above, and it is chosen anyway for the one call site where the file may be tens of
+/// gigabytes on a slow drive and the user needs a way out. Everywhere else keeps the fast path.
+///
+/// Nothing is left behind on a cancel: the partial file lives at the caller's `.tmp-` path, which
+/// the caller removes on any error, exactly as it does for a failed copy.
+fn copy_bytes_in_chunks(
+    source: &Path,
+    temp_destination: &Path,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<()> {
+    use std::io::{Read, Write};
+
+    let copy_failed = |e: std::io::Error| {
+        AppError::fs_error(
+            AppErrorCode::FileCopyFailed,
+            "failed to copy file",
+            temp_destination,
+            &e,
+        )
+    };
+
+    let mut reader = fs::File::open(source).map_err(|e| {
+        AppError::fs_error(
+            AppErrorCode::FileOpenFailed,
+            "failed to open the source file to copy it",
+            source,
+            &e,
+        )
+    })?;
+
+    let mut writer = fs::File::create(temp_destination).map_err(copy_failed)?;
+    let mut buffer = vec![0_u8; CANCELLABLE_COPY_CHUNK_BYTES];
+
+    loop {
+        // At the top of the loop, so a flag already set when the copy starts stops it before the
+        // first chunk rather than after one.
+        if crate::utils::hash::is_cancelled(cancel) {
+            return Err(AppError::from_code(
+                AppErrorCode::MediaImportCancelled,
+                "the import was cancelled while copying the file into the library",
+            ));
+        }
+
+        let read = reader.read(&mut buffer).map_err(copy_failed)?;
+
+        if read == 0 {
+            break;
+        }
+
+        writer.write_all(&buffer[..read]).map_err(copy_failed)?;
+    }
+
+    // Flush userspace buffering into the file before the caller's fsync, which operates on a
+    // reopened handle and would otherwise have nothing to push to the platter.
+    writer.flush().map_err(copy_failed)?;
+
+    Ok(())
+}
+
+/// Copies a file into place atomically, moving the bytes with `copy_bytes`.
+///
+/// Every guard, the `.tmp-` staging path, the fsync before the rename, the partial-file cleanup on
+/// each failure branch and the destination-already-exists recovery live here and only here, so the
+/// cancellable variant differs from the plain one in exactly one thing: how the bytes are moved.
+/// Splitting it any other way would mean two copies of the logic that decides whether a half-written
+/// file can become the live one.
+fn copy_file_atomic_with(
+    source: &Path,
+    destination: &Path,
+    copy_bytes: impl FnOnce(&Path, &Path) -> AppResult<()>,
+) -> AppResult<()> {
     if !source.exists() {
         return Err(AppError::from_code(
             AppErrorCode::SourceFileNotFound,
@@ -256,17 +354,13 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
 
     let temp_destination = build_temp_destination_path(destination)?;
 
-    if let Err(e) = fs::copy(source, &temp_destination) {
+    if let Err(error) = copy_bytes(source, &temp_destination) {
         // A failed copy (disk full, antivirus, permissions) can still leave a partial temp file
-        // behind. Remove it here, mirroring the fsync/rename error branches below, so a failure
-        // never strands a `.tmp-` scratch file at the destination.
+        // behind, and so can a cancelled one. Remove it here, mirroring the fsync/rename error
+        // branches below, so neither a failure nor a cancel ever strands a `.tmp-` scratch file at
+        // the destination.
         let _ = fs::remove_file(&temp_destination);
-        return Err(AppError::fs_error(
-            AppErrorCode::FileCopyFailed,
-            "failed to copy file",
-            &temp_destination,
-            &e,
-        ));
+        return Err(error);
     }
 
     // Flush the copied bytes to disk before the rename. The rename is atomic against a
@@ -309,8 +403,45 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
     }
 }
 
+/// Copies a file into place atomically. The platform copy, uninterruptible - which is what every
+/// caller here wants, since none of them has anyone waiting on a cancel.
+pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
+    copy_file_atomic_with(source, destination, copy_bytes_whole)
+}
+
+/// Like [`copy_file_atomic`], but abandons the copy when `cancel` is set, leaving nothing behind.
+///
+/// One caller: the local media import, which is the only copy in this app a user waits on and the
+/// only one whose source can be tens of gigabytes. Passing `None` here is not the same as calling
+/// [`copy_file_atomic`] - it still takes the slower chunked path - so callers with no flag should
+/// use the plain function rather than this one with `None`.
+pub fn copy_file_atomic_cancellable(
+    source: &Path,
+    destination: &Path,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<()> {
+    copy_file_atomic_with(source, destination, |source, temp_destination| {
+        copy_bytes_in_chunks(source, temp_destination, cancel)
+    })
+}
+
+/// Picks the copy the caller is entitled to: the chunked, interruptible one when a cancel flag was
+/// offered, and the faster platform copy when it was not. Keeping the dispatch in one place is what
+/// lets the move path below take a flag without every non-cancelling caller paying for userspace
+/// buffering it has no use for.
+fn copy_file_atomic_maybe_cancellable(
+    source: &Path,
+    destination: &Path,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<()> {
+    match cancel {
+        Some(_) => copy_file_atomic_cancellable(source, destination, cancel),
+        None => copy_file_atomic(source, destination),
+    }
+}
+
 pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
-    move_or_copy_file_using(source, destination, None)
+    move_or_copy_file_using(source, destination, None, None)
 }
 
 /// Like [`move_or_copy_file`], but reuses a precomputed SHA-256 of `source` for the
@@ -324,13 +455,30 @@ pub fn move_or_copy_file_with_known_source_hash(
     destination: &Path,
     source_hash: &str,
 ) -> AppResult<()> {
-    move_or_copy_file_using(source, destination, Some(source_hash))
+    move_or_copy_file_using(source, destination, Some(source_hash), None)
+}
+
+/// Like [`move_or_copy_file_with_known_source_hash`], but abandons the transfer when `cancel` is
+/// set.
+///
+/// Only the cross-device branch can actually be interrupted, and that is the branch worth
+/// interrupting: a same-volume move is a `rename`, which is instant, while a move across volumes
+/// copies the whole file and is exactly as long as the Copy path. Both are reached from the same
+/// import, so the flag covers the mode the user chose either way.
+pub fn move_or_copy_file_cancellable(
+    source: &Path,
+    destination: &Path,
+    source_hash: &str,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<()> {
+    move_or_copy_file_using(source, destination, Some(source_hash), cancel)
 }
 
 fn move_or_copy_file_using(
     source: &Path,
     destination: &Path,
     source_hash: Option<&str>,
+    cancel: Option<&AtomicBool>,
 ) -> AppResult<()> {
     if !source.exists() {
         return Err(AppError::from_code(
@@ -399,7 +547,7 @@ fn move_or_copy_file_using(
     match fs::rename(source, destination) {
         Ok(_) => Ok(()),
         Err(error) if is_cross_device_error(&error) => {
-            copy_file_atomic(source, destination)?;
+            copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
 
             fs::remove_file(source).map_err(|e| {
                 AppError::fs_error(
@@ -968,6 +1116,91 @@ mod tests {
     use super::*;
     use std::thread::sleep;
     use std::time::Duration;
+
+    /// How many `.tmp-` staging files the copy left behind in `dir`. A cancel that stranded one
+    /// would be invisible to an assertion on the destination alone, and the whole point of staging
+    /// through a sibling is that nothing survives a copy that did not finish.
+    fn staging_files_in(dir: &Path) -> usize {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp-"))
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn a_cancelled_copy_leaves_neither_a_destination_nor_a_staging_file() {
+        // The property the whole staging design rests on, applied to the new exit. A cancel is the
+        // one failure that arrives while the temp file is perfectly healthy - it is simply
+        // incomplete - so the branch that removes it has to fire for a cancel exactly as it does
+        // for a disk-full or a permission error. Leaving a partial `.tmp-` behind would strand
+        // scratch in the user's library; leaving the destination behind would be far worse, since
+        // its name is a content hash of bytes it does not hold.
+        let dir = unique_test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source.mp4");
+        std::fs::write(&source, b"some media bytes").unwrap();
+        let destination = dir.join("video").join("media_abc.mp4");
+
+        let cancel = AtomicBool::new(true);
+        let error = copy_file_atomic_cancellable(&source, &destination, Some(&cancel)).unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::MediaImportCancelled.as_str());
+        assert!(
+            !destination.exists(),
+            "a cancelled copy must produce nothing"
+        );
+        assert_eq!(
+            staging_files_in(destination.parent().unwrap()),
+            0,
+            "a cancelled copy must not strand its staging file"
+        );
+        assert!(
+            source.exists(),
+            "a cancelled copy must not touch the source"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_cancellable_copy_produces_the_same_file_as_the_plain_one() {
+        // The chunked loop replaces `fs::copy` on this path, so it has to be byte-for-byte
+        // equivalent - a content-addressed name is a hash of these bytes, so a copy that dropped or
+        // duplicated a chunk would store a file under a name that no longer describes it, and every
+        // later lookup by hash would miss it. Sized past one chunk on purpose: a single-chunk file
+        // would pass even if the loop only ever ran once.
+        let dir = unique_test_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let payload: Vec<u8> = (0..(CANCELLABLE_COPY_CHUNK_BYTES * 2 + 1234))
+            .map(|index| (index % 251) as u8)
+            .collect();
+
+        let source = dir.join("source.mp4");
+        std::fs::write(&source, &payload).unwrap();
+
+        let chunked = dir.join("chunked.mp4");
+        let whole = dir.join("whole.mp4");
+
+        let cancel = AtomicBool::new(false);
+        copy_file_atomic_cancellable(&source, &chunked, Some(&cancel)).unwrap();
+        copy_file_atomic(&source, &whole).unwrap();
+
+        assert_eq!(std::fs::read(&chunked).unwrap(), payload);
+        assert_eq!(
+            std::fs::read(&chunked).unwrap(),
+            std::fs::read(&whole).unwrap()
+        );
+        assert_eq!(file_hash(&chunked).unwrap(), file_hash(&source).unwrap());
+        assert_eq!(staging_files_in(&dir), 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn unique_test_dir() -> PathBuf {
         // Via unique_temp_suffix rather than pid + nanos: that pair is not collision-proof, because

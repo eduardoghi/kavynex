@@ -10,6 +10,7 @@ describe("AddMediaModalActions", () => {
                 <AddMediaModalActions
                     isYtDlpRunning={false}
                     isUrlMode={false}
+                    isImportingLocalFile={false}
                     isCancellingYtDlp={false}
                     isModalLocked={false}
                     canSubmit
@@ -30,6 +31,7 @@ describe("AddMediaModalActions", () => {
                 <AddMediaModalActions
                     isYtDlpRunning
                     isUrlMode
+                    isImportingLocalFile={false}
                     isCancellingYtDlp={false}
                     isModalLocked
                     canSubmit
@@ -44,6 +46,59 @@ describe("AddMediaModalActions", () => {
         expect(screen.getByRole("button", { name: /cancel download/i })).toBeInTheDocument();
     });
 
+    it("shows a cancel import button while a local file is being imported", () => {
+        const onCancel = vi.fn();
+
+        renderWithMantine(
+            <form>
+                <AddMediaModalActions
+                    isYtDlpRunning={false}
+                    isUrlMode={false}
+                    isImportingLocalFile
+                    isCancellingYtDlp={false}
+                    isModalLocked
+                    canSubmit
+                    isBusy={false}
+                    loading
+                    onCancelYtDlpDownload={onCancel}
+                    onClose={vi.fn()}
+                />
+            </form>
+        );
+
+        // Worded for the operation in front of the user: "Cancel download" over a file copy would
+        // describe the wrong thing. The handler is shared because the backend mechanism is - an
+        // import registers the same kind of run a download does.
+        const button = screen.getByRole("button", { name: /cancel import/i });
+        fireEvent.click(button);
+
+        expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole("button", { name: /cancel download/i })).not.toBeInTheDocument();
+    });
+
+    it("offers no cancel button in local mode when no import is running", () => {
+        // The guard that keeps the button from appearing over an idle form: it is the import being
+        // in flight that makes it meaningful, not the mode.
+        renderWithMantine(
+            <form>
+                <AddMediaModalActions
+                    isYtDlpRunning={false}
+                    isUrlMode={false}
+                    isImportingLocalFile={false}
+                    isCancellingYtDlp={false}
+                    isModalLocked={false}
+                    canSubmit
+                    isBusy={false}
+                    loading={false}
+                    onCancelYtDlpDownload={vi.fn()}
+                    onClose={vi.fn()}
+                />
+            </form>
+        );
+
+        expect(screen.queryByRole("button", { name: /cancel import/i })).not.toBeInTheDocument();
+    });
+
     it("calls close handler", () => {
         const onClose = vi.fn();
 
@@ -52,6 +107,7 @@ describe("AddMediaModalActions", () => {
                 <AddMediaModalActions
                     isYtDlpRunning={false}
                     isUrlMode={false}
+                    isImportingLocalFile={false}
                     isCancellingYtDlp={false}
                     isModalLocked={false}
                     canSubmit
@@ -74,6 +130,7 @@ describe("AddMediaModalActions", () => {
                 <AddMediaModalActions
                     isYtDlpRunning={false}
                     isUrlMode={false}
+                    isImportingLocalFile={false}
                     isCancellingYtDlp={false}
                     isModalLocked={false}
                     canSubmit

@@ -33,6 +33,9 @@
 //! or the cleanup has run, because clearing it earlier would drop the record precisely while it is
 //! the only thing describing the state on disk.
 
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Runtime};
 
@@ -354,6 +357,40 @@ async fn generate_and_store_thumbnail(
     stored
 }
 
+/// Registers `run_id` so a local import can be cancelled, returning its flag and the guard that
+/// releases the registry entry when the import ends.
+///
+/// `None` means this import simply is not cancellable, which is the correct answer for three
+/// distinct cases and deliberately not distinguished between them: no run id was sent (an older
+/// frontend, or any caller that has no Cancel button to offer), the id is not well-formed
+/// (`is_valid_run_id`, the same rule a download's id has to satisfy), or the registry refused it.
+/// None of the three is a reason to refuse a file the user asked to import.
+///
+/// The guard is returned rather than dropped here: dropping it would release the entry immediately
+/// and the flag would then belong to a run `cancel_media_download` can no longer find, which is
+/// exactly the shape of a Cancel button that silently does nothing.
+fn local_import_cancellation(
+    run_id: &str,
+) -> Option<(Arc<AtomicBool>, yt_dlp::registry::DownloadRunReleaseGuard)> {
+    let run_id = run_id.trim();
+
+    if run_id.is_empty() || !yt_dlp::download::is_valid_run_id(run_id) {
+        return None;
+    }
+
+    match yt_dlp::registry::register_download_run(run_id) {
+        Ok(flag) => Some((flag, yt_dlp::registry::DownloadRunReleaseGuard::new(run_id))),
+        Err(error) => {
+            logger::warn(
+                "media_creation",
+                format!("this import cannot be cancelled: {error}"),
+            );
+
+            None
+        }
+    }
+}
+
 /// Produces the artifacts for a local import: the thumbnail first, then the media file.
 ///
 /// That order is required rather than incidental. A `move` import removes the source once it is in
@@ -393,12 +430,31 @@ async fn prepare_local_artifacts(
         source => store_thumbnail_source(app, source, &request.library_path).await?,
     };
 
+    // Register the run so `cancel_media_download(runId)` reaches this import, which is what gives
+    // the modal's Cancel button something to do during a local add. A yt-dlp source registers
+    // inside `download_media_from_url_async`; this is the local half of the same mechanism, using
+    // the same registry so the cancel command has one meaning rather than two.
+    //
+    // A registration that fails degrades to an uncancellable import rather than failing the add.
+    // The two ways it can fail say why: a duplicate id means this run is already registered, and a
+    // full registry means the caller is flooding run ids - neither is a reason to refuse a file the
+    // user asked to import, and losing the Cancel button is the proportionate consequence.
+    let cancellation = local_import_cancellation(&request.yt_dlp_run_id);
+    let cancel_flag = cancellation
+        .as_ref()
+        .map(|(flag, _release)| Arc::clone(flag));
+
     let import_mode = request.import_mode;
     let source_value = request.source_value.clone();
     let library_path = request.library_path.clone();
 
     let imported = run_blocking(move || {
-        library::media::import_media_file_sync(&source_value, import_mode, &library_path)
+        library::media::import_media_file_cancellable_sync(
+            &source_value,
+            import_mode,
+            &library_path,
+            cancel_flag.as_deref(),
+        )
     })
     .await;
 

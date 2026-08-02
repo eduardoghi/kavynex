@@ -280,6 +280,10 @@ export function AddMediaModal({
                         <AddMediaModalActions
                             isYtDlpRunning={isYtDlpRunning}
                             isUrlMode={isUrlMode}
+                            // `loading` is the add itself being in flight (home-modals passes
+                            // isAddingMedia), so in local mode it is exactly "an import is running"
+                            // - no new prop had to be threaded down for this.
+                            isImportingLocalFile={!isUrlMode && Boolean(loading)}
                             isCancellingYtDlp={isCancellingYtDlp}
                             isModalLocked={isModalLocked}
                             canSubmit={canSubmit}

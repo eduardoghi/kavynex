@@ -6,7 +6,10 @@ import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents, type YtDlpLogLine } from "./use-yt-dlp-events";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
-import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
+import {
+    MEDIA_IMPORT_CANCELLED_ERROR_CODE,
+    YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
+} from "../constants/error-codes";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
 import {
@@ -67,6 +70,13 @@ export function useAddMediaWorkflow({
 
     const wasAddMediaOpenRef = useRef(false);
     const previousSelectedChannelIdRef = useRef<number | null>(selectedChannelId);
+
+    // The run id of a local import currently in flight, or "" when none is. A yt-dlp run already
+    // has somewhere to keep this (useYtDlpEvents.currentRunIdRef, set by startRun) because it also
+    // needs it to correlate the log stream; a local import emits no events, so it needs its own.
+    // A ref rather than state on purpose - the cancel callback reads it at click time and must not
+    // be recreated when an import starts, which would churn every consumer of the controller.
+    const localImportRunIdRef = useRef("");
 
     const ytDlpEvents = useYtDlpEvents();
 
@@ -139,11 +149,22 @@ export function useAddMediaWorkflow({
                     form.cookiesPath
                 );
 
-                let ytDlpRunId = "";
+                // Generated for both modes. A local import registers it in the same backend
+                // registry a download does, which is what lets cancelMediaDownload reach the file
+                // copy - the one long operation in this app that used to have no way out but
+                // killing the process. The field keeps its yt-dlp name because that is what the
+                // wire contract calls it; only its scope widened.
+                const ytDlpRunId = generateYtDlpRunId();
                 let ytDlpFormatId = "";
 
+                if (sourceMode === "local") {
+                    // Published before the call, so a Cancel clicked at any point during the copy
+                    // finds the id the backend registered. Cleared in the finally below, whatever
+                    // the outcome, so a later click cannot cancel a run that already ended.
+                    localImportRunIdRef.current = ytDlpRunId;
+                }
+
                 if (sourceMode === "yt-dlp") {
-                    ytDlpRunId = generateYtDlpRunId();
                     ytDlpFormatId = form.selectedYtDlpFormatId.trim();
 
                     startRun(
@@ -201,12 +222,25 @@ export function useAddMediaWorkflow({
             } catch (error) {
                 markStopped();
 
-                // A cancelled download travels as an error because that is how the backend unwinds
-                // it, but it is the outcome the user clicked for: the run stopped and nothing was
-                // left behind. Reporting it through the error modal told them something went wrong
-                // when the thing they asked for is exactly what happened.
-                if (parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
+                // A cancelled run travels as an error because that is how the backend unwinds it,
+                // but it is the outcome the user clicked for: the run stopped and nothing was left
+                // behind. Reporting it through the error modal told them something went wrong when
+                // the thing they asked for is exactly what happened.
+                //
+                // Two codes, because a download and a file import are different operations even
+                // though they are stopped by the same command - and the message has to be, since
+                // an import also has something to say about the file it did not touch.
+                const { code } = parseAppError(error);
+
+                if (code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
                     onNotice("Download cancelled. Nothing was added to your library.");
+                    return;
+                }
+
+                if (code === MEDIA_IMPORT_CANCELLED_ERROR_CODE) {
+                    onNotice(
+                        "Import cancelled. Nothing was added to your library and the original file was left where it was."
+                    );
                     return;
                 }
 
@@ -217,6 +251,11 @@ export function useAddMediaWorkflow({
                     cookiesBrowser: form.cookiesBrowser,
                 });
                 onError(resolveErrorMessage(error, "Failed to add media."));
+            } finally {
+                // Whatever happened, this run is over. Leaving the id behind would let a later
+                // Cancel click reach a run the backend has already released - which the registry
+                // refuses, surfacing as an error modal for a button that should have done nothing.
+                localImportRunIdRef.current = "";
             }
         });
     }, [
@@ -235,9 +274,17 @@ export function useAddMediaWorkflow({
     ]);
 
     const cancelYtDlpDownload = useCallback(async (): Promise<void> => {
-        const runId = ytDlpEvents.currentRunIdRef.current.trim();
+        // Two sources for one id, because the two modes track it in different places: a download
+        // keeps it in useYtDlpEvents (which also needs it to correlate the log stream), while a
+        // local import has no events and keeps its own ref. The yt-dlp branch is unchanged, down to
+        // requiring isYtDlpRunning, so a stale id from a finished download still cancels nothing;
+        // the local ref carries that guard in itself, since it is only non-empty while an import is
+        // actually in flight.
+        const runId = ytDlpEvents.isYtDlpRunning
+            ? ytDlpEvents.currentRunIdRef.current.trim()
+            : localImportRunIdRef.current.trim();
 
-        if (!runId || !ytDlpEvents.isYtDlpRunning) {
+        if (!runId) {
             return;
         }
 

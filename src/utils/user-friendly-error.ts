@@ -31,6 +31,7 @@ import {
     INVALID_CHANNEL_NAME_ERROR_CODE,
     INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE,
     MEDIA_IMPORT_FAILED_ERROR_CODE,
+    MEDIA_IMPORT_CANCELLED_ERROR_CODE,
     VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE,
     CHANNEL_NOT_FOUND_ERROR_CODE,
     YT_DLP_NOT_FOUND_ERROR_CODE,
@@ -86,6 +87,12 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     // right action: the database is working, and restoring would replace it with an older snapshot.
     [DATABASE_ALREADY_OPEN_ERROR_CODE]:
         "The database recovered on its own and is working normally, so there is nothing to restore. Close this dialog and keep using Kavynex - your data is intact.",
+
+    // Catalogued even though the add-media flow routes it to the neutral notice channel before it
+    // reaches here: a cancel raised on any other path (a future batch import, a retry) must still
+    // read as the outcome the user chose rather than as a failure.
+    [MEDIA_IMPORT_CANCELLED_ERROR_CODE]:
+        "Import cancelled. Nothing was added to your library and the original file was left where it was.",
 
     [INVALID_URL_ERROR_CODE]: "Enter a valid media URL.",
     [INVALID_RUN_ID_ERROR_CODE]: "The download session is invalid.",

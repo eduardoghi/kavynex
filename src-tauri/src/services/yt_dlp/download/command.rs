@@ -21,7 +21,13 @@ pub(super) const MAX_RUN_ID_LEN: usize = 128;
 /// characters a UUID (or a hex/dash fallback) uses. It becomes part of a temp-directory name, so
 /// restricting it to `[A-Za-z0-9._-]` also keeps a path separator or other filesystem-significant
 /// character out of that name regardless of what the frontend sends.
-pub(super) fn is_valid_run_id(run_id: &str) -> bool {
+///
+/// `pub(crate)` (re-exported by `yt_dlp::download`) because a local import registers a run id too,
+/// so `cancel_media_download` can reach it. That id never becomes a path - it is only a key in the
+/// process registry - so this rule is stricter than that caller strictly needs. Reusing it anyway is
+/// the point: one definition of what a run id may be beats a second, looser spelling that would
+/// then have to be kept in step with this one.
+pub(crate) fn is_valid_run_id(run_id: &str) -> bool {
     !run_id.is_empty()
         && run_id.len() <= MAX_RUN_ID_LEN
         && run_id
