@@ -41,7 +41,7 @@ describe("MediaPlayerView", () => {
         expect(screen.getByText("Unable to open media")).toBeInTheDocument();
     });
 
-    it("passes the live and chat replay state through to the header", () => {
+    it("passes the live and chat replay state through to the header", async () => {
         // The regression this pins was in the wiring, not the header: the header rendered both
         // badges correctly all along, but MediaPlayerView never passed the props, so they silently
         // defaulted to false and neither badge ever appeared. A header-only test cannot see that.
@@ -69,7 +69,10 @@ describe("MediaPlayerView", () => {
         );
 
         expect(screen.getByText("LIVE")).toBeInTheDocument();
-        expect(screen.getByText("Live chat replay")).toBeInTheDocument();
+        // The replay panel is code-split, so it arrives a microtask after the first commit -
+        // `find*` waits for its chunk. The badge above is in the header and is there immediately,
+        // which is what keeps this test still covering the wiring it was written for.
+        expect(await screen.findByText("Live chat replay")).toBeInTheDocument();
     });
 
     // A longer timeout than the suite default, and this is the one place that needs it. This is the

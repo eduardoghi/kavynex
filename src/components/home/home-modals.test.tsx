@@ -247,14 +247,20 @@ function createProps() {
 }
 
 describe("HomeModals", () => {
-    it("renders mounted modal titles/messages", () => {
+    it("renders mounted modal titles/messages", async () => {
         renderWithMantine(<HomeModals {...createProps()} />);
 
+        // The static modals are there on the first commit.
         expect(screen.getByText("New channel")).toBeInTheDocument();
         expect(screen.getByText("Import media")).toBeInTheDocument();
-        expect(screen.getByText("Settings")).toBeInTheDocument();
-        expect(screen.getAllByText("Diagnostics").length).toBeGreaterThan(0);
         expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+
+        // Settings and Diagnostics are code-split, so they arrive a microtask later - `find*`
+        // rather than `get*` is what waits for their chunk. Asserting they arrive at all is the
+        // point: a split that never resolved would leave both modals permanently blank, and the
+        // Suspense fallback is `null`, so nothing else in the tree would say so.
+        expect(await screen.findByText("Settings")).toBeInTheDocument();
+        expect((await screen.findAllByText("Diagnostics")).length).toBeGreaterThan(0);
     });
 
     it("warns that deleting media permanently removes the file from disk", () => {
@@ -277,12 +283,14 @@ describe("HomeModals", () => {
         ).toBeInTheDocument();
     });
 
-    it("closes settings before opening diagnostics", () => {
+    it("closes settings before opening diagnostics", async () => {
         const props = createProps();
 
         renderWithMantine(<HomeModals {...props} />);
 
-        fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+        // The button lives inside the code-split settings modal, so wait for its chunk before
+        // clicking rather than querying a tree that has not mounted yet.
+        fireEvent.click(await screen.findByRole("button", { name: "Diagnostics" }));
 
         expect(props.settings.closeSettings).toHaveBeenCalledTimes(1);
         expect(props.diagnostics.openDiagnostics).toHaveBeenCalledTimes(1);

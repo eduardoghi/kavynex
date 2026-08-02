@@ -1,12 +1,29 @@
-import { memo } from "react";
+import { lazy, memo, Suspense } from "react";
 import { Text } from "@mantine/core";
 import { RotateCcw } from "lucide-react";
 import { AddMediaModal } from "../modals/add-media-modal";
 import { ConfirmDeleteModal } from "../modals/confirm-delete-modal";
 import { CreateChannelModal } from "../modals/create-channel-modal";
-import { DiagnosticsModal } from "../modals/diagnostics-modal";
 import { ErrorModal } from "../modals/error-modal";
-import { SettingsModal } from "../modals/settings-modal";
+import { useHasBeenTrue } from "../../hooks/use-has-been-true";
+
+// The two heaviest modals, and the two the app can run a whole session without opening. Settings
+// pulls in its five sections (the database export/import/restore flow among them) and Diagnostics
+// pulls in the whole library-integrity report and its rules - none of which is on the path to the
+// first paint, which is the grid.
+//
+// Lazy alone would not defer anything here: both are mounted unconditionally and told whether they
+// are `opened`, so their chunks would be requested on the first render like any static import.
+// `useHasBeenTrue` below is what actually holds the mount back until the first open, and what keeps
+// them mounted afterwards so closing still runs the modal's own exit transition. The other modals
+// stay static: each is small, and the delete confirmation in particular gates a destructive action
+// that should not wait on a chunk.
+const DiagnosticsModal = lazy(() =>
+    import("../modals/diagnostics-modal").then((module) => ({ default: module.DiagnosticsModal }))
+);
+const SettingsModal = lazy(() =>
+    import("../modals/settings-modal").then((module) => ({ default: module.SettingsModal }))
+);
 import type {
     AppSettingsController,
     ChannelsController,
@@ -74,6 +91,11 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
     isDeletingMedia,
     closeDeleteMediaModal,
 }: HomeSecondaryModalsProps): JSX.Element {
+    // Latched rather than read directly, so each lazy modal below mounts on its first open and
+    // stays mounted after. See useHasBeenTrue for why both halves are load-bearing.
+    const settingsWasOpened = useHasBeenTrue(settings.settingsOpen);
+    const diagnosticsWasOpened = useHasBeenTrue(diagnostics.diagnosticsOpen);
+
     return (
         <>
             <CreateChannelModal
@@ -136,39 +158,54 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 description="This permanently deletes all of this channel's saved videos, audio, thumbnails and live chat replays from disk, and removes its comments. This cannot be undone."
             />
 
-            <SettingsModal
-                opened={settings.settingsOpen}
-                onClose={settings.closeSettings}
-                importMode={settings.settings.importMode}
-                libraryPath={settings.settings.libraryPath}
-                loadRemoteImages={settings.settings.loadRemoteImages}
-                checkUpdatesOnStartup={settings.settings.checkUpdatesOnStartup}
-                onChangeImportMode={settings.setImportMode}
-                onChangeLoadRemoteImages={settings.setLoadRemoteImages}
-                onChangeCheckUpdatesOnStartup={settings.setCheckUpdatesOnStartup}
-                onChooseLibraryPath={() => void settings.chooseLibraryPath()}
-                onOpenLibraryPath={() => void settings.openCurrentLibraryPath()}
-                onOpenDiagnostics={() => {
-                    settings.closeSettings();
-                    void diagnostics.openDiagnostics();
-                }}
-                disableLibraryPathChange={uiGuards.disableLibraryPathChange}
-                libraryPathChangeDisabledReason={uiGuards.libraryPathChangeDisabledReason}
-                isMigratingLibraryPath={settings.isMigratingLibraryPath}
-                externalBackupDir={settings.settings.externalBackupDir}
-                isSavingExternalBackupDir={settings.isSavingExternalBackupDir}
-                onChooseExternalBackupDir={() => void settings.chooseExternalBackupDir()}
-                onClearExternalBackupDir={() => void settings.clearExternalBackupDir()}
-            />
+            {settingsWasOpened ? (
+                // `null` while the chunk arrives: this renders only once, on the first open, and
+                // the modal's own overlay is what the user is waiting for - a spinner in its place
+                // would flash for a frame and then be replaced by the real overlay.
+                <Suspense fallback={null}>
+                    <SettingsModal
+                        opened={settings.settingsOpen}
+                        onClose={settings.closeSettings}
+                        importMode={settings.settings.importMode}
+                        libraryPath={settings.settings.libraryPath}
+                        loadRemoteImages={settings.settings.loadRemoteImages}
+                        checkUpdatesOnStartup={settings.settings.checkUpdatesOnStartup}
+                        onChangeImportMode={settings.setImportMode}
+                        onChangeLoadRemoteImages={settings.setLoadRemoteImages}
+                        onChangeCheckUpdatesOnStartup={settings.setCheckUpdatesOnStartup}
+                        onChooseLibraryPath={() => void settings.chooseLibraryPath()}
+                        onOpenLibraryPath={() => void settings.openCurrentLibraryPath()}
+                        onOpenDiagnostics={() => {
+                            settings.closeSettings();
+                            void diagnostics.openDiagnostics();
+                        }}
+                        disableLibraryPathChange={uiGuards.disableLibraryPathChange}
+                        libraryPathChangeDisabledReason={
+                            uiGuards.libraryPathChangeDisabledReason
+                        }
+                        isMigratingLibraryPath={settings.isMigratingLibraryPath}
+                        externalBackupDir={settings.settings.externalBackupDir}
+                        isSavingExternalBackupDir={settings.isSavingExternalBackupDir}
+                        onChooseExternalBackupDir={() =>
+                            void settings.chooseExternalBackupDir()
+                        }
+                        onClearExternalBackupDir={() => void settings.clearExternalBackupDir()}
+                    />
+                </Suspense>
+            ) : null}
 
-            <DiagnosticsModal
-                opened={diagnostics.diagnosticsOpen}
-                onClose={diagnostics.closeDiagnostics}
-                onReload={() => void diagnostics.reloadDiagnostics()}
-                loading={diagnostics.isLoadingDiagnostics}
-                summary={diagnostics.diagnosticsSummary}
-                onOpenMedia={onOpenDiagnosticsMedia}
-            />
+            {diagnosticsWasOpened ? (
+                <Suspense fallback={null}>
+                    <DiagnosticsModal
+                        opened={diagnostics.diagnosticsOpen}
+                        onClose={diagnostics.closeDiagnostics}
+                        onReload={() => void diagnostics.reloadDiagnostics()}
+                        loading={diagnostics.isLoadingDiagnostics}
+                        summary={diagnostics.diagnosticsSummary}
+                        onOpenMedia={onOpenDiagnosticsMedia}
+                    />
+                </Suspense>
+            ) : null}
 
             <ConfirmDeleteModal
                 opened={databaseRecovery.open}

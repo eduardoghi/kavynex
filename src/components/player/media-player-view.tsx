@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, Group, Paper, Stack, Text, rem } from "@mantine/core";
 import { AlertTriangle, ArrowLeft, FolderOpen, PlayCircle } from "lucide-react";
 import type { MediaRow } from "../../types/media";
@@ -15,7 +15,14 @@ import { useMediaComments } from "../../hooks/use-media-comments";
 import { useMediaLiveChat } from "../../hooks/use-media-live-chat";
 import { usePlayerKeyboardShortcuts } from "../../hooks/use-player-keyboard-shortcuts";
 import { CommentsPanel } from "./comments-panel";
-import { LiveChatReplay } from "./live-chat-replay";
+// Only a media with a backed-up live chat renders this, so the replay panel and everything under it
+// stay out of the first-paint bundle for every library that has none - and out of the player itself
+// until one is opened. Unlike the two lazy modals in `home-modals.tsx` this needs no mount latch:
+// the caller already renders it behind `hasLiveChat`, so a static import here is what would have
+// pulled the chunk in eagerly.
+const LiveChatReplay = lazy(() =>
+    import("./live-chat-replay").then((module) => ({ default: module.LiveChatReplay }))
+);
 import { PlayerAudioSurface } from "./player-audio-surface";
 import { PlayerMediaHeader } from "./player-media-header";
 import { PlayerVideoSurface } from "./player-video-surface";
@@ -335,13 +342,18 @@ export function MediaPlayerView({
                         </Box>
 
                         <Box style={{ minWidth: 0 }}>
-                            <LiveChatReplay
-                                liveChatMessages={liveChatMessages}
-                                playerElement={playerElement}
-                                isLoadingLiveChat={isLoadingLiveChat}
-                                error={liveChatError}
-                                shellBorder={shellBorder}
-                            />
+                            {/* The panel renders its own loading state once mounted, and this
+                                fallback only ever shows for the frame or two the chunk takes on
+                                the first live-chat media of a session. */}
+                            <Suspense fallback={null}>
+                                <LiveChatReplay
+                                    liveChatMessages={liveChatMessages}
+                                    playerElement={playerElement}
+                                    isLoadingLiveChat={isLoadingLiveChat}
+                                    error={liveChatError}
+                                    shellBorder={shellBorder}
+                                />
+                            </Suspense>
                         </Box>
                     </Box>
                 ) : (
