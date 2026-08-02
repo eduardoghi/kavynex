@@ -174,11 +174,28 @@ fn prepare_import_source(source_path: &str) -> AppResult<PathBuf> {
 /// renames the live database aside, so it must never run while the pool is open (which would be
 /// operating on a file being renamed underneath). Extracted so both branches are unit-testable
 /// without a live pool; `is_open` is `Db::is_initialized`, re-read under the restore lock.
+///
+/// The refusal message is worth reading against how this command is actually reached, because it
+/// used to tell the user to do the wrong thing. There is exactly one caller
+/// (`use-app-bootstrap.ts`'s recovery modal, opened after `ensure_database_ready` failed); nothing
+/// in Settings offers a manual restore. So an open pool here does not mean "you are trying to
+/// restore at a bad moment" - it means the database opened successfully after the failed startup
+/// attempt, which is what happens when the failure was transient (a lock held by an antivirus scan,
+/// a file momentarily busy) and one of the background tasks that open the pool on their own - the
+/// pending-media sweep at 30s, the periodic backup at 60s, the integrity check at 120s - got in
+/// afterwards.
+///
+/// The old message said "restart the app before restoring from backup", which is the wrong
+/// instruction in that state: restoring would replace a working database with an older snapshot,
+/// and the user who followed it would restart, find the app opening normally, and have no idea
+/// whether anything was restored. Refusing is correct; telling them there is nothing to restore is
+/// the honest way to say so.
 fn ensure_closed_before_restore(is_open: bool) -> AppResult<()> {
     if is_open {
         return Err(AppError::from_code(
             AppErrorCode::DatabaseAlreadyOpen,
-            "the database is already open; restart the app before restoring from backup",
+            "the database opened successfully after the failed startup attempt, so there is \
+             nothing to restore; close this dialog and keep using the app - your data is intact",
         ));
     }
 
@@ -603,6 +620,29 @@ mod tests {
     fn ensure_closed_before_restore_rejects_an_open_database() {
         let error = ensure_closed_before_restore(true).unwrap_err();
         assert_eq!(error.code, AppErrorCode::DatabaseAlreadyOpen.as_str());
+    }
+
+    #[test]
+    fn the_refusal_tells_the_user_there_is_nothing_to_restore_rather_than_to_restart() {
+        // The only caller is the recovery modal, so reaching this refusal means the database
+        // recovered on its own between the failed startup check and the click. The message it
+        // carries is the whole user-facing value of this branch, and the previous one instructed
+        // the opposite of the right action ("restart the app before restoring from backup"),
+        // which would have the user restart, find the app working, and never learn whether a
+        // restore had happened. Asserted on the substance rather than on the exact sentence, so
+        // rewording stays free and reinstating the restart instruction does not.
+        let error = ensure_closed_before_restore(true).unwrap_err();
+
+        assert!(
+            error.message.contains("nothing to restore"),
+            "the refusal must say the database needs no restore; got: {}",
+            error.message
+        );
+        assert!(
+            !error.message.contains("restart"),
+            "the refusal must not tell the user to restart and restore a working database; got: {}",
+            error.message
+        );
     }
 
     #[test]

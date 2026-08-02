@@ -78,8 +78,14 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "No healthy backup was found to restore from. The current database was left untouched - Diagnostics shows where Kavynex keeps its files.",
     [NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE]:
         "There is no imported database to undo. The undo snapshot is kept only until the next import replaces it.",
+    // Reaching this one means the database opened on its own after the startup check had already
+    // failed - a transient cause (a lock held by an antivirus scan, a file momentarily busy) plus
+    // one of the background tasks that open the pool by themselves. The recovery modal is the only
+    // place a restore is offered, so there is nothing else the user could have been trying to do.
+    // This used to read "Restart Kavynex and try the restore again", which is the opposite of the
+    // right action: the database is working, and restoring would replace it with an older snapshot.
     [DATABASE_ALREADY_OPEN_ERROR_CODE]:
-        "The database is already open. Restart Kavynex and try the restore again before anything else opens it.",
+        "The database recovered on its own and is working normally, so there is nothing to restore. Close this dialog and keep using Kavynex - your data is intact.",
 
     [INVALID_URL_ERROR_CODE]: "Enter a valid media URL.",
     [INVALID_RUN_ID_ERROR_CODE]: "The download session is invalid.",
