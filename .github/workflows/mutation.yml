@@ -151,14 +151,41 @@ jobs:
             # Read into an array rather than interpolated: two of those globs are directory globs
             # (`db_backup/*.rs`), and an unquoted expansion would have the shell resolve them into
             # several paths, which cargo-mutants rejects because `--file` takes one value.
+            # The listing this reads is uploaded below, and that is not decoration. On its first
+            # ever run (2026-08-03) this step reported twenty patterns as naming no mutant, and
+            # every one of the twenty matched when the same command was reproduced by hand on the
+            # same commit with the same pinned cargo-mutants - so the disagreement is between two
+            # *listings*, not between the config and the code. Without the listing that produced
+            # the verdict there is nothing to compare against, and the only available response to
+            # a red run is to delete twenty exclusions on a guess. That is precisely the failure
+            # this gate exists to prevent: an exclusion removed is a real mutant silently
+            # unexcluded.
+            #
+            # `set -o pipefail` is not needed here - nothing is piped - but the counts are echoed
+            # so a truncated or empty listing is visible in the log itself rather than only inside
+            # an artifact somebody has to download.
             - name: Verify every mutants.toml exclusion still names a real mutant
               run: |
                   mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
+                  echo "Scope: ${#FILE_ARGS[@]} --file arguments."
 
                   cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config \
                       "${FILE_ARGS[@]}" > mutants-list.txt
 
+                  echo "Listed $(wc -l < mutants-list.txt) mutants."
+
                   node scripts/verify-mutants-exclusions.js mutants-list.txt
+
+            # Uploaded whether or not the check passed: a green run's listing is the baseline the
+            # next red one is read against, and a red run's is the evidence. Small (a line per
+            # mutant) and cheap - the job builds nothing.
+            - name: Upload the mutant listing
+              if: always()
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: mutants-list
+                  path: mutants-list.txt
+                  retention-days: 30
 
     rust-mutation:
         name: Rust mutation testing (shard ${{ strategy.job-index }})
