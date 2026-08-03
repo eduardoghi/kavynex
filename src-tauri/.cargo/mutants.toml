@@ -6,10 +6,13 @@
 # than merely covering the lines - line coverage on these files is already high, but coverage
 # alone does not prove a bypass would be caught.
 #
-# Scoped to the modules whose regression cost is highest - path containment, the library-path
-# guard, the yt-dlp host allow-list, and external-binary resolution - so the run stays inside the
-# CI time budget. Widen `examine_globs` as the tests elsewhere earn the extra runtime; this is the
-# Rust counterpart to Stryker (stryker.config.json), which only mutates the frontend.
+# Scoped to the modules whose regression cost is highest, so the run stays inside the CI time
+# budget. `examine_globs` below is that scope - read it rather than a summary here, because it is
+# what the run actually uses and a prose list beside it only drifts. It started at four entries
+# (path containment, the library-path guard, the yt-dlp host allow-list, external-binary
+# resolution) and has grown with every module whose tests earned the runtime; each addition is
+# recorded below with the measured pass that justified it. Widen it the same way. This is the Rust
+# counterpart to Stryker (stryker.config.json), which only mutates the frontend.
 #
 # Run locally with:
 #     cargo mutants --manifest-path src-tauri/Cargo.toml
