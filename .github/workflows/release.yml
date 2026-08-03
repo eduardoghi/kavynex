@@ -418,7 +418,22 @@ jobs:
             # the build if the lockfile is not already consistent with the manifest (`cargo metadata`
             # resolves the graph without compiling, so it is seconds); the `-- --locked` below makes
             # cargo itself refuse to re-resolve even if this step is ever dropped.
+            # `shell: bash` because of the redirect, and it is not optional here. This job is a
+            # matrix, and GitHub's default shell on the Windows legs is PowerShell, where
+            # `/dev/null` is not a null device but a path - so both Windows legs failed with
+            # "Could not find a part of the path 'D:\dev\null'" the first time this step ran on
+            # them. It could not have failed earlier: the step landed after v1.2.0, so the release
+            # that proved the Windows legs predates it.
+            #
+            # The redirect itself stays. Only the exit code matters here, and `--format-version 1`
+            # prints the whole resolved dependency graph as JSON - hundreds of kilobytes of log for
+            # a check whose entire output is pass or fail.
+            #
+            # actionlint does not catch this class of mistake, which is worth knowing rather than
+            # trusting: it runs shellcheck over `run:` blocks as *bash*, so a POSIX-ism in a step
+            # that will actually execute under PowerShell reads as correct to it.
             - name: Verify the lockfile matches the manifest
+              shell: bash
               run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
 
             - name: Build and publish Tauri app
