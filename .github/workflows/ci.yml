@@ -400,15 +400,17 @@ jobs:
         # mass test deletion), never a percentage chase. The frontend has tight coverage floors
         # (vitest.config.ts, ~89% lines) and broad Stryker mutation testing; the Rust side - the
         # actual trust boundary - has `cargo test` (pass/fail) plus cargo-mutants scoped to the
-        # security-critical modules in src-tauri/.cargo/mutants.toml's examine_globs (path
-        # containment, the library-path guard, the yt-dlp host allow-list, the yt-dlp download
-        # planning/argv builder, external-binary resolution, content-addressing/cleanup, the atomic
-        # filesystem primitives, the whole db_backup module, the SSRF address guard, and the
-        # live-chat command). Read that file rather than this list for the current set. This adds
-        # the missing safety net over the many other files under services/, commands/ and utils/ the
-        # mutation scope does not reach (the yt-dlp download/metadata orchestration, the thumbnail
-        # downloader, the repositories, the schema/migration module, input validation, and most
-        # command wrappers).
+        # security-critical modules in src-tauri/.cargo/mutants.toml's examine_globs. That file is
+        # the scope; this comment deliberately does not restate it, and did not always - the copy
+        # kept here named ten areas while the globs had grown past twenty, and listed the schema
+        # migrations and input validation as *outside* the gate a week after both had been put
+        # inside it. A list of what is covered is exactly the thing someone reads to decide where
+        # the next test goes, so one that lags is worse than a pointer.
+        #
+        # What this job adds is the backstop over everything the mutation scope does not reach:
+        # the yt-dlp download/metadata orchestration, the thumbnail downloader's async half, the
+        # repositories, and most command wrappers. Diff examine_globs against the tree for the
+        # current answer.
         #
         # The floor stays deliberately below the real reading, to avoid the flaky-threshold trap
         # this job warns about: coverage is measured here on Linux and cannot be validated against a
