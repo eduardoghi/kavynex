@@ -1117,6 +1117,18 @@ mod tests {
     use std::thread::sleep;
     use std::time::Duration;
 
+    #[test]
+    fn the_cancellable_copy_chunk_is_one_mebibyte() {
+        // Pinned by value rather than re-derived from the same multiplication the constant uses,
+        // matching `the_live_chat_decompression_ceiling_is_512_mib` in `live_chat_storage`. An
+        // arithmetic slip here is invisible to every behavioral test: 1024 + 1024 is 2048 bytes and
+        // 1024 / 1024 is 1, and a copy still produces a byte-identical destination at any of those
+        // sizes. What changes is only how often a cancel can be noticed - a one-byte chunk turns
+        // the cancellable import into a syscall per byte, which is a hang the user reads as a
+        // freeze rather than as a slow copy. A literal is the only thing that catches it.
+        assert_eq!(CANCELLABLE_COPY_CHUNK_BYTES, 1_048_576);
+    }
+
     /// How many `.tmp-` staging files the copy left behind in `dir`. A cancel that stranded one
     /// would be invisible to an assertion on the destination alone, and the whole point of staging
     /// through a sibling is that nothing survives a copy that did not finish.

@@ -1308,6 +1308,87 @@ mod tests {
         )));
     }
 
+    /// A run id no other test in this process uses, so registering it cannot collide with a
+    /// concurrently running test's entry in the process-wide download registry.
+    fn unique_run_id(label: &str) -> String {
+        format!(
+            "import-{label}-{}",
+            crate::utils::naming::unique_temp_suffix()
+        )
+    }
+
+    #[test]
+    fn a_well_formed_run_id_makes_a_local_import_cancellable() {
+        // What the Cancel button rests on: the run has to reach the registry, because that is what
+        // `cancel_media_download(runId)` looks the flag up in. Returning `None` here is a Cancel
+        // button that silently does nothing - no error, no log the user sees, just a click that
+        // does not land.
+        //
+        // The guard is bound rather than dropped immediately: dropping it unregisters the run, and
+        // the flag would then belong to an id the cancel command can no longer find, which is the
+        // same silent failure by a different route.
+        let run_id = unique_run_id("valid");
+
+        let cancellation = local_import_cancellation(&run_id)
+            .expect("a well-formed run id should register and be cancellable");
+
+        let (flag, _release) = cancellation;
+
+        assert!(
+            !flag.load(std::sync::atomic::Ordering::SeqCst),
+            "a freshly registered run starts uncancelled"
+        );
+    }
+
+    #[test]
+    fn a_malformed_run_id_is_refused_without_reaching_the_registry() {
+        // The non-empty half of the guard, and the reason it is `||` rather than `&&`. An empty id
+        // is refused either way, so it proves nothing: with `&&` the two conditions both hold for
+        // `""` and the refusal still happens. Only a value that is *present but malformed* tells
+        // the two apart - weakened to `&&` this falls through and registers a run id that
+        // `is_valid_run_id` exists to keep out of a temp-directory name.
+        // `..` is deliberately absent: it satisfies `is_valid_run_id`, and correctly so - the id
+        // only ever becomes one component of `{run_id}-{suffix}`, so `..-<suffix>` is an ordinary
+        // directory name and never a parent reference. What the rule keeps out is a separator.
+        for malformed in ["has space", "a/b", "../evil", "x".repeat(200).as_str()] {
+            assert!(
+                local_import_cancellation(malformed).is_none(),
+                "{malformed:?} should not be registered as a cancellable run"
+            );
+        }
+    }
+
+    #[test]
+    fn a_blank_run_id_simply_is_not_cancellable() {
+        // The three ways a caller legitimately has no run id: an older frontend that sends none, a
+        // caller with no Cancel button to offer, and whitespace that trims to nothing. None is an
+        // error - the import still runs, it just cannot be cancelled - so this pins that the
+        // function answers `None` rather than refusing the import.
+        assert!(local_import_cancellation("").is_none());
+        assert!(local_import_cancellation("   ").is_none());
+    }
+
+    #[test]
+    fn the_same_run_id_cannot_be_registered_twice() {
+        // A duplicate id means this run is already registered, which the registry refuses - and the
+        // documented response is an uncancellable import rather than a refused one. Holding the
+        // first guard is what keeps the entry alive for the second call to collide with.
+        let run_id = unique_run_id("duplicate");
+
+        let first = local_import_cancellation(&run_id).expect("the first registration succeeds");
+
+        assert!(
+            local_import_cancellation(&run_id).is_none(),
+            "a second registration of a live run id degrades to uncancellable"
+        );
+
+        drop(first);
+
+        // Released with the guard, so the id is usable again - otherwise a retried import of the
+        // same file would be permanently uncancellable for the rest of the session.
+        assert!(local_import_cancellation(&run_id).is_some());
+    }
+
     #[test]
     fn the_source_mode_deserializes_from_the_wire_spelling() {
         // The frontend has always sent these two literals; the enum has to accept exactly them, and
