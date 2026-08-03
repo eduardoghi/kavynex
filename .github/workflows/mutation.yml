@@ -220,7 +220,17 @@ jobs:
                 # be a number nothing approaches, and a leg killed by it reports as *cancelled*
                 # rather than failed, which is exactly the outcome that went unreported on
                 # 2026-07-27. A fourth shard puts each leg back to a quarter of the scope instead.
-                shard: [1, 2, 3, 4]
+                #
+                # Five since 2026-08-03, and this one is worth reading before reaching for the knob
+                # again, because the trigger was not what the paragraph above would predict. Shard 1
+                # was killed at 91 minutes and shard 2 finished at 89, while the scope had barely
+                # moved - 1454 against the 1450 measured the day before. So nothing grew; the margin
+                # the note above already called "not one" simply ran out, and an ordinary swing in
+                # runner speed was enough to cross it. The lesson is that a leg sitting within a few
+                # minutes of this ceiling is already over it on some future Tuesday, and the reading
+                # to act on is the *slowest* leg rather than the average. A fifth shard takes each
+                # leg to roughly 291 mutants, which is about 73 minutes at the pace measured today.
+                shard: [1, 2, 3, 4, 5]
         # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
         # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
         # was killed at 2h00m having produced no verdict - the two runs before it took ~56 minutes.
@@ -231,8 +241,11 @@ jobs:
         # creeping toward it, add a shard rather than minutes - see the matrix above.
         #
         # That number is what this decision is read against, so it is worth knowing it drifts: it
-        # said 1383 until 2026-08-02, when a re-measurement put it at 1450. Five percent does not
-        # change the shard count, which is the point of re-measuring rather than assuming either way.
+        # said 1383 until 2026-08-02, when a re-measurement put it at 1450, and 1454 the day after.
+        # Five percent does not change the shard count, which is the point of re-measuring rather
+        # than assuming either way - and 2026-08-03 showed the other half of that lesson: the shard
+        # count needed changing anyway, for pace rather than for scope. Read the slowest leg, not
+        # this number alone.
         timeout-minutes: 90
         # Trim debuginfo like ci.yml's Rust job: cargo-mutants rebuilds the tree once per mutant, so
         # keeping the per-build cost down matters more here than anywhere else.
