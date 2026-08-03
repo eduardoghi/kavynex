@@ -169,8 +169,16 @@ jobs:
                   mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
                   echo "Scope: ${#FILE_ARGS[@]} --file arguments."
 
+                  # `--colors never` because this workflow sets CARGO_TERM_COLOR: always, which
+                  # cargo-mutants honours even writing to a file - and it colourizes the function
+                  # name *inside* each description, so `replace pin_process_start with ()` arrives
+                  # with escape sequences between the words. Every exclusion here names a function,
+                  # so with colour on they stop matching and the gate reports live exclusions as
+                  # dead. That is how this check failed on its first ever run, against twenty-six
+                  # patterns that were all fine. The script strips the sequences too; this keeps
+                  # the uploaded listing readable for whoever compares it by hand.
                   cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config \
-                      "${FILE_ARGS[@]}" > mutants-list.txt
+                      --colors never "${FILE_ARGS[@]}" > mutants-list.txt
 
                   echo "Listed $(wc -l < mutants-list.txt) mutants."
 

@@ -91,8 +91,8 @@ on every push:
 
   ```bash
   mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
-  cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config "${FILE_ARGS[@]}" \
-      > /tmp/mutants.txt
+  cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config --colors never \
+      "${FILE_ARGS[@]}" > /tmp/mutants.txt
   node scripts/verify-mutants-exclusions.js /tmp/mutants.txt
   ```
 

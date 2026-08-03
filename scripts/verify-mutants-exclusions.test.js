@@ -82,6 +82,43 @@ describe("findDeadPatterns", () => {
         expect(result.dead).toEqual(["replace < with <= in is_recent"]);
     });
 
+    it("reads a listing cargo-mutants colourized", () => {
+        // The false failure this check actually shipped with. cargo-mutants honours
+        // CARGO_TERM_COLOR, which mutation.yml sets to `always` at the workflow level, and it
+        // colourizes the function name and the replacement *inside* each description - so
+        // `replace pin_process_start with ()` arrives with escape sequences between the words and
+        // every pattern naming a function stops matching.
+        //
+        // It fired on the check's first ever run against twenty-six live patterns, and the obvious
+        // response - delete the exclusions it names - would have silently unexcluded twenty-six
+        // real mutants. The escape byte is spelled as a unicode escape rather than
+        // pasted in literally, so no invisible control character sits in this file.
+        const esc = "\u001b";
+        const colourized = [
+            `src/services/pending_media.rs:164:5: replace ${esc}[38;5;13mpin_process_start${esc}[0m with ${esc}[33m()${esc}[0m`,
+            `src/utils/path.rs:100:5: replace ${esc}[38;5;13msanitize_relative_path_strict${esc}[0m -> AppResult<PathBuf> with Ok(Default::default())`,
+        ].join("\n");
+
+        const result = findDeadPatterns(
+            ["replace pin_process_start with \\(\\)", "sanitize_relative_path_strict"],
+            colourized
+        );
+
+        expect(result.dead).toEqual([]);
+        expect(result.uncompilable).toEqual([]);
+    });
+
+    it("still reports a genuinely dead pattern in a colourized listing", () => {
+        // The other direction, so the stripping cannot be written as "match everything". A pattern
+        // naming a function the listing does not contain stays dead whether or not colour is on.
+        const esc = "\u001b";
+        const colourized = `src/services/pending_media.rs:164:5: replace ${esc}[38;5;13mpin_process_start${esc}[0m with ${esc}[33m()${esc}[0m`;
+
+        const result = findDeadPatterns(["replace vanished_function with \\(\\)"], colourized);
+
+        expect(result.dead).toEqual(["replace vanished_function with \\(\\)"]);
+    });
+
     it("separates a pattern JavaScript cannot compile from one that is merely dead", () => {
         // The flavors are not identical, so a pattern this script cannot judge has to be its own
         // answer - counting it as dead would report a rename that never happened.

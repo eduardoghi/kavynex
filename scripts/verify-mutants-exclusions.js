@@ -19,8 +19,8 @@
 //
 // Run locally (needs cargo-mutants installed):
 //     mapfile -t FILE_ARGS < <(node scripts/verify-mutants-exclusions.js --file-args)
-//     cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config "${FILE_ARGS[@]}" \
-//         > /tmp/mutants.txt
+//     cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config --colors never \
+//         "${FILE_ARGS[@]}" > /tmp/mutants.txt
 //     node scripts/verify-mutants-exclusions.js /tmp/mutants.txt
 //
 // The array is not cosmetic. `examine_globs` holds two directory globs (`db_backup/*.rs`,
@@ -90,6 +90,28 @@ export function parseExamineGlobs(tomlContent) {
     return extractQuotedArray(tomlContent, "examine_globs", '"');
 }
 
+// Strips the ANSI colour sequences cargo-mutants writes into `--list` output when colour is on.
+//
+// This is not defensive tidying, it is the fix for a real false failure. cargo-mutants honours
+// `CARGO_TERM_COLOR`, which `mutation.yml` sets to `always` at the workflow level, and it colourizes
+// the *function name and the replacement* inside each mutant description - so the line reads
+// `replace <esc>[38;5;13mpin_process_start<esc>[0m with <esc>[33m()<esc>[0m` rather than
+// `replace pin_process_start with ()`. Every pattern here names a function, so every pattern whose
+// text spans one of those boundaries stops matching, and the gate reports it as an exclusion that
+// no longer names a mutant.
+//
+// That is exactly backwards, and expensively so: it fired on this check's first ever run
+// (2026-08-03) against twenty-six live patterns, and the obvious response to a red run - delete the
+// exclusions it names - would have silently unexcluded twenty-six real mutants in the security
+// modules this gate exists to protect. The workflow now also passes `--colors never`, but the
+// stripping stays: this function's contract is "given a `cargo mutants --list` output, which
+// patterns are dead", and a caller who produced that output with colour on deserves the right
+// answer rather than an inverted one.
+function stripAnsi(value) {
+    // eslint-disable-next-line no-control-regex
+    return value.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
 // Which patterns match nothing in `mutantList`, and which could not be compiled at all.
 //
 // The regex flavors are not identical - cargo-mutants uses the Rust `regex` crate and this runs in
@@ -98,7 +120,9 @@ export function parseExamineGlobs(tomlContent) {
 // (character classes, alternation, escaped parens and pipes); a future one that needs a
 // Rust-specific construct should show up here as a question to answer, not as a false failure.
 export function findDeadPatterns(patterns, mutantList) {
-    const lines = mutantList.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    const lines = stripAnsi(mutantList)
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0);
     const dead = [];
     const uncompilable = [];
 
