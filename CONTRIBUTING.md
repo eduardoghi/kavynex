@@ -27,7 +27,10 @@ to send someone who has a bug to report rather than a change to propose.
 - The OS-level Tauri prerequisites for your platform (WebView2 on Windows - usually
   already present). On Linux, the authoritative list is `ci.yml`'s "Install Linux
   dependencies" step, which installs `libwebkit2gtk-4.1-dev`,
-  `libayatana-appindicator3-dev`, `librsvg2-dev` and `patchelf`. Note the *ayatana*
+  `libayatana-appindicator3-dev`, `librsvg2-dev` and `patchelf`. That step also installs `lld`,
+  which is not a prerequisite - it is a faster linker CI uses to keep the cold compile down on a
+  2-vCPU runner, and nothing here needs it locally. (`release.yml` additionally installs
+  `xdg-utils`, which the AppImage bundler requires; see `docs/RELEASING.md`.) Note the *ayatana*
   spelling: Ubuntu 24.04 dropped `libappindicator3-dev`, so the older name this list used
   to carry now fails to install on every image the workflows run on. See the
   [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/) if your platform
@@ -42,7 +45,10 @@ pnpm tauri dev
 
 Frontend:
 
-- `pnpm lint` - ESLint (`eslint.config.js`) over `src/**/*.{ts,tsx}`.
+- `pnpm lint` - ESLint (`eslint.config.js`). It is `eslint .`, not a `src`-only run: the config
+  carries a block for `src/**/*.{ts,tsx}` and a second one for `scripts/**/*.js` (Node globals
+  rather than browser), so the repository-consistency scripts below are linted too. `src-tauri/`,
+  `src/types/generated/`, the build output and Stryker's sandboxes are ignored.
 - `pnpm advisories:check` - fails on a high/critical security advisory in the production
   dependency tree, querying osv.dev (add `--dev` for the toolchain tree, which CI reports but
   does not gate on). This replaced `pnpm audit`, which npm's retired audit endpoints broke for
@@ -213,7 +219,33 @@ ci: audit rust dependencies with cargo-audit
 ## Pull requests
 
 Keep changes focused and include tests for new behavior (Vitest for frontend, `#[test]`/
-`#[tokio::test]` for Rust). CI runs on every push/PR: frontend lint/test/build, Rust
-fmt/clippy/test across Linux/Windows/macOS, the TS-bindings-freshness check, and a
-`cargo audit` pass over Rust dependencies (RUSTSEC advisories are not covered by the JS
-advisory check, so this is a separate job).
+`#[tokio::test]` for Rust).
+
+`ci.yml` runs six jobs on every push/PR, and all six gate the change. Read that file for the
+authoritative version; what follows is what to expect a red run to be about:
+
+- **Frontend** - lint, the Vitest suite *with coverage* (`pnpm test:coverage`; the floors in
+  `vitest.config.ts` are only enforced when coverage is collected, so this is where a coverage
+  regression fails), build, the production JS advisory and license gates (the dev-tree advisory
+  scan runs too but is non-blocking), the three repository-consistency scripts above, and a grep
+  refusing a unicode dash where a plain `-` belongs - if a test needs one of those characters as
+  data, spell it as a `\uXXXX` escape rather than pasting it.
+- **Frontend tests (Windows, macOS)** - the same suite on the other two platforms. It is jsdom
+  but not fully platform-independent: date formatting varies with the runner's ICU.
+- **Rust (Linux, Windows, macOS)** - `fmt --check`, `clippy -D warnings` and `cargo test` on
+  each platform. Three further steps are Ubuntu-only, since they read the tree as text and are
+  platform-independent: the TS-bindings-freshness check, and two greps that are easy to trip
+  without knowing they exist - a temporary path must come from
+  `utils::naming::unique_temp_suffix` rather than a raw `as_nanos()`, and a path logged near a
+  `logger::` call must go through `services::logger::redact_path` rather than `Path::display()`
+  or `{:?}` (which prints the whole path too).
+- **Cargo audit and deny** - RUSTSEC advisories (not covered by the JS advisory check, hence a
+  separate job), plus licenses, sources and bans via `cargo-deny`.
+- **Rust coverage** - publishes the per-file table and fails under a line floor. A backstop
+  against a module landing untested, not a percentage to chase.
+- **Workflow lint** - `actionlint` over the workflow YAML, including shellcheck on every
+  `run:` block.
+
+Mutation testing is *not* on this path: it runs weekly (`mutation.yml`), Stryker over the
+frontend and cargo-mutants over the Rust modules in `src-tauri/.cargo/mutants.toml`'s
+`examine_globs`, sharded so no leg runs toward its timeout.
