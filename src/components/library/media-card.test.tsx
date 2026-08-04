@@ -249,7 +249,14 @@ describe("MediaCard", () => {
             />
         );
 
-        expect(screen.getByText("Watched")).toBeInTheDocument();
+        // There is no watched badge on the thumbnail any more - the card's own green says it,
+        // and a pill there covered the corner of the image the user scans by. So the assertion
+        // is on the accessible name, which is where the state moved: it is the only remaining
+        // non-visual statement of it, and dropping it would leave watched invisible to a screen
+        // reader rather than merely unbadged.
+        expect(
+            screen.getByRole("button", { name: "Open Video A, Watched" })
+        ).toBeInTheDocument();
     });
 
     it("shows audio badge near metadata for audio media", () => {

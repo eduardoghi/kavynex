@@ -10,7 +10,6 @@ import {
     rem,
 } from "@mantine/core";
 import {
-    CheckCircle2,
     ExternalLink,
     FolderOpen,
     MessageCircle,
@@ -271,21 +270,38 @@ function MediaCardComponent({
 
     return (
         <StretchedButtonCard
-            ariaLabel={`Open ${media.title}`}
+            // Watched state rides on the accessible name because it has no badge of its own any
+            // more (see the thumbnail's top-badge group). Appended rather than prefixed so the
+            // action stays the first thing announced, and only when true, so an unwatched card's
+            // name is unchanged.
+            ariaLabel={
+                isWatched
+                    ? `Open ${media.title}, ${UI_TEXT.library.watchedBadge}`
+                    : `Open ${media.title}`
+            }
             onClick={handleOpen}
             radius="xl"
             p="sm"
             style={{
                 ...ROOT_CARD_BASE_STYLE,
+                // The watched tint carries a real cost when it is too faint, and it was: in dark
+                // mode it painted 7% green over a card whose unwatched state is already 2.8% white,
+                // so at grid scale the two read as the same card and the badge was doing the whole
+                // job alone. The values below keep the intended ranking - active outranks watched
+                // outranks neither - while making the middle rung visible rather than nominal.
+                //
+                // Active still wins on more than alpha: it also gets the ring, the drop glow and the
+                // lift below, none of which watched has. That is what lets watched sit this close in
+                // tint without the two competing for "which card am I on".
                 background: isActive
                     ? "light-dark(linear-gradient(180deg, rgba(124,92,255,0.12), rgba(124,92,255,0.04)), linear-gradient(180deg, rgba(124,92,255,0.18), rgba(124,92,255,0.05)))"
                     : isWatched
-                    ? "light-dark(linear-gradient(180deg, rgba(34,197,94,0.12), rgba(34,197,94,0.05)), linear-gradient(180deg, rgba(34,197,94,0.07), rgba(34,197,94,0.025)))"
+                    ? "light-dark(linear-gradient(180deg, rgba(34,197,94,0.18), rgba(34,197,94,0.07)), linear-gradient(180deg, rgba(34,197,94,0.16), rgba(34,197,94,0.06)))"
                     : "light-dark(#ffffff, rgba(255,255,255,0.028))",
                 borderColor: isActive
                     ? "rgba(124,92,255,0.68)"
                     : isWatched
-                    ? "rgba(34,197,94,0.28)"
+                    ? "rgba(34,197,94,0.55)"
                     : shellBorder,
                 boxShadow: isActive
                     ? "0 0 0 1px rgba(124,92,255,0.24), 0 18px 42px rgba(80,50,180,0.22)"
@@ -293,10 +309,21 @@ function MediaCardComponent({
                 transform: isActive ? "translateY(-2px)" : "none",
             }}
         >
+            {/* The thumbnail carries the watched border too, not just the card around it. Of the
+                card's 292px this block is 158, so the outer border is a thin line drawn around a
+                mass that is almost entirely image - the state has to appear on the part the eye is
+                already looking at, or it is only technically on screen. Kept a step below the outer
+                border's alpha so the card still reads as one shape rather than two rings. */}
             <Box
                 style={{
                     ...THUMBNAIL_CONTAINER_BASE_STYLE,
-                    border: `1px solid ${isActive ? "rgba(124,92,255,0.52)" : shellBorder}`,
+                    border: `1px solid ${
+                        isActive
+                            ? "rgba(124,92,255,0.52)"
+                            : isWatched
+                            ? "rgba(34,197,94,0.45)"
+                            : shellBorder
+                    }`,
                 }}
             >
                 {thumbSrc && !thumbFailed ? (
@@ -327,16 +354,17 @@ function MediaCardComponent({
                         </Badge>
                     )}
 
-                    {isWatched && (
-                        <Badge
-                            variant="filled"
-                            color="green"
-                            leftSection={<CheckCircle2 size={12} />}
-                        >
-                            {UI_TEXT.library.watchedBadge}
-                        </Badge>
-                    )}
+                    {/* Watched carries no badge here on purpose. The card's own green states it,
+                        and a pill on top of the thumbnail was stating it twice while covering the
+                        top-left corner - where a face or a YouTube thumbnail's own title text
+                        usually sits, i.e. the part the user is scanning by.
 
+                        The visual signal is therefore colour alone, which is a real limit rather
+                        than a free win: a viewer with red-green colour blindness gets a weaker
+                        version of it (a luminance shift rather than a hue). It is accepted for the
+                        cleaner grid. What is not given up is the screen-reader signal - the card's
+                        accessible name carries the state instead, so it is announced without
+                        occupying a pixel. */}
                     {isLive && (
                         <Badge
                             variant="filled"
