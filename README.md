@@ -2,18 +2,32 @@
 
 # Kavynex
 
-Kavynex is a desktop app for backing up and organizing media from YouTube channels and local files.
+Kavynex is a desktop app for archiving YouTube channels and playing back what you saved.
 
-It was created to help preserve videos, audio, thumbnails, comments, and live chat data from channels I follow.
+Downloading the video is the easy part. What goes with a channel and does not come back is
+everything around it, so Kavynex saves the comment section and the live chat replay alongside the
+media, keeps all of it in a library on your own disk, and plays it back offline. No server, no
+container, no account - it is an application you install.
+
+It was built to preserve the channels I follow, and it is what I use for that.
 
 ## Features
 
-- Manage channels
-- Import local video and audio files
-- Download media using yt-dlp
-- Save thumbnails, comments, and live chat
-- Mark media as watched or unwatched
-- Run library diagnostics
+**Archiving**
+
+- Back up a channel's video and audio with `yt-dlp`
+- Save the comment section, with the reply threads rebuilt as they were
+- Save a stream's live chat and replay it alongside the video, in sync through seeks
+- Save thumbnails with the media they belong to
+
+**Your library**
+
+- Organize media by channel, with the channel avatar fetched from its handle
+- Import video and audio files you already have on disk
+- Search, filter and sort within a channel; mark media watched or unwatched; resume where you
+  stopped
+- Reconcile the database against the files on disk with the built-in diagnostics
+- Everything stays local: nothing is uploaded, and loading remote images is off by default
 
 ## Requirements
 
