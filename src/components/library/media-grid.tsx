@@ -41,6 +41,15 @@ type MediaGridProps = {
 
 const GRID_GAP = 16;
 
+// Space held between the rightmost column and the scroll area's own scrollbar. Without it a card's
+// border sits flush against the scrollbar, and the card highlight is worse off than that: it draws
+// a 2px outline at `outlineOffset: 2` (see the focus/jump highlight below), so a highlighted card in
+// the last column had four pixels of ring with nowhere to go.
+//
+// Set to GRID_GAP so the gutter to the scrollbar reads as the same distance as the gutter between
+// two cards, rather than as a second, arbitrary measurement.
+const GRID_SCROLLBAR_GUTTER = GRID_GAP;
+
 // Roughly what sits above the grid inside the viewport: the app shell's padding, the channel
 // header, the filter row and the grid's own title. Deliberately an approximation rather than a
 // measurement - reading it would mean a layout query on a container that re-renders on every scroll
@@ -159,7 +168,14 @@ export function MediaGrid({
         [rowHeight]
     );
 
-    const columnCount = useMemo(() => getColumnCount(width), [width]);
+    // Measured on the outer box, so the gutter reserved for the scrollbar has to come off before the
+    // breakpoints are applied: the cards divide what is left, not what was measured. Without the
+    // subtraction a window sitting just above a breakpoint would be given a column that then has
+    // GRID_SCROLLBAR_GUTTER less room than the breakpoint was chosen for.
+    const columnCount = useMemo(
+        () => getColumnCount(Math.max(0, width - GRID_SCROLLBAR_GUTTER)),
+        [width]
+    );
 
     // Display-sized copies of the thumbnails on screen, so a card decodes a few hundred pixels
     // rather than the stored file's full resolution. Resolved for every loaded item rather than only
@@ -343,6 +359,7 @@ export function MediaGrid({
                             overflowY: "auto",
                             overflowX: "hidden",
                             position: "relative",
+                            paddingRight: GRID_SCROLLBAR_GUTTER,
                         }}
                     >
                         {/* Only the rows near the viewport exist in the DOM, so assistive tech
