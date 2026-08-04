@@ -1,5 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { HomeModals } from "./home-modals";
 import { renderWithMantine } from "../../test/test-utils";
 import type {
@@ -247,6 +247,27 @@ function createProps() {
 }
 
 describe("HomeModals", () => {
+    // `HomeModals` code-splits the settings and diagnostics modals (see its `lazy` calls), so
+    // rendering it starts a dynamic `import()` whose module - and the whole dependency tree behind
+    // it, which for these two is most of the app's form and chart surface - is transformed inside
+    // the one-second budget `findBy*` gives the assertion below.
+    //
+    // On a machine running this file alone that is comfortable. Under the full suite, with 144
+    // files competing for the same cores, it is not: this test failed intermittently there while
+    // passing every time in isolation, which is the shape that makes a flake expensive - it reddens
+    // CI for a reason unrelated to the change being tested, and the natural response is to stop
+    // trusting the run.
+    //
+    // Importing the two modules here resolves them before any assertion is timed, so the `lazy`
+    // factory settles from the module registry on its first flush rather than racing a transform.
+    // Deterministic rather than a larger timeout, which would only make the race less likely.
+    beforeAll(async () => {
+        await Promise.all([
+            import("../modals/settings-modal"),
+            import("../modals/diagnostics-modal"),
+        ]);
+    });
+
     it("renders mounted modal titles/messages", async () => {
         renderWithMantine(<HomeModals {...createProps()} />);
 
