@@ -47,6 +47,15 @@ confidence-threshold = 0.9
 [bans]
 # Duplicate versions of a crate are common in a large transitive tree and not worth failing a
 # release over, but surface them so the bloat/audit surface stays visible.
+#
+# "Surface" used to be doing no work in that sentence, and the same objection applies to it as to
+# the licenses comment above: a `warn` writes to the log of a job that passes, and nobody opens the
+# log of a green job. So the promise was kept by nothing for as long as it was written down. The
+# "Report duplicate dependency versions" step in ci.yml and scheduled-audit.yml now renders the
+# count and the offending crates into the run's step summary (scripts/summarize-cargo-deny-bans.js),
+# which is where it is actually read. That step reports and never gates - changing this back to
+# "deny" is still the only thing that would make a duplicate fail a build, and it is deliberately
+# not what this line says.
 multiple-versions = "warn"
 # A wildcard ("*") version requirement in our own manifest would let an unreviewed major land
 # silently; the app pins real ranges, so forbid it.

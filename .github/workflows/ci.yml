@@ -336,6 +336,15 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+            # Node runs the duplicate-version report at the end of this job. Pinned like every
+            # other toolchain here rather than left to whatever the runner image preinstalls -
+            # "this job ships nothing" is not the reason the frontend job gives for pinning either.
+            # No pnpm setup or install: the report script is deliberately dependency-free.
+            - name: Setup Node.js
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: 26.5.0
+
             - name: Install Rust toolchain
               # Pin the exact toolchain (keep in sync with rust-toolchain.toml) instead of a
               # moving "stable".
@@ -387,6 +396,32 @@ jobs:
             # cargo-audit above so the same gate is not run twice. Config: src-tauri/deny.toml.
             - name: Check licenses, sources and bans
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
+
+            # `multiple-versions = "warn"` in src-tauri/deny.toml is a deliberate choice - duplicate
+            # versions are ordinary in a transitive tree this size and are not worth failing a build
+            # over - and its comment promises they are surfaced "so the bloat/audit surface stays
+            # visible". That was the one claim in that file nothing delivered: a warning lands in the
+            # log of a job that passes, and nobody opens the log of a green job. This puts the number
+            # on the run's summary page instead, which is where it can actually be noticed.
+            #
+            # A second cargo-deny invocation rather than parsing the gate above, for two reasons: the
+            # gate's human-readable output is what a maintainer reads when it fails, and a combined
+            # run mixes in licenses/sources diagnostics this report would only have to filter back
+            # out. It re-resolves Cargo.lock without compiling anything, so it costs seconds.
+            #
+            # Reporting only. The script never exits non-zero over what cargo-deny said - an output
+            # shape it no longer understands describes itself in the summary rather than turning the
+            # audit red, since a reporting step that can fail the job it reports on would be strictly
+            # worse than the log line it replaces. Placed after the gate so a `bans` *error* fails
+            # there first and this never runs against a tree the gate rejected.
+            #
+            # `2>` is not a typo: cargo-deny writes its JSON diagnostics to stderr and leaves stdout
+            # empty.
+            - name: Report duplicate dependency versions
+              run: |
+                  cargo deny --manifest-path src-tauri/Cargo.toml --format json check bans \
+                      2> deny-bans.json
+                  node scripts/summarize-cargo-deny-bans.js deny-bans.json >> "$GITHUB_STEP_SUMMARY"
 
     rust-coverage:
         name: "Rust coverage (floor: 68% lines)"
