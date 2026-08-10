@@ -194,6 +194,35 @@ limitation of the underlying framework, not a state Kavynex chose). Rather than 
 leave you with a library where every thumbnail and video silently fails to load, it refuses up front
 and asks for the restart. After restarting, the folder is authorized normally.
 
+### The library is on a drive or share that is not connected
+
+Your media list looks normal, but no thumbnail draws, nothing plays, and Diagnostics reports the
+library summary check as failed and *every* media file as missing, with real filenames listed as
+examples. That reads like the library was wiped. It was not, and the reason the two halves disagree
+is where each one lives: the database sits with the app's own data, not in the library folder, so
+the rows survive a disconnected drive intact while the files they point at are simply out of reach.
+
+Reconnect the drive (or bring the network share back online) and **restart Kavynex**. The restart is
+the part worth knowing about: the library folder is authorized with the webview once, when the
+library path is loaded at startup, and reconnecting the drive mid-session does not re-run that - so
+without a restart the files are reachable again while the thumbnails and the player still refuse
+them.
+
+Nothing needs repairing afterwards. If you want to confirm, run Diagnostics once the library is back
+and the same checks report the real numbers.
+
+One thing to *not* do while the drive is away: do not point Settings > Library folder at a new
+location to "fix" it. Kavynex cannot tell a library that is temporarily unreachable from one that
+was never there, so instead of refusing it treats the move as a first-time setup - it reports
+success, copies nothing, and adopts the new empty folder as your library. Your media is not deleted
+(the disconnected drive is never touched), but the app is now pointed somewhere else and every item
+reads as missing until you point Settings > Library folder back at the original path. Reconnect the
+drive first and the whole situation does not arise.
+
+(The log records this too, as a `library_guard` line saying the library path was accepted by an
+exact-string match because it could not be canonicalized. That line is the app noting it could not
+confirm where the folder really is, which is exactly what an absent drive looks like from inside.)
+
 ### Kavynex reports a corrupted database
 
 This is handled automatically and nothing is silently lost. On the next launch Kavynex restores
