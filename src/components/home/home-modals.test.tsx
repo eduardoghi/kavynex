@@ -198,6 +198,8 @@ function createDiagnostics(): DiagnosticsController {
         openDiagnostics: vi.fn().mockResolvedValue(undefined),
         closeDiagnostics: vi.fn(),
         reloadDiagnostics: vi.fn().mockResolvedValue(undefined),
+        openLogDirectory: vi.fn().mockResolvedValue(undefined),
+        isOpeningLogDirectory: false,
     };
 }
 

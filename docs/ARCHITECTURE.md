@@ -74,9 +74,18 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   and the convention above is back to being about readability alone.
 
   What stays a flat file is a concern with no family: `database.rs`, `binaries.rs`,
-  `temp_cleanup.rs`, `logger.rs`, `filesystem.rs`, `live_chat_storage.rs`, `media_comments.rs`,
-  `media_creation.rs`, `pending_media.rs`, `process_registry.rs`, `ssrf_guard.rs`,
-  `temp_paths.rs`, `channel_repository.rs`.
+  `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `filesystem.rs`, `live_chat_storage.rs`,
+  `media_comments.rs`, `media_creation.rs`, `pending_media.rs`, `process_registry.rs`,
+  `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
+
+  `file_manager.rs` is the one of those that arrived by moving rather than by being written, and the
+  move is the rule above read backwards. It lived inside `library/` while the "reveal a media file"
+  flow was its only caller, which made it look like a library concern - resolving
+  `explorer.exe`/`open`/`xdg-open` and spawning it is not one. A second caller (the Diagnostics
+  "Open log folder" button, `commands/logging.rs`) made the mis-homing cost something real: leaving
+  it there meant either a cross-family import or a second copy of the three per-platform spawn
+  branches. What stayed behind in `library/` is the part that *is* a library concern, the
+  containment check - see `docs/THREAT-MODEL.md` for why that split is the security-relevant half.
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
   across services:
   - `path.rs` - the path-safety primitives (sanitizing a relative path, canonicalizing and

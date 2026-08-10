@@ -9,6 +9,11 @@ pub mod channel_repository;
 pub mod database;
 pub mod db_backup;
 pub mod db_schema;
+// The OS file-manager spawn, which lived in `library` while that was its only caller. It is not a
+// library concern - resolving `explorer.exe`/`open`/`xdg-open` has nothing to do with the user's
+// media directory - and a second caller (the Diagnostics "Open log folder" button) made keeping it
+// there mean either a cross-family import or a second copy of the three platform branches.
+pub mod file_manager;
 pub mod filesystem;
 pub mod library;
 pub mod live_chat_storage;

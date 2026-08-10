@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiagnosticsController } from "../types/controllers";
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
+import { openLogDirectory as openLogDirectoryInSystem } from "../services/library-service";
 import type { DiagnosticsSummary } from "../types/diagnostics";
 import type { ImportMode } from "../types/settings";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
+import { useAsyncFlag } from "./use-async-flag";
 import { useMemoObject } from "./use-memo-object";
 import { useRequestGuard } from "./use-request-guard";
 
@@ -24,6 +26,10 @@ export function useDiagnostics({
     const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
 
     const requestGuard = useRequestGuard();
+    // Its own flag rather than the shared `isLoadingDiagnostics`, which the Refresh button owns:
+    // opening the log folder loads no diagnostics, and reusing that flag would put the Refresh
+    // button into a loading state for an action that has nothing to do with it.
+    const logDirectoryFlag = useAsyncFlag();
     const hasLoadedSinceOpenRef = useRef(false);
     const previousLibraryPathRef = useRef(libraryPath);
     const previousImportModeRef = useRef(importMode);
@@ -86,6 +92,20 @@ export function useDiagnostics({
         await loadDiagnostics();
     }, [importMode, libraryPath, loadDiagnostics]);
 
+    // No request guard, unlike the loaders above: this resolves to nothing and updates no state, so
+    // there is no stale response that could overwrite a newer one. The async flag is here to stop a
+    // double click spawning two file-manager windows, which is the only way this misbehaves.
+    const openLogDirectory = useCallback(async (): Promise<void> => {
+        await logDirectoryFlag.runWithFlag(async () => {
+            try {
+                await openLogDirectoryInSystem();
+            } catch (error) {
+                logError("diagnostics", "Failed to open the log directory.", error);
+                onError(resolveErrorMessage(error, "Failed to open the log folder."));
+            }
+        });
+    }, [logDirectoryFlag, onError]);
+
     useEffect(() => {
         if (!diagnosticsOpen) {
             return;
@@ -118,5 +138,7 @@ export function useDiagnostics({
         openDiagnostics,
         closeDiagnostics,
         reloadDiagnostics,
+        openLogDirectory,
+        isOpeningLogDirectory: logDirectoryFlag.isRunning,
     });
 }

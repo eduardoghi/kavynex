@@ -161,6 +161,14 @@ export async function openFileLocation(path: string, libraryPath: string): Promi
     });
 }
 
+// Opens the app's log directory in the OS file manager. Unlike the two above it passes no path:
+// the backend resolves it from `app_log_dir()`, which is what makes the command safe without a
+// containment check (see src-tauri/src/commands/logging.rs). There is nothing here to normalize or
+// reject, so this is a direct call rather than a validating wrapper.
+export async function openLogDirectory(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.OPEN_LOG_DIRECTORY);
+}
+
 export async function openExternalUrl(url: string): Promise<void> {
     const normalizedUrl = normalizeString(url);
 

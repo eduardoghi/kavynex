@@ -1,6 +1,9 @@
 export const TAURI_COMMANDS = {
     CHECK_EXTERNAL_TOOLS: "check_external_tools",
     LOG_FRONTEND_ERROR: "log_frontend_error",
+    // Takes no arguments, deliberately: the backend resolves the log directory from `app_log_dir()`
+    // so there is no path for a caller to redirect. See src-tauri/src/commands/logging.rs.
+    OPEN_LOG_DIRECTORY: "open_log_directory",
 
     // The startup self-check that runs inside the webview (src/lib/webview-check.ts). Only ever
     // called by that module: BEGIN returns null on every normal launch, and REPORT terminates the

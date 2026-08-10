@@ -215,6 +215,36 @@ Each command has an IPC-level test pinning the refusal
 (`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`), so the exception
 cannot come back by accident.
 
+#### The second file-manager command takes no path, which is why it needs no guard
+
+`open_log_directory` (`commands/logging.rs`) reveals the app's log directory in the same file
+manager, so the README's "attach the relevant lines when reporting a bug" does not start with the
+user hunting for a per-OS path. It is in this document because it spawns the same thing
+`open_path_in_system` does while satisfying none of the rules above - and the reason is that it has
+nothing to satisfy them with. **It accepts no arguments.** The directory comes from
+`app.path().app_log_dir()`, so there is no value a compromised renderer can supply and therefore
+nothing to validate.
+
+Reusing `open_path_in_system` was the obvious shortcut and is the one thing that must not be done
+here. Its containment check confines `path` to `library_path`, so passing the log directory as both
+would satisfy it trivially - the self-referential shape recorded above as the defect the settings
+cross-check exists to close, not a pattern to reuse. The log directory is also not inside the
+library, so there is no honest way to express it through that command at all.
+
+The spawn itself is shared rather than copied: `services::file_manager` holds the file-manager
+resolution (the PATH-only lookup described under "External binary resolution") and the per-platform
+reveal, and its module comment states the contract this splits on - it reveals whatever canonical
+path it is handed and decides nothing about whether that path is allowed. There are exactly two
+callers, and each answers that question a different way: the library one guards a caller-supplied
+path, this one accepts none. A third caller has to answer it too; neither existing answer
+generalizes for free.
+
+One rule it deliberately does not apply is the UNC refusal. That rule exists to stop a
+*caller-supplied* path pointing at an attacker's host, and this path comes from the OS. A Windows
+profile redirected onto a corporate share is a supported configuration where refusing would break
+the feature for the user whose own share it is - the same reasoning as `set_external_backup_dir`
+above.
+
 #### Accepted residual: the library-selection helpers create and probe arbitrary directories
 
 `ensure_directory_exists`, `resolve_existing_directory` and `is_directory_empty` are the group of

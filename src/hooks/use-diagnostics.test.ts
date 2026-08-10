@@ -6,6 +6,10 @@ vi.mock("../services/diagnostics-service", () => ({
     getDiagnosticsSummary: vi.fn(),
 }));
 
+vi.mock("../services/library-service", () => ({
+    openLogDirectory: vi.fn(),
+}));
+
 vi.mock("../utils/app-error", () => ({
     parseAppError: vi.fn((error: unknown) => error),
 }));
@@ -19,9 +23,11 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
+import { openLogDirectory } from "../services/library-service";
 import { useDiagnostics } from "./use-diagnostics";
 
 const getDiagnosticsSummaryMock = vi.mocked(getDiagnosticsSummary);
+const openLogDirectoryMock = vi.mocked(openLogDirectory);
 
 function createSummary(label: string): DiagnosticsSummary {
     return {
@@ -555,5 +561,101 @@ describe("useDiagnostics", () => {
             "/library/latest"
         );
         expect(onError).not.toHaveBeenCalled();
+    });
+    describe("openLogDirectory", () => {
+        it("reveals the log folder and reports nothing to the user on success", async () => {
+            const onError = vi.fn();
+            openLogDirectoryMock.mockResolvedValueOnce(undefined);
+
+            const { result } = renderHook(() =>
+                useDiagnostics({
+                    libraryPath: "/library",
+                    importMode: "copy",
+                    onError,
+                })
+            );
+
+            await act(async () => {
+                await result.current.openLogDirectory();
+            });
+
+            expect(openLogDirectoryMock).toHaveBeenCalledTimes(1);
+            expect(onError).not.toHaveBeenCalled();
+            expect(result.current.isOpeningLogDirectory).toBe(false);
+        });
+
+        it("surfaces a failure instead of leaving a button that does nothing", async () => {
+            // The whole point of the button is reaching the log after something went wrong. A
+            // failure that only reached the log file would be the one place that is useless.
+            const onError = vi.fn();
+            openLogDirectoryMock.mockRejectedValueOnce(new Error("no file manager"));
+
+            const { result } = renderHook(() =>
+                useDiagnostics({
+                    libraryPath: "/library",
+                    importMode: "copy",
+                    onError,
+                })
+            );
+
+            await act(async () => {
+                await result.current.openLogDirectory();
+            });
+
+            expect(onError).toHaveBeenCalledWith("Failed to open the log folder.");
+            expect(result.current.isOpeningLogDirectory).toBe(false);
+        });
+
+        it("does not leave the diagnostics loading flag set", async () => {
+            // The action has its own in-flight flag precisely so it does not put the Refresh button
+            // into a loading state for work that loads no diagnostics.
+            const onError = vi.fn();
+            openLogDirectoryMock.mockResolvedValueOnce(undefined);
+
+            const { result } = renderHook(() =>
+                useDiagnostics({
+                    libraryPath: "/library",
+                    importMode: "copy",
+                    onError,
+                })
+            );
+
+            await act(async () => {
+                await result.current.openLogDirectory();
+            });
+
+            expect(result.current.isLoadingDiagnostics).toBe(false);
+        });
+
+        it("drops a second click while the first is still in flight", async () => {
+            // Two file-manager windows is the only way this misbehaves, and the async flag guards it
+            // by a ref set before the first await - so two synchronous calls cannot both pass.
+            const onError = vi.fn();
+
+            let release: () => void = () => {};
+            openLogDirectoryMock.mockImplementationOnce(
+                () =>
+                    new Promise<void>((resolve) => {
+                        release = resolve;
+                    })
+            );
+
+            const { result } = renderHook(() =>
+                useDiagnostics({
+                    libraryPath: "/library",
+                    importMode: "copy",
+                    onError,
+                })
+            );
+
+            await act(async () => {
+                const first = result.current.openLogDirectory();
+                const second = result.current.openLogDirectory();
+                release();
+                await Promise.all([first, second]);
+            });
+
+            expect(openLogDirectoryMock).toHaveBeenCalledTimes(1);
+        });
     });
 });

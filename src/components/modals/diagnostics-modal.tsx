@@ -1,5 +1,5 @@
 import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mantine/core";
-import { RefreshCcw } from "lucide-react";
+import { FolderOpen, RefreshCcw } from "lucide-react";
 import type { DiagnosticsMediaTarget, DiagnosticsSummary } from "../../types/diagnostics";
 import { AppButton } from "../ui/app-button";
 import { DiagnosticsIssuesSection } from "./diagnostics-sections/diagnostics-issues-section";
@@ -12,6 +12,10 @@ type DiagnosticsModalProps = {
     loading: boolean;
     summary: DiagnosticsSummary | null;
     onOpenMedia?: (target: DiagnosticsMediaTarget) => void;
+    // Reveals the app's log directory in the OS file manager. Optional so the modal still renders
+    // bare in isolation tests; the app always supplies it.
+    onOpenLogFolder?: () => void;
+    openingLogFolder?: boolean;
 };
 
 export function DiagnosticsModal({
@@ -21,6 +25,8 @@ export function DiagnosticsModal({
     loading,
     summary,
     onOpenMedia,
+    onOpenLogFolder,
+    openingLogFolder = false,
 }: DiagnosticsModalProps): JSX.Element {
     const showInitialLoading = loading && !summary;
     const showRefreshingState = loading && !!summary;
@@ -63,15 +69,33 @@ export function DiagnosticsModal({
                         Environment, database and library health overview
                     </Text>
 
-                    <AppButton
-                        type="button"
-                        appVariant="primary"
-                        leftSection={<RefreshCcw size={16} />}
-                        onClick={onReload}
-                        loading={loading}
-                    >
-                        Refresh
-                    </AppButton>
+                    <Group gap="sm" wrap="nowrap">
+                        {onOpenLogFolder && (
+                            // The README asks for the relevant log lines when reporting a bug and
+                            // then gives a per-OS path to go and find. This is that path, as a
+                            // button, in the dialog a user already opens when something looks wrong.
+                            <AppButton
+                                type="button"
+                                appVariant="secondary"
+                                leftSection={<FolderOpen size={16} />}
+                                onClick={onOpenLogFolder}
+                                loading={openingLogFolder}
+                                disabled={openingLogFolder}
+                            >
+                                Open log folder
+                            </AppButton>
+                        )}
+
+                        <AppButton
+                            type="button"
+                            appVariant="primary"
+                            leftSection={<RefreshCcw size={16} />}
+                            onClick={onReload}
+                            loading={loading}
+                        >
+                            Refresh
+                        </AppButton>
+                    </Group>
                 </Box>
 
                 <Box

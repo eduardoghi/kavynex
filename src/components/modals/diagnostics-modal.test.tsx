@@ -216,4 +216,82 @@ describe("DiagnosticsModal", () => {
 
         expect(screen.getByText("No diagnostics loaded")).toBeInTheDocument();
     });
+    it("reveals the log folder from the button", () => {
+        const onOpenLogFolder = vi.fn();
+
+        renderWithMantine(
+            <DiagnosticsModal
+                opened
+                onClose={vi.fn()}
+                onReload={vi.fn()}
+                loading={false}
+                summary={createSummary()}
+                onOpenLogFolder={onOpenLogFolder}
+            />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Open log folder" }));
+
+        expect(onOpenLogFolder).toHaveBeenCalledTimes(1);
+    });
+
+    it("omits the log folder button when no handler is supplied", () => {
+        // The prop is optional so the modal renders bare in isolation; rendering a dead button in
+        // that case would be worse than rendering none.
+        renderWithMantine(
+            <DiagnosticsModal
+                opened
+                onClose={vi.fn()}
+                onReload={vi.fn()}
+                loading={false}
+                summary={createSummary()}
+            />
+        );
+
+        expect(screen.queryByRole("button", { name: "Open log folder" })).not.toBeInTheDocument();
+    });
+
+    it("disables the log folder button while it is opening", () => {
+        // `loading` alone would rely on Mantine having re-rendered before the next click lands,
+        // which is a promise about timing rather than about state - and a second click here spawns
+        // a second file-manager window. Same reasoning as the update-check button in Settings.
+        const onOpenLogFolder = vi.fn();
+
+        renderWithMantine(
+            <DiagnosticsModal
+                opened
+                onClose={vi.fn()}
+                onReload={vi.fn()}
+                loading={false}
+                summary={createSummary()}
+                onOpenLogFolder={onOpenLogFolder}
+                openingLogFolder
+            />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Open log folder" }));
+
+        expect(onOpenLogFolder).not.toHaveBeenCalled();
+    });
+
+    it("keeps the log folder button usable while diagnostics are refreshing", () => {
+        // The two actions have separate in-flight flags on purpose: reaching the log folder is most
+        // useful exactly when a refresh is grinding or has just failed.
+        const onOpenLogFolder = vi.fn();
+
+        renderWithMantine(
+            <DiagnosticsModal
+                opened
+                onClose={vi.fn()}
+                onReload={vi.fn()}
+                loading
+                summary={createSummary()}
+                onOpenLogFolder={onOpenLogFolder}
+            />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Open log folder" }));
+
+        expect(onOpenLogFolder).toHaveBeenCalledTimes(1);
+    });
 });

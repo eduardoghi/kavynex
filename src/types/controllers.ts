@@ -185,6 +185,12 @@ export type DiagnosticsController = {
     openDiagnostics: () => Promise<void>;
     closeDiagnostics: () => void;
     reloadDiagnostics: () => Promise<void>;
+    // Reveals the app's log directory in the OS file manager. Lives on this slice because
+    // Diagnostics is where a user is sent to gather what a bug report needs, and it is the one
+    // action here that touches no diagnostics state - hence its own in-flight flag rather than
+    // sharing `isLoadingDiagnostics`, which the Refresh button owns.
+    openLogDirectory: () => Promise<void>;
+    isOpeningLogDirectory: boolean;
 };
 
 export type ErrorModalController = {

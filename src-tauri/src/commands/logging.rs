@@ -1,4 +1,8 @@
-use crate::services::logger;
+use tauri::AppHandle;
+
+use crate::services::{file_manager, logger};
+use crate::utils::task::run_blocking;
+use crate::AppResult;
 
 // Frontend crash reports are free-form text from the webview; cap and sanitize them so a
 // runaway (or hostile) frontend cannot flood the log file or forge log lines through
@@ -39,6 +43,25 @@ pub fn log_frontend_error(scope: String, message: String) {
     };
 
     logger::error(&scope, message);
+}
+
+/// Opens the app's log directory in the OS file manager, so the README's "attach the relevant lines
+/// when reporting a bug" does not begin with the user finding a per-OS path by hand.
+///
+/// **It takes no arguments, and that is the security property rather than an omission.** Every other
+/// path-revealing command in this app receives a path over IPC and has to defend it - the library
+/// one confines it to the configured library, behind the settings cross-check in `library::guard`.
+/// This one asks Tauri where the log directory is, so a compromised renderer has nothing to
+/// redirect. Reusing `open_path_in_system` instead was the tempting shortcut and is the wrong one:
+/// its containment check compares `path` against `library_path`, so passing the log directory as
+/// both would satisfy it trivially - the self-referential shape `docs/THREAT-MODEL.md` records as a
+/// defect that guard exists to close, not a pattern to reuse.
+///
+/// The spawn and the directory resolution are blocking filesystem work, so they run off the async
+/// runtime's worker threads like every other filesystem command.
+#[tauri::command]
+pub async fn open_log_directory(app: AppHandle) -> AppResult<()> {
+    run_blocking(move || file_manager::reveal_app_log_dir(&app)).await
 }
 
 #[cfg(test)]

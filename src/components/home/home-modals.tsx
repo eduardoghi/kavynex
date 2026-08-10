@@ -203,6 +203,8 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         loading={diagnostics.isLoadingDiagnostics}
                         summary={diagnostics.diagnosticsSummary}
                         onOpenMedia={onOpenDiagnosticsMedia}
+                        onOpenLogFolder={() => void diagnostics.openLogDirectory()}
+                        openingLogFolder={diagnostics.isOpeningLogDirectory}
                     />
                 </Suspense>
             ) : null}

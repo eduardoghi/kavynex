@@ -577,6 +577,7 @@ pub fn run() {
             commands::database::undo_database_import,
             commands::database::check_database_integrity,
             commands::logging::log_frontend_error,
+            commands::logging::open_log_directory,
             commands::webview_check::begin_webview_check,
             commands::webview_check::report_webview_check,
             commands::settings::get_app_settings,

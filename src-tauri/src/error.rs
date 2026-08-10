@@ -114,6 +114,12 @@ pub enum AppErrorCode {
     // a code named for yt-dlp appearing after a file import would be a lie in the log.
     MediaImportCancelled,
 
+    // The Diagnostics "Open log folder" button failing, which is neither a media path nor a library
+    // one. Its own code rather than the generic `AppError` because the log folder is what a user is
+    // asked to reach when reporting a bug, so a failure there deserves to be identifiable in the
+    // very log it failed to open.
+    LogDirectoryOpenFailed,
+
     SourceThumbnailNotFound,
     InvalidSourceThumbnail,
     InvalidThumbnailFile,
@@ -263,6 +269,7 @@ impl AppErrorCode {
             Self::UnsupportedMediaExtension => "UNSUPPORTED_MEDIA_EXTENSION",
             Self::MediaImportCancelled => "MEDIA_IMPORT_CANCELLED",
 
+            Self::LogDirectoryOpenFailed => "LOG_DIRECTORY_OPEN_FAILED",
             Self::SourceThumbnailNotFound => "SOURCE_THUMBNAIL_NOT_FOUND",
             Self::InvalidSourceThumbnail => "INVALID_SOURCE_THUMBNAIL",
             Self::InvalidThumbnailFile => "INVALID_THUMBNAIL_FILE",

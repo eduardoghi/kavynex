@@ -34,6 +34,7 @@ import type { WebviewCheckPlan } from "../types/generated/WebviewCheckPlan";
 export type TauriCommandReturns = {
     check_external_tools: ExternalToolsStatus;
     log_frontend_error: void;
+    open_log_directory: void;
 
     // null on every launch that is not a `--webview-check` run, which is what lets the frontend ask
     // unconditionally at boot. `report_webview_check` never resolves during a check: the backend

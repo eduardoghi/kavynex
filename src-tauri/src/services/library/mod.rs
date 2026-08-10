@@ -118,133 +118,20 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
     Ok(canonical_path)
 }
 
-// `std::fs::canonicalize` on Windows returns an extended-length (`\\?\`) path. That form is
-// correct for the containment check above, but `explorer /select,` does not reliably highlight
-// a file when given a verbatim path, so strip the prefix before handing the path to explorer.
-#[cfg(target_os = "windows")]
-fn strip_windows_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
-    let text = path.to_string_lossy();
-
-    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-        return std::path::PathBuf::from(format!(r"\\{rest}"));
-    }
-
-    if let Some(rest) = text.strip_prefix(r"\\?\") {
-        return std::path::PathBuf::from(rest);
-    }
-
-    path.to_path_buf()
-}
-
-/// Resolves the OS file manager this module reveals a path with, never by bare name.
+/// Reveals a media file (or the library folder itself) in the OS file manager.
 ///
-/// `Command::new("explorer")` hands the lookup to the OS executable search order, which on Windows
-/// begins with the directory of the running application - the working-directory/app-directory
-/// hijack class `services::binaries` was hardened against for yt-dlp and ffmpeg
-/// (`resolve_from_path_var`, and `docs/THREAT-MODEL.md`'s "External binary resolution"). These three spawns
-/// sat outside that policy only because they live in a different module, not because a file manager
-/// deserves less care than a downloader: it is spawned with a path the user chose, from a process
-/// that owns their library.
-///
-/// Windows and macOS have a fixed system location for theirs, so those are absolute paths built
-/// from `%SystemRoot%` (set by the OS, not by any caller) and a literal respectively. Linux has no
-/// fixed location for `xdg-open`, so it goes through the same PATH-only search yt-dlp and ffmpeg
-/// use - which skips empty `PATH` entries, i.e. never resolves out of the current directory.
-#[cfg(target_os = "windows")]
-fn resolve_file_manager_binary() -> AppResult<PathBuf> {
-    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from(r"C:\Windows"));
-
-    Ok(PathBuf::from(system_root).join("explorer.exe"))
-}
-
-#[cfg(target_os = "macos")]
-fn resolve_file_manager_binary() -> AppResult<PathBuf> {
-    Ok(PathBuf::from("/usr/bin/open"))
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn resolve_file_manager_binary() -> AppResult<PathBuf> {
-    crate::services::binaries::resolve_from_path(&["xdg-open"])
-        .map(PathBuf::from)
-        .ok_or_else(|| {
-            AppError::from_code(
-                AppErrorCode::InvalidMediaPath,
-                "xdg-open was not found in PATH, so the file manager cannot be opened",
-            )
-        })
-}
-
-// Each platform block ends with an explicit `return` because the sibling `#[cfg]` blocks
-// are stripped per-target, so the active block is a statement, not the function tail.
-#[allow(clippy::needless_return)]
+/// The containment is the whole of what this function adds, and it is why it stays here while the
+/// spawn does not: `resolve_path_inside_library` confines a caller-supplied `path` to the
+/// configured library before anything is revealed. `services::file_manager` performs the reveal and
+/// deliberately decides nothing about which paths are allowed - see its module comment for the two
+/// callers and how each answers that question.
 pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppResult<()> {
     let canonical_path = resolve_path_inside_library(path, library_path)?;
-    let file_manager = resolve_file_manager_binary()?;
 
-    #[cfg(target_os = "windows")]
-    {
-        let mut command = std::process::Command::new(file_manager);
-        let explorer_path = strip_windows_verbatim_prefix(&canonical_path);
-
-        if canonical_path.is_file() {
-            command.arg("/select,").arg(&explorer_path);
-        } else {
-            command.arg(&explorer_path);
-        }
-
-        command.spawn().map_err(|error| {
-            AppError::from_code(
-                AppErrorCode::InvalidMediaPath,
-                format!("failed to open path in system explorer: {error}"),
-            )
-        })?;
-
-        return Ok(());
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        // Always reveal, never open. A macOS `.app` bundle is a *directory*, so plain
-        // `open <dir>` would launch the application rather than show it in Finder - and both
-        // `path` and `library_path` arrive from the caller, so the containment check cannot rule
-        // that out on its own (a caller can pass `/Applications` as both). `-R` reveals files and
-        // directories alike, which is all this command is ever meant to do.
-        let mut command = std::process::Command::new(file_manager);
-        command.arg("-R").arg(&canonical_path);
-
-        command.spawn().map_err(|error| {
-            AppError::from_code(
-                AppErrorCode::InvalidMediaPath,
-                format!("failed to open path in Finder: {error}"),
-            )
-        })?;
-
-        return Ok(());
-    }
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        let target = if canonical_path.is_file() {
-            canonical_path
-                .parent()
-                .unwrap_or(&canonical_path)
-                .to_path_buf()
-        } else {
-            canonical_path
-        };
-
-        std::process::Command::new(file_manager)
-            .arg(&target)
-            .spawn()
-            .map_err(|error| {
-                AppError::from_code(
-                    AppErrorCode::InvalidMediaPath,
-                    format!("failed to open path in file manager: {error}"),
-                )
-            })?;
-
-        return Ok(());
-    }
+    crate::services::file_manager::reveal_canonical_path(
+        &canonical_path,
+        AppErrorCode::InvalidMediaPath,
+    )
 }
 
 #[cfg(test)]
@@ -258,50 +145,9 @@ mod tests {
         dir
     }
 
-    // The property that matters is the same on every platform and is what the bare-name spawns
-    // did not have: whatever this returns is an absolute path, so the OS never gets to pick the
-    // executable out of its own search order (which on Windows starts with the application's
-    // directory). Split per target because each one resolves it a different way.
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn file_manager_resolves_to_explorer_under_the_system_root() {
-        let resolved = resolve_file_manager_binary().unwrap();
-
-        assert!(
-            resolved.is_absolute(),
-            "the file manager must be an absolute path, got {}",
-            resolved.display()
-        );
-        assert!(resolved.ends_with("explorer.exe"));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn file_manager_resolves_to_the_system_open_binary() {
-        assert_eq!(
-            resolve_file_manager_binary().unwrap(),
-            PathBuf::from("/usr/bin/open")
-        );
-    }
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    #[test]
-    fn file_manager_resolves_xdg_open_to_an_absolute_path_when_it_is_installed() {
-        // xdg-open is not guaranteed on every machine the suite runs on (it is a desktop package,
-        // and ci.yml's Ubuntu job does not install it), so a missing one is a valid outcome rather
-        // than a failure. What is asserted is the part that must hold whenever it *is* found: the
-        // lookup went through the PATH-only search and produced an absolute path, never the bare
-        // name the OS would have resolved itself.
-        if let Ok(resolved) = resolve_file_manager_binary() {
-            assert!(
-                resolved.is_absolute(),
-                "the file manager must be an absolute path, got {}",
-                resolved.display()
-            );
-            assert!(resolved.ends_with("xdg-open"));
-        }
-    }
+    // The file-manager binary resolution moved to `services::file_manager` along with the spawn it
+    // serves, and its three per-target tests moved with it. What stays here is the containment,
+    // which is what this module contributes to the flow.
 
     #[test]
     fn rejects_when_library_path_is_none() {
@@ -355,26 +201,6 @@ mod tests {
             "unexpected error: {msg}"
         );
         let _ = fs::remove_dir_all(&library);
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn strip_windows_verbatim_prefix_removes_extended_length_prefixes() {
-        use std::path::{Path, PathBuf};
-
-        assert_eq!(
-            strip_windows_verbatim_prefix(Path::new(r"\\?\C:\Users\me\video.mp4")),
-            PathBuf::from(r"C:\Users\me\video.mp4")
-        );
-        assert_eq!(
-            strip_windows_verbatim_prefix(Path::new(r"\\?\UNC\server\share\clip.mp4")),
-            PathBuf::from(r"\\server\share\clip.mp4")
-        );
-        // A path without the prefix is returned unchanged.
-        assert_eq!(
-            strip_windows_verbatim_prefix(Path::new(r"C:\Users\me\video.mp4")),
-            PathBuf::from(r"C:\Users\me\video.mp4")
-        );
     }
 
     #[test]

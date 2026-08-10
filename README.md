@@ -236,10 +236,11 @@ There is also one case where both buttons fail outright rather than behaving dif
 
 ### Where logs live
 
-Kavynex writes a rolling log file in addition to stderr. On the current platform's app
-log directory (see `docs/DIRECTORIES.md`) look for `kavynex.log` (and `kavynex.log.1`,
-the previous rotation, once the current file passes 5 MB). Attach the relevant lines when
-reporting a bug. Logs can contain file paths and a reference to each video you download, so
+Kavynex writes a rolling log file in addition to stderr. The quickest way there is the
+**Open log folder** button in the Diagnostics dialog, which reveals the directory in your file
+manager. Failing that, it is the current platform's app log directory (see `docs/DIRECTORIES.md`):
+look for `kavynex.log` (and `kavynex.log.1`, the previous rotation, once the current file passes
+5 MB). Attach the relevant lines when reporting a bug. Logs can contain file paths and a reference to each video you download, so
 they do reveal which videos were fetched - a run that succeeds records only a reduced
 reference (the video id; the playlist and tracking parameters of the URL you pasted are
 dropped), but one that fails also records yt-dlp's own verbose output, which can include the

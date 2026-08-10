@@ -271,6 +271,8 @@ const mockDiagnosticsState = {
     openDiagnostics: vi.fn(),
     closeDiagnostics: vi.fn(),
     reloadDiagnostics: vi.fn(),
+    openLogDirectory: vi.fn(),
+    isOpeningLogDirectory: false,
 };
 
 const mockUiGuards = {
