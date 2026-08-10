@@ -143,7 +143,7 @@ describe("useAppUpdate", () => {
         expect(installAppUpdateMock).not.toHaveBeenCalled();
     });
 
-    it("installs the update, reports download progress and reaches installed", async () => {
+    it("installs the update, reports download progress and stays on downloading", async () => {
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
         toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
@@ -163,9 +163,16 @@ describe("useAppUpdate", () => {
         });
 
         expect(installAppUpdateMock).toHaveBeenCalledWith(update, expect.any(Function));
-        expect(result.current.status).toBe("installed");
         expect(result.current.progress).toEqual({ downloaded: 50, total: 100, percent: 50 });
         expect(result.current.errorMessage).toBe("");
+
+        // A successful install sets no terminal state: in production the relaunch has replaced the
+        // process by now, and the two readers of this status both want it to still say
+        // "downloading" - the install button stays disabled and the settings modal stays locked
+        // right through to the relaunch. This test only observes the gap because the mock removes
+        // the process replacement, which is exactly why the assertion has to name the real
+        // post-state rather than the one a mock makes reachable.
+        expect(result.current.status).toBe("downloading");
     });
 
     it("sets an error state with the exact user-facing message when installing fails", async () => {
@@ -220,7 +227,9 @@ describe("useAppUpdate", () => {
         });
 
         expect(result.current.errorMessage).toBe("");
-        expect(result.current.status).toBe("installed");
+        // Back to the in-flight state a successful install leaves behind, and specifically no
+        // longer "error": the retry is what clears it.
+        expect(result.current.status).toBe("downloading");
     });
 
     it("recreates installUpdate after checkForUpdate loads a real update (kills [update] -> [] dep mutant)", async () => {
@@ -246,6 +255,33 @@ describe("useAppUpdate", () => {
         });
 
         expect(installAppUpdateMock).toHaveBeenCalledWith(update, expect.any(Function));
-        expect(result.current.status).toBe("installed");
+        expect(result.current.status).toBe("downloading");
+    });
+
+    it("keeps the settings modal's in-progress check true through a successful install", async () => {
+        // settings-modal.tsx locks the modal while `appUpdateStatus` is "checking" or "downloading",
+        // so the relaunch is never a surprise. A terminal success state used to break that in the
+        // one window where it mattered - the modal unlocked between the install finishing and the
+        // process being replaced. This pins the status against the exact set that lock reads, so
+        // reintroducing such a state fails here rather than as a modal that closes on its own.
+        const update = createUpdate();
+        checkAppUpdateMock.mockResolvedValueOnce(update);
+        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
+        installAppUpdateMock.mockResolvedValueOnce(undefined);
+
+        const { result } = renderHook(() => useAppUpdate());
+
+        await act(async () => {
+            await result.current.checkForUpdate();
+        });
+
+        await act(async () => {
+            await result.current.installUpdate();
+        });
+
+        const isUpdateInProgress =
+            result.current.status === "checking" || result.current.status === "downloading";
+
+        expect(isUpdateInProgress).toBe(true);
     });
 });
