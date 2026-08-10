@@ -78,6 +78,32 @@ jobs:
             - name: Verify the command path surface is declared
               run: node scripts/verify-command-path-surface.js
 
+            # The sibling gate for the *other* trust boundary. `docs/THREAT-MODEL.md` states that the
+            # capability grants are "the exact list the app uses, not a preset", and that the seam
+            # rule (only `src/lib/tauri-client.ts` and `src/lib/tauri-platform.ts` may import
+            # `@tauri-apps`, enforced by eslint) is what makes that auditable as a two-file read.
+            # True, and held by nothing but someone remembering to do the read.
+            #
+            # Nothing in this pipeline evaluates the ACL: `cargo test` never initializes the Tauri
+            # runtime, `pnpm build` only emits the bundle, and `--smoke-test` exits inside `setup()`.
+            # `--webview-check` (release.yml) closes the runtime half for the three grants it can
+            # exercise without a side effect, but it only runs on a release, and the four plugin
+            # grants cannot be probed that way at all - a file picker, a browser launch, a network
+            # call, a restart.
+            #
+            # So this gates the declaration half, which is where the drift actually happens, on every
+            # push. Both directions: an API added to a seam fails until its permission is decided,
+            # and a permission granted for nothing fails too. That second one is not hypothetical -
+            # the list was the scaffolded `core:default` (92 individual permissions) through four
+            # rounds of capability hardening, because nothing compared it against those two files.
+            #
+            # Node-only and reads the sources as text, so it runs before the install like the checks
+            # around it. It additionally validates each identifier against the generated ACL manifest
+            # when one is present, which it is not here (`src-tauri/gen/schemas/` comes from a Tauri
+            # build and is gitignored) - the run says so rather than skipping quietly.
+            - name: Verify the capability surface matches the Tauri seam
+              run: node scripts/verify-capability-surface.js
+
             # This project writes a plain `-` and never a unicode dash, in code and in comments
             # alike. That is a house style rather than a correctness rule, which is exactly why it
             # needs enforcing rather than remembering: a convention with no gate behind it drifts

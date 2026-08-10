@@ -565,10 +565,33 @@ A renderer that never loads at all reports nothing, which a watchdog turns into 
 naming that outcome rather than a hang - the case that covers a bundle the webview refuses or a
 CSP that blocks the entry script.
 
-The four plugin grants are **not** covered and stay a manual check, because none can be exercised
-without a side effect: `dialog:allow-open`/`allow-save` would open a file picker,
-`opener:allow-open-url` would launch a browser, `updater:default` would reach the network, and
-`process:allow-restart` would restart the app.
+The four plugin grants cannot be probed that way at all, because none can be exercised without a
+side effect: `dialog:allow-open`/`allow-save` would open a file picker, `opener:allow-open-url`
+would launch a browser, `updater:default` would reach the network, and `process:allow-restart`
+would restart the app.
+
+What covers them instead is a second gate on a different question.
+`scripts/verify-capability-surface.js` (`ci.yml`, on every push) reads the two seam files and the
+capability files and holds the mapping between them: every `@tauri-apps` binding a seam imports must
+have a declared entry naming the permissions it needs, every permission those entries need must be
+granted, and - the other direction - every granted permission must be needed by something a seam
+actually imports. It also checks each granted identifier against the generated ACL manifest when one
+is present, which catches a typo (`dialog:allow-opne`) that the config accepts and the runtime
+refuses.
+
+The split between the two gates is worth stating, since neither covers the other. `--webview-check`
+proves a grant *works* for the three it can reach, on a packaged binary, at release time. This one
+proves the *list* cannot drift from the two files that define the used surface, for all eight, on
+every push - which is where the drift this section is about actually happens. It is deliberately not
+a claim that a granted permission functions: only the ACL can answer that, and only in the renderer.
+
+The over-grant direction it added is not a hypothetical tidiness check. The list started as the
+scaffolded `core:default` and survived four rounds of capability hardening precisely because nothing
+was comparing it against `src/lib/`; that comparison is now a build step rather than a habit.
+
+What remains manual is therefore one item rather than four: `process:allow-restart` is the only grant
+neither gate can reach, since `relaunch()` has no dry run and probing it would restart the process
+mid-check.
 
 One trap worth naming, since it is the one case where the tight list could bite: the `Update`
 object returned by the updater plugin extends `Resource`, and calling `.close()` on it would
