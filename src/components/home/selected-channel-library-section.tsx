@@ -16,7 +16,7 @@ import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
 import { formatCount } from "../../utils/pluralize";
 import type { MediaQueryFilters } from "../../utils/media-library-filters";
-import { useChannelLibraryFilters } from "../../hooks/use-channel-library-filters";
+import { useChannelLibraryFilters } from "../../hooks/channels/use-channel-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
 import { toUnionValue } from "../../utils/guards";
 import { AppButton } from "../ui/app-button";

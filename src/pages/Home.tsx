@@ -31,9 +31,9 @@ import { EditMediaTitleModal } from "../components/modals/edit-media-title-modal
 import { ChannelSidebar } from "../components/layout/channel-sidebar";
 import { MediaPlayerView } from "../components/player/media-player-view";
 import { UI_TEXT } from "../constants/ui-text";
-import { useHomeController } from "../hooks/use-home-controller";
-import { useHomeDiagnosticsFocus } from "../hooks/use-home-diagnostics-focus";
-import { useHomeMediaTitleEditing } from "../hooks/use-home-media-title-editing";
+import { useHomeController } from "../hooks/home/use-home-controller";
+import { useHomeDiagnosticsFocus } from "../hooks/home/use-home-diagnostics-focus";
+import { useHomeMediaTitleEditing } from "../hooks/home/use-home-media-title-editing";
 import type { MediaRow } from "../types/media";
 
 export default function Home(): JSX.Element {

@@ -1,6 +1,6 @@
 import { Alert, Group, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
 import { Database, Download, FolderClock, Undo2, Upload, X } from "lucide-react";
-import type { SettingsController } from "../../../hooks/use-settings-controller";
+import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
 
 // "the backup from <date>" in the recovery modal uses the same locale call; keep them reading the

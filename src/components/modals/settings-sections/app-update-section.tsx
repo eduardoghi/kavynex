@@ -1,6 +1,6 @@
 import { Alert, Divider, Group, Paper, Progress, Stack, Switch, Text, Title } from "@mantine/core";
 import { Download, RefreshCcw } from "lucide-react";
-import type { SettingsController } from "../../../hooks/use-settings-controller";
+import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
 
 type AppUpdateSectionProps = Pick<

@@ -1,5 +1,5 @@
 import { Box, rem } from "@mantine/core";
-import { useMediaPlaybackHandlers } from "../../hooks/use-media-playback-handlers";
+import { useMediaPlaybackHandlers } from "../../hooks/media/use-media-playback-handlers";
 
 type PlayerVideoSurfaceProps = {
     title: string;

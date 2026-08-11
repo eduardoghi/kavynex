@@ -1,5 +1,5 @@
 import { Modal, ScrollArea, Stack } from "@mantine/core";
-import { useSettingsController } from "../../hooks/use-settings-controller";
+import { useSettingsController } from "../../hooks/settings/use-settings-controller";
 import { useModalLock } from "../../hooks/use-modal-lock";
 import type { ImportMode } from "../../types/settings";
 import { AppUpdateSection } from "./settings-sections/app-update-section";

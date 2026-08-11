@@ -10,10 +10,10 @@ import {
     isMediaWatched,
     shortPath,
 } from "../../utils/media-utils";
-import { useMediaProgressPersistence } from "../../hooks/use-media-progress-persistence";
-import { useMediaComments } from "../../hooks/use-media-comments";
-import { useMediaLiveChat } from "../../hooks/use-media-live-chat";
-import { usePlayerKeyboardShortcuts } from "../../hooks/use-player-keyboard-shortcuts";
+import { useMediaProgressPersistence } from "../../hooks/media/use-media-progress-persistence";
+import { useMediaComments } from "../../hooks/media/use-media-comments";
+import { useMediaLiveChat } from "../../hooks/media/use-media-live-chat";
+import { usePlayerKeyboardShortcuts } from "../../hooks/media/use-player-keyboard-shortcuts";
 import { CommentsPanel } from "./comments-panel";
 // Only a media with a backed-up live chat renders this, so the replay panel and everything under it
 // stay out of the first-paint bundle for every library that has none - and out of the player itself

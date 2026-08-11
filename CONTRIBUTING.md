@@ -159,6 +159,14 @@ reference the inline comments point back to. A new hook that ignores them will u
 just slower - the failure mode is extra renders, not a crash, which is exactly why it is easy to let
 drift in unnoticed.
 
+**Where a new hook goes** is the same question the backend answers in `docs/ARCHITECTURE.md`, with
+the same rule: a feature family that outgrew a shared filename prefix becomes a directory, and
+everything else stays flat. Today that is `home/`, `media/`, `channels/` and `settings/`. Put a new
+hook in the family it belongs to if one exists; leave it at the root otherwise, including when it
+would be the second or third of a prefix that has not grown into a directory yet. A hook with no
+feature at all - a reusable primitive like `useAsyncFlag` or `useRequestGuard` - belongs at the root
+permanently, because a directory would imply it serves one area when every area calls it.
+
 - **Return a reference-stable controller.** Build a hook's return value with `useMemoObject({...})`
   (`src/hooks/use-memo-object.ts`) rather than a bare object literal, so its identity only changes
   when one of its fields does. A fresh object every render invalidates every consumer that depends
@@ -167,17 +175,17 @@ drift in unnoticed.
   another controller as input, destructure the individual fields it needs off it and list *those* in
   the `useCallback`/`useEffect`/`useMemo` dependency arrays - never the per-render controller object
   itself, whose identity changes every render and would recreate the callback (and, transitively,
-  every per-card handler derived from it) on any unrelated change. `use-home-media-actions.ts` and
-  `use-home-player-actions.ts` are the reference examples.
+  every per-card handler derived from it) on any unrelated change. `home/use-home-media-actions.ts`
+  and `home/use-home-player-actions.ts` are the reference examples.
 - **Do not reach for `eslint-disable react-hooks/exhaustive-deps`.** The destructure-stable-fields
   rule above is what lets the dependency arrays stay honest without it. The few genuine exceptions
-  (`use-memo-object.ts`, `use-media-progress-persistence.ts`, `add-media-modal.tsx`) each carry a
+  (`use-memo-object.ts`, `media/use-media-progress-persistence.ts`, `add-media-modal.tsx`) each carry a
   comment explaining why the omission is correct; a new one needs the same justification, not a bare
   disable.
 - **Keep the latest value in a ref when a callback must read it without depending on it.** When a
   callback needs the current value of something that changes often (e.g. the active media) but must
   not be recreated when it changes, mirror it into a ref updated in an effect and read the ref inside
-  the callback - see the `activeMediaRef` pattern in `use-media-actions.ts`.
+  the callback - see the `activeMediaRef` pattern in `media/use-media-actions.ts`.
 
 ## Commit conventions
 

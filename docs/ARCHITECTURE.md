@@ -197,11 +197,30 @@ never reach a component either. See "The Tauri boundary" below.)
   props and render Mantine/React UI. They never call `invoke()` and never import
   `@tauri-apps` directly - only the two seam modules under `src/lib/` do.
 - **Hooks** (`src/hooks/`) hold UI state and orchestration. `useHomeController`
-  (`src/hooks/use-home-controller.tsx`) is the composition root for the main `Home` page:
+  (`src/hooks/home/use-home-controller.tsx`) is the composition root for the main `Home` page:
   it wires together `useErrorModal`, `useAppBootstrap`, `useAppSettings`, `useChannels`,
   `useMediaLibrary`, `useDiagnostics`, and a handful of `useHome*` hooks that derive
   view/panel state and actions from those slices, then returns a single `HomeController`
   object consumed by `src/pages/Home.tsx`.
+
+  The **same rule that decides a backend directory decides one here**, and it is worth saying so
+  rather than leaving the two trees looking like they were organized by different people: a feature
+  family that outgrew a shared filename prefix becomes a directory. `use-home-*` had reached ten
+  siblings, `use-media-*` eight, so they are `home/` and `media/` now, and `channels/` and
+  `settings/` group the two families whose members describe one concern under more than one prefix
+  (`use-channels` next to `use-create-channel-form`; `use-app-settings*` next to
+  `use-settings-controller`). What answers "which hooks does the Home composition actually wire?" is
+  now `ls src/hooks/home`, which is what it was not while all fifty sat flat.
+
+  What stays flat is what has no family, exactly as `database.rs` and `binaries.rs` do on the other
+  side. That covers two kinds of file, and the distinction matters when deciding where a new hook
+  goes. The **primitives** are hooks with no feature at all - `use-async-flag`, `use-memo-object`,
+  `use-request-guard`, `use-modal-lock`, `use-per-id-async-flag`, `use-has-been-true`,
+  `use-grid-scroll-restoration` - and they belong at the root permanently, since a directory would
+  imply they serve one area when every area calls them. The rest are families that simply have not
+  outgrown their prefix yet (`use-add-media-*` is three, `use-yt-dlp-*` two,
+  `use-database-integrity-*` two). Those move when they grow, and not before - a directory per pair
+  is the failure mode this rule exists to avoid, not the goal.
 - **Use-cases** (`src/use-cases/`) capture a business operation that spans more than one
   repository/service call as a single named function (e.g. `create-channel.ts`,
   `delete-media.ts`, `mark-media-watched.ts`, `change-library-path.ts`,
@@ -407,7 +426,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
-| App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/use-app-settings*.ts` |
+| App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/settings/` |
 | Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/temp_cleanup.rs` | - |
 | Startup self-checks (`--smoke-test`, `--webview-check`) | `lib.rs`, `commands/webview_check.rs` | `lib/webview-check.ts` |
 

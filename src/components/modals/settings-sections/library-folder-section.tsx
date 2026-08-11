@@ -1,6 +1,6 @@
 import { Alert, Group, Paper, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
 import { FolderOpen, HardDrive, RefreshCcw, Search, Wrench } from "lucide-react";
-import type { SettingsController } from "../../../hooks/use-settings-controller";
+import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
 
 // Windows extended-length paths (`\\?\`, `\\?\UNC\`) are what the backend canonicalizes to, but

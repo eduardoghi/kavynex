@@ -1,6 +1,6 @@
 import { Box, Group, Stack, Text, rem } from "@mantine/core";
 import { Music } from "lucide-react";
-import { useMediaPlaybackHandlers } from "../../hooks/use-media-playback-handlers";
+import { useMediaPlaybackHandlers } from "../../hooks/media/use-media-playback-handlers";
 
 type PlayerAudioSurfaceProps = {
     title: string;
