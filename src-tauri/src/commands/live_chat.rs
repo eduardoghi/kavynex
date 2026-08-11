@@ -6,8 +6,8 @@ use tauri::{AppHandle, Manager};
 use crate::constants::LIBRARY_DIR_LIVE_CHAT;
 use crate::services::library::guard::configured_library_dir;
 use crate::services::live_chat_storage::{
-    compress_existing_live_chat_files, list_live_chat_relative_paths, migrate_live_chat_files,
-    stream_live_chat_lines, LIVE_CHAT_STREAM_BATCH_LINES,
+    acquire_read_permit, compress_existing_live_chat_files, list_live_chat_relative_paths,
+    migrate_live_chat_files, stream_live_chat_lines, LIVE_CHAT_STREAM_BATCH_LINES,
 };
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir,
@@ -95,6 +95,14 @@ pub async fn stream_live_chat_file(
     on_batch: Channel<LiveChatStreamEvent>,
 ) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
+
+    // Bind the permit for the whole read (see live_chat_storage::acquire_read_permit). Binding it -
+    // rather than writing `acquire_read_permit().await?;` - is the load-bearing part: a temporary
+    // dropped at the end of its own statement would release the slot before `run_blocking` even
+    // starts, leaving a gate that admits everyone and a counter that is always zero. It is taken
+    // after the library guard so a request for a path that is not the configured library is refused
+    // as that, rather than queueing for a slot it will not use.
+    let _read_permit = acquire_read_permit().await?;
 
     // Deliberately does NOT take library::lock::library_read_guard(), unlike delete/migrate above.
     // That gate serializes writes and deletes against a migration's copy/remove phase, because

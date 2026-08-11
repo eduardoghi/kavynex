@@ -124,6 +124,7 @@ const USER_FACING_BACKEND_CODES = [
     "MEDIA_FILE_NOT_FOUND",
     "LIVE_CHAT_FILE_NOT_FOUND",
     "LIVE_CHAT_FILE_UNREADABLE",
+    "TOO_MANY_CONCURRENT_LIVE_CHAT_READS",
     "THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO",
     "INVALID_THUMBNAIL_FILE",
     // Settings > Database. These reach the user at the worst moment there is - the recovery flow

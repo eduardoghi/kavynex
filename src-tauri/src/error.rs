@@ -62,6 +62,12 @@ pub enum AppErrorCode {
     // recoverable by putting it back, a corrupt archive is not.
     LiveChatFileNotFound,
     LiveChatFileUnreadable,
+    // Refused by the concurrency gate in front of the replay reader, not by anything wrong with the
+    // file. Its own code rather than reusing TooManyConcurrentYtDlpRuns for the reason
+    // MediaImportCancelled is not YtDlpDownloadCancelled: the two say the same thing about load and
+    // nothing about each other, and a code named for yt-dlp appearing after opening a saved chat
+    // would be a lie in the log.
+    TooManyConcurrentLiveChatReads,
 
     InvalidDestinationPath,
     CreateDestinationParentFailed,
@@ -224,6 +230,7 @@ impl AppErrorCode {
             Self::LiveChatCompressFailed => "LIVE_CHAT_COMPRESS_FAILED",
             Self::LiveChatFileNotFound => "LIVE_CHAT_FILE_NOT_FOUND",
             Self::LiveChatFileUnreadable => "LIVE_CHAT_FILE_UNREADABLE",
+            Self::TooManyConcurrentLiveChatReads => "TOO_MANY_CONCURRENT_LIVE_CHAT_READS",
 
             Self::InvalidDestinationPath => "INVALID_DESTINATION_PATH",
             Self::CreateDestinationParentFailed => "CREATE_DESTINATION_PARENT_FAILED",

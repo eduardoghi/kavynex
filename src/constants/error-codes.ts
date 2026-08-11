@@ -28,6 +28,11 @@ export const SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE = "SOURCE_THUMBNAIL_NOT_FOUND
 export const MEDIA_FILE_NOT_FOUND_ERROR_CODE = "MEDIA_FILE_NOT_FOUND" as const;
 export const LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE = "LIVE_CHAT_FILE_NOT_FOUND" as const;
 export const LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE = "LIVE_CHAT_FILE_UNREADABLE" as const;
+// The replay read refused by its concurrency gate, which is about load rather than about the file -
+// so it sits with the other two rather than with them being reused for it. The distinction reaches
+// the user: the other two mean the replay is gone or damaged, this one means to try again shortly.
+export const TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE =
+    "TOO_MANY_CONCURRENT_LIVE_CHAT_READS" as const;
 export const INVALID_SOURCE_THUMBNAIL_ERROR_CODE = "INVALID_SOURCE_THUMBNAIL" as const;
 export const INVALID_THUMBNAIL_FILE_ERROR_CODE = "INVALID_THUMBNAIL_FILE" as const;
 export const THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO_ERROR_CODE =
@@ -125,6 +130,7 @@ export const KNOWN_ERROR_CODES = [
     MEDIA_FILE_NOT_FOUND_ERROR_CODE,
     LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE,
     LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE,
+    TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE,
     INVALID_THUMBNAIL_FILE_ERROR_CODE,
     THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO_ERROR_CODE,
     FFMPEG_NOT_FOUND_ERROR_CODE,

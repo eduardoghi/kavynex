@@ -7,6 +7,7 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 
 use crate::services::filesystem::replace_file_safely;
+use crate::utils::bounded_semaphore::{BoundedSemaphore, BoundedSemaphorePermit};
 use crate::utils::hash::hash_while_copying;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -129,6 +130,79 @@ fn verify_compressed_matches(
 /// How many replay lines are grouped into one streamed batch. Large enough that per-message IPC
 /// overhead is negligible, small enough that only a bounded slice of the file is ever in memory.
 pub const LIVE_CHAT_STREAM_BATCH_LINES: usize = 500;
+
+/// Bounds how many replay reads run at once.
+///
+/// This is the fourth spawn-or-blocking choke point to get a gate, and it was the one that did not
+/// have one. [`stream_live_chat_lines`] holds a blocking-pool thread for a whole gunzip pass over a
+/// file that runs to hundreds of megabytes for a long stream, and that pool is shared with the media
+/// import, the content hashing and the library cleanup - so an unbounded number of concurrent reads
+/// starves work that has nothing to do with live chat. The bound is stated here rather than left to
+/// the caller for the same reason `MAX_MEDIA_PAGE_LIMIT`, `MAX_MEDIA_COMMENTS_LOADED` and
+/// `MAX_RUN_ID_LEN` are: the backend is the trust boundary, so it declares its own limit instead of
+/// inheriting whatever the renderer sends.
+///
+/// Two is enough for every legitimate use. The player shows one media at a time, so the only way a
+/// second read overlaps a first is a user switching media before the first finishes - and a third
+/// concurrent read means either a third switch inside that window or a caller that is not the
+/// player.
+const MAX_CONCURRENT_LIVE_CHAT_READS: usize = 2;
+
+/// Ceiling on how many replay reads may be in flight (running or waiting) at once.
+///
+/// The concurrency cap above bounds only how many run together; without this, a caller firing the
+/// command in a loop queues an unbounded backlog ahead of the read the user is actually waiting on
+/// (see [`BoundedSemaphore`]). Set well above the handful a person can produce by clicking through a
+/// channel, so it only ever trips on abuse.
+const MAX_LIVE_CHAT_READS_IN_FLIGHT: usize = 16;
+
+// Both bounds above are numbers about legitimate use, so what is worth holding is the relationship
+// between them rather than either value. `BoundedSemaphore::new` documents that the ceiling must not
+// sit below the concurrency - a caller would otherwise be refused while a permit sat free - and
+// cannot enforce it, being a `const fn`. Asserted here in a `const` block so a future edit that
+// inverts them fails the build rather than a test, which is the earliest either could be caught.
+const _: () = {
+    assert!(MAX_LIVE_CHAT_READS_IN_FLIGHT >= MAX_CONCURRENT_LIVE_CHAT_READS);
+    // The player shows one media at a time, so anything below two would refuse the ordinary case of
+    // switching media before the first read finishes.
+    assert!(MAX_CONCURRENT_LIVE_CHAT_READS >= 2);
+};
+
+/// A single process-wide gate, deliberately separate from `DOWNLOAD_SEMAPHORE`,
+/// `STANDALONE_RUN_SEMAPHORE` and `THUMBNAIL_RUN_SEMAPHORE` rather than shared with them.
+///
+/// The download gate's own comment gives the reason in the other direction: gating two kinds of work
+/// on one semaphore couples them, and a read that waited on a permit a download holds would be
+/// serialized behind an operation it has nothing to do with. Reading a saved replay is local I/O
+/// with no child process, so it is a different resource and gets a different bound.
+static LIVE_CHAT_READ_SEMAPHORE: BoundedSemaphore = BoundedSemaphore::new(
+    MAX_CONCURRENT_LIVE_CHAT_READS,
+    MAX_LIVE_CHAT_READS_IN_FLIGHT,
+);
+
+/// The code a refused read carries.
+///
+/// Named rather than written inline at the one call site below, because it is the only part of this
+/// gate a test can reach. Forcing a real refusal would mean filling the in-flight ceiling on a
+/// process-wide static whose permit count is far below it, which parks every caller past the second
+/// one on a permit nothing will release - see the test module for why that is a deadlock rather than
+/// a slow test. So the value is pinned directly instead.
+///
+/// It is worth pinning: a wrong code here is not a wrong log line. `src/constants/error-codes.ts`
+/// catalogues this one, and a code with no catalogued message degrades in the renderer to the
+/// generic "check the app log file" - which is precisely the wrong thing to tell someone whose only
+/// problem is that another replay is still loading.
+const READ_GATE_BUSY_CODE: AppErrorCode = AppErrorCode::TooManyConcurrentLiveChatReads;
+
+/// Reserves a slot to stream one replay. The returned permit must be held for the whole read, so a
+/// caller binds it for the duration of its `run_blocking` rather than dropping it at the call.
+///
+/// Lives beside the reader it bounds rather than in the command, so the gate travels with the
+/// operation: a second caller of [`stream_live_chat_lines`] added later reaches the bound by calling
+/// this, instead of having to notice that the command layer was where the bound happened to live.
+pub async fn acquire_read_permit() -> AppResult<BoundedSemaphorePermit> {
+    LIVE_CHAT_READ_SEMAPHORE.acquire(READ_GATE_BUSY_CODE).await
+}
 
 /// Streams a stored live chat file to `emit`, one batch of lines at a time, transparently
 /// gunzipping the gzip-compressed files (older files may still be plain JSON and stream as-is).
@@ -1084,4 +1158,51 @@ mod tests {
         assert_eq!(summary.compressed, 0);
         assert_eq!(summary.already_compressed, 0);
     }
+
+    // The read gate. `BoundedSemaphore` has its own tests over the primitive; what is pinned here is
+    // that *this* module reaches it - that a replay read is bounded at all, and with which code.
+    //
+    // The gate is a process-wide static, so these two tests share it and cannot assert an absolute
+    // in-flight count the way the primitive's tests do (another test holding a permit would make
+    // that flaky). They assert what does not depend on the rest of the suite instead: a permit is
+    // obtainable, and it is released on drop.
+
+    #[tokio::test]
+    async fn a_replay_read_takes_a_permit_that_is_released_when_it_is_dropped() {
+        // Held one at a time rather than up to the concurrency cap, so this says nothing about how
+        // many permits exist and stays true whatever else in the suite is holding one.
+        let permit = acquire_read_permit()
+            .await
+            .expect("a free gate admits a read");
+        drop(permit);
+
+        acquire_read_permit()
+            .await
+            .expect("dropping a permit must free the slot it held");
+    }
+
+    #[test]
+    fn a_refused_read_carries_the_code_the_frontend_catalogues() {
+        // The refusal itself is not exercised here, and the reason is worth stating rather than
+        // leaving as a gap. Reaching it means putting MAX_LIVE_CHAT_READS_IN_FLIGHT callers in
+        // flight on a process-wide static that hands out MAX_CONCURRENT_LIVE_CHAT_READS permits, so
+        // every caller past the second parks awaiting a permit no one in the test holds to release.
+        // That is a deadlock, not a slow test - the first version of this test was exactly that, and
+        // it hung the suite. `BoundedSemaphore`'s own tests avoid it by giving each a private gate
+        // with `permits == max_in_flight`, which a shared static cannot be.
+        //
+        // What those tests already cover is the admit/refuse/release behaviour of the primitive.
+        // What they cannot cover is which code *this* gate refuses with, and that is the half with a
+        // user-visible consequence: an uncatalogued code degrades in the renderer to "check the app
+        // log file" (src/constants/error-codes.test.ts pins the catalogue), which is the wrong
+        // advice for someone whose only problem is that another replay is still loading.
+        assert_eq!(
+            READ_GATE_BUSY_CODE.as_str(),
+            "TOO_MANY_CONCURRENT_LIVE_CHAT_READS"
+        );
+    }
+
+    // The relationship between the two bounds is asserted where they are declared, in a `const`
+    // block, rather than by a test here: it is knowable at compile time, so a violated edit should
+    // fail the build instead of waiting for the suite.
 }

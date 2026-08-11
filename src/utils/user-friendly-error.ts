@@ -24,6 +24,7 @@ import {
     MEDIA_FILE_NOT_FOUND_ERROR_CODE,
     LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE,
     LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE,
+    TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE,
     INVALID_THUMBNAIL_FILE_ERROR_CODE,
     THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO_ERROR_CODE,
     CHANNEL_ALREADY_EXISTS_ERROR_CODE,
@@ -123,6 +124,11 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "The saved live chat file is missing from the library folder. It may have been moved or deleted outside Kavynex.",
     [LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE]:
         "The saved live chat file could not be read - it looks damaged. The video itself is unaffected.",
+    // Deliberately says nothing is wrong, because nothing is: the read was refused for load, and the
+    // two neighbouring live chat messages both describe a file the user has to go and fix. Retrying
+    // is the whole action here, so it is the whole message.
+    [TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE]:
+        "Kavynex is still loading another live chat replay. Wait for it to finish and open this one again - nothing is wrong with the file.",
     [INVALID_SOURCE_THUMBNAIL_ERROR_CODE]: "Select a valid thumbnail image.",
     [SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE]: "The selected thumbnail image was not found.",
     [INVALID_THUMBNAIL_FILE_ERROR_CODE]: "Choose a valid thumbnail image file.",
