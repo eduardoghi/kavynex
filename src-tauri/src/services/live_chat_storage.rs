@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use sha2::{Digest, Sha256};
 
-use crate::services::filesystem::{fsync_file, replace_file_safely};
+use crate::services::filesystem::replace_file_safely;
 use crate::{AppError, AppErrorCode, AppResult};
 
 #[derive(Debug, Default, Clone)]
@@ -34,37 +35,133 @@ pub fn is_gzip(bytes: &[u8]) -> bool {
     bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b
 }
 
-pub fn gzip_compress(data: &[u8]) -> AppResult<Vec<u8>> {
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder
-        .write_all(data)
-        .map_err(|e| compress_error("failed to gzip live chat data", e))?;
-    encoder
-        .finish()
-        .map_err(|e| compress_error("failed to finish gzip stream", e))
+/// How much of a file moves at a time while it is streamed through the compressor and through the
+/// read-back that verifies it. The value matters only in that it is fixed and small: what this
+/// module must never do again is size a buffer by the file.
+const COMPRESS_CHUNK_BYTES: usize = 8192;
+
+/// Streams everything `reader` yields into `writer`, returning the SHA-256 of the bytes that
+/// passed through.
+///
+/// Written as a copy that happens to hash, rather than as a hash pass and a copy pass, because both
+/// callers want exactly one traversal: the compression side hands it a gzip encoder over the staged
+/// file, and the verification side hands it [`std::io::sink`] because it wants the digest alone.
+/// Neither ever holds more than one chunk, which is the whole point - a live chat replay of a long
+/// stream runs to hundreds of megabytes, and this module used to hold three copies of one.
+fn hash_while_copying<R: Read, W: Write>(reader: &mut R, writer: &mut W) -> AppResult<String> {
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; COMPRESS_CHUNK_BYTES];
+
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|e| compress_error("failed to read live chat data", e))?;
+
+        if read == 0 {
+            break;
+        }
+
+        hasher.update(&buffer[..read]);
+        writer
+            .write_all(&buffer[..read])
+            .map_err(|e| compress_error("failed to write live chat data", e))?;
+    }
+
+    // sha2 0.11 returns a hybrid-array `Array` (no LowerHex), so hex-encode the bytes - the same
+    // shape `utils::hash` uses, and the reason a test can cross-check the two against each other.
+    let digest = hasher.finalize();
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-fn gzip_decompress_with_limit(data: &[u8], max_bytes: u64) -> AppResult<Vec<u8>> {
-    // Read at most one byte past the limit so a file that lands exactly on the ceiling still
-    // decodes, while anything larger is caught below without materializing all of it.
-    let mut limited = GzDecoder::new(data).take(max_bytes.saturating_add(1));
-    let mut out = Vec::new();
-    limited
-        .read_to_end(&mut out)
-        .map_err(|e| compress_error("failed to gunzip live chat data", e))?;
+/// Compresses `src` into `temp`, returning the SHA-256 of the source bytes so the caller can prove
+/// the result against them. Refuses a source larger than `max_bytes` before reading any of it.
+///
+/// The refusal is by the source's own size and it comes first, which is the ordering the old path
+/// had backwards. The read side caps a replay at the same ceiling
+/// ([`stream_live_chat_lines`]), so compressing past it produces a file this app can write and then
+/// never open again - and the previous implementation discovered that only after reading the whole
+/// file into memory, i.e. after paying the exact cost the ceiling exists to bound.
+///
+/// `max_bytes` is a parameter rather than the constant so the boundary is testable against a
+/// kilobyte instead of half a gigabyte, matching how `stream_reader_lines` takes its own ceiling.
+fn compress_file_to_temp(src: &Path, temp: &Path, max_bytes: u64) -> AppResult<String> {
+    let size = fs::metadata(src)
+        .map_err(|e| compress_error("failed to stat live chat source", e))?
+        .len();
 
-    if out.len() as u64 > max_bytes {
+    if size > max_bytes {
         return Err(compress_error(
-            "live chat file is too large when decompressed",
-            format!("decompressed size exceeds the {max_bytes}-byte limit"),
+            "live chat file is too large to store",
+            format!("{size} bytes exceeds the {max_bytes}-byte limit"),
         ));
     }
 
-    Ok(out)
+    let mut source =
+        fs::File::open(src).map_err(|e| compress_error("failed to open live chat source", e))?;
+    let target = fs::File::create(temp)
+        .map_err(|e| compress_error("failed to create compressed live chat", e))?;
+    let mut encoder = GzEncoder::new(target, Compression::default());
+
+    let digest = hash_while_copying(&mut source, &mut encoder)?;
+
+    // `finish` writes the gzip trailer and hands the file back; without it the archive is truncated
+    // and only the verification would notice.
+    let file = encoder
+        .finish()
+        .map_err(|e| compress_error("failed to finish gzip stream", e))?;
+
+    // Flushed through the handle already open rather than by reopening the path, which is what
+    // `fsync_file` would do. Same durability guarantee, one fewer open, and no window in which the
+    // path could name a different file than the one just written. It has to happen before the
+    // caller's rename: without it a crash could leave a truncated file that the rename then
+    // promotes to the live one.
+    file.sync_all()
+        .map_err(|e| compress_error("failed to flush compressed live chat", e))?;
+
+    Ok(digest)
 }
 
-pub fn gzip_decompress(data: &[u8]) -> AppResult<Vec<u8>> {
-    gzip_decompress_with_limit(data, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
+/// Proves that `compressed` decompresses to exactly the bytes `expected_digest` was taken over,
+/// reading at most `max_bytes` of output.
+///
+/// This is the round-trip check the buffer path performed, and it now covers strictly more. That
+/// version compared an in-memory buffer against the bytes it had just compressed and *then* wrote
+/// the result to disk, so a write that truncated or corrupted the file fell outside what the check
+/// proved. Reading the staged file back covers the write too, which is the failure the whole dance
+/// exists for: `compress_file_to`'s source is a just-downloaded replay of a finished livestream,
+/// and it may no longer be re-fetchable.
+///
+/// The ceiling is a plain `take(max_bytes)`, and it deliberately does **not** carry the `+ 1` that
+/// `stream_reader_lines` and the old `gzip_decompress_with_limit` both do. That extra byte exists so
+/// a counter can tell "landed exactly on the limit" apart from "went past it" and raise a specific
+/// error; here the digest comparison already draws that line for free. A payload of exactly
+/// `max_bytes` reads whole and matches, and anything larger is truncated and therefore cannot -
+/// whereas with the `+ 1` a payload one byte over the ceiling would read whole and verify, which is
+/// the opposite of what the ceiling is for. Copying the idiom without its counter was the first
+/// version of this function, and `verification_accepts_a_payload_landing_exactly_on_the_read_ceiling`
+/// is what caught it.
+///
+/// An oversized source is already refused up front by `compress_file_to_temp`, so reaching this
+/// ceiling means the source changed underneath the pass - a round-trip failure in the honest sense.
+fn verify_compressed_matches(
+    compressed: &Path,
+    expected_digest: &str,
+    max_bytes: u64,
+) -> AppResult<()> {
+    let file = fs::File::open(compressed)
+        .map_err(|e| compress_error("failed to reopen compressed live chat", e))?;
+
+    let mut decoder = GzDecoder::new(file).take(max_bytes);
+    let actual = hash_while_copying(&mut decoder, &mut std::io::sink())?;
+
+    if actual != expected_digest {
+        return Err(AppError::from_code(
+            AppErrorCode::LiveChatCompressFailed,
+            "gzip round trip verification failed",
+        ));
+    }
+
+    Ok(())
 }
 
 /// How many replay lines are grouped into one streamed batch. Large enough that per-message IPC
@@ -320,41 +417,29 @@ fn temp_sibling_path(path: &Path) -> AppResult<PathBuf> {
     Ok(path.with_file_name(format!("{}.gztmp", file_name.to_string_lossy())))
 }
 
-/// Gzip-compresses `data` and verifies the round trip (decompressing back to the original bytes)
-/// before returning the compressed buffer. Both compression call sites remove or overwrite the only
-/// on-disk copy of the source afterwards, so a bad compression that silently changed the bytes must
-/// be caught here, before the original is gone.
-fn compress_verified(data: &[u8]) -> AppResult<Vec<u8>> {
-    let compressed = gzip_compress(data)?;
-    let restored = gzip_decompress(&compressed)?;
-
-    if restored != data {
-        return Err(AppError::from_code(
-            AppErrorCode::LiveChatCompressFailed,
-            "gzip round trip verification failed",
-        ));
-    }
-
-    Ok(compressed)
+/// Compresses `src` into `temp` and proves the result decompresses back to the source's exact
+/// bytes, leaving `temp` durable and ready for the caller to rename into place.
+///
+/// Nothing is promoted here and the source is never touched, so every failure path leaves the
+/// original exactly as it was. A failure does leave the staged `<name>.gztmp` behind, which is
+/// deliberate rather than overlooked: the next attempt truncates it (`File::create`), and removing
+/// it here would add a cleanup no test can observe - the only way to fail *after* the file exists is
+/// a verification failure, which cannot be produced without corrupting the staged file mid-call.
+fn compress_to_temp_verified(src: &Path, temp: &Path) -> AppResult<()> {
+    let digest = compress_file_to_temp(src, temp, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)?;
+    verify_compressed_matches(temp, &digest, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
 }
 
 /// Compresses `src` and writes the gzip result to `dest` atomically. Used when moving a
 /// freshly downloaded live chat file into app storage. Verifies the gzip round trip before removing
 /// `src` on success, so a bad compression can never lose the only copy of a just-downloaded replay.
 pub fn compress_file_to(src: &Path, dest: &Path) -> AppResult<()> {
-    let data = fs::read(src).map_err(|e| compress_error("failed to read live chat source", e))?;
-    // This is the one call site where `src` is the only copy of a just-downloaded replay (a finished
-    // livestream may no longer be re-fetchable), so verify the round trip before it is removed below.
-    let compressed = compress_verified(&data)?;
-
     let temp = temp_sibling_path(dest)?;
-    fs::write(&temp, &compressed)
-        .map_err(|e| compress_error("failed to write compressed live chat", e))?;
-    // Flush the temp before the same-volume rename in replace_file_safely: without it a crash could
-    // leave a truncated file that the rename then makes the live one. Mirrors copy_file_atomic's
-    // fsync-before-rename; the source is only removed after this returns Ok, so a failure just leaves
-    // the pre-existing file for a retry.
-    fsync_file(&temp)?;
+
+    // This is the one call site where `src` is the only copy of a just-downloaded replay (a finished
+    // livestream may no longer be re-fetchable), so the round trip is proved - against the staged
+    // file, not against a buffer - before the source is removed below.
+    compress_to_temp_verified(src, &temp)?;
     replace_file_safely(&temp, dest)?;
 
     let _ = fs::remove_file(src);
@@ -369,16 +454,9 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
         return Ok(false);
     }
 
-    let data = fs::read(path).map_err(|e| compress_error("failed to read live chat file", e))?;
-    let compressed = compress_verified(&data)?;
-
     let temp = temp_sibling_path(path)?;
-    fs::write(&temp, &compressed)
-        .map_err(|e| compress_error("failed to write compressed live chat", e))?;
-    // Flush the temp before the same-volume rename in replace_file_safely, so a crash cannot leave a
-    // truncated file that the rename promotes over the original. The round trip above already proved
-    // the bytes decompress, so this only adds durability, not a new failure mode.
-    fsync_file(&temp)?;
+
+    compress_to_temp_verified(path, &temp)?;
     replace_file_safely(&temp, path)?;
 
     Ok(true)
@@ -484,13 +562,50 @@ mod tests {
         ))
     }
 
+    /// Buffer-based gzip, a test fixture rather than production code.
+    ///
+    /// These two used to be both. `compress_verified` gzipped a whole file in memory and
+    /// decompressed the result to check it, which is what made this module hold the source, the
+    /// archive and the restored copy alive at once - three copies of something that runs to
+    /// hundreds of megabytes for a long stream. The production path streams now, and what is left
+    /// here is a different job: building a gzip fixture and reading one back, both on payloads
+    /// measured in kilobytes.
+    fn gzip_compress(data: &[u8]) -> Vec<u8> {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(data).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    fn gzip_decompress(data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        GzDecoder::new(data).read_to_end(&mut out).unwrap();
+        out
+    }
+
+    /// The SHA-256 of `data`, computed by the module the content-addressed filenames already use.
+    ///
+    /// Deliberately not `hash_while_copying` itself: a test that checked that function against
+    /// itself would pass for any hash at all. `utils::hash::file_hash` is an independent
+    /// implementation with its own tests, so agreeing with it is a real assertion.
+    fn independent_digest(data: &[u8]) -> String {
+        let dir = temp_dir("digest");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("payload.bin");
+        fs::write(&file, data).unwrap();
+
+        let digest = crate::utils::hash::file_hash(&file).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        digest
+    }
+
     #[test]
     fn gzip_round_trip_preserves_data() {
         let data = b"{\"replayChatItemAction\":{}}\n{\"replayChatItemAction\":{}}\n";
-        let compressed = gzip_compress(data).unwrap();
+        let compressed = gzip_compress(data);
 
         assert!(is_gzip(&compressed));
-        assert_eq!(gzip_decompress(&compressed).unwrap(), data);
+        assert_eq!(gzip_decompress(&compressed), data);
     }
 
     #[test]
@@ -501,41 +616,189 @@ mod tests {
     }
 
     #[test]
-    fn gzip_decompress_rejects_output_larger_than_the_limit() {
-        // Highly compressible payload: a few KB of zeros gzip to a tiny file but decompress
-        // well past a small limit - a stand-in for a decompression bomb.
-        let payload = vec![0u8; 8 * 1024];
-        let compressed = gzip_compress(&payload).unwrap();
-        assert!(compressed.len() < payload.len());
+    fn hash_while_copying_reproduces_the_shared_digest_and_copies_every_byte() {
+        // Deliberately spans several chunks (COMPRESS_CHUNK_BYTES is 8 KiB) and is not a repeating
+        // byte, so a loop that dropped a chunk, hashed before advancing, or mis-sliced the tail
+        // changes the digest rather than landing on the same answer by symmetry.
+        let payload: Vec<u8> = (0..(COMPRESS_CHUNK_BYTES * 3 + 517))
+            .map(|index| (index % 251) as u8)
+            .collect();
 
-        let error = gzip_decompress_with_limit(&compressed, 1024).unwrap_err();
-        assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+        let mut source = payload.as_slice();
+        let mut copied = Vec::new();
+        let digest = hash_while_copying(&mut source, &mut copied).unwrap();
 
-        // A limit above the real size still decodes the whole payload.
-        let ok = gzip_decompress_with_limit(&compressed, 64 * 1024).unwrap();
-        assert_eq!(ok, payload);
+        assert_eq!(copied, payload, "the copy must be byte-exact");
+        assert_eq!(
+            digest,
+            independent_digest(&payload),
+            "the digest must match the one utils::hash computes over the same bytes"
+        );
     }
 
     #[test]
-    fn gzip_decompress_accepts_a_payload_landing_exactly_on_the_limit() {
-        // The comparison is `> max_bytes`, and the function's own comment promises that "a file
-        // that lands exactly on the ceiling still decodes". Only the over-the-limit side was
-        // covered, so relaxing the comparison to `>=` - which would reject a payload of exactly
-        // the allowed size - changed nothing any test could see. Both sides of the boundary are
-        // asserted here, one byte apart.
-        let payload = vec![0u8; 8 * 1024];
-        let compressed = gzip_compress(&payload).unwrap();
-        let exact = payload.len() as u64;
+    fn hash_while_copying_distinguishes_payloads_that_differ_by_one_byte() {
+        // The digest is what the verification compares, so it has to actually depend on the
+        // content: a helper that returned a constant would satisfy the test above only if that
+        // constant happened to match, but it cannot satisfy both directions at once.
+        let first = vec![7u8; 64];
+        let mut second = first.clone();
+        second[63] = 8;
 
-        let at_limit = gzip_decompress_with_limit(&compressed, exact).unwrap();
+        let mut sink = std::io::sink();
+        let first_digest = hash_while_copying(&mut first.as_slice(), &mut sink).unwrap();
+        let second_digest = hash_while_copying(&mut second.as_slice(), &mut sink).unwrap();
+
+        assert_ne!(first_digest, second_digest);
+    }
+
+    #[test]
+    fn compressing_refuses_a_source_larger_than_the_ceiling_before_reading_it() {
+        // The ceiling this replaces was applied to the *decompressed output*, i.e. after the whole
+        // file had been read into memory - which is the cost the ceiling exists to avoid paying.
+        // It is checked against the source's own size now, so nothing is read at all.
+        let dir = temp_dir("too-large");
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("huge.live_chat.json");
+        let temp = dir.join("huge.live_chat.json.gztmp");
+        fs::write(&src, vec![0u8; 4096]).unwrap();
+
+        let error = compress_file_to_temp(&src, &temp, 1024)
+            .expect_err("a source past the ceiling must be refused");
+        assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+        assert!(
+            !temp.exists(),
+            "nothing should have been staged for a source that was refused"
+        );
         assert_eq!(
-            at_limit, payload,
-            "a payload exactly at the limit must decode"
+            fs::read(&src).unwrap().len(),
+            4096,
+            "the source is untouched"
         );
 
-        let error = gzip_decompress_with_limit(&compressed, exact - 1)
-            .expect_err("one byte over the limit must be refused");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn compressing_accepts_a_source_landing_exactly_on_the_ceiling() {
+        // The comparison is `> max_bytes`, so a source of exactly the allowed size must pass.
+        // Both sides are asserted one byte apart, because relaxing it to `>=` would otherwise
+        // change nothing any test could see - the same boundary the previous ceiling test pinned,
+        // moved to where the ceiling now lives.
+        let dir = temp_dir("exact-ceiling");
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("exact.live_chat.json");
+        let payload = vec![0u8; 4096];
+        fs::write(&src, &payload).unwrap();
+        let exact = payload.len() as u64;
+
+        let at_limit = dir.join("at-limit.gztmp");
+        compress_file_to_temp(&src, &at_limit, exact)
+            .expect("a source exactly at the ceiling must be accepted");
+        assert_eq!(gzip_decompress(&fs::read(&at_limit).unwrap()), payload);
+
+        let over_limit = dir.join("over-limit.gztmp");
+        let error = compress_file_to_temp(&src, &over_limit, exact - 1)
+            .expect_err("one byte over the ceiling must be refused");
         assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn compressing_stages_a_gzip_whose_digest_describes_the_source() {
+        let dir = temp_dir("stage");
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("clip.live_chat.json");
+        let temp = dir.join("clip.live_chat.json.gztmp");
+        let payload = b"{\"replayChatItemAction\":{}}\n".repeat(400);
+        fs::write(&src, &payload).unwrap();
+
+        let digest = compress_file_to_temp(&src, &temp, MAX_LIVE_CHAT_DECOMPRESSED_BYTES).unwrap();
+
+        assert_eq!(digest, independent_digest(&payload));
+
+        let staged = fs::read(&temp).unwrap();
+        assert!(is_gzip(&staged), "the staged file must be a gzip archive");
+        assert_eq!(gzip_decompress(&staged), payload);
+        // The whole point of streaming: the archive is smaller than the source it never held whole.
+        assert!(staged.len() < payload.len());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verification_accepts_the_matching_digest_and_rejects_any_other() {
+        let dir = temp_dir("verify");
+        fs::create_dir_all(&dir).unwrap();
+        let archive = dir.join("clip.gz");
+        let payload = b"{\"replayChatItemAction\":{}}\n".repeat(50);
+        fs::write(&archive, gzip_compress(&payload)).unwrap();
+
+        let digest = independent_digest(&payload);
+        verify_compressed_matches(&archive, &digest, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
+            .expect("an archive that decompresses to the expected bytes must verify");
+
+        // The digest of *different* content, so the comparison has to be doing the work: inverting
+        // it to `==` fails here, and dropping it fails the positive case above.
+        let other = independent_digest(b"not the same replay");
+        let error = verify_compressed_matches(&archive, &other, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
+            .expect_err("a mismatching digest must fail verification");
+        assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verification_refuses_an_archive_that_expands_past_the_read_ceiling() {
+        // The decompression-bomb half of the old ceiling test, at the layer that now enforces it.
+        // A few KB of zeros gzip to almost nothing and expand well past a small limit; the `.take`
+        // truncates the read, so the digest cannot match and the archive is refused rather than
+        // being expanded without bound.
+        let dir = temp_dir("bomb");
+        fs::create_dir_all(&dir).unwrap();
+        let archive = dir.join("bomb.gz");
+        let payload = vec![0u8; 8 * 1024];
+        let compressed = gzip_compress(&payload);
+        assert!(compressed.len() < payload.len());
+        fs::write(&archive, &compressed).unwrap();
+
+        let digest = independent_digest(&payload);
+
+        let error = verify_compressed_matches(&archive, &digest, 1024)
+            .expect_err("an archive expanding past the ceiling must be refused");
+        assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+
+        // A ceiling above the real size verifies the same archive, so the refusal above is the
+        // ceiling talking and not a broken fixture.
+        verify_compressed_matches(&archive, &digest, 64 * 1024).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verification_accepts_a_payload_landing_exactly_on_the_read_ceiling() {
+        // Both sides of the take, one byte apart. This is the test that caught the first version of
+        // `verify_compressed_matches`, which copied the `+ 1` from `stream_reader_lines` without the
+        // counter that makes it mean something: with it, a payload one byte *over* the ceiling read
+        // whole and verified, so the ceiling refused nothing at its own boundary.
+        let dir = temp_dir("exact-read");
+        fs::create_dir_all(&dir).unwrap();
+        let archive = dir.join("exact.gz");
+        let payload = vec![0u8; 8 * 1024];
+        fs::write(&archive, gzip_compress(&payload)).unwrap();
+
+        let digest = independent_digest(&payload);
+        let exact = payload.len() as u64;
+
+        verify_compressed_matches(&archive, &digest, exact)
+            .expect("a payload exactly at the ceiling must verify");
+
+        let error = verify_compressed_matches(&archive, &digest, exact - 1)
+            .expect_err("one byte over the ceiling must be refused");
+        assert_eq!(error.code, AppErrorCode::LiveChatCompressFailed.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -580,7 +843,7 @@ mod tests {
 
         // Gzip replay: transparently gunzipped while streaming, same result.
         let gz = dir.join("compressed.json");
-        fs::write(&gz, gzip_compress(b"{\"a\":1}\n{\"b\":2}\n").unwrap()).unwrap();
+        fs::write(&gz, gzip_compress(b"{\"a\":1}\n{\"b\":2}\n")).unwrap();
         let (lines, _) = collect_streamed_lines(&gz, 500).unwrap();
         assert_eq!(
             lines,
@@ -622,7 +885,7 @@ mod tests {
 
         // Gzip magic bytes with a shredded body: present, readable, and not decompressible.
         let corrupt = dir.join("corrupt.json.gz");
-        let mut bytes = gzip_compress(b"{\"a\":1}").unwrap();
+        let mut bytes = gzip_compress(b"{\"a\":1}");
         let tail = bytes.len() - 4;
         bytes[4..tail].fill(0xFF);
         fs::write(&corrupt, &bytes).unwrap();
@@ -791,7 +1054,7 @@ mod tests {
         assert!(compress_file_in_place(&file).unwrap());
         let bytes = fs::read(&file).unwrap();
         assert!(is_gzip(&bytes));
-        assert_eq!(gzip_decompress(&bytes).unwrap(), original);
+        assert_eq!(gzip_decompress(&bytes), original);
 
         // Second pass is a no-op because the file is already gzip.
         assert!(!compress_file_in_place(&file).unwrap());
@@ -813,7 +1076,7 @@ mod tests {
         assert!(!src.exists());
         let bytes = fs::read(&dest).unwrap();
         assert!(is_gzip(&bytes));
-        assert_eq!(gzip_decompress(&bytes).unwrap(), original);
+        assert_eq!(gzip_decompress(&bytes), original);
 
         let _ = fs::remove_dir_all(&dir);
     }
