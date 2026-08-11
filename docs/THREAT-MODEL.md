@@ -91,8 +91,8 @@ enumerated rather than left implicit because this list is what a review of a new
 against, and "everything not named above applies the rule" was the wrong reading to invite.
 
 **`set_external_backup_dir`.** Its whole purpose is a copy of the database that survives a failure
-of the volume the database lives on, and a NAS is the ordinary answer to that - the README's Privacy
-section documents "another drive or a network share" as supported. So the SMB authentication is the
+of the volume the database lives on, and a NAS is the ordinary answer to that - `PRIVACY.md`
+documents "another drive or a network share" as supported. So the SMB authentication is the
 cost of the feature working at all rather than an oversight. What bounds it: the directory is
 write-only (the mirror is never read back, and nothing serves it through the asset scope), it is
 chosen through a folder dialog rather than derived from anything, and it is refused unless it
@@ -479,7 +479,7 @@ in the `PATH` environment variable (honoring `PATHEXT` on Windows) - it never se
 the process's current working directory, unlike Windows' own `where.exe`. This matters
 because the app is not code-signed (see below) and could otherwise be tricked into
 launching a malicious `yt-dlp.exe`/`ffmpeg.exe` planted next to a downloaded file if
-directory search order included the CWD. See the README's Troubleshooting section for
+directory search order included the CWD. See [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) for
 the (documented, opt-in) fallback to a `tools/` folder inside the app data directory.
 
 On Windows the `PATHEXT` expansion additionally **skips `.bat`/`.cmd` shims**: launching a

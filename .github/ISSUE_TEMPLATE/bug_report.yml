@@ -12,7 +12,7 @@ body:
               instead. A public issue discloses it to everyone before there is a release that
               fixes it.
 
-              The README's Troubleshooting section already covers the most common ones (yt-dlp
+              The Troubleshooting guide (docs/TROUBLESHOOTING.md) already covers the most common ones (yt-dlp
               or FFmpeg not found, a blank window on Windows, the "library was released earlier
               in this session" message, and a database reported as corrupted).
 

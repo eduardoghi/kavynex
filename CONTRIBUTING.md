@@ -22,8 +22,7 @@ to send someone who has a bug to report rather than a change to propose.
   repo, so there is nothing to configure manually. Bump that file deliberately (and rerun
   `cargo fmt`/`clippy`/tests) rather than letting the toolchain drift.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [FFmpeg](https://ffmpeg.org/), available
-  on `PATH` (see the README's Troubleshooting section for exactly how Kavynex resolves
-  them).
+  on `PATH` (see `docs/TROUBLESHOOTING.md` for exactly how Kavynex resolves them).
 - The OS-level Tauri prerequisites for your platform (WebView2 on Windows - usually
   already present). On Linux, the authoritative list is `ci.yml`'s "Install Linux
   dependencies" step, which installs `libwebkit2gtk-4.1-dev`,

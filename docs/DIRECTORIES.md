@@ -88,7 +88,7 @@ untouched when it is unreachable (an unplugged drive) rather than recreated.
 Note that on Windows and macOS, Tauri's `app_config_dir` and `app_data_dir` resolve to
 the *same* directory; on Linux they differ (`~/.config/...` vs `~/.local/share/...`).
 `services/binaries.rs`'s optional `tools/` fallback folder for yt-dlp/ffmpeg (see the
-README's Troubleshooting section) uses `app_data_dir`, so on Linux it lives in a
+`TROUBLESHOOTING.md`) uses `app_data_dir`, so on Linux it lives in a
 different directory than the database - verify the exact split on your distribution if
 this matters to you.
 

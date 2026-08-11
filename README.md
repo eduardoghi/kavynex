@@ -41,8 +41,8 @@ Make sure `yt-dlp` and `ffmpeg` are installed and available in your system PATH.
 If you cannot change your PATH (a locked-down work machine, or a portable install you want to
 keep self-contained), drop the executables into a `tools/` folder inside the app's data directory
 instead - Kavynex falls back to it when the PATH lookup finds nothing. `docs/DIRECTORIES.md` lists
-that directory per OS, and the Troubleshooting section below covers how the lookup works and what
-the in-app Diagnostics dialog reports about it.
+that directory per OS, and `docs/TROUBLESHOOTING.md` covers how the lookup works and what the
+in-app Diagnostics dialog reports about it.
 
 ## Installation
 
@@ -152,188 +152,15 @@ pnpm test:run
 (`pnpm test` runs the same suite in watch mode.) See `CONTRIBUTING.md` for the Rust suite and
 the rest of the checks CI runs.
 
-## Troubleshooting
+## Troubleshooting and privacy
 
-### "yt-dlp was not found" / "ffmpeg was not found"
+Both outgrew being README sections and now have documents of their own:
 
-Kavynex does not bundle yt-dlp or FFmpeg. It resolves both binaries by searching the
-directories listed in your `PATH` environment variable (never the current working
-directory, so a file dropped next to the app cannot shadow the real binary). On Windows
-it also honors `PATHEXT`, so a bare `yt-dlp` on PATH resolves to `yt-dlp.exe` (batch
-shims - `.bat`/`.cmd` - are deliberately skipped, so install yt-dlp and ffmpeg as real
-executables rather than wrapper scripts). If both lookups fail, it falls back to an optional
-`tools/yt-dlp(.exe)` and `tools/ffmpeg(.exe)` inside the app's data directory, so a
-portable install can be dropped there instead of PATH.
-
-If you see this error:
-
-- Confirm `yt-dlp --version` and `ffmpeg -version` work from the same terminal you
-  launched Kavynex from (a shell profile change may not have reached the process that
-  started the app, e.g. a desktop shortcut on Windows).
-- Restart the app after installing or updating either tool, since the resolved path is
-  looked up fresh on each use but a stale terminal/session PATH will not update itself.
-- Use the in-app Diagnostics dialog, which reports the resolved path and version for both
-  tools (or the exact reason they failed the health check).
-
-### Windows: the app window does not open / shows a blank window
-
-Kavynex is a Tauri app and renders its UI with Microsoft Edge WebView2. Windows 11 and
-most up-to-date Windows 10 installs already have it. If the window fails to open or stays
-blank, install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
-and try again.
-
-### "This library was released earlier in this session" after changing the library folder
-
-Restart Kavynex and it works again. Nothing is lost and nothing needs to be repaired - the media,
-the database and your settings are all untouched.
-
-This appears if you move the library folder to a new location and then move it back within the same
-session. Kavynex authorizes the library's folders with the webview so it can display your videos and
-thumbnails, and that authorization can be withdrawn but not re-granted while the app is running (a
-limitation of the underlying framework, not a state Kavynex chose). Rather than accept the move and
-leave you with a library where every thumbnail and video silently fails to load, it refuses up front
-and asks for the restart. After restarting, the folder is authorized normally.
-
-### The library is on a drive or share that is not connected
-
-Your media list looks normal, but no thumbnail draws, nothing plays, and Diagnostics reports the
-library summary check as failed and *every* media file as missing, with real filenames listed as
-examples. That reads like the library was wiped. It was not, and the reason the two halves disagree
-is where each one lives: the database sits with the app's own data, not in the library folder, so
-the rows survive a disconnected drive intact while the files they point at are simply out of reach.
-
-Reconnect the drive (or bring the network share back online) and **restart Kavynex**. The restart is
-the part worth knowing about: the library folder is authorized with the webview once, when the
-library path is loaded at startup, and reconnecting the drive mid-session does not re-run that - so
-without a restart the files are reachable again while the thumbnails and the player still refuse
-them.
-
-Nothing needs repairing afterwards. If you want to confirm, run Diagnostics once the library is back
-and the same checks report the real numbers.
-
-One thing to *not* do while the drive is away: do not point Settings > Library folder at a new
-location to "fix" it. Kavynex cannot tell a library that is temporarily unreachable from one that
-was never there, so instead of refusing it treats the move as a first-time setup - it reports
-success, copies nothing, and adopts the new empty folder as your library. Your media is not deleted
-(the disconnected drive is never touched), but the app is now pointed somewhere else and every item
-reads as missing until you point Settings > Library folder back at the original path. Reconnect the
-drive first and the whole situation does not arise.
-
-(The log records this too, as a `library_guard` line saying the library path was accepted by an
-exact-string match because it could not be canonicalized. That line is the app noting it could not
-confirm where the folder really is, which is exactly what an absent drive looks like from inside.)
-
-### Kavynex reports a corrupted database
-
-This is handled automatically and nothing is silently lost. On the next launch Kavynex restores
-the database from the most recent healthy snapshot (it keeps several daily `.bak` generations, and
-an off-volume mirror if you configured one in Settings > Database). The broken file is preserved
-next to the database as `kavynex.db.corrupt` rather than deleted, so it can still be inspected. See
-`docs/DATABASE.md` for the full backup/restore model and `docs/DIRECTORIES.md` for where these files
-live. If the library ever looks incomplete after a restore, run Diagnostics to reconcile the
-database against the files on disk.
-
-### "Open file location" or "Open folder" does not do quite what you expect
-
-Both buttons hand the path to your operating system's own file manager, and the three
-platforms disagree about what "show me this" means. Nothing is broken in the cases below;
-this is the best each file manager offers.
-
-- **Linux: the file is not highlighted.** "Open file location" opens the folder containing
-  the media, but does not select the file inside it. Windows and macOS both highlight it.
-  `xdg-open` has no "reveal this item" mode - it only opens a target - so the folder is
-  opened instead. With many files in `video/`, sorting by modification date is usually the
-  quickest way to spot the one you came for.
-- **macOS: "Open folder" shows the library folder rather than opening it.** Finder opens the
-  folder *containing* your library, with the library itself highlighted; double-click to go
-  in. This is deliberate. A macOS application bundle is a directory, so the plain "open"
-  command would *launch* a folder that happens to be an `.app` instead of showing it, and
-  Kavynex always reveals rather than opens so that can never happen. Windows and Linux open
-  the folder directly.
-
-There is also one case where both buttons fail outright rather than behaving differently:
-
-- **A library reached through a UNC path** (`\\server\share\...`, e.g. a NAS addressed that
-  way). Kavynex refuses to hand such a location to the file manager. On Windows, merely
-  resolving one makes the system authenticate to whatever host is named and hand over your
-  account's password hash, so the path is rejected before it is touched. Everything else about
-  a library on a share is unaffected - playing, downloading, importing and thumbnails all work.
-  The refusal is specific to the `\\server\share` form: a share mounted as a drive letter
-  (`Z:\...`) is an ordinary local path as far as this check is concerned, so mapping the share
-  and pointing the library at the drive letter keeps both buttons working. See `docs/THREAT-MODEL.md`
-  for the full reasoning.
-
-### Where logs live
-
-Kavynex writes a rolling log file in addition to stderr. The quickest way there is the
-**Open log folder** button in the Diagnostics dialog, which reveals the directory in your file
-manager. Failing that, it is the current platform's app log directory (see `docs/DIRECTORIES.md`):
-look for `kavynex.log` (and `kavynex.log.1`, the previous rotation, once the current file passes
-5 MB). Attach the relevant lines when reporting a bug. Logs can contain file paths and a reference to each video you download, so
-they do reveal which videos were fetched - a run that succeeds records only a reduced
-reference (the video id; the playlist and tracking parameters of the URL you pasted are
-dropped), but one that fails also records yt-dlp's own verbose output, which can include the
-full URL. When the cookies-from-browser feature is used they record only the fact that a
-browser cookie source was used, never the cookie values; the path of a cookies *file* is
-redacted as well. Still avoid pasting full logs in a public issue without a quick
-read-through first.
-
-## Privacy
-
-Kavynex keeps all of your data (the database, downloaded media, thumbnails, comments, and
-live chat) on your own disk, under the library directory and app data directories you
-control. Nothing you back up is uploaded anywhere by the app itself. The only network
-activity Kavynex initiates is:
-
-- yt-dlp/FFmpeg downloading the video, audio, thumbnail, comments, or live chat data you
-  explicitly requested, directly from YouTube.
-- A check against the GitHub releases endpoint for a newer version. This is manual by
-  default (only when you open Settings and click "Check update"). You can additionally
-  opt in, under **Settings -> Application update**, to one passive check on startup;
-  it is off by default, so the app contacts the update endpoint only when you ask.
-- When viewing a saved video's comments or live chat, the player can load each comment/chat
-  author's avatar and any custom emojis or super-sticker images on demand from Google's
-  image servers (the same CDNs YouTube uses). This is **off by default**: unless you enable
-  it in **Settings -> Privacy** ("Load comment and live chat images from Google"), avatars
-  render as monograms, custom emojis fall back to their shortcut text, and viewing saved
-  media makes no network requests at all. If you turn it on, only those small profile/emoji
-  images are fetched - never the video, your library, or any of your data.
-
-The optional "cookies from browser" option (used to back up member-only or otherwise
-authenticated content) reads cookies directly from your local browser profile and hands
-them to yt-dlp for that request only; Kavynex does not transmit, store, or display those
-cookie values. See `docs/DATABASE.md` and `docs/THREAT-MODEL.md` for more detail on what is stored
-locally and how it is protected.
-
-### Taking your data with you, or removing it
-
-Everything Kavynex holds is a plain file on your disk, so both are file operations rather than
-in-app flows:
-
-- **Your media, thumbnails and live chat replays** live in the library folder you chose (Settings >
-  Library folder shows the current path). They are ordinary files - copy the folder anywhere and it
-  is a complete backup of the media itself.
-- **The database** (channels, titles, watched state, comments) is a single SQLite file. Settings >
-  Database > Export writes a snapshot of it wherever you choose, which is the portable copy to keep.
-- **The cache folder** holds nothing of yours that is not already in one of those two: temporary
-  previews, and a smaller copy of each thumbnail the grid has drawn, so a card decodes a few hundred
-  pixels instead of the stored image's full resolution. Deleting a media removes its copy along with
-  it, and the whole folder is safe to delete at any time - anything still needed is regenerated the
-  next time it is drawn. `docs/DIRECTORIES.md` lists where it is per OS.
-
-The database's automatic `.bak` snapshots live next to the database itself, on the same disk, so a
-drive failure takes them with it. To guard against that, **Settings > Database > Automatic external
-backup** lets you point Kavynex at an external folder (another drive or a network share); it copies
-the database there once a day. Only the database is copied - the media files are large and are not
-mirrored, so keep an off-drive copy of the library folder yourself (an external disk, or your own
-cloud backup).
-
-Uninstalling removes the app, not your data - by design, since the library is usually the point.
-To remove everything, delete the library folder plus the three app directories (config, cache and
-logs). The Diagnostics dialog shows the resolved library folder; `docs/DIRECTORIES.md` lists the
-per-OS paths of the other three and what each one holds. Note that the config directory is the one
-holding the database and its automatic backups, so deleting it discards the channel/watched/comment
-data even though the media files live elsewhere.
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) - yt-dlp/FFmpeg not being found, a blank
+  window on Windows, a library on a drive that is not connected, a corrupted database, why "Open
+  file location" behaves differently on each platform, and where the log file lives.
+- [`docs/PRIVACY.md`](docs/PRIVACY.md) - everything Kavynex stores, the only three things it sends
+  over the network, and how to take your data with you or remove it.
 
 ## Third-party assets
 
@@ -351,6 +178,10 @@ repository), and applies to the font files only, not to Kavynex itself.
   walk-through of the main flows (adding media, changing the library folder, database recovery).
 - `docs/DATABASE.md` - the SQLite schema, migrations, and backup/restore/export/import model.
 - `docs/DIRECTORIES.md` - the runtime directories and library layout the app uses on disk.
+- `docs/TROUBLESHOOTING.md` - what to do when something does not behave the way you expect, and
+  where the log file lives.
+- `docs/PRIVACY.md` - what Kavynex stores, what it sends over the network, and how to take your
+  data with you or remove it.
 - `docs/RELEASING.md` - how a release is cut and published (needs repository write access).
 - `CONTRIBUTING.md` - development setup, commands, and commit conventions.
 - `docs/THREAT-MODEL.md` - what the app defends against at runtime: the IPC trust boundary, path

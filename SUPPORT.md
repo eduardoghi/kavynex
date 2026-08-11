@@ -6,7 +6,7 @@ faster than it takes to write a vague one. This page says where each kind of que
 
 ## Try the troubleshooting section first
 
-The README's [Troubleshooting](README.md#troubleshooting) section covers what people actually
+The [Troubleshooting](docs/TROUBLESHOOTING.md) guide covers what people actually
 hit, with the resolution rather than a pointer to one:
 
 - **"yt-dlp was not found" / "ffmpeg was not found"** - how Kavynex resolves both binaries
