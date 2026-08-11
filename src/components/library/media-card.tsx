@@ -1,47 +1,19 @@
-import { memo, useState, type CSSProperties } from "react";
-import {
-    ActionIcon,
-    Badge,
-    Box,
-    Group,
-    Menu,
-    Stack,
-    Text,
-    rem,
-} from "@mantine/core";
-import {
-    ExternalLink,
-    FolderOpen,
-    MessageCircle,
-    MoreVertical,
-    Music,
-    Play,
-    RotateCcw,
-    Trash2,
-    Eye,
-    Pencil,
-    Radio,
-} from "lucide-react";
+import { memo, type CSSProperties } from "react";
+import { Badge, Box, Group, Stack, Text, rem } from "@mantine/core";
+import { MessageCircle } from "lucide-react";
 import { StretchedButtonCard } from "../common/stretched-button-card";
+import { MediaCardActionsMenu } from "./media-card-actions-menu";
+import { MediaCardThumbnail } from "./media-card-thumbnail";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
-import {
-    fileSrcFromAbsolutePath,
-    fileSrcFromStoredPath,
-    formatDuration,
-    formatPublishedDate,
-    isMediaWatched,
-} from "../../utils/media-utils";
+import { formatDuration, formatPublishedDate, isMediaWatched } from "../../utils/media-utils";
 
 type MediaCardProps = {
     media: MediaRow;
     libraryPath: string;
     // Absolute path to a display-sized copy of this media's stored thumbnail, when one has been
-    // resolved (see hooks/use-display-thumbnails.ts). Preferred over the stored file because the
-    // webview decodes an image at its natural size - a 1280x720 thumbnail costs the same bitmap in
-    // a 280px card as it would full screen. Optional on purpose: absent is the ordinary state on
-    // first paint and the permanent state whenever a derivative cannot be produced, and both fall
-    // back to the stored file.
+    // resolved (see hooks/use-display-thumbnails.ts). Passed straight through to the thumbnail,
+    // which owns the preference between it and the stored file.
     displayThumbnailPath?: string;
     shellBorder: string;
     isActive?: boolean;
@@ -59,49 +31,18 @@ type MediaCardProps = {
 };
 
 export const MEDIA_CARD_HEIGHT = 292;
-const MEDIA_THUMBNAIL_HEIGHT = 158;
 const MEDIA_TITLE_HEIGHT = 44;
 const MEDIA_FOOTER_HEIGHT = 28;
 
 // Style values that never depend on the card's props or state, hoisted to module scope so they
 // are built once instead of on every render. Truly only the delta that reacts to state stays
 // inline below: the media-type badge reacts only to isAudio (a boolean), so both of its variants
-// are fully hoisted and picked between; the root card and the thumbnail container keep their static
-// base here (ROOT_CARD_BASE_STYLE / THUMBNAIL_CONTAINER_BASE_STYLE) and spread only the few
-// properties that react to isActive/isWatched/shellBorder over it. This component is memoized and
-// re-renders whenever its own primitive props flip (e.g. the active-media id changes), so avoiding
-// the per-render work compounds across a virtualized grid of cards.
-const THUMBNAIL_IMG_STYLE: CSSProperties = {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-};
-
-const THUMBNAIL_PLACEHOLDER_STYLE: CSSProperties = {
-    height: "100%",
-    display: "grid",
-    placeItems: "center",
-    opacity: 0.95,
-};
-
-const TOP_BADGE_GROUP_STYLE: CSSProperties = {
-    position: "absolute",
-    top: rem(10),
-    left: rem(10),
-};
-
-const DURATION_BADGE_STYLE: CSSProperties = {
-    position: "absolute",
-    right: rem(6),
-    bottom: rem(6),
-    background: "rgba(0, 0, 0, 0.78)",
-    color: "#ffffff",
-    fontWeight: 800,
-    letterSpacing: rem(0.2),
-    pointerEvents: "none",
-};
-
+// are fully hoisted and picked between; the root card keeps its static base here
+// (ROOT_CARD_BASE_STYLE) and spreads only the few properties that react to isActive/isWatched/
+// shellBorder over it. This component is memoized and re-renders whenever its own primitive props
+// flip (e.g. the active-media id changes), so avoiding the per-render work compounds across a
+// virtualized grid of cards. The thumbnail block's own hoisted styles moved with it into
+// `media-card-thumbnail.tsx`.
 const CONTENT_STACK_STYLE: CSSProperties = {
     flex: 1,
     minHeight: 0,
@@ -114,19 +55,25 @@ const TITLE_GROUP_STYLE: CSSProperties = {
     maxHeight: rem(MEDIA_TITLE_HEIGHT),
 };
 
-// Above the stretched open-button overlay so the menu stays clickable while the rest of the card
-// opens the media.
-const MENU_ACTION_ICON_STYLE: CSSProperties = {
-    position: "relative",
-    zIndex: 2,
-    flexShrink: 0,
-};
-
 const FOOTER_GROUP_STYLE: CSSProperties = {
     height: rem(MEDIA_FOOTER_HEIGHT),
     minHeight: rem(MEDIA_FOOTER_HEIGHT),
     maxHeight: rem(MEDIA_FOOTER_HEIGHT),
     marginTop: "auto",
+};
+
+const TITLE_BOX_STYLE: CSSProperties = {
+    minWidth: 0,
+    flex: 1,
+};
+
+const TITLE_TEXT_STYLE: CSSProperties = {
+    lineHeight: 1.25,
+};
+
+const PUBLISHED_TEXT_STYLE: CSSProperties = {
+    minWidth: 0,
+    flex: 1,
 };
 
 const CHAT_BADGE_STYLE: CSSProperties = {
@@ -182,8 +129,7 @@ const INACTIVE_CARD_SHADOW =
 
 // The static base of the root card. Only the four properties that react to isActive/isWatched
 // (background, borderColor, boxShadow, transform) are spread over this inline below; the rest -
-// including the rem() height and the long transition string - is built once here instead of on
-// every render.
+// including the rem() height and the long transition string - is built once here.
 const ROOT_CARD_BASE_STYLE: CSSProperties = {
     height: rem(MEDIA_CARD_HEIGHT),
     cursor: "pointer",
@@ -193,23 +139,6 @@ const ROOT_CARD_BASE_STYLE: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-};
-
-// The static base of the thumbnail container. Only the `border` (which reacts to isActive and the
-// shellBorder prop) is spread over this inline below; the three rem() sizes and the multi-layer
-// gradient background are built once here.
-const THUMBNAIL_CONTAINER_BASE_STYLE: CSSProperties = {
-    height: rem(MEDIA_THUMBNAIL_HEIGHT),
-    minHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
-    maxHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
-    borderRadius: rem(14),
-    overflow: "hidden",
-    position: "relative",
-    background:
-        "radial-gradient(220px 130px at 55% 35%, rgba(168,85,247,0.28), transparent 60%)," +
-        "radial-gradient(260px 160px at 35% 65%, rgba(59,130,246,0.22), transparent 65%)," +
-        "linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.52))",
-    flexShrink: 0,
 };
 
 function MediaCardComponent({
@@ -229,40 +158,8 @@ function MediaCardComponent({
 }: MediaCardProps): JSX.Element {
     const isAudio = media.media_type === "audio";
     const isWatched = isMediaWatched(media);
-    const isLive = Boolean(media.is_live);
-    const hasLiveChat = Boolean(media.has_live_chat);
-    // Prefer the display-sized copy when one has been resolved, and fall back to the stored file
-    // otherwise. The fallback is not an error path: it is what every card shows on first paint, and
-    // what it keeps showing whenever a derivative cannot be produced (no FFmpeg, a thumbnail the app
-    // did not write, a source that has since moved). Both spellings go through the asset protocol -
-    // the derivative lives in the cache directory, authorized in `setup()`, and the stored file
-    // under the library, authorized by `register_library_asset_scope`.
-    const storedThumbSrc = fileSrcFromStoredPath(media.thumbnail_path, libraryPath);
-    const displayThumbSrc = fileSrcFromAbsolutePath(displayThumbnailPath ?? null);
-    const thumbSrc = displayThumbSrc || storedThumbSrc;
-
-    // Reset the failure when the thumbnail itself changes, so replacing a missing thumbnail with a
-    // new one shows it rather than staying on the placeholder. Keying state to a value is cheaper
-    // and less error-prone here than an effect: the grid keys cards by media id, so this only has
-    // to cover the same card getting a new thumbnail.
-    //
-    // This is deliberately React's "adjust state directly during render" pattern (the set-state
-    // call runs during render, React re-renders immediately before committing), NOT a useEffect.
-    // Do not "fix" it into an effect: an effect would render one frame with the stale thumbFailed
-    // (a flash of the broken-image placeholder) before resetting. See
-    // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
-    const [thumbFailed, setThumbFailed] = useState(false);
-    const [thumbFailedFor, setThumbFailedFor] = useState(thumbSrc);
-
-    if (thumbFailedFor !== thumbSrc) {
-        setThumbFailedFor(thumbSrc);
-        setThumbFailed(false);
-    }
-
     const publishedLabel = formatPublishedDate(media.published_at);
-    const durationLabel = formatDuration(media.duration_seconds);
     const commentsCount = media.comments_count;
-    const hasYoutubeSource = Boolean(media.youtube_video_id?.trim());
 
     const handleOpen = (): void => {
         onOpen(media);
@@ -309,79 +206,18 @@ function MediaCardComponent({
                 transform: isActive ? "translateY(-2px)" : "none",
             }}
         >
-            {/* The thumbnail carries the watched border too, not just the card around it. Of the
-                card's 292px this block is 158, so the outer border is a thin line drawn around a
-                mass that is almost entirely image - the state has to appear on the part the eye is
-                already looking at, or it is only technically on screen. Kept a step below the outer
-                border's alpha so the card still reads as one shape rather than two rings. */}
-            <Box
-                style={{
-                    ...THUMBNAIL_CONTAINER_BASE_STYLE,
-                    border: `1px solid ${
-                        isActive
-                            ? "rgba(124,92,255,0.52)"
-                            : isWatched
-                            ? "rgba(34,197,94,0.45)"
-                            : shellBorder
-                    }`,
-                }}
-            >
-                {thumbSrc && !thumbFailed ? (
-                    <img
-                        src={thumbSrc}
-                        alt={media.title}
-                        loading="lazy"
-                        decoding="async"
-                        // A row can point at a thumbnail that is no longer on disk - the file was
-                        // moved or deleted outside the app, which the Diagnostics dialog reports as
-                        // "some thumbnail files are missing on disk". Without this the card renders
-                        // the browser's broken-image glyph, which reads as the app being broken
-                        // rather than as a missing file; the placeholder below is the same thing a
-                        // media with no thumbnail at all shows.
-                        onError={() => setThumbFailed(true)}
-                        style={THUMBNAIL_IMG_STYLE}
-                    />
-                ) : (
-                    <Box style={THUMBNAIL_PLACEHOLDER_STYLE}>
-                        {isAudio ? <Music size={34} /> : <Play size={34} />}
-                    </Box>
-                )}
-
-                <Group gap="xs" style={TOP_BADGE_GROUP_STYLE}>
-                    {isActive && (
-                        <Badge variant="filled" color="violet">
-                            {UI_TEXT.library.selected}
-                        </Badge>
-                    )}
-
-                    {/* Watched carries no badge here on purpose. The card's own green states it,
-                        and a pill on top of the thumbnail was stating it twice while covering the
-                        top-left corner - where a face or a YouTube thumbnail's own title text
-                        usually sits, i.e. the part the user is scanning by.
-
-                        The visual signal is therefore colour alone, which is a real limit rather
-                        than a free win: a viewer with red-green colour blindness gets a weaker
-                        version of it (a luminance shift rather than a hue). It is accepted for the
-                        cleaner grid. What is not given up is the screen-reader signal - the card's
-                        accessible name carries the state instead, so it is announced without
-                        occupying a pixel. */}
-                    {isLive && (
-                        <Badge
-                            variant="filled"
-                            color="red"
-                            leftSection={<Radio size={12} />}
-                        >
-                            LIVE
-                        </Badge>
-                    )}
-                </Group>
-
-                {durationLabel && (
-                    <Badge variant="filled" color="dark" style={DURATION_BADGE_STYLE}>
-                        {durationLabel}
-                    </Badge>
-                )}
-            </Box>
+            <MediaCardThumbnail
+                title={media.title}
+                thumbnailPath={media.thumbnail_path}
+                libraryPath={libraryPath}
+                displayThumbnailPath={displayThumbnailPath}
+                isAudio={isAudio}
+                isActive={isActive}
+                isWatched={isWatched}
+                isLive={Boolean(media.is_live)}
+                durationLabel={formatDuration(media.duration_seconds)}
+                shellBorder={shellBorder}
+            />
 
             <Stack gap={6} mt="sm" style={CONTENT_STACK_STYLE}>
                 <Group
@@ -391,88 +227,29 @@ function MediaCardComponent({
                     align="start"
                     style={TITLE_GROUP_STYLE}
                 >
-                    <Box style={{ minWidth: 0, flex: 1 }}>
+                    <Box style={TITLE_BOX_STYLE}>
                         <Text
                             fw={900}
                             lineClamp={2}
                             title={media.title}
                             c={isActive ? "violet.1" : undefined}
-                            style={{
-                                lineHeight: 1.25,
-                            }}
+                            style={TITLE_TEXT_STYLE}
                         >
                             {media.title}
                         </Text>
                     </Box>
 
-                    <Menu withinPortal position="bottom-end" shadow="md">
-                        <Menu.Target>
-                            <ActionIcon
-                                variant="subtle"
-                                aria-label={`Actions for ${media.title}`}
-                                style={MENU_ACTION_ICON_STYLE}
-                            >
-                                <MoreVertical size={18} />
-                            </ActionIcon>
-                        </Menu.Target>
-
-                        <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
-                            {onOpenFileLocation && (
-                                <Menu.Item
-                                    leftSection={<FolderOpen size={16} />}
-                                    onClick={() => onOpenFileLocation(media)}
-                                >
-                                    Open file location
-                                </Menu.Item>
-                            )}
-
-                            {hasYoutubeSource && onOpenSourceInYoutube && (
-                                <Menu.Item
-                                    leftSection={<ExternalLink size={16} />}
-                                    onClick={() => onOpenSourceInYoutube(media)}
-                                >
-                                    Open source on YouTube
-                                </Menu.Item>
-                            )}
-
-                            {onEditTitle && (
-                                <Menu.Item
-                                    leftSection={<Pencil size={16} />}
-                                    onClick={() => onEditTitle(media)}
-                                >
-                                    Edit title
-                                </Menu.Item>
-                            )}
-
-                            {!isWatched && onMarkWatched && (
-                                <Menu.Item
-                                    leftSection={<Eye size={16} />}
-                                    onClick={() => onMarkWatched(media)}
-                                    disabled={isWatchedActionInFlight}
-                                >
-                                    Mark as watched
-                                </Menu.Item>
-                            )}
-
-                            {isWatched && onMarkUnwatched && (
-                                <Menu.Item
-                                    leftSection={<RotateCcw size={16} />}
-                                    onClick={() => onMarkUnwatched(media)}
-                                    disabled={isWatchedActionInFlight}
-                                >
-                                    Mark as unwatched
-                                </Menu.Item>
-                            )}
-
-                            <Menu.Item
-                                color="red"
-                                leftSection={<Trash2 size={16} />}
-                                onClick={() => onRequestDelete(media)}
-                            >
-                                {UI_TEXT.library.delete}
-                            </Menu.Item>
-                        </Menu.Dropdown>
-                    </Menu>
+                    <MediaCardActionsMenu
+                        media={media}
+                        isWatched={isWatched}
+                        isWatchedActionInFlight={isWatchedActionInFlight}
+                        onRequestDelete={onRequestDelete}
+                        onOpenFileLocation={onOpenFileLocation}
+                        onOpenSourceInYoutube={onOpenSourceInYoutube}
+                        onMarkWatched={onMarkWatched}
+                        onMarkUnwatched={onMarkUnwatched}
+                        onEditTitle={onEditTitle}
+                    />
                 </Group>
 
                 <Group
@@ -482,20 +259,12 @@ function MediaCardComponent({
                     wrap="nowrap"
                     style={FOOTER_GROUP_STYLE}
                 >
-                    <Text
-                        size="xs"
-                        c="dimmed"
-                        truncate
-                        style={{
-                            minWidth: 0,
-                            flex: 1,
-                        }}
-                    >
+                    <Text size="xs" c="dimmed" truncate style={PUBLISHED_TEXT_STYLE}>
                         {publishedLabel || UI_TEXT.library.noPublicationDate}
                     </Text>
 
                     <Group gap={6} wrap="nowrap">
-                        {hasLiveChat && (
+                        {Boolean(media.has_live_chat) && (
                             <Badge variant="outline" style={CHAT_BADGE_STYLE}>
                                 CHAT
                             </Badge>
@@ -519,7 +288,9 @@ function MediaCardComponent({
                                     : MEDIA_TYPE_BADGE_STYLE_VIDEO
                             }
                         >
-                            {isAudio ? UI_TEXT.library.mediaTypeAudio : UI_TEXT.library.mediaTypeVideo}
+                            {isAudio
+                                ? UI_TEXT.library.mediaTypeAudio
+                                : UI_TEXT.library.mediaTypeVideo}
                         </Badge>
                     </Group>
                 </Group>
