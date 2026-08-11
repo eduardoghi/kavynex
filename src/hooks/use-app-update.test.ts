@@ -132,6 +132,123 @@ describe("useAppUpdate", () => {
         expect(result.current.status).toBe("not-available");
     });
 
+    it("lets the newest check win when two overlap and the older one resolves last", async () => {
+        // The overlap this guards is not the double click the Settings button already disables: it
+        // is a user-driven check racing the opt-in startup one (useStartupUpdateCheck), which the
+        // button cannot see. Resolving the *first* call last is the ordering that made the stale
+        // answer win before the guard existed.
+        let resolveFirst: (value: null) => void = () => {};
+        const firstCheck = new Promise<null>((resolve) => {
+            resolveFirst = resolve;
+        });
+
+        const update = createUpdate();
+        checkAppUpdateMock.mockReturnValueOnce(
+            firstCheck as unknown as ReturnType<typeof checkAppUpdate>
+        );
+        checkAppUpdateMock.mockResolvedValueOnce(update);
+        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
+
+        const { result } = renderHook(() => useAppUpdate());
+
+        await act(async () => {
+            // Started but not awaited: this is the request that will be superseded.
+            void result.current.checkForUpdate();
+            await result.current.checkForUpdate();
+        });
+
+        expect(result.current.status).toBe("available");
+
+        await act(async () => {
+            resolveFirst(null);
+            await firstCheck;
+        });
+
+        // Without the guard the superseded call's "no update" answer lands here and replaces the
+        // newer one, leaving the user told they are up to date while an update is available.
+        expect(result.current.status).toBe("available");
+        expect(result.current.updateInfo).toEqual(createUpdateInfo());
+    });
+
+    it("does not let a superseded check report an error over a newer result", async () => {
+        // The failure branch needs its own coverage: it sets state through a different path, and a
+        // guard applied to only the success branch would still let a slow failure overwrite a good
+        // answer with "Could not check for updates."
+        let rejectFirst: (reason: Error) => void = () => {};
+        const firstCheck = new Promise<null>((_resolve, reject) => {
+            rejectFirst = reject;
+        });
+
+        const update = createUpdate();
+        checkAppUpdateMock.mockReturnValueOnce(
+            firstCheck as unknown as ReturnType<typeof checkAppUpdate>
+        );
+        checkAppUpdateMock.mockResolvedValueOnce(update);
+        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
+
+        const { result } = renderHook(() => useAppUpdate());
+
+        await act(async () => {
+            void result.current.checkForUpdate();
+            await result.current.checkForUpdate();
+        });
+
+        await act(async () => {
+            rejectFirst(new Error("network down"));
+            await firstCheck.catch(() => undefined);
+        });
+
+        expect(result.current.status).toBe("available");
+        expect(result.current.errorMessage).toBe("");
+        // Still logged, though: a failed check is worth recording whichever request it belonged to,
+        // and only the user-facing half is suppressed.
+        expect(logErrorMock).toHaveBeenCalledWith(
+            "app-update",
+            "Failed to check app update.",
+            expect.any(Error)
+        );
+    });
+
+    it("does not let a check landing after an install started move the status off downloading", async () => {
+        // The case the guard matters most for. `installUpdate` leaves the status on "downloading"
+        // until the relaunch replaces the process, and both readers depend on that: the install
+        // button stays disabled and the settings modal stays locked. A check resolving into that
+        // window would unlock both mid-install.
+        let resolveStaleCheck: (value: null) => void = () => {};
+        const staleCheck = new Promise<null>((resolve) => {
+            resolveStaleCheck = resolve;
+        });
+
+        const update = createUpdate();
+        checkAppUpdateMock.mockResolvedValueOnce(update);
+        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
+        installAppUpdateMock.mockResolvedValueOnce(undefined);
+
+        const { result } = renderHook(() => useAppUpdate());
+
+        await act(async () => {
+            await result.current.checkForUpdate();
+        });
+
+        checkAppUpdateMock.mockReturnValueOnce(
+            staleCheck as unknown as ReturnType<typeof checkAppUpdate>
+        );
+
+        await act(async () => {
+            void result.current.checkForUpdate();
+            await result.current.installUpdate();
+        });
+
+        expect(result.current.status).toBe("downloading");
+
+        await act(async () => {
+            resolveStaleCheck(null);
+            await staleCheck;
+        });
+
+        expect(result.current.status).toBe("downloading");
+    });
+
     it("does nothing when installUpdate is called with no update available", async () => {
         const { result } = renderHook(() => useAppUpdate());
 

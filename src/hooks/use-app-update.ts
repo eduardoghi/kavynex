@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { Update } from "../lib/tauri-platform";
 import { useMemoObject } from "./use-memo-object";
+import { useRequestGuard } from "./use-request-guard";
 import {
     checkAppUpdate,
     installAppUpdate,
@@ -43,13 +44,28 @@ export function useAppUpdate(): UseAppUpdateReturn {
     const [progress, setProgress] = useState<AppUpdateProgress | null>(null);
     const [errorMessage, setErrorMessage] = useState("");
 
+    // Latest-wins over the update check, which is a network call with a 30s timeout
+    // (app-update-service.ts). The Settings button disables itself while a check runs, but that is a
+    // promise about Mantine having re-rendered before the next click lands rather than about state,
+    // and it says nothing at all about the second reader of this hook: useStartupUpdateCheck fires
+    // its own check on launch, so an opt-in startup check and a user clicking "Check update" can
+    // genuinely overlap. Without this, whichever resolves last wins - which for a startup check that
+    // hangs near its timeout means a stale answer landing on top of the one the user asked for.
+    const checkGuard = useRequestGuard();
+
     const checkForUpdate = useCallback(async () => {
+        const requestId = checkGuard.begin();
+
         setStatus("checking");
         setErrorMessage("");
         setProgress(null);
 
         try {
             const availableUpdate = await checkAppUpdate();
+
+            if (!checkGuard.isCurrent(requestId)) {
+                return;
+            }
 
             if (!availableUpdate) {
                 setUpdate(null);
@@ -64,17 +80,31 @@ export function useAppUpdate(): UseAppUpdateReturn {
         } catch (error) {
             logError("app-update", "Failed to check app update.", error);
 
+            // Logged regardless (a failure is worth recording whichever request it belonged to) but
+            // only surfaced when it is still the current one, so a superseded check cannot replace a
+            // newer result with an error the user never asked about.
+            if (!checkGuard.isCurrent(requestId)) {
+                return;
+            }
+
             setUpdate(null);
             setUpdateInfo(null);
             setStatus("error");
             setErrorMessage("Could not check for updates.");
         }
-    }, []);
+    }, [checkGuard]);
 
     const installUpdate = useCallback(async () => {
         if (!update) {
             return;
         }
+
+        // Discards any check still in flight. This is the case the guard matters most for: the
+        // status is about to become "downloading" and stay there until the relaunch takes the
+        // process (see AppUpdateStatus above), and a check landing afterwards would move it back to
+        // "available"/"not-available"/"error" - unlocking the settings modal and re-enabling the
+        // install button in the middle of an install.
+        checkGuard.invalidate();
 
         setStatus("downloading");
         setErrorMessage("");
@@ -89,7 +119,10 @@ export function useAppUpdate(): UseAppUpdateReturn {
             setStatus("error");
             setErrorMessage("Could not install the update.");
         }
-    }, [update]);
+        // `checkGuard` is reference-stable (useRequestGuard memoizes over three stable callbacks),
+        // so listing it keeps the deps honest without costing this callback its identity - `update`
+        // is still the only thing that recreates it.
+    }, [update, checkGuard]);
 
     // Reference-stable so the controller keeps the shared convention (see use-memo-object): a
     // consumer that depends on the whole object does not churn on every render.

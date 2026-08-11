@@ -51,11 +51,14 @@ export function AppUpdateSection({
                                 void checkForUpdate();
                             }}
                             loading={appUpdateStatus === "checking"}
-                            // Disabled while checking as well as while downloading. `loading` alone
-                            // relies on Mantine having re-rendered before the next click lands,
-                            // which is a promise about timing rather than about state; checkForUpdate
-                            // has no request guard, so two overlapping checks would let whichever
-                            // resolves last win regardless of which was asked for last.
+                            // Disabled while checking as well as while downloading, so a second
+                            // click cannot start a redundant network call the user has no reason to
+                            // make. This is UX rather than the correctness guarantee it used to be:
+                            // `loading` alone relies on Mantine having re-rendered before the next
+                            // click lands, which is a promise about timing rather than about state.
+                            // What makes overlapping checks safe is `useRequestGuard` inside
+                            // useAppUpdate - which also covers the overlap this button cannot see,
+                            // between a user check and the opt-in startup one.
                             disabled={
                                 appUpdateStatus === "checking" || appUpdateStatus === "downloading"
                             }
