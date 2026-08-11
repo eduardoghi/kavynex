@@ -11,8 +11,24 @@ pub fn extension_from_path(path: &Path) -> String {
         .unwrap_or_else(|| "bin".to_string())
 }
 
+/// True for a character Windows accepts as the ordinal of a `COM<n>`/`LPT<n>` device name.
+///
+/// The ASCII digits are the obvious half. The superscripts `\u{b9}`, `\u{b2}` and `\u{b3}` are the
+/// half that is easy to miss: Windows resolves `COM\u{b9}` to the same device as `COM1`, so a check
+/// accepting only ASCII lets those three spellings through as ordinary names. Written as escapes
+/// rather than as the characters themselves, matching the convention this repository already applies
+/// to a codepoint used as data.
+///
+/// Nothing this app writes can produce one - every managed path is content-addressed - so this is
+/// defense in depth for a name that arrives from an out-of-band writer or an imported database, in
+/// the same spirit as the rest of `sanitize_relative_path_strict`.
+fn is_device_ordinal(value: char) -> bool {
+    value.is_ascii_digit() || matches!(value, '\u{b9}' | '\u{b2}' | '\u{b3}')
+}
+
 /// True for a segment that names a Windows reserved device (CON, PRN, AUX, NUL, COM0-9,
-/// LPT0-9), with or without an extension - Windows treats `CON`, `CON.txt`, etc. as the device.
+/// LPT0-9, plus the superscript `COM`/`LPT` ordinals - see [`is_device_ordinal`]), with or without
+/// an extension - Windows treats `CON`, `CON.txt`, etc. as the device.
 /// Checked on every platform so a library synced from Windows behaves the same everywhere.
 pub(crate) fn is_windows_reserved_name(segment: &str) -> bool {
     let stem = segment.split('.').next().unwrap_or(segment).trim();
@@ -29,7 +45,7 @@ pub(crate) fn is_windows_reserved_name(segment: &str) -> bool {
     if chars.len() == 4 {
         let head: String = chars[..3].iter().collect::<String>().to_ascii_uppercase();
 
-        if (head == "COM" || head == "LPT") && chars[3].is_ascii_digit() {
+        if (head == "COM" || head == "LPT") && is_device_ordinal(chars[3]) {
             return true;
         }
     }
@@ -474,6 +490,39 @@ mod tests {
         // The genuine device names with the same 4-char digit shape stay rejected.
         for path in ["video/COM1", "audio/lpt9.m4a"] {
             sanitize_relative_path_strict(path).expect_err(&format!("{path} should be rejected"));
+        }
+    }
+
+    #[test]
+    fn sanitize_relative_path_rejects_the_superscript_com_and_lpt_devices() {
+        // Windows resolves the superscript ordinals to the same devices as COM1/COM2/COM3, so a
+        // check written against `is_ascii_digit` alone lets exactly these three spellings through.
+        // Written as escapes rather than as the characters themselves, per the repository's rule for
+        // a codepoint used as data.
+        for path in [
+            "video/COM\u{b9}",
+            "video/com\u{b2}.mp4",
+            "audio/LPT\u{b3}.m4a",
+            "thumbnails/lpt\u{b9}.jpg",
+        ] {
+            let error = sanitize_relative_path_strict(path)
+                .expect_err(&format!("{path} should be rejected"));
+            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+        }
+    }
+
+    #[test]
+    fn sanitize_relative_path_allows_other_superscripts_and_non_ascii_ordinals() {
+        // The other direction, so the ordinal rule stays exactly as wide as Windows' own aliasing
+        // rather than growing into "any non-ASCII fourth character". Superscript four is not a
+        // device alias, and neither is a non-Latin digit - both are ordinary names.
+        for path in [
+            "video/COM\u{2074}.mp4", // superscript four
+            "video/COM\u{0660}.mp4", // arabic-indic zero
+            "audio/lpt\u{2070}.m4a", // superscript zero
+        ] {
+            sanitize_relative_path_strict(path)
+                .unwrap_or_else(|error| panic!("{path} should be accepted: {error}"));
         }
     }
 
