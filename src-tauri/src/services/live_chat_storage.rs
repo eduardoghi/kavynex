@@ -1,13 +1,13 @@
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Seek, Write};
+use std::io::{BufRead, BufReader, Read, Seek};
 use std::path::{Path, PathBuf};
 
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use sha2::{Digest, Sha256};
 
 use crate::services::filesystem::replace_file_safely;
+use crate::utils::hash::hash_while_copying;
 use crate::{AppError, AppErrorCode, AppResult};
 
 #[derive(Debug, Default, Clone)]
@@ -33,44 +33,6 @@ fn compress_error(context: &str, error: impl std::fmt::Display) -> AppError {
 /// gzip files start with the magic bytes 0x1f 0x8b.
 pub fn is_gzip(bytes: &[u8]) -> bool {
     bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b
-}
-
-/// How much of a file moves at a time while it is streamed through the compressor and through the
-/// read-back that verifies it. The value matters only in that it is fixed and small: what this
-/// module must never do again is size a buffer by the file.
-const COMPRESS_CHUNK_BYTES: usize = 8192;
-
-/// Streams everything `reader` yields into `writer`, returning the SHA-256 of the bytes that
-/// passed through.
-///
-/// Written as a copy that happens to hash, rather than as a hash pass and a copy pass, because both
-/// callers want exactly one traversal: the compression side hands it a gzip encoder over the staged
-/// file, and the verification side hands it [`std::io::sink`] because it wants the digest alone.
-/// Neither ever holds more than one chunk, which is the whole point - a live chat replay of a long
-/// stream runs to hundreds of megabytes, and this module used to hold three copies of one.
-fn hash_while_copying<R: Read, W: Write>(reader: &mut R, writer: &mut W) -> AppResult<String> {
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; COMPRESS_CHUNK_BYTES];
-
-    loop {
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|e| compress_error("failed to read live chat data", e))?;
-
-        if read == 0 {
-            break;
-        }
-
-        hasher.update(&buffer[..read]);
-        writer
-            .write_all(&buffer[..read])
-            .map_err(|e| compress_error("failed to write live chat data", e))?;
-    }
-
-    // sha2 0.11 returns a hybrid-array `Array` (no LowerHex), so hex-encode the bytes - the same
-    // shape `utils::hash` uses, and the reason a test can cross-check the two against each other.
-    let digest = hasher.finalize();
-    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 /// Compresses `src` into `temp`, returning the SHA-256 of the source bytes so the caller can prove
@@ -554,6 +516,7 @@ pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompre
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     fn temp_dir(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -613,43 +576,6 @@ mod tests {
         assert!(is_gzip(&[0x1f, 0x8b, 0x08]));
         assert!(!is_gzip(b"{\"a\":1}"));
         assert!(!is_gzip(&[0x1f]));
-    }
-
-    #[test]
-    fn hash_while_copying_reproduces_the_shared_digest_and_copies_every_byte() {
-        // Deliberately spans several chunks (COMPRESS_CHUNK_BYTES is 8 KiB) and is not a repeating
-        // byte, so a loop that dropped a chunk, hashed before advancing, or mis-sliced the tail
-        // changes the digest rather than landing on the same answer by symmetry.
-        let payload: Vec<u8> = (0..(COMPRESS_CHUNK_BYTES * 3 + 517))
-            .map(|index| (index % 251) as u8)
-            .collect();
-
-        let mut source = payload.as_slice();
-        let mut copied = Vec::new();
-        let digest = hash_while_copying(&mut source, &mut copied).unwrap();
-
-        assert_eq!(copied, payload, "the copy must be byte-exact");
-        assert_eq!(
-            digest,
-            independent_digest(&payload),
-            "the digest must match the one utils::hash computes over the same bytes"
-        );
-    }
-
-    #[test]
-    fn hash_while_copying_distinguishes_payloads_that_differ_by_one_byte() {
-        // The digest is what the verification compares, so it has to actually depend on the
-        // content: a helper that returned a constant would satisfy the test above only if that
-        // constant happened to match, but it cannot satisfy both directions at once.
-        let first = vec![7u8; 64];
-        let mut second = first.clone();
-        second[63] = 8;
-
-        let mut sink = std::io::sink();
-        let first_digest = hash_while_copying(&mut first.as_slice(), &mut sink).unwrap();
-        let second_digest = hash_while_copying(&mut second.as_slice(), &mut sink).unwrap();
-
-        assert_ne!(first_digest, second_digest);
     }
 
     #[test]
