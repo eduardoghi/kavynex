@@ -40,8 +40,7 @@ import type {
 } from "../types/media";
 import type {
     ExternalToolsStatus,
-    LibraryIntegrityReport,
-    MediaIntegrityReference,
+    LibraryIntegrityCheck,
     MediaRepositoryStats,
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
@@ -222,13 +221,17 @@ const mediaRepositoryStatsSchema = z.object({
     total_media_with_live_chat_path_but_not_live: z.number(),
 });
 
-const mediaIntegrityReferenceSchema = z.object({
-    id: z.number(),
-    channel_id: z.number(),
-    title: z.string(),
-    file_path: z.string(),
-    thumbnail_path: z.string().nullable(),
-    live_chat_file_path: z.string().nullable(),
+// The jump-to-the-media target the integrity check resolves for each path its report named. Keyed
+// by that path, so the map holds at most the handful of examples the report caps itself at - not
+// one entry per media, which is what the renderer used to build for itself.
+const diagnosticsMediaTargetSchema = z.object({
+    channelId: z.number(),
+    mediaId: z.number(),
+});
+
+const libraryIntegrityCheckSchema = z.object({
+    report: libraryIntegrityReportSchema,
+    mediaTargets: z.record(z.string(), diagnosticsMediaTargetSchema),
 });
 
 const artifactCleanupReportSchema = z.object({
@@ -294,7 +297,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     // Nullable because a normal launch answers null; only a `--webview-check` run gets a plan.
     begin_webview_check: webviewCheckPlanSchema.nullable() satisfies z.ZodType<WebviewCheckPlan | null>,
     get_library_summary: librarySummaryInfoSchema satisfies z.ZodType<LibrarySummaryInfo>,
-    check_library_integrity: libraryIntegrityReportSchema satisfies z.ZodType<LibraryIntegrityReport>,
+    check_library_integrity: libraryIntegrityCheckSchema satisfies z.ZodType<LibraryIntegrityCheck>,
     migrate_library_directory:
         migrateLibraryDirectoryResultSchema satisfies z.ZodType<MigrateLibraryDirectoryResult>,
     list_live_chat_files: z.array(z.string()),
@@ -328,8 +331,6 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
         z.array(mediaCommentRowSchema) satisfies z.ZodType<MediaCommentRow[]>,
     delete_media_with_artifacts: artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
     get_media_repository_stats: mediaRepositoryStatsSchema satisfies z.ZodType<MediaRepositoryStats>,
-    list_media_integrity_references:
-        z.array(mediaIntegrityReferenceSchema) satisfies z.ZodType<MediaIntegrityReference[]>,
 };
 
 // Schemas for the payloads the backend pushes over `listen`/`Channel` (yt-dlp progress, the live

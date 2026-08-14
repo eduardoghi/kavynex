@@ -108,12 +108,15 @@ pub struct MediaRepositoryStats {
     pub total_media_with_live_chat_path_but_not_live: i64,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+/// The stored paths of one media row, plus what a reported path needs to resolve back to it.
+///
+/// Backend-only, and deliberately not `ts(export)`ed: it used to cross the IPC boundary so the
+/// renderer could assemble the integrity check's inputs, and that resolution now happens in
+/// `library::integrity` on this side. Nothing in `src/` names this shape any more - what the
+/// frontend receives is `LibraryIntegrityCheck`, which is bounded by what the report named.
+#[derive(Debug, sqlx::FromRow)]
 pub struct MediaIntegrityReference {
-    #[ts(type = "number")]
     pub id: i64,
-    #[ts(type = "number")]
     pub channel_id: i64,
     pub title: String,
     pub file_path: String,

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::services::filesystem::dir_entry_is_symlink;
 use crate::services::logger;
+use crate::services::video_repository::MediaIntegrityReference;
 use crate::AppResult;
 
 // usize counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs
@@ -55,6 +56,129 @@ pub struct LibraryIntegrityReport {
     #[ts(type = "number")]
     pub invalid_live_chat_files: usize,
     pub invalid_live_chat_examples: Vec<String>,
+}
+
+/// The media row a reported path belongs to, so Diagnostics can turn a "missing media" example
+/// into a jump-to-the-media action.
+///
+/// camelCase on the wire because the frontend consumed a hand-written type of this shape long
+/// before the resolution moved here; exporting it means the two can no longer drift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct DiagnosticsMediaTarget {
+    #[ts(type = "number")]
+    pub channel_id: i64,
+    #[ts(type = "number")]
+    pub media_id: i64,
+}
+
+/// What the integrity command answers with: the disk-versus-database report, plus the media row
+/// behind each *reported* path.
+///
+/// The two are returned together rather than as two commands because they are one question asked
+/// of one snapshot of the database. Resolving the targets here is also what keeps this cheap: the
+/// report caps every example list at five entries, so the map holds at most a handful of rows no
+/// matter how large the library is. The renderer used to build it by pulling every media row over
+/// IPC and sending three arrays of every stored path back, which made an operation whose output is
+/// bounded cost time proportional to the whole library, twice.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct LibraryIntegrityCheck {
+    pub report: LibraryIntegrityReport,
+    /// Keyed by the stored path exactly as it appears in the report's example lists, so a lookup
+    /// is a plain index rather than a re-normalization the two sides could spell differently.
+    pub media_targets: HashMap<String, DiagnosticsMediaTarget>,
+}
+
+/// The stored paths the database expects to find on disk, split by artifact kind.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct ExpectedLibraryPaths {
+    pub(crate) media: Vec<String>,
+    pub(crate) thumbnails: Vec<String>,
+    pub(crate) live_chat: Vec<String>,
+}
+
+/// Collects what the database expects the library to hold, from the media rows and the channel
+/// avatars.
+///
+/// Pure, and separate from the check, because the one decision in it has a user-visible cost and
+/// no I/O: the avatars belong in the *thumbnail* set. They live under `thumbnails/` but are
+/// referenced by the channels table, so dropping them here turns every avatar that is not also a
+/// media thumbnail into a reported orphan - a file Diagnostics then invites the user to delete
+/// while the app is still drawing it in the sidebar.
+pub(crate) fn expected_library_paths(
+    references: &[MediaIntegrityReference],
+    avatar_paths: Vec<String>,
+) -> ExpectedLibraryPaths {
+    ExpectedLibraryPaths {
+        media: references
+            .iter()
+            .map(|reference| reference.file_path.clone())
+            .collect(),
+        thumbnails: references
+            .iter()
+            .filter_map(|reference| reference.thumbnail_path.clone())
+            .chain(avatar_paths)
+            .collect(),
+        live_chat: references
+            .iter()
+            .filter_map(|reference| reference.live_chat_file_path.clone())
+            .collect(),
+    }
+}
+
+/// Normalizes a stored path to the form the report echoes back, so a target can be looked up by
+/// the exact string the example list carries.
+fn normalize_path_key(path: &str) -> String {
+    path.trim().replace('\\', "/")
+}
+
+/// Builds the target map for the paths the report actually named.
+///
+/// Only the media examples are resolved, and only the two categories the UI offers a jump for: a
+/// missing or corrupt media file still has its row, so it can be opened in the library. An orphan
+/// has no row by definition, and a thumbnail or live chat path is not something to navigate to.
+///
+/// Pure, and extracted, because the alternative - resolving every reference - is what this change
+/// exists to stop, and the failure mode of getting the key wrong is silent: the path renders
+/// without a jump action and nothing reports why.
+pub(crate) fn media_targets_for_report(
+    report: &LibraryIntegrityReport,
+    references: &[MediaIntegrityReference],
+) -> HashMap<String, DiagnosticsMediaTarget> {
+    let reported: HashSet<String> = report
+        .missing_media_examples
+        .iter()
+        .chain(report.corrupt_media_examples.iter())
+        .map(|path| normalize_path_key(path))
+        .filter(|path| !path.is_empty())
+        .collect();
+
+    if reported.is_empty() {
+        return HashMap::new();
+    }
+
+    let mut targets = HashMap::new();
+
+    for reference in references {
+        let key = normalize_path_key(&reference.file_path);
+
+        if !reported.contains(&key) {
+            continue;
+        }
+
+        targets.insert(
+            key,
+            DiagnosticsMediaTarget {
+                channel_id: reference.channel_id,
+                media_id: reference.id,
+            },
+        );
+    }
+
+    targets
 }
 
 /// Outcome of checking one set of stored paths against the library on disk.
@@ -312,6 +436,37 @@ pub fn check_library_integrity_sync(
     })
 }
 
+/// Runs the integrity check against what the database currently references, and resolves the
+/// media row behind each path the report ended up naming.
+///
+/// This is what the command calls. `check_library_integrity_sync` above stays the pure
+/// paths-versus-disk comparison it has always been - every one of its tests still drives it
+/// directly - and this only supplies its inputs from the rows and folds the targets in.
+///
+/// Blocking (it walks the library), so the caller runs it off the async runtime; the database read
+/// happens before that, on the caller's side, because it is async.
+pub fn check_library_integrity_for_references(
+    library_path: &str,
+    references: Vec<MediaIntegrityReference>,
+    avatar_paths: Vec<String>,
+) -> AppResult<LibraryIntegrityCheck> {
+    let expected = expected_library_paths(&references, avatar_paths);
+
+    let report = check_library_integrity_sync(
+        library_path,
+        expected.media,
+        expected.thumbnails,
+        expected.live_chat,
+    )?;
+
+    let media_targets = media_targets_for_report(&report, &references);
+
+    Ok(LibraryIntegrityCheck {
+        report,
+        media_targets,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +476,230 @@ mod tests {
             "kavynex-integrity-test-{prefix}-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    fn reference(
+        id: i64,
+        channel_id: i64,
+        file_path: &str,
+        thumbnail_path: Option<&str>,
+        live_chat_file_path: Option<&str>,
+    ) -> MediaIntegrityReference {
+        MediaIntegrityReference {
+            id,
+            channel_id,
+            title: format!("Media {id}"),
+            file_path: file_path.to_string(),
+            thumbnail_path: thumbnail_path.map(str::to_string),
+            live_chat_file_path: live_chat_file_path.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn expected_paths_split_the_rows_by_artifact_kind() {
+        let references = vec![
+            reference(
+                1,
+                10,
+                "video/a.mp4",
+                Some("thumbnails/a.jpg"),
+                Some("live_chat/a.json.gz"),
+            ),
+            reference(2, 10, "audio/b.m4a", None, None),
+        ];
+
+        let expected = expected_library_paths(&references, Vec::new());
+
+        assert_eq!(expected.media, vec!["video/a.mp4", "audio/b.m4a"]);
+        // A row with no thumbnail or replay contributes nothing to those sets rather than an
+        // empty string, which would land in the expected set and match nothing on disk.
+        assert_eq!(expected.thumbnails, vec!["thumbnails/a.jpg"]);
+        assert_eq!(expected.live_chat, vec!["live_chat/a.json.gz"]);
+    }
+
+    #[test]
+    fn a_channel_avatar_counts_as_a_referenced_thumbnail() {
+        // The one decision in expected_library_paths with a user-visible cost. An avatar is
+        // referenced by the channels table, not by any media row, so leaving it out reports it as
+        // an orphan thumbnail - a file Diagnostics then invites the user to delete while the
+        // sidebar is still drawing it.
+        let references = vec![reference(
+            1,
+            10,
+            "video/a.mp4",
+            Some("thumbnails/a.jpg"),
+            None,
+        )];
+
+        let expected =
+            expected_library_paths(&references, vec!["thumbnails/avatar_10.jpg".to_string()]);
+
+        assert!(expected
+            .thumbnails
+            .contains(&"thumbnails/a.jpg".to_string()));
+        assert!(expected
+            .thumbnails
+            .contains(&"thumbnails/avatar_10.jpg".to_string()));
+        // An avatar is not a media file and not a replay, so it must not widen either of those.
+        assert_eq!(expected.media, vec!["video/a.mp4"]);
+        assert!(expected.live_chat.is_empty());
+    }
+
+    #[test]
+    fn only_the_reported_media_paths_get_a_target() {
+        // The property this whole change rests on: the map is bounded by what the report named,
+        // not by the size of the library. Resolving every reference is what it replaced.
+        let references = vec![
+            reference(1, 10, "video/gone.mp4", None, None),
+            reference(2, 20, "video/empty.mp4", None, None),
+            reference(3, 30, "video/healthy.mp4", None, None),
+        ];
+
+        let mut report = empty_report();
+        report.missing_media_examples = vec!["video/gone.mp4".to_string()];
+        report.corrupt_media_examples = vec!["video/empty.mp4".to_string()];
+
+        let targets = media_targets_for_report(&report, &references);
+
+        assert_eq!(targets.len(), 2);
+        assert_eq!(
+            targets.get("video/gone.mp4"),
+            Some(&DiagnosticsMediaTarget {
+                channel_id: 10,
+                media_id: 1
+            })
+        );
+        // Corrupt media is navigable too - the row still exists, the file on disk is just hollow.
+        assert_eq!(
+            targets.get("video/empty.mp4"),
+            Some(&DiagnosticsMediaTarget {
+                channel_id: 20,
+                media_id: 2
+            })
+        );
+        assert!(!targets.contains_key("video/healthy.mp4"));
+    }
+
+    #[test]
+    fn a_target_is_keyed_the_way_the_report_spells_the_path() {
+        // A row stored with backslashes (a library written on Windows) has to resolve against the
+        // forward-slash form the report echoes back, or the example renders with no jump action
+        // and nothing anywhere says why.
+        let references = vec![reference(1, 10, r"video\gone.mp4", None, None)];
+
+        let mut report = empty_report();
+        report.missing_media_examples = vec!["video/gone.mp4".to_string()];
+
+        let targets = media_targets_for_report(&report, &references);
+
+        assert_eq!(
+            targets.get("video/gone.mp4"),
+            Some(&DiagnosticsMediaTarget {
+                channel_id: 10,
+                media_id: 1
+            })
+        );
+    }
+
+    #[test]
+    fn a_clean_report_resolves_no_targets_at_all() {
+        // The common case, and the one that must not walk the references: nothing was reported,
+        // so there is nothing to look up.
+        let references = vec![reference(1, 10, "video/a.mp4", None, None)];
+
+        assert!(media_targets_for_report(&empty_report(), &references).is_empty());
+    }
+
+    #[test]
+    fn an_orphan_never_resolves_to_a_media_row() {
+        // An orphan is by definition a file no row references, so it has no target - and the
+        // orphan list must not be one of the sources the lookup set is built from.
+        let references = vec![reference(1, 10, "video/a.mp4", None, None)];
+
+        let mut report = empty_report();
+        report.orphan_media_examples = vec!["video/a.mp4".to_string()];
+
+        assert!(media_targets_for_report(&report, &references).is_empty());
+    }
+
+    #[test]
+    fn the_check_reports_disk_state_and_the_targets_for_what_it_named() {
+        let library = unique_test_dir("for-references");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::create_dir_all(library.join("thumbnails")).unwrap();
+        // Referenced and healthy.
+        fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
+        // Referenced by a channel avatar, so it must not be reported as an orphan.
+        fs::write(library.join("thumbnails").join("avatar_10.jpg"), b"img").unwrap();
+
+        let references = vec![
+            reference(1, 10, "video/a.mp4", None, None),
+            // Referenced but not on disk.
+            reference(2, 10, "video/gone.mp4", None, None),
+        ];
+
+        let check = check_library_integrity_for_references(
+            library.to_string_lossy().as_ref(),
+            references,
+            vec!["thumbnails/avatar_10.jpg".to_string()],
+        )
+        .unwrap();
+
+        assert_eq!(check.report.checked_media_files, 2);
+        assert_eq!(check.report.missing_media_files, 1);
+        assert_eq!(check.report.missing_media_examples, vec!["video/gone.mp4"]);
+        assert_eq!(
+            check.report.orphan_thumbnail_files, 0,
+            "an avatar is referenced, so it is not an orphan"
+        );
+
+        assert_eq!(
+            check.media_targets.get("video/gone.mp4"),
+            Some(&DiagnosticsMediaTarget {
+                channel_id: 10,
+                media_id: 2
+            })
+        );
+        assert_eq!(
+            check.media_targets.len(),
+            1,
+            "the healthy media was not reported, so it needs no target"
+        );
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    /// A report with every counter at zero, so a test can set only the field it is about.
+    fn empty_report() -> LibraryIntegrityReport {
+        LibraryIntegrityReport {
+            checked_media_files: 0,
+            missing_media_files: 0,
+            missing_media_examples: Vec::new(),
+            corrupt_media_files: 0,
+            corrupt_media_examples: Vec::new(),
+            checked_thumbnail_files: 0,
+            missing_thumbnail_files: 0,
+            missing_thumbnail_examples: Vec::new(),
+            corrupt_thumbnail_files: 0,
+            corrupt_thumbnail_examples: Vec::new(),
+            orphan_media_files: 0,
+            orphan_media_examples: Vec::new(),
+            orphan_thumbnail_files: 0,
+            orphan_thumbnail_examples: Vec::new(),
+            invalid_media_files: 0,
+            invalid_media_examples: Vec::new(),
+            invalid_thumbnail_files: 0,
+            invalid_thumbnail_examples: Vec::new(),
+            checked_live_chat_files: 0,
+            missing_live_chat_files: 0,
+            missing_live_chat_examples: Vec::new(),
+            corrupt_live_chat_files: 0,
+            corrupt_live_chat_examples: Vec::new(),
+            orphan_live_chat_files: 0,
+            orphan_live_chat_examples: Vec::new(),
+            invalid_live_chat_files: 0,
+            invalid_live_chat_examples: Vec::new(),
+        }
     }
 
     #[test]

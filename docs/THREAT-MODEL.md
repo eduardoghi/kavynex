@@ -215,6 +215,44 @@ Each command has an IPC-level test pinning the refusal
 (`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`), so the exception
 cannot come back by accident.
 
+Two of the three reach the guard through `verify_library_path_then_blocking_in_pool`, which couples
+the check to the work so neither can run without the other. `check_library_integrity` applies
+`ensure_configured_library_path_in_pool` directly instead, and the reason is worth stating rather
+than leaving as an inconsistency to be read as an oversight: it reads the stored paths from the pool
+between the check and the filesystem walk (see below), and that read is async, so it cannot sit
+inside the helper's blocking closure. The ordering is unchanged - the guard still runs before
+anything is read - but what holds it there is that command's IPC test rather than the helper's
+shape. A third command that needs the same structure should get an async-closure variant of the
+helper rather than a second hand-rolled copy.
+
+#### `check_library_integrity` reads the stored paths itself
+
+It used to take three `Vec<String>` alongside `library_path`, holding every media, thumbnail and
+live-chat path the database knows about. The renderer assembled them, which meant it first pulled
+every media row over IPC through a `list_media_integrity_references` command that existed for
+nothing else. So a check whose output is capped at five examples per category cost time and memory
+proportional to the whole library, in both directions, to hand the backend rows it could reach with
+two queries on a pool it already holds.
+
+Both halves are gone: the command takes only `library_path`, and
+`list_media_integrity_references` is no longer registered. Two things follow that belong in this
+document rather than only in the architecture guide.
+
+**It removed this command's unbounded input.** Those three vectors arrived from IPC with no
+ceiling - the only caller-supplied value in the backend without one, against a codebase that caps
+the run id, the comment body, the thumbnail download, the live-chat decompression and the reported
+failure lines. A renderer that sent millions of strings would have had them materialized before any
+validation ran. There is now nothing to bound, which is a better answer than a limit.
+
+**The jump-to-the-media targets are resolved backend-side and stay bounded.** The report's example
+paths are clickable when they name a media whose row still exists, which needs a path-to-row
+mapping. The renderer used to build that from the full row set; `library::integrity::
+media_targets_for_report` builds it from the paths the report actually named, so it holds at most
+the handful of examples the report caps itself at however large the library is. It resolves only
+the missing and corrupt *media* examples - an orphan has no row by definition, and a thumbnail or
+replay path is not something to navigate to - so the map cannot become a way to ask which rows back
+an arbitrary set of paths.
+
 #### The second file-manager command takes no path, which is why it needs no guard
 
 `open_log_directory` (`commands/logging.rs`) reveals the app's log directory in the same file

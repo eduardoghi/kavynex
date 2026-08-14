@@ -457,7 +457,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
 //
 // Regenerate with: node scripts/verify-command-path-surface.js --print
 export const DECLARED_PATH_SURFACE = [
-    { command: "check_library_integrity", parameters: ["library_path", "media_paths", "thumbnail_paths", "live_chat_paths"] },
+    { command: "check_library_integrity", parameters: ["library_path"] },
     { command: "cleanup_unreferenced_media_artifacts", parameters: ["file_path", "thumbnail_path", "live_chat_file_path"] },
     { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"] },
     { command: "delete_live_chat_file", parameters: ["relative_path"] },

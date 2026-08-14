@@ -28,6 +28,27 @@ pub async fn list_channels(pool: &SqlitePool) -> AppResult<Vec<ChannelRow>> {
     .map_err(|error| db_error("failed to list channels", error))
 }
 
+/// Every non-blank channel avatar path.
+///
+/// Read by the library integrity check, which has to count an avatar as a *referenced* thumbnail:
+/// avatars live under `thumbnails/` but are referenced by the channels table rather than by any
+/// media row, so without them an avatar that is not also a media thumbnail would be reported as an
+/// orphan - inviting the user to delete a file the app is still using.
+///
+/// Selects only the column it needs rather than reusing `list_channels`: this runs on every
+/// Diagnostics open, the blank filter is what keeps an empty-string path out of the expected set,
+/// and `idx_channels_avatar_path` can serve it without touching the table.
+pub async fn list_channel_avatar_paths(pool: &SqlitePool) -> AppResult<Vec<String>> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT avatar_path
+         FROM channels
+         WHERE avatar_path IS NOT NULL AND TRIM(avatar_path) <> ''",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| db_error("failed to list channel avatar paths", error))
+}
+
 pub async fn find_channel_by_youtube_handle(
     pool: &SqlitePool,
     youtube_handle: &str,

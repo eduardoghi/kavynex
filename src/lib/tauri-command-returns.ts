@@ -17,8 +17,7 @@ import type {
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type {
     ExternalToolsStatus,
-    LibraryIntegrityReport,
-    MediaIntegrityReference,
+    LibraryIntegrityCheck,
     MediaRepositoryStats,
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
@@ -47,7 +46,9 @@ export type TauriCommandReturns = {
     resolve_existing_directory: string;
     migrate_library_directory: MigrateLibraryDirectoryResult;
     get_library_summary: LibrarySummaryInfo;
-    check_library_integrity: LibraryIntegrityReport;
+    // The report plus the media row behind each path it named. One command rather than two,
+    // because both are answered from one snapshot of the database (see the Rust struct).
+    check_library_integrity: LibraryIntegrityCheck;
     open_path_in_system: void;
 
     // The whole creation, not a step of it: the backend produces the artifacts, records the crash
@@ -109,7 +110,6 @@ export type TauriCommandReturns = {
     update_media_duration: void;
     update_media_progress: void;
     get_media_repository_stats: MediaRepositoryStats;
-    list_media_integrity_references: MediaIntegrityReference[];
 };
 
 // Compile-time proof the map stays in lockstep with the command list: its type is `true` only when

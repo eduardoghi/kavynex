@@ -1,13 +1,15 @@
 use tauri::{AppHandle, Manager, State};
 
+use crate::services::channel_repository;
 use crate::services::database::Db;
 use crate::services::library;
 use crate::services::library::guard::{
-    verify_library_path_then_blocking, verify_library_path_then_blocking_in_pool,
+    ensure_configured_library_path_in_pool, verify_library_path_then_blocking,
+    verify_library_path_then_blocking_in_pool,
 };
-use crate::services::library::integrity::LibraryIntegrityReport;
 use crate::services::library::summary::LibrarySummaryInfo;
 use crate::services::logger;
+use crate::services::video_repository;
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
@@ -191,22 +193,40 @@ pub async fn open_path_in_system(
 /// `/thumbnails` and `/live_chat`. With the path trusted, that made this command a directory
 /// enumerator for any such tree on disk. The names are worth reporting - Diagnostics shows the
 /// user which of their own files are unreferenced - so the fix is the guard, not a poorer report.
+///
+/// **The stored paths are read here rather than sent in.** This command used to take three
+/// `Vec<String>` of every path the database holds, which the renderer assembled by first pulling
+/// every media row over IPC. That made an operation whose output is bounded - five examples per
+/// category - cost time and memory proportional to the whole library, in both directions, on a
+/// round trip that existed only because the resolution lived on the wrong side. The pool is open
+/// here and the rows are two queries away, so nothing was gained by asking. It also removed this
+/// command's one unbounded input: those vectors arrived from IPC with no ceiling, the only
+/// caller-supplied value in the backend without one.
+///
+/// The guard runs before the rows are read, keeping the check-then-act order every other library
+/// command follows. It is applied directly rather than through
+/// `verify_library_path_then_blocking_in_pool`, whose whole point is coupling the check to the
+/// work: the reference read sits between the two and is async, so it cannot go inside that
+/// helper's blocking closure. What holds the guard here instead is
+/// `check_library_integrity_command_rejects_a_path_that_is_not_the_configured_library`, the
+/// IPC-level test that pins the refusal.
 #[tauri::command]
 pub async fn check_library_integrity(
     db: State<'_, Db>,
     library_path: String,
-    media_paths: Vec<String>,
-    thumbnail_paths: Vec<String>,
-    live_chat_paths: Vec<String>,
-) -> AppResult<LibraryIntegrityReport> {
+) -> AppResult<library::integrity::LibraryIntegrityCheck> {
     let pool = db.pool().await?;
 
-    verify_library_path_then_blocking_in_pool(&pool, library_path, move |library_path| {
-        library::integrity::check_library_integrity_sync(
+    ensure_configured_library_path_in_pool(&pool, &library_path).await?;
+
+    let references = video_repository::list_media_integrity_references(&pool).await?;
+    let avatar_paths = channel_repository::list_channel_avatar_paths(&pool).await?;
+
+    run_blocking(move || {
+        library::integrity::check_library_integrity_for_references(
             &library_path,
-            media_paths,
-            thumbnail_paths,
-            live_chat_paths,
+            references,
+            avatar_paths,
         )
     })
     .await
@@ -253,6 +273,51 @@ mod tests {
         db
     }
 
+    /// Seeds the rows `check_library_integrity` now reads for itself: one channel with an avatar,
+    /// one healthy media, one whose file is gone, and a replay path.
+    ///
+    /// Written through the repository rather than through commands, matching how the other IPC
+    /// tests seed since the insert commands were unregistered.
+    fn seed_integrity_rows(db: &Db) {
+        tauri::async_runtime::block_on(async {
+            let pool = db.pool().await.expect("open the in-memory pool");
+
+            let channel_id = crate::services::channel_repository::insert_channel(
+                &pool,
+                "Channel",
+                "@channel",
+                // An avatar under thumbnails/ that no media row references: it must not be
+                // reported as an orphan, which is the case the avatar query exists for.
+                Some("thumbnails/avatar_1.jpg"),
+            )
+            .await
+            .expect("insert the channel");
+
+            for (title, file_path, live_chat) in [
+                ("Healthy", "video/a.mp4", Some("live_chat/a.json.gz")),
+                ("Gone", "video/missing.mp4", None),
+            ] {
+                crate::services::video_repository::insert_media(
+                    &pool,
+                    channel_id,
+                    title,
+                    file_path,
+                    // A thumbnail no file backs, so the missing-thumbnail counter has something
+                    // to report without a second media row.
+                    Some("thumbnails/missing.jpg"),
+                    "video",
+                    None,
+                    None,
+                    None,
+                    false,
+                    live_chat,
+                )
+                .await
+                .expect("insert the media row");
+            }
+        });
+    }
+
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![
@@ -295,44 +360,72 @@ mod tests {
     }
 
     #[test]
-    fn check_library_integrity_command_accepts_camel_case_ipc_payload() {
+    fn check_library_integrity_command_reads_the_stored_paths_itself() {
+        // The command takes only `libraryPath` now: the three path arrays it used to be handed
+        // are read from the pool here instead. Seeding rows and then asserting the counts is what
+        // proves that, since a command that still expected them would report nothing checked.
         let library = unique_test_dir("command-integrity");
         fs::create_dir_all(library.join("video")).unwrap();
         fs::create_dir_all(library.join("live_chat")).unwrap();
+        fs::create_dir_all(library.join("thumbnails")).unwrap();
         fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
-        // Not referenced by the database -> should be reported as an orphan.
+        // Not referenced by any row -> should be reported as an orphan.
         fs::write(library.join("video").join("orphan.mp4"), b"data").unwrap();
         // A referenced live chat file that is present but zero-length -> corrupt.
         fs::write(library.join("live_chat").join("a.json.gz"), b"").unwrap();
+        // Referenced by the channel row rather than by any media row. It is on disk and healthy,
+        // so the only way it can come back as an orphan is if the command failed to read the
+        // avatar paths - which is what makes this the end-to-end check on that query.
+        fs::write(library.join("thumbnails").join("avatar_1.jpg"), b"img").unwrap();
 
-        let webview = test_webview(memory_db_with_library(&library));
+        let db = memory_db_with_library(&library);
+        seed_integrity_rows(&db);
+
+        let webview = test_webview(db);
 
         let response = invoke(
             &webview,
             "check_library_integrity",
-            serde_json::json!({
-                "libraryPath": library.to_string_lossy(),
-                "mediaPaths": ["video/a.mp4", "video/missing.mp4"],
-                "thumbnailPaths": ["thumbnails/missing.jpg"],
-                "liveChatPaths": ["live_chat/a.json.gz"]
-            }),
+            serde_json::json!({ "libraryPath": library.to_string_lossy() }),
         )
         .unwrap()
         .deserialize::<serde_json::Value>()
         .unwrap();
 
-        assert_eq!(response["checked_media_files"], 2);
-        assert_eq!(response["missing_media_files"], 1);
-        assert_eq!(response["checked_thumbnail_files"], 1);
-        assert_eq!(response["missing_thumbnail_files"], 1);
-        assert_eq!(response["orphan_media_files"], 1);
-        assert_eq!(response["orphan_media_examples"][0], "video/orphan.mp4");
-        assert_eq!(response["checked_live_chat_files"], 1);
-        assert_eq!(response["corrupt_live_chat_files"], 1);
+        let report = &response["report"];
+
+        assert_eq!(report["checked_media_files"], 2);
+        assert_eq!(report["missing_media_files"], 1);
+        assert_eq!(report["missing_media_examples"][0], "video/missing.mp4");
+        // The avatar and the (absent) media thumbnail, deduplicated across the two rows sharing it.
+        assert_eq!(report["checked_thumbnail_files"], 2);
+        assert_eq!(report["missing_thumbnail_files"], 1);
         assert_eq!(
-            response["corrupt_live_chat_examples"][0],
+            report["missing_thumbnail_examples"][0],
+            "thumbnails/missing.jpg"
+        );
+        assert_eq!(
+            report["orphan_thumbnail_files"], 0,
+            "the avatar is referenced by the channel row, so it is not an orphan"
+        );
+        assert_eq!(report["orphan_media_files"], 1);
+        assert_eq!(report["orphan_media_examples"][0], "video/orphan.mp4");
+        assert_eq!(report["checked_live_chat_files"], 1);
+        assert_eq!(report["corrupt_live_chat_files"], 1);
+        assert_eq!(
+            report["corrupt_live_chat_examples"][0],
             "live_chat/a.json.gz"
         );
+
+        // The jump-to-the-media targets travel with the report, resolved only for the paths it
+        // named - the whole reason the renderer no longer needs every row.
+        let targets = &response["mediaTargets"];
+        assert!(
+            targets.get("video/a.mp4").is_none(),
+            "a healthy media was not reported, so it needs no target"
+        );
+        assert_eq!(targets["video/missing.mp4"]["mediaId"], 2);
+        assert!(targets["video/missing.mp4"]["channelId"].is_number());
 
         let _ = fs::remove_dir_all(&library);
     }

@@ -1,5 +1,5 @@
 import type { MediaCommentRow } from "../types/media";
-import type { MediaIntegrityReference, MediaRepositoryStats } from "../types/diagnostics";
+import type { MediaRepositoryStats } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
 import type { CreateMediaRequest } from "../types/generated/CreateMediaRequest";
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
@@ -82,8 +82,6 @@ export async function getMediaRepositoryStats(): Promise<MediaRepositoryStats> {
     return invokeCommand(TAURI_COMMANDS.GET_MEDIA_REPOSITORY_STATS);
 }
 
-export async function listMediaIntegrityReferences(): Promise<MediaIntegrityReference[]> {
-    return invokeCommand(
-        TAURI_COMMANDS.LIST_MEDIA_INTEGRITY_REFERENCES
-    );
-}
+// `listMediaIntegrityReferences` lived here until the integrity check stopped needing the renderer
+// to assemble its inputs. Its only caller built three arrays of every stored path out of the rows
+// and sent them straight back to the backend, which reads them from the pool itself now.

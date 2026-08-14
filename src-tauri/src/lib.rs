@@ -598,8 +598,7 @@ pub fn run() {
             commands::videos::mark_media_as_unwatched,
             commands::videos::update_media_duration,
             commands::videos::update_media_progress,
-            commands::videos::get_media_repository_stats,
-            commands::videos::list_media_integrity_references
+            commands::videos::get_media_repository_stats
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|error| fail_startup(&format!("failed to build the application: {error}")))

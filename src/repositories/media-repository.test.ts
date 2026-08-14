@@ -7,7 +7,6 @@ import {
     deleteMediaWithArtifacts,
     getMediaRepositoryStats,
     listMediaCommentsByMediaId,
-    listMediaIntegrityReferences,
     markMediaAsUnwatched,
     markMediaAsWatched,
     updateMediaDuration,
@@ -173,13 +172,4 @@ describe("media-repository command wiring", () => {
         expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.GET_MEDIA_REPOSITORY_STATS);
     });
 
-    it("listMediaIntegrityReferences invokes the references command", async () => {
-        const refs = [{ id: 1 }];
-        invokeCommandMock.mockResolvedValueOnce(refs as never);
-
-        await expect(listMediaIntegrityReferences()).resolves.toBe(refs);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.LIST_MEDIA_INTEGRITY_REFERENCES
-        );
-    });
 });

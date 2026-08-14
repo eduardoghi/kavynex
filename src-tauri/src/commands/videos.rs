@@ -5,7 +5,7 @@ use crate::services::library;
 use crate::services::library::cleanup::ArtifactCleanupReport;
 use crate::services::video_repository as repo;
 use crate::services::video_repository::{
-    MediaCommentRow, MediaIntegrityReference, MediaPage, MediaPageQuery, MediaRepositoryStats,
+    MediaCommentRow, MediaPage, MediaPageQuery, MediaRepositoryStats,
 };
 use crate::utils::validation::ensure_valid_media_title;
 use crate::AppResult;
@@ -125,13 +125,11 @@ pub async fn get_media_repository_stats(db: State<'_, Db>) -> AppResult<MediaRep
     repo::get_media_repository_stats(&pool).await
 }
 
-#[tauri::command]
-pub async fn list_media_integrity_references(
-    db: State<'_, Db>,
-) -> AppResult<Vec<MediaIntegrityReference>> {
-    let pool = db.pool().await?;
-    repo::list_media_integrity_references(&pool).await
-}
+// `list_media_integrity_references` is deliberately not a command. It existed so the renderer
+// could assemble the path lists `check_library_integrity` used to take, and that resolution moved
+// into that command - which holds the same pool and is the only caller. Re-exposing it would put
+// every stored path back on the IPC surface for a step rather than an operation, which is the rule
+// `create_media` established when the creation sequence stopped being seven calls.
 
 #[cfg(test)]
 mod tests {
@@ -154,8 +152,7 @@ mod tests {
                 mark_media_as_unwatched,
                 update_media_progress,
                 list_media_comments_by_media_id,
-                get_media_repository_stats,
-                list_media_integrity_references
+                get_media_repository_stats
             ])
             .build(mock_context(noop_assets()))
             .unwrap();
@@ -381,24 +378,8 @@ mod tests {
         assert_eq!(stats["total_audio_media"], 0);
     }
 
-    #[test]
-    fn list_media_integrity_references_returns_the_stored_file_paths_over_ipc() {
-        let webview = test_webview(memory_db());
-        let channel_id = seed_channel(&webview);
-        insert_media_row(&webview, channel_id, "video/media_x.mp4");
-
-        let references = invoke(
-            &webview,
-            "list_media_integrity_references",
-            serde_json::json!({}),
-        )
-        .unwrap()
-        .deserialize::<serde_json::Value>()
-        .unwrap();
-
-        let references = references.as_array().unwrap();
-        assert_eq!(references.len(), 1);
-        assert_eq!(references[0]["file_path"], "video/media_x.mp4");
-        assert_eq!(references[0]["channel_id"], channel_id);
-    }
+    // The IPC test for `list_media_integrity_references` went with the command. What it asserted -
+    // that the query returns the stored paths and the channel each belongs to - is covered by
+    // `services::video_repository`'s own test, which drives the function directly, and the shape
+    // the integrity check needs out of it is pinned in `library::integrity`.
 }

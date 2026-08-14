@@ -78,7 +78,9 @@ export const TAURI_COMMANDS = {
     UPDATE_MEDIA_DURATION: "update_media_duration",
     UPDATE_MEDIA_PROGRESS: "update_media_progress",
     GET_MEDIA_REPOSITORY_STATS: "get_media_repository_stats",
-    LIST_MEDIA_INTEGRITY_REFERENCES: "list_media_integrity_references",
+    // `list_media_integrity_references` was here until the integrity check stopped needing the
+    // renderer to assemble its inputs. It only ever fed CHECK_LIBRARY_INTEGRITY, which reads the
+    // same rows from the pool it already holds.
 } as const;
 
 export type TauriCommandName =
