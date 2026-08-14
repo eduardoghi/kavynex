@@ -5,7 +5,7 @@
 //! `yt_dlp/download/redaction.rs` each became one: this is security logic worth putting under the
 //! mutation gate (`src-tauri/.cargo/mutants.toml`), and its previous home cannot be. `thumbnail/temp.rs`
 //! spawns FFmpeg and drains its pipes, which a measured pass showed produces fifteen mutants no unit
-//! test can kill - a deadline comparison, a byte cap on a pipe, the exit-status checks. Adding that
+//! test can kill. A deadline comparison, a byte cap on a pipe, the exit-status checks. Adding that
 //! whole file to the gate would mean six exclusions and a permanently noisy run; extracting the part
 //! that decides whether a caller-supplied path is allowed through costs one small module.
 //!
@@ -14,7 +14,7 @@
 //!
 //! Measured before the glob entry was added (2026-07-30, `--in-place --no-config --file`): 8
 //! mutants, 4 caught, 4 unviable, 0 missed. The same pass over the whole of `temp.rs` reported 86
-//! mutants with 15 missed, all of them in the FFmpeg and pipe-draining code - which is the
+//! mutants with 15 missed, all of them in the FFmpeg and pipe-draining code, which is the
 //! measurement that decided this extraction rather than a widened glob.
 
 use std::path::PathBuf;
@@ -78,7 +78,7 @@ pub(crate) fn validate_picked_thumbnail_path(path: &str) -> AppResult<PathBuf> {
 ///
 /// A distinct prefix from `temp.rs`'s `temporary_thumbnail_file_name` so the two producers sharing
 /// that directory can never name the same file, and the source's own extension rather than
-/// `THUMBNAIL_OUTPUT_FORMAT` because the staged copy is byte-identical to what the user picked -
+/// `THUMBNAIL_OUTPUT_FORMAT` because the staged copy is byte-identical to what the user picked.
 /// naming a PNG `.jpg` would make the extension disagree with the bytes, and the persist step
 /// downstream derives the stored name from this one.
 ///
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn a_directory_with_an_image_name_is_rejected() {
-        // A directory named like an image must not be staged - only regular files are.
+        // A directory named like an image must not be staged, only regular files are.
         let dir = unique_test_dir();
         let fake = dir.join("thumb.png");
         fs::create_dir_all(&fake).unwrap();
@@ -169,7 +169,7 @@ mod tests {
             fs::write(&file, b"\x89PNG\r\n").unwrap();
 
             // Padded input: the returned path is what the copy will read, so it has to be the
-            // trimmed one - the same single-path invariant the database export/import gates pin.
+            // trimmed one. The same single-path invariant the database export/import gates pin.
             let padded = format!("   {}   ", file.to_string_lossy());
             let accepted = validate_picked_thumbnail_path(&padded)
                 .unwrap_or_else(|error| panic!("{name} should be accepted: {error}"));
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn a_staged_name_carries_the_source_extension_under_its_own_prefix() {
         // Two producers share the preview directory. The prefixes have to differ, or a generated
-        // preview and a picked image could name the same file - and the extension has to be the
+        // preview and a picked image could name the same file, and the extension has to be the
         // source's, because the staged copy is byte-identical and the persist step downstream names
         // the stored file from this one.
         let hash = "a".repeat(64);

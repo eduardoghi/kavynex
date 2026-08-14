@@ -65,7 +65,7 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
 /// The cost of that is worth stating, because it is a real one rather than a theoretical one: on
 /// Unix `\` is an ordinary filename character, so a file legitimately named `my\clip.mp4` is
 /// logged as `clip.mp4`. That is over-redaction, which is the direction this function is allowed
-/// to be wrong in - the alternative is a platform-conditional split that leaves a Windows-synced
+/// to be wrong in. The alternative is a platform-conditional split that leaves a Windows-synced
 /// path whole on Unix, i.e. exactly the username leak the whole function exists to prevent.
 /// Treating the ambiguous case as a separator therefore loses a little diagnostic detail on a rare
 /// name and never leaks; the other way round would leak on a common one.
@@ -111,8 +111,8 @@ fn write(level: &str, scope: &str, message: &str) {
     };
 
     // The file write (rotation check + append under a mutex) is blocking disk I/O. When this
-    // runs inside the async runtime - which is most log calls, since services log from async
-    // commands and background tasks - hand it to the blocking pool so a log line never stalls
+    // runs inside the async runtime (which is most log calls, since services log from async
+    // commands and background tasks), hand it to the blocking pool so a log line never stalls
     // a Tokio worker thread on a slow disk. Fire-and-forget is acceptable: logging is
     // best-effort and every line carries its own timestamp, so a slight reordering between
     // concurrent writers is harmless. Outside the runtime (Tauri's synchronous setup hook, the
@@ -159,7 +159,7 @@ mod tests {
     fn timestamp_string_is_a_readable_utc_rfc3339_timestamp() {
         let timestamp = timestamp_string();
 
-        // e.g. "2026-07-06T12:34:56Z" - readable in a bug report, unlike raw epoch seconds.
+        // e.g. "2026-07-06T12:34:56Z". Readable in a bug report, unlike raw epoch seconds.
         assert!(timestamp.ends_with('Z'), "{timestamp} should end with Z");
         assert!(timestamp.contains('T'), "{timestamp} should contain T");
         assert_eq!(timestamp.len(), "2026-07-06T12:34:56Z".len());
@@ -223,7 +223,7 @@ mod tests {
         // The accepted cost of splitting on both separators everywhere, pinned so it reads as a
         // decision rather than as an oversight: on Unix this name is one file, and it is redacted
         // as though it were two segments. Over-redaction is the direction this is allowed to be
-        // wrong in - making the split platform-conditional would leave a Windows-synced path whole
+        // wrong in, making the split platform-conditional would leave a Windows-synced path whole
         // on Unix, which is the username leak the function exists to prevent. A change that
         // "fixed" this case has to delete this test first.
         assert_eq!(redact_path("/home/alice/my\\clip.mp4"), "clip.mp4");

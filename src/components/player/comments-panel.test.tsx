@@ -144,7 +144,7 @@ describe("CommentsPanel", () => {
     });
 
     it("shows every match when searching, past the browse thread cap and with no load-more", () => {
-        // 35 matching top-level threads - more than the browse view's 30-thread cap. Search must
+        // 35 matching top-level threads. More than the browse view's 30-thread cap. Search must
         // surface all of them (the point of searching the whole comment set), so the 35th is present
         // and there is no "load more" gate; the virtualized results list is what makes rendering all
         // of them safe.

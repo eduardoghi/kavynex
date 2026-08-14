@@ -10,7 +10,7 @@ import {
 } from "./live-chat-message-content";
 
 // Super Chat / Super Sticker (a paid, colored message card). The sticker image is a remote load,
-// so it goes through RemoteImage, which owns the privacy gate - this component no longer takes a
+// so it goes through RemoteImage, which owns the privacy gate. This component no longer takes a
 // `remoteImagesEnabled` prop, and therefore cannot be rendered with the wrong one.
 export function SuperChatMessage({
     message,

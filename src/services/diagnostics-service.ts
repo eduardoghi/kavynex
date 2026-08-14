@@ -149,7 +149,7 @@ const DIAGNOSTIC_CHECKS = [
 
 // A rejected sub-check is replaced by its zeroed default so the rest of the report can still
 // render. On its own that would make the failed dimension read as "healthy" (0 missing, 0
-// orphan, ...). Turn each failure into a warning issue - and log the underlying reason - so the
+// orphan, ...). Turn each failure into a warning issue (and log the underlying reason), so the
 // overview stops showing a false all-clear and the user is told the report is incomplete.
 function collectCheckFailureIssues(
     settled: readonly PromiseSettledResult<unknown>[]

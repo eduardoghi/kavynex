@@ -16,8 +16,8 @@ import { useMemoObject } from "../use-memo-object";
 // Kept in step with `shared/media-page-size.json`, which the display-thumbnail command sizes its
 // per-call budgets from (MAX_GENERATIONS_PER_CALL / MAX_RESOLVED_PER_CALL in
 // src-tauri/src/services/thumbnail/display.rs). Both sides assert against that file, so raising this
-// without raising the budget - which is how a budget of 64 ended up serving a page of 100, leaving
-// 36 cards of a first-visited channel without a derivative - fails a test on each side.
+// without raising the budget (which is how a budget of 64 ended up serving a page of 100, leaving
+// 36 cards of a first-visited channel without a derivative), fails a test on each side.
 const MEDIA_PAGE_SIZE = 100;
 
 type UseChannelMediaListOptions = {
@@ -30,7 +30,7 @@ type UseChannelMediaListReturn = {
     // Rows matching the current filters across the whole channel, not just the loaded pages.
     total: number;
     // Rows in the channel with no filter applied (for the "N items" header). Captured whenever a
-    // load runs unfiltered, which - because filters reset per channel - is always the first load.
+    // load runs unfiltered, which (because filters reset per channel) is always the first load.
     channelTotal: number;
     hasMore: boolean;
     isLoadingMedia: boolean;
@@ -75,10 +75,10 @@ export function useChannelMediaList({
     // cursor, and it is deliberately *not* `mediaItems.length`.
     //
     // The two were the same value until an append could drop a row. `list_media_page` windows with
-    // OFFSET, so the offset means "skip this many rows of the current sort" - and every ORDER BY in
+    // OFFSET, so the offset means "skip this many rows of the current sort", and every ORDER BY in
     // `resolve_order_by` tie-breaks on `title_normalized`, so renaming a media moves it within any
     // sort category, not only the title one. `editTitle` updates the row in place without reloading
-    // (correctly - a rename should not throw away the pages the user scrolled), so the loaded list
+    // (correctly. A rename should not throw away the pages the user scrolled), so the loaded list
     // and the backend's sorted set can disagree about which rows come first, and the next page can
     // repeat a row already on screen.
     //
@@ -88,8 +88,8 @@ export function useChannelMediaList({
     // every scroll to the bottom. Counting what the backend *returned* keeps the cursor advancing
     // whatever the append decides to keep.
     //
-    // The other half of the same shift - a row moving from *after* the window to before it, and
-    // being skipped - is closed by `handleItemReordered` below rather than by keyset pagination,
+    // The other half of the same shift (a row moving from *after* the window to before it, and
+    // being skipped) is closed by `handleItemReordered` below rather than by keyset pagination,
     // which the mixed-direction clauses cannot express as a single row-value comparison anyway
     // (`publication_date` sorts its group key ASC and its date DESC).
     const selectedChannelIdRef = useRef(selectedChannelId);
@@ -98,7 +98,7 @@ export function useChannelMediaList({
 
     // Track the selected channel synchronously during render, not in an effect. On a channel
     // switch the library section is remounted, and a child's mount effect (its applyQuery call)
-    // runs before this hook's own effects flush - so an effect-updated ref would still hold the
+    // runs before this hook's own effects flush, so an effect-updated ref would still hold the
     // previous channel and load the wrong channel's first page. Writing it during render keeps it
     // current for any effect that fires afterwards.
     selectedChannelIdRef.current = selectedChannelId;
@@ -233,13 +233,13 @@ export function useChannelMediaList({
             }
 
             // The cursor advances by what the backend returned, before the append decides what to
-            // keep - see `loadedCountRef`. Doing it the other way round makes a page whose rows were
+            // keep. See `loadedCountRef`. Doing it the other way round makes a page whose rows were
             // all dropped as duplicates re-request the same offset on every scroll.
             setLoadedRows(offset + page.items.length);
 
             // Append only the rows this list does not already hold. A row can arrive twice when the
             // sort key of an already-loaded row changed under the window (a rename moves a media in
-            // every sort category, since they all tie-break on the title), and the grid keys by id -
+            // every sort category, since they all tie-break on the title), and the grid keys by id.
             // so a repeat is a duplicate React key and a card shown twice, not a cosmetic blemish.
             setMediaItems((current) => {
                 const loadedIds = new Set(current.map((item) => item.id));
@@ -294,14 +294,14 @@ export function useChannelMediaList({
     // renamed row sits at some position P inside the loaded window. If its new position Q is still
     // inside, nothing crossed the boundary. If Q is at or past the cursor, every row between them
     // shifts down by one, so the row that was first on the *next* page moves onto the last slot of
-    // this one - a row this list does not hold, at an offset `loadMore` has already passed. Exactly
+    // this one. A row this list does not hold, at an offset `loadMore` has already passed. Exactly
     // one row moves that way per edit, so exactly one position has to be given back.
     //
     // What makes this cheap is that the correction costs nothing when it was not needed: refetching
     // one position earlier either returns the displaced row (kept) or a row already loaded (dropped
     // by the append's own dedup), and the cursor advances by what the backend returned either way,
     // so it cannot stall. That is the same machinery the dedup already rests on, used from the other
-    // end - and it is why this is a subtraction here rather than keyset pagination, or a refetch of
+    // end, and it is why this is a subtraction here rather than keyset pagination, or a refetch of
     // the whole scrolled window, which would throw away the pages a rename should not cost.
     //
     // Deliberately also allowed to raise `hasMore` from false: a channel whose last page held the

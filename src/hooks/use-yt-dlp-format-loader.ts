@@ -61,7 +61,7 @@ export function useYtDlpFormatLoader({
     const isLoadingRef = useRef(false);
 
     // Guards against a stale format response overwriting state after the URL changed (or was
-    // reset) while yt-dlp was running - otherwise the formats/selection for an old URL could
+    // reset) while yt-dlp was running. Otherwise the formats/selection for an old URL could
     // repopulate over the current one, and that selection feeds the real download command.
     const requestGuard = useRequestGuard();
 
@@ -213,7 +213,7 @@ export function useYtDlpFormatLoader({
 
             // resolveErrorMessage already folds the structured `details` into the message for a
             // catalogued/known backend code, but drops them when the message degrades to the
-            // generic fallback above. Surface the details in that fallback case only - the
+            // generic fallback above. Surface the details in that fallback case only. The
             // `includes` guard keeps them from being appended a second time when the pipeline
             // already added them (which previously duplicated the details block in the terminal).
             const { details } = parseAppError(error);

@@ -1,5 +1,5 @@
 // The live chat replay parser: one line of yt-dlp's JSON output in, the compact messages the player
-// renders out. Nothing here touches IPC, the filesystem or React - it is a pure function of a string.
+// renders out. Nothing here touches IPC, the filesystem or React. It is a pure function of a string.
 //
 // It lives apart from `live-chat-service.ts` for the same reason `services::ssrf_guard` and
 // `services::thumbnail::redirect` live apart from the code that calls them on the Rust side: this is
@@ -486,7 +486,7 @@ function buildPinnedBanner(
  * It **throws** on a line that is not parseable JSON, and that is the contract rather than an
  * oversight: the caller (`live-chat-service`'s `readLiveChatMessagesFromFile`) counts those and warns
  * once with the total, because a line that fails to parse is a corrupt file or a format drift, which
- * is worth reporting - while a well-formed line carrying nothing displayable is the ordinary case
+ * is worth reporting, while a well-formed line carrying nothing displayable is the ordinary case
  * and returns an empty array. Collapsing the two would either lose that signal or turn every
  * heartbeat into a warning.
  */

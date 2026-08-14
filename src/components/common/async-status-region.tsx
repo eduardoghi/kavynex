@@ -15,7 +15,7 @@ type AsyncStatusRegionProps = {
 // loading/error rendering are defined once and cannot drift between the two panels.
 //
 // Children are rendered unconditionally after the loading/error blocks, so each panel keeps its
-// own exact showing conditions - one of them (the comments "fetch comments" action) is shown even
+// own exact showing conditions, one of them (the comments "fetch comments" action) is shown even
 // when an error is present, so this shell must not gate children on `!error`.
 export function AsyncStatusRegion({
     loading,

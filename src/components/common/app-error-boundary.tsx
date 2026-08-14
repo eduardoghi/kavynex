@@ -83,8 +83,8 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
                 {this.state.error.message.trim() && (
                     // A caught render error is a raw JS Error (TypeError, etc.), not a
                     // catalogued AppError, so there is no friendly copy to resolve it to.
-                    // Label it as a technical detail - mirroring the app's "Details:"
-                    // convention - so it reads as diagnostic text rather than an instruction.
+                    // Label it as a technical detail (mirroring the app's "Details:"
+                    // convention), so it reads as diagnostic text rather than an instruction.
                     <p style={detailStyle}>
                         Technical details: {this.state.error.message}
                     </p>

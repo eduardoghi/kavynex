@@ -27,7 +27,7 @@ type PlayerMediaHeaderProps = {
     // the only thing that catches that.
     isLive: boolean;
     isRefreshingComments?: boolean;
-    // True while this media's own watched/unwatched toggle is in flight - mirrors
+    // True while this media's own watched/unwatched toggle is in flight. Mirrors
     // isRefreshingComments so the buttons below show the same loading feedback pattern as the
     // Refresh comments button.
     isUpdatingWatchedStatus?: boolean;

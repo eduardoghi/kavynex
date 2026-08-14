@@ -509,8 +509,8 @@ describe("useHomePlayerActions", () => {
         });
 
         it("delegates to the media-library refresh with the active media", async () => {
-            // The refresh rule itself - result handling, the neutral "kept your comments"
-            // notice, the concurrency flag, and the media-list/active-media updates - lives in
+            // The refresh rule itself (result handling, the neutral "kept your comments"
+            // notice, the concurrency flag, and the media-list/active-media updates), lives in
             // and is tested through the media-library action. The player only adapts it to the
             // active media, so there is a single implementation of that rule.
             const activeMedia = createMediaRow({ youtube_video_id: "yt-123" });

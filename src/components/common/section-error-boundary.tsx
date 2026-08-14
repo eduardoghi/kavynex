@@ -11,7 +11,7 @@ type SectionErrorBoundaryProps = {
     title: string;
     description: string;
     // When any value here changes, the boundary clears a previously caught error and retries
-    // rendering its children - so, for example, switching to another media re-arms a player
+    // rendering its children, so, for example, switching to another media re-arms a player
     // that crashed on the previous one instead of staying stuck on the fallback.
     resetKeys?: ReadonlyArray<unknown>;
     // Optional extra action shown next to "Try again" (e.g. "Close player"). The label is only
@@ -43,7 +43,7 @@ function resetKeysChanged(
 // Isolates a render crash to one subtree instead of unmounting the whole app to the root
 // AppErrorBoundary. Unlike that boundary (which renders above MantineProvider and must use
 // plain elements), this one lives inside the provider, so it degrades to an inline Mantine
-// card and leaves the rest of the app - sidebar, library, modals - fully usable.
+// card and leaves the rest of the app (sidebar, library, modals), fully usable.
 export class SectionErrorBoundary extends Component<
     SectionErrorBoundaryProps,
     SectionErrorBoundaryState

@@ -98,8 +98,8 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // without a separate sort step. Its original caller (the unpaginated list_media_by_channel)
     // was removed; the paginated list_media_page sorts include title_normalized and are served by
     // the composite indexes below, not this one. Kept because dropping it entangles the v8
-    // migration identity and its dedicated idempotency test - a standalone cleanup, not part of
-    // removing that caller - and it still fits any future newest-first-only listing.
+    // migration identity and its dedicated idempotency test (a standalone cleanup, not part of
+    // removing that caller), and it still fits any future newest-first-only listing.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)"),
     // Serves the title-sorted page of a channel's media (the paginated library list ordering by
     // title_normalized within a channel), so that sort does not filesort the whole channel.
@@ -107,7 +107,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // One index per `list_media_page` sort category, each mirroring that category's ORDER BY
     // exactly (see video_repository::resolve_order_by). SQLite only walks an index in ORDER BY
     // order when the leading terms match term for term, so `duration` and `publication_date`
-    // must index the same COALESCE/CASE *expressions* the clause sorts on - a plain index on
+    // must index the same COALESCE/CASE *expressions* the clause sorts on. A plain index on
     // duration_seconds or published_at is never used by those queries. Measured with EXPLAIN
     // QUERY PLAN: without these, every one of these sorts falls back to idx_videos_channel_id
     // and re-sorts the channel's whole matching set on each page.
@@ -119,7 +119,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // desc keeps the dated-first group key ASC and the title tie-break ASC while reversing only
     // the date. SQLite can walk an index forwards or backwards, but not partly each way, so the
     // all-ASC index above serves only the leading group key for desc and sorts the remaining
-    // three terms - and desc is the grid's default view, i.e. the hottest query in the app.
+    // three terms, and desc is the grid's default view, i.e. the hottest query in the app.
     // The term directions here mirror that clause exactly.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_desc ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) DESC, title_normalized ASC)"),
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
@@ -149,15 +149,15 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
 // The partial UNIQUE index enforcing "no duplicate (video_id, comment_id)". Deliberately kept OUT
 // of INDEX_DDLS: unlike every other index there, building it can fail on real data. A database
 // created before this invariant lived in the schema (v10) may already hold a duplicate the unique
-// build rejects, so it must be created only by apply_migration_10 - which collapses duplicates
-// first - and never by the baseline / index-only loops that run before v10. apply_baseline_schema's
+// build rejects, so it must be created only by apply_migration_10 (which collapses duplicates
+// first), and never by the baseline / index-only loops that run before v10. apply_baseline_schema's
 // loop runs for every legacy database (user_version below the baseline), so keeping this index in
 // INDEX_DDLS made the baseline try to build it against un-deduped rows: the build failed, the whole
 // baseline transaction rolled back, and the database was left permanently unopenable, with the
 // migration meant to dedupe it never reached. Partial so the many replies yt-dlp leaves without an
 // id (comment_id NULL/blank) stay legitimately distinct rows, mirroring
 // idx_videos_channel_youtube_video_id_unique (which is safe in INDEX_DDLS because it predates any
-// data that could violate it - there is no later migration that first had to dedupe videos).
+// data that could violate it. There is no later migration that first had to dedupe videos).
 pub(super) const COMMENT_UNIQUE_INDEX_TABLE: &str = "video_comments";
 pub(super) const COMMENT_UNIQUE_INDEX_DDL: &str = "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''";
 
@@ -193,7 +193,7 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
     // against and the title sort orders by. A NULL there is invisible rather than loud: `LIKE`
     // never matches it, so the media silently disappears from every title search while still
     // sitting in the library. insert_media and update_media_title both derive it from the same
-    // title, so the write path cannot produce a NULL - these keep an out-of-band writer from
+    // title, so the write path cannot produce a NULL. These keep an out-of-band writer from
     // introducing one. The column itself stays nullable: it is added to pre-v11 databases by
     // ALTER TABLE, which cannot add a NOT NULL column without inventing a default for the rows
     // already there, and v11 is what backfills them.

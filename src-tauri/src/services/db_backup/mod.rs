@@ -4,15 +4,15 @@
 //! What lives here is the machinery more than one of those needs, and nothing else. Each of the
 //! four is a submodule of its own, split off as the file outgrew itself:
 //!
-//! - `snapshot.rs` - the automatic `.bak` family and the status report over it.
-//! - `restore.rs` - restoring from one, and finishing a restore a crash interrupted.
-//! - `import.rs` - staging a user-selected database and applying it at the next startup.
-//! - `external.rs` - the user-triggered export and the once-a-day off-volume mirror.
-//! - `integrity.rs` - the throttled full `PRAGMA integrity_check`.
+//! - `snapshot.rs`: the automatic `.bak` family and the status report over it.
+//! - `restore.rs`: restoring from one, and finishing a restore a crash interrupted.
+//! - `import.rs`: staging a user-selected database and applying it at the next startup.
+//! - `external.rs`: the user-triggered export and the once-a-day off-volume mirror.
+//! - `integrity.rs`: the throttled full `PRAGMA integrity_check`.
 //!
 //! Most of the tests for all of them are still in this file's `mod tests`, and one reason for that
 //! is genuine while the other was not. The genuine one: many exercise more than one of the machines
-//! together - a snapshot taken, the database corrupted, the restore checked - which is the behavior
+//! together (a snapshot taken, the database corrupted, the restore checked), which is the behavior
 //! worth pinning and would have to be duplicated or arbitrarily assigned if it were split along the
 //! same line as the code.
 //!
@@ -36,7 +36,7 @@ use crate::{AppError, AppResult};
 use crate::AppErrorCode;
 
 // Serializes `backup_database` so at most one snapshot runs at a time. Two independent schedulers
-// drive it - the pool-init snapshot (services::database) and the periodic loop (lib.rs) - and the
+// drive it (the pool-init snapshot (services::database) and the periodic loop (lib.rs)), and the
 // is_recent() throttle is mtime-based, so it only suppresses a second call once the first has
 // finished and refreshed `.bak`. While the first is still vacuuming, a second would pass is_recent()
 // too and race it on the shared `.bak.tmp` and the rotate/rename chain, at worst promoting a
@@ -58,7 +58,7 @@ fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
 
 /// Shifts a rotated snapshot family up by one generation, dropping the oldest, so a fresh file
 /// can be promoted into generation 0 without discarding the previous ones: generation `N` is
-/// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort - a
+/// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort. A
 /// generation that cannot be moved is left where it is rather than failing the caller.
 ///
 /// Shared by the `.bak`, `.corrupt` and external-mirror families, which is why it takes the
@@ -77,7 +77,7 @@ fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, us
         // file on Windows). It has to come *after* the first attempt rather than before it:
         // clearing the target up front and then failing to rename into it leaves the snapshot
         // sitting in `source`, which the next iteration's removal would then delete without it
-        // ever having been copied anywhere - silently costing a generation.
+        // ever having been copied anywhere. Silently costing a generation.
         if std::fs::rename(&source, &target).is_ok() {
             continue;
         }
@@ -87,7 +87,7 @@ fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, us
         if std::fs::rename(&source, &target).is_err() {
             // Stop instead of shifting the generations below into a slot this one still holds.
             // Rotation is best effort, so a generation that cannot be promoted is left where it
-            // is - but letting the loop continue would have generation N-1 overwrite it.
+            // is, but letting the loop continue would have generation N-1 overwrite it.
             logger::warn(
                 "db_backup",
                 format!(
@@ -119,7 +119,7 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
     //
     // It is deliberately *not* opened with `query_only`/`read_only` even though it never
     // mutates the source: SQLite requires a writable connection for `VACUUM INTO` (it fails
-    // with "attempt to write a readonly database" otherwise). Concurrency is still safe - the
+    // with "attempt to write a readonly database" otherwise). Concurrency is still safe. The
     // main pool runs in WAL mode, where the read snapshot `VACUUM INTO` holds does not block
     // the writer, so the once-a-day background snapshot cannot starve a concurrent write.
 
@@ -132,7 +132,7 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
 
 /// True when `modified` is within `min_interval_secs` of `now`. Extracted as a pure function so the
 /// backward-clock branch can be tested without setting a file mtime into the future. A `modified`
-/// timestamp in the future relative to `now` (the system clock moved backward - an NTP correction,
+/// timestamp in the future relative to `now` (the system clock moved backward. An NTP correction,
 /// RTC drift) is treated as recent, so a backward clock cannot defeat the once-a-day throttle shared
 /// by backup_database, the external mirror and the integrity check and trigger a burst of spurious
 /// runs. Worst case is one skipped run until the clock catches back up, never data loss.
@@ -163,7 +163,7 @@ async fn is_healthy(pool: &SqlitePool) -> bool {
 
 /// Escapes a value for embedding as a single-quoted SQLite string literal by doubling every
 /// `'`. This is the ONE place in the whole database layer where non-constant, externally
-/// influenced data (the `VACUUM INTO` destination - a user-chosen export path, or the internal
+/// influenced data (the `VACUUM INTO` destination. A user-chosen export path, or the internal
 /// temp/backup path) is assembled into raw SQL text rather than bound as a `?` parameter, and it
 /// only exists because `VACUUM INTO` is a statement SQLite does not let you parameterize. Every
 /// other query in the codebase uses `.bind(...)`. If this function is ever changed, the doubling
@@ -201,9 +201,9 @@ fn total_size_bytes(paths: &[PathBuf]) -> u64 {
 /// `docs/DIRECTORIES.md` documents the same set for the user.
 ///
 /// It lives here rather than in any one submodule because it is the only thing that has to know
-/// about all of them at once - which is also why the split left it behind.
+/// about all of them at once (which is also why the split left it behind.
 ///
-/// Deliberately pure - it names paths without touching the filesystem, so the set is pinned by a
+/// Deliberately pure), it names paths without touching the filesystem, so the set is pinned by a
 /// test rather than by whatever happens to exist on the machine running it. That matters because
 /// the whole point of summing these is that the number is *complete*: a file this module starts
 /// writing later and forgets to add here does not report as an error, it silently stops being
@@ -270,7 +270,7 @@ async fn database_schema_version(db_path: &Path) -> Option<i64> {
 /// Whether opening the database will run a schema migration: true when the file is missing
 /// (the schema is created on first open) or its `user_version` is below the version this
 /// build ships. Callers use this to decide whether the pre-migration snapshot must block
-/// startup - only when a migration will actually run - or can be deferred to the background.
+/// startup (only when a migration will actually run), or can be deferred to the background.
 /// When the database cannot be inspected, a migration is assumed pending so the safety
 /// snapshot is still taken.
 pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
@@ -317,7 +317,7 @@ pub use integrity::{
 };
 // The integrity tests now live in `integrity.rs` itself, so the `#[cfg(test)] use` that used to
 // pull `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them is gone with
-// them - which is the point of the move: an internal a submodule's own tests reach no longer has
+// them, which is the point of the move: an internal a submodule's own tests reach no longer has
 // to be visible to its parent.
 
 // The user-triggered export and the once-a-day external mirror live in the `external` submodule.
@@ -433,7 +433,7 @@ mod tests {
         // in-progress lock, exactly one call writes the snapshot and the other, once it acquires
         // the lock, sees the fresh `.bak` via is_recent and skips. Without the lock both would pass
         // is_recent (neither `.bak` written yet) and fight over the shared `.bak.tmp`, so both would
-        // return true - which this asserts against.
+        // return true, which this asserts against.
         let dir = temp_dir("concurrent");
         let db = dir.join("kavynex.db");
         seed_db(&db).await;
@@ -703,7 +703,7 @@ mod tests {
         let missing = dir.join("never-written.bin");
 
         // A missing generation is the normal case, and a directory sharing a managed name must
-        // never contribute its metadata size - both count as zero, so only the real file's bytes
+        // never contribute its metadata size, both count as zero, so only the real file's bytes
         // are reported.
         assert_eq!(
             total_size_bytes(&[present.clone(), subdir, missing]),
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn rotation_stops_instead_of_overwriting_a_generation_it_could_not_promote() {
         // Rotation walks the generations oldest-first, promoting each into the slot above it. A
-        // promotion that fails leaves that snapshot still sitting in its own slot - so carrying on
+        // promotion that fails leaves that snapshot still sitting in its own slot, so carrying on
         // to the next generation would rename the one below straight over it, destroying a snapshot
         // that was never copied anywhere. Stopping is what keeps a failed promotion cost-free.
         let dir = temp_dir("rotate-blocked-generation");
@@ -939,7 +939,7 @@ mod tests {
         assert_eq!(read_single_value(&db).await, "hello");
 
         // A staging file left over while the database is present must not clobber the live
-        // database - only the "database missing" state is the interrupted one.
+        // database, only the "database missing" state is the interrupted one.
         std::fs::write(restore_staging_path(&db), b"not a database").unwrap();
         assert!(!resume_interrupted_restore(&db).unwrap());
         assert_eq!(read_single_value(&db).await, "hello");
@@ -970,8 +970,8 @@ mod tests {
 
         // The interrupted run left `.pre-import` holding the *only* copy of the previous
         // database (the move-aside above is a rename, not a copy). Applying the staged import
-        // must not consume it: without this, the undo snapshot - and with it the user's whole
-        // previous library - is deleted here with no way back, since the resume path never
+        // must not consume it: without this, the undo snapshot (and with it the user's whole
+        // previous library) is deleted here with no way back, since the resume path never
         // repopulates it.
         assert!(pre_import_path(&db).exists());
         assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
@@ -985,7 +985,7 @@ mod tests {
         // moved aside into `.pre-import` (the only copy of the user's library), the staged import
         // never made it in, and the app then carried on and let the pool create an empty
         // `kavynex.db` in its place. On the next launch this function runs again and sees a
-        // database file - the empty one. Without the marker it cannot tell that state apart from a
+        // database file. The empty one. Without the marker it cannot tell that state apart from a
         // normal second import, consumes `.pre-import` for the empty file, and the library is gone
         // permanently with no undo left. Same class as the crash the test above pins, one restart
         // later.
@@ -1021,7 +1021,7 @@ mod tests {
         // The same failed-swap state as the test above, but the staged import file was additionally
         // lost in that window (external deletion, disk trouble on that file). With no staged file the
         // normal swap can never run, so a bare early return would let the pool create an empty
-        // database over `.pre-import` - the only remaining copy of the library. Recovery must instead
+        // database over `.pre-import`. The only remaining copy of the library. Recovery must instead
         // salvage the snapshot.
         let dir = temp_dir("stranded-pre-import");
         let db = dir.join("kavynex.db");
@@ -1053,7 +1053,7 @@ mod tests {
         // The other half of the marker's contract, and the one that decides whether it is safe to
         // act on at all: the marker only means "`.pre-import` holds the user's database" because
         // it is written *after* the move-aside succeeds. Written before it, it would also be there
-        // in the window where that rename had not run yet - and there `db_path` is still the real
+        // in the window where that rename had not run yet, and there `db_path` is still the real
         // library rather than the pool's empty file, so treating the marker as a recovery signal
         // would skip the move-aside and let the swap below overwrite the library outright, with
         // nothing in `.pre-import` to undo it with.
@@ -1092,7 +1092,7 @@ mod tests {
         // database already set aside with nothing recording that fact. Returning the error there
         // and walking away would leave `db_path` missing, and the app carries on past a failed
         // import (lib.rs only logs), so the pool would create an empty database in its place and
-        // the next run would read that as an ordinary second import and consume `.pre-import` -
+        // the next run would read that as an ordinary second import and consume `.pre-import`.
         // the only copy. Undoing the move-aside is what keeps the failure inert.
         let dir = temp_dir("import-marker-write-fails");
         let db = dir.join("kavynex.db");
@@ -1123,7 +1123,7 @@ mod tests {
         // The counterpart to the test above, and the reason the marker exists rather than a plain
         // "does `.pre-import` exist?" check: on disk, a second import looks exactly like the
         // recovery state (staged import + `.pre-import` + a file at db_path). This one *must*
-        // consume the old undo copy - skipping the move-aside here would let the swap overwrite
+        // consume the old undo copy. Skipping the move-aside here would let the swap overwrite
         // the user's live database with no undo at all.
         let dir = temp_dir("import-second-normal");
         let db = dir.join("kavynex.db");
@@ -1151,7 +1151,7 @@ mod tests {
     async fn import_rejects_a_namesake_database_whose_columns_are_wrong() {
         // The four table names with the wrong columns: another app's namesake schema, a
         // hand-edited file, a half-finished migration. Stamped at this build's SCHEMA_VERSION,
-        // so ensure_schema would consider it current and repair nothing - it would swap in
+        // so ensure_schema would consider it current and repair nothing. It would swap in
         // cleanly and then fail with "no such column" on the first query, after the previous
         // database had already been set aside. It has to be refused here instead.
         let dir = temp_dir("import-wrong-columns");
@@ -1197,7 +1197,7 @@ mod tests {
 
     #[tokio::test]
     async fn import_rejects_a_database_missing_the_media_unique_key() {
-        // Right tables, right columns, stamped current - but the (channel_id, file_path) unique
+        // Right tables, right columns, stamped current, but the (channel_id, file_path) unique
         // key that insert_media's ON CONFLICT upsert targets is absent. Accepting it would swap in
         // a database on which every media insert then fails at runtime, so it is refused here (a
         // column check alone cannot see the missing constraint).
@@ -1223,7 +1223,7 @@ mod tests {
 
     #[tokio::test]
     async fn import_rejects_a_database_missing_the_channel_cascade() {
-        // Right tables, right columns, the unique key present - but no videos -> channels
+        // Right tables, right columns, the unique key present, but no videos -> channels
         // ON DELETE CASCADE. Accepting it would let a later channel delete orphan that channel's
         // videos and their comments, since PRAGMA foreign_keys can only enforce a foreign key the
         // DDL declares and never adds a missing one, so it is refused here.
@@ -1248,7 +1248,7 @@ mod tests {
 
     #[tokio::test]
     async fn import_rejects_a_database_missing_the_comment_cascade() {
-        // Right tables, right columns, both videos constraints present - but no
+        // Right tables, right columns, both videos constraints present, but no
         // video_comments -> videos ON DELETE CASCADE. Accepting it would let a later media delete
         // (a bare DELETE FROM videos, see library::cleanup) orphan that media's comment rows
         // forever, with nothing in the library diagnostics to reconcile them. PRAGMA foreign_keys
@@ -1276,7 +1276,7 @@ mod tests {
     async fn restore_reaches_a_snapshot_stranded_in_the_backup_temp_file() {
         // backup_database vacuums into `.bak.tmp` and only renames it into `.bak` once that
         // succeeds. A run that died in that window leaves a complete, healthy snapshot there that
-        // nothing else would ever look at - so with no other generation on disk the restore used
+        // nothing else would ever look at, so with no other generation on disk the restore used
         // to report "no backup available" while a good one sat right next to the database.
         let dir = temp_dir("backup-temp-orphan");
         let db = dir.join("kavynex.db");
@@ -1416,8 +1416,8 @@ mod tests {
     #[tokio::test]
     async fn import_accepts_a_normalized_current_schema_database() {
         // A v>=11 database whose rows are all normalized (unnormalized == 0) is a valid import and
-        // must be accepted. Pins the `> 0` count check against a `>= 0`, which - being true for
-        // every count - would reject every modern database as if its titles were never computed.
+        // must be accepted. Pins the `> 0` count check against a `>= 0`, which (being true for
+        // every count) would reject every modern database as if its titles were never computed.
         let dir = temp_dir("import-normalized-current");
         let db = dir.join("kavynex.db");
         let source = dir.join("incoming.db");
@@ -1465,7 +1465,7 @@ mod tests {
     async fn import_rejects_a_live_chat_flag_with_no_stored_path() {
         // A database stamped at v13+ (so the swap would skip the migration that enforces it) with a
         // row flagged has_live_chat = 1 but no live_chat_file_path violates the invariant an import
-        // cannot repair, and must be refused rather than swapped in - mirroring the title_normalized
+        // cannot repair, and must be refused rather than swapped in, mirroring the title_normalized
         // gate for the sibling invariant from the same migration.
         let dir = temp_dir("import-live-chat-flag-no-path");
         let db = dir.join("kavynex.db");
@@ -1519,8 +1519,8 @@ mod tests {
 
     #[tokio::test]
     async fn import_accepts_a_live_chat_flag_with_a_stored_path() {
-        // The mirror of the reject test above: a v13+ database whose live-chat invariant holds - a
-        // flagged row has its stored path, an unflagged row is fine - has zero violating rows and
+        // The mirror of the reject test above: a v13+ database whose live-chat invariant holds (a
+        // flagged row has its stored path, an unflagged row is fine) has zero violating rows and
         // must import. Pins the `flagged_without_path > 0` count check against a `>= 0`, which, being
         // true for every count, would reject every valid modern database as if its live chats had no
         // files. The reject test uses a violating row (count >= 1), where `> 0` and `>= 0` agree, so
@@ -1688,7 +1688,7 @@ mod tests {
     #[tokio::test]
     async fn apply_pending_does_not_revert_a_leftover_undo_snapshot() {
         // After a completed import, `.pre-import` persists as the undo snapshot with no marker and
-        // no staged file. On the next startup apply_pending must do nothing - a mutant recovering on
+        // no staged file. On the next startup apply_pending must do nothing. A mutant recovering on
         // `marker OR pre_import` (instead of AND) would restore that snapshot over the live database
         // on every launch, silently reverting the user's data.
         let dir = temp_dir("apply-leftover-pre-import");
@@ -1720,8 +1720,8 @@ mod tests {
         // the constraints the app relies on at runtime (the (channel_id, file_path) unique key
         // behind insert_media's upsert, the videos -> channels ON DELETE CASCADE, and the
         // video_comments -> videos ON DELETE CASCADE), so a representative kavynex database in
-        // tests must carry all of them. Still a reduced shape otherwise - only the columns the
-        // validation names, no extra indexes - since these tests are about the file swap, not the
+        // tests must carry all of them. Still a reduced shape otherwise (only the columns the
+        // validation names, no extra indexes), since these tests are about the file swap, not the
         // full schema.
         for ddl in [
             "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
@@ -1869,7 +1869,7 @@ mod tests {
         std::fs::write(&dest, b"previous export contents").unwrap();
 
         // The staging path (a sibling of dest_path) is a directory rather than a regular
-        // file, so `VACUUM INTO` cannot write to it and the export fails - without ever
+        // file, so `VACUUM INTO` cannot write to it and the export fails, without ever
         // touching the pre-existing destination file.
         let staging = sibling(&dest, ".export-staging");
         std::fs::create_dir_all(&staging).unwrap();
@@ -1996,7 +1996,7 @@ mod tests {
     }
 
     /// Seeds a database whose `videos` carries `title_normalized`, stamped at `user_version`, with
-    /// one row whose normalized title is NULL - the state an import must be judged on.
+    /// one row whose normalized title is NULL. The state an import must be judged on.
     async fn seed_db_with_null_normalized_title(path: &Path, user_version: i64) {
         let options = SqliteConnectOptions::new()
             .filename(path)
@@ -2042,8 +2042,8 @@ mod tests {
     async fn import_rejects_a_current_database_whose_titles_were_never_normalized() {
         // Stamped at the current version, so ensure_schema treats it as fully migrated and never
         // runs the v11 backfill. The media would sit in the library permanently invisible to every
-        // title search, with nothing to say so. The triggers cannot catch this - an import replaces
-        // the file wholesale, so no INSERT fires - which is why it has to be refused here.
+        // title search, with nothing to say so. The triggers cannot catch this (an import replaces
+        // the file wholesale, so no INSERT fires), which is why it has to be refused here.
         let dir = temp_dir("import-null-normalized");
         let db = dir.join("kavynex.db");
         seed_kavynex_db(&db, "current").await;

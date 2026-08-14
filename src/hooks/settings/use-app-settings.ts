@@ -115,7 +115,7 @@ export function useAppSettings({
             // One failure here is worth interrupting the user for, against the log-only default
             // above. Changing the library folder and changing it back within a session leaves the
             // scope permanently refusing that folder (see commands/security.rs), so *every*
-            // thumbnail and video stops loading - and the fix, restarting, is something only the
+            // thumbnail and video stops loading, and the fix, restarting, is something only the
             // user can do and would never guess. Every other failure is genuinely partial and
             // stays in the log.
             if (parseAppError(error).code === ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE) {
@@ -136,7 +136,7 @@ export function useAppSettings({
     }, [settings.libraryPath, onError]);
 
     // Reference-stable controller (its identity only changes when a field does), via useMemoObject
-    // rather than a hand-maintained useMemo dependency array - so adding a field here can never
+    // rather than a hand-maintained useMemo dependency array, so adding a field here can never
     // silently omit it from the deps and leave the memo stale.
     const { isPreparingSettings, isMigratingLibraryPath, isSavingExternalBackupDir } =
         settingsActions;

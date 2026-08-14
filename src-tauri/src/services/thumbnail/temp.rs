@@ -25,7 +25,7 @@ fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<Path
     // cross-cutting rule exists: on Windows, merely stat-ing `\\host\share\...` makes the OS
     // authenticate to `host` over SMB and hand it the user's NTLM hash. The caller's path reaches
     // this function raw over IPC, and the containment check the delete itself runs
-    // (`ensure_existing_path_inside_dir` against `thumbs-temp/`) happens *after* the stat - so it
+    // (`ensure_existing_path_inside_dir` against `thumbs-temp/`) happens *after* the stat, so it
     // refuses the delete while the handshake has already been paid for. Its sibling
     // `validate_source_media_path` below has had this since it was written; this one had not.
     if is_network_path(trimmed) {
@@ -134,7 +134,7 @@ const MAX_FFMPEG_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
 /// How long a single-frame thumbnail extraction may run before ffmpeg is treated as hung and its
 /// whole process tree killed. A single frame is near-instant; this is generous headroom for a cold
-/// cache or a slow disk while still bounded - unlike the previous unbounded `wait()`, which a
+/// cache or a slow disk while still bounded. Unlike the previous unbounded `wait()`, which a
 /// crafted or truncated container fed to ffmpeg could wedge forever, leaking a blocking-pool thread
 /// and a live ffmpeg process for the rest of the session. Every other external-process call site
 /// (yt-dlp download/metadata/thumbnail, the health check) already bounds its child this way.
@@ -262,7 +262,7 @@ const THUMBNAIL_SCALE_FILTER: &str = "scale='min(640,iw)':-1";
 ///
 /// Pure, and separate from the generator, so the format can be asserted without an `AppHandle` or
 /// an ffmpeg on the machine. That matters more than it looks: this path wrote lossless PNG for a
-/// while after the download path had moved to JPEG, and nothing failed - the divergence was only
+/// while after the download path had moved to JPEG, and nothing failed. The divergence was only
 /// visible as a library holding both formats for the same kind of content. The extension is also
 /// what ffmpeg picks its encoder from, so the name and the bytes written cannot disagree.
 fn temporary_thumbnail_file_name(source_hash: &str) -> String {
@@ -292,7 +292,7 @@ fn build_video_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<S
 
 /// Builds the ffmpeg argv for an audio file's embedded cover art. Unlike the video path there is
 /// no `-ss` (there is no timeline to seek); `-map 0:v:0` selects the attached picture stream, and
-/// ffmpeg fails when the file has none - which is what the caller reports as
+/// ffmpeg fails when the file has none, which is what the caller reports as
 /// `ThumbnailNotSupportedForAudio`.
 fn build_audio_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<String> {
     vec![
@@ -388,7 +388,7 @@ pub fn generate_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResu
 /// This exists so the manual-thumbnail flow does not need the asset scope widened to the file the
 /// user chose. The preview directory is already authorized wholesale
 /// (`commands::security::register_cache_asset_scope`), so a staged copy is renderable through
-/// `convertFileSrc` with no per-file grant at all - which matters because Tauri's asset scope has no
+/// `convertFileSrc` with no per-file grant at all, which matters because Tauri's asset scope has no
 /// way to withdraw a grant, so per-file grants accumulated for the lifetime of the session and the
 /// obvious cleanup (forbid the file when the preview is discarded) is worse than the disease: a
 /// forbid outranks every later allow, so picking the same image for a second media would silently
@@ -443,11 +443,11 @@ mod tests {
     fn validate_temporary_thumbnail_delete_path_refuses_a_network_location_before_stating_it() {
         // The refusal has to come before the `exists()`, not after it: the delete's own containment
         // check runs later and would refuse the operation, but by then the stat has already made
-        // Windows authenticate to the named host over SMB - which is the whole cost this guard
+        // Windows authenticate to the named host over SMB (which is the whole cost this guard
         // exists to avoid, and the reason the rule is stated as "before any filesystem call".
         //
         // Every spelling Windows still resolves to a share, including the mixed separators a literal
-        // `\\` prefix match would miss - the same set `is_network_path`'s own test pins.
+        // `\\` prefix match would miss), the same set `is_network_path`'s own test pins.
         for value in [
             r"\\host\share\thumb_abc.jpg",
             "//host/share/thumb_abc.jpg",
@@ -468,7 +468,7 @@ mod tests {
     #[test]
     fn validate_temporary_thumbnail_delete_path_still_ignores_a_path_that_is_not_there() {
         // The other direction, so the refusal above cannot be widened into "refuse everything". A
-        // missing file is the ordinary case - the sweep may have removed the preview already - and
+        // missing file is the ordinary case (the sweep may have removed the preview already), and
         // has to answer `None` rather than an error, or every discarded preview would surface as a
         // failure the user sees.
         let missing = unique_test_dir().join("thumb_missing.jpg");

@@ -35,7 +35,7 @@ export function LiveChatReplay({
     // visible window is replaced at once (see the handlers below).
     const [announceAdditions, setAnnounceAdditions] = useState(true);
     // True from a "seeking" event until its matching "seeked" fires. Some engines emit a
-    // timeupdate in that window - mid-scrub, before the seek has actually settled - and
+    // timeupdate in that window (mid-scrub, before the seek has actually settled), and
     // handleTimeUpdate must not treat that as ordinary playback and re-enable announcements while
     // the seek is still in flight: doing so let up to ~200 messages announce as a burst once the
     // seek finally landed, because announcements were back on before the jump happened.
@@ -55,7 +55,7 @@ export function LiveChatReplay({
         };
 
         // Throttle the high-frequency timeupdate stream. This is ordinary forward playback, where
-        // messages scroll in one at a time, so re-enable live-region announcements here - unless a
+        // messages scroll in one at a time, so re-enable live-region announcements here, unless a
         // seek is still in flight (isSeekingRef), in which case this is a stray mid-scrub event
         // that must not flip announcements back on before the seek actually settles.
         const handleTimeUpdate = (): void => {
@@ -76,7 +76,7 @@ export function LiveChatReplay({
 
         // A seek or a new-video load replaces most or all of the (up to 200) visible messages in a
         // single commit. Announcing that swap would flood the screen reader with a burst of "new"
-        // messages that is really a jump, not live chat activity - so suppress announcements across
+        // messages that is really a jump, not live chat activity, so suppress announcements across
         // it. The next incremental timeupdate re-enables them, so only genuine playback additions
         // past the seek point are ever announced.
         const handleSeekOrReload = (): void => {
@@ -92,7 +92,7 @@ export function LiveChatReplay({
             handleSeekOrReload();
         };
 
-        // The seek has settled - clear the in-flight flag so the next ordinary timeupdate can
+        // The seek has settled. Clear the in-flight flag so the next ordinary timeupdate can
         // re-enable announcements as usual.
         const handleSeekEnd = (): void => {
             isSeekingRef.current = false;

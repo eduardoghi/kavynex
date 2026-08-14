@@ -72,7 +72,7 @@ const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 // One process-wide gate, through the same `BoundedSemaphore` its two sibling spawn sites already use
 // (`yt_dlp::metadata`, `thumbnail::download`). This was a bare `tokio::sync::Semaphore` whose
 // `acquire()` result was `.expect()`ed on the (true) grounds that a 'static semaphore is never
-// closed - the one production `expect` left in the crate. The reasoning was sound and the shape was
+// closed. The one production `expect` left in the crate. The reasoning was sound and the shape was
 // still the odd one out: the app is built with `panic = "unwind"` precisely so a webview app degrades
 // rather than aborts, and every other impossible-permit case here already answers with a refusal
 // (`thumbnail::display::try_reserve_resolve_slot` collapses the same `Closed` to "no slot").
@@ -123,8 +123,8 @@ fn total_matching_file_size(dir: &Path, prefix: &str) -> u64 {
 }
 
 /// Resolves a (possibly `+`-combined) yt-dlp format selector against the fetched metadata
-/// and returns whether the selection has a video track. Returns `None` if the selector - or
-/// any part of a combined selector - is not a real format id from the metadata, which
+/// and returns whether the selection has a video track. Returns `None` if the selector (or
+/// any part of a combined selector) is not a real format id from the metadata, which
 /// rejects arbitrary selector syntax reaching yt-dlp's `-f` from a compromised frontend.
 fn resolve_format_has_video(format_id: &str, formats: &[YtDlpFormatMetadata]) -> Option<bool> {
     let find = |id: &str| {
@@ -320,7 +320,7 @@ use command::{is_valid_format_id, MAX_RUN_ID_LEN};
 // Re-exported because a local media import registers a run id in the same process registry, so
 // `cancel_media_download` reaches an import exactly as it reaches a download. Both therefore have
 // to agree on what a run id may be, and one definition is how that is guaranteed rather than
-// remembered - see the function's own comment.
+// remembered. See the function's own comment.
 pub(crate) use command::is_valid_run_id;
 
 // Redacting the argument vector before it reaches the in-app terminal (and, from there, a public
@@ -358,8 +358,8 @@ pub async fn download_media_from_url_async(
     let _run_release_guard = DownloadRunReleaseGuard::new(&normalized_run_id);
 
     // Wait for a download slot (see DOWNLOAD_SEMAPHORE). Acquired after the run is registered, so a
-    // queued download is still cancellable - the wait loop below observes the cancel flag as soon as
-    // it starts - and held until this function returns, so the slot covers the whole run.
+    // queued download is still cancellable (the wait loop below observes the cancel flag as soon as
+    // it starts), and held until this function returns, so the slot covers the whole run.
     let _download_permit = DOWNLOAD_SEMAPHORE
         .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
         .await?;
@@ -816,7 +816,7 @@ pub async fn download_media_from_url_async(
                 // with neither output nor file growth is treated as a real stall.
                 // Off the async runtime: read_dir is blocking I/O, and the project's convention
                 // (utils::task) is that no synchronous filesystem work runs on a Tokio worker.
-                // A join failure defaults to 0 (no growth observed), which is the safe direction -
+                // A join failure defaults to 0 (no growth observed), which is the safe direction.
                 // it lets the stall be confirmed rather than masking a genuinely hung download.
                 let temp_dir_probe = temp_dir.clone();
                 let file_prefix_probe = file_prefix.clone();
@@ -1529,7 +1529,7 @@ mod tests {
             "temp:<redacted>"
         );
 
-        // The split is on the *first* colon, which is always the scope separator - a Windows drive
+        // The split is on the *first* colon, which is always the scope separator. A Windows drive
         // colon comes after it and must not be what the value is cut on.
         assert_eq!(
             redact_paths_value("home:C:\\Users\\alice"),

@@ -19,7 +19,7 @@ type RemoteImageProps = {
  * The privacy setting behind it ("Load comment and live chat images from Google",
  * `load_remote_images`, off by default) is a promise the README states plainly: with it off,
  * viewing saved media makes no network requests at all. That promise used to rest on every call
- * site remembering to consult `useRemoteImagesEnabled` before rendering an `<img>` - a convention,
+ * site remembering to consult `useRemoteImagesEnabled` before rendering an `<img>`: a convention,
  * not a barrier, and one a component added later would silently break while the setting still read
  * as "off" in Settings.
  *
@@ -36,7 +36,7 @@ export function RemoteImage({
     fallback = null,
 }: RemoteImageProps): JSX.Element {
     // Track the src the load failed for rather than a bare boolean, so a new src clears the
-    // fallback during render instead of one frame later - the same pattern SafeAvatar uses.
+    // fallback during render instead of one frame later. The same pattern SafeAvatar uses.
     const [failedSrc, setFailedSrc] = useState<string | null>(null);
     const remoteImagesEnabled = useRemoteImagesEnabled();
 

@@ -9,7 +9,7 @@
 //
 // The failure it leaves open is the one that document describes: a new Tauri API added to a seam
 // without its permission surfaces "on the first click a user makes". Nothing before this ran the
-// ACL - `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
+// ACL. `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
 // `--smoke-test` exits inside `setup()`. `--webview-check` (release.yml) closes the runtime half for
 // the three grants it can exercise without a side effect; the four plugin grants cannot be probed
 // that way (a file picker, a browser launch, a network call, a restart) and were left to a manual
@@ -19,11 +19,11 @@
 // runs on every push rather than only on a release.
 //
 // What it proves and what it does not, stated exactly, because a gate that overstates itself is
-// worse than none. It does NOT prove a granted permission works at runtime - that needs the ACL,
+// worse than none. It does NOT prove a granted permission works at runtime. That needs the ACL,
 // which only the renderer evaluates. What it proves is that the two lists cannot drift apart
 // silently: a binding added to a seam fails here until its permission is decided, a permission
 // granted for nothing fails here too, and an entry naming an API that no longer exists cannot rot
-// in place. The over-grant direction is not hypothetical - the list started as the scaffolded
+// in place. The over-grant direction is not hypothetical. The list started as the scaffolded
 // `core:default`, which expanded to 92 individual permissions, and stayed that way through four
 // rounds of capability hardening because nothing was comparing it to the two files above.
 //
@@ -44,7 +44,7 @@ const SEAM_FILES = ["src/lib/tauri-client.ts", "src/lib/tauri-platform.ts"];
 //
 // Hand-declared, and it has to be: `getVersion` needs `core:app:allow-version` because of what the
 // binding does, which no syntax reveals. The same shape, and the same reasoning, as
-// `DECLARED_PATH_SURFACE` in verify-command-path-surface.js - the value is not that the script knows
+// `DECLARED_PATH_SURFACE` in verify-command-path-surface.js. The value is not that the script knows
 // the mapping, it is that adding a binding without deciding its entry fails the run.
 //
 // An empty `permissions` array is a real answer, not a placeholder, and the three that carry one are
@@ -57,7 +57,7 @@ export const DECLARED_CAPABILITY_SURFACE = [
     { binding: "Channel", module: "@tauri-apps/api/core", permissions: [] },
     { binding: "convertFileSrc", module: "@tauri-apps/api/core", permissions: [] },
     // Both halves, because they are separate grants and `listen` hands back the unsubscribe that
-    // needs the second one - a build holding only `allow-listen` would leak a subscription on every
+    // needs the second one. A build holding only `allow-listen` would leak a subscription on every
     // teardown. The webview check probes both for the same reason.
     {
         binding: "listen",
@@ -78,7 +78,7 @@ export const DECLARED_CAPABILITY_SURFACE = [
 // Type-only bindings are skipped: `type Update`, `type Event` and `type UnlistenFn` are erased at
 // compile time and call nothing, so requiring a permission entry for them would be requiring one for
 // a name that never reaches the ACL. A binding renamed on the way out (`open as openFileDialog`) is
-// recorded under its *original* name, which is what the permission is about - the alias is a
+// recorded under its *original* name, which is what the permission is about. The alias is a
 // readability choice at the seam and must not be able to change what this gate matches on.
 export function extractTauriBindings(sourceContent) {
     const bindings = [];
@@ -133,7 +133,7 @@ export function extractGrantedPermissions(capabilitySources) {
 //
 // The last `:` splits the plugin key from the permission name, which is what makes both shapes work:
 // `core:app:allow-version` is the `allow-version` permission of the `core:app` plugin, and
-// `updater:default` is the `updater` plugin's default set - which lives under `default_permission`
+// `updater:default` is the `updater` plugin's default set, which lives under `default_permission`
 // rather than in the `permissions` map, so it needs its own branch.
 export function permissionExists(identifier, aclManifest) {
     const lastColon = identifier.lastIndexOf(":");
@@ -159,13 +159,13 @@ export function permissionExists(identifier, aclManifest) {
 
 /**
  * Decides the gate from the raw file contents, returning `{ ok, message }` rather than reading files
- * or exiting itself - the same shape as the other verify-* scripts, so every refusal branch is
+ * or exiting itself: the same shape as the other verify-* scripts, so every refusal branch is
  * unit-testable.
  *
  * `aclManifest` is optional. It is `src-tauri/gen/schemas/acl-manifests.json`, which `tauri build`
  * generates and `.gitignore` excludes, so it is present locally and absent in a CI job that never
  * builds the Rust side. When it is there, each granted identifier is additionally checked to name a
- * permission that really exists - which catches a typo (`dialog:allow-opne`) that would otherwise
+ * permission that really exists, which catches a typo (`dialog:allow-opne`) that would otherwise
  * only surface on a user's first click. When it is not, that check is *reported as skipped* rather
  * than silently passing, because a check that quietly stops checking is the failure this whole file
  * is about.

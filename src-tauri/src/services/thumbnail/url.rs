@@ -3,9 +3,9 @@
 //! The sibling of `yt_dlp::url` on the other branch of the same command: that module gates the URL
 //! handed to yt-dlp's generic extractor, this one gates the URL the backend fetches over HTTP
 //! itself (`services::thumbnail::download::download_thumbnail_from_url_async`). Both are host
-//! allow-lists, and the lists deliberately differ - see [`ALLOWED_THUMBNAIL_IMAGE_HOSTS`].
+//! allow-lists, and the lists deliberately differ. See [`ALLOWED_THUMBNAIL_IMAGE_HOSTS`].
 //!
-//! Kept in its own module - pure, no network, no filesystem - so the whole classifier can sit under
+//! Kept in its own module (pure, no network, no filesystem), so the whole classifier can sit under
 //! the mutation gate (`.cargo/mutants.toml`) without dragging in `thumbnail::download`'s async
 //! process orchestration, which a unit test cannot drive and which would report dozens of
 //! unkillable mutants. Same reasoning, and the same shape, as the `ssrf_guard` and
@@ -23,7 +23,7 @@ use http::Uri;
 /// differently: the yt-dlp fallback has always refused a non-YouTube URL (it hands the value to
 /// yt-dlp's generic extractor, which runs with access to the user's browser cookies), while the
 /// direct-image branch accepted any *public* host. The SSRF guard kept that branch off internal
-/// addresses, but nothing kept it off the open internet - so a compromised frontend could use it as
+/// addresses, but nothing kept it off the open internet, so a compromised frontend could use it as
 /// an outbound channel, encoding data in a path that still ends in `.jpg`. No legitimate flow ever
 /// supplied such a URL: the manual thumbnail control is a file picker (`utils/pick-image-file.ts`),
 /// and the only remote value that reaches the command is yt-dlp's own `thumbnail` metadata.
@@ -119,7 +119,7 @@ mod tests {
         //
         // Both spellings of the policy, because `devCsp` is a *third* copy of the same host list
         // and it had no gate at all. The two are identical today; a divergence would be silent and
-        // asymmetric - a host reaching only one of them renders a thumbnail under `pnpm tauri dev`
+        // asymmetric. A host reaching only one of them renders a thumbnail under `pnpm tauri dev`
         // that a packaged build refuses, or the reverse. That is the same dev-versus-packaged
         // asymmetry `THREAT-MODEL.md` already records for the `asset:`/`http://asset.localhost`
         // token pair, and the reason `--webview-check` exists at all: nothing in the normal loop

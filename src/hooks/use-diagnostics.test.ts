@@ -629,7 +629,7 @@ describe("useDiagnostics", () => {
 
         it("drops a second click while the first is still in flight", async () => {
             // Two file-manager windows is the only way this misbehaves, and the async flag guards it
-            // by a ref set before the first await - so two synchronous calls cannot both pass.
+            // by a ref set before the first await, so two synchronous calls cannot both pass.
             const onError = vi.fn();
 
             let release: () => void = () => {};

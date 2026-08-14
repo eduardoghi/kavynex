@@ -82,7 +82,7 @@ impl Db {
     }
 
     /// Whether the pool has already been opened. Guards the restore-from-backup flow, which
-    /// must only run while the database is closed (i.e. after a failed open) - a failed
+    /// must only run while the database is closed (i.e. after a failed open). A failed
     /// `get_or_try_init` above does not cache, so the cell stays empty until an open succeeds.
     pub fn is_initialized(&self) -> bool {
         self.pool.get().is_some()
@@ -133,7 +133,7 @@ pub struct StoredAppSettings {
 /// The read query, the row-to-field dispatch and the whole-row write all derive from this table,
 /// so adding a setting is a field on [`StoredAppSettings`] plus a line here. Before it, the same
 /// setting had to be added to a hand-counted `IN (?, ?, ?, ?, ?)` list, an `if key == ...` chain
-/// and a positional parameter list, each of which could be forgotten on its own - and forgetting
+/// and a positional parameter list, each of which could be forgotten on its own, and forgetting
 /// the first two is silent, since a key that is never selected simply reads back as "never set".
 struct SettingSpec {
     key: &'static str,
@@ -223,7 +223,7 @@ pub(crate) fn is_unique_violation(error: &sqlx::Error) -> bool {
 
 /// The raw driver message for a SQLite database error, if it carries one. For a constraint
 /// violation this is text like `UNIQUE constraint failed: videos.youtube_video_id`, which lets a
-/// caller tell *which* constraint fired instead of assuming it - so a unique violation can be mapped
+/// caller tell *which* constraint fired instead of assuming it, so a unique violation can be mapped
 /// to the right domain error rather than blanket-labeled. Returns `None` for a non-database error
 /// (a pool/IO error), which carries no such message.
 pub(crate) fn database_error_message(error: &sqlx::Error) -> Option<String> {
@@ -273,7 +273,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
 
     if migration_pending {
         // Refuse to migrate a database that is already damaged. A migration can rebuild tables, so
-        // running one over a corrupt file risks amplifying the damage - and the pre-migration
+        // running one over a corrupt file risks amplifying the damage, and the pre-migration
         // snapshot below is skipped precisely when the source is unhealthy (backup_database bails on
         // a failed quick_check), so it cannot be relied on to roll the migration back afterwards.
         // When the file exists but fails quick_check, stop here: the frontend's startup recovery
@@ -291,12 +291,12 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
 
         // The pre-migration snapshot is the only rollback point once schema DDL runs, so a real
         // backup failure must block the migration rather than proceed unprotected. A throttled or
-        // skipped backup returns Ok(false) - a recent snapshot already predates this migration, so
+        // skipped backup returns Ok(false). A recent snapshot already predates this migration, so
         // that case is fine; only an Err (disk full, permission denied, a failed VACUUM) is fatal.
         // A brand-new database (first run, no file yet) never reaches here as an Err either:
         // backup_database returns Ok(false) immediately when the file is missing, so first-run setup
         // is not blocked. The frontend's startup recovery flow handles this AppError the same way it
-        // handles the quick_check gate above - by offering a restore from the last healthy backup.
+        // handles the quick_check gate above, by offering a restore from the last healthy backup.
         if let Err(error) = crate::services::db_backup::backup_database(path).await {
             return Err(AppError::from_code_with_details(
                 AppErrorCode::AppError,
@@ -313,7 +313,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         // WAL + NORMAL is durable across app crashes and only risks the last few
-        // transactions on an OS crash/power loss - the standard, faster tradeoff for a
+        // transactions on an OS crash/power loss. The standard, faster tradeoff for a
         // desktop app versus the default FULL fsync on every commit.
         .synchronous(SqliteSynchronous::Normal)
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
@@ -355,7 +355,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
 /// Generic over the runtime rather than tied to `AppHandle<Wry>`. That is not a style preference:
 /// `AppHandle` alone resolves to the real runtime, and `tauri::test::mock_builder` produces an
 /// `App<MockRuntime>`, so every function in a chain that names the bare alias is unreachable from a
-/// test - which is what kept the media-creation orchestration untested. `try_state` is available on
+/// test, which is what kept the media-creation orchestration untested. `try_state` is available on
 /// any runtime, so this costs nothing to widen.
 pub async fn shared_pool<R: tauri::Runtime>(app: &AppHandle<R>) -> AppResult<SqlitePool> {
     // `try_state` (not `state`) so a missing handle surfaces as a normal error instead of a
@@ -383,7 +383,7 @@ pub fn is_pool_initialized(app: &AppHandle) -> bool {
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
     // Every row, with no `IN (?, ?, ...)` filter. The filter used to be the thing that had to
     // grow a placeholder per setting, and building that list dynamically would mean handing sqlx
-    // a non-literal SQL string - which it refuses outright (`SqlSafeStr`), correctly, since that
+    // a non-literal SQL string, which it refuses outright (`SqlSafeStr`), correctly, since that
     // is the shape injection arrives in. Selecting the whole table sidesteps both: it is a
     // handful of rows on a local database, the dispatch below already ignores a key it does not
     // recognize, and adding a setting now touches the query not at all.
@@ -424,7 +424,7 @@ where
 }
 
 /// Accepts only the two supported import modes. The UI only ever sends these, so any other
-/// value comes from a bug or a compromised frontend and is rejected rather than persisted -
+/// value comes from a bug or a compromised frontend and is rejected rather than persisted.
 /// otherwise a later read would surface a nonsensical mode in the settings UI. `library_path`
 /// is intentionally left free-form: it is re-derived and canonicalized downstream
 /// (`library::guard`, `ensure_library_dir`), and an empty value is the valid "not configured
@@ -465,7 +465,7 @@ pub async fn set_external_backup_dir_in_pool(
 }
 
 /// Writes every field `settings` carries a value for, in one transaction. A field left `None` is
-/// skipped rather than cleared, which is what lets a caller own a subset of the keys - the
+/// skipped rather than cleared, which is what lets a caller own a subset of the keys. The
 /// settings form owns four, while `external_backup_dir` is written by its own command.
 ///
 /// Takes the whole struct rather than one parameter per key so adding a setting does not grow a
@@ -654,7 +654,7 @@ mod tests {
     fn each_spec_entry_loads_and_stores_its_own_distinct_field() {
         // The failure this table makes possible: a copy-pasted entry whose `load` writes one field
         // while its `store` reads another, or two entries sharing a field. Neither shows up as a
-        // round-trip failure - the value still comes back, just under the wrong key, which surfaces
+        // round-trip failure. The value still comes back, just under the wrong key, which surfaces
         // as one setting silently taking another's value.
         //
         // Loading a single entry and requiring every *other* entry to still read None is what

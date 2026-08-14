@@ -1,7 +1,7 @@
 # Troubleshooting
 
 What to do when Kavynex does not behave the way you expect. Every entry here is a case where
-nothing is broken and the app is doing what it was told to - which is exactly why they are worth
+nothing is broken and the app is doing what it was told to, which is exactly why they are worth
 writing down, since each one otherwise reads as a bug.
 
 This was part of `README.md` until that file had grown to carry the pitch, the install
@@ -18,7 +18,7 @@ Kavynex does not bundle yt-dlp or FFmpeg. It resolves both binaries by searching
 directories listed in your `PATH` environment variable (never the current working
 directory, so a file dropped next to the app cannot shadow the real binary). On Windows
 it also honors `PATHEXT`, so a bare `yt-dlp` on PATH resolves to `yt-dlp.exe` (batch
-shims - `.bat`/`.cmd` - are deliberately skipped, so install yt-dlp and ffmpeg as real
+shims (`.bat`/`.cmd`) are deliberately skipped, so install yt-dlp and ffmpeg as real
 executables rather than wrapper scripts). If both lookups fail, it falls back to an optional
 `tools/yt-dlp(.exe)` and `tools/ffmpeg(.exe)` inside the app's data directory, so a
 portable install can be dropped there instead of PATH.
@@ -42,7 +42,7 @@ and try again.
 
 ## "This library was released earlier in this session" after changing the library folder
 
-Restart Kavynex and it works again. Nothing is lost and nothing needs to be repaired - the media,
+Restart Kavynex and it works again. Nothing is lost and nothing needs to be repaired. The media,
 the database and your settings are all untouched.
 
 This appears if you move the library folder to a new location and then move it back within the same
@@ -62,7 +62,7 @@ the rows survive a disconnected drive intact while the files they point at are s
 
 Reconnect the drive (or bring the network share back online) and **restart Kavynex**. The restart is
 the part worth knowing about: the library folder is authorized with the webview once, when the
-library path is loaded at startup, and reconnecting the drive mid-session does not re-run that - so
+library path is loaded at startup, and reconnecting the drive mid-session does not re-run that, so
 without a restart the files are reachable again while the thumbnails and the player still refuse
 them.
 
@@ -71,7 +71,7 @@ and the same checks report the real numbers.
 
 One thing to *not* do while the drive is away: do not point Settings > Library folder at a new
 location to "fix" it. Kavynex cannot tell a library that is temporarily unreachable from one that
-was never there, so instead of refusing it treats the move as a first-time setup - it reports
+was never there, so instead of refusing it treats the move as a first-time setup. It reports
 success, copies nothing, and adopts the new empty folder as your library. Your media is not deleted
 (the disconnected drive is never touched), but the app is now pointed somewhere else and every item
 reads as missing until you point Settings > Library folder back at the original path. Reconnect the
@@ -99,7 +99,7 @@ this is the best each file manager offers.
 
 - **Linux: the file is not highlighted.** "Open file location" opens the folder containing
   the media, but does not select the file inside it. Windows and macOS both highlight it.
-  `xdg-open` has no "reveal this item" mode - it only opens a target - so the folder is
+  `xdg-open` has no "reveal this item" mode (it only opens a target), so the folder is
   opened instead. With many files in `video/`, sorting by modification date is usually the
   quickest way to spot the one you came for.
 - **macOS: "Open folder" shows the library folder rather than opening it.** Finder opens the
@@ -115,7 +115,7 @@ There is also one case where both buttons fail outright rather than behaving dif
   way). Kavynex refuses to hand such a location to the file manager. On Windows, merely
   resolving one makes the system authenticate to whatever host is named and hand over your
   account's password hash, so the path is rejected before it is touched. Everything else about
-  a library on a share is unaffected - playing, downloading, importing and thumbnails all work.
+  a library on a share is unaffected. Playing, downloading, importing and thumbnails all work.
   The refusal is specific to the `\\server\share` form: a share mounted as a drive letter
   (`Z:\...`) is an ordinary local path as far as this check is concerned, so mapping the share
   and pointing the library at the drive letter keeps both buttons working. See `THREAT-MODEL.md`
@@ -128,7 +128,7 @@ Kavynex writes a rolling log file in addition to stderr. The quickest way there 
 manager. Failing that, it is the current platform's app log directory (see `DIRECTORIES.md`):
 look for `kavynex.log` (and `kavynex.log.1`, the previous rotation, once the current file passes
 5 MB). Attach the relevant lines when reporting a bug. Logs can contain file paths and a reference to each video you download, so
-they do reveal which videos were fetched - a run that succeeds records only a reduced
+they do reveal which videos were fetched. A run that succeeds records only a reduced
 reference (the video id; the playlist and tracking parameters of the URL you pasted are
 dropped), but one that fails also records yt-dlp's own verbose output, which can include the
 full URL. When the cookies-from-browser feature is used they record only the fact that a

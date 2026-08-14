@@ -19,7 +19,7 @@ type UsePerIdAsyncFlagReturn = {
  * simply vanishes. When the action belongs to a *row*, that turns "act on A, then act on B" into a
  * silent no-op for B, which the user cannot tell apart from it having worked.
  *
- * Keying by id keeps the guard where it belongs - the same row cannot be acted on twice at once -
+ * Keying by id keeps the guard where it belongs: the same row cannot be acted on twice at once:
  * while leaving independent rows independent.
  */
 export function usePerIdAsyncFlag(): UsePerIdAsyncFlagReturn {

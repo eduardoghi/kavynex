@@ -182,8 +182,8 @@ export function useAddMediaFormState(): UseAddMediaFormStateReturn {
 
     // Memoized so this hook's return keeps a stable identity across renders (only changing when
     // `state` does). Its consumer (use-add-media-form) lists the whole object as a useCallback
-    // dependency, so an unstable identity would recreate those callbacks - and the memoized form
-    // controller built from them - on every render, defeating the memoization.
+    // dependency, so an unstable identity would recreate those callbacks (and the memoized form
+    // controller built from them), on every render, defeating the memoization.
     return useMemoObject({
         state,
         setSourceModeState,

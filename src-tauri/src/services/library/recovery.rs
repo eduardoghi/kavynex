@@ -4,7 +4,7 @@
 //! (`library::migration`). The frontend persists the new `library_path` in a separate IPC call
 //! after the migrate command returns. If the process dies between the copy and that persist,
 //! the settings still point at the old (now emptied) directory even though a complete copy
-//! exists at the new one - the app looks like it lost the entire library.
+//! exists at the new one. The app looks like it lost the entire library.
 //!
 //! To make that recoverable, the migration writes a small commit marker recording the new path
 //! just before it removes the old directory. On the next settings read, if the configured
@@ -37,7 +37,7 @@ pub fn commit_marker_path(config_dir: &Path) -> PathBuf {
 /// `sync_all` matters here, exactly as it does for `db_backup`'s import marker: the window this
 /// guards is a crash moments after the write, and the very next step removes the old library
 /// directory. A marker still sitting in the OS write cache when the machine loses power would be
-/// gone on reboot while the old directory was already emptied - the recovery could not adopt the
+/// gone on reboot while the old directory was already emptied. The recovery could not adopt the
 /// new path, and the library would look lost even though the copy at it is complete.
 ///
 /// `fsync_parent_dir` on top of that flushes the directory entry itself: on common Linux/Unix
@@ -143,7 +143,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
 
     // The marker is written only *after* the copy to `new_path` finishes (see
     // `library::migration::migrate_library_contents_with_marker`), so a populated target is a
-    // complete copy of the library. Adopt it whenever the app is still pointed elsewhere -
+    // complete copy of the library. Adopt it whenever the app is still pointed elsewhere.
     // including when the old directory only *looks* intact because its removal failed partway
     // through (a partial `remove_dir_all`). Trusting a still-populated old directory here is
     // exactly what would strand the complete copy and leave the app on incomplete data.
@@ -159,7 +159,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
 /// Reconciles the stored library path with the migration commit marker: if the configured
 /// library lost its content but the marker points at a populated directory, the marker path is
 /// adopted so an interrupted migration does not look like a lost library. Every failure is logged
-/// and swallowed - recovery must never keep the settings from being read. Runs on each settings
+/// and swallowed. Recovery must never keep the settings from being read. Runs on each settings
 /// read (see `commands::settings::get_app_settings`); cheap in the common case (a single stat of a
 /// missing marker).
 pub async fn reconcile_interrupted_migration(pool: &SqlitePool, config_dir: &Path) {

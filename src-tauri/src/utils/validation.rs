@@ -4,7 +4,7 @@
 //! The frontend already validates these for fast UX feedback (`src/services/
 //! channel-input-service.ts`, `src/services/media-input-service.ts`,
 //! `src/utils/youtube.ts`), but the frontend is not a durable trust boundary: another call
-//! path - a future feature, a devtools `invoke()`, or a bug that skips the service layer -
+//! path (a future feature, a devtools `invoke()`, or a bug that skips the service layer),
 //! could otherwise persist a malformed handle or an empty title. The SQLite `CHECK`
 //! constraints (`db_schema.rs`) already reject empty/blank names and a non-`video`/`audio`
 //! `media_type`, but they surface as a raw constraint violation; validating here maps the
@@ -60,7 +60,7 @@ fn is_valid_youtube_handle(value: &str) -> bool {
 
 /// True when `value` contains a control character (`\n`, `\r`, `\t`, and the rest of the C0/C1
 /// range). These never appear in a legitimate channel name or media title, and rejecting them here
-/// keeps a value that could forge a log line (an embedded newline) from ever being persisted -
+/// keeps a value that could forge a log line (an embedded newline) from ever being persisted.
 /// defense in depth mirroring `commands::logging::sanitize_log_text`, which strips the same
 /// characters at the other boundary. The database `CHECK`s cannot express this.
 fn contains_control_char(value: &str) -> bool {

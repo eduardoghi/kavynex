@@ -54,7 +54,7 @@ describe("liveChatItemKey", () => {
         // The point of the key: the visible window is a slice, so a message's index shifts as
         // playback advances even though it is the same object. A key derived from that index
         // changes underneath React, which tears the row down and rebuilds it instead of skipping
-        // it - discarding exactly the memoization LiveChatItem exists for.
+        // it. Discarding exactly the memoization LiveChatItem exists for.
         const message = makeChatMessage();
 
         const first = liveChatItemKey(message);

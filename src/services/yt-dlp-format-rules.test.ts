@@ -10,7 +10,7 @@ import {
     isValidYtDlpFormatId,
 } from "./yt-dlp-format-rules";
 
-// The backend's shape, which carries no label - buildMergedFormats is what adds one.
+// The backend's shape, which carries no label. BuildMergedFormats is what adds one.
 function format(overrides: Partial<YtDlpFormat> = {}): YtDlpFormat {
     return {
         format_id: "0",
@@ -115,7 +115,7 @@ describe("buildMergedFormats", () => {
 
     it("reports an unknown merged size when a track has no filesize", () => {
         // yt-dlp routinely omits filesize on DASH video-only formats. Coalescing the missing
-        // side to 0 made the merged entry report the size of its audio alone - a 1080p option
+        // side to 0 made the merged entry report the size of its audio alone. A 1080p option
         // rendered as "500 KB". Unknown is the honest answer.
         const merged = buildMergedFormats([
             format({

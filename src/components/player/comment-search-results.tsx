@@ -6,12 +6,12 @@ import { CommentContent } from "./comment-content";
 import type { FlatCommentRow } from "./comment-tree";
 
 // A context-only row (see comment-tree.filterCommentTree) is a thread ancestor kept only so a
-// real match below it still reads in context - it is not itself a search result. Dimming it and
+// real match below it still reads in context. It is not itself a search result. Dimming it and
 // labeling it keeps that distinction visible instead of letting it read as one more match.
 const CONTEXT_ONLY_OPACITY = 0.55;
 
 // The scroll area the results live in. Virtualization needs a bounded, scrollable container (the
-// same shape the media grid uses), so a comment search - unlike the naturally-growing browse view -
+// same shape the media grid uses), so a comment search (unlike the naturally-growing browse view),
 // gets its own inner scroll region.
 const SEARCH_RESULTS_HEIGHT = 600;
 // Per-level indent, matching the browse view's reply indentation closely enough to read as a thread.
@@ -42,7 +42,7 @@ export function CommentSearchResults({
         getScrollElement: () => scrollParentRef.current,
         estimateSize: () => ESTIMATED_ROW_HEIGHT,
         // Key by the comment's own id, not by position. Rows here are measured (measureElement
-        // below), and the measurement cache is keyed by whatever this returns - so with the default
+        // below), and the measurement cache is keyed by whatever this returns, so with the default
         // index key, editing the search term keeps the heights measured for the *previous* query's
         // rows and applies them to whatever now sits at each index. Comment rows vary a lot in
         // height, so that is visible as rows overlapping or leaving gaps until they remeasure.
@@ -55,7 +55,7 @@ export function CommentSearchResults({
     const virtualRows = virtualizer.getVirtualItems();
 
     // Shrink the scroll area to the content when the results are short, and cap it at
-    // SEARCH_RESULTS_HEIGHT (scrolling past that) when they are long - so a two-match search is not a
+    // SEARCH_RESULTS_HEIGHT (scrolling past that) when they are long, so a two-match search is not a
     // tall, mostly-empty box. getTotalSize is estimate-based before rows are measured and settles as
     // they mount, so this never collapses to zero.
     const scrollAreaHeight = Math.min(SEARCH_RESULTS_HEIGHT, virtualizer.getTotalSize());

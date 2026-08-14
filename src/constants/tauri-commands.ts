@@ -21,7 +21,7 @@ export const TAURI_COMMANDS = {
 
     // Creating a media is one command rather than the chain of steps this list used to name
     // (import/download, the two crash-marker ends, the duplicate pre-check, insert). The backend
-    // owns that sequence now, so the steps are no longer reachable from here - see
+    // owns that sequence now, so the steps are no longer reachable from here. See
     // src-tauri/src/commands/media.rs for why they were removed rather than left registered.
     CREATE_MEDIA: "create_media",
     STREAM_LIVE_CHAT_FILE: "stream_live_chat_file",
@@ -73,7 +73,7 @@ export const TAURI_COMMANDS = {
     DELETE_MEDIA_WITH_ARTIFACTS: "delete_media_with_artifacts",
     MARK_MEDIA_AS_WATCHED: "mark_media_as_watched",
     MARK_MEDIA_AS_UNWATCHED: "mark_media_as_unwatched",
-    // Written after the row exists, from the media element that measured it - the probe is a
+    // Written after the row exists, from the media element that measured it. The probe is a
     // webview capability, so it stays here while the creation itself does not.
     UPDATE_MEDIA_DURATION: "update_media_duration",
     UPDATE_MEDIA_PROGRESS: "update_media_progress",

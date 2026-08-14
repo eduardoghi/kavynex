@@ -27,7 +27,7 @@ describe("validateIpcResult", () => {
 
     it("strips unknown keys so a new backend field does not break the call", () => {
         // A response carrying a field the schema does not know about (a backend that shipped a new
-        // column before the frontend schema learned it) must pass, with the extra field dropped -
+        // column before the frontend schema learned it) must pass, with the extra field dropped.
         // never rejected. This is why the schemas are non-strict.
         const withExtra = { ...validChannel, brand_new_field: "surprise" } as unknown as never;
         const result = validateIpcResult("get_channel_by_id", withExtra);
@@ -68,7 +68,7 @@ describe("validateIpcResult", () => {
     });
 
     it("passes a command with no registered schema through untouched", () => {
-        // insert_channel returns a bare number - there is no shape for a wrong value to hide in, so
+        // insert_channel returns a bare number. There is no shape for a wrong value to hide in, so
         // it is not registered and the value is returned as-is.
         expect(validateIpcResult("insert_channel", 42)).toBe(42);
     });
@@ -76,7 +76,7 @@ describe("validateIpcResult", () => {
 
 // The diagnostic line a rejected payload leaves behind, and the only record of *which* field was
 // wrong: the user is shown a generic message by design, so a bug report about this is the log line.
-// Nothing above reaches it - both callers hand the result to `console.error` and nothing else - so
+// Nothing above reaches it (both callers hand the result to `console.error` and nothing else), so
 // every part of it survived a mutation pass while the polarity decisions around it were killed.
 // These assert the exact output rather than that it is non-empty, which is what makes the joins and
 // the fallback killable.
@@ -104,7 +104,7 @@ describe("describeIssues", () => {
 
     it("falls back to (root) when the failure is the value itself", () => {
         // Nothing has a path when the whole payload is the wrong type, and an empty path would
-        // render as ": Invalid input" - a line that says something failed and not what.
+        // render as ": Invalid input". A line that says something failed and not what.
         const described = describeIssues(issuesFrom(z.object({ a: z.string() }), 42));
 
         expect(described).toMatch(/^\(root\): /);
@@ -117,7 +117,7 @@ describe("describeIssues", () => {
         const described = describeIssues(error);
 
         // Pinned against zod's own message rather than a literal, so a wording change upstream does
-        // not fail this - what is asserted is that both halves are present and in that order.
+        // not fail this. What is asserted is that both halves are present and in that order.
         expect(described).toBe(`title: ${error.issues[0]?.message}`);
     });
 

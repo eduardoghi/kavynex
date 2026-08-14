@@ -9,7 +9,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 // (e.g. a hung/misbehaving process writing to stdout/stderr with no newline).
 const MAX_LINE_BYTES: usize = 256 * 1024 * 1024; // 256 MiB
 
-/// A cap for line-oriented output - yt-dlp/ffmpeg progress lines and stderr messages, which are
+/// A cap for line-oriented output. Yt-dlp/ffmpeg progress lines and stderr messages, which are
 /// always short. Fixed-size ring buffers keep the last N such lines for a failure message; without
 /// a per-line bound a misbehaving process emitting one enormous unterminated line would let a
 /// single buffered line (times N) balloon memory far past intent. Distinct from `MAX_LINE_BYTES`,
@@ -151,7 +151,7 @@ mod tests {
 
     #[tokio::test]
     async fn capped_line_reader_truncates_a_line_longer_than_the_cap() {
-        // "01234567\n" - an 8-byte line capped at 4 bytes must not buffer the whole line.
+        // "01234567\n". An 8-byte line capped at 4 bytes must not buffer the whole line.
         let data = b"01234567\nafter\n".to_vec();
         let mut reader = BufReader::new(&data[..]);
         let mut buf = Vec::new();

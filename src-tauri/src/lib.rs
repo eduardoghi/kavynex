@@ -14,11 +14,11 @@ use tauri::{AppHandle, Emitter, Manager};
 
 // How often the in-session backup check below wakes up. `backup_database` itself throttles
 // the actual snapshot to once per 24h, so this only needs to be frequent enough that a
-// long-running session eventually crosses that threshold - it does not create extra backups.
+// long-running session eventually crosses that threshold. It does not create extra backups.
 /// Payload of the [`EVENT_DATABASE_INTEGRITY_FAILED`](crate::constants::EVENT_DATABASE_INTEGRITY_FAILED)
 /// event: the list of problems the background full integrity check reported. Frontend-owned contract
 /// (validated there with a zod schema), so it is a plain serde struct rather than a ts-rs-exported
-/// type - the frontend only needs the shape, not a generated binding.
+/// type. The frontend only needs the shape, not a generated binding.
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DatabaseIntegrityFailedEvent {
@@ -71,7 +71,7 @@ fn spawn_startup_cleanup(app_handle: AppHandle) {
 /// `.migrated-` scratch files a crashed copy/replace/migrate left behind). Kept separate from
 /// `spawn_startup_cleanup`, which only reaches the disposable cache directories: the library path
 /// lives in the settings row, so it must be read from the pool first. A missing/unconfigured
-/// library (first run) is not an error - there is simply nothing to sweep yet. Failures are
+/// library (first run) is not an error. There is simply nothing to sweep yet. Failures are
 /// logged and never affect startup.
 fn spawn_startup_library_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -241,7 +241,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
 ///
 /// Runs after a short delay rather than inline with setup: it needs the database pool, and the
 /// deletion decision it delegates to reference-counts every path against the rows, so an artifact
-/// that did get registered is kept. Best effort - any failure is logged and never affects startup.
+/// that did get registered is kept. Best effort. Any failure is logged and never affects startup.
 fn spawn_pending_media_sweep(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(PENDING_MEDIA_SWEEP_DELAY_SECS)).await;
@@ -334,8 +334,8 @@ fn spawn_webview_check_watchdog() {
 /// This exists because nothing else in the pipeline runs the binary. `cargo test` links the
 /// `rlib` and never initializes the Tauri runtime, the webview, or `setup()`; `pnpm build` only
 /// produces the frontend bundle. So the entire class of failure that happens between "the code
-/// compiles" and "the window opens" - a bad application manifest, a runtime library the bundle
-/// does not resolve, a plugin that fails to register, a panic in `setup()` - passes every gate in
+/// compiles" and "the window opens" (a bad application manifest, a runtime library the bundle
+/// does not resolve, a plugin that fails to register, a panic in `setup()`), passes every gate in
 /// `ci.yml` and `release.yml` and reaches the user as an app that does not open. This project has
 /// already shipped one such bug (a `build.rs` manifest gate that made the process fail to load at
 /// all, invisible to `cargo test`).
@@ -347,7 +347,7 @@ fn is_smoke_test_run(args: impl IntoIterator<Item = String>) -> bool {
 }
 
 /// Reports a fatal startup failure and terminates with a non-zero code. The app is built with
-/// `windows_subsystem = "windows"` (no console), so a panic here would be invisible - the user
+/// `windows_subsystem = "windows"` (no console), so a panic here would be invisible. The user
 /// would just see the app fail to open. This logs the reason (stderr, plus the file log if it
 /// was initialized) and, on Windows, shows it in a native dialog before exiting.
 fn fail_startup(message: &str) -> ! {
@@ -439,7 +439,7 @@ pub fn run() {
             // The connection pool is a process-wide singleton that cannot be swapped
             // in-process, so the actual file swap is deferred to this pre-open point. A
             // failed restore/import is logged but must not stop the app from starting; a
-            // database *path* that cannot be resolved at all is fatal instead - without it
+            // database *path* that cannot be resolved at all is fatal instead, without it
             // `Db` is never managed and every database-backed command would fail, leaving
             // the app an open but dead shell with no explanation.
             match services::database::database_path(&app_handle) {
@@ -483,8 +483,8 @@ pub fn run() {
                 )),
             }
 
-            // Authorize the two cache subdirectories the webview renders from - the temporary
-            // thumbnail preview and the display-sized thumbnail derivatives - in the asset
+            // Authorize the two cache subdirectories the webview renders from (the temporary
+            // thumbnail preview and the display-sized thumbnail derivatives), in the asset
             // protocol scope, so both can be loaded via convertFileSrc. Only those two are
             // granted, never the cache root: on Windows the root is also the parent of the log
             // directory and of the WebView2 profile (see WEBVIEW_READABLE_CACHE_DIRS). The
@@ -516,7 +516,7 @@ pub fn run() {
             //
             // `std::process::exit` rather than `AppHandle::exit`, matching fail_startup above: the
             // event loop has not started yet, so there is nothing to unwind and an unconditional
-            // exit keeps the check's outcome unambiguous - the process either reaches this line
+            // exit keeps the check's outcome unambiguous. The process either reaches this line
             // and returns 0, or it does not.
             if is_smoke_test_run(std::env::args()) {
                 services::logger::info("app", "smoke test passed");
@@ -524,8 +524,8 @@ pub fn run() {
             }
 
             // The deeper self-check, and the one this exit is the boundary of: everything past
-            // this line - the window opening, the frontend bundle loading, the packaged CSP, and
-            // every permission in `capabilities/` - is unreachable from `--smoke-test` by
+            // this line (the window opening, the frontend bundle loading, the packaged CSP, and
+            // every permission in `capabilities/`) is unreachable from `--smoke-test` by
             // construction. `--webview-check` lets the launch continue normally and has the
             // renderer report what it could actually do (see commands::webview_check). Checked
             // after the smoke test so passing both flags keeps the cheaper answer.

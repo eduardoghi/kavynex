@@ -9,7 +9,7 @@ import { useHasBeenTrue } from "../../hooks/use-has-been-true";
 
 // The two heaviest modals, and the two the app can run a whole session without opening. Settings
 // pulls in its five sections (the database export/import/restore flow among them) and Diagnostics
-// pulls in the whole library-integrity report and its rules - none of which is on the path to the
+// pulls in the whole library-integrity report and its rules. None of which is on the path to the
 // first paint, which is the grid.
 //
 // Lazy alone would not defer anything here: both are mounted unconditionally and told whether they
@@ -57,8 +57,8 @@ function formatBackupTimestamp(backedUpAtMs: number | null): string {
     return `the backup from ${new Date(backedUpAtMs).toLocaleString("en-US")}`;
 }
 
-// Every modal except AddMediaModal. Split out and memoized so an active yt-dlp download - whose log
-// lines change `media`'s identity several times a second - re-renders only AddMediaModal (which
+// Every modal except AddMediaModal. Split out and memoized so an active yt-dlp download (whose log
+// lines change `media`'s identity several times a second), re-renders only AddMediaModal (which
 // shows the terminal), not this whole set. It deliberately receives the individual delete-media
 // fields rather than the `media` controller, so its props stay referentially stable across a log
 // update; every other slice it takes is already memoized by its own hook.
@@ -160,7 +160,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
 
             {settingsWasOpened ? (
                 // `null` while the chunk arrives: this renders only once, on the first open, and
-                // the modal's own overlay is what the user is waiting for - a spinner in its place
+                // the modal's own overlay is what the user is waiting for. A spinner in its place
                 // would flash for a frame and then be replaced by the real overlay.
                 <Suspense fallback={null}>
                     <SettingsModal

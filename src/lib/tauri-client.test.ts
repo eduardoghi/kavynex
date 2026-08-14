@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // This is the one file that mocks `@tauri-apps` directly rather than mocking the seam: it is
 // the seam. Every other test stubs `../lib/tauri-client`, which means nothing else exercises
-// the two things this module actually contributes on top of Tauri's `invoke` - forwarding the
+// the two things this module actually contributes on top of Tauri's `invoke`. Forwarding the
 // command/args untouched, and turning whatever the backend rejects with into a normalized
 // AppErrorShape. The mocks are declared through `vi.hoisted` because `vi.mock` is hoisted above
 // the imports, so a plain `const` would still be uninitialized when the factory runs.

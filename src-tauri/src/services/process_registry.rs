@@ -2,7 +2,7 @@
 //!
 //! The per-download registry in [`crate::services::yt_dlp::registry`] only knows about the
 //! main download child, whose pid is recorded after it spawns. The phases that run *before*
-//! that child exists - metadata resolution and the pre-download thumbnail fetch - and the
+//! that child exists (metadata resolution and the pre-download thumbnail fetch), and the
 //! standalone fetches that never go through a download run at all (format listing, comment
 //! backup, channel-avatar download) spawn their own yt-dlp/ffmpeg trees that were previously
 //! tracked by nothing. On app exit those were left to `kill_on_drop`, which only reaps the

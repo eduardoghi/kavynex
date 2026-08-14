@@ -17,7 +17,7 @@ use crate::utils::path::{
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Builds the error a cancelled import unwinds with. One place, so every check reports the same
-/// code - the frontend routes it to the neutral notice channel rather than the error modal, which
+/// code. The frontend routes it to the neutral notice channel rather than the error modal, which
 /// only works if the code is exactly this one.
 fn cancelled(stage: &str) -> AppError {
     AppError::from_code(
@@ -42,12 +42,12 @@ pub fn import_media_file_sync(
 /// A local import is the only long operation in this app the user had no way out of. A yt-dlp
 /// download has a stall detector, a timeout, a tree-kill and a Cancel button; an import of a 50 GB
 /// file from a slow external drive had none of that, and the add-media modal stays locked while it
-/// runs - so the only exit was killing the app, which the crash marker then had to clean up after.
+/// runs, so the only exit was killing the app, which the crash marker then had to clean up after.
 ///
 /// The flag is polled at three places, which between them cover the whole of the wall clock: before
 /// any work starts, throughout the hash (a full read pass over the source, and the *first* long
 /// step), and throughout the copy. What is deliberately not interruptible is the small tail after
-/// the bytes are in place - the fsync, the rename, the post-write verification - because
+/// the bytes are in place (the fsync, the rename, the post-write verification), because
 /// abandoning *there* is what would leave a half-finished file where the atomic write was about to
 /// succeed.
 ///
@@ -64,12 +64,12 @@ pub fn import_media_file_cancellable_sync(
 
     // Reject a UNC / network source before any filesystem call touches it. The source is
     // caller-supplied (the user picks a file anywhere on disk), and in Move mode the original is
-    // removed - so a `\\host\share` source would both make Windows authenticate to `host` over SMB
+    // removed, so a `\\host\share` source would both make Windows authenticate to `host` over SMB
     // (leaking the NTLM hash) and let a delete land on a network file. The picker never yields such a
     // path for a normal selection; this closes the value a compromised frontend could inject. It does
-    // not make Move safe against an arbitrary *local* source a compromised renderer names - that is
+    // not make Move safe against an arbitrary *local* source a compromised renderer names (that is
     // inherent to importing a user-picked file and is the subject of the separate path-authority
-    // hardening - but it removes the network/NTLM angle here, matching the thumbnail source guard.
+    // hardening), but it removes the network/NTLM angle here, matching the thumbnail source guard.
     if is_network_path(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidSourceMedia,
@@ -204,7 +204,7 @@ pub fn import_media_file_cancellable_sync(
 pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<()> {
     // Serialize against a concurrent library migration (see library::lock). Acquired once per
     // call, so the per-artifact loop in library::cleanup releases between files rather than
-    // nesting - the migration can interleave harmlessly, since a file it removed just makes the
+    // nesting. The migration can interleave harmlessly, since a file it removed just makes the
     // next delete a no-op.
     let _library_guard = crate::services::library::lock::library_read_guard();
 
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn an_import_that_is_never_cancelled_behaves_exactly_as_the_plain_one() {
-        // The flag must be inert when it is not set, including for the content-addressed name -
+        // The flag must be inert when it is not set, including for the content-addressed name.
         // which is a hash taken through the cancellable reader now, so a check placed one step
         // wrong would change the name every existing row is stored under.
         let root = unique_test_dir("not-cancelled");

@@ -7,7 +7,7 @@ import { logError } from "../utils/app-logger";
 
 type UsePendingMediaAlertOptions = {
     // Surfaces the notice to the user. A notice and not an error: nothing is broken and nothing was
-    // lost - some files are simply taking up space with no library entry behind them.
+    // lost. Some files are simply taking up space with no library entry behind them.
     onArtifactsAbandoned: (message: string) => void;
 };
 
@@ -43,7 +43,7 @@ export function usePendingMediaAlert({
                     IPC_EVENT_SCHEMAS.pendingMediaAbandoned,
                     (payload) => {
                         // The backend only emits with at least one, but the count comes over IPC and
-                        // the schema only proves it is a number - so a zero or negative value must
+                        // the schema only proves it is a number, so a zero or negative value must
                         // not produce a notice claiming "0 unfinished imports".
                         if (payload.abandoned < 1) {
                             return;

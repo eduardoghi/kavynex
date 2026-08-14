@@ -90,7 +90,7 @@ describe("MediaCard", () => {
 
     it("falls back to the placeholder when the thumbnail file is gone", () => {
         // A row can point at a thumbnail that is no longer on disk (moved or deleted outside the
-        // app - the case Diagnostics reports as "some thumbnail files are missing on disk"). The
+        // app. The case Diagnostics reports as "some thumbnail files are missing on disk"). The
         // browser's broken-image glyph reads as the app being broken rather than as a missing file.
         renderWithMantine(
             <MediaCard
@@ -154,7 +154,7 @@ describe("MediaCard", () => {
         // The card that opened the player kept its violet glow after the player closed, on every
         // card the user had ever opened. The cause was the inactive box-shadow being invalid CSS
         // (light-dark() around whole shadows rather than around their colors): assigning an invalid
-        // value to an inline style is ignored, so the previous - active, violet - value stayed put.
+        // value to an inline style is ignored, so the previous (active, violet), value stayed put.
         // Both the badge and the border reset correctly, which is why the state looked half-applied.
         const media = createMedia({ title: "Video A" });
 
@@ -185,7 +185,7 @@ describe("MediaCard", () => {
         );
 
         // The glow is gone, and the resting elevation actually applied rather than being dropped as
-        // an invalid declaration - the second half of the same defect, which left every card flat.
+        // an invalid declaration. The second half of the same defect, which left every card flat.
         expect((card as HTMLElement).style.boxShadow).not.toContain("124,92,255");
         expect((card as HTMLElement).style.boxShadow).not.toBe("");
     });
@@ -249,7 +249,7 @@ describe("MediaCard", () => {
             />
         );
 
-        // There is no watched badge on the thumbnail any more - the card's own green says it,
+        // There is no watched badge on the thumbnail any more. The card's own green says it,
         // and a pill there covered the corner of the image the user scans by. So the assertion
         // is on the accessible name, which is where the state moved: it is the only remaining
         // non-visual statement of it, and dropping it would leave watched invisible to a screen

@@ -82,7 +82,7 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
 
 /// Windows counterpart. `std` cannot open a directory as a `File`, so the handle is obtained via
 /// `CreateFileW` with `FILE_FLAG_BACKUP_SEMANTICS` (required to open a directory) and flushed with
-/// `FlushFileBuffers` - the same operation `sync_all` performs for a file. This closes the same
+/// `FlushFileBuffers`. The same operation `sync_all` performs for a file. This closes the same
 /// power-loss window on NTFS with write caching enabled that the Unix path closes; the previous
 /// no-op assumed NTFS never needed it, which is not something the code could demonstrate. Best
 /// effort: any failure degrades to the previous no-op behavior and is ignored.
@@ -216,7 +216,7 @@ const CANCELLABLE_COPY_CHUNK_BYTES: usize = 1024 * 1024;
 ///
 /// The fast path, and the one every caller but the media import takes. `fs::copy` hands the work to
 /// the platform (`copy_file_range`/`sendfile` on Linux, `CopyFileEx` on Windows), which is
-/// materially faster than moving the bytes through userspace - and it is also why it cannot be
+/// materially faster than moving the bytes through userspace, and it is also why it cannot be
 /// interrupted: it returns when the whole file has been copied and not before.
 fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
     fs::copy(source, temp_destination).map(|_| ()).map_err(|e| {
@@ -403,7 +403,7 @@ fn copy_file_atomic_with(
     }
 }
 
-/// Copies a file into place atomically. The platform copy, uninterruptible - which is what every
+/// Copies a file into place atomically. The platform copy, uninterruptible, which is what every
 /// caller here wants, since none of them has anyone waiting on a cancel.
 pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
     copy_file_atomic_with(source, destination, copy_bytes_whole)
@@ -413,7 +413,7 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
 ///
 /// One caller: the local media import, which is the only copy in this app a user waits on and the
 /// only one whose source can be tens of gigabytes. Passing `None` here is not the same as calling
-/// [`copy_file_atomic`] - it still takes the slower chunked path - so callers with no flag should
+/// [`copy_file_atomic`] (it still takes the slower chunked path), so callers with no flag should
 /// use the plain function rather than this one with `None`.
 pub fn copy_file_atomic_cancellable(
     source: &Path,
@@ -570,12 +570,12 @@ fn move_or_copy_file_using(
 }
 
 /// Re-reads a freshly written content-addressed file and confirms its real SHA-256 matches
-/// `expected_hash` - the hash the destination name was built from. That name is computed from a
+/// `expected_hash`. The hash the destination name was built from. That name is computed from a
 /// hash of the *source* taken before the copy/move, so a source changed in that window (a file
 /// another process was still finalizing, an edit mid-import) would leave the library holding a
 /// file whose name no longer describes its content, silently breaking the content-addressed
 /// dedup/cleanup invariant everything else relies on. When they differ, the file is renamed to
-/// `<prefix>_<actual_hash>.<ext>` so the name is truthful again - or, if a file already sits at
+/// `<prefix>_<actual_hash>.<ext>` so the name is truthful again, or, if a file already sits at
 /// that corrected name (the real content was stored before), the mis-named fresh copy is dropped
 /// in favor of it. Returns the final path (unchanged in the overwhelmingly common matching case).
 ///
@@ -609,7 +609,7 @@ pub(crate) fn verify_content_addressed_write(
 
     if corrected.exists() {
         // The real content was already stored under its correct name; discard the mis-named copy
-        // rather than overwriting the catalogued bytes. Best effort - a failed remove only leaks a
+        // rather than overwriting the catalogued bytes. Best effort. A failed remove only leaks a
         // reclaimable file, never the correct copy.
         let _ = fs::remove_file(written);
         return Ok(corrected);
@@ -1123,7 +1123,7 @@ mod tests {
         // matching `the_live_chat_decompression_ceiling_is_512_mib` in `live_chat_storage`. An
         // arithmetic slip here is invisible to every behavioral test: 1024 + 1024 is 2048 bytes and
         // 1024 / 1024 is 1, and a copy still produces a byte-identical destination at any of those
-        // sizes. What changes is only how often a cancel can be noticed - a one-byte chunk turns
+        // sizes. What changes is only how often a cancel can be noticed. A one-byte chunk turns
         // the cancellable import into a syscall per byte, which is a hang the user reads as a
         // freeze rather than as a slow copy. A literal is the only thing that catches it.
         assert_eq!(CANCELLABLE_COPY_CHUNK_BYTES, 1_048_576);
@@ -1146,8 +1146,8 @@ mod tests {
     #[test]
     fn a_cancelled_copy_leaves_neither_a_destination_nor_a_staging_file() {
         // The property the whole staging design rests on, applied to the new exit. A cancel is the
-        // one failure that arrives while the temp file is perfectly healthy - it is simply
-        // incomplete - so the branch that removes it has to fire for a cancel exactly as it does
+        // one failure that arrives while the temp file is perfectly healthy (it is simply
+        // incomplete), so the branch that removes it has to fire for a cancel exactly as it does
         // for a disk-full or a permission error. Leaving a partial `.tmp-` behind would strand
         // scratch in the user's library; leaving the destination behind would be far worse, since
         // its name is a content hash of bytes it does not hold.
@@ -1182,7 +1182,7 @@ mod tests {
     #[test]
     fn the_cancellable_copy_produces_the_same_file_as_the_plain_one() {
         // The chunked loop replaces `fs::copy` on this path, so it has to be byte-for-byte
-        // equivalent - a content-addressed name is a hash of these bytes, so a copy that dropped or
+        // equivalent. A content-addressed name is a hash of these bytes, so a copy that dropped or
         // duplicated a chunk would store a file under a name that no longer describes it, and every
         // later lookup by hash would miss it. Sized past one chunk on purpose: a single-chunk file
         // would pass even if the loop only ever ran once.
@@ -1218,7 +1218,7 @@ mod tests {
         // Via unique_temp_suffix rather than pid + nanos: that pair is not collision-proof, because
         // tests run concurrently and share the pid, so two calls landing in the same nanosecond (more
         // likely on a coarser macOS timer) would get the same directory and clobber each other's
-        // files - a real intermittent CI failure. The suffix's monotonic counter is what makes every
+        // files. A real intermittent CI failure. The suffix's monotonic counter is what makes every
         // call distinct regardless of timer resolution.
         std::env::temp_dir().join(format!(
             "kavynex-filesystem-test-{}",
@@ -1345,8 +1345,7 @@ mod tests {
 
     // The guard these three functions exist for: a destination that already holds *different*
     // bytes is someone else's file, and must come back as an error with the file untouched. Only
-    // the identical-content path may proceed. A flipped comparison here would not fail loudly -
-    // it would silently overwrite a file in the user's library - so each test asserts the
+    // the identical-content path may proceed. A flipped comparison here would not fail loudly (// it would silently overwrite a file in the user's library), so each test asserts the
     // destination's bytes are unchanged, not just that an error came back.
 
     #[test]
@@ -1429,7 +1428,7 @@ mod tests {
 
         assert_eq!(fs::read(&destination).unwrap(), b"new content");
         // Unlike copy_file_atomic/move_or_copy_file, this one is *meant* to replace differing
-        // content - that is the whole point of the backup dance. What it must not do is leave the
+        // content. That is the whole point of the backup dance. What it must not do is leave the
         // scratch backup behind once the replace succeeded.
         assert_eq!(leftover_backup_names(&dir), Vec::<String>::new());
 
@@ -1445,7 +1444,7 @@ mod tests {
         //
         // Unix-only because making the replace fail *after* the backup succeeded needs the rename
         // of the source to be refused, which means taking write permission off the source's own
-        // directory - the destination's directory has to stay writable for the backup and the
+        // directory. The destination's directory has to stay writable for the backup and the
         // restore themselves. Windows has no portable equivalent (its read-only attribute does not
         // block a rename), so this branch is covered on Linux/macOS CI only.
         use std::os::unix::fs::PermissionsExt;
@@ -1535,7 +1534,7 @@ mod tests {
     #[test]
     fn find_best_matching_file_prefers_the_extension_over_a_newer_non_preferred_file() {
         // The existing preference test writes the preferred file last, so recency alone would pick
-        // it too - which lets a flipped preference comparison slip through. Make the preferred file
+        // it too, which lets a flipped preference comparison slip through. Make the preferred file
         // the *older* one so preference has to beat recency, pinning that comparison.
         let dir = unique_test_dir();
         fs::create_dir_all(&dir).unwrap();
@@ -1557,7 +1556,7 @@ mod tests {
         // A subdirectory whose name starts with the prefix is not a "matching file": the filters
         // pair starts_with(prefix) with is_file(). The directory is made *newer* than the file, so
         // a filter that dropped the is_file() half (matching the directory too) would return or
-        // count it - each helper must still resolve to the file.
+        // count it. Each helper must still resolve to the file.
         let dir = unique_test_dir();
         fs::create_dir_all(&dir).unwrap();
         let file = dir.join("media_x.mp4");

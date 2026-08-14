@@ -2,7 +2,7 @@
 //! cannot express: a new or changed `CHECK`, a new `UNIQUE`, a changed column type, a dropped
 //! column. Split out of `mod.rs` because it is the one migration mechanism with machinery of its
 //! own (a pooled connection whose foreign-key state must never leak back), and because it is
-//! deliberately unused as of `SCHEMA_VERSION 14` - kept ready and tested so the first real rebuild
+//! deliberately unused as of `SCHEMA_VERSION 14`. Kept ready and tested so the first real rebuild
 //! is a data change rather than new untested plumbing.
 //!
 //! Tests live in the parent's `mod tests`.
@@ -29,8 +29,8 @@ pub(crate) struct TableRebuild {
     pub carried_columns: &'static str,
 }
 
-/// Rebuilds a single table to change what `ALTER TABLE ADD COLUMN` cannot express - a
-/// CHECK, a UNIQUE, a column type, or a dropped column - following SQLite's documented
+/// Rebuilds a single table to change what `ALTER TABLE ADD COLUMN` cannot express (a
+/// CHECK, a UNIQUE, a column type, or a dropped column), following SQLite's documented
 /// table-rebuild procedure: create the new shape under a staging name, copy the carried
 /// columns across, drop the old table and rename the staging one into place.
 ///
@@ -72,8 +72,8 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
 
 /// Applies one or more table rebuilds atomically and stamps `target_version`.
 ///
-/// Foreign keys are disabled for the duration - required because a rebuild drops and
-/// recreates tables that `ON DELETE CASCADE` children reference - then
+/// Foreign keys are disabled for the duration (required because a rebuild drops and
+/// recreates tables that `ON DELETE CASCADE` children reference), then
 /// `PRAGMA foreign_key_check` verifies the rebuilt schema introduced no dangling references
 /// before the transaction commits. `PRAGMA foreign_keys` is a no-op inside a transaction,
 /// so it is toggled on a dedicated pooled connection around the transaction, and enforcement
@@ -83,8 +83,8 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
 /// Owns the pooled connection a table rebuild runs on so that foreign-key enforcement can never
 /// leak back into the pool in the OFF state. The rebuild runs with `PRAGMA foreign_keys = OFF`;
 /// on the normal path enforcement is restored and `restored` is set, so `Drop` hands the
-/// connection back to the pool as usual. If the restore fails - or the rebuild panics and unwinds
-/// before the restore runs - `restored` stays false and `Drop` detaches (discards) the connection
+/// connection back to the pool as usual. If the restore fails (or the rebuild panics and unwinds
+/// before the restore runs), `restored` stays false and `Drop` detaches (discards) the connection
 /// instead, so the next consumer gets a fresh connection with foreign keys ON (from the pool's
 /// connect options) rather than a reused one with enforcement silently off. `detach()` is
 /// synchronous, so it is safe to call from `Drop` even though re-running the PRAGMA would not be.
@@ -95,7 +95,7 @@ pub(super) struct RebuildConnection {
 }
 
 impl RebuildConnection {
-    // Returns the guarded connection. Errors (rather than panics) if it was already taken - by
+    // Returns the guarded connection. Errors (rather than panics) if it was already taken, by
     // construction the connection is present until `Drop`, but returning a result keeps a future
     // caller's real upgrade path from aborting the process should that invariant ever break.
     fn conn(&mut self) -> AppResult<&mut SqliteConnection> {
@@ -177,7 +177,7 @@ async fn apply_table_rebuilds_in_transaction(
 
     // Dropping a table drops only its own indexes, so recreate the indexes of the rebuilt
     // tables and leave every other table's indexes untouched. Recreating the whole catalog
-    // here would touch tables this rebuild never dropped - harmless in a full schema, but it
+    // here would touch tables this rebuild never dropped. Harmless in a full schema, but it
     // also assumes every table exists, which a targeted rebuild must not require.
     let rebuilt_tables: std::collections::HashSet<&str> =
         rebuilds.iter().map(|spec| spec.table).collect();

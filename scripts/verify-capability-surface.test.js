@@ -185,7 +185,7 @@ describe("verifyCapabilitySurface", () => {
 
     it("fails when a permission is granted that no seam API needs", () => {
         // The over-grant direction, which is not hypothetical: the list was the scaffolded
-        // `core:default` - 92 individual permissions - through four rounds of capability hardening,
+        // `core:default` (92 individual permissions), through four rounds of capability hardening,
         // because nothing compared it against the two seam files.
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),
@@ -234,8 +234,8 @@ describe("verifyCapabilitySurface", () => {
     });
 
     it("fails on a granted identifier that names no real permission", () => {
-        // A typo is accepted by the config and refused at runtime. It fails twice here - the
-        // permission it meant is missing, and the one it spelled does not exist - which is the right
+        // A typo is accepted by the config and refused at runtime. It fails twice here (the
+        // permission it meant is missing, and the one it spelled does not exist), which is the right
         // amount for a one-character mistake that would otherwise reach a user.
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),

@@ -6,8 +6,8 @@
 //! `<app_data_dir>/tools`, i.e. `C:\Users\<name>\AppData\...`), the `--paths` temp directory under
 //! the app cache, and the pasted URL with whatever playlist/tracking parameters came with it.
 //!
-//! Kept apart from the async orchestration in the parent module so this - the part with a privacy
-//! consequence and no I/O at all - can be mutation-tested. Tests live in the parent's `mod tests`.
+//! Kept apart from the async orchestration in the parent module so this (the part with a privacy
+//! consequence and no I/O at all) can be mutation-tested. Tests live in the parent's `mod tests`.
 
 use crate::services::yt_dlp::url::youtube_ref_for_log;
 
@@ -37,14 +37,14 @@ pub(super) fn redact_paths_value(value: &str) -> String {
 }
 
 /// Maps a flag whose following value is sensitive to how that value must be redacted. Centralized
-/// so a path-carrying flag is a single edit here rather than a new branch in the loop below - the
+/// so a path-carrying flag is a single edit here rather than a new branch in the loop below. The
 /// shape of gap that previously let `--ffmpeg-location` leak the app-cache path (and with it the OS
 /// username) into a line shown in the UI and pasted into public bug reports. Any flag whose value is
 /// an absolute local path belongs here.
 fn redaction_for_flag(flag: &str) -> PendingRedaction {
     match flag {
         // Both carry an absolute path under the per-user profile: the cookies file location, and
-        // the ffmpeg binary's parent directory - which falls back to `<app_data_dir>/tools`, i.e.
+        // the ffmpeg binary's parent directory, which falls back to `<app_data_dir>/tools`, i.e.
         // exactly the `C:\Users\<name>\AppData\...` layout the `--paths` redaction exists to hide.
         "--cookies" | "--ffmpeg-location" => PendingRedaction::FullValue,
         "--paths" => PendingRedaction::PathsValue,

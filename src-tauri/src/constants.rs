@@ -21,7 +21,7 @@ pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
 /// win the switch was made for applied to half the paths.
 ///
 /// JPEG rather than PNG: YouTube serves photographic JPEG thumbnails, and re-encoding those
-/// losslessly to PNG multiplied the stored size for no visual gain - measured on a real library,
+/// losslessly to PNG multiplied the stored size for no visual gain. Measured on a real library,
 /// PNG thumbnails averaged ~365 KB against a few dozen KB for the JPEG originals, and the whole
 /// directory sat at 322 MB for 904 media. Normalizing to one known extension is still worth doing
 /// (the content-addressed name needs one), so the conversion stays; only the target changed.
@@ -59,7 +59,7 @@ pub const TEMP_DIR_PENDING_MEDIA: &str = "pending-media";
 ///
 /// Both are drawn through `convertFileSrc`: `thumbs-temp/` holds the preview shown before a
 /// thumbnail is committed to the library, and `thumb-display/` the display-sized derivatives the
-/// grid draws. The other cache subdirectories are backend-only - `yt-dlp-temp/` and
+/// grid draws. The other cache subdirectories are backend-only. `yt-dlp-temp/` and
 /// `yt-dlp-thumb-temp/` are scratch whose output is moved into the library before any path reaches
 /// the frontend, and `pending-media/` is read by the startup sweep alone.
 ///

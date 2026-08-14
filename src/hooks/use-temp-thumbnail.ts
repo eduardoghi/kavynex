@@ -21,7 +21,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
 
     // Guards against a stale async result overwriting a newer one: every generate begins a new
     // request and every reset invalidates the in-flight one, and a settled request only applies its
-    // result when its id is still current. This is what makes a setState after unmount harmless too -
+    // result when its id is still current. This is what makes a setState after unmount harmless too.
     // React 18+ dropped the unmounted-setState warning and treats the call as a no-op, so no
     // mount-tracking ref is needed on top of the id check.
     const thumbGenerationGuard = useRequestGuard();
@@ -150,8 +150,8 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
 
     // Memoized so this hook's return keeps a stable identity across renders. Its consumer
     // (use-add-media-form) lists the whole object as a useCallback dependency, so an unstable
-    // identity here would recreate those callbacks - and the memoized form controller built from
-    // them - on every render (e.g. every streamed yt-dlp log line), defeating the memoization.
+    // identity here would recreate those callbacks (and the memoized form controller built from
+    // them), on every render (e.g. every streamed yt-dlp log line), defeating the memoization.
     return useMemoObject({
         thumbPath,
         isGeneratingThumb,

@@ -1,7 +1,7 @@
 import { Box, Card, Skeleton, Stack } from "@mantine/core";
 import { MEDIA_CARD_HEIGHT } from "./media-card";
 
-// How many placeholder cards to show while the first page loads - roughly two rows at the widest
+// How many placeholder cards to show while the first page loads. Roughly two rows at the widest
 // column count, enough to fill the fold without implying a specific result count.
 const SKELETON_CARD_COUNT = 8;
 const SKELETON_THUMBNAIL_HEIGHT = 158;
@@ -9,7 +9,7 @@ const GRID_GAP = 16;
 
 // A placeholder grid shown while the first page of media loads, shaped like the real cards
 // (thumbnail block, two title lines, a footer line) so the layout does not jump when data arrives.
-// Reads as a faster, more finished load than a centered spinner. Purely decorative - the loading
+// Reads as a faster, more finished load than a centered spinner. Purely decorative. The loading
 // state's announcement lives on the status region that wraps this in the grid.
 export function MediaGridSkeleton({ shellBorder }: { shellBorder: string }): JSX.Element {
     return (

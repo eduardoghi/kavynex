@@ -44,7 +44,7 @@ describe("resolveDisplayThumbnails", () => {
     it("settles a resolved path and a permanently unavailable one alike", async () => {
         // Both are final answers, and the caller uses this set to decide what to stop asking about.
         // A path with no derivative that will never have one has to be in it just as much as a
-        // resolved one - that is the whole point of the backend distinguishing them.
+        // resolved one. That is the whole point of the backend distinguishing them.
         vi.mocked(invokeCommand).mockResolvedValueOnce([
             resolved("/cache/thumb-display/aaa.jpg"),
             unavailable,
@@ -93,7 +93,7 @@ describe("resolveDisplayThumbnails", () => {
 
     it("asks about each path once even when several media share a thumbnail", async () => {
         // Thumbnails are content-addressed, so two rows pointing at identical content share one
-        // file - and the backend's per-call generation budget must not be spent twice on it.
+        // file, and the backend's per-call generation budget must not be spent twice on it.
         vi.mocked(invokeCommand).mockResolvedValueOnce([resolved("/cache/thumb-display/aaa.jpg")]);
 
         const { displayPaths } = await resolveDisplayThumbnails(
@@ -136,7 +136,7 @@ describe("resolveDisplayThumbnails", () => {
 
     it("ignores an answer shorter than the request instead of misaligning it", async () => {
         // Defense in depth over the zod array schema at the seam: a truncated response must leave
-        // the unanswered paths without a derivative, never shift the remaining answers onto them -
+        // the unanswered paths without a derivative, never shift the remaining answers onto them.
         // and must not settle them either, since nothing was decided about those paths.
         vi.mocked(invokeCommand).mockResolvedValueOnce([resolved("/cache/thumb-display/aaa.jpg")]);
 

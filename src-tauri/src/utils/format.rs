@@ -19,7 +19,7 @@ pub const ALLOWED_VIDEO_EXTENSIONS: [&str; 13] = [
 /// Declared as lists rather than only spelled out inside the predicate below for the same reason
 /// [`ALLOWED_THUMBNAIL_EXTENSIONS`] is: the message a rejected file produces has to be built from
 /// the same source that rejected it. The thumbnail pair had already drifted once (`gif` accepted
-/// while the message named six formats), and this is the larger list of the two - what the user is
+/// while the message named six formats), and this is the larger list of the two. What the user is
 /// told here is the only place the app ever says which files it takes.
 pub fn allowed_media_extensions() -> Vec<&'static str> {
     ALLOWED_VIDEO_EXTENSIONS
@@ -49,7 +49,7 @@ pub fn is_allowed_media_extension(ext: &str) -> bool {
 
 /// The allowed media extensions as a comma-separated list, for the error a rejected file produces.
 /// Derived from the lists above so a format added to one cannot be left out of what the user is
-/// told - the mirror of [`allowed_thumbnail_extensions_label`].
+/// told. The mirror of [`allowed_thumbnail_extensions_label`].
 pub fn allowed_media_extensions_label() -> String {
     allowed_media_extensions().join(", ")
 }
@@ -59,7 +59,7 @@ pub fn allowed_media_extensions_label() -> String {
 ///
 /// Declared as a list rather than only spelled out inside the predicate below so the message shown
 /// when a file is rejected can be built from it (see [`allowed_thumbnail_extensions_label`]). The
-/// two had already drifted once - `gif` was accepted here while the message still named six formats
+/// two had already drifted once. `gif` was accepted here while the message still named six formats
 /// - which is the kind of mismatch that sends a user looking for a bug in their file.
 pub const ALLOWED_THUMBNAIL_EXTENSIONS: [&str; 7] =
     ["png", "jpg", "jpeg", "webp", "bmp", "avif", "gif"];
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn every_audio_extension_lands_in_the_audio_subdir_and_every_video_one_does_not() {
         // media_subdir_from_extension used to spell the audio list a second time, so the two could
-        // disagree about whether a `.opus` is audio - the file would be accepted for import and
+        // disagree about whether a `.opus` is audio. The file would be accepted for import and
         // then filed under video/. Deriving both from ALLOWED_AUDIO_EXTENSIONS is what removes that,
         // and this is what pins it.
         for ext in ALLOWED_AUDIO_EXTENSIONS {
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn allowed_media_extensions_label_names_every_accepted_format() {
         // The import rejection puts this label in the error's `details`, which the frontend appends
-        // after its catalogued message - so this string is the only place the app ever tells a user
+        // after its catalogued message, so this string is the only place the app ever tells a user
         // which files it takes. A format accepted but not named here is a user hunting for a bug in
         // their file.
         let label = allowed_media_extensions_label();

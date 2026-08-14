@@ -8,7 +8,7 @@ import { useRef } from "react";
  *
  * Deferring the mount is what makes `React.lazy` do anything for a modal at all. A Mantine modal is
  * mounted unconditionally and told whether it is `opened`, so rendering a lazy component that way
- * requests its chunk on the first paint - which is exactly the cost the split was meant to remove.
+ * requests its chunk on the first paint, which is exactly the cost the split was meant to remove.
  *
  * Keeping it mounted afterwards is what `{opened && ...}` gets wrong. Unmounting on close cuts the
  * modal's own exit transition, so it vanishes instead of fading, and it throws away a chunk that is

@@ -7,7 +7,7 @@ const listenTauriMock = vi.fn();
 const getVersionMock = vi.fn();
 const convertFileSrcMock = vi.fn();
 
-// The seam modules are mocked, never `@tauri-apps` itself - the convention this repo enforces
+// The seam modules are mocked, never `@tauri-apps` itself. The convention this repo enforces
 // everywhere except tauri-client.test.ts, which is the seam.
 vi.mock("./tauri-client", () => ({
     invokeCommand: (...args: unknown[]) => invokeCommandMock(...args),
@@ -33,7 +33,7 @@ let createdImageSources: string[];
 /**
  * Replaces the global `Image` with one whose `src` setter schedules the configured outcome. jsdom
  * never fetches an image, so `onload`/`onerror` would otherwise fire for neither a working asset
- * nor a refused one - and "fires nothing at all" is itself one of the three cases under test.
+ * nor a refused one, and "fires nothing at all" is itself one of the three cases under test.
  */
 function stubImage(outcome: AssetOutcome): void {
     createdImageSources = [];
@@ -185,7 +185,7 @@ describe("runWebviewCheckIfRequested", () => {
     it("reports an asset that neither loads nor errors once the probe times out", async () => {
         // The case the timeout exists for: an `<img>` whose URL the asset protocol never answers
         // fires no event at all, so without a deadline the check would hang until the backend
-        // watchdog killed it - losing the named failure this produces.
+        // watchdog killed it. Losing the named failure this produces.
         stubImage("never");
 
         const pending = runWebviewCheckIfRequested();
@@ -201,7 +201,7 @@ describe("runWebviewCheckIfRequested", () => {
 
     it("runs every probe even when an earlier one fails", async () => {
         // A badly narrowed capability list fails several probes at once, and fixing them one
-        // release at a time is not an option - so a rejection must not short-circuit the rest.
+        // release at a time is not an option, so a rejection must not short-circuit the rest.
         getVersionMock.mockRejectedValue(new Error("denied"));
         listenTauriMock.mockRejectedValue(new Error("denied"));
         stubImage("error");

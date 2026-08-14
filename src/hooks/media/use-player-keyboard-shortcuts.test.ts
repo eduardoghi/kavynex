@@ -66,7 +66,7 @@ describe("usePlayerKeyboardShortcuts", () => {
     it("swallows the AbortError a fast second Space causes", async () => {
         // `paused` flips to false synchronously when play() is called, before its promise
         // settles, so a fast second Space pauses and interrupts the pending play(). The browser
-        // rejects that play() with AbortError - the shortcut working as intended. The handler
+        // rejects that play() with AbortError. The shortcut working as intended. The handler
         // calls togglePlayback with `void`, so an escaping rejection is unhandled: in the app it
         // reaches the unhandledrejection listener and is written to the file log as a *fatal*
         // error, meaning an ordinary double-tap pollutes the log that ships in bug reports.
@@ -74,7 +74,7 @@ describe("usePlayerKeyboardShortcuts", () => {
         // What fails this test if the guard is dropped is Vitest itself, which reports an
         // unhandled rejection as an error and fails the run (verified by removing the guard: the
         // run reports "Unhandled Rejection: AbortError: interrupted" against this test). A
-        // window-level listener cannot assert it - jsdom does not dispatch the event - so an
+        // window-level listener cannot assert it (jsdom does not dispatch the event), so an
         // `expect(...)` here would pass whether or not the guard exists.
         const player = createPlayer({
             paused: true,

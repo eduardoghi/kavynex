@@ -26,7 +26,7 @@ export function SafeAvatar({
     const src = remoteImagesEnabled ? requestedSrc : undefined;
     // Track which src the load failed for, not a bare boolean, so the fallback is cleared for a
     // new src synchronously during render. This is deliberately React's "adjust state directly
-    // during render" pattern, matching media-card.tsx's thumbnail handling - NOT a useEffect. An
+    // during render" pattern, matching media-card.tsx's thumbnail handling, NOT a useEffect. An
     // effect would render one frame with the stale failure (a flash of the initials fallback) for
     // an avatar that is actually valid, before resetting on the next commit.
     const [failedSrc, setFailedSrc] = useState<string | undefined>(undefined);

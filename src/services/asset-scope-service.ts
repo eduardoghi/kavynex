@@ -28,5 +28,5 @@ export async function registerLibraryAssetScope(libraryPath: string): Promise<vo
 // thumbnail preview could load it. It is gone: the scope has no way to withdraw a grant, so those
 // accumulated for the whole session, and revoking one would have been worse (a forbid outranks every
 // later allow, so the same image picked twice would stop rendering). The preview now draws a staged
-// copy from a directory that is already authorized - see `stageManualThumbnail` in
+// copy from a directory that is already authorized. See `stageManualThumbnail` in
 // `services/thumbnail-service.ts`. This module is therefore down to the library grant alone.

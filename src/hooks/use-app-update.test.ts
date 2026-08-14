@@ -285,7 +285,7 @@ describe("useAppUpdate", () => {
 
         // A successful install sets no terminal state: in production the relaunch has replaced the
         // process by now, and the two readers of this status both want it to still say
-        // "downloading" - the install button stays disabled and the settings modal stays locked
+        // "downloading". The install button stays disabled and the settings modal stays locked
         // right through to the relaunch. This test only observes the gap because the mock removes
         // the process replacement, which is exactly why the assertion has to name the real
         // post-state rather than the one a mock makes reachable.
@@ -378,7 +378,7 @@ describe("useAppUpdate", () => {
     it("keeps the settings modal's in-progress check true through a successful install", async () => {
         // settings-modal.tsx locks the modal while `appUpdateStatus` is "checking" or "downloading",
         // so the relaunch is never a surprise. A terminal success state used to break that in the
-        // one window where it mattered - the modal unlocked between the install finishing and the
+        // one window where it mattered. The modal unlocked between the install finishing and the
         // process being replaced. This pins the status against the exact set that lock reads, so
         // reintroducing such a state fails here rather than as a modal that closes on its own.
         const update = createUpdate();

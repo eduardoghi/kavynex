@@ -176,7 +176,7 @@ pub struct YtDlpCommentMetadata {
 // Carries no display label or presentation order on purpose. The frontend cannot use either:
 // it synthesizes the "merged" video+audio entries that YouTube does not serve as a single
 // format (see `buildMergedFormats`), so it has to label and order entries this side never
-// emitted - and a label produced here would be overwritten for every row. What the two sides
+// emitted, and a label produced here would be overwritten for every row. What the two sides
 // do agree on is `format_id`: the frontend mints combined ids like `137+140` from these, and
 // `yt_dlp::download::resolve_format_has_video` resolves them back against this metadata.
 #[derive(Serialize, Deserialize, Clone, Debug, TS)]
@@ -248,7 +248,7 @@ pub struct ExternalToolHealth {
     pub version: String,
     pub healthy: bool,
     /// Days between the release this version names and today, when the version string encodes a
-    /// date - yt-dlp's versions are dates (`2026.07.01`), ffmpeg's are not, so this is `None` for
+    /// date. Yt-dlp's versions are dates (`2026.07.01`), ffmpeg's are not, so this is `None` for
     /// ffmpeg and for anything unparseable.
     ///
     /// Deliberately a fact rather than a verdict: whether an age is worth warning about is a

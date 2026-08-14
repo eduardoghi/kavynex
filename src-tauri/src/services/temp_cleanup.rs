@@ -112,12 +112,12 @@ fn cleanup_dir_children(dir: &Path, max_age: Duration) -> AppResult<CleanupSumma
 /// Kept apart from [`cleanup_dir_children`] because the two answer different questions. That one
 /// asks "is this entry stale?", which is the right question for the three scratch directories: an
 /// old entry there is state from an operation that already finished. This cache holds *derived*
-/// data - each entry is regenerable, but only by spawning FFmpeg, and reading a cached one is a
+/// data. Each entry is regenerable, but only by spawning FFmpeg, and reading a cached one is a
 /// `stat` that renews nothing. Asking the age question of it therefore discarded the entries the
 /// grid draws daily as readily as the ones nothing had touched since they were written, emptying the
 /// whole cache every seven days and paying it all back as a burst of FFmpeg runs on the next scroll.
 ///
-/// So the question here is "does the cache fit?" - and when it does, nothing is removed at all.
+/// So the question here is "does the cache fit?", and when it does, nothing is removed at all.
 /// [`plan_display_cache_eviction`] holds the decision itself (pure, and under the mutation gate);
 /// this is the `read_dir` around it.
 fn cleanup_display_cache(dir: &Path, max_bytes: u64) -> AppResult<CleanupSummary> {
@@ -206,7 +206,7 @@ pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummar
     let thumbs_temp_dir = cache_dir.join(TEMP_DIR_THUMBS);
     let yt_dlp_temp_dir = cache_dir.join(TEMP_DIR_YT_DLP);
     let yt_dlp_thumb_temp_dir = cache_dir.join(TEMP_DIR_YT_DLP_THUMB);
-    // Bounded by total size rather than by age, unlike the three above - see cleanup_display_cache
+    // Bounded by total size rather than by age, unlike the three above. See cleanup_display_cache
     // for why the age question is the wrong one to ask of a derivative cache.
     let thumb_display_dir = cache_dir.join(TEMP_DIR_THUMB_DISPLAY);
 
@@ -515,7 +515,7 @@ mod tests {
     fn the_display_cache_is_left_alone_while_it_fits_however_old_it_is() {
         // The regression this replaced the age sweep to prevent. Both files are far past the age
         // gate the three scratch directories use, and the cache is well under its budget, so nothing
-        // may be removed - under the old rule both would have gone and both would have been
+        // may be removed, under the old rule both would have gone and both would have been
         // re-encoded by FFmpeg on the next scroll.
         let dir = unique_test_dir("display-fits");
         fs::create_dir_all(&dir).unwrap();

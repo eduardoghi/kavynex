@@ -40,7 +40,7 @@ export function useMediaProgressPersistence(
     }, [onSaveProgress]);
 
     // Latest persistProgress, so the unmount-only effect below can call it without listing it as a
-    // dependency - which would re-run that effect's cleanup (an extra save) on every identity change
+    // dependency, which would re-run that effect's cleanup (an extra save) on every identity change
     // of persistProgress rather than only on a true unmount.
     const persistProgressRef = useRef(persistProgress);
     useEffect(() => {
@@ -124,7 +124,7 @@ export function useMediaProgressPersistence(
         };
     }, [persistProgress]);
 
-    // Persist the final position when the player unmounts - the Back button, switching
+    // Persist the final position when the player unmounts. The Back button, switching
     // channels from the sidebar, or the active media being deleted all land here. Empty deps so the
     // cleanup fires exactly once, on the real unmount, and never mid-session when persistProgress
     // changes identity; it reads the latest persistProgress through the ref above.

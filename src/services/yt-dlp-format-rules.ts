@@ -10,7 +10,7 @@
 //
 // One value this module produces does cross back to the backend and is a shared contract with it:
 // the merged `format_id` string `<video_id>+<audio_id>` (see buildMergedFormats). That `+` join is
-// yt-dlp's own selector syntax, and the backend re-validates every id it receives against it -
+// yt-dlp's own selector syntax, and the backend re-validates every id it receives against it.
 // `is_valid_format_id` (charset, non-empty `+`-separated parts) and `resolve_format_has_video`
 // (each part must resolve to a real format from the fetched metadata) in
 // `src-tauri/src/services/yt_dlp/download.rs`. So a compromised/garbled selector is rejected there,
@@ -32,7 +32,7 @@ function normalizeFormatId(value: string | null | undefined): string {
 // part is non-empty, does not start with `-` (so the value after `-f` can never be read as a flag),
 // and is made only of ASCII alphanumerics plus `.`/`_`/`-`. `buildMergedFormats` synthesizes the
 // `<video>+<audio>` selector this describes, and the backend re-validates it with the same rule
-// before resolving it - the two are kept from drifting apart by shared/yt-dlp-format-id-cases.json,
+// before resolving it. The two are kept from drifting apart by shared/yt-dlp-format-id-cases.json,
 // asserted on both sides (see the parity test). Note the leading-`-` guard is separate from the
 // character class on purpose: `-` is a legal *inner* character (`233-drc`), so the class alone would
 // accept a leading one.
@@ -259,7 +259,7 @@ function compareByDescendingScores(
     });
 }
 
-// 1 for an m4a audio stream, 0 otherwise, so descending order floats m4a to the front - it muxes
+// 1 for an m4a audio stream, 0 otherwise, so descending order floats m4a to the front. It muxes
 // into an mp4 container without a re-encode, making it the preferred merge partner.
 function m4aPreferenceScore(format: YtDlpFormat): number {
     return format.ext.trim().toLowerCase() === "m4a" ? 1 : 0;
@@ -283,7 +283,7 @@ function compareVideoPreference(left: YtDlpFormat, right: YtDlpFormat): number {
 
 function compareDisplayOrder(left: ExtendedYtDlpFormat, right: ExtendedYtDlpFormat): number {
     // sort_rank groups the list (merged, native, video-only, audio-only) and is the only ascending
-    // key - a lower rank comes first - so it is compared here rather than through the descending
+    // key (a lower rank comes first), so it is compared here rather than through the descending
     // helper, which then breaks ties within a group by the same scores the other sorts rank by.
     if (left.sort_rank !== right.sort_rank) {
         return left.sort_rank - right.sort_rank;

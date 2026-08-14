@@ -7,7 +7,7 @@ Kavynex is a desktop app for archiving YouTube channels and playing back what yo
 Downloading the video is the easy part. What goes with a channel and does not come back is
 everything around it, so Kavynex saves the comment section and the live chat replay alongside the
 media, keeps all of it in a library on your own disk, and plays it back offline. No server, no
-container, no account - it is an application you install.
+container, no account. It is an application you install.
 
 It was built to preserve the channels I follow, and it is what I use for that.
 
@@ -40,7 +40,7 @@ Make sure `yt-dlp` and `ffmpeg` are installed and available in your system PATH.
 
 If you cannot change your PATH (a locked-down work machine, or a portable install you want to
 keep self-contained), drop the executables into a `tools/` folder inside the app's data directory
-instead - Kavynex falls back to it when the PATH lookup finds nothing. `docs/DIRECTORIES.md` lists
+instead. Kavynex falls back to it when the PATH lookup finds nothing. `docs/DIRECTORIES.md` lists
 that directory per OS, and `docs/TROUBLESHOOTING.md` covers how the lookup works and what the
 in-app Diagnostics dialog reports about it.
 
@@ -52,7 +52,7 @@ Prebuilt installers and packages are available on the latest GitHub release:
 
 ### Windows
 
-Download the installer matching your processor - `arm64` for a Windows on ARM device (Snapdragon
+Download the installer matching your processor: `arm64` for a Windows on ARM device (Snapdragon
 and similar), `x64` for everything else:
 
 - `kavynex_*_x64-setup.exe`
@@ -72,7 +72,7 @@ Download the package according to your Mac:
 
 ### Linux
 
-Choose the package according to your distribution, in the build matching your processor - the
+Choose the package according to your distribution, in the build matching your processor. The
 `amd64`/`x86_64` files are for a normal 64-bit PC, the `arm64`/`aarch64` ones for an ARM machine
 (a Raspberry Pi 5, an Ampere server, an ARM cloud VM):
 
@@ -80,12 +80,12 @@ Choose the package according to your distribution, in the build matching your pr
 - Debian/Ubuntu: `kavynex_*_amd64.deb` / `kavynex_*_arm64.deb`
 - Fedora/RHEL/openSUSE: `kavynex-*.x86_64.rpm` / `kavynex-*.aarch64.rpm`
 
-(The architecture is spelled differently by each packaging format - that is the format's convention,
+(The architecture is spelled differently by each packaging format. That is the format's convention,
 not an inconsistency in the build.)
 
 ### Verifying a download
 
-The installers are not code-signed (a deliberate tradeoff - see `docs/RELEASE-SECURITY.md`), so
+The installers are not code-signed (a deliberate tradeoff. See `docs/RELEASE-SECURITY.md`), so
 SmartScreen/Gatekeeper will warn on first run. To confirm a download is authentic:
 
 - Compare its hash against `SHA256SUMS.txt`, published alongside the installers.
@@ -156,10 +156,10 @@ the rest of the checks CI runs.
 
 Both outgrew being README sections and now have documents of their own:
 
-- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) - yt-dlp/FFmpeg not being found, a blank
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md): yt-dlp/FFmpeg not being found, a blank
   window on Windows, a library on a drive that is not connected, a corrupted database, why "Open
   file location" behaves differently on each platform, and where the log file lives.
-- [`docs/PRIVACY.md`](docs/PRIVACY.md) - everything Kavynex stores, the only three things it sends
+- [`docs/PRIVACY.md`](docs/PRIVACY.md): everything Kavynex stores, the only three things it sends
   over the network, and how to take your data with you or remove it.
 
 ## Third-party assets
@@ -168,28 +168,28 @@ Kavynex's own code is MIT (see `LICENSE`). The one bundled asset under a differe
 display typeface used for headings, **Bricolage Grotesque**, licensed under the SIL Open Font
 License 1.1. The OFL permits bundling a font inside an application without affecting that
 application's own license, but it does require the copyright notice and license text to travel with
-the distribution - so the font's license is shipped verbatim as
+the distribution, so the font's license is shipped verbatim as
 `licenses/bricolage-grotesque-OFL-1.1.txt` inside the app bundle (from `public/licenses/` in this
 repository), and applies to the font files only, not to Kavynex itself.
 
 ## More documentation
 
-- `docs/ARCHITECTURE.md` - the layered backend/frontend architecture, the IPC boundary, and a
+- `docs/ARCHITECTURE.md`: the layered backend/frontend architecture, the IPC boundary, and a
   walk-through of the main flows (adding media, changing the library folder, database recovery).
-- `docs/DATABASE.md` - the SQLite schema, migrations, and backup/restore/export/import model.
-- `docs/DIRECTORIES.md` - the runtime directories and library layout the app uses on disk.
-- `docs/TROUBLESHOOTING.md` - what to do when something does not behave the way you expect, and
+- `docs/DATABASE.md`: the SQLite schema, migrations, and backup/restore/export/import model.
+- `docs/DIRECTORIES.md`: the runtime directories and library layout the app uses on disk.
+- `docs/TROUBLESHOOTING.md`: what to do when something does not behave the way you expect, and
   where the log file lives.
-- `docs/PRIVACY.md` - what Kavynex stores, what it sends over the network, and how to take your
+- `docs/PRIVACY.md`: what Kavynex stores, what it sends over the network, and how to take your
   data with you or remove it.
-- `docs/RELEASING.md` - how a release is cut and published (needs repository write access).
-- `CONTRIBUTING.md` - development setup, commands, and commit conventions.
-- `docs/THREAT-MODEL.md` - what the app defends against at runtime: the IPC trust boundary, path
+- `docs/RELEASING.md`, how a release is cut and published (needs repository write access).
+- `CONTRIBUTING.md`: development setup, commands, and commit conventions.
+- `docs/THREAT-MODEL.md`: what the app defends against at runtime: the IPC trust boundary, path
   safety, the capability grants, the asset-protocol scope and the CSP.
-- `docs/RELEASE-SECURITY.md` - what makes a shipped build verifiable: the updater, why installers
+- `docs/RELEASE-SECURITY.md`: what makes a shipped build verifiable: the updater, why installers
   are unsigned, checksums, build provenance, the SBOM, static analysis and the dependency supply
   chain.
-- `SECURITY.md` - how to report a vulnerability, and which versions are supported.
-- `SUPPORT.md` - where to report a bug, what to include, and what to expect.
-- `CODE_OF_CONDUCT.md` - the standard expected of everyone taking part, and how to report a problem.
+- `SECURITY.md`, how to report a vulnerability, and which versions are supported.
+- `SUPPORT.md`, where to report a bug, what to include, and what to expect.
+- `CODE_OF_CONDUCT.md`: the standard expected of everyone taking part, and how to report a problem.
 

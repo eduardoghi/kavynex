@@ -65,7 +65,7 @@ pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
 ///
 /// The sibling of [`managed_asset_scope_dirs`], and it exists for the same reason: the cache root is
 /// never granted. On Windows that root is the parent of the log directory and of the WebView2
-/// profile, so granting it recursively - which is what this replaced - authorized the renderer to
+/// profile, so granting it recursively (which is what this replaced), authorized the renderer to
 /// read a tree that has nothing to do with rendering a thumbnail.
 pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
     crate::constants::WEBVIEW_READABLE_CACHE_DIRS
@@ -83,7 +83,7 @@ pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
 /// consequence is a thumbnail preview that does not appear, never an app that cannot open.
 ///
 /// Each directory is created before it is granted so its canonical (`\\?\`) form resolves and can be
-/// authorized alongside the plain one - the same two-form grant the library subdirectories need, for
+/// authorized alongside the plain one. The same two-form grant the library subdirectories need, for
 /// the same reason (see [`grant_path_with_canonical`]). The directories are created on demand by
 /// their writers anyway; doing it here is what makes the canonical grant possible on a first run.
 pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
@@ -110,9 +110,8 @@ pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
 ///
 /// Split out of [`register_cache_asset_scope`] because it is the whole of what that function does
 /// that a test can observe. The grant itself needs a live `AppHandle`, so the mutation run reported
-/// `replace register_cache_asset_scope with ()` as surviving: the entire body could become a no-op -
-/// no directories created, nothing authorized, every thumbnail preview and display derivative
-/// silently unreadable - and the suite would not notice. It still cannot observe the grant, but the
+/// `replace register_cache_asset_scope with ()` as surviving: the entire body could become a no-op (/// no directories created, nothing authorized, every thumbnail preview and display derivative
+/// silently unreadable), and the suite would not notice. It still cannot observe the grant, but the
 /// creation is now one call from a test, which is the half that has an effect on disk.
 fn prepare_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
     let mut prepared = Vec::new();
@@ -141,7 +140,7 @@ fn prepare_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
 /// This set exists because Tauri's asset scope is append-only in both directions: `is_allowed`
 /// consults the forbidden patterns first and returns false on a match, and there is no API to
 /// withdraw one. So once `revoke_directory_from_asset_scope` (commands/library.rs) forbids a
-/// library's managed subdirectories, re-granting them later in the same session does nothing -
+/// library's managed subdirectories, re-granting them later in the same session does nothing.
 /// `allow_directory` succeeds, the forbid still wins, and every `convertFileSrc` into that library
 /// resolves to a blocked asset.
 ///
@@ -268,7 +267,7 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
 // gone rather than fixed, and the reason is worth keeping where the scope machinery lives.
 //
 // Tauri's scope has no way to withdraw a grant, so every picked image stayed authorized for the rest
-// of the session - a set that only grew, in the one command whose whole job was to widen this app's
+// of the session. A set that only grew, in the one command whose whole job was to widen this app's
 // arbitrary-local-file-read boundary to a caller-chosen path. The obvious cleanup is worse than the
 // problem: a forbid outranks every later allow (see `session_forbidden_dirs` above), so revoking a
 // discarded preview would make the same image picked for a second media silently render nothing.
@@ -278,7 +277,7 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
 // then needs no grant at all, the copy is swept and deleted like every other preview, and the file
 // that eventually lands in the library is byte-identical because the copy is. It also closed a gap
 // this command carried: it called `is_file()` straight on the caller's path with no network-location
-// refusal, so a `\\host\share\x.png` handed over IPC would have authenticated to `host` over SMB -
+// refusal, so a `\\host\share\x.png` handed over IPC would have authenticated to `host` over SMB.
 // the guard every other caller-supplied path in this codebase applies.
 
 #[cfg(test)]
@@ -317,7 +316,7 @@ mod tests {
     fn grant_path_with_canonical_authorizes_both_forms_when_they_differ() {
         // This is the whole reason the helper exists: convertFileSrc can hand the asset scope
         // either the plain path or its canonical (`\\?\`-prefixed, on Windows) form, and a scope
-        // holding only one of them refuses the other - which surfaces as every thumbnail and video
+        // holding only one of them refuses the other, which surfaces as every thumbnail and video
         // silently failing to load, with nothing logged. Routing through a `..` segment yields a
         // path whose canonical form is a different string on every platform, which is what makes
         // this portable rather than Windows-only.
@@ -424,7 +423,7 @@ mod tests {
     fn managed_cache_scope_dirs_are_the_rendered_subdirs_never_the_root() {
         // The negative assertion is the one that matters, and it is what this function was created
         // to make testable: the grant it replaced was a single recursive `allow_directory` on the
-        // cache root, and on Windows that root is `%LOCALAPPDATA%\<identifier>` - the parent of the
+        // cache root, and on Windows that root is `%LOCALAPPDATA%\<identifier>`. The parent of the
         // log directory and of the WebView2 profile. Granting the root therefore authorized the
         // renderer to read both, for no reason: only these two subdirectories are ever drawn.
         let root = Path::new("/cache");
@@ -464,7 +463,7 @@ mod tests {
         // function could be replaced with a no-op and nothing failed: no directory created, nothing
         // granted, and every thumbnail preview and display derivative unreadable with no error
         // anywhere. Asserting the returned paths *and* their existence is what makes an empty
-        // return - the shape a gutted body would produce - fail rather than pass vacuously.
+        // return (the shape a gutted body would produce), fail rather than pass vacuously.
         let cache_root = unique_test_dir("cache-scope-prepare");
 
         let prepared = prepare_cache_scope_dirs(&cache_root);
@@ -528,7 +527,7 @@ mod tests {
 
     #[test]
     fn forbidding_one_library_leaves_a_different_one_authorizable() {
-        // The normal migration is A -> B, and B must not inherit A's revocation - otherwise the
+        // The normal migration is A -> B, and B must not inherit A's revocation. Otherwise the
         // guard would break the very flow it is meant to protect. Also covers the prefix case: a
         // sibling whose path starts with the revoked one is a different library.
         let old_library = Path::new("/library");

@@ -19,7 +19,7 @@ pub fn extension_from_path(path: &Path) -> String {
 /// rather than as the characters themselves, matching the convention this repository already applies
 /// to a codepoint used as data.
 ///
-/// Nothing this app writes can produce one - every managed path is content-addressed - so this is
+/// Nothing this app writes can produce one (every managed path is content-addressed), so this is
 /// defense in depth for a name that arrives from an out-of-band writer or an imported database, in
 /// the same spirit as the rest of `sanitize_relative_path_strict`.
 fn is_device_ordinal(value: char) -> bool {
@@ -27,8 +27,8 @@ fn is_device_ordinal(value: char) -> bool {
 }
 
 /// True for a segment that names a Windows reserved device (CON, PRN, AUX, NUL, COM0-9,
-/// LPT0-9, plus the superscript `COM`/`LPT` ordinals - see [`is_device_ordinal`]), with or without
-/// an extension - Windows treats `CON`, `CON.txt`, etc. as the device.
+/// LPT0-9, plus the superscript `COM`/`LPT` ordinals, see [`is_device_ordinal`]), with or
+/// without an extension. Windows treats `CON`, `CON.txt`, etc. as the device.
 /// Checked on every platform so a library synced from Windows behaves the same everywhere.
 pub(crate) fn is_windows_reserved_name(segment: &str) -> bool {
     let stem = segment.split('.').next().unwrap_or(segment).trim();
@@ -57,7 +57,7 @@ pub(crate) fn is_windows_reserved_name(segment: &str) -> bool {
 /// `\\?\UNC\...`, and the mixed-separator spellings `/\host\share` / `\/host\share` that Windows
 /// also resolves to a UNC path). Merely canonicalizing or opening one of these on Windows makes
 /// the OS reach out to `host` over SMB and authenticate, leaking the user's NTLM hash to whoever
-/// controls that host - so callers must reject network paths *before* any filesystem call
+/// controls that host, so callers must reject network paths *before* any filesystem call
 /// (`canonicalize`, `exists`, `read_dir`, `create_dir_all`) touches them.
 ///
 /// Separators are normalized to `\` first so a mixed spelling cannot slip past a literal prefix
@@ -170,8 +170,8 @@ pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
 /// The managed-directory requirement is what keeps this from being a foothold for arbitrary
 /// file deletion: every path the app legitimately produces is content-addressed under one of
 /// those directories, so a bare name like `contract.docx` is rejected here. Without it, a
-/// compromised frontend could persist such a name and - combined with a redirected library
-/// directory - have a later delete/move command act on a file outside the app's own layout.
+/// compromised frontend could persist such a name and (combined with a redirected library
+/// directory) have a later delete/move command act on a file outside the app's own layout.
 pub fn ensure_managed_library_relative_path(value: &str) -> AppResult<()> {
     let sanitized = sanitize_relative_path_strict(value)?;
 
@@ -515,7 +515,7 @@ mod tests {
     fn sanitize_relative_path_allows_other_superscripts_and_non_ascii_ordinals() {
         // The other direction, so the ordinal rule stays exactly as wide as Windows' own aliasing
         // rather than growing into "any non-ASCII fourth character". Superscript four is not a
-        // device alias, and neither is a non-Latin digit - both are ordinary names.
+        // device alias, and neither is a non-Latin digit, both are ordinary names.
         for path in [
             "video/COM\u{2074}.mp4", // superscript four
             "video/COM\u{0660}.mp4", // arabic-indic zero

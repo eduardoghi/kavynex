@@ -22,7 +22,7 @@ export const IMAGE_FILE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "bmp", "avif
 const THUMBNAIL_EXTENSIONS = new Set<string>(IMAGE_FILE_EXTENSIONS);
 
 // Hoisted module-level so formatDateValue/formatCreatedAt do not rebuild an Intl.DateTimeFormat
-// on every call - construction is comparatively expensive and these formatters have no per-call
+// on every call. Construction is comparatively expensive and these formatters have no per-call
 // state, so a single shared instance is safe to reuse across renders.
 const MEDIUM_DATE_FORMAT = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 const MEDIUM_DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-US", {

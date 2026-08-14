@@ -75,8 +75,8 @@ async fn set_user_version(conn: &mut SqliteConnection, version: i64) -> AppResul
 /// The rule is one comparison, and it was written out at each of the eight guards below until the
 /// mutation gate made the cost of that visible: nine identical `current_version < N` expressions
 /// generate nine mutants with the same description, so they cannot be told apart by anything but a
-/// line number. Three of them are equivalent - skipping v8, v9 or v11 changes nothing, because a
-/// later migration re-runs the whole `INDEX_DDLS` list and v13 redoes v11's backfill - and with the
+/// line number. Three of them are equivalent (skipping v8, v9 or v11 changes nothing, because a
+/// later migration re-runs the whole `INDEX_DDLS` list and v13 redoes v11's backfill), and with the
 /// comparison inlined there was no way to exclude those three without also dropping the five that
 /// catch a real skipped migration. Naming the rule once gives it one mutant, which can be reasoned
 /// about (and excluded, if it turns out equivalent) on its own terms.
@@ -151,14 +151,14 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
 
     // v13: enforces the videos live-chat invariant on databases whose table predates the CHECK.
     // Repairs any already-inconsistent row, then adds the enforcement triggers. Not index-only,
-    // but still additive (no table rebuild) - see apply_migration_13.
+    // but still additive (no table rebuild). See apply_migration_13.
     if needs_migration(current_version, 13) {
         apply_migration_13(pool).await?;
     }
 
     // v14: enforces the comment-body length ceiling on databases whose video_comments table predates
     // the CHECK. Truncates any already-over-length row, then adds the enforcement triggers. Additive
-    // (no table rebuild), same shape as v13 - see apply_migration_14.
+    // (no table rebuild), same shape as v13. See apply_migration_14.
     if needs_migration(current_version, 14) {
         apply_migration_14(pool).await?;
     }
@@ -168,10 +168,10 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     // old or the new version). An additive migration (a new column or index) runs the
     // guarded ALTER/CREATE like `apply_migration_8`. Enforcing a new invariant on an existing
     // table can often stay additive too: `apply_migration_13` backports the videos live-chat
-    // CHECK with a trigger rather than a rebuild. A change that genuinely rewrites the table -
-    // a column type, dropping a column, replacing a UNIQUE - cannot be expressed with
+    // CHECK with a trigger rather than a rebuild. A change that genuinely rewrites the table (a
+    // column type, dropping a column, replacing a UNIQUE) cannot be expressed with
     // `ALTER TABLE ADD COLUMN` or a trigger, so it rebuilds the affected table with
-    // `apply_table_rebuilds` (create new, copy, drop, rename - with foreign keys disabled and
+    // `apply_table_rebuilds` (create new, copy, drop, rename, with foreign keys disabled and
     // verified) instead of being silently skipped by the additive baseline above.
 
     Ok(())
@@ -233,7 +233,7 @@ mod tests {
         );
 
         // Flag set with a path, flag clear with no path, and flag clear with a path are all
-        // allowed - only the flag-without-path combination is the corruption being fenced off.
+        // allowed, only the flag-without-path combination is the corruption being fenced off.
         for (file_path, has_flag, path) in [
             ("video/b.mp4", "1", "'live_chat/b.json.gz'"),
             ("video/c.mp4", "0", "NULL"),
@@ -435,8 +435,8 @@ mod tests {
 
         // The other half of this migration: the table above predates `title_normalized`, so the
         // column is added and every existing row is backfilled with the same normalizer the search
-        // term goes through. This is not covered by v11's backfill - only a database below v11 ever
-        // runs v11, and this one is stamped at v12 - and a NULL here fails silently, leaving the
+        // term goes through. This is not covered by v11's backfill (only a database below v11 ever
+        // runs v11, and this one is stamped at v12), and a NULL here fails silently, leaving the
         // media in the library while invisible to every title search.
         let normalized: Vec<(i64, Option<String>)> =
             sqlx::query_as("SELECT id, title_normalized FROM videos ORDER BY id")
@@ -510,7 +510,7 @@ mod tests {
     ///
     /// Two historical eras are what make this worth seeding by hand rather than reusing the current
     /// DDL. `title_normalized` only entered `VIDEOS_ADDITIVE_COLUMNS` with v11, so a database
-    /// stamped 7..=10 by the build of its day carries every other additive column and not that one -
+    /// stamped 7..=10 by the build of its day carries every other additive column and not that one.
     /// exactly the shape whose `CREATE INDEX ... ON videos(title_normalized)` used to fail. Below
     /// the baseline (0..=6) none of the additive columns are there either, since the baseline is
     /// what adds them. Column types are kept loose on purpose: this models what an older build
@@ -609,7 +609,7 @@ mod tests {
         // anything a plain lower() would also satisfy.
         if has_title_normalized {
             // A database stamped v11 or later claims to have been backfilled, so it must carry the
-            // value - a NULL there is the one state stage_database_import refuses outright.
+            // value. A NULL there is the one state stage_database_import refuses outright.
             sqlx::query(
                 "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type) \
                  VALUES (1, 1, 'Ação  Válida', 'acao valida', 'video/a.mp4', 'video')",
@@ -635,8 +635,8 @@ mod tests {
         .await
         .unwrap();
 
-        // The indexes a real database of this era carries. Seeding none at all - which this used to
-        // do - makes the fixture a shape no build ever produced, and hides a skipped index migration
+        // The indexes a real database of this era carries. Seeding none at all (which this used to
+        // do) makes the fixture a shape no build ever produced, and hides a skipped index migration
         // behind a database that never had the index either. A database below the baseline is the
         // one case that legitimately has none: `apply_baseline_schema` is what first creates them.
         if version >= BASELINE_SCHEMA_VERSION {
@@ -734,7 +734,7 @@ mod tests {
     async fn every_historical_version_migrates_to_the_current_schema() {
         // The gap this closes: the individual migration tests below each start from one chosen
         // version (v5 via the real fixture, v6, v9, v12), so the versions nobody picked were never
-        // exercised as a *starting point* at all. That is precisely how the v8..v10 failure shipped -
+        // exercised as a *starting point* at all. That is precisely how the v8..v10 failure shipped.
         // those migrations run the whole INDEX_DDLS list, which indexes a column v11 is what adds,
         // and no test ever started at 7, 8 or 10. Rather than add one test per version as each bug is
         // found, drive every version the app has ever stamped through the full chain.
@@ -758,7 +758,7 @@ mod tests {
             // Reaching head is not the same as arriving complete, and the version stamp cannot tell
             // the two apart: each migration stamps its own version, so one that is skipped entirely
             // still ends at SCHEMA_VERSION because the later ones carry the number past it. The data
-            // assertions below cannot tell either - they read rows, not the objects that make those
+            // assertions below cannot tell either. They read rows, not the objects that make those
             // rows queryable. So assert the schema itself.
             //
             // This is the v8..v10 failure seen from the other side, and it is what the seed above
@@ -821,7 +821,7 @@ mod tests {
         // Reproduces the real upgrade failure a database stamped at v9 by a build that predated the
         // v11 `title_normalized` column hits: ensure_schema skips the baseline (9 >= 7) and the
         // v8/v9 migrations, so the column is never added before apply_migration_10 runs the full
-        // INDEX_DDLS - which includes indexes ON title_normalized. Without the additive-column guard
+        // INDEX_DDLS, which includes indexes ON title_normalized. Without the additive-column guard
         // in that loop the CREATE INDEX fails with "no such column: title_normalized" and the
         // database can no longer be opened. The tables carry every column the migration's indexes
         // reference (minus title_normalized), matching what a v9 build actually left on disk.
@@ -935,8 +935,8 @@ mod tests {
     // migrates a committed, opaque `.sqlite` file produced from the exact schema and data a
     // real v1.0.0 / v1.1.0 install has on disk (both shipped `user_version = 5`, with the
     // now-legacy `video_live_chat_messages` table). Because the migration test never restates
-    // that schema, it genuinely covers "open a real old user's database and migrate it" - the
-    // path whose blast radius is silent data loss on upgrade - instead of a hand-built
+    // that schema, it genuinely covers "open a real old user's database and migrate it" (the
+    // path whose blast radius is silent data loss on upgrade), instead of a hand-built
     // approximation the test could get wrong in the same way the migration does.
 
     const V1_FIXTURE_RELATIVE: &str = "tests/fixtures/kavynex_v1_user_version_5.sqlite";
@@ -1363,7 +1363,7 @@ mod tests {
         // `ALTER TABLE ADD COLUMN` definitions an upgraded legacy database receives) and
         // `VIDEOS_TABLE_DDL` (the `CREATE TABLE` definitions a fresh database receives) are
         // maintained separately. If they ever drift, an upgraded database and a freshly
-        // created one would sit at the same user_version with a differently-typed column - the
+        // created one would sit at the same user_version with a differently-typed column. The
         // exact silent divergence the versioned-migration comment in `ensure_schema` warns
         // against. This asserts both paths produce byte-identical definitions for every
         // additive column (type, NOT NULL, default), so a mismatch fails CI instead of only
@@ -1594,7 +1594,7 @@ mod tests {
         ensure_schema(&pool).await.unwrap();
 
         // A fresh database already has the index once migration 10 has run (it is no longer built
-        // by the baseline - see COMMENT_UNIQUE_INDEX_DDL).
+        // by the baseline. See COMMENT_UNIQUE_INDEX_DDL).
         let (fresh,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM sqlite_master
              WHERE type = 'index' AND name = 'idx_video_comments_video_comment_unique'",
@@ -1662,7 +1662,7 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        // Two rows sharing (video_id, comment_id) - exactly what the new index forbids.
+        // Two rows sharing (video_id, comment_id), exactly what the new index forbids.
         sqlx::query(
             "INSERT INTO video_comments (id, video_id, comment_id, author_name, text)
              VALUES (1, 1, 'c1', 'A', 'first'), (2, 1, 'c1', 'A', 'dup')",
@@ -1709,7 +1709,7 @@ mod tests {
         // cover: that test seeds the duplicate at user_version 9, so only apply_migration_10 runs).
         // A pre-versioned database (user_version below the baseline) that already holds a duplicate
         // (video_id, comment_id) pair must still open. When the unique index lived in the shared
-        // INDEX_DDLS array, apply_baseline_schema - which runs for every such database - tried to
+        // INDEX_DDLS array, apply_baseline_schema (which runs for every such database), tried to
         // build it against the un-deduped rows, failed, rolled the whole baseline back (leaving
         // user_version at 0), and the database could never be opened again, with apply_migration_10's
         // dedupe never reached.
@@ -1859,7 +1859,7 @@ mod tests {
         );
 
         // Even though the rebuild failed, foreign-key enforcement must be back on for the next
-        // pool consumer - never left in the OFF state the rebuild toggled it into.
+        // pool consumer, never left in the OFF state the rebuild toggled it into.
         let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
             .fetch_one(&pool)
             .await
@@ -1874,8 +1874,8 @@ mod tests {
     async fn an_unrestored_rebuild_connection_is_discarded_instead_of_returned_to_the_pool() {
         // The last line of defense behind the rebuild: apply_table_rebuilds normally restores
         // `PRAGMA foreign_keys = ON` itself, and the test above pins that. This covers what happens
-        // when that restore never ran - the PRAGMA itself failed, or a panic unwound through the
-        // rebuild - which leaves `restored` false. The connection then still has enforcement OFF,
+        // when that restore never ran (the PRAGMA itself failed, or a panic unwound through the
+        // rebuild), which leaves `restored` false. The connection then still has enforcement OFF,
         // and handing it back to the pool would silently give the next consumer a connection on
         // which every ON DELETE CASCADE is inert. RebuildConnection's Drop detaches it instead.
         //
@@ -2095,7 +2095,7 @@ mod tests {
     #[tokio::test]
     async fn rebuilding_videos_puts_its_triggers_and_indexes_back() {
         // The rebuild path is kept ready but unused, so nothing has ever run it against a real
-        // table - and `videos` is the only one carrying triggers. Dropping a table drops its
+        // table, and `videos` is the only one carrying triggers. Dropping a table drops its
         // triggers with it, so a rebuild that forgot to recreate them would hand back a table that
         // still looks right and silently accepts the rows the triggers exist to reject. That is the
         // failure this pins, because the first real rebuild should be a data change rather than the

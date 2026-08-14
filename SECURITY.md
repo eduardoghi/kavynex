@@ -23,11 +23,11 @@ This file is the policy: how to report something, and what is supported. The rea
 guardrails themselves is documented alongside the code it protects, so a contributor can find *why*
 a check exists rather than only that it does:
 
-- [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) - what the app defends against at runtime. The
+- [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md): what the app defends against at runtime. The
   IPC trust boundary, path safety and the library guard, the yt-dlp host allow-list and argument
   handling, outbound image fetches, external binary resolution, the Tauri capability grants, the
   asset-protocol scope and the CSP. Includes the accepted residuals of each.
-- [`docs/RELEASE-SECURITY.md`](docs/RELEASE-SECURITY.md) - what makes a shipped build verifiable.
+- [`docs/RELEASE-SECURITY.md`](docs/RELEASE-SECURITY.md): what makes a shipped build verifiable.
   The updater and its rollback exposure, why installers are unsigned, checksums, build provenance,
   the SBOM, where the CodeQL static analysis lives, and the dependency supply chain.
 

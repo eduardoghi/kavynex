@@ -6,7 +6,7 @@ import { renderWithMantine } from "../../../test/test-utils";
 
 // The virtualized scrollback only mounts rows near the viewport, and jsdom has no layout (every
 // rect is 0x0), so the real virtualizer would render no lines at all here. Mock it to yield every
-// row - the same approach the media grid, comments panel and live chat replay tests take - so these
+// row (the same approach the media grid, comments panel and live chat replay tests take), so these
 // can still assert on a specific line's content.
 vi.mock("@tanstack/react-virtual", () => ({
     useVirtualizer: vi.fn(({ count }: { count: number }) => ({

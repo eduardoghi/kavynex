@@ -3,7 +3,7 @@
 /**
  * How a streamed live chat replay reaches the frontend: a run of `batch` events, each carrying a
  * slice of raw JSON lines, terminated by a single `done` event. The frontend resolves its read
- * only on `done`, never merely when the command returns - channel messages and the invoke
+ * only on `done`, never merely when the command returns. Channel messages and the invoke
  * response travel independently, so resolving on the return could race the last in-flight batch.
  * The generated binding (`src/types/generated/LiveChatStreamEvent.ts`) is what the frontend's
  * zod schema in `lib/ipc-schemas.ts` is checked against, so a change here fails `tsc` there

@@ -5,8 +5,8 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 // defineConfig (eslint/config) rather than tseslint.config(): the latter's variadic overload is
-// deprecated, and this config never used its `extends` sugar - it spreads tseslint.configs.recommended
-// inline - so the two are equivalent here.
+// deprecated, and this config never used its `extends` sugar (it spreads tseslint.configs.recommended
+// inline), so the two are equivalent here.
 export default defineConfig(
     {
         ignores: [
@@ -19,7 +19,7 @@ export default defineConfig(
             // Stryker's working copies of the whole tree, and the report it writes. Both are
             // gitignored, which is not the same thing: eslint reads this list, not .gitignore, and
             // `pnpm lint` is `eslint .`. A run that finishes cleans its sandboxes up, so this is
-            // invisible until one is interrupted - and then each surviving sandbox is a full second
+            // invisible until one is interrupted, and then each surviving sandbox is a full second
             // copy of src/ and scripts/, linted as if it were source. Two of them turned `pnpm lint`
             // into 7337 errors that named files nobody had written.
             ".stryker-tmp/**",
@@ -35,7 +35,7 @@ export default defineConfig(
                 ...globals.browser,
             },
             // Type-aware linting for the app sources (all covered by tsconfig.json), so the
-            // async-safety rules below can see promise types. Scoped to src/ only - the plain-JS
+            // async-safety rules below can see promise types. Scoped to src/ only. The plain-JS
             // scripts and ignored config files are not part of a tsconfig project.
             parserOptions: {
                 projectService: true,
@@ -68,8 +68,8 @@ export default defineConfig(
                 { checksVoidReturn: { attributes: false } },
             ],
 
-            // The threat model (docs/THREAT-MODEL.md) rests on YouTube-derived text - titles, comments, live
-            // chat, author names - never being rendered as raw HTML: it is always React children,
+            // The threat model (docs/THREAT-MODEL.md) rests on YouTube-derived text (titles, comments, live
+            // chat, author names), never being rendered as raw HTML: it is always React children,
             // so React's escaping neutralizes it, which is what keeps the relaxed
             // `style-src 'unsafe-inline'` acceptable (there is no injection sink for it to abuse).
             // Nothing enforced that mechanically, so a future dangerouslySetInnerHTML, a direct
@@ -97,8 +97,8 @@ export default defineConfig(
             // (invokeCommand/invokeVoid/listenTauri), and tauri-platform.ts re-exports the
             // platform capabilities (dialogs, opener, process, updater, app version,
             // convertFileSrc). Banning `@tauri-apps` everywhere else is what keeps "which Tauri
-            // capabilities does this app actually use?" - the question every review against
-            // src-tauri/capabilities/ asks - a two-file read instead of a tree-wide grep a new
+            // capabilities does this app actually use?" (the question every review against
+            // src-tauri/capabilities/ asks), a two-file read instead of a tree-wide grep a new
             // caller can silently invalidate. This was previously scoped to invoke()/listen()
             // only, which left every plugin import (dialog/opener/process/updater) outside the
             // boundary it was supposed to enforce.

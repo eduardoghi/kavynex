@@ -187,7 +187,7 @@ export type DiagnosticsController = {
     reloadDiagnostics: () => Promise<void>;
     // Reveals the app's log directory in the OS file manager. Lives on this slice because
     // Diagnostics is where a user is sent to gather what a bug report needs, and it is the one
-    // action here that touches no diagnostics state - hence its own in-flight flag rather than
+    // action here that touches no diagnostics state. Hence its own in-flight flag rather than
     // sharing `isLoadingDiagnostics`, which the Refresh button owns.
     openLogDirectory: () => Promise<void>;
     isOpeningLogDirectory: boolean;
@@ -224,7 +224,7 @@ export type HomeMediaActionsController = {
     confirmDeleteChannel: () => Promise<void>;
     markAsWatched: (mediaId: number) => Promise<void>;
     markAsUnwatched: (mediaId: number) => Promise<void>;
-    // See MediaLibraryController.watchedActionInFlight - passed through unchanged so the grid can
+    // See MediaLibraryController.watchedActionInFlight. Passed through unchanged so the grid can
     // disable a card's watch/unwatch action while that row's own toggle is in flight.
     watchedActionInFlight: ReadonlySet<number>;
     editMediaTitle: (media: MediaRow, title: string) => Promise<void>;

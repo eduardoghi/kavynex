@@ -31,13 +31,13 @@ const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
 // so without a cap a compromised or buggy frontend firing these in a tight loop could exhaust memory
 // and process handles. The main download path does not go through here (it has its own spawn and is
 // bounded by the per-run registry), so gating this shared choke point does not throttle real
-// downloads - only the metadata-style probes. Generous enough that normal interactive use (loading
+// downloads, only the metadata-style probes. Generous enough that normal interactive use (loading
 // formats for a video, fetching its comments) never queues.
 const MAX_CONCURRENT_STANDALONE_RUNS: usize = 4;
 // Ceiling on how many standalone runs may be in flight (running or queued) at once. The concurrency
 // cap above bounds only how many spawn together; this bounds the queue behind it so a burst of IPC
 // calls cannot pile up an unbounded backlog (see BoundedSemaphore). Set well above real interactive
-// use - loading formats and comments for a video never approaches it.
+// use. Loading formats and comments for a video never approaches it.
 const MAX_STANDALONE_RUNS_IN_FLIGHT: usize = 32;
 
 // A single process-wide gate: there is one app, and unlike the pool it holds no state a test needs to
@@ -122,7 +122,7 @@ pub fn sanitize_filename_component(value: &str) -> String {
     // means the current/parent directory. Every current call site concatenates this into a longer
     // string rather than using it as a lone `Path` component, so no traversal is reachable today,
     // but returning it verbatim would make any future `dir.join(sanitize_filename_component(x))` a
-    // traversal. Map it to the same neutral placeholder as the empty case - defense in depth,
+    // traversal. Map it to the same neutral placeholder as the empty case. Defense in depth,
     // mirroring the leading-dash and reserved-name guards below.
     if compact.chars().all(|ch| ch == '.') {
         return "media".to_string();
@@ -141,7 +141,7 @@ pub fn sanitize_filename_component(value: &str) -> String {
     // A component that sanitizes to a Windows reserved device name (CON, NUL, COM1, ...) would make
     // the resulting file unusable on Windows. In practice the download filename joins three such
     // components as extractor_id_formatid, so a bare reserved stem is not normally reachable, but
-    // prefix it with '_' as defense in depth - mirroring the leading-dash guard above and the
+    // prefix it with '_' as defense in depth, mirroring the leading-dash guard above and the
     // reserved-name rejection in utils::path::sanitize_relative_path_strict.
     if crate::utils::path::is_windows_reserved_name(&guarded) {
         format!("_{guarded}")
@@ -158,8 +158,8 @@ pub fn sanitize_filename_component(value: &str) -> String {
 /// overwrites an existing destination, so a collision would silently discard the second video.
 ///
 /// When sanitization actually changes the value, a short hash of the ORIGINAL is appended so
-/// distinct ids get distinct filenames. A value that survives sanitization unchanged - the
-/// overwhelming majority of YouTube ids - keeps its exact name, so filenames of already
+/// distinct ids get distinct filenames. A value that survives sanitization unchanged (the
+/// overwhelming majority of YouTube ids) keeps its exact name, so filenames of already
 /// downloaded media are unaffected.
 pub fn sanitize_identifier_component(value: &str) -> String {
     let trimmed = value.trim();
@@ -172,7 +172,7 @@ pub fn sanitize_identifier_component(value: &str) -> String {
     format!("{sanitized}_{}", short_identifier_hash(trimmed))
 }
 
-/// First 10 lowercase-hex chars (40 bits) of the SHA-256 of `value` - enough to disambiguate the
+/// First 10 lowercase-hex chars (40 bits) of the SHA-256 of `value`. Enough to disambiguate the
 /// handful of ids that could share a sanitized form, without bloating the filename.
 fn short_identifier_hash(value: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -264,7 +264,7 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
 /// another message could print it with the separators swapped (yt-dlp normalizes to `/` internally
 /// on Windows) or with a different ASCII casing (Windows paths are case-insensitive). Each of those
 /// full-path forms is redacted. The bare filename is deliberately left alone: it is generic
-/// ("cookies.txt"), appears in benign hint text, and does not reveal the user's profile layout - it
+/// ("cookies.txt"), appears in benign hint text, and does not reveal the user's profile layout. It
 /// is the directory portion that does.
 pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
     let Some(path) = cookies_path
@@ -424,8 +424,7 @@ async fn run_yt_dlp_and_capture_json(
     failed_message: &str,
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<(String, Vec<String>, Vec<String>)> {
-    // Bound concurrent standalone runs (see STANDALONE_RUN_SEMAPHORE). Held for the whole function -
-    // spawn through wait - so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers queue
+    // Bound concurrent standalone runs (see STANDALONE_RUN_SEMAPHORE). Held for the whole function (// spawn through wait), so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers queue
     // here rather than each spawning a process and buffering up to 128 MiB, and a queue deeper than
     // the in-flight ceiling is refused up front rather than enqueued without limit.
     let _permit = STANDALONE_RUN_SEMAPHORE
@@ -486,7 +485,7 @@ async fn run_yt_dlp_and_capture_json(
 
             if should_keep_terminal_line(&line) {
                 // Bound memory (and the IPC payload these lines become in `terminal_logs`) on a
-                // chatty failure - retry storms, throttling notices - since `-v` is always passed
+                // chatty failure (retry storms, throttling notices), since `-v` is always passed
                 // here. Keep the most recent lines, the same ring-buffer cap the download flow's
                 // stderr uses (yt_dlp::download::MAX_CAPTURED_STDERR_LINES).
                 if log_lines.len() >= MAX_CAPTURED_STDERR_LINES {
@@ -751,7 +750,7 @@ fn is_valid_youtube_video_id(value: &str) -> bool {
 
 /// Decides whether an empty comment result means extraction *failed* rather than the video
 /// genuinely having no comments. yt-dlp succeeded (a hard failure would already be an error),
-/// but returned no comments while YouTube reports a positive `comment_count` - so the comments
+/// but returned no comments while YouTube reports a positive `comment_count`, so the comments
 /// exist and could not be retrieved (rate limiting, temporary unavailability). A `None`/`0`
 /// reported count means comments are disabled or genuinely zero, which is not an error.
 fn comments_extraction_looks_incomplete(reported_count: Option<i64>, extracted: usize) -> bool {
@@ -784,8 +783,7 @@ pub async fn fetch_youtube_comments_async(
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let url = format!("https://www.youtube.com/watch?v={}", normalized_video_id);
 
-    // Register the run (when a run_id was supplied) so the frontend can cancel this comment backup -
-    // which can run for up to YT_DLP_COMMENTS_TIMEOUT_SECS - promptly, instead of waiting it out. The
+    // Register the run (when a run_id was supplied) so the frontend can cancel this comment backup (// which can run for up to YT_DLP_COMMENTS_TIMEOUT_SECS), promptly, instead of waiting it out. The
     // guard unregisters the run when this function returns.
     let (cancel_flag, _run_release_guard) = optional_cancellable_run(run_id)?;
 
@@ -981,7 +979,7 @@ pub async fn list_yt_dlp_formats_async(
 /// True when yt-dlp's `extractor` field indicates the media came from YouTube. Shared by the
 /// download flow (`normalize_download_metadata`) and the format-listing flow
 /// (`list_yt_dlp_formats_async`) so both resolve the same youtube video id from the same
-/// metadata fetch - the latter lets the frontend pre-check for an already-registered duplicate
+/// metadata fetch. The latter lets the frontend pre-check for an already-registered duplicate
 /// before any download starts, instead of only after downloading the whole file.
 fn resolve_youtube_video_id(id: Option<&str>, extractor: Option<&str>) -> Option<String> {
     let id = id.map(str::trim).filter(|value| !value.is_empty())?;

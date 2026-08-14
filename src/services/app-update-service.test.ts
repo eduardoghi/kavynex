@@ -28,7 +28,7 @@ type DownloadEvent =
 type DownloadDriver = (emit: (event: DownloadEvent) => void) => void;
 
 /// A stand-in for the plugin's `Update`. `downloadAndInstall` hands the service's own callback to
-/// `drive`, so a test emits the progress events by hand - nothing here reaches the network, which is
+/// `drive`, so a test emits the progress events by hand. Nothing here reaches the network, which is
 /// the whole reason this module could not be tested through the real plugin.
 function createUpdate(
     drive: DownloadDriver = () => {},
@@ -175,7 +175,7 @@ describe("installAppUpdate", () => {
             { event: "Progress", data: { chunkLength: 1 } },
         ]);
 
-        // 1/3 and 2/3 of the total, rounded - not the raw 33.333.../66.666... a bar cannot render.
+        // 1/3 and 2/3 of the total, rounded, not the raw 33.333.../66.666... a bar cannot render.
         expect(progress.map((entry) => entry.percent)).toEqual([null, 33, 67]);
     });
 
@@ -286,7 +286,7 @@ describe("installAppUpdate", () => {
 
     it("propagates a failed relaunch so the caller can surface it", async () => {
         // On Windows the installer can end the process from inside downloadAndInstall, so this
-        // rejection is only reachable when the process is still alive - which makes it a real
+        // rejection is only reachable when the process is still alive, which makes it a real
         // failure to report rather than the expected end of the process.
         relaunchMock.mockRejectedValue(new Error("relaunch refused"));
 

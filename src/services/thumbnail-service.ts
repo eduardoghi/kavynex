@@ -21,8 +21,8 @@ export async function generateTemporaryThumbnail(mediaPath: string): Promise<str
  * Copies an image the user picked into the app's preview directory and returns its path there.
  *
  * The preview is drawn from that copy rather than from the file the user chose, because the preview
- * directory is already authorized in the asset-protocol scope as a whole. The alternative - granting
- * the chosen file - is what this replaced: Tauri's scope cannot withdraw a grant, so those
+ * directory is already authorized in the asset-protocol scope as a whole. The alternative. Granting
+ * the chosen file: is what this replaced: Tauri's scope cannot withdraw a grant, so those
  * accumulated for the session, and revoking one would have made the same image picked for a second
  * media silently render nothing (a forbid outranks every later allow).
  *
@@ -68,7 +68,7 @@ export async function persistThumbnailFile(
 
 // Fetching a thumbnail by URL is not called from here any more: its only caller resolved the
 // thumbnail for a media being created, and that whole sequence runs in the backend now
-// (`create_media`). The avatar download below stays, because it is its own operation - a user
+// (`create_media`). The avatar download below stays, because it is its own operation. A user
 // changing a channel's picture, with no artifacts-without-a-row window behind it.
 
 export async function downloadChannelAvatarFromHandle(
@@ -106,7 +106,7 @@ export type DisplayThumbnailResolution = {
     /** Library-relative thumbnail path -> absolute path of its display-sized copy. */
     displayPaths: ReadonlyMap<string, string>;
     /**
-     * Every path this call answered for good - both the ones that resolved and the ones that never
+     * Every path this call answered for good, both the ones that resolved and the ones that never
      * will. Asking about any of these again cannot change the answer.
      */
     settledPaths: ReadonlySet<string>;

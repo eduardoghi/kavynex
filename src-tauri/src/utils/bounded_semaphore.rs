@@ -8,7 +8,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// run. A bare `tokio::Semaphore` bounds only the former: `acquire()` enqueues an unbounded number of
 /// waiters, so a caller firing the guarded operation in a tight loop (a buggy or compromised frontend
 /// issuing a yt-dlp IPC command with fresh run ids) can pile up an arbitrarily deep backlog ahead of
-/// a later, legitimate request - starving it even though only a couple of operations ever run
+/// a later, legitimate request. Starving it even though only a couple of operations ever run
 /// concurrently. This pairs the semaphore with an in-flight counter and refuses a new caller once
 /// `max_in_flight` are already holding-or-awaiting a permit, turning that unbounded backlog into an
 /// immediate, distinct error. The ceiling is set generously (well above real interactive/bulk use),
@@ -22,7 +22,7 @@ pub struct BoundedSemaphore {
 
 impl BoundedSemaphore {
     /// `permits` is how many callers run concurrently; `max_in_flight` is the hard ceiling on
-    /// running-plus-waiting callers. Pass `max_in_flight >= permits` - a ceiling below the
+    /// running-plus-waiting callers. Pass `max_in_flight >= permits`. A ceiling below the
     /// concurrency would reject callers a free permit could still serve.
     pub const fn new(permits: usize, max_in_flight: usize) -> Self {
         Self {
@@ -41,7 +41,7 @@ impl BoundedSemaphore {
         too_busy_code: AppErrorCode,
     ) -> AppResult<BoundedSemaphorePermit> {
         // Claim a slot up front. `fetch_add` returns the prior count, so a prior value at or above
-        // the ceiling means the slot is not ours - roll it back and reject before ever queuing on
+        // the ceiling means the slot is not ours. Roll it back and reject before ever queuing on
         // the semaphore.
         let previous = self.in_flight.fetch_add(1, Ordering::SeqCst);
         if previous >= self.max_in_flight {

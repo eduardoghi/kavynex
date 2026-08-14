@@ -253,7 +253,7 @@ describe("DiagnosticsModal", () => {
 
     it("disables the log folder button while it is opening", () => {
         // `loading` alone would rely on Mantine having re-rendered before the next click lands,
-        // which is a promise about timing rather than about state - and a second click here spawns
+        // which is a promise about timing rather than about state, and a second click here spawns
         // a second file-manager window. Same reasoning as the update-check button in Settings.
         const onOpenLogFolder = vi.fn();
 

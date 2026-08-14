@@ -7,7 +7,7 @@ const EMPTY_DISPLAY_THUMBNAILS: ReadonlyMap<string, string> = new Map();
 // Joins the requested paths into the effect's dependency key. A newline, not a space: a library
 // path is app-written and content-addressed today (`thumbnails/thumb_<sha256>.jpg`), but the value
 // comes out of the database, so a row written by an older build or arriving through an import can
-// hold anything - and a space in one would split into two path fragments that resolve to nothing,
+// hold anything, and a space in one would split into two path fragments that resolve to nothing,
 // which surfaces as a thumbnail that silently never gets a derivative. A newline cannot appear in a
 // path on Windows and is not producible by any of this app's writers.
 const REQUEST_KEY_SEPARATOR = "\n";
@@ -21,7 +21,7 @@ const DISPLAY_RETRY_DELAY_MS = 1500;
 //
 // The contention this recovers from clears in a round or two: the call holding the backend's resolve
 // slot finishes and releases it. A request still making no progress after that is not contended, it
-// is one the backend cannot answer - a machine where FFmpeg hangs, so every entry spends the call
+// is one the backend cannot answer. A machine where FFmpeg hangs, so every entry spends the call
 // budget instead of producing a derivative. Re-asking *that* forever would leave a timer running for
 // the rest of the session to re-derive the same answer, and the cost of stopping is one session of
 // drawing the stored thumbnail, which is this hook's declared fallback.
@@ -48,14 +48,14 @@ const MAX_DISPLAY_RETRIES = 3;
  * are load-bearing at library scale rather than micro-optimizations:
  *
  * - **The dependency key is memoized on the (already stable) input array.** The grid re-renders on
- *   every scroll tick - that is what `useVirtualizer` does - and it passes every row loaded so far,
+ *   every scroll tick: that is what `useVirtualizer` does, and it passes every row loaded so far,
  *   not just the visible window. Rebuilding the key in the hook body therefore meant a map, a filter
  *   and a join over thousands of strings per frame, allocating a several-hundred-kilobyte string each
  *   time. That is a scroll-jank source that grows with the library, in the hook whose entire purpose
  *   is to make scrolling cheaper.
  * - **Only paths without a derivative yet are asked about.** Each request otherwise carried every
  *   loaded path, so appending page k re-asked about all k pages, and the backend paid a `stat` per
- *   entry to answer "already cached" - quadratic in the number of pages for an answer this side
+ *   entry to answer "already cached": quadratic in the number of pages for an answer this side
  *   already had. Skipping the resolved ones leaves each append asking about its own page.
  *
  * The set of settled paths is mirrored in a ref rather than read off the map, so it can be consulted
@@ -63,7 +63,7 @@ const MAX_DISPLAY_RETRIES = 3;
  * re-run the effect and turn one request per page into a chain of them.
  *
  * "Settled" is the backend's word, not this hook's guess, and that is the point. An entry that came
- * back without a derivative used to be left unrecorded so it would be asked about again - which is
+ * back without a derivative used to be left unrecorded so it would be asked about again, which is
  * right for a page whose misses exhausted the per-call generation budget, and wrong for every other
  * way a path can fail to resolve. Those other ways are permanent (a name this app did not write, a
  * machine with no FFmpeg, a source that is gone), so re-asking about them meant every page append
@@ -75,7 +75,7 @@ const MAX_DISPLAY_RETRIES = 3;
  * **Asking again is this hook's job, and waiting for the item list to change is not enough.** The
  * backend's own note on its refused-slot answer says "the caller already re-asks about this", which
  * was true of the case it was written for and not of the case that produces it. The request key is
- * derived from the items, so a re-ask only happens when a page is appended - and the backend admits
+ * derived from the items, so a re-ask only happens when a page is appended, and the backend admits
  * one resolve call at a time, so a page arriving while another holds that slot comes back entirely
  * retryable having decided nothing. On the *last* page of a channel there is no later append, so
  * that page would keep drawing full-resolution stored files for the rest of the session. That is
@@ -91,7 +91,7 @@ export function useDisplayThumbnails(
         EMPTY_DISPLAY_THUMBNAILS
     );
 
-    // The paths the backend has answered for good - resolved or permanently unavailable. A superset
+    // The paths the backend has answered for good. Resolved or permanently unavailable. A superset
     // of the map's keys, since a path that will never have a derivative is settled without appearing
     // there. See the note above on why this is a ref and not a read of the map itself.
     const settledPathsRef = useRef<Set<string>>(new Set());
@@ -110,7 +110,7 @@ export function useDisplayThumbnails(
     const retryTimerRef = useRef<number | null>(null);
 
     // A stable identity for "which paths are being asked about", so the effect below re-runs when
-    // the set changes and not when the array is merely rebuilt with the same contents - which the
+    // the set changes and not when the array is merely rebuilt with the same contents, which the
     // grid does on every render of its parent.
     const requestKey = useMemo(
         () =>
@@ -166,7 +166,7 @@ export function useDisplayThumbnails(
 
                 // Recorded before the state update rather than inside it: a state updater must stay
                 // pure, and React may call it more than once for a single commit. Every settled path
-                // is recorded, including the ones with no derivative - that is what stops a path
+                // is recorded, including the ones with no derivative. That is what stops a path
                 // that can never resolve from riding along on every later request.
                 for (const path of settledPaths) {
                     settledPathsRef.current.add(path);
@@ -175,7 +175,7 @@ export function useDisplayThumbnails(
                 // Nothing at all was settled, so this call decided nothing about any of these
                 // paths: the backend was busy rather than unable to answer, which is what its
                 // "budgetSpent" means. Re-ask on a timer instead of waiting for the item list to
-                // change, because the list may never change again - the last page of a channel has
+                // change, because the list may never change again. The last page of a channel has
                 // no later append behind it, so a request refused here would otherwise leave those
                 // cards decoding the full-resolution stored file for the rest of the session. That
                 // is the same outcome MAX_GENERATIONS_PER_CALL was raised from 64 to 100 to remove,

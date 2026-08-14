@@ -23,14 +23,14 @@ import { AppButton } from "../ui/app-button";
 
 // The per-card actions the grid exposes on each media row. Grouped into one object rather than
 // passed as eight separate props (most of them optional callbacks) so the section's contract stays
-// legible and a caller cannot silently drop one to `undefined` by mistyping its name - the whole
+// legible and a caller cannot silently drop one to `undefined` by mistyping its name. The whole
 // object is required, and a missing field on it is a type error.
 export type MediaCardActions = {
     onOpenMedia: (media: MediaRow) => void;
     onRequestDeleteMedia: (media: MediaRow) => void;
     onMarkWatched?: (media: MediaRow) => void;
     onMarkUnwatched?: (media: MediaRow) => void;
-    // See MediaLibraryController.watchedActionInFlight - passed through to disable a card's own
+    // See MediaLibraryController.watchedActionInFlight. Passed through to disable a card's own
     // watch/unwatch menu item while that row's toggle is in flight.
     watchedActionInFlight?: ReadonlySet<number>;
     onOpenFileLocation?: (media: MediaRow) => void;

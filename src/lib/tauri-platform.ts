@@ -4,8 +4,8 @@
 // `tauri-client.ts`, instead.
 //
 // Why both modules exist and why nothing else may import `@tauri-apps`: keeping every such
-// import inside `src/lib/` makes "what Tauri capabilities does this app actually use?" - the
-// question behind every capability/permission review against `src-tauri/capabilities/` - a
+// import inside `src/lib/` makes "what Tauri capabilities does this app actually use?" (the
+// question behind every capability/permission review against `src-tauri/capabilities/`), a
 // two-file read rather than a tree-wide grep that a new caller can silently invalidate.
 // `eslint.config.js`'s `no-restricted-imports` rule enforces it, so a bypass fails lint
 // instead of relying on code review.

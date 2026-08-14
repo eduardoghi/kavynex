@@ -129,7 +129,7 @@ function extractNestedError(value: unknown): AppErrorShape | null {
 // the message from colliding with the backend's deliberately-suppressed APP_ERROR: a
 // `ClientError`'s message is resolved and shown verbatim by `resolveFriendlyMessage`, whereas a
 // raw runtime Error (a TypeError, a library throw) stays APP_ERROR and degrades to the generic
-// message. Throw this - instead of a bare `new Error(...)` - for any message meant for the user.
+// message. Throw this (instead of a bare `new Error(...)`), for any message meant for the user.
 export class ClientError extends Error {
     readonly code = CLIENT_ERROR_CODE;
 

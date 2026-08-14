@@ -26,7 +26,7 @@ import { listChannelMediaPage } from "../../services";
 import { logError } from "../../utils/app-logger";
 
 // The page size both sides are calibrated against. Resolved from the repo root (vitest's cwd), not
-// import.meta.url, matching the other shared-fixture readers - vitest does not serve the test module
+// import.meta.url, matching the other shared-fixture readers. Vitest does not serve the test module
 // as a file: URL, so fileURLToPath would reject it.
 const SHARED_MEDIA_PAGE_SIZE = (
     JSON.parse(
@@ -73,7 +73,7 @@ describe("useChannelMediaList", () => {
         vi.clearAllMocks();
         // `clearAllMocks` clears recorded calls but leaves a `mockResolvedValueOnce` queue in
         // place, so a test that queues more pages than it consumes hands the leftovers to the next
-        // one - which then loads a page it never set up and fails somewhere unrelated to its own
+        // one, which then loads a page it never set up and fails somewhere unrelated to its own
         // subject. Resetting the queue keeps each test's pages its own.
         vi.mocked(listChannelMediaPage).mockReset();
     });
@@ -389,7 +389,7 @@ describe("useChannelMediaList", () => {
             .mockResolvedValueOnce(
                 page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 4)
             )
-            // Page two repeats id 2 - the row that shifted - alongside a genuinely new one.
+            // Page two repeats id 2 (the row that shifted), alongside a genuinely new one.
             .mockResolvedValueOnce(
                 page([createMediaRow({ id: 2 }), createMediaRow({ id: 3 })], 4)
             );
@@ -412,7 +412,7 @@ describe("useChannelMediaList", () => {
     it("advances the offset by the rows the backend returned, not by the rows it kept", async () => {
         // The failure deduplication introduces if the cursor is read off the list length: a page
         // whose rows were all dropped as duplicates leaves the length unchanged, so the next
-        // loadMore asks for the same offset again - forever, on every scroll to the bottom.
+        // loadMore asks for the same offset again. Forever, on every scroll to the bottom.
         // A total of six leaves a page still to fetch after the duplicate one, which is what makes
         // the third request happen at all.
         vi.mocked(listChannelMediaPage)
@@ -497,8 +497,8 @@ describe("useChannelMediaList", () => {
 
     it("fetches the row a rename displaced past the window instead of skipping it", async () => {
         // The failure this closes, end to end. Three rows are loaded out of six, so the cursor sits
-        // at 3. Renaming a loaded row moves it in the backend's sort - every ORDER BY ties on
-        // title_normalized - and if it lands at or past position 3, the row that was first on the
+        // at 3. Renaming a loaded row moves it in the backend's sort (every ORDER BY ties on
+        // title_normalized), and if it lands at or past position 3, the row that was first on the
         // next page shifts onto position 2. Asking for offset 3 then starts one row too late and
         // that row is never fetched: it is not on screen, and nothing would ever ask for it again.
         vi.mocked(listChannelMediaPage)
@@ -542,7 +542,7 @@ describe("useChannelMediaList", () => {
         // The other direction, and why calling this on every rename is safe: refetching one
         // position earlier normally returns a row the list already holds, which the append's own
         // dedup drops. The cursor still advances by what the backend returned, so it cannot stall
-        // and re-request the same offset forever - which is what taking it from the list length
+        // and re-request the same offset forever, which is what taking it from the list length
         // would do.
         vi.mocked(listChannelMediaPage)
             .mockResolvedValueOnce(

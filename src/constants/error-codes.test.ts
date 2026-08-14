@@ -14,7 +14,7 @@ import { toUserFriendlyError } from "../utils/user-friendly-error";
 // backend counterpart at all.
 //
 // What we *can* verify automatically is that every code the frontend does claim to mirror
-// still exists, verbatim, among the backend's codes - catching a Rust code being renamed or
+// still exists, verbatim, among the backend's codes. Catching a Rust code being renamed or
 // removed without updating the TS side.
 const testFileDir = dirname(fileURLToPath(import.meta.url));
 const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
@@ -91,7 +91,7 @@ describe("error codes stay in sync with the backend", () => {
 // It is deliberately not "every backend code needs a message". Most of the ~125 do not: an
 // unreachable canonicalize failure is exactly what GENERIC_BACKEND_ERROR_MESSAGE is for. What the
 // generic line is *not* for is a failure the user caused and can fix, and there is nothing about a
-// code's shape that distinguishes the two - so the distinction is declared here. A code added to
+// code's shape that distinguishes the two, so the distinction is declared here. A code added to
 // error.rs for a new user-facing refusal, and not catalogued, degrades in silence to "check the app
 // log file", which is how the six added alongside this test went unnoticed.
 //
@@ -127,8 +127,8 @@ const USER_FACING_BACKEND_CODES = [
     "TOO_MANY_CONCURRENT_LIVE_CHAT_READS",
     "THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO",
     "INVALID_THUMBNAIL_FILE",
-    // Settings > Database. These reach the user at the worst moment there is - the recovery flow
-    // after the database failed to open - so the generic line is least acceptable here.
+    // Settings > Database. These reach the user at the worst moment there is (the recovery flow
+    // after the database failed to open), so the generic line is least acceptable here.
     "DATABASE_SCHEMA_TOO_NEW",
     "NO_DATABASE_BACKUP_AVAILABLE",
     "NO_DATABASE_IMPORT_TO_UNDO",

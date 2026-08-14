@@ -45,7 +45,7 @@ export function useMediaLibrary({
 
     // Track the active media in a ref so saveMediaProgress can read the current value without
     // listing mediaPlayer.activeMedia as a dependency. Depending on activeMedia would recreate
-    // saveMediaProgress on every progress update - and that cascade is what made the player
+    // saveMediaProgress on every progress update, and that cascade is what made the player
     // re-attach its timeupdate listener and reset the 10s save throttle on every save, turning
     // one write per 10s into several writes per second.
     const activeMediaRef = useRef<MediaRow | null>(mediaPlayer.activeMedia);
@@ -101,7 +101,7 @@ export function useMediaLibrary({
             if (active?.id === mediaId) {
                 // The player is watching this media. Keep the active media in sync (its progress
                 // is read when the player reopens), but do not rebuild the media-list array on
-                // every ~10s save - that changed its identity and re-ran the (hidden) library
+                // every ~10s save. That changed its identity and re-ran the (hidden) library
                 // grid's O(n log n) filter+sort every few seconds during playback. The latest
                 // position is stashed and reconciled into the list once the player closes (the
                 // effect below); the database is written on every save above, so nothing is lost

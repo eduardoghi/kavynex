@@ -1,7 +1,7 @@
 //! Resolves the app's temporary working directories under the platform cache directory.
 //!
 //! Every function here is generic over the Tauri runtime rather than tied to the concrete
-//! `AppHandle` (i.e. `AppHandle<Wry>`). Callers are unaffected - `Wry` satisfies the bound - but it
+//! `AppHandle` (i.e. `AppHandle<Wry>`). Callers are unaffected (`Wry` satisfies the bound), but it
 //! is what lets the tests below drive these against the mock runtime, since all they need from the
 //! handle is `path()`. Without it the module is only reachable through a real Tauri app and ends up
 //! with no tests at all.
@@ -68,7 +68,7 @@ pub fn yt_dlp_thumb_temp_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBu
 }
 
 /// The cache of display-sized thumbnail derivatives (see `services::thumbnail::display`). Unlike its
-/// three siblings this holds no scratch data - every entry is a finished, reusable file - but it
+/// three siblings this holds no scratch data (every entry is a finished, reusable file), but it
 /// belongs here rather than in the library because it is *derived*: regenerable from the canonical
 /// thumbnail, addressed by that file's content hash, and safe to lose.
 pub fn thumb_display_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
@@ -86,7 +86,7 @@ mod tests {
 
     /// A mock app is enough here: these functions only need `app.path()` and the filesystem, not a
     /// command round trip. The cache directory it resolves is the real per-OS one, so each test
-    /// asserts on the returned path and the directory it created rather than wiping anything -
+    /// asserts on the returned path and the directory it created rather than wiping anything.
     /// removing the tree would delete a real cache shared with the running app.
     fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
         mock_builder().build(mock_context(noop_assets())).unwrap()

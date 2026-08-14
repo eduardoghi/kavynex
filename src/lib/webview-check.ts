@@ -3,7 +3,7 @@
 //
 // Everything here runs inside the webview on purpose. The Tauri ACL gates what the *renderer* may
 // call and is evaluated at runtime, and the packaged CSP is applied to the *document* and only in a
-// bundled build - so neither can be exercised by anything the backend does on its own, and neither
+// bundled build, so neither can be exercised by anything the backend does on its own, and neither
 // is reachable from `--smoke-test`, which exits inside `setup()` before the window opens.
 //
 // This module is in the production bundle by design: the shipped binary has to be able to check
@@ -16,7 +16,7 @@ import { convertFileSrc, getVersion } from "./tauri-platform";
 import type { WebviewCheckReport } from "../types/generated/WebviewCheckReport";
 
 // How long the asset probe waits for the image to load or fail. An `<img>` whose URL the CSP
-// refuses fires `error` promptly, but one the asset protocol never answers fires nothing at all -
+// refuses fires `error` promptly, but one the asset protocol never answers fires nothing at all.
 // which is the case this bound exists for, and the reason it cannot simply await the element.
 // Comfortably under the backend watchdog's own deadline so this reports a named failure rather than
 // being cut off by it.
@@ -48,7 +48,7 @@ async function probeAppVersion(failures: string[]): Promise<string | null> {
 }
 
 // Probes `core:event:allow-listen` and `core:event:allow-unlisten`. Both halves matter and they are
-// separate grants, so the unsubscribe is called inside the same `try` rather than left dangling - a
+// separate grants, so the unsubscribe is called inside the same `try` rather than left dangling. A
 // build that granted only the first would otherwise pass. `UnlistenFn` returns void (it hands the
 // removal to the backend without waiting), so there is nothing to await here; what is being tested
 // is that the call is permitted at all.
@@ -65,7 +65,7 @@ async function probeEventListen(failures: string[]): Promise<boolean> {
 
 // Probes the asset-protocol scope grant on the cache directory and the CSP's img-src tokens, which
 // together are what make every thumbnail and every video in the app load. An `<img>` rather than a
-// `fetch`, because `connect-src` deliberately excludes `asset:` - so a fetch would fail by design
+// `fetch`, because `connect-src` deliberately excludes `asset:`, so a fetch would fail by design
 // and prove nothing. This is exactly how the app really draws a thumbnail.
 function probeAssetLoad(assetPath: string, failures: string[]): Promise<boolean> {
     let assetUrl: string;
@@ -130,7 +130,7 @@ async function collectReport(assetPath: string): Promise<WebviewCheckReport> {
  * process itself is terminated by the backend once the report lands.
  *
  * Never throws. A normal launch must not be affected by anything here, so a failure to even ask is
- * swallowed - the backend's watchdog is what turns a check that could not report into a non-zero
+ * swallowed: the backend's watchdog is what turns a check that could not report into a non-zero
  * exit, and outside a check run there is nothing to report at all.
  */
 export async function runWebviewCheckIfRequested(): Promise<boolean> {

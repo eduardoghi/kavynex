@@ -81,7 +81,7 @@ pub fn configure_process_group(_command: &mut tokio::process::Command) {}
 
 /// Synchronous counterpart to [`configure_process_group`], for a blocking [`std::process::Command`]
 /// (the external-tool health checks). Puts the child in its own process group so
-/// [`kill_process_tree_blocking`] - which signals the negative process-group id on Unix - reaches
+/// [`kill_process_tree_blocking`] (which signals the negative process-group id on Unix), reaches
 /// the whole tree, including a `.sh`/`.cmd` shim's own children. No-op on non-Unix, where
 /// `taskkill /T` walks the tree by pid instead.
 #[cfg(unix)]

@@ -10,9 +10,9 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// adversarial response. The text is truncated rather than the whole batch rejected: a comment
 /// backup is bulk, best-effort data, and losing every other comment over one oversized entry would
 /// be the worse failure. The database also enforces this ceiling now (a `CHECK` on fresh installs, a
-/// trigger on ones whose table predates it - see db_schema), so an out-of-band writer cannot store
+/// trigger on ones whose table predates it (see db_schema), so an out-of-band writer cannot store
 /// an unbounded value; this app-side truncation keeps the normal write path from ever tripping it.
-/// The two must stay in sync - a db_schema test pins the DDL value against this constant.
+/// The two must stay in sync), a db_schema test pins the DDL value against this constant.
 pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 
 /// Returns `value` unchanged when it is within `max_chars`, otherwise its first `max_chars` scalar
@@ -60,8 +60,8 @@ fn dedupe_comments_by_id(comments: Vec<YtDlpComment>) -> Vec<YtDlpComment> {
 }
 
 // Comments are written in multi-row batches instead of one INSERT per row. Each row binds 16
-// columns, so 50 rows is 800 bound parameters - comfortably under SQLite's default variable
-// limit (999 on older builds) - while collapsing the thousands of round-trips a heavily
+// columns, so 50 rows is 800 bound parameters (comfortably under SQLite's default variable
+// limit (999 on older builds)), while collapsing the thousands of round-trips a heavily
 // commented video used to hold the transaction open for into a handful.
 const COMMENT_INSERT_CHUNK_SIZE: usize = 50;
 
@@ -521,7 +521,7 @@ mod tests {
             .expect("enable foreign keys");
 
         // media id 999 has no `videos` row and there are no comments to insert, so the foreign-key
-        // path never fires - the missing row is caught by the UPDATE matching no row instead. A
+        // path never fires. The missing row is caught by the UPDATE matching no row instead. A
         // false success here would report "nothing updated" for a media that no longer exists.
         let error = replace_media_comments_in_pool(&pool, 999, Vec::new())
             .await

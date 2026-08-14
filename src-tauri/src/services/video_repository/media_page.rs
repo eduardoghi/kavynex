@@ -1,4 +1,4 @@
-//! The channel media grid's paginated query - the app's hottest read path - and the pure
+//! The channel media grid's paginated query (the app's hottest read path), and the pure
 //! filter/sort SQL-building helpers behind it. Filtering, sorting and windowing all run in
 //! SQLite so the whole channel is never loaded over IPC just to be filtered in the webview.
 //! Split out of the repository so this one large query and its `ORDER BY`/`WHERE` construction
@@ -59,7 +59,7 @@ pub(super) fn resolve_order_by(
         ("comments", true) => "ORDER BY comments_count ASC, title_normalized ASC, id DESC",
         ("comments", false) => "ORDER BY comments_count DESC, title_normalized DESC, id DESC",
         // Dated media first (group key 0 vs 1), then the date in the requested direction, then a
-        // direction-independent title tie-break - matching filterAndSortMedia, where undated
+        // direction-independent title tie-break, matching filterAndSortMedia, where undated
         // media always sort last and ties always fall back to an ascending title compare.
         ("publication_date", true) => {
             "ORDER BY (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, \
@@ -161,7 +161,7 @@ pub async fn list_media_page(
     // The count and the page run inside one transaction so they answer from the same snapshot.
     // Taken from the pool separately they can straddle a concurrent insert or delete (a download
     // finishing, a delete committing), and the grid then renders a page drawn from one version of
-    // the table while reporting a total from another - an off-by-one "x of y", or a page whose
+    // the table while reporting a total from another. An off-by-one "x of y", or a page whose
     // offset no longer means what the total says it does. Deferred and read-only: it never asks for
     // the write lock, so it cannot hit the SQLITE_BUSY_SNAPSHOT upgrade that makes the
     // read-then-write transactions elsewhere use BEGIN IMMEDIATE. In WAL a reader takes its

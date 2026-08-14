@@ -14,7 +14,7 @@ export function useErrorModal(): ErrorModalController {
         setErrorOpen(true);
     }, []);
 
-    // Neutral, non-alarming message (e.g. "no comments were found") - shown in the same modal
+    // Neutral, non-alarming message (e.g. "no comments were found"). Shown in the same modal
     // as errors but styled as a notice, so an expected outcome is not dressed up as a failure.
     const showNotice = useCallback((message: string): void => {
         setErrorVariant("notice");

@@ -10,7 +10,7 @@ import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 // Strips a leading `v` and surrounding whitespace so `v26.5.0`, `26.5.0 ` and `26.5.0` compare
-// equal - setup-node and .nvmrc both accept the bare form, and this keeps a stray `v` from reading
+// equal. Setup-node and .nvmrc both accept the bare form, and this keeps a stray `v` from reading
 // as a mismatch.
 function normalizeVersion(value) {
     return value.trim().replace(/^v/i, "");
@@ -72,7 +72,7 @@ export function verifyNodeVersion({ nvmrc, workflows }) {
     }
 
     // A zero count means either no workflow uses Node (not true for this repo) or the key was renamed
-    // and the scan now matches nothing - which would let the gate pass vacuously. Fail instead, so the
+    // and the scan now matches nothing, which would let the gate pass vacuously. Fail instead, so the
     // check cannot silently stop verifying anything.
     if (declarationCount === 0) {
         return {

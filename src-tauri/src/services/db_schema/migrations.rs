@@ -41,7 +41,7 @@ async fn apply_index_only_migration(pool: &SqlitePool, target_version: i64) -> A
 
     // INDEX_DDLS includes indexes on title_normalized (and the other additive columns), which v11
     // is what adds. A database stamped at v7/v8/v9 by a build that predated those columns reaches
-    // this loop before v11 runs, so ensure any missing additive column exists first - otherwise the
+    // this loop before v11 runs, so ensure any missing additive column exists first. Otherwise the
     // CREATE INDEX below fails with "no such column". Idempotent (guarded per column) and a no-op
     // once the columns are present (e.g. the v12 caller, which runs after v11).
     ensure_videos_additive_columns(&mut tx).await?;
@@ -83,7 +83,7 @@ pub(super) async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 12).await
 }
 
-/// v13: brings the videos row invariants to databases whose `videos` table predates them - the
+/// v13: brings the videos row invariants to databases whose `videos` table predates them. The
 /// live-chat one (has_live_chat set implies a stored live_chat_file_path) and the
 /// title_normalized one (never NULL).
 ///
@@ -91,13 +91,13 @@ pub(super) async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
 /// it (CREATE TABLE IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table
 /// without rebuilding it). Rather than rebuild the largest table just to add a CHECK, this repairs
 /// any row that already violates an invariant and installs BEFORE INSERT/UPDATE triggers that
-/// reject future violations - a plain `CREATE TRIGGER` on the existing table, touching no row
+/// reject future violations. A plain `CREATE TRIGGER` on the existing table, touching no row
 /// content.
 ///
 /// Neither repair destroys anything: the live-chat one only clears `has_live_chat` where no path is
 /// stored (correcting a flag to match the absent file), and the title one only computes a value for
 /// rows that have none. Both must run before the triggers, which fire only on new writes and would
-/// otherwise leave a pre-existing bad row in place - and, worse for the title one, would then
+/// otherwise leave a pre-existing bad row in place, and, worse for the title one, would then
 /// reject every later edit of that row's title. The repairs, the trigger creation and the version
 /// stamp share one transaction, so a crash leaves the database fully at v12 or fully at v13.
 pub(super) async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
@@ -118,7 +118,7 @@ pub(super) async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
     .map_err(|error| db_error("failed to repair inconsistent live chat flags", error))?;
 
     // The backfill below reads title_normalized, so make sure the column is there rather than
-    // assuming the v11 that adds it has run. In the normal order it has - but a database stamped
+    // assuming the v11 that adds it has run. In the normal order it has, but a database stamped
     // past v11 without the column (hand-edited, an import) would otherwise fail the whole migration
     // with "no such column" instead of being repaired. Idempotent, exactly as in v11.
     ensure_videos_additive_columns(&mut tx).await?;
@@ -159,12 +159,12 @@ pub(super) async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
 /// (CREATE TABLE IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table without
 /// rebuilding it). Rather than rebuild the comments table just to add a CHECK, this truncates any row
 /// that already exceeds the ceiling and installs BEFORE INSERT/UPDATE triggers that reject future
-/// ones - the same additive strategy as v13.
+/// ones (the same additive strategy as v13.
 ///
 /// The truncation is non-destructive beyond the overflow itself: it keeps the first
 /// `MAX_COMMENT_TEXT_CHARS` characters (`substr` uses character semantics on a TEXT value), the same
 /// cap the app's own write path already applies (media_comments::truncate_to_chars), so a comment
-/// stored by the app is never affected - only an out-of-band/oversized row is. It must run before the
+/// stored by the app is never affected), only an out-of-band/oversized row is. It must run before the
 /// triggers, which fire only on new writes and would otherwise leave a pre-existing over-length row
 /// in place. The repair, the trigger creation and the version stamp share one transaction, so a crash
 /// leaves the database fully at v13 or fully at v14. The TRIGGER_DDLS list is re-run in full (every
@@ -223,7 +223,7 @@ pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
 
     // Back the duplicate-detection GROUP BY (below) with a temporary index covering
     // (video_id, comment_id, id) so the one-time cleanup answers MIN(id) per group from the index
-    // instead of full-scanning and sorting video_comments - which, on a user with a large comment
+    // instead of full-scanning and sorting video_comments, which, on a user with a large comment
     // history, would otherwise make this startup migration noticeably slow. The real partial unique
     // index cannot stand in for it here: it is created below (COMMENT_UNIQUE_INDEX_DDL) only after
     // the duplicates it would reject are gone. It lives outside INDEX_DDLS precisely so the baseline
@@ -305,7 +305,7 @@ pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
 /// database stamped at v11 or later is never backfilled again.
 ///
 /// SQLite has no accent folding of its own, so the value is computed in Rust with the same
-/// `utils::text::normalize_search_text` used at insert/update time - that shared normalization is
+/// `utils::text::normalize_search_text` used at insert/update time. That shared normalization is
 /// what keeps a search term and a stored title comparable. Instead of one UPDATE round trip per row
 /// (slow on a large library), the computed (id, normalized) pairs are staged into a temp table with
 /// chunked multi-row inserts and applied with a single set-based UPDATE, mirroring the

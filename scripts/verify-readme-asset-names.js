@@ -5,13 +5,13 @@
 // filenames for a *reader*, and it is what someone lands on to pick their download. The names in it
 // track tauri's per-bundler conventions, which are not stable: the v1.2.0 dispatch confirmed the
 // arm64 names that release.yml had flagged as derived rather than observed, and broke on the pair
-// that *had* been observed - the macOS `.app.tar.gz` names gained a version between v1.1.1 and
+// that *had* been observed. The macOS `.app.tar.gz` names gained a version between v1.1.1 and
 // v1.2.0. So the list is perishable in both directions, and until this existed nothing held it.
 //
 // The asset-completeness check in release.yml's `checksums` job holds the other inventory of the
 // same names, and it is deliberately not what this reads. Checking the README against the real
-// assets instead means a release where both lists drifted together - the case a cross-check between
-// them would pass - still fails here.
+// assets instead means a release where both lists drifted together (the case a cross-check between
+// them would pass), still fails here.
 //
 // Both directions are checked, because the two failures are different and neither is loud:
 //
@@ -37,7 +37,7 @@ import { fileURLToPath } from "url";
 // This list is the classification decision, so it is stated rather than derived from the README:
 // deriving it would make the reverse check answer "is every documented extension documented",
 // which is vacuous. A bundler added to `bundle.targets` that emits a new extension has to be added
-// here to be covered - which is the same edit `docs/RELEASING.md` already says a new bundler
+// here to be covered, which is the same edit `docs/RELEASING.md` already says a new bundler
 // forces, alongside the completeness list and the attestation's subject-path.
 const INSTALLER_EXTENSIONS = ["exe", "msi", "dmg", "appimage", "deb", "rpm"];
 
@@ -47,7 +47,7 @@ const INSTALLER_EXTENSIONS = ["exe", "msi", "dmg", "appimage", "deb", "rpm"];
  * A pattern is an inline-code token beginning with `kavynex` and containing a `*`. Requiring the
  * `*` is what does the work: the README mentions `kavynex.db.corrupt` and `kavynex.log` elsewhere,
  * and neither is an asset. The cost of that rule is that a name written out with a literal version
- * would be skipped silently - which the reverse direction below catches, since every installer it
+ * would be skipped silently, which the reverse direction below catches, since every installer it
  * was supposed to name then goes unmatched.
  */
 export function parseReadmeAssetPatterns(readmeContent) {

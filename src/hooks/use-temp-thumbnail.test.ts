@@ -202,7 +202,7 @@ describe("useTempThumbnail", () => {
     it("cleans up a staged manual thumbnail when it is replaced", async () => {
         // A picked image is copied into the preview directory so it can be shown without widening
         // the asset scope, which makes it a temp file this app owns. Replacing it has to delete the
-        // previous copy, exactly as replacing a generated preview does - otherwise every image the
+        // previous copy, exactly as replacing a generated preview does. Otherwise every image the
         // user tries leaks into the cache until the age sweep runs.
         const { result } = renderHook(() => useTempThumbnail());
 
@@ -221,7 +221,7 @@ describe("useTempThumbnail", () => {
     it("never deletes a manual path the app did not stage", async () => {
         // The fallback when staging fails: the path is the user's own file, somewhere on their disk.
         // Handing it to the delete command would be pointing a remove at a file outside the app's
-        // own directories - refused by the backend's containment check, but it must not be asked in
+        // own directories. Refused by the backend's containment check, but it must not be asked in
         // the first place.
         const { result } = renderHook(() => useTempThumbnail());
 

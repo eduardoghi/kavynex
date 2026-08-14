@@ -51,7 +51,7 @@ type CommentsPanelProps = {
     // reported to the user as if the media simply had no comments.
     error?: string | null;
     shellBorder: string;
-    // Whether this media can (re)fetch comments from YouTube - true for a media with a YouTube
+    // Whether this media can (re)fetch comments from YouTube. True for a media with a YouTube
     // source. Offered in the empty state so a media whose comment backup was interrupted (a crash
     // between registering the media and saving its comments) can be recovered where the absence is
     // noticed, rather than only from the header's "Refresh comments" button.
@@ -80,7 +80,7 @@ export function CommentsPanel({
 
     // Build the thread structure once per comment set, then sort separately: linking (the id map
     // and per-node cycle check) depends only on `comments`, so toggling the sort re-sorts without
-    // re-linking the whole tree - which matters for media with a large saved comment history.
+    // re-linking the whole tree, which matters for media with a large saved comment history.
     const commentThreads = useMemo(() => buildCommentTree(comments), [comments]);
 
     const commentTree = useMemo(
@@ -118,7 +118,7 @@ export function CommentsPanel({
     const remainingThreadCount = filteredCommentTree.length - visibleCommentTree.length;
 
     // While searching, every match is shown (no thread/reply caps), so the tree is flattened and
-    // handed to the virtualized results list - which mounts only the rows near the viewport, so a
+    // handed to the virtualized results list, which mounts only the rows near the viewport, so a
     // broad query matching thousands of comments never builds them all at once. Only computed when a
     // search is active; the browse view keeps its capped, recursive rendering below.
     const searchResultRows = useMemo(
@@ -128,7 +128,7 @@ export function CommentsPanel({
 
     // The backend caps how many comments a single media loads at once (a defensive ceiling for a
     // pathologically large backup). comments_count is the number of rows actually stored, so fewer
-    // loaded than that means the cap truncated the set - surface it rather than letting search and
+    // loaded than that means the cap truncated the set. Surface it rather than letting search and
     // the thread list silently cover only part of what is saved.
     const isCommentLoadTruncated =
         commentsCount != null && comments.length < commentsCount;

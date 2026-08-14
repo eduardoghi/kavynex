@@ -6,7 +6,7 @@ type Violation = AxeResults["violations"][number];
 
 // Only the four fields describeViolations reads. A real axe violation carries a good deal more
 // (impact, tags, the full outer HTML of every matching node), which is exactly why the formatter
-// exists - printing them raw buries the rule id that says what is wrong.
+// exists. Printing them raw buries the rule id that says what is wrong.
 function violation(id: string, help: string, targets: string[][]): Violation {
     return {
         id,

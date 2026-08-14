@@ -16,7 +16,7 @@ import { useDisplayThumbnails } from "./use-display-thumbnails";
 
 /**
  * A resolution where every listed path resolved to a derivative. The common case, and the one where
- * "settled" and "has a derivative" coincide - which is exactly why the two have to be given
+ * "settled" and "has a derivative" coincide, which is exactly why the two have to be given
  * separately in the tests below that pull them apart.
  */
 function resolvedAll(entries: Record<string, string>): DisplayThumbnailResolution {
@@ -118,7 +118,7 @@ describe("useDisplayThumbnails", () => {
 
     it("asks only about the paths that are not settled yet", async () => {
         // Every request used to carry every loaded path, so appending page k re-asked about all k
-        // pages and the backend paid a stat per entry to answer "already cached" - quadratic in the
+        // pages and the backend paid a stat per entry to answer "already cached". Quadratic in the
         // number of pages, for an answer this side already had. Only the new page is unsettled.
         vi.mocked(resolveDisplayThumbnails)
             .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }))
@@ -175,7 +175,7 @@ describe("useDisplayThumbnails", () => {
 
     it("asks again on its own when a request settled nothing and the item list will not change", async () => {
         // The gap this closes. The backend admits one resolve call at a time and answers a refused
-        // one entirely "retryable", and its note on that says the caller already re-asks - which was
+        // one entirely "retryable", and its note on that says the caller already re-asks, which was
         // true of the case it was written for and not of the case that produces it. The request key
         // is derived from the items, so a re-ask otherwise needs a page to be appended, and the last
         // page of a channel has no later append behind it. Without a timer of its own, that page
@@ -211,7 +211,7 @@ describe("useDisplayThumbnails", () => {
 
     it("gives up re-asking once the retry budget is spent", async () => {
         // The bound, and it is what keeps the retry above from being a background timer for the rest
-        // of the session. Contention clears in a round or two - the call holding the slot finishes -
+        // of the session. Contention clears in a round or two (the call holding the slot finishes),
         // so a request still settling nothing after that is not contended, it is one the backend
         // cannot answer (a machine where FFmpeg hangs). Polling that forever re-derives the same
         // answer at a cost, while stopping costs one session of drawing the stored thumbnail, which
@@ -243,7 +243,7 @@ describe("useDisplayThumbnails", () => {
 
     it("gives a newly appended page a fresh retry budget", async () => {
         // The counter is per request, not per hook. A page that exhausted its retries must not leave
-        // the next one unable to retry at all - that would turn a transient stretch of contention
+        // the next one unable to retry at all. That would turn a transient stretch of contention
         // into a permanent loss of the feature for the rest of the session, which is a worse version
         // of the bug the retry was added to fix.
         vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -285,8 +285,8 @@ describe("useDisplayThumbnails", () => {
 
     it("stops asking about a path that can never have a derivative", async () => {
         // The other half of the same decision, and the one this change added. A path the backend
-        // settled without resolving - a name this app did not write, a machine with no FFmpeg, a
-        // source that is gone - must drop out of every later request. Without this it rode along on
+        // settled without resolving (a name this app did not write, a machine with no FFmpeg, a
+        // source that is gone) must drop out of every later request. Without this it rode along on
         // every page append, which is the quadratic growth the hook exists to prevent and, past the
         // backend's per-call ceiling, a truncation warning per page.
         vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
@@ -317,8 +317,8 @@ describe("useDisplayThumbnails", () => {
 
     it("records the settled paths even when the call resolved no derivative at all", async () => {
         // The ordering that makes the case above work. A call answering only "unavailable" produces
-        // an empty derivative map, and returning early on that - which is where the early return used
-        // to sit - would throw the settled set away and re-ask about all of them on the next page.
+        // an empty derivative map, and returning early on that (which is where the early return used
+        // to sit) would throw the settled set away and re-ask about all of them on the next page.
         vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
             permanentlyUnavailable(["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"])
         );
@@ -351,7 +351,7 @@ describe("useDisplayThumbnails", () => {
         // library that is no longer in use, so carrying them across would map a new library's
         // thumbnail onto an old library's derivative. The settled set has to be cleared with the map,
         // or a path marked unavailable under the old library would never be asked about under the
-        // new one - where it may resolve perfectly well.
+        // new one, where it may resolve perfectly well.
         vi.mocked(resolveDisplayThumbnails).mockResolvedValue(
             resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" })
         );
@@ -395,7 +395,7 @@ describe("useDisplayThumbnails", () => {
     });
 
     it("logs a failure and leaves the grid on the stored thumbnails", async () => {
-        // Purely an optimization, so a failure must never surface as an error to the user - the
+        // Purely an optimization, so a failure must never surface as an error to the user. The
         // cards are already rendering something correct.
         vi.mocked(resolveDisplayThumbnails).mockRejectedValue(new Error("ffmpeg is missing"));
 

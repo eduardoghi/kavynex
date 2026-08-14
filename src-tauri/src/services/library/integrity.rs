@@ -106,7 +106,7 @@ pub(crate) struct ExpectedLibraryPaths {
 /// Pure, and separate from the check, because the one decision in it has a user-visible cost and
 /// no I/O: the avatars belong in the *thumbnail* set. They live under `thumbnails/` but are
 /// referenced by the channels table, so dropping them here turns every avatar that is not also a
-/// media thumbnail into a reported orphan - a file Diagnostics then invites the user to delete
+/// media thumbnail into a reported orphan. A file Diagnostics then invites the user to delete
 /// while the app is still drawing it in the sidebar.
 pub(crate) fn expected_library_paths(
     references: &[MediaIntegrityReference],
@@ -141,7 +141,7 @@ fn normalize_path_key(path: &str) -> String {
 /// missing or corrupt media file still has its row, so it can be opened in the library. An orphan
 /// has no row by definition, and a thumbnail or live chat path is not something to navigate to.
 ///
-/// Pure, and extracted, because the alternative - resolving every reference - is what this change
+/// Pure, and extracted, because the alternative (resolving every reference) is what this change
 /// exists to stop, and the failure mode of getting the key wrong is silent: the path renders
 /// without a jump action and nothing reports why.
 pub(crate) fn media_targets_for_report(
@@ -258,7 +258,7 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
 
         outcome.checked += 1;
 
-        // canonicalize resolves symlinks - re-check containment on the real path.
+        // canonicalize resolves symlinks. Re-check containment on the real path.
         // if the path doesn't exist, canonicalize fails and we treat it as missing.
         let exists_within_library = resolved_path
             .canonicalize()
@@ -440,8 +440,8 @@ pub fn check_library_integrity_sync(
 /// media row behind each path the report ended up naming.
 ///
 /// This is what the command calls. `check_library_integrity_sync` above stays the pure
-/// paths-versus-disk comparison it has always been - every one of its tests still drives it
-/// directly - and this only supplies its inputs from the rows and folds the targets in.
+/// paths-versus-disk comparison it has always been (every one of its tests still drives it
+/// directly), and this only supplies its inputs from the rows and folds the targets in.
 ///
 /// Blocking (it walks the library), so the caller runs it off the async runtime; the database read
 /// happens before that, on the caller's side, because it is async.
@@ -521,7 +521,7 @@ mod tests {
     fn a_channel_avatar_counts_as_a_referenced_thumbnail() {
         // The one decision in expected_library_paths with a user-visible cost. An avatar is
         // referenced by the channels table, not by any media row, so leaving it out reports it as
-        // an orphan thumbnail - a file Diagnostics then invites the user to delete while the
+        // an orphan thumbnail. A file Diagnostics then invites the user to delete while the
         // sidebar is still drawing it.
         let references = vec![reference(
             1,
@@ -569,7 +569,7 @@ mod tests {
                 media_id: 1
             })
         );
-        // Corrupt media is navigable too - the row still exists, the file on disk is just hollow.
+        // Corrupt media is navigable too. The row still exists, the file on disk is just hollow.
         assert_eq!(
             targets.get("video/empty.mp4"),
             Some(&DiagnosticsMediaTarget {
@@ -612,7 +612,7 @@ mod tests {
 
     #[test]
     fn an_orphan_never_resolves_to_a_media_row() {
-        // An orphan is by definition a file no row references, so it has no target - and the
+        // An orphan is by definition a file no row references, so it has no target, and the
         // orphan list must not be one of the sources the lookup set is built from.
         let references = vec![reference(1, 10, "video/a.mp4", None, None)];
 
@@ -863,7 +863,7 @@ mod tests {
         let outcome = collect_missing_paths(&library, vec!["link/secret.mp4".to_string()]);
 
         // The path appears to be inside the library via starts_with, but after
-        // canonicalization it resolves outside - must be treated as missing
+        // canonicalization it resolves outside. Must be treated as missing
         assert_eq!(outcome.checked, 1);
         assert_eq!(outcome.missing, 1);
 

@@ -3,7 +3,7 @@
 //
 // An exclusion that stops matching is silent in both directions, and both are bad. The mutant it
 // used to suppress comes back and the weekly run turns red for a reason that has nothing to do with
-// the tests - or, worse, the function it named was renamed and its *real* mutant is now unexcluded
+// the tests, or, worse, the function it named was renamed and its *real* mutant is now unexcluded
 // and unnoticed among the survivors, with nothing in the config to suggest the entry rather than the
 // tests had gone stale.
 //
@@ -13,7 +13,7 @@
 // by hand, by someone deciding to check; nothing in the pipeline was looking.
 //
 // The check is deliberately narrow. It answers "does this pattern still name something?" and not
-// "is this exclusion still *justified*" - the second needs the triage the file's comments record,
+// "is this exclusion still *justified*". The second needs the triage the file's comments record,
 // which no script can do. What it removes is the failure where the answer to the first question
 // silently became no.
 //
@@ -25,7 +25,7 @@
 //
 // The array is not cosmetic. `examine_globs` holds two directory globs (`db_backup/*.rs`,
 // `db_schema/*.rs`), and interpolating the arguments unquoted lets the *shell* expand those into
-// one path per file - which cargo-mutants then rejects, since `--file` takes a single value. One
+// one path per file, which cargo-mutants then rejects, since `--file` takes a single value. One
 // token per line plus `mapfile` keeps each glob intact and hands it to cargo-mutants to expand,
 // which is the only expansion that matches what the real run scopes itself to.
 
@@ -37,7 +37,7 @@ import { fileURLToPath } from "url";
 // order. Hand-rolled rather than pulling in a TOML parser: this file is the only consumer, the two
 // arrays it reads are plain lists of quoted strings, and a dependency added to a supply-chain-gated
 // repository to read two arrays is a poor trade. Comment lines inside the array are skipped, which
-// matters because mutants.toml is mostly comment - roughly 400 of its 600 lines - and several of
+// matters because mutants.toml is mostly comment (roughly 400 of its 600 lines), and several of
 // those comments quote a pattern while explaining why it was removed.
 function extractQuotedArray(tomlContent, name, quote) {
     const start = new RegExp(`^${name}\\s*=\\s*\\[`, "m").exec(tomlContent);
@@ -75,7 +75,7 @@ function extractQuotedArray(tomlContent, name, quote) {
 }
 
 // The `exclude_re` patterns, as written (single-quoted TOML literal strings, so no escape
-// processing - what is between the quotes is the regex).
+// processing. What is between the quotes is the regex).
 export function parseExcludePatterns(tomlContent) {
     return extractQuotedArray(tomlContent, "exclude_re", "'");
 }
@@ -84,7 +84,7 @@ export function parseExcludePatterns(tomlContent) {
 // the command line: `--list` has to run with `--no-config` here, since a run that applied the config
 // would already have removed every mutant the exclusions name, leaving nothing to match against and
 // making this gate pass vacuously. `--no-config` also drops `examine_globs`, so it is passed back in
-// as `--file` arguments - from this same list, so the scope the check sees cannot drift from the
+// as `--file` arguments, from this same list, so the scope the check sees cannot drift from the
 // scope the real run uses.
 export function parseExamineGlobs(tomlContent) {
     return extractQuotedArray(tomlContent, "examine_globs", '"');
@@ -94,15 +94,15 @@ export function parseExamineGlobs(tomlContent) {
 //
 // This is not defensive tidying, it is the fix for a real false failure. cargo-mutants honours
 // `CARGO_TERM_COLOR`, which `mutation.yml` sets to `always` at the workflow level, and it colourizes
-// the *function name and the replacement* inside each mutant description - so the line reads
+// the *function name and the replacement* inside each mutant description, so the line reads
 // `replace <esc>[38;5;13mpin_process_start<esc>[0m with <esc>[33m()<esc>[0m` rather than
 // `replace pin_process_start with ()`. Every pattern here names a function, so every pattern whose
 // text spans one of those boundaries stops matching, and the gate reports it as an exclusion that
 // no longer names a mutant.
 //
 // That is exactly backwards, and expensively so: it fired on this check's first ever run
-// (2026-08-03) against twenty-six live patterns, and the obvious response to a red run - delete the
-// exclusions it names - would have silently unexcluded twenty-six real mutants in the security
+// (2026-08-03) against twenty-six live patterns, and the obvious response to a red run (delete the
+// exclusions it names) would have silently unexcluded twenty-six real mutants in the security
 // modules this gate exists to protect. The workflow now also passes `--colors never`, but the
 // stripping stays: this function's contract is "given a `cargo mutants --list` output, which
 // patterns are dead", and a caller who produced that output with colour on deserves the right
@@ -114,8 +114,8 @@ function stripAnsi(value) {
 
 // Which patterns match nothing in `mutantList`, and which could not be compiled at all.
 //
-// The regex flavors are not identical - cargo-mutants uses the Rust `regex` crate and this runs in
-// JavaScript - so a pattern that JavaScript refuses is reported as its own outcome rather than
+// The regex flavors are not identical (cargo-mutants uses the Rust `regex` crate and this runs in
+// JavaScript), so a pattern that JavaScript refuses is reported as its own outcome rather than
 // silently counted as dead. Every pattern in the file today is plain enough that the two agree
 // (character classes, alternation, escaped parens and pipes); a future one that needs a
 // Rust-specific construct should show up here as a question to answer, not as a false failure.
@@ -145,7 +145,7 @@ export function findDeadPatterns(patterns, mutantList) {
 }
 
 // Decides the gate from the raw file contents, returning `{ ok, message }` rather than reading files
-// or exiting itself - the same shape as the other verify-* scripts, so the wording and every refusal
+// or exiting itself. The same shape as the other verify-* scripts, so the wording and every refusal
 // branch are unit-testable without a cargo-mutants run.
 export function verifyMutantsExclusions({ tomlContent, mutantList }) {
     const patterns = parseExcludePatterns(tomlContent);

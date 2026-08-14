@@ -20,7 +20,7 @@ export function useMediaPlayer({
     // Every field below is a pure, cheap derivation off activeMedia/libraryPath, computed plainly
     // rather than each wrapped in its own useMemo. The whole returned object goes through
     // useMemoObject below, which keeps a stable controller identity as long as every field is
-    // shallow-equal to the previous render - and these are all primitives (strings/booleans),
+    // shallow-equal to the previous render, and these are all primitives (strings/booleans),
     // compared by value, so recomputing one to the same value on an unrelated re-render leaves that
     // identity unchanged. Per-field memoization of a primitive would only cache the compute, not
     // affect what any consumer observes, so it is left out to keep the derivations uniform.
@@ -47,7 +47,7 @@ export function useMediaPlayer({
     // Sync the active media's watch position through a functional update so it no-ops when the media
     // is no longer active. A final progress save fired as the player unmounts (the Back button) can
     // run before the mirrored activeMediaRef in use-media-library sees the close, so a ref-based
-    // guard there would still re-set the (just-cleared) active media - re-highlighting its card in
+    // guard there would still re-set the (just-cleared) active media. Re-highlighting its card in
     // the grid. Reading the live state here closes that race.
     const syncActiveMediaProgress = useCallback(
         (mediaId: number, progressSeconds: number): void => {

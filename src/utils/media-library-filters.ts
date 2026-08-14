@@ -20,7 +20,7 @@ export type MediaLibraryFilters = {
     sortDirection: SortDirection;
 };
 
-// The filter/sort part of a backend media page request (the page window - limit/offset - is
+// The filter/sort part of a backend media page request (the page window (limit/offset) is
 // owned by the pager, not the filter UI). Mapping the UI's MediaLibraryFilters to the generated
 // MediaPageQuery keeps the union types checked against the Rust side. Filtering and sorting are
 // done server-side (see src-tauri video_repository::list_media_page), so there is no client-side

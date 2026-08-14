@@ -388,7 +388,7 @@ describe("useSettingsController", () => {
         // its confirmation can be dismissed with Esc or a click outside. The component stays
         // mounted, so the pending path has to be cleared here or reopening Settings re-shows the
         // "Replace the current database?" confirmation for a file the user already walked away
-        // from - one click from replacing their library with it.
+        // from, one click from replacing their library with it.
         rerender({ opened: false });
         expect(result.current.pendingImportPath).toBeNull();
 
@@ -551,7 +551,7 @@ describe("useSettingsController", () => {
         );
 
         // The reading is informational, so its failure must not surface as a database error next
-        // to the export/import actions - those still work.
+        // to the export/import actions. Those still work.
         await waitFor(() => {
             expect(logError).toHaveBeenCalledWith(
                 "settings-modal",

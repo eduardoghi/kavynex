@@ -4,7 +4,7 @@
 // legacy audit endpoints (`/-/npm/v1/security/audits` and `/-/npm/v1/security/audits/quick`) and
 // every pnpm release still calls them, so `pnpm audit` now exits non-zero with
 // ERR_PNPM_AUDIT_BAD_RESPONSE (HTTP 410) regardless of whether any advisory exists. Verified
-// against pnpm 10.34.5 and 11.13.0 (the latest at the time of writing) - upgrading pnpm does not
+// against pnpm 10.34.5 and 11.13.0 (the latest at the time of writing). Upgrading pnpm does not
 // fix it, so the gate had to move off that command rather than wait.
 //
 // Data comes from OSV (osv.dev), Google's aggregator of the same GitHub Advisory data npm audit
@@ -32,8 +32,8 @@ const BLOCKING_SEVERITIES = new Set(["HIGH", "CRITICAL"]);
 // cheaply and the request stays well inside any body limit.
 const QUERY_BATCH_SIZE = 100;
 
-// Bound each OSV request. Without this a stalled endpoint - a TCP/TLS hang rather than a quick
-// error - would hold the read open until the CI job's own timeout (tens of minutes) killed it,
+// Bound each OSV request. Without this a stalled endpoint (a TCP/TLS hang rather than a quick
+// error) would hold the read open until the CI job's own timeout (tens of minutes) killed it,
 // failing the whole run for a reason unrelated to the code under review. A slow network still gets
 // generous room; only a genuine stall trips it, and it fails fast with a message that names the
 // outage rather than looking like an advisory was found.
@@ -45,7 +45,7 @@ function readInstalledPackages(scope) {
     //
     // Note what the argv array does and does not buy on that Windows path: with `shell: true` Node
     // concatenates the array into a command line rather than passing it through, which is what
-    // DEP0190 warns about - the array is not an escaping mechanism there. What actually makes this
+    // DEP0190 warns about. The array is not an escaping mechanism there. What actually makes this
     // safe is that every argument below is a literal written in this file; none is derived from a
     // package name, a lockfile entry, or anything else outside it. Keep it that way: an argument
     // built from external data would need the shim resolved and invoked directly instead.
@@ -283,7 +283,7 @@ function severityFromCvssVectors(severities) {
 // The batch endpoint returns ids only, so severity needs one lookup per advisory. There are
 // normally none; a handful at most. Prefers the database_specific.severity label GHSA-sourced
 // advisories carry, and falls back to the CVSS vector in the top-level `severity` array for any that
-// omit it - so a high/critical finding published without the label is still classified, not silently
+// omit it, so a high/critical finding published without the label is still classified, not silently
 // treated as unknown. Exported for tests.
 export function severityOf(vuln) {
     const declared = vuln.database_specific?.severity;
@@ -312,7 +312,7 @@ export function isBlockingAdvisory(vuln) {
 
     // Fail closed: a live advisory whose severity could not be established (no database_specific
     // label and no parseable CVSS vector) is not proven to be below the high/critical floor, so it
-    // must not pass silently - that is the whole point of this gate, which states the same
+    // must not pass silently. That is the whole point of this gate, which states the same
     // fail-closed rule for a transport failure below. It surfaces for a human to classify in the PR
     // rather than being treated as cleared; a severity we did resolve to low/moderate/none does not
     // block.

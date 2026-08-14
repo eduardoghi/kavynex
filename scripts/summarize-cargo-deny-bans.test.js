@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseBanDiagnostics, renderBansSummary } from "./summarize-cargo-deny-bans.js";
 
 // One `duplicate` diagnostic in the shape cargo-deny 0.20.2 actually emits, minus the `graphs`
-// field - which the real line carries (and which is enormous: the full dependency path to every
+// field, which the real line carries (and which is enormous: the full dependency path to every
 // occurrence) but which this script never reads. `message` is passed separately from `versions`
 // so a test can make the two disagree, which is how the "read the span, not the prose" contract
 // gets pinned.
@@ -45,7 +45,7 @@ describe("parseBanDiagnostics", () => {
 
     it("takes the crate from the label span rather than from the diagnostic message", () => {
         // The message is English prose and is free to be reworded upstream; the span is the data
-        // being reported. Making the two disagree is the only way to prove which one is read - a
+        // being reported. Making the two disagree is the only way to prove which one is read. A
         // parser that scraped the message would answer "somethingelse" here.
         const { duplicates } = parseBanDiagnostics(
             duplicate("base64", ["0.21.7", "0.22.1"], "found 2 duplicate entries for crate 'somethingelse'")
@@ -82,7 +82,7 @@ describe("parseBanDiagnostics", () => {
 
     it("counts lines that are not JSON instead of failing on them", () => {
         // cargo writes its own progress to the same stream on a cold runner, so this is the
-        // ordinary case rather than a corrupt input - but a stream that is *entirely* noise is how
+        // ordinary case rather than a corrupt input, but a stream that is *entirely* noise is how
         // a mistyped invocation looks, and the count is what makes that visible.
         const { duplicates, unparsedLines } = parseBanDiagnostics(
             [
@@ -152,7 +152,7 @@ describe("renderBansSummary", () => {
 
     it("says it could not read the output when no summary diagnostic was present", () => {
         // The guard this whole report rests on. Without it, an output shape this script no longer
-        // understands renders exactly like a clean tree - good news that is not true, in a summary
+        // understands renders exactly like a clean tree. Good news that is not true, in a summary
         // whose only value is being believed at a glance.
         const markdown = renderBansSummary({
             duplicates: [],

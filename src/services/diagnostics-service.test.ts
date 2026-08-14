@@ -462,7 +462,7 @@ describe("diagnostics-service", () => {
         );
 
         // The integrity check itself fails to run. Its zeroed default would otherwise read as
-        // "0 missing / 0 orphan / 0 invalid" - a false all-clear for that dimension.
+        // "0 missing / 0 orphan / 0 invalid". A false all-clear for that dimension.
         getLibraryIntegrityMock.mockRejectedValueOnce(new Error("integrity scan crashed"));
 
         mockHealthyLiveChatDiagnostics();

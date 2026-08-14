@@ -1,9 +1,9 @@
 //! Atomic deletion of media/channel rows together with their on-disk artifacts.
 //!
 //! Deleting a media or a channel involves a referential-integrity rule: an artifact file
-//! (media file, thumbnail, live chat replay) may be shared by other rows - the same
+//! (media file, thumbnail, live chat replay) may be shared by other rows (the same
 //! thumbnail can back several videos or a channel avatar, and a live chat replay can back
-//! the same video added to several channels - so a file can only be removed from disk
+//! the same video added to several channels), so a file can only be removed from disk
 //! when nothing else references it. This module makes that decision inside the same
 //! database transaction that deletes the rows, eliminating the check-then-act window that
 //! existed when the frontend orchestrated the cleanup over several IPC calls.
@@ -33,7 +33,7 @@ use crate::services::thumbnail::persist::delete_thumbnail_file_sync;
 /// Each of them reads first (which rows exist, what artifacts they point at) and writes second,
 /// so a deferred transaction takes its read snapshot on the SELECT and only asks for the write
 /// lock later. In WAL mode, if another connection commits in between, SQLite fails that upgrade
-/// with `SQLITE_BUSY_SNAPSHOT` **immediately, without consulting the busy handler** - the
+/// with `SQLITE_BUSY_SNAPSHOT` **immediately, without consulting the busy handler**. The
 /// `busy_timeout` these connections carry cannot help, because no amount of waiting can make a
 /// stale snapshot writable. The user would see a bare "failed to delete media" with no retry.
 /// `BEGIN IMMEDIATE` takes the write lock up front, so the wait happens where `busy_timeout`
@@ -312,7 +312,7 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
 ///
 /// Nothing else would ever remove it. A derivative is addressed by the canonical thumbnail's own
 /// content hash and no row refers to one (see `services::thumbnail::display`), so the only bound on
-/// that directory is the size sweep at startup - which trims oldest-first once the whole cache
+/// that directory is the size sweep at startup, which trims oldest-first once the whole cache
 /// exceeds its budget, and therefore has no relation to what was deleted. Until this ran, deleting a
 /// media left its thumbnail readable in the cache directory until enough unrelated browsing pushed
 /// the cache past its ceiling.
@@ -323,8 +323,8 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
 ///
 /// Best effort, and deliberately silent on failure. The canonical file is gone, which is what the
 /// user asked for and what the report is about; a derivative left behind is a regenerable cache
-/// entry the size sweep still reclaims, so failing the delete over it - or adding it to
-/// `failed_paths`, which names files the user may need to clean up by hand - would misreport a
+/// entry the size sweep still reclaims, so failing the delete over it (or adding it to
+/// `failed_paths`, which names files the user may need to clean up by hand) would misreport a
 /// cache miss as an orphaned artifact.
 ///
 /// A derivative written under an older [`DISPLAY_THUMBNAIL_MAX_WIDTH`] is not matched, since the
@@ -348,7 +348,7 @@ fn drop_display_derivative(display_dir: Option<&Path>, relative_thumbnail_path: 
 ///
 /// `display_dir` is the display-thumbnail cache, or `None` when it could not be resolved. It is a
 /// parameter rather than something looked up here so this function keeps taking only paths, which
-/// is what lets a test drive the whole removal - the lookup needs an `AppHandle`.
+/// is what lets a test drive the whole removal. The lookup needs an `AppHandle`.
 pub fn remove_planned_artifacts_sync(
     library_dir: &Path,
     display_dir: Option<&Path>,
@@ -403,8 +403,8 @@ pub fn remove_planned_artifacts_sync(
 /// import can dedupe onto the same content-addressed file and insert a new row pointing at it in
 /// that gap, which would then be unlinked out from under the new row. This pass drops any path
 /// that became referenced again, shrinking the window to the microseconds between this recount and
-/// the unlink. It cannot close the window entirely - only a per-path lock spanning the count and
-/// the unlink could - but it catches the realistic case where the import landed while the removal
+/// the unlink. It cannot close the window entirely (only a per-path lock spanning the count and
+/// the unlink could), but it catches the realistic case where the import landed while the removal
 /// was still being scheduled onto the blocking pool. Best effort: on any recount failure the
 /// committed decision is kept rather than leaking a file or wrongly sparing one.
 async fn drop_paths_referenced_again(pool: &SqlitePool, plan: &mut ArtifactCleanupPlan) {
@@ -465,7 +465,7 @@ async fn drop_paths_referenced_again(pool: &SqlitePool, plan: &mut ArtifactClean
 }
 
 /// The report for a plan with nothing to delete: only the shared paths the planner already spared
-/// are carried through. Pure so the field it populates stays under test - `execute_plan` itself
+/// are carried through. Pure so the field it populates stays under test. `execute_plan` itself
 /// needs a live `AppHandle` (the shared pool, the configured library) and cannot run under the
 /// unit-test harness.
 fn report_for_nothing_deletable(plan: ArtifactCleanupPlan) -> ArtifactCleanupReport {
@@ -583,8 +583,8 @@ pub async fn delete_channel_with_artifacts(
 /// freshly prepared artifact can already back a registered row; such a path is kept.
 ///
 /// What the count and the unlink are serialized against: [`MEDIA_REGISTRATION_LOCK`]. A wrapping
-/// transaction cannot help - the unlink necessarily happens after any commit, since the filesystem
-/// cannot join a SQLite transaction - so the delete paths above are not a template to copy here.
+/// transaction cannot help (the unlink necessarily happens after any commit, since the filesystem
+/// cannot join a SQLite transaction), so the delete paths above are not a template to copy here.
 /// The lock is what closes it, and `services::media_creation` takes the same one around its own
 /// marker/duplicate-check/insert sequence, so a creation resolving to the same content-addressed
 /// path can never be counted as absent by a cleanup that is about to unlink the file it just wrote.
@@ -630,7 +630,7 @@ async fn plan_unreferenced_artifacts(
 /// Both sides of the race this closes are short and rare, so one lock is enough and a map keyed by
 /// artifact path would only add a way to get the keying wrong. What it must *not* cover is the
 /// expensive half of a creation: the download and the import run outside it, so holding this never
-/// blocks anything a user waits on - `media_creation` takes it only around the marker, the duplicate
+/// blocks anything a user waits on. `media_creation` takes it only around the marker, the duplicate
 /// check and the insert, which are milliseconds.
 ///
 /// A single static lock, like `db_backup`'s `BACKUP_IN_PROGRESS`: there is one library process-wide
@@ -663,7 +663,7 @@ pub async fn cleanup_unreferenced_artifacts<R: Runtime>(
 /// The body of [`cleanup_unreferenced_artifacts`], for a caller that already holds
 /// [`MEDIA_REGISTRATION_LOCK`].
 ///
-/// It exists because the creation's own failure path has to clean up while still holding that lock -
+/// It exists because the creation's own failure path has to clean up while still holding that lock.
 /// taking it a second time would deadlock, and releasing it first would reopen the window between
 /// the failed insert and the unlink. Every other caller goes through the public function above.
 /// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is: the bare
@@ -696,7 +696,7 @@ pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
 ///
 /// A thumbnail is referenced both by video rows and by channel avatars, and avatars and
 /// thumbnails are content-addressed (they can share a path), so the previous avatar is only
-/// planned for deletion when nothing else - no video thumbnail and no other channel avatar -
+/// planned for deletion when nothing else (no video thumbnail and no other channel avatar),
 /// still points at it. Doing this in one transaction (row write plus reference decision)
 /// closes the check-then-act race the frontend had when it updated the avatar and then
 /// counted references over separate IPC calls, and fixes a latent gap where that count
@@ -1311,7 +1311,7 @@ mod tests {
     fn removing_a_thumbnail_drops_its_display_derivative_too() {
         // Nothing else ever would. A derivative is addressed by the canonical thumbnail's own
         // content hash and no row refers to one, so before this the only bound on that directory
-        // was the startup size sweep - which trims oldest-first once the whole cache is over
+        // was the startup size sweep, which trims oldest-first once the whole cache is over
         // budget, and therefore has nothing to do with what was deleted. Deleting a media left its
         // thumbnail readable in the cache until enough unrelated browsing pushed the cache past
         // its ceiling.
@@ -1367,7 +1367,7 @@ mod tests {
     #[test]
     fn removing_a_media_file_leaves_the_display_cache_alone() {
         // The kind check, in the direction that would be silent. Dropping it would make every
-        // deletion walk the cache for a key derived from a `video/...` path - which yields None
+        // deletion walk the cache for a key derived from a `video/...` path, which yields None
         // today, so nothing observable happens until some later name change makes it yield a
         // path, at which point a media delete starts removing an unrelated media's derivative.
         let root = unique_test_dir("display-derivative-media");
@@ -1398,7 +1398,7 @@ mod tests {
     #[test]
     fn a_thumbnail_that_could_not_be_removed_keeps_its_derivative() {
         // The ordering. The derivative is the cheaper of the two to lose, so a thumbnail whose
-        // unlink failed - it is reported as possibly orphaned, and still on disk - must keep the
+        // unlink failed (it is reported as possibly orphaned, and still on disk) must keep the
         // copy the grid can still draw from. Forcing the failure with a directory at the
         // thumbnail's path, which is portable, unlike a permission trick.
         let root = unique_test_dir("display-derivative-failed");
@@ -1430,7 +1430,7 @@ mod tests {
     #[test]
     fn an_unresolvable_display_cache_does_not_fail_the_removal() {
         // `None` is what execute_plan passes when the cache directory cannot be resolved. The
-        // deletion the user asked for must still happen and still be reported - a cache entry is
+        // deletion the user asked for must still happen and still be reported. A cache entry is
         // not worth failing it over, and the size sweep reclaims the derivative regardless.
         let root = unique_test_dir("display-derivative-none");
         let library = root.join("library");

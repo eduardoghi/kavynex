@@ -1,6 +1,6 @@
 <!--
 Keep this short. The checklist is what CI already enforces, gathered in one place so a red run
-is a surprise rather than the first time anyone looks - not extra process for its own sake.
+is a surprise rather than the first time anyone looks, not extra process for its own sake.
 -->
 
 ## What this changes
@@ -10,7 +10,7 @@ is a surprise rather than the first time anyone looks - not extra process for it
 ## How it was verified
 
 <!--
-Which tests you added or ran, and anything you checked by hand that a test cannot reach - the
+Which tests you added or ran, and anything you checked by hand that a test cannot reach. The
 app actually opening, a real download, a migration against an existing database.
 -->
 

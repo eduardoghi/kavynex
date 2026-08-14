@@ -68,8 +68,8 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
     // Refuse UNC / network locations before any filesystem call. Both `path` and
     // `library_path` arrive over IPC, and the containment check below cannot be trusted to
     // catch this because `library_path` is caller-supplied too: an attacker who drives IPC can
-    // pass a `\\host\share` as both, making `starts_with` trivially true. Rejecting here - and
-    // before the `canonicalize` calls, which is what would trigger the SMB/NTLM handshake -
+    // pass a `\\host\share` as both, making `starts_with` trivially true. Rejecting here (and
+    // before the `canonicalize` calls, which is what would trigger the SMB/NTLM handshake),
     // closes that. The cost is that a library kept on a network share loses only the "reveal in
     // file manager" convenience; playback, import and download are unaffected.
     if is_network_path(base_library) || is_network_path(&resolved_path.to_string_lossy()) {
@@ -88,7 +88,7 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
 
     // A path that simply is not there gets its own code, distinct from the invalid/outside-the-
     // library cases below. It is the one failure here with a cause the user recognizes and can act
-    // on - the file was moved, deleted, or lives on a drive that is not plugged in - and the
+    // on (the file was moved, deleted, or lives on a drive that is not plugged in), and the
     // frontend cannot tell it apart from the others once they all arrive as InvalidMediaPath. Only
     // NotFound is treated this way: a permission error or an IO failure says nothing about the file
     // being gone.
@@ -123,7 +123,7 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
 /// The containment is the whole of what this function adds, and it is why it stays here while the
 /// spawn does not: `resolve_path_inside_library` confines a caller-supplied `path` to the
 /// configured library before anything is revealed. `services::file_manager` performs the reveal and
-/// deliberately decides nothing about which paths are allowed - see its module comment for the two
+/// deliberately decides nothing about which paths are allowed. See its module comment for the two
 /// callers and how each answers that question.
 pub fn open_path_in_system_sync(path: &str, library_path: Option<&str>) -> AppResult<()> {
     let canonical_path = resolve_path_inside_library(path, library_path)?;

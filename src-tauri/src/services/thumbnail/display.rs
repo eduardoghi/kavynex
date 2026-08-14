@@ -2,15 +2,15 @@
 //!
 //! The library stores a thumbnail at whatever size it arrived: yt-dlp's `maxresdefault` is
 //! 1280x720, and an FFmpeg frame is capped at 640 wide. The grid draws them into a card a few
-//! hundred pixels across, and a webview decodes an image at its natural size - `width * height * 4`
-//! bytes of bitmap - regardless of how well the file is compressed. So the grid pays for the full
+//! hundred pixels across, and a webview decodes an image at its natural size (`width * height * 4`
+//! bytes of bitmap), regardless of how well the file is compressed. So the grid pays for the full
 //! 1280x720 decode of every visible card, and pays it again whenever the webview evicts and
 //! re-decodes on a scroll back. Virtualization does not help: it bounds how many cards are in the
 //! DOM, not how large each one's image is.
 //!
 //! Switching the stored thumbnails to JPEG (see [`crate::constants::THUMBNAIL_OUTPUT_FORMAT`])
-//! addressed disk and I/O and could not address this - compression does not change a decoded
-//! bitmap - and it only applied to files written after it landed, because names are
+//! addressed disk and I/O and could not address this (compression does not change a decoded
+//! bitmap), and it only applied to files written after it landed, because names are
 //! content-addressed and nothing re-encodes retroactively.
 //!
 //! This module is the separate change that does. It keeps a **derived** copy of each thumbnail,
@@ -25,8 +25,8 @@
 //!   directory costs one re-encode and never a user's data.
 //! - **It is retroactive.** A thumbnail that has been in the library for a year gets a derivative
 //!   the first time it is asked for, which is what the format switch could not do.
-//! - **It fails open.** Every failure path - an unreadable source, a missing FFmpeg, a refused
-//!   cache directory - answers that entry with no derivative, and the caller renders the canonical
+//! - **It fails open.** Every failure path (an unreadable source, a missing FFmpeg, a refused
+//!   cache directory), answers that entry with no derivative, and the caller renders the canonical
 //!   file exactly as before. A slow card is better than a blank one.
 //!
 //! What an answer does carry, on top of the derivative or its absence, is whether asking again
@@ -66,7 +66,7 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 /// [`DISPLAY_THUMBNAIL_TIMEOUT`] bounds *one* child; nothing bounded a page of them. The two
 /// multiply: at [`MAX_GENERATIONS_PER_CALL`] generations each allowed the full per-process timeout,
 /// a page where FFmpeg reproducibly hangs could hold one blocking-pool thread for over half an hour,
-/// and the caller cannot see it or cancel it - the request is fire-and-forget, and its failure path
+/// and the caller cannot see it or cancel it. The request is fire-and-forget, and its failure path
 /// only logs. Every other `run_blocking` caller (import, hashing, cleanup, the other library reads)
 /// competes for that pool, so the cost is not confined to thumbnails.
 ///
@@ -84,7 +84,7 @@ const RESOLVE_CALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(
 /// A resolve call carries one page of the grid, so the normal miss count is a page's worth on first
 /// visit and zero afterwards. The cap is what keeps a caller-supplied list from turning into an
 /// unbounded run of FFmpeg invocations: entries past it are simply reported as having no derivative,
-/// which the caller already handles by rendering the canonical file. Cache *hits* are not capped -
+/// which the caller already handles by rendering the canonical file. Cache *hits* are not capped.
 /// they are a stat each, and refusing them would make a fully warmed page fall back for no reason.
 ///
 /// Sized to a **full** page (`shared/media-page-size.json`, pinned by
@@ -93,12 +93,12 @@ const RESOLVE_CALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(
 /// remaining 36. That is not the self-correcting miss the comment above describes, because the
 /// caller only re-asks when its item list changes: a channel that fits in one page (`hasMore` false)
 /// has nothing left to trigger a retry, so those 36 cards kept decoding the full-resolution stored
-/// file for the rest of the session - the exact cost this module exists to remove.
+/// file for the rest of the session. The exact cost this module exists to remove.
 const MAX_GENERATIONS_PER_CALL: usize = 100;
 
 /// Upper bound on how many entries one call will consider at all.
 ///
-/// [`MAX_GENERATIONS_PER_CALL`] bounds the expensive half - how many FFmpeg runs a call may start -
+/// [`MAX_GENERATIONS_PER_CALL`] bounds the expensive half (how many FFmpeg runs a call may start),
 /// and says nothing about the cheap half, which is not free at library scale: every entry costs a
 /// `display_cache_key` and a `stat` whether or not it can be generated, all of it on one
 /// blocking-pool thread. This is the bound on that, and it is the same bound every other command
@@ -107,7 +107,7 @@ const MAX_GENERATIONS_PER_CALL: usize = 100;
 /// boundary, so it states its own limit rather than inheriting whatever the caller sends.
 ///
 /// A page of the grid is a hundred rows (`shared/media-page-size.json`), so this is generous for
-/// every legitimate call. Entries past it answer [`DisplayThumbnail::BudgetSpent`] - the caller
+/// every legitimate call. Entries past it answer [`DisplayThumbnail::BudgetSpent`]. The caller
 /// renders the stored thumbnail for them, and asks again, which is right: nothing was decided about
 /// those paths, so recording them as final would strand cards that a smaller later request would
 /// have resolved.
@@ -117,14 +117,14 @@ const MAX_RESOLVED_PER_CALL: usize = 512;
 ///
 /// A derivative is capped at [`DISPLAY_THUMBNAIL_MAX_WIDTH`] wide and JPEG-encoded, so it runs tens
 /// of kilobytes; this holds a few thousand of them, which is more than a session draws. It exists
-/// because the directory otherwise has no bound at all - a derivative is never deleted when its
+/// because the directory otherwise has no bound at all. A derivative is never deleted when its
 /// media is, since nothing in the database refers to one (see the module docs).
 ///
 /// **Enforced by the startup sweep** (`services::temp_cleanup::cleanup_stale_temp_files_sync`), not on
 /// write: a session that draws more than this grows past it and is trimmed back on the next launch.
-/// That is deliberate rather than an oversight, and worth stating because "ceiling" otherwise reads
+/// That is deliberate rather than an oversight, and said here because "ceiling" otherwise reads
 /// as a continuous invariant. Checking it per generated entry would mean summing the directory on
-/// each write, and keeping the write path cheap is the whole shape of this module - a cache *hit* is
+/// each write, and keeping the write path cheap is the whole shape of this module. A cache *hit* is
 /// one `stat` ([`display_cache_key`]) precisely so the grid pays nothing for a warmed page. The
 /// overshoot is bounded by what one session can draw and costs disk in a directory that is
 /// disposable by construction, which is the cheaper side of the trade.
@@ -145,12 +145,12 @@ static RESOLVE_SLOT: Semaphore = Semaphore::const_new(1);
 ///
 /// Deliberately `try_acquire` rather than an await: a queued page is worse than a refused one here.
 /// By the time a waiting call ran, the user would likely have scrolled past the rows it was asked
-/// about - so it would occupy the pool to produce derivatives for cards nobody is looking at, ahead
+/// about, so it would occupy the pool to produce derivatives for cards nobody is looking at, ahead
 /// of the request for the ones they are. A refusal costs nothing instead, because the caller already
 /// knows what to do with it (see [`all_retryable`]).
 ///
 /// Both failure kinds collapse to `None` on purpose. `NoPermits` is the case this exists for, and
-/// `Closed` cannot happen - a `static` semaphore is never closed - but if it somehow did, answering
+/// `Closed` cannot happen (a `static` semaphore is never closed), but if it somehow did, answering
 /// "no slot" degrades to serving the stored thumbnails, which is this module's declared fallback.
 pub(crate) fn try_reserve_resolve_slot() -> Option<SemaphorePermit<'static>> {
     RESOLVE_SLOT.try_acquire().ok()
@@ -159,14 +159,14 @@ pub(crate) fn try_reserve_resolve_slot() -> Option<SemaphorePermit<'static>> {
 /// The answer for a call that was refused a slot: every entry retryable, nothing decided.
 ///
 /// [`DisplayThumbnail::BudgetSpent`] and not `Unavailable`, and the distinction is exactly the one
-/// that enum exists for. Nothing was learned about these paths - the sources may be there, FFmpeg
-/// may be present, the derivatives may even be cached - so recording them as final would strand
+/// that enum exists for. Nothing was learned about these paths (the sources may be there, FFmpeg
+/// may be present, the derivatives may even be cached), so recording them as final would strand
 /// cards a later call could have resolved. `BudgetSpent` is already what the caller re-asks about,
 /// and a call refused a slot is a per-call condition in exactly the sense that variant means.
 ///
 /// `count` is bounded by [`capped_call_length`] rather than taken from the caller. This exit was the
 /// one place in the module that inherited a caller-supplied number instead of stating its own,
-/// which is the rule [`MAX_RESOLVED_PER_CALL`] exists to apply - and it is safe to answer short
+/// which is the rule [`MAX_RESOLVED_PER_CALL`] exists to apply, and it is safe to answer short
 /// here because a missing answer and a `BudgetSpent` one mean the same thing to the caller: it
 /// reads the response by position and leaves an unanswered tail unsettled, which is precisely
 /// "ask again". Nothing is lost by the truncation and nothing is decided by it.
@@ -176,21 +176,21 @@ pub(crate) fn all_retryable(count: usize) -> Vec<DisplayThumbnail> {
 
 /// How many entries of a request of `requested` paths this module will speak about at all.
 ///
-/// The single place that knows [`MAX_RESOLVED_PER_CALL`], so the two exits that apply it - the
-/// resolve itself, through [`within_call_ceiling`], and the refused-slot answer above - cannot
+/// The single place that knows [`MAX_RESOLVED_PER_CALL`], so the two exits that apply it (the
+/// resolve itself, through [`within_call_ceiling`], and the refused-slot answer above), cannot
 /// disagree about where the ceiling is.
 pub(crate) fn capped_call_length(requested: usize) -> usize {
     requested.min(MAX_RESOLVED_PER_CALL)
 }
 
-/// What one requested thumbnail got, and - when it got nothing - whether asking again could ever
+/// What one requested thumbnail got, and (when it got nothing), whether asking again could ever
 /// change that.
 ///
 /// This distinction is the whole reason the answer is not an `Option<String>`. There are five ways
 /// an entry ends up without a derivative and only one of them is worth retrying, but the caller
 /// could not tell them apart: it received `null` for a page whose generation budget ran out and
 /// `null` for a name this app did not write, so it had to pick one behavior for both. It picked
-/// retry, which is correct for the first and wrong for every other - and being wrong there is not
+/// retry, which is correct for the first and wrong for every other, and being wrong there is not
 /// harmless. The caller asks about every loaded row, so a path that can never be resolved comes back
 /// on every page append, forever: on a machine without FFmpeg, or a library holding rows written
 /// before thumbnails were content-addressed, that restores exactly the quadratic growth
@@ -202,7 +202,7 @@ pub(crate) fn capped_call_length(requested: usize) -> usize {
 /// [`DisplayThumbnail::BudgetSpent`] means "ask again"; everything else is final for this library.
 ///
 /// The uncertain cases resolve to [`DisplayThumbnail::Unavailable`] deliberately. A source that is
-/// gone might come back, and an FFmpeg run that failed might succeed on a retry - but the cost of
+/// gone might come back, and an FFmpeg run that failed might succeed on a retry, but the cost of
 /// treating those as permanent is one session of drawing the stored thumbnail, which is the fallback
 /// this whole module already declares acceptable, while the cost of treating them as retryable is
 /// the unbounded re-asking above. A fresh launch retries all of them anyway, since the cache is
@@ -242,7 +242,7 @@ pub(crate) struct CachedDerivative {
 /// the app cache directory, and that rule is wrong for it. `thumbs-temp/`, `yt-dlp-temp/` and
 /// `yt-dlp-thumb-temp/` hold scratch from an operation that finished, so an old entry there is
 /// garbage by definition. A derivative is not: regenerating one costs an FFmpeg process, and reading
-/// a cached one is a `stat` that renews nothing - so an age sweep discarded the thumbnails the grid
+/// a cached one is a `stat` that renews nothing, so an age sweep discarded the thumbnails the grid
 /// draws every day at exactly the same rate as the ones nothing had looked at since they were
 /// written. The whole cache therefore emptied every seven days and came back as a burst of FFmpeg
 /// runs on the next scroll, which is most of the cost the cache exists to remove.
@@ -308,7 +308,7 @@ pub(crate) fn within_call_ceiling(relative_paths: &[String]) -> &[String] {
 /// reason is not a prediction: the weekly mutation run reported this comparison missed while it was
 /// still inline in [`resolve_display_thumbnails_sync`], which is `AppHandle`-bound and therefore
 /// unreachable from a test. Both replacements matter and neither is loud. A `>` silences the warning
-/// on a genuinely truncated call - the case it exists to announce - and a `<=` fires it on every
+/// on a genuinely truncated call (the case it exists to announce), and a `<=` fires it on every
 /// exact-fit page, telling whoever reads the log that a caller asked for more than a page when
 /// nothing did.
 pub(crate) fn request_was_truncated(considered: usize, requested: usize) -> bool {
@@ -320,7 +320,7 @@ pub(crate) fn request_was_truncated(considered: usize, requested: usize) -> bool
 ///
 /// The width is part of the name because it is part of what the derivative *is*, and leaving it out
 /// made [`DISPLAY_THUMBNAIL_MAX_WIDTH`] a constant that could not be changed. Nothing revalidates a
-/// cached file's dimensions - [`is_usable_file`] asks only whether it exists and is non-empty - so a
+/// cached file's dimensions ([`is_usable_file`] asks only whether it exists and is non-empty), so a
 /// name of `<hash>.jpg` alone kept serving 640-wide derivatives forever after the constant moved,
 /// leaving a library holding two sizes with no way to tell which was which. Naming the width makes a
 /// change to it self-invalidating, exactly as [`THUMBNAIL_OUTPUT_FORMAT`] already is by virtue of
@@ -337,7 +337,7 @@ fn display_thumbnail_file_name(cache_key: &str) -> String {
 ///
 /// Every thumbnail and avatar the app writes is named `thumb_<sha256>.<ext>`
 /// (`services::thumbnail::persist`), so the content hash is already in the name and the key is free
-/// to compute - no re-reading the file on a cache hit, which is the point: a hit has to cost a stat,
+/// to compute. No re-reading the file on a cache hit, which is the point: a hit has to cost a stat,
 /// not a hash of the very bytes the derivative exists to avoid decoding.
 ///
 /// The hash is what the key is taken from rather than the whole filename, so two rows pointing at
@@ -347,7 +347,7 @@ fn display_thumbnail_file_name(cache_key: &str) -> String {
 /// content if a `.png` and a `.jpg` of it ever coexisted.
 ///
 /// A name that does not match returns `None` instead of being hashed into some other key. That is
-/// the honest answer - the app cannot have written it, so it is a hand-placed or legacy file - and
+/// the honest answer (the app cannot have written it, so it is a hand-placed or legacy file), and
 /// `None` costs nothing: the caller renders the canonical file, which is what it did before this
 /// module existed.
 /// Where the derivative of a stored, library-relative thumbnail lives, or `None` when the name is
@@ -356,7 +356,7 @@ fn display_thumbnail_file_name(cache_key: &str) -> String {
 /// The single spelling of the mapping, so the two callers cannot disagree about it: the resolve
 /// path uses it to find or write a derivative, and `library::cleanup` uses it to remove one whose
 /// canonical thumbnail was just unlinked. That second caller is the reason this is a function
-/// rather than two lines inlined at the resolve site - it has no business knowing that a derivative
+/// rather than two lines inlined at the resolve site. It has no business knowing that a derivative
 /// is named from a content hash plus a width.
 ///
 /// It also means the cleanup needs no reference counting of its own. A derivative is addressed *by*
@@ -385,7 +385,7 @@ fn display_cache_key(relative_path: &str) -> Option<String> {
 /// Builds the FFmpeg argv that writes the scaled copy.
 ///
 /// `scale='min(<max>,iw)':-1` never upscales, so a source already at or under the cap is copied at
-/// its own size rather than blown up - which matters because the two producers write at different
+/// its own size rather than blown up, which matters because the two producers write at different
 /// sizes (a yt-dlp `maxresdefault` at 1280 wide, an FFmpeg frame already capped at 640).
 ///
 /// Extracted as a pure function, like `thumbnail::temp::build_video_thumbnail_args`, so the argv can
@@ -408,7 +408,7 @@ fn build_display_thumbnail_args(source_path: &Path, out_path: &Path) -> Vec<Stri
 ///
 /// Pure, and separate from the caller, for the reason every extraction in this codebase is: the
 /// branch that spends the budget can only be reached by actually running FFmpeg, so a test driving
-/// `resolve_one` never gets far enough to observe the accounting - a budget that counted the wrong
+/// `resolve_one` never gets far enough to observe the accounting. A budget that counted the wrong
 /// way, or never ran out, would look identical from outside. Here both directions are one call away.
 ///
 /// `Option<()>` rather than `bool` so the caller can write `take_generation_slot(..)?` and state the
@@ -432,7 +432,7 @@ fn take_generation_slot(generations_left: &mut usize) -> Option<()> {
 /// Takes `now` rather than reading the clock, for the same reason `duration_is_recent` in
 /// `db_backup` does: a bound whose only observable effect is "some later entry got nothing" cannot
 /// be pinned at its boundary by a test that has to wait for real time to pass. Here both sides of
-/// the comparison are one call away, which is also what kills the `>=` mutants - a `>` would let a
+/// the comparison are one call away, which is also what kills the `>=` mutants. A `>` would let a
 /// call that has exactly spent its budget start one more child.
 ///
 /// `saturating_duration_since` rather than the subtracting form: `Instant` is monotonic per the
@@ -450,7 +450,7 @@ fn call_budget_spent(
 ///
 /// Used both to accept a cached derivative and to accept a freshly written one. The emptiness check
 /// is what stops a run that died after creating the output from leaving a zero-byte file that every
-/// later call would treat as a valid cache hit - a permanently blank card, regenerated never.
+/// later call would treat as a valid cache hit. A permanently blank card, regenerated never.
 fn is_usable_file(path: &Path) -> bool {
     std::fs::metadata(path)
         .map(|metadata| metadata.is_file() && metadata.len() > 0)
@@ -533,7 +533,7 @@ fn resolve_one(
     }
 
     // Only now does the source have to be located and validated, so a warmed cache never pays for
-    // the containment check either. Both refusals are permanent - a path outside `thumbnails/`, or
+    // the containment check either. Both refusals are permanent. A path outside `thumbnails/`, or
     // one that will not resolve inside the library, is a property of the stored value.
     if ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_THUMBNAILS).is_err() {
         return DisplayThumbnail::Unavailable;
@@ -550,7 +550,7 @@ fn resolve_one(
 
     // Checked before the budget rather than after it. Without FFmpeg no entry in this call can
     // produce anything, so spending a slot to discover that once per entry burns the whole budget
-    // on nothing and starves the entries behind it - which mattered less when every miss was
+    // on nothing and starves the entries behind it, which mattered less when every miss was
     // re-asked anyway, and matters now that a miss is final.
     let Some(ffmpeg) = ffmpeg else {
         return DisplayThumbnail::Unavailable;
@@ -559,7 +559,7 @@ fn resolve_one(
     // Two independent bounds on the same expensive step, and both answer BudgetSpent: each is a
     // property of *this call* rather than of the path, so a later call can still resolve it. The
     // clock is checked first so a call that is already over time does not spend a slot to discover
-    // that - the slot would be wasted rather than merely accounted for.
+    // that. The slot would be wasted rather than merely accounted for.
     //
     // Neither bound gates the cache hit above. A hit is one stat, and refusing it would make a fully
     // warmed page fall back to the stored file for no reason, which is the same reasoning
@@ -584,7 +584,7 @@ fn resolve_one(
 /// Each entry is a [`DisplayThumbnail`] for the requested path at the same index, and anything other
 /// than `Resolved` is a normal answer rather than an error: the caller renders the canonical file for
 /// it. The whole call likewise returns `Ok` with nothing resolved rather than failing when the cache
-/// directory or FFmpeg cannot be resolved - the grid must render either way, and a thumbnail cache is
+/// directory or FFmpeg cannot be resolved. The grid must render either way, and a thumbnail cache is
 /// not worth an error modal.
 ///
 /// The returned vector is always as long as `relative_paths`, because the caller reads it by
@@ -613,7 +613,7 @@ pub fn resolve_display_thumbnails_sync(
     let considered = within_call_ceiling(relative_paths);
 
     // A truncated call means the caller asked about more than a page, which no legitimate flow does,
-    // so say so once rather than capping silently - a page of cards quietly falling back to the
+    // so say so once rather than capping silently. A page of cards quietly falling back to the
     // stored file is otherwise indistinguishable from a machine with no FFmpeg.
     if request_was_truncated(considered.len(), relative_paths.len()) {
         logger::warn(
@@ -653,7 +653,7 @@ pub fn resolve_display_thumbnails_sync(
         .collect();
 
     // One line per call, not per entry. Reaching the budget means FFmpeg is taking far longer than
-    // scaling an image should - a hung binary, a failing disk - and that is worth saying once,
+    // scaling an image should (a hung binary, a failing disk), and it should be said once,
     // because the symptom the user sees is only that some cards stayed on the stored thumbnail.
     //
     // The check is "did the call end past its budget" rather than "was an entry refused for time",
@@ -726,7 +726,7 @@ mod tests {
     #[test]
     fn a_refused_call_answers_every_path_as_retryable() {
         // Retryable and not final: nothing was learned about these paths, so recording them as
-        // settled would strand cards a later call could resolve. The length has to match too - the
+        // settled would strand cards a later call could resolve. The length has to match too. The
         // caller reads the answer by position against the paths it sent.
         let answers = all_retryable(3);
 
@@ -741,7 +741,7 @@ mod tests {
     #[test]
     fn a_refused_call_is_bounded_by_the_same_ceiling_as_a_resolved_one() {
         // This exit used to allocate straight from the caller's own count, which is the one thing
-        // MAX_RESOLVED_PER_CALL exists to stop the module doing - and it sat in the file whose
+        // MAX_RESOLVED_PER_CALL exists to stop the module doing, and it sat in the file whose
         // comments state that rule for every other bound. Answering short costs nothing: the caller
         // reads by position and treats a missing answer exactly as BudgetSpent, i.e. as "ask again".
         assert_eq!(
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     fn eviction_drops_the_oldest_entries_until_the_cache_fits() {
         // 250 bytes against a 100-byte budget: 150 have to go, which the two oldest cover exactly.
-        // The newest must survive - it is the one the grid is most likely to ask for next.
+        // The newest must survive. It is the one the grid is most likely to ask for next.
         let entries = vec![
             derivative("newest.jpg", 100, Duration::from_secs(10)),
             derivative("oldest.jpg", 100, Duration::from_secs(300)),
@@ -867,8 +867,8 @@ mod tests {
     fn the_generation_budget_covers_a_full_page_of_the_grid() {
         // The two constants live on opposite sides of the IPC boundary and nothing else forces them
         // to move together, which is how they came to disagree: a budget of 64 against a page of 100
-        // left 36 cards of a first-visited channel without a derivative, and - because the caller
-        // re-asks only when its item list changes - a channel that fits in one page never got them.
+        // left 36 cards of a first-visited channel without a derivative, and (because the caller
+        // re-asks only when its item list changes), a channel that fits in one page never got them.
         // A budget *above* the page size is fine (it only bounds a caller asking for more than a
         // page); below it silently degrades the feature, so this is the direction that is asserted.
         let page_size = shared_media_page_size();
@@ -880,7 +880,7 @@ mod tests {
         );
 
         // The cheap half's ceiling has to clear a page too, or a legitimate first visit would be
-        // truncated - and truncation logs a warning that says no legitimate flow reaches it.
+        // truncated, and truncation logs a warning that says no legitimate flow reaches it.
         assert!(
             MAX_RESOLVED_PER_CALL >= page_size,
             "the per-call ceiling ({MAX_RESOLVED_PER_CALL}) must not truncate a single page \
@@ -895,7 +895,7 @@ mod tests {
         // Nothing else pinned the magnitude at all: every eviction test below passes its own
         // `max_bytes`, so the constant was free to be any number, and a weekly mutation run duly
         // reported `*` swapped for `+` and for `/` as surviving. What that would cost is not
-        // theoretical - the startup sweep trims the cache to this value, so a slip downward
+        // theoretical. The startup sweep trims the cache to this value, so a slip downward
         // discards derivatives the grid is about to redraw, and one upward lets a disposable
         // directory grow without a bound worth the name.
         assert_eq!(display_cache_max_bytes(), 209_715_200);
@@ -904,7 +904,7 @@ mod tests {
     #[test]
     fn a_request_is_truncated_only_when_the_ceiling_dropped_something() {
         // Both replacements the mutation run found, on the exact boundary. `>` silences the warning
-        // on a genuinely truncated call - the one case it exists to announce - and `<=` fires it on
+        // on a genuinely truncated call (the one case it exists to announce), and `<=` fires it on
         // every exact-fit page, which is the reading that sends whoever opens the log looking for a
         // caller asking beyond a page when none did.
         assert!(request_was_truncated(
@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn within_call_ceiling_passes_a_normal_page_through_untouched() {
         // A page of the grid is a few dozen rows, so the ceiling must never be what a real call
-        // meets - otherwise it would be silently degrading the feature it is protecting.
+        // meets. Otherwise it would be silently degrading the feature it is protecting.
         let page: Vec<String> = (0..64)
             .map(|index| format!("thumbnails/{index}.jpg"))
             .collect();
@@ -950,7 +950,7 @@ mod tests {
     #[test]
     fn within_call_ceiling_keeps_the_leading_entries_in_order() {
         // The caller reads the answer by position, so the prefix has to be the *leading* entries and
-        // has to stay in order - a truncation that took the tail would answer every entry with the
+        // has to stay in order. A truncation that took the tail would answer every entry with the
         // wrong derivative.
         let requested: Vec<String> = (0..3)
             .map(|index| format!("thumbnails/{index}.jpg"))
@@ -990,7 +990,7 @@ mod tests {
     fn display_cache_key_refuses_a_name_this_app_did_not_write() {
         // Refusing is what keeps the cache addressed by content. A name without the app's prefix or
         // without a full-length hash cannot be assumed to identify its own bytes, so it gets no
-        // derivative and the caller renders the canonical file - which is what it did before this
+        // derivative and the caller renders the canonical file, which is what it did before this
         // module existed, so `None` costs nothing.
         for value in [
             "thumbnails/photo.jpg",                              // not written by this app
@@ -1029,7 +1029,7 @@ mod tests {
         // The width has to be in the name, because nothing revalidates a cached file's dimensions:
         // is_usable_file asks only whether it exists and is non-empty, so a name that omitted the
         // width would keep serving the old size after DISPLAY_THUMBNAIL_MAX_WIDTH changed. Asserting
-        // it as a substring - and not merely that the two names differ - is what pins the change as
+        // it as a substring (and not merely that the two names differ) is what pins the change as
         // self-invalidating.
         assert!(
             name.contains(&format!("w{DISPLAY_THUMBNAIL_MAX_WIDTH}")),
@@ -1140,7 +1140,7 @@ mod tests {
     fn the_call_budget_leaves_room_for_more_than_one_generation() {
         // The invariant that keeps the bound from silently disabling the feature: if the call budget
         // were at or below the per-process timeout, a single hung FFmpeg would consume the whole
-        // call, every call, and no derivative would ever be produced again on that machine - with
+        // call, every call, and no derivative would ever be produced again on that machine, with
         // nothing to show for it but a warning per page.
         assert!(
             RESOLVE_CALL_BUDGET > DISPLAY_THUMBNAIL_TIMEOUT,
@@ -1152,7 +1152,7 @@ mod tests {
     #[test]
     fn a_call_that_is_out_of_time_reports_retryable_and_keeps_its_slots() {
         // The bound this exists for, at the level it acts on. Retryable rather than final: the path
-        // is fine and the source is there, so a later call must still be free to resolve it - and
+        // is fine and the source is there, so a later call must still be free to resolve it, and
         // the slot must not be spent discovering that the call is over time, or a page arriving late
         // would burn its whole budget refusing entries.
         let dir = std::env::temp_dir().join(format!(
@@ -1191,7 +1191,7 @@ mod tests {
     fn an_out_of_time_call_still_serves_what_is_already_cached() {
         // The deliberate asymmetry: the budget bounds generations, not answers. A cache hit is one
         // stat, so refusing it once the call is over time would make a warmed page fall back to the
-        // full-size stored file for no reason - the same reasoning MAX_GENERATIONS_PER_CALL states,
+        // full-size stored file for no reason. The same reasoning MAX_GENERATIONS_PER_CALL states,
         // applied to the clock.
         let dir = std::env::temp_dir().join(format!(
             "kavynex-display-hit-out-of-time-{}",
@@ -1319,7 +1319,7 @@ mod tests {
     #[test]
     fn a_missing_ffmpeg_is_final_and_never_spends_the_budget() {
         // Both halves matter. Final, because no entry in any later call can produce a derivative
-        // without FFmpeg either - and marking it retryable is precisely what made a machine without
+        // without FFmpeg either, and marking it retryable is precisely what made a machine without
         // FFmpeg re-ask about its whole library on every page. And free, because the check now runs
         // before the slot is taken: paying a slot per entry to rediscover the same missing binary
         // would exhaust the budget on nothing.
@@ -1405,7 +1405,7 @@ mod tests {
     fn a_cached_derivative_is_returned_without_touching_the_library() {
         // The hit path must not need the library at all: no containment check, no source stat, no
         // FFmpeg. Passing a library path that does not exist and an ffmpeg that could never run is
-        // what proves it - if either were consulted, this would return None.
+        // what proves it, if either were consulted, this would return None.
         let dir = std::env::temp_dir().join(format!(
             "kavynex-display-hit-{}",
             crate::utils::naming::unique_temp_suffix()

@@ -32,7 +32,7 @@ type UseHomePlayerActionsOptions = {
     cancelRefreshComments: (mediaId: number) => Promise<void>;
     // The ids being refreshed, not a shared "something is refreshing" flag: the player resolves it
     // against the media it is showing, so a refresh left running on a media the user navigated away
-    // from cannot mark this one busy. That matters beyond the label - the button renders `loading`
+    // from cannot mark this one busy. That matters beyond the label. The button renders `loading`
     // from it, and Mantine disables a loading button, so a shared flag would block the refresh of
     // the media actually on screen.
     commentsInFlight: ReadonlySet<number>;
@@ -89,9 +89,9 @@ export function useHomePlayerActions({
         }
 
         // The button is shown for every media, but only YouTube-sourced media can refresh
-        // comments; guard here with a clear message. Everything else - result handling, the
+        // comments; guard here with a clear message. Everything else (result handling, the
         // neutral "kept your comments" notice, the concurrency flag, and the media-list and
-        // active-media updates - is delegated to the media-library action so that rule has a
+        // active-media updates) is delegated to the media-library action so that rule has a
         // single implementation.
         if (!activeMedia.youtube_video_id?.trim()) {
             onError("This media does not have a YouTube source for comment refresh.");
@@ -151,7 +151,7 @@ export function useHomePlayerActions({
 
     const closePlayer = useCallback(
         async (progressSeconds?: number): Promise<void> => {
-            // Only persist when a concrete position was supplied - the Back button reads it
+            // Only persist when a concrete position was supplied. The Back button reads it
             // from the media element and passes it here. Navigation-only closes (switching
             // channels from the sidebar, deleting the active media) call this with no argument
             // and must not overwrite the saved position with 0. The player view persists

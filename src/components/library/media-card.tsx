@@ -113,10 +113,10 @@ const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
 
 // The resting elevation of a card that is neither active nor watched.
 //
-// `light-dark()` resolves a *color*, so it has to sit in the color slot of each shadow - not around
+// `light-dark()` resolves a *color*, so it has to sit in the color slot of each shadow, not around
 // the shadow as a whole. Wrapping the whole thing (`light-dark(0 6px 18px <color>, 0 12px 32px
 // <color>)`) makes the declaration invalid, and that had two consequences: no card ever got its
-// resting shadow, and - worse - a card that had been the active one kept the violet active glow
+// resting shadow, and (worse), a card that had been the active one kept the violet active glow
 // forever, because assigning an invalid value to an element's inline style is ignored and leaves the
 // previous valid value in place. So the highlight survived the media being closed, on every card the
 // user had ever opened.
@@ -128,8 +128,7 @@ const INACTIVE_CARD_SHADOW =
     " 0 12px 32px light-dark(transparent, rgba(0,0,0,0.12))";
 
 // The static base of the root card. Only the four properties that react to isActive/isWatched
-// (background, borderColor, boxShadow, transform) are spread over this inline below; the rest -
-// including the rem() height and the long transition string - is built once here.
+// (background, borderColor, boxShadow, transform) are spread over this inline below; the rest (// including the rem() height and the long transition string) is built once here.
 const ROOT_CARD_BASE_STYLE: CSSProperties = {
     height: rem(MEDIA_CARD_HEIGHT),
     cursor: "pointer",
@@ -184,8 +183,8 @@ function MediaCardComponent({
                 // The watched tint carries a real cost when it is too faint, and it was: in dark
                 // mode it painted 7% green over a card whose unwatched state is already 2.8% white,
                 // so at grid scale the two read as the same card and the badge was doing the whole
-                // job alone. The values below keep the intended ranking - active outranks watched
-                // outranks neither - while making the middle rung visible rather than nominal.
+                // job alone. The values below keep the intended ranking (active outranks watched
+                // outranks neither), while making the middle rung visible rather than nominal.
                 //
                 // Active still wins on more than alpha: it also gets the ring, the drop glow and the
                 // lift below, none of which watched has. That is what lets watched sit this close in

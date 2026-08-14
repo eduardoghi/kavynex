@@ -58,7 +58,7 @@ type LiveChatItemProps = {
 // Stable React keys for messages that carry no id of their own (some stickers and gifts).
 //
 // The visible window is a slice of the parsed array, so a message keeps its object identity as it
-// slides through - but its *index* shifts on every advance, and an index-based key makes React tear
+// slides through, but its *index* shifts on every advance, and an index-based key makes React tear
 // down and rebuild a row that merely moved, throwing away exactly the memoization LiveChatItem
 // exists for. Content is not a usable key either: two identical messages from the same author at
 // the same offset are indistinguishable, and duplicate keys are their own bug. Identity is the one
@@ -130,7 +130,7 @@ const LiveChatItem = memo(function LiveChatItem({
 
     // Dispatch on the kind the parser assigned, not on amount_text being present. A super sticker
     // whose purchase amount could not be parsed still has no message_text (stickers never carry
-    // one) and its image lives in sticker_image_url, which only SuperChatMessage renders - so
+    // one) and its image lives in sticker_image_url, which only SuperChatMessage renders, so
     // routing it by amount alone dropped it into RegularChatMessage as a near-empty row, image and
     // all. The amount is what the badge shows; it is not what the message is.
     if (message.kind === "superchat" || message.kind === "sticker") {
@@ -233,7 +233,7 @@ export function LiveChatPanel({
 
     // Stick to the bottom as new messages arrive (unless the user has scrolled up). Depends on
     // `totalSize` as well as the messages so the scroll is re-applied after the virtualizer measures
-    // real row heights and the total grows - without that second pass, sticking to the estimated
+    // real row heights and the total grows, without that second pass, sticking to the estimated
     // bottom would drift up as rows settle. Assigning scrollTop (rather than the virtualizer's own
     // scrollTo) keeps this working under jsdom in tests.
     useEffect(() => {

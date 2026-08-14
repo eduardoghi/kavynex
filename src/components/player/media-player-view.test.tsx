@@ -69,15 +69,14 @@ describe("MediaPlayerView", () => {
         );
 
         expect(screen.getByText("LIVE")).toBeInTheDocument();
-        // The replay panel is code-split, so it arrives a microtask after the first commit -
+        // The replay panel is code-split, so it arrives a microtask after the first commit.
         // `find*` waits for its chunk. The badge above is in the header and is there immediately,
         // which is what keeps this test still covering the wiring it was written for.
         expect(await screen.findByText("Live chat replay")).toBeInTheDocument();
     });
 
     // A longer timeout than the suite default, and this is the one place that needs it. This is the
-    // largest tree the app renders, and axe walks every node against every enabled rule in jsdom -
-    // which has no layout engine to short-circuit anything - so it runs several times longer here
+    // largest tree the app renders, and axe walks every node against every enabled rule in jsdom (// which has no layout engine to short-circuit anything), so it runs several times longer here
     // than over the grid or the sidebar. The default 5s is what it exceeded; this is well clear of
     // the measured time rather than just above it.
     it("has no detectable accessibility violations", { timeout: 30_000 }, async () => {

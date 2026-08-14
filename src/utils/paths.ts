@@ -12,7 +12,7 @@ export function normalizeNonEmptyUniquePaths(
 }
 
 /**
- * Whether `path` is a filesystem/volume root - a location with no parent directory - rather
+ * Whether `path` is a filesystem/volume root: a location with no parent directory, rather
  * than a normal folder. Accepting a root as the library folder would make the asset:// scope
  * recursive over the whole drive, so callers must reject it before accepting the selection.
  * Handles POSIX roots ("/"), Windows drive roots ("C:", "C:\", "\\?\C:\"), and UNC share

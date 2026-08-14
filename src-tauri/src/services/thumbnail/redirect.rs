@@ -47,7 +47,7 @@ fn hop_budget_exhausted(hops_used: usize) -> bool {
 fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
     let location_lc = location.to_ascii_lowercase();
 
-    // Absolute http/https - scheme comparison is case-insensitive per RFC 3986
+    // Absolute http/https. Scheme comparison is case-insensitive per RFC 3986
     if location_lc.starts_with("http://") || location_lc.starts_with("https://") {
         return location.parse().map_err(|e| {
             AppError::from_code(
@@ -57,7 +57,7 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
         });
     }
 
-    // Protocol-relative: //host/path - inherit current scheme
+    // Protocol-relative: //host/path. Inherit current scheme
     if location.starts_with("//") {
         let scheme = current.scheme_str().unwrap_or("https");
         return format!("{scheme}:{location}").parse().map_err(|e| {
@@ -103,7 +103,7 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 /// Where a redirect response sends the fetch next, or why it is refused.
 ///
 /// `location` is `None` when the response carried no `Location` header, or one whose bytes are not
-/// valid header text. Both mean the same thing to this decision - a redirect naming no destination -
+/// valid header text. Both mean the same thing to this decision (a redirect naming no destination),
 /// so they arrive as one case rather than two.
 ///
 /// `host_is_allowed` is the caller's host gate, applied to the *resolved* destination. It is a
@@ -115,7 +115,7 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 /// already gone too far is refused as a chain rather than being reported as whatever happens to be
 /// wrong with its next `Location`; the missing-destination refusal comes before the resolution so
 /// `resolve_redirect` never has to describe an absence; and the host gate comes last because it is
-/// the only one of the four that needs the destination already resolved - a relative `Location`
+/// the only one of the four that needs the destination already resolved. A relative `Location`
 /// carries no host of its own.
 ///
 /// That last check is the one worth explaining, because for a while it was not here and the loop
@@ -123,7 +123,7 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 /// fetch starts, which reads as a gate on the whole operation and is not one: only
 /// `assert_url_host_is_public` re-ran per hop, so a `302` out of an allowed CDN was followed to any
 /// public host. The SSRF guard kept that off internal addresses, and the response was still capped,
-/// content-type checked and magic-byte sniffed - but none of that stops the *request*, which is the
+/// content-type checked and magic-byte sniffed, but none of that stops the *request*, which is the
 /// outbound channel `super::url` exists to close. Deciding it here rather than in the loop is what
 /// puts it under the mutation gate, like every other decision this module holds.
 pub(crate) fn next_hop(
@@ -172,7 +172,7 @@ mod tests {
     }
 
     /// A host gate standing in for the real allow-list, so these tests pin the *wiring* of the gate
-    /// rather than the contents of `super::url`'s list - which has its own tests, and which this
+    /// rather than the contents of `super::url`'s list, which has its own tests, and which this
     /// module deliberately does not import.
     fn only_cdn_example(uri: &Uri) -> bool {
         uri.host() == Some("cdn.example.com")
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn the_hop_budget_is_exhausted_exactly_at_its_ceiling() {
         // Both sides of the `>=`, on the exact boundary. A `>` here follows one redirect more than
-        // the constant says, and an inverted comparison refuses the first hop of every fetch - which
+        // the constant says, and an inverted comparison refuses the first hop of every fetch, which
         // reads as "thumbnails stopped loading" with nothing pointing at the redirect logic.
         for hops_used in 0..MAX_REDIRECT_HOPS {
             assert!(
@@ -322,7 +322,7 @@ mod tests {
     fn a_hop_leaving_the_allowed_hosts_is_refused() {
         // The gap this parameter closes. The caller gates the initial URL, so a fetch *starts* on an
         // allowed CDN; without this check a single 302 carried it to any public host, which is the
-        // outbound channel the allow-list exists to close. The SSRF guard does not cover it - the
+        // outbound channel the allow-list exists to close. The SSRF guard does not cover it. The
         // destination here is perfectly public.
         let error = next_hop(
             &uri("https://cdn.example.com/thumb.jpg"),

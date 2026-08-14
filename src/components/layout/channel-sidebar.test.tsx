@@ -415,7 +415,7 @@ describe("ChannelSidebar", () => {
     it("has no detectable accessibility violations with channels rendered", async () => {
         // Structural smoke check. The assertions above pin the list semantics this component has to
         // restore by hand, because virtualization means assistive technology cannot count the rows
-        // by walking the DOM - this catches the rest of the tree those attributes sit in, which
+        // by walking the DOM. This catches the rest of the tree those attributes sit in, which
         // nothing else asserts. See src/test/axe.ts for what jsdom cannot answer here.
         const { container } = renderWithMantine(
             <ChannelSidebar

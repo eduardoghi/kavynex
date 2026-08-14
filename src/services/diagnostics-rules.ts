@@ -9,7 +9,7 @@ import type {
 
 // How old a yt-dlp release has to be before the diagnostics mention it. Deliberately generous:
 // yt-dlp ships very often, so a stricter threshold would nag about a version that still works,
-// and this only ever suggests an update - it never blocks a download.
+// and this only ever suggests an update. It never blocks a download.
 const YT_DLP_STALE_AFTER_DAYS = 60;
 
 function compareIssueSeverity(left: DiagnosticsIssue, right: DiagnosticsIssue): number {
@@ -27,7 +27,7 @@ export function sortDiagnosticsIssues(issues: DiagnosticsIssue[]): DiagnosticsIs
 }
 
 // Attaches concrete example paths to an issue so the user can see and act on the specific files
-// manually (the diagnostics only report - they never delete). Blank entries are dropped and the
+// manually (the diagnostics only report. They never delete). Blank entries are dropped and the
 // `examples` key is omitted entirely when nothing remains, so an issue with no examples stays a
 // plain { code, severity, title, description } object. `resolveMedia`, when given, turns a path
 // into a jump-to-the-media target (used for missing media, whose row still exists).
@@ -54,7 +54,7 @@ export function buildDiagnosticsIssues(
 ): DiagnosticsIssue[] {
     const issues: DiagnosticsIssue[] = [];
 
-    // A "missing media" path is a media row whose file vanished on disk - the row still exists,
+    // A "missing media" path is a media row whose file vanished on disk. The row still exists,
     // so it can be opened in the library. Resolve each such path to its media so the UI can jump
     // to it (keyed like the integrity service builds the map: trimmed, forward slashes).
     const resolveMissingMedia = (path: string): DiagnosticsMediaTarget | undefined =>
@@ -84,7 +84,7 @@ export function buildDiagnosticsIssues(
 
     // yt-dlp breaks against YouTube whenever the site changes, and the fix is almost always just
     // updating it. Without this, that failure reaches the user as yt-dlp's own raw extractor error
-    // in the terminal panel, which says nothing about the copy on their PATH being old - so the
+    // in the terminal panel, which says nothing about the copy on their PATH being old, so the
     // app looks broken when it is not. The backend reports the age (yt-dlp versions are dates);
     // deciding when an age is worth mentioning is a diagnostics rule, so it lives here with the
     // rest of them. Informational rather than a warning: an old yt-dlp often still works fine, and

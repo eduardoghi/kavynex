@@ -22,8 +22,8 @@ use crate::AppResult;
 /// `convertFileSrc` for the rest of the session. Best effort: a failure only leaves the stale
 /// grant in place (the pre-existing behavior) and must not fail the migration itself.
 fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
-    // A forbid is permanent for the rest of the session - Tauri's scope checks the forbidden
-    // patterns first and offers no way to withdraw one - so record what is being given up before
+    // A forbid is permanent for the rest of the session (Tauri's scope checks the forbidden
+    // patterns first and offers no way to withdraw one), so record what is being given up before
     // doing it. Migrating back to this library later would otherwise re-grant it to no effect and
     // leave every thumbnail and video silently unreadable; register_library_asset_scope reads this
     // and refuses with a "restart required" instead. Recorded first so the two cannot disagree even
@@ -91,7 +91,7 @@ pub async fn migrate_library_directory(
     let config_dir = app.path().app_config_dir().ok();
 
     // The commit marker lives next to the database in the config directory. If that cannot be
-    // resolved the migration still runs, but without the crash-recovery marker for this run - a
+    // resolved the migration still runs, but without the crash-recovery marker for this run. A
     // crash between the copy and the old-directory removal would then not be self-healed on the
     // next launch. Rare (a failure here implies a deeper host problem), so log it rather than
     // refusing the migration outright.
@@ -144,7 +144,7 @@ pub async fn migrate_library_directory(
 /// `library_path` arrives over IPC but is verified against the persisted setting before anything
 /// is read, like every other command that takes one. It used to be trusted on its own, documented
 /// as a first-party-webview concession so the settings UI could preview a folder before it was
-/// saved - but no caller ever did that: the settings modal and the diagnostics summary both pass
+/// saved, but no caller ever did that: the settings modal and the diagnostics summary both pass
 /// `settings.libraryPath`, which is the persisted value, and the folder-change flow
 /// (`use-cases/change-library-path.ts`) previews a candidate with `is_directory_empty` instead.
 /// The concession bought nothing and cost the one rule the whole backend rests on.
@@ -165,7 +165,7 @@ pub async fn get_library_summary(
 ///
 /// Verified against the persisted setting for the reason given on `get_library_summary`, and with
 /// one of its own: `resolve_path_inside_library` confines `path` to `library_path`, so a caller
-/// that supplies *both* makes that containment check self-referential - passing a drive root as
+/// that supplies *both* makes that containment check self-referential. Passing a drive root as
 /// each would satisfy it trivially. The guard is what makes the containment mean something. A
 /// missing `library_path` is rejected here rather than deeper in, so the failure names the real
 /// cause.
@@ -191,13 +191,13 @@ pub async fn open_path_in_system(
 /// mattered most of the three: the report carries up to five *real filenames* per category
 /// (`orphan_media_examples` and friends), collected by walking `<library_path>/video`, `/audio`,
 /// `/thumbnails` and `/live_chat`. With the path trusted, that made this command a directory
-/// enumerator for any such tree on disk. The names are worth reporting - Diagnostics shows the
-/// user which of their own files are unreferenced - so the fix is the guard, not a poorer report.
+/// enumerator for any such tree on disk. The names are worth reporting (Diagnostics shows the
+/// user which of their own files are unreferenced), so the fix is the guard, not a poorer report.
 ///
 /// **The stored paths are read here rather than sent in.** This command used to take three
 /// `Vec<String>` of every path the database holds, which the renderer assembled by first pulling
-/// every media row over IPC. That made an operation whose output is bounded - five examples per
-/// category - cost time and memory proportional to the whole library, in both directions, on a
+/// every media row over IPC. That made an operation whose output is bounded (five examples per
+/// category), cost time and memory proportional to the whole library, in both directions, on a
 /// round trip that existed only because the resolution lived on the wrong side. The pool is open
 /// here and the rows are two queries away, so nothing was gained by asking. It also removed this
 /// command's one unbounded input: those vectors arrived from IPC with no ceiling, the only
@@ -375,7 +375,7 @@ mod tests {
         fs::write(library.join("live_chat").join("a.json.gz"), b"").unwrap();
         // Referenced by the channel row rather than by any media row. It is on disk and healthy,
         // so the only way it can come back as an orphan is if the command failed to read the
-        // avatar paths - which is what makes this the end-to-end check on that query.
+        // avatar paths, which is what makes this the end-to-end check on that query.
         fs::write(library.join("thumbnails").join("avatar_1.jpg"), b"img").unwrap();
 
         let db = memory_db_with_library(&library);
@@ -418,7 +418,7 @@ mod tests {
         );
 
         // The jump-to-the-media targets travel with the report, resolved only for the paths it
-        // named - the whole reason the renderer no longer needs every row.
+        // named. The whole reason the renderer no longer needs every row.
         let targets = &response["mediaTargets"];
         assert!(
             targets.get("video/a.mp4").is_none(),
@@ -520,7 +520,7 @@ mod tests {
         // With no library path supplied the command rejects in the configured-library guard,
         // before it ever spawns a file manager, and the error code must survive the IPC round
         // trip. Also exercises the `path`/`libraryPath` (camelCase Option<String>) argument
-        // deserialization - the one command in this file that takes an optional argument over IPC.
+        // deserialization. The one command in this file that takes an optional argument over IPC.
         let error = invoke(
             &webview,
             "open_path_in_system",
@@ -594,7 +594,7 @@ mod tests {
     #[test]
     fn open_path_in_system_command_rejects_a_path_that_is_not_the_configured_library() {
         // `resolve_path_inside_library` confines `path` to `library_path`, so a caller supplying
-        // both makes that containment self-referential - passing the same outside directory as
+        // both makes that containment self-referential. Passing the same outside directory as
         // each would satisfy it. The guard is what stops the spawn, which is why this asserts the
         // library-path code rather than a containment failure.
         let configured = unique_test_dir("open-configured");

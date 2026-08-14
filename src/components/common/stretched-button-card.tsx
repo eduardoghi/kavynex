@@ -14,7 +14,7 @@ type StretchedButtonCardProps = {
 };
 
 // Shared "stretched button overlay" card idiom: a relatively-positioned Paper whose whole
-// surface activates one primary action through a single focusable, native control - no
+// surface activates one primary action through a single focusable, native control. No
 // interactive role on the card itself, so a menu button rendered above it is not a control
 // nested inside another control. The overlay sits above the visual content but below the
 // menu button (z-index 2, owned by the caller), which stays clickable. Selection state (if

@@ -52,7 +52,7 @@ describe("usePendingMediaAlert", () => {
         expect(message).toContain("2 unfinished media imports");
         // The point of the notice is the next step; a message without it is just an alarm.
         expect(message).toContain("Diagnostics");
-        // And it must not read as data loss, because nothing was lost - the files are still there.
+        // And it must not read as data loss, because nothing was lost. The files are still there.
         expect(message).toContain("Nothing was lost");
         // No marker file name, no library-relative path: the banner says that something is there,
         // and Diagnostics says what.
@@ -73,7 +73,7 @@ describe("usePendingMediaAlert", () => {
 
     it("says nothing for a count the backend would never emit", async () => {
         // The backend only emits with at least one, but the value crosses IPC and the schema proves
-        // only that it is a number - so a zero must not produce a notice about "0 unfinished imports".
+        // only that it is a number, so a zero must not produce a notice about "0 unfinished imports".
         const onArtifactsAbandoned = vi.fn();
         renderHook(() => usePendingMediaAlert({ onArtifactsAbandoned }));
 

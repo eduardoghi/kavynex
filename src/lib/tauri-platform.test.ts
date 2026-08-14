@@ -5,15 +5,15 @@ import { describe, expect, it } from "vitest";
 // `convertFileSrc` (re-exported from tauri-platform) is what every thumbnail and every media file
 // in the library is loaded through, and the URL it hands back is platform-dependent: Tauri's
 // injected implementation returns `asset://localhost/<path>` everywhere except Windows, which
-// gets `http://asset.localhost/<path>`. Neither form is covered by `'self'` - the document itself
-// is served from `http://tauri.localhost`, a different origin - so both tokens have to be named
+// gets `http://asset.localhost/<path>`. Neither form is covered by `'self'` (the document itself
+// is served from `http://tauri.localhost`, a different origin), so both tokens have to be named
 // in the CSP or the WebView refuses to load them.
 //
 // This is pinned in a test rather than left to review because nothing else can catch it. A unit
 // test only ever sees a mocked convertFileSrc; `pnpm tauri dev` serves the page from the Vite
 // origin, where Tauri injects no CSP header at all; and Tauri does not add these tokens for you
 // (its set_csp only touches script-src/style-src and the isolation schema). The first thing to
-// exercise the real CSP is a packaged build - which is exactly where dropping a token would show
+// exercise the real CSP is a packaged build, which is exactly where dropping a token would show
 // up as a library with no thumbnails and a player that cannot start.
 const REQUIRED_ASSET_SOURCES = ["asset:", "http://asset.localhost"];
 
@@ -27,8 +27,8 @@ const ASSET_DIRECTIVES = ["img-src", "media-src"];
 // back to `default-src`, so leaving it out means "any destination". Every other outbound channel
 // is already shut (`connect-src 'self' ipc:` blocks fetch/XHR/WebSocket, `object-src 'none'` blocks
 // plugin content), which would leave a submitted form as the only way to navigate the document to
-// an external origin with data attached. The app has no form that submits - every input is a React
-// handler that goes over IPC - so 'none' costs nothing.
+// an external origin with data attached. The app has no form that submits (every input is a React
+// handler that goes over IPC), so 'none' costs nothing.
 //
 // The other two are pinned here rather than only in tauri.conf.json for the same reason the asset
 // tokens are: a packaged build is the first thing that exercises the real CSP, so a directive

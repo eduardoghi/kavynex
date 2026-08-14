@@ -36,7 +36,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     ```
 
 - **Services** (`src-tauri/src/services/`) hold the actual logic, split by concern rather
-  than by a strict service/repository naming split - some files are "repositories" in
+  than by a strict service/repository naming split. Some files are "repositories" in
   spirit (`channel_repository.rs`, `video_repository/` hold the SQL), others are
   domain services. All schema/query code lives here, never in `commands/`.
 
@@ -67,7 +67,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 
   That rule used to carry a second job, and it is worth recording that it no longer does. The flat
   sweep of the disposable cache directories was called `services::cleanup`, so a bare `cleanup::`
-  was not merely vague but *ambiguous* - it could have meant either that module or
+  was not merely vague but *ambiguous*. It could have meant either that module or
   `library::cleanup`, which reference-counts and unlinks the user's media. The import convention
   was what kept them apart, which made two unrelated concerns distinguishable only by how a call
   site chose to spell them. It is `services::temp_cleanup` now, so the names carry the distinction
@@ -80,44 +80,44 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 
   `file_manager.rs` is the one of those that arrived by moving rather than by being written, and the
   move is the rule above read backwards. It lived inside `library/` while the "reveal a media file"
-  flow was its only caller, which made it look like a library concern - resolving
+  flow was its only caller, which made it look like a library concern. Resolving
   `explorer.exe`/`open`/`xdg-open` and spawning it is not one. A second caller (the Diagnostics
   "Open log folder" button, `commands/logging.rs`) made the mis-homing cost something real: leaving
   it there meant either a cross-family import or a second copy of the three per-platform spawn
   branches. What stayed behind in `library/` is the part that *is* a library concern, the
-  containment check - see `docs/THREAT-MODEL.md` for why that split is the security-relevant half.
+  containment check. See `docs/THREAT-MODEL.md` for why that split is the security-relevant half.
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
   across services:
-  - `path.rs` - the path-safety primitives (sanitizing a relative path, canonicalizing and
+  - `path.rs`: the path-safety primitives (sanitizing a relative path, canonicalizing and
     containment-checking a path against a base directory). See `docs/DATABASE.md` and
     `THREAT-MODEL.md` for how this backs the library/asset-scope guarantees.
-  - `process.rs` - everything about spawning an external child: suppressing the flashing
+  - `process.rs`: everything about spawning an external child: suppressing the flashing
     console window Windows would otherwise show from a windowed app (`hide_console`), putting
     the child in its own process group, and killing a whole process tree
-    (`kill_process_tree`). The last two are a pair - the Unix kill signals the negated pid,
+    (`kill_process_tree`). The last two are a pair. The Unix kill signals the negated pid,
     i.e. the group, so a child spawned without its own group is not reachable by the kill that
     every timeout path depends on.
-  - `hash.rs` - SHA-256 file hashing used for the content-addressed media/thumbnail
+  - `hash.rs`: SHA-256 file hashing used for the content-addressed media/thumbnail
     filenames (see `docs/DIRECTORIES.md`).
-  - `naming.rs` - `unique_temp_suffix()` (pid + nanoseconds + a monotonic counter), and the
+  - `naming.rs`: `unique_temp_suffix()` (pid + nanoseconds + a monotonic counter), and the
     **only** place in the tree allowed to derive a name from a raw timestamp. Every temporary
     path, in production and in tests, is built from it, because pid + nanoseconds alone
-    collides when two callers land in the same clock tick - which was a real intermittent
+    collides when two callers land in the same clock tick, which was a real intermittent
     failure, on macOS, surfacing nowhere near its cause. `ci.yml`'s "Verify temp paths are
     built from the shared unique suffix" step enforces this, since the convention had already
     drifted back twice.
-  - `validation.rs` - the channel name/handle and media title/type validators every write
+  - `validation.rs`: the channel name/handle and media title/type validators every write
     boundary calls, including the length ceilings. Under the mutation gate
     (`src-tauri/.cargo/mutants.toml`), and its handle rule is asserted against
     `shared/youtube-handle-cases.json` so it cannot drift from the frontend's copy.
-  - `text.rs` - accent stripping, whitespace collapsing and `LIKE`-metacharacter escaping,
+  - `text.rs`: accent stripping, whitespace collapsing and `LIKE`-metacharacter escaping,
     behind the normalized columns the media search queries against.
-  - `format.rs` - the allowed media/thumbnail extension lists (and their user-facing labels),
+  - `format.rs`: the allowed media/thumbnail extension lists (and their user-facing labels),
     the extension-to-subdirectory mapping, and `format_bytes`, shared by the library and
     database size summaries.
-  - `bounded_semaphore.rs` - the permit-based limiter bounding how much parallel work runs at
+  - `bounded_semaphore.rs`: the permit-based limiter bounding how much parallel work runs at
     once.
-  - `task.rs`, `io.rs` - a `run_blocking` wrapper for moving blocking work off the async
+  - `task.rs`, `io.rs`: a `run_blocking` wrapper for moving blocking work off the async
     runtime, and line readers that cap how much a single unbounded line from a child process
     can buffer.
 - Below that, services call `sqlx` against the shared SQLite pool (`services/database.rs`),
@@ -135,7 +135,7 @@ not left running as orphans.
 
 Six plugins are registered, and the order of the list is not arbitrary at its head.
 `tauri-plugin-single-instance` **must be first**. A second launch is redirected into the running
-process's callback (which focuses the existing window) instead of starting a second instance - and a
+process's callback (which focuses the existing window) instead of starting a second instance, and a
 second instance would open a second `SqlitePool` onto the same database file and a second
 per-process download registry, which is a data-integrity problem rather than a cosmetic one.
 Registering it after a plugin that can fail or block would leave that window open. The invariant is
@@ -144,8 +144,8 @@ stated here as well as in the code comment because a plugin list reads as an uno
 Four of the six are the ones the frontend actually calls, and each has a matching grant in
 `src-tauri/capabilities/`: `tauri-plugin-process` (relaunch after an update),
 `tauri-plugin-updater`, `tauri-plugin-opener` (YouTube links) and `tauri-plugin-dialog` (the file
-and folder pickers). The remaining two - `tauri-plugin-single-instance` and
-`tauri-plugin-window-state`, which persists the window's size and position across launches - do
+and folder pickers). The remaining two (`tauri-plugin-single-instance` and
+`tauri-plugin-window-state`, which persists the window's size and position across launches) do
 their whole job from the Rust side, through a launch hook and a window-event hook. Nothing in
 `src/lib/` calls either, so neither appears in `capabilities/` and neither needs to; see
 `docs/THREAT-MODEL.md` for why that is the correct state rather than a missing grant, and
@@ -166,7 +166,7 @@ git diff --exit-code -- src/types/generated
 ```
 
 (`ci.yml`, the "Verify generated TS bindings are up to date" step, run once on Ubuntu.)
-Never hand-edit files under `src/types/generated/` - change the Rust type and regenerate.
+Never hand-edit files under `src/types/generated/`. Change the Rust type and regenerate.
 
 ## Frontend layering
 
@@ -189,13 +189,13 @@ repositories (src/repositories/**)
 src/lib/tauri-client.ts  ->  @tauri-apps/api  ->  IPC  ->  Rust commands
 ```
 
-(Alongside it, `src/lib/tauri-platform.ts` covers the non-IPC Tauri surfaces - dialogs, the
-system opener, process relaunch, the updater, the app version, `convertFileSrc` - so those
+(Alongside it, `src/lib/tauri-platform.ts` covers the non-IPC Tauri surfaces (dialogs, the
+system opener, process relaunch, the updater, the app version, `convertFileSrc`), so those
 never reach a component either. See "The Tauri boundary" below.)
 
 - **Components** (`src/components/`) are presentation: they receive data and callbacks as
   props and render Mantine/React UI. They never call `invoke()` and never import
-  `@tauri-apps` directly - only the two seam modules under `src/lib/` do.
+  `@tauri-apps` directly, only the two seam modules under `src/lib/` do.
 - **Hooks** (`src/hooks/`) hold UI state and orchestration. `useHomeController`
   (`src/hooks/home/use-home-controller.tsx`) is the composition root for the main `Home` page:
   it wires together `useErrorModal`, `useAppBootstrap`, `useAppSettings`, `useChannels`,
@@ -214,12 +214,12 @@ never reach a component either. See "The Tauri boundary" below.)
 
   What stays flat is what has no family, exactly as `database.rs` and `binaries.rs` do on the other
   side. That covers two kinds of file, and the distinction matters when deciding where a new hook
-  goes. The **primitives** are hooks with no feature at all - `use-async-flag`, `use-memo-object`,
+  goes. The **primitives** are hooks with no feature at all (`use-async-flag`, `use-memo-object`,
   `use-request-guard`, `use-modal-lock`, `use-per-id-async-flag`, `use-has-been-true`,
-  `use-grid-scroll-restoration` - and they belong at the root permanently, since a directory would
+  `use-grid-scroll-restoration`), and they belong at the root permanently, since a directory would
   imply they serve one area when every area calls them. The rest are families that simply have not
   outgrown their prefix yet (`use-add-media-*` is three, `use-yt-dlp-*` two,
-  `use-database-integrity-*` two). Those move when they grow, and not before - a directory per pair
+  `use-database-integrity-*` two). Those move when they grow, and not before. A directory per pair
   is the failure mode this rule exists to avoid, not the goal.
 - **Use-cases** (`src/use-cases/`) capture a business operation that spans more than one
   repository/service call as a single named function (e.g. `create-channel.ts`,
@@ -227,7 +227,7 @@ never reach a component either. See "The Tauri boundary" below.)
   `initialize-app-settings.ts`). Hooks call into use-cases for these flows instead of
   inlining multi-step orchestration.
 - **Services** (`src/services/`) wrap a feature area's behavior on top of one or more
-  repositories/commands - e.g. `media-download-service.ts`, `thumbnail-service.ts`,
+  repositories/commands, e.g. `media-download-service.ts`, `thumbnail-service.ts`,
   `library-service.ts`, `live-chat-service.ts` (with the pure replay parser split into
   `live-chat-parsing.ts`, which reads JSON this app did not produce and so is kept free of IPC),
   `diagnostics-service.ts`,
@@ -237,14 +237,14 @@ never reach a component either. See "The Tauri boundary" below.)
 - **Repositories** (`src/repositories/channel-repository.ts`,
   `src/repositories/media-repository.ts`) are the thin, typed layer directly over a
   database-backed Tauri command (`listChannels`, `insertChannel`,
-  `deleteChannelWithArtifacts`, etc.) - one function per command, no business logic.
+  `deleteChannelWithArtifacts`, etc.), one function per command, no business logic.
 - **`src/lib/tauri-client.ts`** is the IPC boundary: `invokeCommand`/`invokeVoid` wrap
   `@tauri-apps/api/core`'s `invoke()` (normalizing thrown errors through `parseAppError`)
   and `listenTauri` wraps `@tauri-apps/api/event`'s `listen()`. Every repository and
   IPC-calling service goes through these functions. Use `invokeCommand` when the command
   returns a value and `invokeVoid` when it does not; the command name is typed as
   `TauriCommandName`, so it must come from the `TAURI_COMMANDS` map rather than a literal.
-- **`src/lib/tauri-platform.ts`** is the sibling seam for Tauri's *platform* capabilities -
+- **`src/lib/tauri-platform.ts`** is the sibling seam for Tauri's *platform* capabilities:
   everything that is not a call into our own Rust backend: `openFileDialog`/`saveFileDialog`
   (plugin-dialog), `openUrl` (plugin-opener), `relaunch` (plugin-process),
   `checkForAppUpdate` plus the `Update` type (plugin-updater), `getVersion`, and
@@ -262,8 +262,8 @@ way, through `listenTauri`.
 `src/lib/tauri-client.ts` and `src/lib/tauri-platform.ts` are the **only** two files that
 import `@tauri-apps` at all, and that is enforced by `eslint.config.js`'s
 `no-restricted-imports` rule rather than by code review. The point is not tidiness: it keeps
-"which Tauri capabilities does this app actually use?" - the question every review against
-`src-tauri/capabilities/` has to answer - a two-file read instead of a tree-wide grep that
+"which Tauri capabilities does this app actually use?" (the question every review against
+`src-tauri/capabilities/` has to answer), a two-file read instead of a tree-wide grep that
 any new caller could silently invalidate. A test that needs to stub a Tauri call mocks the
 seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` package.
 
@@ -282,7 +282,7 @@ Entry point: the add-media modal, driven by `useAddMediaWorkflow` (`src/hooks/`)
 artifacts are produced.
 
 **The yt-dlp pre-step.** Pasting a URL and loading formats runs
-`useYtDlpFormatLoader.loadYtDlpFormats()`, which calls `list_yt_dlp_formats` - a metadata-only
+`useYtDlpFormatLoader.loadYtDlpFormats()`, which calls `list_yt_dlp_formats`. A metadata-only
 yt-dlp run, no download. It returns the available formats, a suggested title, and
 `resolvedYoutubeVideoId`. That last one is why the pre-step matters beyond picking a quality:
 knowing the video id *before* downloading is what lets the duplicate check below fail fast
@@ -291,7 +291,7 @@ response for a URL the user has since changed cannot repopulate the selection th
 real download command.
 
 **The run.** `addMedia()` validates through the `validateAddMediaForm` use-case, then runs
-inside `useAsyncFlag`, whose ref is set before any `await` - two synchronous invocations can
+inside `useAsyncFlag`, whose ref is set before any `await`, two synchronous invocations can
 never both pass, so a double click cannot start two downloads. For a yt-dlp source it generates
 the run id and opens the terminal session before calling into the service layer.
 
@@ -299,11 +299,11 @@ the run id and opens the terminal session before calling into the service layer.
 through `validateCreateMediaInput` and hands the whole request to one command, `create_media`. The
 ordering lives on the other side, in `services/media_creation.rs`:
 
-1. `normalize_create_media_request` - title, media type, and every stored value trimmed. Runs first
+1. `normalize_create_media_request`: title, media type, and every stored value trimmed. Runs first
    and entirely, so a rejected request has produced nothing to clean up.
 2. yt-dlp only: `ensure_youtube_media_is_new` on the video id the format picker resolved, so a
    re-add fails before the download rather than after it.
-3. `prepare_yt_dlp_artifacts` / `prepare_local_artifacts` - the download or import, plus the
+3. `prepare_yt_dlp_artifacts` / `prepare_local_artifacts`: the download or import, plus the
    thumbnail. **The files are in the library from here on.**
 4. `register_prepared_media`, under `library::cleanup::media_registration_guard`: the crash marker,
    the duplicate check on the stored path, `insert_media`, then the marker's removal. A failure
@@ -319,7 +319,7 @@ move, and `THREAT-MODEL.md` covers both: the artifacts-without-a-row window no l
 boundary, and the exclusion against a concurrent reference-counted cleanup is a backend lock rather
 than the modal refusing to open twice. The individual steps (`import_media_file`,
 `download_media_from_url`, the two crash-marker commands, ...) were removed from the IPC surface at
-the same time - a command exposes an operation, not its steps.
+the same time. A command exposes an operation, not its steps.
 
 **What stayed in the renderer**, deliberately, is everything that runs *after* the row lands: the
 duration probe (`readMediaDurationInSeconds`, which needs a media element the backend does not have,
@@ -332,11 +332,11 @@ correlated by run id; `useYtDlpEvents` subscribes through `listenValidated`, so 
 does not match its zod schema is dropped at the seam. `cancelYtDlpDownload` calls
 `cancel_media_download(runId)`; the backend unwinds a cancel *as an error*, so `addMedia`
 recognizes `YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE` and routes it to the notice channel rather
-than the error modal - the user got the outcome they clicked for.
+than the error modal. The user got the outcome they clicked for.
 
 **The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
 `isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is
-now UX only - closing the modal mid-run would discard a terminal the user is watching. It used to be
+now UX only, closing the modal mid-run would discard a terminal the user is watching. It used to be
 more than that: `THREAT-MODEL.md` recorded it as the one guarantee in that document resting on frontend
 behavior, because it was what kept two creations from racing the reference-counted cleanup. The lock
 in `library::cleanup` holds that property now, so a queue or a batch import is a UX question rather
@@ -349,12 +349,12 @@ Entry point: Settings > Library folder. `useHomeController` overrides the settin
 `useAppSettingsActions.changeLibraryPath`, which delegates the decisions to the
 `executeChangeLibraryPath` use-case (`src/use-cases/`):
 
-1. `chooseLibraryDirectory()` - the native folder dialog, through the platform seam. Cancel
+1. `chooseLibraryDirectory()`: the native folder dialog, through the platform seam. Cancel
    returns `changed: false` and nothing else runs.
 2. A filesystem root is refused. (The backend's `reject_filesystem_root` is the real guard;
    this one is there to fail before the round trip.)
 3. `ensureDirectoryExists(selected)` returns the canonical path, which is what everything
-   downstream compares against - not the string the dialog handed back.
+   downstream compares against, not the string the dialog handed back.
 4. Same as the current library -> `changed: false`.
 5. A non-empty destination is refused when a library already exists.
 6. No current library (first-time setup) -> `changed: true` with no migration to run.
@@ -376,15 +376,15 @@ registration fail.
 Two outcomes surface to the user rather than only to the log. `oldDirectoryRetained` means the
 copy succeeded but the old folder could not be removed, so a full duplicate of the media is
 still on the old volume. And moving *back* to a folder released earlier in the same session
-fails with `ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE` - the asset scope cannot un-forbid a
-directory - which is the one asset-scope failure worth interrupting the user for, because the
+fails with `ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE` (the asset scope cannot un-forbid a
+directory), which is the one asset-scope failure worth interrupting the user for, because the
 fix is a restart and nothing would suggest it.
 
 ### Database recovery at startup
 
 Two of the three steps happen before the frontend exists at all. `lib.rs`'s `setup()` runs
 `resume_interrupted_restore` and then `apply_pending_database_import`, in that order and both
-before the pool can open - a pending import has to set the *restored* database aside as its
+before the pool can open. A pending import has to set the *restored* database aside as its
 undo snapshot, not the one the interrupted restore left behind.
 
 The frontend's part is `useAppBootstrap`, whose effect calls `ensureDatabaseReady()`. That
@@ -408,7 +408,7 @@ than continuing on the half-loaded state the failed startup left.
 One related path does not go through this hook: `useDatabaseIntegrityAlert` subscribes to
 `database-integrity-failed`, which the background weekly full `integrity_check` emits when it
 finds damage a `quick_check` passed. That is a warning pointing at Settings > Database, not a
-recovery flow - the database opened fine.
+recovery flow. The database opened fine.
 
 See `docs/DATABASE.md` for the backup, restore and import rules these three steps follow.
 
@@ -422,12 +422,12 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata.rs`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download.rs`, `services/thumbnail/url.rs`, `services/thumbnail/redirect.rs`, `services/thumbnail/picked.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |
-| Database schema/migrations | `services/db_schema/` | - |
+| Database schema/migrations | `services/db_schema/` |. |
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/integrity.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/settings/` |
-| Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/temp_cleanup.rs` | - |
+| Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/temp_cleanup.rs` |. |
 | Startup self-checks (`--smoke-test`, `--webview-check`) | `lib.rs`, `commands/webview_check.rs` | `lib/webview-check.ts` |
 
 See `docs/DATABASE.md` for the schema/migration/backup model and `docs/DIRECTORIES.md` for

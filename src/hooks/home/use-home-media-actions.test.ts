@@ -306,7 +306,7 @@ describe("useHomeMediaActions", () => {
 
     it("saves media progress without reloading diagnostics even when diagnostics is open", async () => {
         // Progress saves happen periodically during playback and are irrelevant to what the
-        // diagnostics dialog reports, so they never trigger a reload - otherwise an open
+        // diagnostics dialog reports, so they never trigger a reload. Otherwise an open
         // dialog would refresh every few seconds behind a playing video.
         const diagnosticsState = createDiagnosticsState({
             diagnosticsOpen: true,

@@ -8,8 +8,8 @@ import {
     severityOf,
 } from "./check-js-advisories.js";
 
-// This gate has no real advisory input on a normal day (the production tree is clean), so - exactly
-// as with check-js-licenses.js - these tests are what exercise the severity/withdrawn decision and
+// This gate has no real advisory input on a normal day (the production tree is clean), so (exactly
+// as with check-js-licenses.js), these tests are what exercise the severity/withdrawn decision and
 // the inventory/pagination plumbing before the day a finding actually lands, which is the moment a
 // bug here would either let a high/critical advisory ship or block CI on nothing.
 

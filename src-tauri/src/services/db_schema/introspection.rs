@@ -22,7 +22,7 @@ where
     // `table` is interpolated into raw SQL (pragma_table_info cannot be parameterized). The
     // `&'static str` bound is what keeps that safe: a runtime-built String (e.g. anything derived
     // from user input) cannot be passed here without leaking it, so by construction only internal
-    // schema constants ever reach this interpolation - the invariant is enforced by the type, not
+    // schema constants ever reach this interpolation. The invariant is enforced by the type, not
     // by a comment.
     let rows: Vec<(String,)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT name FROM pragma_table_info('{table}')"
@@ -34,13 +34,13 @@ where
     Ok(rows.iter().any(|(name,)| name == column))
 }
 
-/// True when `table` has a UNIQUE index whose columns are exactly `columns`, in order - whether it
+/// True when `table` has a UNIQUE index whose columns are exactly `columns`, in order. Whether it
 /// comes from a table-level UNIQUE constraint (an auto-index) or an explicit `CREATE UNIQUE INDEX`.
 ///
 /// Used to validate an imported database: `insert_media`'s `ON CONFLICT(channel_id, file_path)`
 /// upsert needs this unique index to exist, and a namesake database carrying the right columns but
 /// no such index would be accepted and then fail every insert at runtime. The index name is never
-/// interpolated - it flows from `pragma_index_list` into `pragma_index_info` through the join - so
+/// interpolated (it flows from `pragma_index_list` into `pragma_index_info` through the join), so
 /// a crafted index name in the untrusted import file cannot inject SQL. `table` is a `&'static str`
 /// constant, safe to interpolate for the same reason as `table_has_column`.
 pub(crate) async fn table_has_unique_index_on(
@@ -87,7 +87,7 @@ pub(crate) async fn table_has_unique_index_on(
 /// `ON DELETE CASCADE`.
 ///
 /// Used to validate an imported database: `PRAGMA foreign_keys` only enforces the foreign keys a
-/// table's DDL actually declares - it never adds a missing one - so a namesake database whose
+/// table's DDL actually declares (it never adds a missing one), so a namesake database whose
 /// videos table lacks this cascade would be accepted and then silently orphan a channel's videos
 /// and their comments when the channel is deleted. `table` is a `&'static str` constant (safe to
 /// interpolate); `column` and `parent` are bound.

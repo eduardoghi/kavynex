@@ -2,7 +2,7 @@
 // `invoke`/`listen` with consistent error normalization (parseAppError). Tauri's *platform*
 // capabilities (dialogs, opener, process, updater, app version, asset URLs) live in the sibling
 // `tauri-platform.ts`. Between them these two modules are the only files allowed to import
-// `@tauri-apps` at all, enforced by eslint.config.js - see tauri-platform.ts for the rationale.
+// `@tauri-apps` at all, enforced by eslint.config.js. See tauri-platform.ts for the rationale.
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { TAURI_COMMANDS, type TauriCommandName } from "../constants/tauri-commands";
@@ -107,7 +107,7 @@ export async function listenTauri<TPayload>(
 
 // Like `listenTauri`, but validates each event's payload against `schema` before invoking the
 // handler. A payload that does not match is dropped and logged (see parseEventPayload) rather than
-// passed on as the wrong shape - the event-side counterpart to invokeCommand's result validation.
+// passed on as the wrong shape. The event-side counterpart to invokeCommand's result validation.
 // The handler receives a payload already narrowed to the schema's type.
 export async function listenValidated<TSchema extends z.ZodTypeAny>(
     eventName: string,

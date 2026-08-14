@@ -26,7 +26,7 @@ export type { LiveChatStreamEvent } from "./generated/LiveChatStreamEvent";
 // video-only stream and a separate audio stream. `buildMergedFormats` synthesizes that option
 // on this side, minting a combined `format_id` ("137+140") the backend never emitted, so the
 // list the user picks from is not the list the backend sent. Labelling and ordering therefore
-// belong here too - the backend cannot name a row it does not know exists - which is why
+// belong here too (the backend cannot name a row it does not know exists), which is why
 // `display_name` is on this type and not on the generated one.
 //
 // The one thing both sides must agree on is `format_id`: the backend resolves a combined id

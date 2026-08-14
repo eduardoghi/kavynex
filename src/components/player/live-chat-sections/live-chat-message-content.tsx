@@ -9,7 +9,7 @@ export type LiveChatVariantProps = {
 };
 
 // Inline custom-emoji image. RemoteImage owns both the privacy gate (with remote images off, no
-// request is made) and the load-failure fallback (these image URLs can expire) - in either case
+// request is made) and the load-failure fallback (these image URLs can expire), in either case
 // the emoji's shortcut text renders in its place.
 export function EmojiImage({ url, label }: { url: string; label: string }): JSX.Element {
     return (

@@ -39,7 +39,7 @@ function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
 describe("buildCommentTree", () => {
     it("keeps comments visible when their parent chain loops", () => {
         // Two comments naming each other as parent: neither is a root, so a single attach pass
-        // builds an island nothing reaches and both vanish from the UI - silently, while
+        // builds an island nothing reaches and both vanish from the UI. Silently, while
         // comments_count still counts them. Malformed data is the only way in, which is why this
         // cannot rely on the data being well formed.
         const tree = buildCommentTree(
@@ -57,7 +57,7 @@ describe("buildCommentTree", () => {
     it("keeps a comment whose chain leads into a cycle it is not part of", () => {
         // A "tadpole": the tail comment (t) points into a b<->c cycle. Every node on that walk
         // shares the same "never reaches a root" outcome, which the memoized cycle check must
-        // resolve identically whether the walk starts at t, b or c - so t, like b and c, surfaces
+        // resolve identically whether the walk starts at t, b or c, so t, like b and c, surfaces
         // at the top level rather than being lost inside the island.
         const tree = buildCommentTree(
             [
@@ -203,7 +203,7 @@ describe("filterCommentTree", () => {
     });
 
     it("tags a retained non-matching parent as context-only, and the real match as not", () => {
-        // c1 ("hello world") does not match "reply" itself - it is only kept so c2 ("a reply")
+        // c1 ("hello world") does not match "reply" itself. It is only kept so c2 ("a reply")
         // reads in its thread context. Only c2 is a real search result.
         const filtered = filterCommentTree(tree, "reply");
 

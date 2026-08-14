@@ -10,7 +10,7 @@ import {
 } from "@mantine/core";
 // A 128px raster for a mark the sidebar draws at 32 CSS px, which covers a 4x display and is 71x
 // smaller than what it replaced. The previous asset was a 962kB "SVG" carrying no vector geometry at
-// all - two base64 PNGs, one masking the other, in 1.1kB of scaffolding - so it was the largest file
+// all (two base64 PNGs, one masking the other, in 1.1kB of scaffolding), so it was the largest file
 // in the bundle, larger than the whole JS entry, for an icon rendered at 32px. It also rendered
 // distorted: its canvas was 1676x1156 and the <img> is a 32x32 box with no object-fit, so the tile
 // was squashed into a square. This is the same artwork, from the icon set the app already ships.

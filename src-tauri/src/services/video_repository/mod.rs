@@ -112,7 +112,7 @@ pub struct MediaRepositoryStats {
 ///
 /// Backend-only, and deliberately not `ts(export)`ed: it used to cross the IPC boundary so the
 /// renderer could assemble the integrity check's inputs, and that resolution now happens in
-/// `library::integrity` on this side. Nothing in `src/` names this shape any more - what the
+/// `library::integrity` on this side. Nothing in `src/` names this shape any more. What the
 /// frontend receives is `LibraryIntegrityCheck`, which is bounded by what the report named.
 #[derive(Debug, sqlx::FromRow)]
 pub struct MediaIntegrityReference {
@@ -166,7 +166,7 @@ const MAX_MEDIA_PAGE_LIMIT: i64 = 500;
 /// Upper bound on the search term length. The only caller is the app's own frontend, but the
 /// backend is the trust boundary (the same reason the import mode and download inputs are validated
 /// server-side), so the term that becomes a LIKE pattern is bounded here too: an unbounded term
-/// would let a compromised frontend drive a pathologically long scan. Generous - real titles, which
+/// would let a compromised frontend drive a pathologically long scan. Generous. Real titles, which
 /// this searches, are far shorter.
 const MAX_SEARCH_TERM_CHARS: usize = 200;
 
@@ -259,7 +259,7 @@ pub async fn media_exists_for_channel_and_youtube_id(
 
 /// Clears the live-chat columns on any video row that references `relative_path`. Used by the
 /// standalone delete-live-chat command so removing a replay file never leaves a row flagged
-/// `has_live_chat = 1` pointing at a file that no longer exists - a state the v13 CHECK constraint
+/// `has_live_chat = 1` pointing at a file that no longer exists. A state the v13 CHECK constraint
 /// (flag-without-path) does not catch. Setting both columns keeps the row consistent with that
 /// CHECK (`has_live_chat = 0 OR live_chat_file_path IS NOT NULL`).
 pub async fn clear_live_chat_reference(pool: &SqlitePool, relative_path: &str) -> AppResult<()> {
@@ -297,7 +297,7 @@ pub async fn clear_live_chat_reference(pool: &SqlitePool, relative_path: &str) -
 /// it a property of *arriving over IPC* rather than of writing a row. That was the wrong place for
 /// it twice over: the command has since been removed from the IPC surface (a media is created
 /// through `create_media`, which exposes an operation rather than its steps), and the remaining
-/// caller - `services::media_creation` - would then have been trusted to have done it itself.
+/// caller (`services::media_creation`) would then have been trusted to have done it itself.
 /// It mostly had, but not entirely: the `media_type` a yt-dlp download reports is the download's
 /// own, never the normalized request's, so it reached the row with nothing but the table's `CHECK`
 /// behind it.
@@ -382,7 +382,7 @@ pub async fn insert_media(
         // above, so a surfacing unique violation is expected to be the (channel_id,
         // youtube_video_id) index: the same YouTube video already registered for this channel under
         // a different path. Confirm that from the failing constraint's own message rather than
-        // assuming it - the previous code mapped *any* unique violation to this error, so a unique
+        // assuming it. The previous code mapped *any* unique violation to this error, so a unique
         // constraint added to `videos` later (see db_schema::INDEX_DDLS) would have been mislabeled
         // as "already saved". A violation that does not name youtube_video_id falls through to the
         // generic db_error below instead of lying about the cause.
@@ -473,7 +473,7 @@ pub async fn mark_media_as_unwatched(pool: &SqlitePool, media_id: i64) -> AppRes
 /// Split from the insert because the measurement is: the renderer probes the file through a media
 /// element after `create_media` returns, since that decoder is a webview capability and running one
 /// FFmpeg per import to re-derive a number the player already knows would be the wrong trade. The
-/// column is nullable, so a row simply carries no duration until this lands - and carries none
+/// column is nullable, so a row simply carries no duration until this lands, and carries none
 /// forever if the probe cannot read the file, which is the pre-existing behavior for an unreadable
 /// or exotic container.
 ///
@@ -500,13 +500,13 @@ pub async fn update_media_progress(
     media_id: i64,
     progress_seconds: i64,
 ) -> AppResult<()> {
-    // Deliberately idempotent - a zero-row result is expected here, not an error: the watched
+    // Deliberately idempotent. A zero-row result is expected here, not an error: the watched
     // guard means a watched media matches no row (progress is not tracked once watched), and
     // saving progress for a since-deleted media is a harmless no-op. This is unlike the
     // title/unwatched updates above, where zero rows means the media id is unknown.
     //
     // The guard mirrors the "unwatched" predicate every other query in this file uses
-    // (push_media_filters, the stats query) - NULL *or* a blank string - rather than `IS NULL`
+    // (push_media_filters, the stats query) (NULL *or* a blank string), rather than `IS NULL`
     // alone. The app's own writes never leave `watched_at = ''`, but an imported or hand-edited
     // database can, and treating such a row as watched here (while the rest of the app shows it
     // unwatched) would silently drop its playback progress forever.
@@ -527,7 +527,7 @@ pub async fn update_media_progress(
 // paths do the same count *inside* the same `BEGIN IMMEDIATE` transaction that removes the row
 // (see services::library::cleanup), which is what makes the count-then-act atomic. Standalone
 // versions like these are a check-then-act race waiting to happen if a future caller reaches for
-// them instead, so they are gated to `#[cfg(test)]` - compiling them out of production builds means
+// them instead, so they are gated to `#[cfg(test)]`. Compiling them out of production builds means
 // no such caller can exist, while the SQL stays exercised by the tests below.
 #[cfg(test)]
 pub async fn count_media_using_thumbnail_outside_media(
@@ -648,8 +648,8 @@ mod tests {
     /// Every category is pinned in *both* directions. Pinning one direction per category is not
     /// enough: a direction the clause reverses only partially (a mixed-direction ORDER BY) cannot
     /// be served by walking a same-direction index forwards or backwards, so the two directions of
-    /// one category are genuinely different plans. `publication_date desc` - the grid's default
-    /// view - is exactly that case, and went unnoticed while only its `asc` twin was pinned.
+    /// one category are genuinely different plans. `publication_date desc` (the grid's default
+    /// view) is exactly that case, and went unnoticed while only its `asc` twin was pinned.
     const SORT_INDEX_EXPECTATIONS: &[(&str, &str, &str)] = &[
         ("added_date", "asc", "idx_videos_channel_created_title_id"),
         ("added_date", "desc", "idx_videos_channel_created_title_id"),
@@ -674,8 +674,8 @@ mod tests {
     /// Every sort category must be answered from an index rather than by pulling the channel's
     /// whole matching set into a sort. This pins the coupling between `resolve_order_by` and the
     /// index DDLs in db_schema: SQLite only walks an index in ORDER BY order when the leading
-    /// terms match term for term, so reordering a clause - or indexing `duration_seconds` instead
-    /// of the `COALESCE(duration_seconds, 0)` the clause actually sorts on - silently drops the
+    /// terms match term for term, so reordering a clause (or indexing `duration_seconds` instead
+    /// of the `COALESCE(duration_seconds, 0)` the clause actually sorts on), silently drops the
     /// index and reintroduces the full sort with no other symptom than a slow grid.
     #[tokio::test]
     async fn every_media_page_sort_is_served_by_an_index() {
@@ -707,7 +707,7 @@ mod tests {
 
             // Exactly one temp-B-tree form is acceptable: "... FOR LAST TERM OF ORDER BY", which
             // only breaks ties inside an already-ordered index walk. Every other form sorts rows
-            // the index was supposed to have ordered - the blanket "FOR ORDER BY" (a full sort)
+            // the index was supposed to have ordered. The blanket "FOR ORDER BY" (a full sort)
             // and, just as bad, "FOR LAST <n> TERMS OF ORDER BY", where only the leading terms are
             // served. Matching the benign form rather than blacklisting the bad ones is what keeps
             // a new SQLite wording from silently passing: anything unrecognized fails loudly.
@@ -758,7 +758,7 @@ mod tests {
     /// The URL-add pre-check (`media_exists_for_channel_and_youtube_id`) filters
     /// `channel_id = ? AND youtube_video_id = ?`. The partial unique index's `TRIM(...) <> ''`
     /// predicate cannot be proven from `= ?`, so the planner cannot use that index and falls back to
-    /// another - which must still be an index search, never a full scan of the channel's videos. Pin
+    /// another, which must still be an index search, never a full scan of the channel's videos. Pin
     /// that here so a schema change that leaves this pre-check scanning the table fails loudly.
     #[tokio::test]
     async fn media_existence_pre_check_is_served_by_an_index() {
@@ -1843,13 +1843,13 @@ mod tests {
 
     // The five tests below moved here with the validation they pin, from the `insert_media` Tauri
     // command that used to perform it and has since been removed from the IPC surface. They assert
-    // the same behaviors against the function that performs them now - which is also the function
+    // the same behaviors against the function that performs them now, which is also the function
     // every caller reaches, where the command was only one of them.
 
     #[tokio::test]
     async fn insert_media_stores_a_trimmed_youtube_video_id() {
         // A padded youtube id has to be stored trimmed, so the partial unique index and the id
-        // lookup - both of which compare the column verbatim - see the same value. This also pins
+        // lookup (both of which compare the column verbatim), see the same value. This also pins
         // that the non-empty filter does not swallow a real id: without its `!`, every id would be
         // dropped to NULL instead of stored.
         let pool = create_test_pool().await;
@@ -1951,7 +1951,7 @@ mod tests {
     async fn insert_media_rejects_a_media_type_the_schema_would_refuse() {
         // The table's own CHECK would refuse this too, so what this buys is the message: a named
         // validation failure rather than a constraint violation. It is also the one field a yt-dlp
-        // creation does not route through the request normalizer - the value comes off the download -
+        // creation does not route through the request normalizer (the value comes off the download),
         // so before this check moved here, nothing but that CHECK stood behind it.
         let pool = create_test_pool().await;
 

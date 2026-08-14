@@ -318,8 +318,8 @@ describe("useAddMediaWorkflow", () => {
         // The whole point of generating a run id in local mode: a file copy is the one long
         // operation in this app the user had no way out of, and the Cancel button can only reach it
         // if both sides agree on the id. Asserted as "the id createMedia was given is the id
-        // cancelMediaDownload was called with", so a hook that generated two ids - or cancelled a
-        // stale one - fails here rather than as a button that silently does nothing.
+        // cancelMediaDownload was called with", so a hook that generated two ids (or cancelled a
+        // stale one), fails here rather than as a button that silently does nothing.
         mockYtDlpEvents.isYtDlpRunning = false;
 
         let finishImport: (() => void) | undefined;
@@ -1313,7 +1313,7 @@ describe("useAddMediaWorkflow", () => {
             await result.current.closeAddMediaModal();
         });
 
-        // While an add-media run is in flight, the modal must stay locked - this only
+        // While an add-media run is in flight, the modal must stay locked. This only
         // holds if closeAddMediaModal reads the live isAddingMedia flag on every call
         // rather than a value captured once at mount.
         expect(mockResetForm).not.toHaveBeenCalled();

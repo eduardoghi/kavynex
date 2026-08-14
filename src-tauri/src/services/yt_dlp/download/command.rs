@@ -23,8 +23,8 @@ pub(super) const MAX_RUN_ID_LEN: usize = 128;
 /// character out of that name regardless of what the frontend sends.
 ///
 /// `pub(crate)` (re-exported by `yt_dlp::download`) because a local import registers a run id too,
-/// so `cancel_media_download` can reach it. That id never becomes a path - it is only a key in the
-/// process registry - so this rule is stricter than that caller strictly needs. Reusing it anyway is
+/// so `cancel_media_download` can reach it. That id never becomes a path (it is only a key in the
+/// process registry), so this rule is stricter than that caller strictly needs. Reusing it anyway is
 /// the point: one definition of what a run id may be beats a second, looser spelling that would
 /// then have to be kept in step with this one.
 pub(crate) fn is_valid_run_id(run_id: &str) -> bool {
@@ -130,9 +130,9 @@ pub(super) fn validate_download_inputs(
 
 /// Builds the yt-dlp argument vector for a media download.
 ///
-/// Extracted as a pure function so the argv - the format selector after `-f`, the `--paths`
+/// Extracted as a pure function so the argv (the format selector after `-f`, the `--paths`
 /// sandboxing that confines yt-dlp's writes to the run's temp directory, and the `--`
-/// separator that keeps the URL from ever being reinterpreted as a flag - can be asserted in
+/// separator that keeps the URL from ever being reinterpreted as a flag) can be asserted in
 /// tests without spawning a process. The URL is always last and always preceded by `--`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_download_command_args(

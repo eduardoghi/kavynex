@@ -74,7 +74,7 @@ export function useAddMediaWorkflow({
     // The run id of a local import currently in flight, or "" when none is. A yt-dlp run already
     // has somewhere to keep this (useYtDlpEvents.currentRunIdRef, set by startRun) because it also
     // needs it to correlate the log stream; a local import emits no events, so it needs its own.
-    // A ref rather than state on purpose - the cancel callback reads it at click time and must not
+    // A ref rather than state on purpose. The cancel callback reads it at click time and must not
     // be recreated when an import starts, which would churn every consumer of the controller.
     const localImportRunIdRef = useRef("");
 
@@ -100,7 +100,7 @@ export function useAddMediaWorkflow({
     // flip these flags on the mocked controllers without triggering a re-render in between).
     const { resetForm } = addMediaForm;
     // startRun/appendManualLog/markStopped are stable (useCallback in useYtDlpEvents), so addMedia
-    // can depend on them directly instead of on the whole ytDlpEvents object - whose identity
+    // can depend on them directly instead of on the whole ytDlpEvents object, whose identity
     // changes on every log line (ytDlpLogs is part of it), which was churning addMedia's identity
     // on each stdout line during an active download.
     const { ytDlpLogs, isYtDlpRunning, resetYtDlpState, startRun, appendManualLog, markStopped } =
@@ -108,7 +108,7 @@ export function useAddMediaWorkflow({
 
     // addMedia reads the form's field values only when the user clicks add, never during render, so
     // mirror the per-render form controller into a ref and read it live inside the callback. That
-    // keeps addMedia from depending on addMediaForm - a fresh object every render - which was
+    // keeps addMedia from depending on addMediaForm (a fresh object every render), which was
     // recreating the callback (and, through the memoized controller it feeds, its consumers) on
     // every keystroke. Same "read the latest value off a ref" pattern as activeMediaRef in
     // use-media-actions.ts (see CONTRIBUTING.md's hook conventions).
@@ -151,7 +151,7 @@ export function useAddMediaWorkflow({
 
                 // Generated for both modes. A local import registers it in the same backend
                 // registry a download does, which is what lets cancelMediaDownload reach the file
-                // copy - the one long operation in this app that used to have no way out but
+                // copy. The one long operation in this app that used to have no way out but
                 // killing the process. The field keeps its yt-dlp name because that is what the
                 // wire contract calls it; only its scope widened.
                 const ytDlpRunId = generateYtDlpRunId();
@@ -228,7 +228,7 @@ export function useAddMediaWorkflow({
                 // the thing they asked for is exactly what happened.
                 //
                 // Two codes, because a download and a file import are different operations even
-                // though they are stopped by the same command - and the message has to be, since
+                // though they are stopped by the same command, and the message has to be, since
                 // an import also has something to say about the file it did not touch.
                 const { code } = parseAppError(error);
 
@@ -253,7 +253,7 @@ export function useAddMediaWorkflow({
                 onError(resolveErrorMessage(error, "Failed to add media."));
             } finally {
                 // Whatever happened, this run is over. Leaving the id behind would let a later
-                // Cancel click reach a run the backend has already released - which the registry
+                // Cancel click reach a run the backend has already released, which the registry
                 // refuses, surfacing as an error modal for a button that should have done nothing.
                 localImportRunIdRef.current = "";
             }
@@ -316,7 +316,7 @@ export function useAddMediaWorkflow({
 
         setAddMediaOpen(false);
         // Note: isGeneratingThumb/isLoadingYtDlpFormats/isYtDlpRunning are deliberately read
-        // live off addMediaForm/ytDlpEvents below (not destructured) - this guard has to see a
+        // live off addMediaForm/ytDlpEvents below (not destructured). This guard has to see a
         // flag flip that can happen without a re-render in between; see the comment above the
         // addMediaForm/ytDlpEvents destructuring further up.
     }, [

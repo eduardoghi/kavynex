@@ -18,7 +18,7 @@ type UseDatabaseIntegrityCheckReturn = {
 };
 
 // Owns the async run of the (user-triggered) full database integrity check, so the component
-// stays presentational and this logic is unit-testable on its own - mirroring how every other
+// stays presentational and this logic is unit-testable on its own, mirroring how every other
 // stateful data flow in the app lives in a hook rather than inside a component.
 export function useDatabaseIntegrityCheck(): UseDatabaseIntegrityCheckReturn {
     const [loading, setLoading] = useState(false);

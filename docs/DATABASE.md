@@ -66,11 +66,11 @@ accent/case-folded copy of `title`, written alongside it on every insert/update 
 what makes the two comparable) and backfilled for existing rows by the v11 migration. It is
 what the title search and the title sort actually read; SQLite cannot accent-fold in SQL, so
 the folding has to be stored rather than computed per query. Note what is *not* here: there is
-no column holding live chat messages themselves - `live_chat_file_path` only points at a file
+no column holding live chat messages themselves. `live_chat_file_path` only points at a file
 on disk (see "Live chat is not in the database" below). `file_path` and
 `thumbnail_path` are stored relative to the library directory, matching `avatar_path`.
 Uniqueness is enforced two ways: `(channel_id, file_path)` always, and, via a partial
-unique index, `(channel_id, youtube_video_id)` whenever `youtube_video_id` is set - so the
+unique index, `(channel_id, youtube_video_id)` whenever `youtube_video_id` is set, so the
 same YouTube video can't be added twice to a channel, but multiple purely-local imports
 with no YouTube id don't collide with each other.
 
@@ -115,7 +115,7 @@ CREATE TABLE app_settings (
 ```
 
 A generic key/value table, upserted via `INSERT ... ON CONFLICT(key) DO UPDATE`. The keys it
-holds are whatever `StoredAppSettings` in `database.rs` defines - currently `import_mode`,
+holds are whatever `StoredAppSettings` in `database.rs` defines. Currently `import_mode`,
 `library_path`, `load_remote_images`, `check_updates_on_startup` and `external_backup_dir` (the
 optional off-volume mirror directory, see "External database mirror" below). Read them from there
 rather than trusting a count here: adding a setting is a one-line change on that struct, and
@@ -135,7 +135,7 @@ always empty by design; it is dropped by the baseline migration
 `videos.channel_id` and `video_comments.video_id` both declare
 `FOREIGN KEY (...) REFERENCES ... ON DELETE CASCADE`, and every connection opens with
 `PRAGMA foreign_keys = ON` (see "Connection settings" below). Deleting a channel deletes
-its videos, which in turn deletes their comments, in the database itself - the artifact
+its videos, which in turn deletes their comments, in the database itself. The artifact
 cleanup code (`services/library/cleanup.rs`) is only responsible for the *files* that
 belonged to those rows (media, thumbnails, avatar, live chat), not for the rows.
 
@@ -149,7 +149,7 @@ patterns:
 `(channel_id, file_path)`, a partial unique index backing
 `(channel_id, youtube_video_id)`, single-column indexes on `file_path` and
 `live_chat_file_path` (which keep the per-artifact reference-count lookups run on every
-media/channel delete off a full table scan - the composite `(channel_id, file_path)`
+media/channel delete off a full table scan. The composite `(channel_id, file_path)`
 index cannot serve a bare `file_path =` predicate), `(channel_id, thumbnail_path)` (which
 serves the other half of a channel delete: collecting the thumbnails its videos point at,
 before deciding which are still referenced elsewhere), and comment lookups by `video_id`,
@@ -176,15 +176,15 @@ in `ORDER BY` order when the leading terms match term for term, so:
 
 - `duration` sorts on `COALESCE(duration_seconds, 0)`, and `publication_date` on two `CASE`
   expressions. Their indexes must be on those **expressions**, not on the bare
-  `duration_seconds` / `published_at` columns - a plain column index is still *reported* as
+  `duration_seconds` / `published_at` columns. A plain column index is still *reported* as
   used by `EXPLAIN QUERY PLAN` while the query silently sorts the whole result set anyway.
 - `added_date` sorts on `created_at DESC, title_normalized DESC, id DESC`. The older
   `idx_videos_channel_created_id` omits `title_normalized`, so it could not serve that clause.
 - `publication_date` is the only category needing **two** indexes, one per direction. SQLite can
   walk an index forwards or backwards, but not partly each way, and this clause is
   mixed-direction: desc reverses only the date, keeping the dated-first group key and the title
-  tie-break ascending. So the all-ASC `..._published_ordered` serves `asc`, while `desc` - the
-  grid's *default* view, and therefore the app's hottest query - needs `..._published_desc`,
+  tie-break ascending. So the all-ASC `..._published_ordered` serves `asc`, while `desc` (the
+  grid's *default* view, and therefore the app's hottest query) needs `..._published_desc`,
   whose term directions mirror that clause. A same-direction index is not a near-miss here: it
   serves the leading group key and sorts the other three terms, and since almost every row shares
   that key, that is the whole channel.
@@ -196,7 +196,7 @@ Only one temp-B-tree form is accepted, `USE TEMP B-TREE FOR LAST TERM OF ORDER B
 breaks ties inside an already-ordered walk. The test matches that benign form rather than
 blacklisting the bad ones, because the bad ones are not one string: a partially-served clause
 reports `USE TEMP B-TREE FOR LAST <n> TERMS OF ORDER BY`, which a blacklist for the blanket
-`FOR ORDER BY` silently passes - which is exactly how `publication_date desc` sorted every
+`FOR ORDER BY` silently passes, which is exactly how `publication_date desc` sorted every
 default channel view undetected. Change a clause in `resolve_order_by` and that test is what
 tells you the matching index no longer applies.
 
@@ -207,8 +207,7 @@ against a Rust constant, `SCHEMA_VERSION` (currently `14`), in `db_schema/mod.rs
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
-- **Baseline (versions 0..=6 -> 7).** Every database that predates versioned migrations -
-  including a brand-new, empty database - is below `BASELINE_SCHEMA_VERSION` (7) and goes
+- **Baseline (versions 0..=6 -> 7).** Every database that predates versioned migrations (including a brand-new, empty database) is below `BASELINE_SCHEMA_VERSION` (7) and goes
   through `apply_baseline_schema` exactly once: it drops the legacy
   `video_live_chat_messages` table, creates all four tables with `CREATE TABLE IF NOT
   EXISTS`, adds any missing additive `videos` columns (`is_live`, `has_live_chat`,
@@ -242,7 +241,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
 - **v12** adds the indexes backing `list_media_page`'s sort categories
   (`idx_videos_channel_created_title_id`, `idx_videos_channel_comments_count`,
   `idx_videos_channel_duration`, `idx_videos_channel_published_ordered`, and
-  `idx_videos_channel_published_desc` - see "The `list_media_page` sort indexes" above for why
+  `idx_videos_channel_published_desc`. See "The `list_media_page` sort indexes" above for why
   `publication_date` needs one index per direction). Index-only like v8/v9: the migration just
   re-runs the index DDL list and stamps `user_version = 12`.
 - **v13** backports the two `videos` row invariants to a table that predates them, since
@@ -252,14 +251,14 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   largest table just to add a `CHECK` is not worth its risk, so each becomes a pair of
   `BEFORE INSERT`/`BEFORE UPDATE` triggers (`TRIGGER_DDLS`) that reject the same states with a
   plain `CREATE TRIGGER`, touching no row content. Rows that already violate an invariant are
-  repaired first - clearing a `has_live_chat` flag that has no path behind it, and computing the
-  missing `title_normalized` with v11's backfill - because the triggers only fire on new writes,
+  repaired first (clearing a `has_live_chat` flag that has no path behind it, and computing the
+  missing `title_normalized` with v11's backfill), because the triggers only fire on new writes,
   and a leftover NULL title would otherwise make every later edit of that row fail. The repairs,
   the triggers and the stamp share one transaction.
 
   The title repair is not redundant with v11. Only a database below v11 ever runs v11, so a row
   that arrived with a NULL afterwards (an imported database, an out-of-band writer) is never
-  reached again - and a NULL `title_normalized` fails silently: `LIKE` never matches it, so the
+  reached again, and a NULL `title_normalized` fails silently: `LIKE` never matches it, so the
   media sits in the library while being invisible to every title search. An import is the one hole
   the triggers cannot cover, because it replaces the whole file and fires no write at all; that is
   refused up front instead (see "Importing a database" below).
@@ -274,15 +273,15 @@ pool (`database.rs::build_pool_at`), before any other query executes.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
-  `SCHEMA_VERSION`. A change `ALTER TABLE ADD COLUMN` cannot express - a new/changed
-  `CHECK`, a new `UNIQUE`, a changed column type, or dropping a column - instead uses the
+  `SCHEMA_VERSION`. A change `ALTER TABLE ADD COLUMN` cannot express (a new/changed
+  `CHECK`, a new `UNIQUE`, a changed column type, or dropping a column), instead uses the
   table-rebuild path: `TableRebuild` + `rebuild_table` + `apply_table_rebuilds` follow
   SQLite's documented procedure (create the new shape under a staging name, copy the
   carried columns across, drop the old table, rename the staging table into place), with
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
   any dangling reference the rebuild introduced. This path is implemented and tested but
-  unused as of `SCHEMA_VERSION 14` - no migration has needed it yet - kept ready so the
+  unused as of `SCHEMA_VERSION 14` (no migration has needed it yet), kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
   transaction that also stamps the new `user_version`, so a crash mid-migration leaves the
@@ -290,7 +289,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   Re-running `ensure_schema` against an up-to-date database does nothing.
 - **Refusing a newer schema.** If the on-disk `user_version` is higher than the
   `SCHEMA_VERSION` this build knows about, `ensure_schema` returns an error instead of
-  touching anything - an older build can never silently downgrade or corrupt a database
+  touching anything. An older build can never silently downgrade or corrupt a database
   produced by a newer one. The same check exists on the import path
   (`validate_import_source` in `db_backup/mod.rs`) so importing a database from a newer
   Kavynex version is rejected up front.
@@ -300,22 +299,22 @@ pool (`database.rs::build_pool_at`), before any other query executes.
 Every pooled connection (`database.rs::build_pool_at`) is configured identically via
 `SqliteConnectOptions`:
 
-- `journal_mode(Wal)` - write-ahead logging, so readers are never blocked by a writer.
-- `synchronous(Normal)` - durable across an app crash; only the last few transactions are
+- `journal_mode(Wal)`: write-ahead logging, so readers are never blocked by a writer.
+- `synchronous(Normal)`: durable across an app crash; only the last few transactions are
   at risk on an OS crash or power loss. This is the standard desktop-app tradeoff against
   the slower default `FULL` (fsync on every commit).
-- `busy_timeout(30_000ms)` - a connection waits up to 30 seconds for a lock instead of
+- `busy_timeout(30_000ms)`: a connection waits up to 30 seconds for a lock instead of
   failing immediately with `SQLITE_BUSY` when another connection (or the backup/export
   path, which opens its own short-lived pool against the same file) holds it. Note the one
   case it cannot cover: a *deferred* transaction that reads and then writes takes its snapshot
   on the read and asks for the write lock later, and if another connection commits in between,
   SQLite rejects that upgrade with `SQLITE_BUSY_SNAPSHOT` **immediately, without consulting the
-  busy handler** - waiting can never make a stale snapshot writable. That is why the
+  busy handler**. Waiting can never make a stale snapshot writable. That is why the
   read-then-write transactions in `services/library/cleanup.rs` open with `BEGIN IMMEDIATE`
   (`begin_with(BEGIN_IMMEDIATE)`), taking the write lock up front so the wait happens where this
   timeout does apply. A transaction that writes first (e.g. `media_comments::replace_media_comments`)
   is unaffected.
-- `foreign_keys(true)` - `ON DELETE CASCADE` is only enforced when this pragma is on, and
+- `foreign_keys(true)`: `ON DELETE CASCADE` is only enforced when this pragma is on, and
   it must be set per-connection (it does not persist in the database file itself).
 
 The pool itself (`SqlitePoolOptions`) caps at 4 connections. It is held in Tauri-managed state
@@ -333,8 +332,8 @@ All four operations are implemented in the `db_backup/` module, one submodule ea
 snapshot and the status report over it in `snapshot.rs`, the restore in `restore.rs`, the
 startup-deferred import in `import.rs`, the user-triggered export and the external mirror in
 `external.rs`, and the throttled full integrity check in `integrity.rs`. What is left in `mod.rs` is
-the machinery more than one of them needs - the scratch connection pool, the `quick_check` helper,
-the sibling-path builder, the generation rotation - plus `managed_database_paths`, which is the map
+the machinery more than one of them needs (the scratch connection pool, the `quick_check` helper,
+the sibling-path builder, the generation rotation), plus `managed_database_paths`, which is the map
 of every file the module owns and therefore belongs to none of the five. The tests for all of them
 are in `mod.rs` too, because most of them exercise more than one machine in the same scenario.
 
@@ -344,16 +343,16 @@ A best-effort snapshot taken via `VACUUM INTO` into a sibling `.bak` file, throt
 most once every 24 hours (checked by the `.bak` file's mtime). It runs:
 
 - **Synchronously, before the pool opens**, when a schema migration is about to run
-  (`is_schema_migration_pending` - true when the database file is missing, or its
-  `user_version` is below the build's `SCHEMA_VERSION`) - so a bad migration or
+  (`is_schema_migration_pending` (true when the database file is missing, or its
+  `user_version` is below the build's `SCHEMA_VERSION`)), so a bad migration or
   pre-existing corruption can be rolled back.
 - **In the background**, off the startup critical path, on a normal launch where no
   migration is pending.
 - **Periodically while the app runs** (`lib.rs::spawn_periodic_backup`), every
   `PERIODIC_BACKUP_CHECK_INTERVAL_SECS` (6 hours). Both invocations above happen at startup, so
   without this a session left running for days would never take another snapshot. It creates no
-  extra backups - `backup_database` throttles to once per 24h regardless of how often it is
-  asked - the loop only needs to wake often enough that a long session eventually crosses that
+  extra backups (`backup_database` throttles to once per 24h regardless of how often it is
+  asked), the loop only needs to wake often enough that a long session eventually crosses that
   threshold.
 
 These callers are independent (the background startup snapshot and the first periodic tick can
@@ -368,20 +367,20 @@ database that fails it is skipped so a corrupt database is never allowed to over
 good backup. Rotation keeps several generations: before the fresh snapshot is written, the
 existing generations are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on),
 dropping the oldest. `BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
-current `.bak`, so up to seven snapshots can exist (`.bak` plus `.bak.1`..`.bak.6`) - keeping more
+current `.bak`, so up to seven snapshots can exist (`.bak` plus `.bak.1`..`.bak.6`). Keeping more
 than one guards against the case where the newest snapshot itself captured an already-degrading
 database before the corruption was caught. A `.bak.tmp` is used during the `VACUUM INTO` and only
 renamed into `.bak` after it succeeds. Because `VACUUM INTO` requires the destination not to
 already exist, and produces a single, fully checkpointed file, `.bak` is always a complete,
-WAL-free snapshot - never combined with a live write-ahead log.
+WAL-free snapshot, never combined with a live write-ahead log.
 
 ### Restore (`restore_database_from_backup`)
 
-Used when opening the live database fails. It walks every generation in turn - `.bak`, then
-`.bak.1` through `.bak.6` - and takes the first that itself passes `quick_check`, so a run of
+Used when opening the live database fails. It walks every generation in turn (`.bak`, then
+`.bak.1` through `.bak.6`), and takes the first that itself passes `quick_check`, so a run of
 bad snapshots does not cost the recovery. `.bak.tmp` is offered last: `backup_database` vacuums
 into it and only promotes it once that succeeds, so a run that died in that window strands a
-complete snapshot there that nothing else would look at - but a run that died *during* the
+complete snapshot there that nothing else would look at, but a run that died *during* the
 vacuum leaves a partial file under the same name, and nothing can tell them apart, so it must
 never outrank a real generation. The `quick_check` on the chosen candidate is what makes
 offering it safe. A candidate whose `user_version` is *newer* than this build's
@@ -389,16 +388,16 @@ offering it safe. A candidate whose `user_version` is *newer* than this build's
 with `DatabaseSchemaTooNew` rather than "succeeding" into a database the next open would
 reject. With nothing healthy left, it fails with `NoDatabaseBackupAvailable`.
 
-The current (assumed corrupt) database is moved aside to a sibling `.corrupt` file - never
-deleted - so it can still be inspected, and its `-wal`/`-shm` sidecars are removed so the
+The current (assumed corrupt) database is moved aside to a sibling `.corrupt` file (never
+deleted), so it can still be inspected, and its `-wal`/`-shm` sidecars are removed so the
 restored snapshot is never combined with a stale write-ahead log. A repeated restore rotates
 the earlier snapshots (`.corrupt` becomes `.corrupt.1`, and so on) rather than overwriting
-them, so the first failure's evidence survives the second - which is when it is most worth
+them, so the first failure's evidence survives the second, which is when it is most worth
 having. Fewer generations are kept than for `.bak` (`CORRUPT_ROTATED_GENERATIONS`, 2): each one
 is a full copy of an already-broken database, so the oldest is dropped once the rotation is
 full. The database is moved under a scratch `.corrupt.tmp` *before* the generations are
-rotated, because rotating first would shift them - dropping the oldest, emptying the `.corrupt`
-slot - and a rename that then failed would leave that loss with nothing put in its place.
+rotated, because rotating first would shift them (dropping the oldest, emptying the `.corrupt`
+slot), and a rename that then failed would leave that loss with nothing put in its place.
 
 The chosen backup is copied to a `.restore.tmp` staging file first and only renamed into place
 after the corrupt database has been moved aside, so a failure partway through never leaves the
@@ -415,7 +414,7 @@ A user-triggered `VACUUM INTO` snapshot to a user-chosen destination path (via a
 dialog). Refuses to export a database that fails `quick_check`. The destination is *not*
 cleared first: `VACUUM INTO` cannot write over an existing file, so the snapshot goes to a
 `.export-staging` sibling and only once it succeeds is it renamed onto the destination
-(the rename overwrites atomically). That ordering is the point - exporting over last month's
+(the rename overwrites atomically). That ordering is the point. Exporting over last month's
 export must not destroy it before knowing the new one is good.
 
 ### External database mirror (`mirror_database_to_external_dir`)
@@ -425,7 +424,7 @@ external backup folder, stored as the `external_backup_dir` setting). It exists 
 "backups on the same volume as the database" problem: `backup_database`'s `.bak` generations sit
 next to `kavynex.db` in the app config directory, so a disk failure that takes that volume takes
 every snapshot with it. The mirror is the off-volume copy that survives it. Only the database is
-copied - the media files are far larger and live under the library directory, which the user backs
+copied. The media files are far larger and live under the library directory, which the user backs
 up separately.
 
 - **Throttled** to once every 24 hours, exactly like `.bak`, via the mirror file's mtime.
@@ -440,7 +439,7 @@ up separately.
   offline) rather than recreated: a recreated folder at a path that now resolves to a different
   device would silently write the backup to the wrong place.
 - **Validated at the setting boundary** (`set_external_backup_dir`): the directory must exist and
-  must not be inside the app config directory - pointing the off-volume backup at the very
+  must not be inside the app config directory. Pointing the off-volume backup at the very
   directory it exists to outlive would silently defeat its purpose.
 - **Best effort**, wired from `lib.rs`'s periodic backup loop alongside `backup_database`; any
   failure is logged and never stops the loop.
@@ -450,23 +449,23 @@ up separately.
 Importing a user-selected `.db` file is a two-step, startup-deferred process, because the
 live connection pool is a singleton that cannot be reopened mid-session:
 
-1. `stage_database_import` validates the selected file - it must open as a healthy SQLite
+1. `stage_database_import` validates the selected file (it must open as a healthy SQLite
    database (`quick_check`), contain the four core tables (`channels`, `videos`,
    `video_comments`, `app_settings`) *and* the columns each of them is queried through, and
    have a `user_version` no higher than this build's `SCHEMA_VERSION` (`DatabaseSchemaTooNew`
-   otherwise) - then copies it to a `.import-staged.tmp` file and renames it to
+   otherwise)), then copies it to a `.import-staged.tmp` file and renames it to
    `.import-staged` (atomic staging, so a partial copy is never picked up). The column check
    matters because the names alone are not a "is this a kavynex database" test: a namesake
    schema stamped at the current `SCHEMA_VERSION` would pass, and `ensure_schema` would then
    consider it current and repair nothing, so it would swap in cleanly and fail with "no such
-   column" on the first query - after the previous database had already been set aside. Any
+   column" on the first query, after the previous database had already been set aside. Any
    WAL frames the source still holds are checkpointed into it first, since only the `.db` file
    is copied; if a lock prevents that and frames remain, the import is refused rather than
    silently dropping the source's most recent commits.
 
    A database stamped at v11 or later whose `videos` still hold a NULL `title_normalized` is
-   refused here too. This is the one hole v13's triggers cannot cover - an import replaces the
-   whole file, so no write ever fires - and stamping v11 or later is a claim to have been
+   refused here too. This is the one hole v13's triggers cannot cover (an import replaces the
+   whole file, so no write ever fires), and stamping v11 or later is a claim to have been
    backfilled already, which makes `ensure_schema` skip past the migration that would repair it.
    The rows would then be permanently invisible to every title search while still sitting in the
    library. The version gate is the point: below v11 a NULL is simply what that schema looks like,
@@ -484,7 +483,7 @@ live connection pool is a singleton that cannot be reopened mid-session:
    never unconditionally.
 
    That guard alone is not enough, because it only asks whether a database file is *there*. A run
-   whose swap failed *and* whose rollback also failed leaves the data solely in `.pre-import` -
+   whose swap failed *and* whose rollback also failed leaves the data solely in `.pre-import`,
    and the app keeps starting, so the pool creates an empty `kavynex.db` through
    `create_if_missing`. On the next launch a database file exists again, and on disk that state is
    indistinguishable from a perfectly normal *second* import (staged file + `.pre-import` + a
@@ -496,26 +495,26 @@ live connection pool is a singleton that cannot be reopened mid-session:
    itself.
 
    The marker follows the move-aside rather than preceding it, and that order is the whole of its
-   meaning. Written first, it would also be on disk in the window before the rename ran - and there
+   meaning. Written first, it would also be on disk in the window before the rename ran, and there
    `db_path` is still the user's real library, not the pool's empty file, so the next run would read
    the marker, skip the move-aside, and let the swap overwrite the library with nothing behind it to
    undo with. Writing it after the rename makes its presence a true claim: `.pre-import` holds the
    database. The marker write failing is handled by undoing the move-aside, so the failure leaves
-   the import merely pending. On top of that, a marker with no `.pre-import` behind it is ignored -
-   that combination cannot be reached through the ordering above, which is exactly why it is not
+   the import merely pending. On top of that, a marker with no `.pre-import` behind it is ignored.
+   That combination cannot be reached through the ordering above, which is exactly why it is not
    trusted when it does appear (a rollback that restored the database but failed to clear the marker
    leaves it).
 
 ## Related files
 
-- `src-tauri/src/services/db_schema/` - the DDL literals (`ddl.rs`), the versioned migrations
+- `src-tauri/src/services/db_schema/`: the DDL literals (`ddl.rs`), the versioned migrations
   (`migrations.rs`), the table-rebuild procedure (`rebuild.rs`), the `PRAGMA` table/column/index
   introspection (`introspection.rs`), and `SCHEMA_VERSION` plus `ensure_schema` (`mod.rs`).
-- `src-tauri/src/services/database.rs` - pool creation, connection options, app settings
+- `src-tauri/src/services/database.rs`: pool creation, connection options, app settings
   key/value helpers.
-- `src-tauri/src/services/db_backup/` - the automatic snapshot (`snapshot.rs`), the restore
+- `src-tauri/src/services/db_backup/`: the automatic snapshot (`snapshot.rs`), the restore
   (`restore.rs`), the startup-deferred import (`import.rs`), the throttled integrity check
   (`integrity.rs`), export and the external mirror (`external.rs`), and the machinery they share
   plus every test (`mod.rs`).
-- `src-tauri/src/commands/database.rs` - the Tauri commands exposing these operations.
-- `src/services/database-service.ts` - the frontend service calling those commands.
+- `src-tauri/src/commands/database.rs`: the Tauri commands exposing these operations.
+- `src/services/database-service.ts`: the frontend service calling those commands.

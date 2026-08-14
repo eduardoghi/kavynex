@@ -7,8 +7,8 @@ export type CommentTreeNode = MediaCommentRow & {
     replies: CommentTreeNode[];
     // Set only by filterCommentTree, and only true for a node that does not itself match the
     // active search but is kept to show thread context for a matching descendant. Undefined
-    // (falsy) everywhere else - the build/sort output and every node in the non-search browse
-    // tree - so callers that never filter never have to think about it.
+    // (falsy) everywhere else (the build/sort output and every node in the non-search browse
+    // tree), so callers that never filter never have to think about it.
     isContextOnly?: boolean;
 };
 
@@ -112,7 +112,7 @@ export function compareComments(
 /// Whether following `node`'s parents ends at a root rather than looping back on itself.
 ///
 /// Attaching a node whose chain loops (a comment naming itself as its parent, or two naming each
-/// other) builds an island that no root reaches, so those comments render nowhere at all - silently,
+/// other) builds an island that no root reaches, so those comments render nowhere at all. Silently,
 /// and while still being counted in `comments_count`. The data would have to be malformed for that
 /// to happen, which is exactly why it must not depend on the data being well formed: the cost of
 /// being wrong is a comment that exists in the library and cannot be seen.
@@ -121,7 +121,7 @@ function chainEndsAtARoot(
     byCommentId: Map<string, CommentTreeNode>,
     cache: Map<CommentTreeNode, boolean>
 ): boolean {
-    // Every node walked in a single pass shares the same outcome - the chain either reaches a root
+    // Every node walked in a single pass shares the same outcome. The chain either reaches a root
     // or falls into a cycle, and that terminal is the same no matter which node on the path you
     // start from. So one walk resolves its whole path, and caching each visited node makes the pass
     // over all comments O(n) overall instead of O(n^2) on a long linear reply chain, while keeping
@@ -175,8 +175,8 @@ function chainEndsAtARoot(
 }
 
 // Builds the parent/child thread structure. The sort is a separate step (`sortCommentTree`)
-// because linking - the id map and the per-node cycle check (`chainEndsAtARoot`, memoized to O(n)
-// overall via the shared cache) - depends only on the comments, not on the sort order. Splitting
+// because linking (the id map and the per-node cycle check `chainEndsAtARoot`, memoized to O(n)
+// overall via the shared cache) depends only on the comments, not on the sort order. Splitting
 // them lets the caller memoize the structure on `comments` alone, so toggling the sort re-sorts
 // without re-linking the whole tree. `sortMode` is optional and, when given, sorts in place for
 // callers (and tests) that want a one-shot sorted tree; the panel passes it through `sortCommentTree`.
@@ -259,7 +259,7 @@ export function sortCommentTree(
 
 // Keeps a non-matching parent in the result when one of its descendants matches, so the match
 // still reads in its thread context instead of floating with no idea who it replied to. That
-// retained parent is not itself a search result, so it is tagged `isContextOnly: true` - callers
+// retained parent is not itself a search result, so it is tagged `isContextOnly: true`. Callers
 // that count or list "results" (countCommentsInTree, the flat search list) must read that flag
 // rather than treating every node this returns as a match.
 export function filterCommentTree(nodes: CommentTreeNode[], query: string): CommentTreeNode[] {

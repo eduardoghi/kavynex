@@ -1,11 +1,11 @@
 // Side-effect-free helpers shared by the version scripts (bump-version, verify-release-version).
-// Extracted so the release-gate logic - the Cargo.toml regex especially - can be unit-tested
+// Extracted so the release-gate logic (the Cargo.toml regex especially) can be unit-tested
 // instead of only ever running at release time, where a bad regex would silently pass.
 
 // Matches the [package] version line in Cargo.toml, scoped to the [package] table: the `[package]`
 // header, then any lines up to (but not crossing into) the next `[section]` header via `[^[]*?`,
-// then the `version = "X.Y.Z"` line. Scoping it to that table - rather than a bare `^version`
-// anywhere - is what stops it reading or rewriting a dependency's own version line, including a
+// then the `version = "X.Y.Z"` line. Scoping it to that table (rather than a bare `^version`
+// anywhere) is what stops it reading or rewriting a dependency's own version line, including a
 // `[dependencies.foo]` sub-table that puts one at the start of a line above or below [package]. The
 // old bare-`^version` form only worked because [package] happens to be the first table; a reorder
 // would have silently made it target the wrong line. The three capture groups let

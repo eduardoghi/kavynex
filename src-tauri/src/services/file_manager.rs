@@ -2,8 +2,8 @@
 //!
 //! This used to live inside `services::library`, which is where its first caller was but not where
 //! it belongs: resolving `explorer.exe`/`open`/`xdg-open` and spawning it has nothing to do with
-//! the user's media directory. It moved when a second caller appeared - the Diagnostics dialog's
-//! "Open log folder" - and the alternative was a second copy of the three platform spawn branches,
+//! the user's media directory. It moved when a second caller appeared (the Diagnostics dialog's
+//! "Open log folder"), and the alternative was a second copy of the three platform spawn branches,
 //! which is exactly the kind of duplicated rule this codebase gates elsewhere rather than tolerates.
 //!
 //! **The split between what is here and what is not is the security-relevant part.**
@@ -16,7 +16,7 @@
 //!   `library::guard`). Its path comes over IPC, so it is guarded.
 //! - [`reveal_app_log_dir`] takes **no path at all** and derives one from `app_log_dir()`. A command
 //!   that accepts nothing cannot be redirected, which is why the log folder needed its own entry
-//!   point instead of reusing the library one - passing the log directory as both `path` and
+//!   point instead of reusing the library one. Passing the log directory as both `path` and
 //!   `library_path` to that command would satisfy its containment check trivially, which is the
 //!   self-referential shape `docs/THREAT-MODEL.md` records as a defect rather than a pattern to reuse.
 //!
@@ -51,7 +51,7 @@ fn strip_windows_verbatim_prefix(path: &Path) -> PathBuf {
 /// Resolves the OS file manager this module reveals a path with, never by bare name.
 ///
 /// `Command::new("explorer")` hands the lookup to the OS executable search order, which on Windows
-/// begins with the directory of the running application - the working-directory/app-directory
+/// begins with the directory of the running application. The working-directory/app-directory
 /// hijack class `services::binaries` was hardened against for yt-dlp and ffmpeg
 /// (`resolve_from_path_var`, and `docs/THREAT-MODEL.md`'s "External binary resolution"). These spawns
 /// sat outside that policy only because they lived in a different module, not because a file manager
@@ -60,7 +60,7 @@ fn strip_windows_verbatim_prefix(path: &Path) -> PathBuf {
 /// Windows and macOS have a fixed system location for theirs, so those are absolute paths built
 /// from `%SystemRoot%` (set by the OS, not by any caller) and a literal respectively. Linux has no
 /// fixed location for `xdg-open`, so it goes through the same PATH-only search yt-dlp and ffmpeg
-/// use - which skips empty `PATH` entries, i.e. never resolves out of the current directory.
+/// use, which skips empty `PATH` entries, i.e. never resolves out of the current directory.
 #[cfg(target_os = "windows")]
 fn resolve_file_manager_binary() -> AppResult<PathBuf> {
     let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from(r"C:\Windows"));
@@ -129,7 +129,7 @@ pub(crate) fn reveal_canonical_path(
     #[cfg(target_os = "macos")]
     {
         // Always reveal, never open. A macOS `.app` bundle is a *directory*, so plain `open <dir>`
-        // would launch the application rather than show it in Finder - and the library caller's
+        // would launch the application rather than show it in Finder, and the library caller's
         // `path` and `library_path` both arrive from the caller, so its containment check cannot
         // rule that out on its own (a caller can pass `/Applications` as both). `-R` reveals files
         // and directories alike, which is all this function is ever meant to do.
@@ -172,7 +172,7 @@ pub(crate) fn reveal_canonical_path(
 ///
 /// The `create_dir_all` is not defensive tidying. The log directory is created by `logger::init` at
 /// startup, but that is best effort (it returns early when the create fails) and nothing stops the
-/// user deleting the folder while the app runs - and revealing a directory that is not there fails
+/// user deleting the folder while the app runs, and revealing a directory that is not there fails
 /// on every platform, which would surface as a button that sometimes does nothing. Creating it
 /// makes the button always land somewhere. It is safe to create because the path is derived from
 /// the OS, never from a caller: this is not the caller-chosen `create_dir_all` that

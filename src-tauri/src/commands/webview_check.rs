@@ -1,7 +1,7 @@
 //! The startup self-check that runs *inside* the webview.
 //!
 //! `--smoke-test` (see `crate::is_smoke_test_run`) proves the process loads, every plugin
-//! registers and `setup()` completes - and then exits before the event loop starts. Everything
+//! registers and `setup()` completes, and then exits before the event loop starts. Everything
 //! after that point is unverified by any gate in the pipeline: `cargo test` links the `rlib` and
 //! never initializes the runtime or the webview, and `pnpm build` only emits the frontend bundle.
 //! Three things live in that gap, and each has a failure mode that reaches the user as an app that
@@ -16,8 +16,8 @@
 //!   right thing to have done and also exactly the change where a miss is silent.
 //! - **The packaged CSP.** Tauri injects `tauri.conf.json`'s `csp` only in a bundled app; `pnpm
 //!   tauri dev` serves the page from the Vite origin with no CSP header at all (see `docs/THREAT-MODEL.md`).
-//!   So `img-src`'s `asset:` / `http://asset.localhost` tokens - without which every thumbnail and
-//!   every video silently fails to load - are exercised by a packaged build and nothing else.
+//!   So `img-src`'s `asset:` / `http://asset.localhost` tokens (without which every thumbnail and
+//!   every video silently fails to load) are exercised by a packaged build and nothing else.
 //!
 //! `--webview-check` covers all three: the window opens normally, the frontend
 //! (`src/lib/webview-check.ts`) drives one call of each family and reports the outcome back
@@ -25,7 +25,7 @@
 //! reports nothing, which the watchdog in `lib.rs` turns into a non-zero exit rather than a hang.
 //!
 //! **What it does not cover, stated plainly:** the plugin grants that cannot be exercised without a
-//! human or a side effect - `dialog:allow-open`/`allow-save` (would open a file picker),
+//! human or a side effect. `dialog:allow-open`/`allow-save` (would open a file picker),
 //! `opener:allow-open-url` (would launch a browser), `updater:default` (would reach the network)
 //! and `process:allow-restart` (would restart the app). Those four stay manual. What is covered is
 //! the renderer booting, the two `core:*` grants, IPC into this crate's own commands, and the
@@ -50,7 +50,7 @@ pub const WEBVIEW_CHECK_FLAG: &str = "--webview-check";
 /// The report crosses the IPC boundary from the renderer, so it is caller-controlled text and gets
 /// the same treatment `log_frontend_error` already gives a crash report: bounded in both dimensions
 /// so a runaway (or hostile) frontend cannot flood the log or forge lines through embedded
-/// newlines. The caps are generous - a real report carries at most a handful of short strings.
+/// newlines. The caps are generous. A real report carries at most a handful of short strings.
 const MAX_REPORTED_FAILURES: usize = 16;
 const MAX_FAILURE_CHARS: usize = 512;
 
@@ -105,7 +105,7 @@ pub struct WebviewCheckReport {
     /// `core:event:allow-unlisten`.
     pub event_listen_ok: bool,
     /// Whether an `<img>` pointed at `convertFileSrc(plan.assetPath)` fired `load`. Probes the
-    /// asset-protocol scope grant on the cache directory *and* the CSP's `img-src` tokens - the
+    /// asset-protocol scope grant on the cache directory *and* the CSP's `img-src` tokens. The
     /// only part of the CSP that a bundled build alone exercises.
     pub asset_load_ok: bool,
     /// Free-form detail from the renderer, bounded on the way in.
@@ -195,7 +195,7 @@ fn write_probe_asset<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
 /// Returns `None` on every normal launch, which is what makes this safe to call unconditionally
 /// from `main.tsx`: the frontend asks once at boot and does nothing further. That one round trip is
 /// the price of the binary being able to self-check without a second build, and it is also itself a
-/// probe - if IPC into this crate's own commands were broken, this call is what would fail.
+/// probe, if IPC into this crate's own commands were broken, this call is what would fail.
 #[tauri::command]
 pub async fn begin_webview_check(app: AppHandle) -> AppResult<Option<WebviewCheckPlan>> {
     if !is_webview_check_run(std::env::args()) {
@@ -217,7 +217,7 @@ pub async fn begin_webview_check(app: AppHandle) -> AppResult<Option<WebviewChec
 ///
 /// `std::process::exit` rather than `AppHandle::exit`, matching `is_smoke_test_run` and
 /// `fail_startup`: the outcome of a check has to be unambiguous, and an unconditional exit is what
-/// makes it so. The invoke never gets a response, which does not matter - the process it would have
+/// makes it so. The invoke never gets a response, which does not matter. The process it would have
 /// answered is gone, and the frontend has nothing left to do either way.
 ///
 /// Outside a check run this is a no-op rather than an error. It cannot be reached in normal use
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn the_flag_is_recognized_anywhere_in_the_argument_list() {
         // argv[0] is the executable path and a launcher may append its own arguments, so the flag
-        // has to match positionally-independently - the same property is_smoke_test_run needs.
+        // has to match positionally-independently. The same property is_smoke_test_run needs.
         assert!(is_webview_check_run(args(&["kavynex", WEBVIEW_CHECK_FLAG])));
         assert!(is_webview_check_run(args(&[
             "/usr/bin/kavynex",
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn a_normal_launch_is_not_a_webview_check() {
         // A false positive here is an app that exits instead of staying open, so a near miss must
-        // not match: no prefix, no substring, no bare word - and not the sibling flag either.
+        // not match: no prefix, no substring, no bare word, and not the sibling flag either.
         assert!(!is_webview_check_run(args(&["kavynex"])));
         assert!(!is_webview_check_run(args(&["kavynex", "--webview"])));
         assert!(!is_webview_check_run(args(&["kavynex", "webview-check"])));
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn every_failing_probe_is_reported_not_just_the_first() {
         // A run against a badly narrowed capability list fails several probes at once, and fixing
-        // them one release at a time is not an option - the report has to name all of them.
+        // them one release at a time is not an option. The report has to name all of them.
         let report = WebviewCheckReport {
             app_version: None,
             event_listen_ok: false,
@@ -466,7 +466,7 @@ mod tests {
     #[test]
     fn the_probe_image_is_a_valid_gif_header_and_trailer() {
         // The bytes are hand-written, and a malformed image would fail the asset probe for a reason
-        // that has nothing to do with the grants under test - the worst possible false negative,
+        // that has nothing to do with the grants under test. The worst possible false negative,
         // since it would look exactly like a CSP problem.
         assert_eq!(&PROBE_IMAGE_GIF[..6], b"GIF89a");
         assert_eq!(

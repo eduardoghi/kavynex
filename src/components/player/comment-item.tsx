@@ -36,7 +36,7 @@ type CommentItemProps = {
     level?: number;
 };
 
-// Memoized so toggling sort in CommentsPanel does not re-render every mounted comment subtree -
+// Memoized so toggling sort in CommentsPanel does not re-render every mounted comment subtree.
 // without this, a state change in the parent re-diffs every CommentItem (and its nested replies)
 // even though most of their props are unchanged. Named as a separate function (rather than a named
 // function expression inside memo()) so the recursive self-reference below resolves to this

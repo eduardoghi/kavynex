@@ -18,7 +18,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// How a streamed live chat replay reaches the frontend: a run of `batch` events, each carrying a
 /// slice of raw JSON lines, terminated by a single `done` event. The frontend resolves its read
-/// only on `done`, never merely when the command returns - channel messages and the invoke
+/// only on `done`, never merely when the command returns. Channel messages and the invoke
 /// response travel independently, so resolving on the return could race the last in-flight batch.
 /// The generated binding (`src/types/generated/LiveChatStreamEvent.ts`) is what the frontend's
 /// zod schema in `lib/ipc-schemas.ts` is checked against, so a change here fails `tsc` there
@@ -96,8 +96,7 @@ pub async fn stream_live_chat_file(
 ) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
 
-    // Bind the permit for the whole read (see live_chat_storage::acquire_read_permit). Binding it -
-    // rather than writing `acquire_read_permit().await?;` - is the load-bearing part: a temporary
+    // Bind the permit for the whole read (see live_chat_storage::acquire_read_permit). Binding it (// rather than writing `acquire_read_permit().await?;`) is the load-bearing part: a temporary
     // dropped at the end of its own statement would release the slot before `run_blocking` even
     // starts, leaving a gate that admits everyone and a counter that is always zero. It is taken
     // after the library guard so a request for a path that is not the configured library is refused
@@ -141,7 +140,7 @@ pub async fn stream_live_chat_file(
 /// Rewords a failed unlink after the database reference was already cleared: a bare "failed to
 /// remove" reads as "nothing happened, retry the delete", when the entry is in fact gone and the
 /// file (if still present) is an orphan for the library diagnostics to reconcile. Only the unlink
-/// failure is reworded - a containment rejection happens before anything is touched and keeps its
+/// failure is reworded. A containment rejection happens before anything is touched and keeps its
 /// own error. Extracted from the command so the code gate is unit-testable (the command itself
 /// needs an AppHandle the IPC mock cannot host).
 fn reword_unlink_error_after_reference_clear(error: AppError) -> AppError {
@@ -169,7 +168,7 @@ pub async fn delete_live_chat_file(app: AppHandle, relative_path: String) -> App
 
     // Clear the referencing row's live-chat columns before removing the file. A crash between the
     // two steps then leaves only an orphaned file (which the library diagnostics reconcile), never a
-    // row flagged has_live_chat = 1 pointing at a deleted file - a path-without-file state the v13
+    // row flagged has_live_chat = 1 pointing at a deleted file. A path-without-file state the v13
     // CHECK constraint does not catch.
     crate::services::video_repository::clear_live_chat_reference(&pool, relative_path.trim())
         .await?;

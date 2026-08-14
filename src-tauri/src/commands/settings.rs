@@ -98,7 +98,7 @@ pub async fn set_app_settings(
 /// Rejects a non-empty external backup directory that is not an existing directory, or that is
 /// nested inside the app config directory. An empty value is the valid "off" state. The mirror is
 /// only ever *written to* (an atomic export drops a `kavynex-backup.db` mirror into it), so it is
-/// never read back through the asset scope or a delete/move command - but the whole point of the
+/// never read back through the asset scope or a delete/move command, but the whole point of the
 /// mirror is to survive a failure of the config volume (where the database and every on-volume
 /// `.bak` generation live), so it must not sit inside that directory either.
 fn validate_external_backup_dir(
@@ -251,7 +251,7 @@ mod tests {
     fn validate_external_backup_dir_rejects_a_directory_inside_the_config_dir() {
         // The external mirror exists to survive a failure of the config volume, so a directory
         // nested in the app config directory (where the database and its backups live) must be
-        // refused - otherwise the "off-volume" backup would silently sit on the same volume.
+        // refused. Otherwise the "off-volume" backup would silently sit on the same volume.
         let config_dir = unique_test_dir("ext-config");
         let inside = config_dir.join("backups");
         fs::create_dir_all(&inside).unwrap();
@@ -290,7 +290,7 @@ mod tests {
     }
 
     // The settings commands now take `State<Db>` instead of `AppHandle`, so they can be driven
-    // through a real IPC round trip against a mock app managing an in-memory database - the
+    // through a real IPC round trip against a mock app managing an in-memory database. The
     // wiring (arg deserialization, State injection, response serialization) that could not be
     // exercised while the pool lived in a process-wide static.
 

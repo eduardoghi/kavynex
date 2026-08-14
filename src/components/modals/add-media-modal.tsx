@@ -153,7 +153,7 @@ export function AddMediaModal({
             overlayProps={{ blur: 6 }}
             // Sized off the viewport like the diagnostics modal rather than pinned to a fixed 760px:
             // on a large window that cap left most of the screen empty while the body scrolled, and
-            // this form has two elements that genuinely want the width - the format option
+            // this form has two elements that genuinely want the width: the format option
             // ("Merged - 1080p - MP4 - AVC (H.264) - 2638.3 kbps - HTTPS - 1.43 GB") and the terminal's
             // yt-dlp command line, both of which wrapped at 760px. Kept under diagnostics' 1200px
             // because the rest is short inputs, which look stretched past roughly this width.

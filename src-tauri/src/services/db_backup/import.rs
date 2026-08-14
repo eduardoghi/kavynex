@@ -24,7 +24,7 @@ pub(super) fn pre_import_path(db_path: &Path) -> PathBuf {
 }
 
 /// Marks that an import swap is in progress. Written before the current database is moved aside
-/// and cleared once the swap - or its rollback - has left a database back at `db_path`.
+/// and cleared once the swap (or its rollback) has left a database back at `db_path`.
 ///
 /// A marker that survives a restart is the only way to tell the two states apart that otherwise
 /// look identical on disk (a staged import, a `.pre-import`, and a file at `db_path`): a normal
@@ -83,8 +83,8 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     }
 
     // The table names alone are not enough. A database carrying those four names with different
-    // *columns* - a namesake schema from another app, a hand-edited file, a half-finished
-    // migration - passes the check above, and if it is also stamped at this build's
+    // *columns* (a namesake schema from another app, a hand-edited file, a half-finished
+    // migration), passes the check above, and if it is also stamped at this build's
     // SCHEMA_VERSION then `ensure_schema` treats it as current and repairs nothing. It would swap
     // in cleanly and then fail with "no such column" on the first query, after the previous
     // database had already been set aside. Spot-check the columns each table is actually queried
@@ -119,7 +119,7 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     }
 
     // The columns can all be present while the row-level guarantees the app relies on are silently
-    // absent - a look-alike or hand-built database that named the columns but omitted the
+    // absent. A look-alike or hand-built database that named the columns but omitted the
     // constraints. Three of those cannot be repaired after the swap and must land here as a refused
     // import: without the (channel_id, file_path) unique index the insert_media upsert's
     // ON CONFLICT target has nothing to match, so every insert fails; without the videos -> channels
@@ -127,7 +127,7 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     // video_comments -> videos ON DELETE CASCADE a media delete (a bare DELETE FROM videos, see
     // library::cleanup) leaves that media's comment rows orphaned forever, with nothing in the
     // library diagnostics to reconcile them. Enabling PRAGMA foreign_keys cannot rescue any of
-    // these - it only enforces constraints the DDL declares, it never adds one - so the shape has
+    // these (it only enforces constraints the DDL declares, it never adds one), so the shape has
     // to be verified before the database is accepted.
     let has_unique_media_key = crate::services::db_schema::table_has_unique_index_on(
         pool,
@@ -174,8 +174,8 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         ));
     }
 
-    // A row with no `title_normalized` is invisible to the library search - `LIKE` never matches a
-    // NULL - while still sitting in the library, which is the kind of loss the user only notices
+    // A row with no `title_normalized` is invisible to the library search (`LIKE` never matches a
+    // NULL), while still sitting in the library, which is the kind of loss the user only notices
     // much later, looking for something they know they saved.
     //
     // The version gate is the whole point: below v11 the column legitimately holds NULLs (or does
@@ -203,7 +203,7 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     // upgraded one, but an import replaces the whole file, so no write ever fires and neither
     // enforces it against pre-existing rows. A database stamped at v13 or later claims to satisfy it
     // already, so `ensure_schema` skips the migration that would repair it; a violating row would
-    // then sit in the library flagged as having a live chat with no file behind it - a state
+    // then sit in the library flagged as having a live chat with no file behind it. A state
     // `get_media_repository_stats` already tracks as an inconsistency. Refuse it here, exactly as
     // the `title_normalized` check above does for the sibling invariant from the same migration.
     //
@@ -273,7 +273,7 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
         // The pragma reports whether it actually finished, and that has to be read rather than
         // discarded: it answers `busy = 1` when another connection held a lock and frames were
         // left behind. Copying then produces a database quietly missing its most recent commits,
-        // which is worse than refusing - the user would have no way to tell. `log` is the frames
+        // which is worse than refusing. The user would have no way to tell. `log` is the frames
         // still in the WAL afterwards, so `busy` alone is not the test: a busy answer with an
         // empty WAL has nothing left to lose and is fine to import.
         let checkpoint = sqlx::query_as::<_, (i64, i64, i64)>("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -295,7 +295,7 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
             // The checkpoint could not be evaluated at all (an I/O error, or no row where the
             // pragma always returns one). Proceeding would copy the `.db` with no confirmation
             // that its WAL was folded in, which is exactly the silent recent-commit loss the busy
-            // case above refuses - so refuse here too rather than let the anomaly fall through.
+            // case above refuses, so refuse here too rather than let the anomaly fall through.
             Ok(None) | Err(_) => {
                 pool.close().await;
 
@@ -395,7 +395,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     // A marker left behind by an earlier run means that run died between the move-aside and the
     // swap below, or that its rollback failed. `.pre-import` then holds the only copy of the
     // user's database, and anything at `db_path` is the empty file the pool created afterwards
-    // with `create_if_missing` - never their data. Moving that empty file aside would overwrite
+    // with `create_if_missing`, never their data. Moving that empty file aside would overwrite
     // the real snapshot and lose the library permanently, with no undo left to offer, so the
     // move-aside is skipped and `.pre-import` is kept as this run's undo copy. The swap below
     // then discards the empty file, which is all it is good for.
@@ -410,7 +410,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     // behind it cannot be describing a database this function set aside, so the claim it makes is
     // not true and acting on it would skip the move-aside while `db_path` is still the user's real
     // library. That combination is unreachable through the ordering below, which is exactly why it
-    // must not be trusted when it does turn up - a rollback that put the database back but failed
+    // must not be trusted when it does turn up. A rollback that put the database back but failed
     // to clear the marker leaves it, as would anything editing these files out of band.
     let recovering_from_a_failed_swap = marker.exists() && pre_import.exists();
 
@@ -431,7 +431,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
 
         // Durable only once `.pre-import` actually holds the user's database, which is the claim
         // the recovery branch above reads it as. Written *before* the move-aside it would also
-        // cover the window where that rename had not run yet - and there `db_path` is still the
+        // cover the window where that rename had not run yet, and there `db_path` is still the
         // user's real database, not the pool's empty file, so a crash in that window left the next
         // run skipping the move-aside and letting the swap below overwrite the library with no
         // undo copy behind it.
@@ -474,7 +474,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     //
     // The second flush is not optional. `.pre-import` is deliberately kept as the undo copy after a
     // successful import, so once the marker is gone the on-disk shape (a database at `db_path`, a
-    // `.pre-import`, no staged file) is a normal completed import - but with the marker still
+    // `.pre-import`, no staged file) is a normal completed import, but with the marker still
     // present it is exactly the shape the recovery branch above acts on to revert. A plain
     // `remove_file` leaves the unlink in the OS write cache, so a crash here could resurrect the
     // marker and send the next launch into that revert, undoing a completed import. Flushing the
@@ -499,8 +499,8 @@ pub fn database_import_undo_available(db_path: &Path) -> bool {
 
 /// Stages the `.pre-import` snapshot (the database as it was before the last applied import)
 /// as a pending import, so the last import is reverted on the next startup. This deliberately
-/// reuses the normal import path - the same validation and the same atomic, deferred swap in
-/// `apply_pending_database_import` - so the live connection pool is never swapped underneath
+/// reuses the normal import path (the same validation and the same atomic, deferred swap in
+/// `apply_pending_database_import`), so the live connection pool is never swapped underneath
 /// while the app is running, whether the undo is triggered from Settings (pool open) or from
 /// the startup recovery flow (pool closed). The caller relaunches the app afterward. Errors
 /// when there is no snapshot to revert to.

@@ -55,7 +55,7 @@ export function SettingsModal({
 
     // Locks the modal (no Esc, click-outside or close button) while a destructive database
     // operation, a library migration, or an app update check/download is in progress, so the user
-    // cannot dismiss it mid-flight and lose visibility into an error - or, for the update, close the
+    // cannot dismiss it mid-flight and lose visibility into an error, or, for the update, close the
     // modal and keep working only for installAppUpdate to relaunch the whole app by surprise when
     // the download finishes. Keeping the modal open until the update resolves means the relaunch is
     // never a surprise.

@@ -63,8 +63,8 @@ pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIn
     {
         Ok(rows) => rows,
         // Past a certain amount of damage SQLite gives up on the pragma itself and fails the query
-        // with SQLITE_CORRUPT instead of listing what is wrong. That is still an answer - the most
-        // definitive one there is - so it must not surface as "the check could not run", which
+        // with SQLITE_CORRUPT instead of listing what is wrong. That is still an answer (the most
+        // definitive one there is), so it must not surface as "the check could not run", which
         // reads like the tool broke rather than the database. Only this one code is treated this
         // way: an IO error or a lock timeout says nothing about integrity and still propagates.
         Err(error) => {
@@ -157,7 +157,7 @@ mod tests {
     use crate::services::db_backup::test_support::{filetime_set, temp_dir};
 
     // These four moved here from the parent's `mod tests`, which is where every db_backup test
-    // still lived after the module was split - not by choice, but because they all shared the
+    // still lived after the module was split, not by choice, but because they all shared the
     // helpers that now live in `test_support`. A test for the weekly throttle and one for what
     // `PRAGMA integrity_check` reports belong next to the functions that decide both.
     #[test]
@@ -226,7 +226,7 @@ mod tests {
         //
         // The damage is real rather than simulated: an index page is overwritten with garbage while
         // the file is closed, which leaves the database openable (the header and schema are intact)
-        // but internally inconsistent - exactly the state this check exists to find, and the one
+        // but internally inconsistent, exactly the state this check exists to find, and the one
         // "not a database" never reaches because it fails at open instead.
         let dir = temp_dir("integrity-damaged");
         std::fs::create_dir_all(&dir).unwrap();
@@ -300,7 +300,7 @@ mod tests {
 
         // Damage this heavy is reported one of two ways depending on what SQLite manages to walk:
         // a list of problems, or a flat SQLITE_CORRUPT on the pragma itself. Both are integrity
-        // answers and both have to arrive as one - never as "the check could not run", which reads
+        // answers and both have to arrive as one, never as "the check could not run", which reads
         // as the tool breaking rather than the database being broken.
         assert!(
             !report.ok,

@@ -335,7 +335,7 @@ describe("useAddMediaForm", () => {
 
     it("keeps the picked thumbnail when staging it fails", async () => {
         // Staging is an optimization of where the preview reads from, not of what gets imported, so
-        // its failure must not lose the selection - the import still persists the right image, only
+        // its failure must not lose the selection. The import still persists the right image, only
         // the preview is missing. The path is flagged as not-ours so nothing later tries to delete
         // a file in the user's own pictures folder.
         vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/thumb.jpg");

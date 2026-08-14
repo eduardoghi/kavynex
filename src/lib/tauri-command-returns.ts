@@ -2,7 +2,7 @@
 // indexes this map by the command it is given, so a caller can no longer pick an arbitrary result
 // type unrelated to the command (the one type-safety hole at the IPC seam): the return type follows
 // from the command name itself. When a Rust command's return type changes, update its entry here and
-// every call site is re-checked against it - the same drift protection the generated ts-rs bindings
+// every call site is re-checked against it. The same drift protection the generated ts-rs bindings
 // give the payload types, extended to the command results.
 //
 // Every value type below mirrors what the corresponding Rust command returns (see

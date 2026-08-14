@@ -1,6 +1,6 @@
 //! Classifies an IP address as safe or unsafe to fetch from a user-provided URL (the SSRF guard
 //! behind the thumbnail/avatar downloader in `services::thumbnail::download`). Kept in its own
-//! module - pure, dependency-free, no network or filesystem - so the whole classifier can sit under
+//! module (pure, dependency-free, no network or filesystem), so the whole classifier can sit under
 //! the mutation gate (`.cargo/mutants.toml`) without dragging in the downloader's untestable async
 //! network code. `is_disallowed_ip` is the only entry point the downloader uses; it is applied both
 //! as a pre-connection check and inside the pinned DNS resolver, so the address that is validated is
@@ -71,7 +71,7 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
     // an IPv4 address in the low 32 bits of ::/96. to_ipv4() returns it (and returns None for a
     // real global IPv6), so ::7f00:1 (= ::127.0.0.1) is judged by the same IPv4 rules rather than
     // slipping through as "some public v6". This also subsumes IPv6 loopback (::1) and unspecified
-    // (::): both sit in ::/96, so to_ipv4() returns them here and is_disallowed_ipv4 rejects them -
+    // (::): both sit in ::/96, so to_ipv4() returns them here and is_disallowed_ipv4 rejects them.
     // which is why the final classification below does not test is_loopback()/is_unspecified()
     // again (doing so would only add an unkillable equivalent branch).
     if let Some(compatible) = addr.to_ipv4() {
@@ -123,7 +123,7 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
 }
 
 /// Rejects addresses that must never be fetched from a user-provided URL: loopback, private,
-/// link-local (incl. cloud metadata 169.254.169.254), multicast and reserved - including the same
+/// link-local (incl. cloud metadata 169.254.169.254), multicast and reserved, including the same
 /// ranges reached through an IPv4-mapped, IPv4-compatible, 6to4, NAT64 or Teredo IPv6 address.
 pub(crate) fn is_disallowed_ip(ip: &IpAddr) -> bool {
     match ip {
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn embedded_tunnel_decoders_extract_every_octet() {
         // A source address whose four octets are all distinct and non-trivial (0x12.0x34.0x56.0x78),
-        // so any swapped shift or mask - and, for Teredo, a swapped XOR - changes the decoded
+        // so any swapped shift or mask (and, for Teredo, a swapped XOR), changes the decoded
         // address and fails an exact-equality assertion. A classification-only test would miss these:
         // many octet values map to the same allow/deny verdict (e.g. any 127.x is loopback), which is
         // exactly why the operator mutations here survived until this decode was pinned by value.
@@ -231,7 +231,7 @@ mod tests {
             "64:ff9b::0808:0808", // nat64 wrapping the public 8.8.8.8 stays allowed
             // A public, non-Teredo 2001: address: the Teredo prefix is 2001:0000::/32, so this must
             // not be decoded as Teredo. Pins the `segments[0] == 0x2001 && segments[1] == 0x0000`
-            // conjunction - a weakened `&&` would treat it as Teredo and re-check a bogus embedded IP.
+            // conjunction. A weakened `&&` would treat it as Teredo and re-check a bogus embedded IP.
             "2001:4860:4860::8888",
             // teredo wrapping the public 8.8.8.8 stays allowed: f7f7:f7f7 = 0x08080808 ^ all-ones.
             "2001:0:0:0:0:0:f7f7:f7f7",

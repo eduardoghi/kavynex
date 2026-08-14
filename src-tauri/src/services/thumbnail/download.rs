@@ -48,21 +48,20 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// Cap on how much stdout/stderr is retained from a yt-dlp thumbnail/avatar run. These commands
 /// are far less chatty than a full download, but `wait_with_output` would buffer their entire
 /// output unbounded; this keeps memory (and the error detail built from it) bounded while still
-/// draining the pipes fully so the child can exit - a cap that stopped reading would deadlock a
+/// draining the pipes fully so the child can exit. A cap that stopped reading would deadlock a
 /// child that outran it.
 const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
 /// Bounds how many thumbnail/avatar yt-dlp runs execute at once. Each spawns a yt-dlp + ffmpeg
-/// process tree (`--convert-thumbnails`, see [`THUMBNAIL_OUTPUT_FORMAT`]), so a burst - a bulk
-/// import, a retry loop, or a compromised frontend firing the thumbnail/avatar commands - could
+/// process tree (`--convert-thumbnails`, see [`THUMBNAIL_OUTPUT_FORMAT`]), so a burst (a bulk
+/// import, a retry loop, or a compromised frontend firing the thumbnail/avatar commands) could
 /// otherwise spawn an unbounded number of process trees and exhaust CPU/handles. The download flow
 /// (`DOWNLOAD_SEMAPHORE`) and the
 /// metadata/comment/format runs (`STANDALONE_RUN_SEMAPHORE`) each have their own bound; this is the
 /// third yt-dlp spawn site and gets its own.
 const MAX_CONCURRENT_THUMBNAIL_RUNS: usize = 4;
 // Ceiling on how many thumbnail/avatar runs may be in flight (running or queued) at once. The
-// concurrency cap bounds only how many spawn together; this bounds the queue behind it so a burst -
-// a bulk import or a compromised frontend firing the commands in a loop - is refused up front rather
+// concurrency cap bounds only how many spawn together; this bounds the queue behind it so a burst (// a bulk import or a compromised frontend firing the commands in a loop) is refused up front rather
 // than enqueued without limit (see BoundedSemaphore). Set well above a realistic bulk import.
 const MAX_THUMBNAIL_RUNS_IN_FLIGHT: usize = 32;
 static THUMBNAIL_RUN_SEMAPHORE: BoundedSemaphore =
@@ -126,7 +125,7 @@ async fn wait_with_capped_output(
 /// child. Relying on `kill_on_drop` alone (as the previous `.output()` call did) only kills
 /// the direct yt-dlp child on timeout, leaving that ffmpeg grandchild running and holding the
 /// temp directory open. Spawning into its own process group and killing the whole tree on
-/// timeout - the same mechanism the main download path uses - prevents the orphan.
+/// timeout (the same mechanism the main download path uses), prevents the orphan.
 async fn run_thumbnail_yt_dlp_with_timeout(
     mut command: Command,
     timeout_message: &str,
@@ -134,7 +133,7 @@ async fn run_thumbnail_yt_dlp_with_timeout(
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<std::process::Output> {
     // Bound concurrent thumbnail/avatar runs (see THUMBNAIL_RUN_SEMAPHORE). Held for the whole
-    // function - spawn through wait - so a burst queues here rather than each spawning a yt-dlp +
+    // function (spawn through wait), so a burst queues here rather than each spawning a yt-dlp +
     // ffmpeg tree at once, and a queue deeper than the in-flight ceiling is refused up front.
     let _permit = THUMBNAIL_RUN_SEMAPHORE
         .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
@@ -223,7 +222,7 @@ enum ThumbnailTarget {
 
 // `THUMBNAIL_OUTPUT_FORMAT` (imported at the top of this file) is what `--convert-thumbnails`
 // normalizes every downloaded thumbnail to, and therefore the extension the file lands under in
-// the temp directory - see `finalize_thumbnail_download` below, which looks the written file up by
+// the temp directory. See `finalize_thumbnail_download` below, which looks the written file up by
 // it. It lives in `constants.rs` because the local-import producer (`thumbnail/temp.rs`) writes
 // the same kind of file and has to agree; `constants.rs` is where the choice is explained.
 //
@@ -332,7 +331,7 @@ async fn assert_url_host_is_public(uri: &Uri) -> AppResult<()> {
 /// The DNS resolver the thumbnail HTTP client connects through. It resolves the host and drops
 /// every private/loopback/reserved address before returning, so the connection can only ever dial
 /// a public IP. Because HttpConnector dials exactly what this resolver returns, the address that is
-/// validated *is* the address that is dialed - which is what `assert_url_host_is_public`, running as
+/// validated *is* the address that is dialed, which is what `assert_url_host_is_public`, running as
 /// a separate pre-connection check, cannot guarantee on its own: between that check and the
 /// connector's own resolution an attacker controlling the host's DNS could rebind a public answer to
 /// an internal one. Pinning resolution here closes that window. The pre-check is still run first for
@@ -380,8 +379,8 @@ impl Service<Name> for PublicOnlyResolver {
 ///
 /// This uses a hand-rolled hyper client on purpose, rather than `reqwest` (which is already in
 /// the tree transitively via the updater plugin). The reason is the redirect loop below: it
-/// follows redirects *manually* so it can re-run the SSRF guard - `assert_url_host_is_public`,
-/// which rejects a host resolving to a private/loopback/link-local/reserved address - on the
+/// follows redirects *manually* so it can re-run the SSRF guard (`assert_url_host_is_public`,
+/// which rejects a host resolving to a private/loopback/link-local/reserved address), on the
 /// initial URL **and on every redirect target**. A client that follows redirects automatically
 /// (reqwest's default) would only let us vet the first hop, so a public thumbnail URL that
 /// 302-redirects to, say, `http://169.254.169.254/...` or an internal host would slip past the
@@ -389,9 +388,9 @@ impl Service<Name> for PublicOnlyResolver {
 /// revalidation is the whole point; keeping this on a minimal hyper stack also avoids pulling
 /// reqwest's cookie jar and automatic-redirect behavior into a request that must stay dumb.
 ///
-/// The decision each hop makes - the budget, the refusal of a redirect naming no destination, the
+/// The decision each hop makes (the budget, the refusal of a redirect naming no destination, the
 /// resolution of `Location` against the URI it arrived on, and the image-CDN host gate on the
-/// destination - lives in [`super::redirect::next_hop`], not here. This function owns the loop, the
+/// destination), lives in [`super::redirect::next_hop`], not here. This function owns the loop, the
 /// request and the body; it makes no redirect decision of its own, which is what lets that decision
 /// be mutation-tested while the network code around it cannot be.
 ///
@@ -428,8 +427,8 @@ async fn http_get_image(
         .parse()
         .map_err(|e| AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}")))?;
 
-    // Bound the whole operation - DNS revalidation, header exchange, every redirect hop and the
-    // body stream - under a single deadline. The earlier per-request timeout only covered the
+    // Bound the whole operation (DNS revalidation, header exchange, every redirect hop and the
+    // body stream), under a single deadline. The earlier per-request timeout only covered the
     // header phase, so a server that dribbled the body out slowly could hold the read loop open
     // indefinitely while staying under the DIRECT_THUMBNAIL_MAX_BYTES cap. This command carries no
     // cancel flag, so this deadline is the only thing that can end such a stall.
@@ -686,7 +685,7 @@ fn looks_like_supported_image(bytes: &[u8]) -> bool {
 /// Resolves the library directory and creates the fresh temp subdirectory a thumbnail/avatar run
 /// writes into. Both steps are blocking filesystem work (`ensure_library_dir` canonicalizes,
 /// `create_dir_all` touches disk), so callers invoke this through `run_blocking` off the async
-/// runtime - matching the convention the rest of the app follows for filesystem calls. Returns the
+/// runtime, matching the convention the rest of the app follows for filesystem calls. Returns the
 /// canonical library directory and the created temp directory.
 fn prepare_thumbnail_dirs(
     app: AppHandle,
@@ -740,7 +739,7 @@ pub async fn download_thumbnail_from_url_async(
             // Restrict the fetch to the image CDNs before it goes out, matching the host gate the
             // yt-dlp fallback below has always applied. `http_get_image`'s SSRF guard keeps this
             // off internal addresses and its size/content-type/magic-byte checks bound what comes
-            // back, but all three constrain the *response* - none of them stopped the request from
+            // back, but all three constrain the *response*. None of them stopped the request from
             // reaching an arbitrary public host in the first place. See
             // services::thumbnail::url for the list and why it is not the yt-dlp one.
             //
@@ -825,8 +824,8 @@ pub async fn download_thumbnail_from_url_async(
         assert_url_host_is_public(&fallback_uri).await?;
 
         // yt-dlp's generic extractor is handed the URL with access to the user's browser
-        // cookies (indirectly, via the same yt-dlp binary used elsewhere), so - like every
-        // other yt-dlp invocation in this app - it must be restricted to YouTube. Without
+        // cookies (indirectly, via the same yt-dlp binary used elsewhere), so (like every
+        // other yt-dlp invocation in this app), it must be restricted to YouTube. Without
         // this, a non-image URL would fall through to yt-dlp's generic extractor for any
         // host, which is far broader than this app ever intends to support.
         if !is_allowed_youtube_url(&normalized_url) {
@@ -1215,7 +1214,7 @@ mod tests {
     #[tokio::test]
     async fn public_only_resolver_rejects_a_host_that_resolves_to_loopback() {
         // localhost resolves to 127.0.0.1/::1 on every platform, so the resolver must return an
-        // error rather than any address - this is what pins the connection away from a rebind to an
+        // error rather than any address. This is what pins the connection away from a rebind to an
         // internal target. Exercises the real resolve+filter path offline.
         let mut resolver = PublicOnlyResolver;
         let name = "localhost".parse::<Name>().expect("valid dns name");
@@ -1251,7 +1250,7 @@ mod tests {
     }
 
     // The redirect resolution these tests used to cover moved with the decision, to
-    // `services::thumbnail::redirect` - which is under the mutation gate, unlike this file. See that
+    // `services::thumbnail::redirect`, which is under the mutation gate, unlike this file. See that
     // module's header for why the extraction was worth making.
 
     fn sample_temp_dir() -> PathBuf {

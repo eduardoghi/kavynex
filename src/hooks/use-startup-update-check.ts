@@ -12,7 +12,7 @@ type UseStartupUpdateCheckOptions = {
 
 // Runs a single passive update check once the user has opted in, and shows a non-intrusive notice
 // if a newer version is available. It fires at most once per app session (a ref guards against
-// re-runs) and contacts the update endpoint only when `enabled` is true - the app's default is
+// re-runs) and contacts the update endpoint only when `enabled` is true. The app's default is
 // off, so a launch makes no update request unless the user turned this on.
 export function useStartupUpdateCheck({
     enabled,

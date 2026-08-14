@@ -4,7 +4,7 @@ import type { CreateMediaInput } from "../services/media-input-service";
 
 // The subset of the add-media form the pure helpers below read. Declared explicitly (rather than
 // importing the hook's return type) so these functions stay free of React and are unit-testable
-// on their own - the whole point of extracting them out of use-add-media-workflow.
+// on their own. The whole point of extracting them out of use-add-media-workflow.
 export type AddMediaFormFields = {
     sourceMode: MediaSourceMode;
     mediaUrl: string;

@@ -16,7 +16,7 @@ export type CreateMediaRequest = { channelId: number, title: string, sourceMode:
 sourceValue: string, 
 /**
  * A managed `thumbnails/...` path, a remote URL, or an absolute path the user picked. Absent
- * means "derive one" - from the download's own thumbnail, or from the media file itself.
+ * means "derive one", from the download's own thumbnail, or from the media file itself.
  */
 thumbnailSourcePath: string | null, mediaType: "video" | "audio", importMode: "copy" | "move", libraryPath: string, publishedAt: string | null, ytDlpRunId: string, ytDlpFormatId: string, 
 /**

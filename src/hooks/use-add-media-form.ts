@@ -119,7 +119,7 @@ export function useAddMediaForm({
 
     // Destructure the reference-stable actions off each sub-controller so the callbacks below can
     // depend on them individually, per CONTRIBUTING.md's hook conventions, instead of on the whole
-    // sub-controller object - whose identity changes on any field change (see the note in
+    // sub-controller object, whose identity changes on any field change (see the note in
     // use-add-media-form-state) and would otherwise recreate these callbacks (and every per-card
     // handler derived from them) on every keystroke in an unrelated field.
     const {
@@ -192,14 +192,14 @@ export function useAddMediaForm({
             }
 
             // The picked image lives outside the library, where the asset protocol cannot read it.
-            // Stage a copy in the preview directory - which is authorized as a whole - and preview
+            // Stage a copy in the preview directory (which is authorized as a whole), and preview
             // that, rather than widening the scope to the file the user chose (see
             // stageManualThumbnail for why granting it was the worse option). The staged copy is
             // byte-identical, so persisting from it stores exactly the same file.
             //
             // A failure falls back to the picked path: the preview will not render, but the
             // selection still stands and the import still persists the right image. That is the
-            // same non-fatal shape the grant had, for the same reason - a missing preview must not
+            // same non-fatal shape the grant had, for the same reason. A missing preview must not
             // block adding media.
             let previewPath = normalizedPath;
             let staged = false;
@@ -229,7 +229,7 @@ export function useAddMediaForm({
     // Invalidating the resolved yt-dlp formats and clearing the terminal always go together: any
     // change to an input that affects the fetched result (the URL, cookies, the source mode) makes
     // the previously loaded formats stale. Kept as one callback so the many call sites below cannot
-    // drift - a site doing one reset but forgetting the other was the duplication this removes.
+    // drift. A site doing one reset but forgetting the other was the duplication this removes.
     const resetYtDlpSelectionState = useCallback((): void => {
         resetYtDlpFormats();
         ytDlpTerminal?.resetYtDlpState(true);
@@ -396,8 +396,8 @@ export function useAddMediaForm({
     } = ytDlpState;
 
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
-    // depend on the whole object (e.g. use-add-media-workflow) stop being invalidated - and
-    // recreating their own callbacks - on every keystroke in an unrelated field.
+    // depend on the whole object (e.g. use-add-media-workflow) stop being invalidated (and
+    // recreating their own callbacks), on every keystroke in an unrelated field.
     return useMemoObject({
         sourceMode,
         mediaUrl,

@@ -75,7 +75,7 @@ describe("rewriteManifestUrls", () => {
 
     it("leaves the signature of every entry untouched", () => {
         // minisign covers the artifact bytes, not the url, so rewriting one must never disturb the
-        // other - a dropped signature would fail the update on a user's machine, not here.
+        // other. A dropped signature would fail the update on a user's machine, not here.
         const { manifest } = rewriteManifestUrls(draftManifest(), ASSETS, PREFIX, VERSION);
 
         for (const entry of Object.values(manifest.platforms)) {

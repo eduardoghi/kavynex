@@ -64,7 +64,7 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
 };
 
 // A variant's background/border/shadow are inline styles, which override Mantine's `:disabled`
-// dimming - so a disabled button would otherwise look identical to an active one. Replace them with
+// dimming, so a disabled button would otherwise look identical to an active one. Replace them with
 // one muted, shadowless look so "not clickable" reads at a glance, whatever the variant.
 const DISABLED_STYLE: CSSProperties = {
     background: "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.05))",

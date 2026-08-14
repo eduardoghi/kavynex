@@ -7,12 +7,12 @@
 // *which functions apply the refusal*, and that second list is what a review of a new command is
 // checked against. Nothing held it: an audit found one enforcement site missing from the document
 // and another command stat-ing a caller-supplied path with no refusal at all, while this gate
-// passed - because both were, correctly, in the command inventory.
+// passed, because both were, correctly, in the command inventory.
 //
-// docs/THREAT-MODEL.md states a cross-cutting rule - every command that accepts a path from the caller
+// docs/THREAT-MODEL.md states a cross-cutting rule. Every command that accepts a path from the caller
 // refuses a UNC / network location before any filesystem call touches it, and the library-relative
 // and library-root paths go through `utils::path` / `services::library::guard` rather than being
-// trusted - and then names the commands that satisfy it. Prose cannot hold that list in sync with
+// trusted. The document then names the commands that satisfy it. Prose cannot hold that list in sync with
 // the code, and it did not: an audit found the documented list had drifted from the call sites, and
 // three commands were trusting a caller-supplied `library_path` on a premise no caller relied on.
 //
@@ -20,8 +20,8 @@
 // itself is worse than none. It does NOT verify that a command applies the right guard: that needs
 // the call chain, which a parser over one file cannot follow, and a check that guessed would hand
 // out false confidence on exactly the surface it exists to protect. What it does is make the surface
-// impossible to grow silently. Adding a command that takes a path - or adding a path parameter to an
-// existing one - fails CI until the inventory is updated, and updating it is where the author has to
+// impossible to grow silently. Adding a command that takes a path (or adding a path parameter to an
+// existing one), fails CI until the inventory is updated, and updating it is where the author has to
 // decide which of the threat model's cases the new path falls into.
 //
 // The failure is deliberately two-directional. A removed or renamed command fails too, so the
@@ -39,7 +39,7 @@ import { fileURLToPath } from "url";
 const COMMAND_ATTRIBUTE = "#[tauri::command]";
 
 // A parameter whose name says it carries a filesystem path. Matched on the parameter name only,
-// never the function name - `resolve_default_library_directory(app: AppHandle)` takes no path
+// never the function name. `resolve_default_library_directory(app: AppHandle)` takes no path
 // despite what it is called, and a check that read the signature as one string would list it.
 export function isPathParameter(name) {
     return (
@@ -80,7 +80,7 @@ export function splitParameters(parameterList) {
     return parameters.map((parameter) => parameter.trim()).filter(Boolean);
 }
 
-// The offset of the annotation colon - the first `:` at depth 0 - or -1 when the parameter has
+// The offset of the annotation colon (the first `:` at depth 0), or -1 when the parameter has
 // none. Shared by `parameterName` and `parameterType` so the two cannot disagree about where the
 // name ends and the type begins.
 function annotationColonAt(parameter) {
@@ -127,7 +127,7 @@ export function parameterType(parameter) {
 // True for a type that could name a struct declared in this crate: a bare PascalCase identifier,
 // with no generic argument, reference or path qualifier.
 //
-// Deliberately permissive, because it decides only whether to *look* for a declaration - a type
+// Deliberately permissive, because it decides only whether to *look* for a declaration. A type
 // that matches but has no `pub struct` behind it (`AppHandle`, `String`) resolves to no fields and
 // is dropped. That is what keeps this from needing a list of built-in types to exclude, which is
 // the kind of list that goes stale silently.
@@ -140,7 +140,7 @@ export function isCrateStructType(type) {
 //
 // It exists because one real field needs it and a naming rule cannot reach it.
 // `CreateMediaRequest::source_value` is an absolute path for a local import and a URL for a yt-dlp
-// run, so `source_value` is the honest name - and the obvious widenings all misfire. Matching a
+// run, so `source_value` is the honest name, and the obvious widenings all misfire. Matching a
 // `source_` prefix would also catch `source_mode` (a two-value enum) in the very same struct.
 // Renaming the field to `source_path` would make the name lie in the other mode and would churn the
 // generated TypeScript binding.
@@ -149,7 +149,7 @@ export function isCrateStructType(type) {
 // it changes what this script reports, which fails the diff against the declared inventory below.
 //
 // Anchored to the start of the comment and requiring the colon, rather than tested with a bare
-// `includes`. A loose substring test is not a style preference here - it was wrong, and this
+// `includes`. A loose substring test is not a style preference here. It was wrong, and this
 // script's own name is what made it wrong: any comment that points a reader at
 // `verify-command-path-surface.js` contains the marker text, so prose *explaining* the convention
 // silently applied it to whatever field it sat above. Found by removing the real marker and
@@ -160,8 +160,8 @@ const PATH_SURFACE_MARKER = /^\/\/+\s*path-surface\s*:/;
 // The fields of `pub struct <typeName>` that carry a caller-supplied path, in declaration order.
 //
 // This exists because the path surface is not only spelled as bare parameters any more. A command
-// that groups its request into one struct - the shape this codebase deliberately moved toward, since
-// `docs/THREAT-MODEL.md` states that the IPC surface exposes an operation rather than its steps -
+// that groups its request into one struct (the shape this codebase deliberately moved toward, since
+// `docs/THREAT-MODEL.md` states that the IPC surface exposes an operation rather than its steps),
 // puts every one of those paths behind a parameter named something like `request`, which no
 // name-based rule can see. `create_media(app, request: CreateMediaRequest)` is that case: it carries
 // four caller-supplied paths and was reported as taking none.
@@ -235,7 +235,7 @@ export function structPathFields(typeName, sources) {
 
 // Every `#[tauri::command]` in one source file that takes at least one path parameter, as
 // `{ command, parameters }` with the path parameters in declaration order. A command with no path
-// parameter is omitted entirely - the inventory is about the path surface, not about every command.
+// parameter is omitted entirely. The inventory is about the path surface, not about every command.
 //
 // `structSources` are the files searched for a struct declaration when a parameter's type names one;
 // pass none and the function behaves exactly as it did before struct parameters were followed.
@@ -282,8 +282,8 @@ export function extractPathTakingCommands(source, structSources = []) {
 
         // A parameter contributes either its own name (when that name says it carries a path) or,
         // when its type names a struct declared in this crate, that struct's path-carrying fields.
-        // The two are mutually exclusive in practice - a struct parameter is called `request`, not
-        // `request_path` - but the flatMap does not need them to be.
+        // The two are mutually exclusive in practice (a struct parameter is called `request`, not
+        // `request_path`), but the flatMap does not need them to be.
         const parameters = splitParameters(source.slice(openParenAt, closeParenAt)).flatMap(
             (parameter) => {
                 const name = parameterName(parameter);
@@ -354,7 +354,7 @@ export function diffEntries(actual, declared) {
 
 // Compares the surface found in the tree against the declared inventory, by the exact
 // `command(param, param)` spelling, so a path parameter added to an existing command is a change
-// too - not only a whole new command.
+// too, not only a whole new command.
 export function diffSurface(actual, declared) {
     const render = ({ command, parameters }) => `${command}(${parameters.join(", ")})`;
 
@@ -362,12 +362,12 @@ export function diffSurface(actual, declared) {
 }
 
 // The source with its `#[cfg(test)] mod tests { ... }` block removed, so a call site that only
-// exists in a test - or a comment inside one quoting the call - is not read as production code.
+// exists in a test (or a comment inside one quoting the call) is not read as production code.
 //
 // Anchored to `#[cfg(test)]` *followed by* `mod tests`, not to `#[cfg(test)]` alone. That
 // distinction is load-bearing rather than pedantic: `db_backup/mod.rs` carries `#[cfg(test)] use
 // submodule::{...}` lines partway up the file, and truncating there would silently drop everything
-// below - which in a security gate is a false negative, the one direction that must not happen.
+// below, which in a security gate is a false negative, the one direction that must not happen.
 export function stripTestModule(source) {
     const testModuleAt = /#\[cfg\(test\)\]\s*mod\s+tests\s*\{/.exec(source);
 
@@ -383,7 +383,7 @@ export function stripTestModule(source) {
 // `docs/THREAT-MODEL.md` enumerates and a review is actually checked against. It drifted: an audit
 // found `thumbnail::picked::validate_picked_thumbnail_path` applying the rule while the document
 // did not list it, and `thumbnail::temp::validate_temporary_thumbnail_delete_path` stat-ing a
-// caller-supplied path with no refusal at all - the exact failure the prose list is meant to make
+// caller-supplied path with no refusal at all. The exact failure the prose list is meant to make
 // visible, in the one place the command inventory could not see.
 //
 // The enclosing function is found by scanning back for the nearest `fn` declaration, which is
@@ -452,7 +452,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
 
 // The declared path surface. Every entry is a command that takes a path from the caller; how each
 // one satisfies the rule (a network refusal, the library guard, a strictly-relative path that
-// cannot express an absolute one, or a documented exception) is recorded in docs/THREAT-MODEL.md, not here -
+// cannot express an absolute one, or a documented exception) is recorded in docs/THREAT-MODEL.md, not here.
 // duplicating it would give this file a second job it cannot keep honest.
 //
 // Regenerate with: node scripts/verify-command-path-surface.js --print
@@ -501,7 +501,7 @@ export function readCommandFiles(commandsDir) {
 // that consumes it, not beside the command that receives it.
 //
 // `name` is the path relative to `base` in posix spelling, so the refusal-site inventory below reads
-// the same on every platform - a Windows separator would otherwise put `services\library\guard.rs`
+// the same on every platform. A Windows separator would otherwise put `services\library\guard.rs`
 // in a list a Linux CI run spells with slashes.
 export function readRustSources(root, base = root) {
     return readdirSync(root, { withFileTypes: true })

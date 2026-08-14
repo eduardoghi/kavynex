@@ -103,7 +103,7 @@ describe("patternToRegExp", () => {
     });
 
     it("matches the rpm shape, whose star covers a two-part version", () => {
-        // `kavynex-1.2.0-1.x86_64.rpm` - the rpm bundler appends its own release number, so this is
+        // `kavynex-1.2.0-1.x86_64.rpm`. The rpm bundler appends its own release number, so this is
         // the one name where the placeholder spans more than the package version.
         expect(patternToRegExp("kavynex-*.x86_64.rpm").test("kavynex-1.2.0-1.x86_64.rpm")).toBe(
             true
@@ -112,7 +112,7 @@ describe("patternToRegExp", () => {
 
     it("does not match an asset that merely starts with the name", () => {
         // The end anchor, which is what keeps every installer pattern from also claiming its own
-        // updater signature - and a `.deb` pattern that matched `.deb.sig` would make the reverse
+        // updater signature, and a `.deb` pattern that matched `.deb.sig` would make the reverse
         // check under-report by exactly the assets it exists to find.
         expect(patternToRegExp("kavynex_*_amd64.deb").test("kavynex_1.2.0_amd64.deb.sig")).toBe(
             false

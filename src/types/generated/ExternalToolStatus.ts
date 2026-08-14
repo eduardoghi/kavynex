@@ -3,7 +3,7 @@
 export type ExternalToolStatus = { path: string, version: string, healthy: boolean, 
 /**
  * Days between the release this version names and today, when the version string encodes a
- * date - yt-dlp's versions are dates (`2026.07.01`), ffmpeg's are not, so this is `None` for
+ * date. Yt-dlp's versions are dates (`2026.07.01`), ffmpeg's are not, so this is `None` for
  * ffmpeg and for anything unparseable.
  *
  * Deliberately a fact rather than a verdict: whether an age is worth warning about is a

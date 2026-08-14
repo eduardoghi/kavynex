@@ -51,7 +51,7 @@ export async function listYtDlpFormats(
 
 // The download itself is no longer invoked from here. It is a step of a media creation, and that
 // whole sequence runs in the backend now (`create_media`), so exposing the step would let a caller
-// write a file into the library with no row and no crash marker behind it - the state the marker
+// write a file into the library with no row and no crash marker behind it. The state the marker
 // exists to bound. What remains in this file are the calls that are genuinely their own operation:
 // listing formats, cancelling a run, and fetching comments for a media that already exists.
 

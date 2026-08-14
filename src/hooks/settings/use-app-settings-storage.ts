@@ -80,7 +80,7 @@ export async function persistSettings(settings: AppSettings): Promise<void> {
 //
 // `app_settings` is written as a whole row: each setter loads all four values, replaces one, and
 // writes them all back. Run two of those concurrently and both read the same pre-change snapshot,
-// so the second write reverts the first one's field. That is not theoretical - the Privacy and
+// so the second write reverts the first one's field. That is not theoretical. The Privacy and
 // Application-update toggles live in the same modal, a double-click apart, and the callers are
 // fire-and-forget (nothing awaits them, so nothing else orders the writes). One of the fields at
 // risk is `loadRemoteImages`, which decides whether the player talks to Google's CDNs at all.

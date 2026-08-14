@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn youtube_ref_for_log_keeps_only_the_first_youtu_be_path_segment() {
         // A youtu.be link with extra path segments must reduce to just the video id (the first
-        // segment), produced by the dedicated youtu.be branch - not the host+path fallback,
+        // segment), produced by the dedicated youtu.be branch, not the host+path fallback,
         // which would keep the trailing segments. This pins the branch to the value only it
         // yields, so dropping the branch (or its non-empty-id guard) changes the result.
         assert_eq!(

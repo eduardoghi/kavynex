@@ -66,7 +66,7 @@ function toLogLines(texts: string[], startId = 0): YtDlpLogLine[] {
 
 // The next id to assign. Ids are monotonic and only ever appended at the tail, so the last line
 // carries the highest one; deriving from it (rather than a mutable counter) keeps this function
-// pure - safe to re-run under StrictMode - and survives the front-trim below, since a line's id
+// pure (safe to re-run under StrictMode), and survives the front-trim below, since a line's id
 // never changes once assigned.
 function nextLogId(lines: YtDlpLogLine[]): number {
     const lastLine = lines[lines.length - 1];

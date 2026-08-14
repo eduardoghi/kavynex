@@ -6,8 +6,7 @@ import { isValidSemver, replaceCargoVersion } from "./version-utils.js";
 
 // Rewrites the app version in package.json, tauri.conf.json and Cargo.toml (and regenerates
 // Cargo.lock) to `newVersion`, returning a process exit code. The filesystem and cargo are injected
-// (`readFile`, `writeFile`, `runCargoUpdate`) and logging goes through `log`/`error`, so the glue -
-// the write sequence, the missing-version-line branch, the cargo-failure handling - is unit-tested
+// (`readFile`, `writeFile`, `runCargoUpdate`) and logging goes through `log`/`error`, so the glue (// the write sequence, the missing-version-line branch, the cargo-failure handling) is unit-tested
 // without touching real files; version-utils.js already covers the semver/regex primitives.
 export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpdate, log, error }) {
     if (!newVersion) {
@@ -36,7 +35,7 @@ export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpd
     const tauriConf = JSON.parse(readFile(tauriConfPath));
     tauriConf.version = newVersion;
 
-    // src-tauri/Cargo.toml - only the [package] version line (full X.Y.Z semver) is touched.
+    // src-tauri/Cargo.toml, only the [package] version line (full X.Y.Z semver) is touched.
     const cargoPath = join(root, "src-tauri", "Cargo.toml");
     const cargo = readFile(cargoPath);
     const updatedCargo = replaceCargoVersion(cargo, newVersion);
@@ -45,7 +44,7 @@ export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpd
         return 1;
     }
 
-    // Every target validated above - now write them all.
+    // Every target validated above. Now write them all.
     writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
     log(`package.json     ${oldVersion} -> ${newVersion}`);
 

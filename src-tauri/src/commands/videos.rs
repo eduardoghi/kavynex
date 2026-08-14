@@ -58,7 +58,7 @@ pub async fn list_media_page(
 // The validation `insert_media` carried moved with it, into `repo::insert_media`, rather than being
 // deleted along with the command. It belongs at the write boundary rather than at the IPC one: as a
 // command-layer check it applied to arriving over IPC, which left the one remaining caller trusted
-// to have validated on its own - and it mostly had, except that a yt-dlp download's `media_type` is
+// to have validated on its own, and it mostly had, except that a yt-dlp download's `media_type` is
 // the download's own value and never the normalized request's.
 
 #[tauri::command]
@@ -88,7 +88,7 @@ pub async fn mark_media_as_unwatched(db: State<'_, Db>, media_id: i64) -> AppRes
 ///
 /// The probe runs after `create_media` returns, not inside it: it decodes the file through a media
 /// element, which is a capability the webview has and the backend would have to re-implement over
-/// FFmpeg to match. Keeping it outside also keeps it off the creation's critical path - it used to
+/// FFmpeg to match. Keeping it outside also keeps it off the creation's critical path. It used to
 /// sit between the crash marker and the insert, where a source that never fired `loadedmetadata` nor
 /// `error` would hang the whole creation with the marker on disk.
 ///
@@ -127,7 +127,7 @@ pub async fn get_media_repository_stats(db: State<'_, Db>) -> AppResult<MediaRep
 
 // `list_media_integrity_references` is deliberately not a command. It existed so the renderer
 // could assemble the path lists `check_library_integrity` used to take, and that resolution moved
-// into that command - which holds the same pool and is the only caller. Re-exposing it would put
+// into that command, which holds the same pool and is the only caller. Re-exposing it would put
 // every stored path back on the IPC surface for a step rather than an operation, which is the rule
 // `create_media` established when the creation sequence stopped being seven calls.
 
@@ -258,7 +258,7 @@ mod tests {
     // into `services::video_repository`'s own test module: the trimmed and blank youtube id, the
     // unmanaged file path, the empty title and the invalid media type. They assert the same
     // behaviors against the function that now performs them, which is also the one every caller
-    // reaches - the command layer was never the only way in, it was just the only one being tested.
+    // reaches. The command layer was never the only way in, it was just the only one being tested.
 
     #[test]
     fn update_media_title_rejects_an_empty_title_over_ipc() {
@@ -378,8 +378,7 @@ mod tests {
         assert_eq!(stats["total_audio_media"], 0);
     }
 
-    // The IPC test for `list_media_integrity_references` went with the command. What it asserted -
-    // that the query returns the stored paths and the channel each belongs to - is covered by
+    // The IPC test for `list_media_integrity_references` went with the command. What it asserted (// that the query returns the stored paths and the channel each belongs to) is covered by
     // `services::video_repository`'s own test, which drives the function directly, and the shape
     // the integrity check needs out of it is pinned in `library::integrity`.
 }

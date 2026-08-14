@@ -78,7 +78,7 @@ export function useMediaActions({
     // Mirror the delete flag into a ref so requestDeleteMedia/closeDeleteMediaModal can check the
     // re-entrancy guard without depending on `isDeletingMedia`, which flips false->true->false
     // around every delete. Both callbacks flow down to onRequestDelete on every (memoized)
-    // MediaCard, so recreating them on each delete would re-render the whole virtualized grid - the
+    // MediaCard, so recreating them on each delete would re-render the whole virtualized grid. The
     // exact churn media-card.tsx's memoization comment says it avoids. Same activeMediaRef pattern
     // used just below for the active media.
     const isDeletingMediaRef = useRef(isDeletingMedia);
@@ -90,21 +90,21 @@ export function useMediaActions({
     // second of two quick toggles on *different* cards a silent no-op: useAsyncFlag's runWithFlag
     // returns undefined without throwing when it is already running, and no component renders a
     // busy state for it, so the click just vanished. Keying by media id keeps the re-entrancy
-    // guard where it belongs - one row cannot be toggled twice concurrently - while leaving
+    // guard where it belongs (one row cannot be toggled twice concurrently), while leaving
     // independent rows independent.
     const { inFlight: watchedActionInFlight, runFor: runWatchedActionFor } = usePerIdAsyncFlag();
 
     // Refreshing comments is per media for the same reason: the player's Back button is live while
     // a refresh is in flight, so opening another media and refreshing it is an ordinary sequence,
-    // and one shared flag silently dropped that second refresh - the button responded, the
+    // and one shared flag silently dropped that second refresh. The button responded, the
     // comments stayed stale, and nothing said so.
     const { inFlight: commentsInFlight, runFor: runRefreshCommentsFor } = usePerIdAsyncFlag();
     const { isRunning: isUpdatingTitle, runWithFlag: runUpdateTitleAction } = useAsyncFlag();
 
     // A ref that always holds the latest active media so the callbacks below can read it
     // without listing the per-render activeMedia object as a dependency. Depending on
-    // activeMedia recreated these callbacks - and thus every per-card handler derived from
-    // them in Home - on any player change (opening a video, editing a title), which
+    // activeMedia recreated these callbacks (and thus every per-card handler derived from
+    // them in Home), on any player change (opening a video, editing a title), which
     // re-rendered the entire media grid and defeated the MediaCard memoization. The ref stays
     // current, so the callbacks can spread the up-to-date media while remaining stable.
     const activeMediaRef = useRef(mediaPlayer.activeMedia);
@@ -265,7 +265,7 @@ export function useMediaActions({
 
                     // The refresh returned no comments, so the saved comments were kept
                     // untouched. This is not a failure (a real extraction problem surfaces as
-                    // a thrown error) - tell the user with a neutral notice and leave the
+                    // a thrown error). Tell the user with a neutral notice and leave the
                     // stored counts alone.
                     if (!result.updated) {
                         onNotice(
@@ -323,7 +323,7 @@ export function useMediaActions({
             // effort: if it already finished, cancelMediaDownload rejects with INVALID_RUN_ID (the
             // registry no longer has this run), which is expected here and not surfaced to the
             // user. Any other failure means the cancel signal did not reach the still-running
-            // backup - quietly logging that (the old behavior) left the user believing Cancel
+            // backup. Quietly logging that (the old behavior) left the user believing Cancel
             // worked while the download kept running, so it gets a non-blocking notice instead.
             try {
                 await cancelMediaDownload(commentsRefreshRunId(mediaId));
@@ -360,7 +360,7 @@ export function useMediaActions({
                         )
                     );
 
-                    // The row is updated in place rather than reloaded, deliberately - a rename
+                    // The row is updated in place rather than reloaded, deliberately. A rename
                     // should not throw away the pages the user scrolled. What that costs is that
                     // the loaded list and the backend's sorted set now disagree: every ORDER BY
                     // ties on `title_normalized`, so a rename moves the row in any sort category,

@@ -11,7 +11,7 @@ type EmptyStateCardProps = {
     shellSurface: string;
 };
 
-// A quiet, focused first-run empty state: one icon, a short line, and a single primary action -
+// A quiet, focused first-run empty state: one icon, a short line, and a single primary action.
 // deliberately not a grid of numbered feature cards, which reads as marketing rather than an app.
 export function EmptyStateCard({
     title,

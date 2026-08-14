@@ -86,7 +86,7 @@ export function useHomeMediaActions({
         async (mediaId: number, progressSeconds: number): Promise<void> => {
             // Playback progress does not affect anything the diagnostics dialog reports
             // (library integrity, tool status, database counts), so this deliberately skips
-            // the diagnostics refresh the other actions run - otherwise the periodic saves the
+            // the diagnostics refresh the other actions run. Otherwise the periodic saves the
             // player makes during playback would reload an open diagnostics dialog every few
             // seconds.
             await saveMediaProgressAction(mediaId, progressSeconds);

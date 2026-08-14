@@ -11,7 +11,7 @@
 //! from, the library takes the shared (read) side for the duration of that single operation;
 //! a migration takes the exclusive (write) side around its copy/remove phase. So a migration
 //! waits for the in-flight mutations to finish and blocks new ones until it completes, and a
-//! mutation started while a migration runs waits for it - the copy/remove phase can never
+//! mutation started while a migration runs waits for it. The copy/remove phase can never
 //! overlap a library write.
 //!
 //! The gate guards no data (`RwLock<()>`), only ordering, so a prior panic must never wedge
@@ -20,7 +20,7 @@
 //!
 //! IMPORTANT: only leaf filesystem functions take the read guard, and only for the extent of a
 //! single fs call. A guarded function must never call another guarded function while holding the
-//! guard - a nested read acquisition can deadlock against a waiting writer (`std::sync::RwLock`
+//! guard. A nested read acquisition can deadlock against a waiting writer (`std::sync::RwLock`
 //! makes no reentrancy guarantee). Acquiring the guard once per file inside a loop (release
 //! between iterations) is fine; nesting is not. In debug and test builds this rule is enforced by
 //! a per-thread depth check that panics at the offending acquisition (see `library_read_guard`),
@@ -43,7 +43,7 @@ pub struct LibraryReadGuard {
 
 // How many library read guards the current thread holds. The no-nesting rule means this never
 // exceeds 1: the acquire path debug-asserts it was 0 before incrementing, and the guard's Drop
-// decrements it. Debug/test builds only - a release build carries no counter and no Drop work.
+// decrements it. Debug/test builds only. A release build carries no counter and no Drop work.
 #[cfg(debug_assertions)]
 thread_local! {
     static READ_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -61,7 +61,7 @@ impl Drop for LibraryReadGuard {
 ///
 /// The module's no-nesting rule (a guarded leaf function must never acquire a second read guard
 /// while holding one) is otherwise convention-only, and violating it can deadlock against a
-/// waiting migration - `std::sync::RwLock` is write-preferring and makes no reentrancy guarantee,
+/// waiting migration. `std::sync::RwLock` is write-preferring and makes no reentrancy guarantee,
 /// so the second read blocks behind the queued writer that the first read is blocking. The
 /// debug-only depth check below turns that into a loud, located panic at the offending
 /// acquisition instead of a later hang with no pointer to the cause. It compiles to nothing in a
@@ -131,12 +131,12 @@ mod tests {
 
     #[test]
     fn a_waiting_writer_does_not_deadlock_the_guarded_leaf_functions() {
-        // The module's rule - a guarded function must never call another one while holding the
-        // guard - is what keeps this gate from wedging the app, and it is enforced only by
+        // The module's rule (a guarded function must never call another one while holding the
+        // guard) is what keeps this gate from wedging the app, and it is enforced only by
         // convention. std::sync::RwLock makes no reentrancy guarantee and is write-preferring on
         // most platforms: a second read acquired while a writer waits can block forever, and the
         // symptom (every library operation hangs) points nowhere near the nested call that caused
-        // it. This pins the shape the real call sites rely on - a loop taking the guard once per
+        // it. This pins the shape the real call sites rely on. A loop taking the guard once per
         // file, released between iterations, while a migration is trying to get in.
         let (started, rx) = mpsc::channel();
         let (release, wait_to_release) = mpsc::channel::<()>();
@@ -155,8 +155,8 @@ mod tests {
         drop(held);
 
         // With the writer queued, a sequence of independent per-file acquisitions must still each
-        // complete rather than deadlock. They may wait for the migration - that is the point of
-        // the gate - so this only requires that the whole sequence finishes.
+        // complete rather than deadlock. They may wait for the migration (that is the point of
+        // the gate), so this only requires that the whole sequence finishes.
         let sequential = thread::spawn(|| {
             for _ in 0..3 {
                 let _guard = library_read_guard();

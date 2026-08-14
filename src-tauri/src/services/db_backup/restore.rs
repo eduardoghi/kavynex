@@ -58,13 +58,13 @@ pub(super) fn restore_staging_path(db_path: &Path) -> PathBuf {
 /// staged snapshot into place.
 ///
 /// That window is only two renames wide, but if the process dies inside it the database file is
-/// simply absent - and the pool opens with `create_if_missing(true)`, so the next launch would
+/// simply absent, and the pool opens with `create_if_missing(true)`, so the next launch would
 /// create a fresh, empty one and present an empty library while the user's data sits untouched in
 /// `.restore.tmp` (and `.corrupt`) right next to it. Nothing would say so: the app would look like
 /// a first run. Recoverable by hand, but only by someone who knows to look.
 ///
 /// Deliberately narrow: it acts only when the database is missing *and* a staging file is present,
-/// which is exactly the interrupted state - a normal launch has a database and never reaches the
+/// which is exactly the interrupted state. A normal launch has a database and never reaches the
 /// rename. Runs at startup before the pool can open, and before any pending import is applied, so
 /// an import staged on top of a restore still sets the restored database aside as its undo
 /// snapshot rather than nothing. Returns whether a restore was resumed.
@@ -103,7 +103,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     // function reads. The periodic backup scheduler starts at launch, and a restore runs during that
     // same window (it is only reachable after the pool failed to open), so without sharing this lock
     // a rotation in flight could make a candidate vanish between backup_candidates' exists() filter
-    // and the quick_check/copy on it - failing a recovery exactly when it matters most.
+    // and the quick_check/copy on it. Failing a recovery exactly when it matters most.
     let _guard = BACKUP_IN_PROGRESS.lock().await;
 
     let mut chosen: Option<PathBuf> = None;
@@ -159,7 +159,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
                 .map_err(|error| backup_error("failed to stage restored database", error))?;
             // Flush the staged bytes to disk before the rename below. The rename is atomic against a
             // process crash, but without this a power loss could leave a truncated staged file that
-            // the rename then makes the live database - and resume_interrupted_restore would finish
+            // the rename then makes the live database, and resume_interrupted_restore would finish
             // that rename on the next launch, trusting the staged file. This matches copy_file_atomic.
             crate::services::filesystem::fsync_file(&copy_dest)
         })
@@ -172,7 +172,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     // needs diagnosing.
     //
     // Move it under a scratch name *before* rotating. Rotating first would shift the existing
-    // generations - dropping the oldest and emptying the `.corrupt` slot - and a rename that then
+    // generations (dropping the oldest and emptying the `.corrupt` slot), and a rename that then
     // failed would leave that loss with nothing put in its place, so a couple of failed restores
     // would evict every earlier snapshot while adding none. Rotating only once the database is
     // safely out of the way keeps the generations intact on failure.

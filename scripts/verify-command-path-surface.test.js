@@ -141,7 +141,7 @@ describe("isCrateStructType", () => {
         // A generic, a reference, a qualified path and a primitive are all types no `pub struct
         // <name>` lookup should be attempted for. `String` is deliberately absent from this list:
         // it matches the shape, and is rejected one step later by simply having no declaration in
-        // the tree - which is what keeps this from needing a built-in list that would go stale.
+        // the tree, which is what keeps this from needing a built-in list that would go stale.
         for (const type of [
             "State<'_, Db>",
             "Option<String>",
@@ -187,7 +187,7 @@ describe("structPathFields", () => {
     it("does not let a marker drift onto the field below the one it was written for", () => {
         // The marker applies to the field its comment block sits on. If a plain field intervened
         // and still picked it up, any struct with one marked field would report every field after
-        // it - which would read as a much larger surface than there is.
+        // it, which would read as a much larger surface than there is.
         const source = file(`
 pub struct Drifting {
     // path-surface: the marked one.
@@ -201,7 +201,7 @@ pub struct Drifting {
 
     it("does not read prose mentioning the checker's filename as a marker", () => {
         // This was a real bug in the first version of the marker, not a hypothetical. The test was
-        // `includes("path-surface")`, and the checker is called `verify-command-path-surface.js` -
+        // `includes("path-surface")`, and the checker is called `verify-command-path-surface.js`.
         // so any comment pointing a reader at it contained the marker text, and prose *explaining*
         // the convention applied it to whatever field it happened to sit above. The marker is a
         // directive now, anchored and requiring its colon.
@@ -274,7 +274,7 @@ describe("extractPathTakingCommands", () => {
     it("follows a struct-typed parameter into the paths it carries", () => {
         // The blind spot this closes, and the one that mattered most: `create_media` groups its
         // whole request into one struct, so matching on parameter names alone reported the app's
-        // largest write command as taking no path at all. It is not an exotic shape either - it is
+        // largest write command as taking no path at all. It is not an exotic shape either. It is
         // the direction this codebase deliberately moved in when the seven media-creation commands
         // became one, so every future command that groups its steps inherits it.
         const source = command("create_media(app: AppHandle, request: CreateMediaRequest)");
@@ -382,7 +382,7 @@ describe("stripTestModule", () => {
     it("does not truncate at a #[cfg(test)] that is not the test module", () => {
         // The direction that matters, and the reason the pattern requires `mod tests` rather than
         // matching the attribute alone: `db_backup/mod.rs` carries `#[cfg(test)] use ...` partway up
-        // the file, and truncating there would drop every call site below it - a false negative in a
+        // the file, and truncating there would drop every call site below it. A false negative in a
         // gate whose whole job is to notice a missing guard.
         const source = `#[cfg(test)]\nuse submodule::helper;\n\nfn later() {\n    is_network_path(x);\n}\n`;
 
@@ -415,8 +415,8 @@ describe("extractNetworkRefusalSites", () => {
     });
 
     it("does not read prose about the rule as an application of it", () => {
-        // Comment lines quoting the call are common in this codebase - the rule is explained where
-        // it is applied - so a doc comment naming `is_network_path(configured)` must not add a site.
+        // Comment lines quoting the call are common in this codebase (the rule is explained where
+        // it is applied), so a doc comment naming `is_network_path(configured)` must not add a site.
         const source = `fn documented() {\n    // See is_network_path(value) for why this comes first.\n    let x = 1;\n}\n`;
 
         expect(extractNetworkRefusalSites("utils/path.rs", source)).toEqual([]);

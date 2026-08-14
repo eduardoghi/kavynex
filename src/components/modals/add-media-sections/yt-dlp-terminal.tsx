@@ -14,7 +14,7 @@ type YtDlpTerminalProps = {
 // plain scrolling element it owns, so this is applied to that element directly.
 //
 // Scales with the viewport rather than sitting at a fixed 320px: the modal around it is now sized
-// off the viewport too, and this is the element that actually wants the extra room - it is what the
+// off the viewport too, and this is the element that actually wants the extra room. It is what the
 // user watches for the minutes a download runs. `clamp` keeps it a definite computed height, which
 // is what the virtualizer measures the scroll element for, so virtualization is unaffected. The
 // lower bound keeps it usable on a short window; the upper one stops it from crowding out the form
@@ -23,7 +23,7 @@ const TERMINAL_HEIGHT = "clamp(220px, 32vh, 460px)";
 
 // First guess at a log row's height (one line of the 13px/1.6 monospace text below). Real heights
 // are measured after mount via measureElement, so this only shapes the first paint's scrollbar
-// estimate - a wrapped long line is measured at its true height, not this one.
+// estimate. A wrapped long line is measured at its true height, not this one.
 const ESTIMATED_LINE_HEIGHT = 21;
 
 export function YtDlpTerminal({
@@ -34,8 +34,8 @@ export function YtDlpTerminal({
 }: YtDlpTerminalProps): JSX.Element | null {
     const terminalViewportRef = useRef<HTMLDivElement | null>(null);
 
-    // Only the rows near the viewport are in the DOM. The log is a hot path - a line arrives every
-    // few milliseconds during a download, with the modal open and the user watching - and the
+    // Only the rows near the viewport are in the DOM. The log is a hot path (a line arrives every
+    // few milliseconds during a download, with the modal open and the user watching), and the
     // buffer holds up to 500 of them, so rendering the whole scrollback meant re-rendering hundreds
     // of nodes on every append. Matches the virtualization the media grid, comments panel and live
     // chat replay already use.

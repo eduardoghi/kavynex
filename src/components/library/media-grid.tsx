@@ -33,7 +33,7 @@ type MediaGridProps = {
     onOpenSourceInYoutube?: (media: MediaRow) => void;
     onMarkWatched?: (media: MediaRow) => void;
     onMarkUnwatched?: (media: MediaRow) => void;
-    // See MediaLibraryController.watchedActionInFlight - resolved per card below so a card only
+    // See MediaLibraryController.watchedActionInFlight. Resolved per card below so a card only
     // shows its own watch/unwatch action as busy while that row's toggle is in flight.
     watchedActionInFlight?: ReadonlySet<number>;
     onEditTitle?: (media: MediaRow) => void;
@@ -52,7 +52,7 @@ const GRID_SCROLLBAR_GUTTER = GRID_GAP;
 
 // Roughly what sits above the grid inside the viewport: the app shell's padding, the channel
 // header, the filter row and the grid's own title. Deliberately an approximation rather than a
-// measurement - reading it would mean a layout query on a container that re-renders on every scroll
+// measurement. Reading it would mean a layout query on a container that re-renders on every scroll
 // tick, which is the cost this file already refuses to pay for row heights (see measureFirstRow).
 // Being a little wrong costs a few pixels of outer page scroll; measuring costs a reflow per frame.
 const GRID_CHROME_ABOVE = 300;
@@ -63,7 +63,7 @@ const GRID_CHROME_ABOVE = 300;
 // fixed fraction leaves viewport unused that a fourth row would have filled.
 //
 // The floor is one full card row plus its gap. Below that the inner area cannot show a single
-// complete card, and the outer page scroll ends up doing all the work - which is the state the
+// complete card, and the outer page scroll ends up doing all the work, which is the state the
 // nested scroll container exists to avoid.
 const GRID_HEIGHT = `max(${MEDIA_CARD_HEIGHT + GRID_GAP}px, calc(100vh - ${GRID_CHROME_ABOVE}px))`;
 
@@ -76,7 +76,7 @@ const MEDIA_HIGHLIGHT_DURATION_MS = 2600;
 // A card's thumbnail is drawn from the display-sized derivative, which is capped at
 // DISPLAY_THUMBNAIL_MAX_WIDTH (640) in services/thumbnail/display.rs. Stopping at four columns meant
 // a 2560-wide window gave each card roughly 620px and a 3840-wide one gave it well past the cap, so
-// the largest monitors were the ones being served an upscaled image - the opposite of what the
+// the largest monitors were the ones being served an upscaled image. The opposite of what the
 // derivative cache is for. Adding columns keeps the drawn width under the cap and fits more of the
 // library on screen, which is what the extra width is for.
 const MAX_CARD_WIDTH = 420;
@@ -138,13 +138,13 @@ export function MediaGrid({
 
     // Measures the first row's actual height so the virtualizer's row estimate can be corrected
     // once real cards are on screen. Memoized so the ref callback keeps a stable identity across
-    // renders - an inline arrow function here would be reassigned on every scroll-driven
+    // renders. An inline arrow function here would be reassigned on every scroll-driven
     // re-render, forcing React to call it again and re-run getBoundingClientRect (a synchronous
     // layout reflow) even though the measured node has not changed.
     //
     // This one measurement is also why the rows below deliberately do NOT take the virtualizer's
-    // `measureElement` ref. Rows are uniform by construction - each is exactly one card tall, and
-    // MEDIA_CARD_HEIGHT pins the card with the thumbnail, title and footer all fixed - so the only
+    // `measureElement` ref. Rows are uniform by construction (each is exactly one card tall, and
+    // MEDIA_CARD_HEIGHT pins the card with the thumbnail, title and footer all fixed), so the only
     // thing that can move the real height is the root font size behind `rem()`, which this catches
     // once. `measureElement` would instead attach a ResizeObserver to every rendered row and read
     // layout as rows mount and unmount during a scroll, to re-derive a height that is already known
@@ -180,7 +180,7 @@ export function MediaGrid({
     // Display-sized copies of the thumbnails on screen, so a card decodes a few hundred pixels
     // rather than the stored file's full resolution. Resolved for every loaded item rather than only
     // the virtualized window: the window changes on every scroll tick, and asking per tick would
-    // turn a scroll into a stream of IPC calls. Purely an optimization - a path with no entry here
+    // turn a scroll into a stream of IPC calls. Purely an optimization. A path with no entry here
     // renders the stored thumbnail, which is what every card did before this existed.
     const displayThumbnails = useDisplayThumbnails(
         useMemo(() => items.map((item) => item.thumbnail_path), [items]),
@@ -203,8 +203,8 @@ export function MediaGrid({
         estimateSize: () => rowHeight + GRID_GAP,
         // Every row is exactly one card tall (MEDIA_CARD_HEIGHT, with the thumbnail, title and
         // footer all pinned), so estimateSize above is the real height rather than a guess and each
-        // overscanned row is a full row of cards that must be built, laid out and - the dominant
-        // cost - have its thumbnails decoded. A YouTube thumbnail decodes to width * height * 4
+        // overscanned row is a full row of cards that must be built, laid out and (the dominant
+        // cost) have its thumbnails decoded. A YouTube thumbnail decodes to width * height * 4
         // bytes whatever its file size, so each extra row of four is several megabytes of bitmap
         // held for rows the user cannot see. Two is enough to cover a fast flick without paying for
         // eight off-screen rows.
@@ -217,7 +217,7 @@ export function MediaGrid({
     // effect below reads out of the virtualizer. Depending on the number rather than on
     // `virtualRows` is what keeps that effect from re-running on frames where nothing it cares
     // about moved: `getVirtualItems()` returns a freshly built array on every render, and this
-    // component re-renders on every scroll tick - that is what `useVirtualizer` does - so the effect
+    // component re-renders on every scroll tick (that is what `useVirtualizer` does), so the effect
     // was running, re-evaluating its four guards and returning, once per frame of every scroll.
     const lastVisibleRowIndex = virtualRows[virtualRows.length - 1]?.index ?? -1;
 
@@ -236,7 +236,7 @@ export function MediaGrid({
         }
     }, [lastVisibleRowIndex, isVisible, hasMore, isLoadingMore, onLoadMore, rows.length]);
 
-    // Jump to (and briefly highlight) a media requested from elsewhere - e.g. a "missing media"
+    // Jump to (and briefly highlight) a media requested from elsewhere. E.g. a "missing media"
     // path clicked in Diagnostics. The target channel's media loads asynchronously, so this runs
     // again as `items` fills in; it acts only once the target is present, then clears the request.
     // onFocusHandled clears `focusMediaId` upstream, which re-runs this with a null id (a no-op);
@@ -421,7 +421,7 @@ export function MediaGrid({
                                                     role="listitem"
                                                     // -1 is the ARIA value for "the full set is
                                                     // larger than what is rendered, and its size
-                                                    // is not known here" - the grid only receives
+                                                    // is not known here". The grid only receives
                                                     // the pages loaded so far. Once the last page
                                                     // is in, the real count is known.
                                                     aria-setsize={hasMore ? -1 : items.length}

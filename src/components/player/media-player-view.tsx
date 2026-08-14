@@ -16,7 +16,7 @@ import { useMediaLiveChat } from "../../hooks/media/use-media-live-chat";
 import { usePlayerKeyboardShortcuts } from "../../hooks/media/use-player-keyboard-shortcuts";
 import { CommentsPanel } from "./comments-panel";
 // Only a media with a backed-up live chat renders this, so the replay panel and everything under it
-// stay out of the first-paint bundle for every library that has none - and out of the player itself
+// stay out of the first-paint bundle for every library that has none, and out of the player itself
 // until one is opened. Unlike the two lazy modals in `home-modals.tsx` this needs no mount latch:
 // the caller already renders it behind `hasLiveChat`, so a static import here is what would have
 // pulled the chunk in eagerly.
@@ -77,8 +77,8 @@ export function MediaPlayerView({
     const [playerElement, setPlayerElement] = useState<HTMLMediaElement | null>(null);
     const [hasPlaybackError, setHasPlaybackError] = useState(false);
 
-    // Move focus into the player when it opens - the library grid stays mounted but hidden behind
-    // it, so focus would otherwise be dropped on <body> - and restore it to whatever opened the
+    // Move focus into the player when it opens (the library grid stays mounted but hidden behind
+    // it, so focus would otherwise be dropped on <body>), and restore it to whatever opened the
     // player (the originating card) when it closes, if that element is still around. Runs once for
     // the player's lifetime; the back control is the natural landing spot.
     useEffect(() => {
@@ -92,7 +92,7 @@ export function MediaPlayerView({
                 // even for a mouse user who never saw one, which reads as a stray violet highlight.
                 // Keyboard navigation still shows the ring normally on the next key press.
                 //
-                // `focusVisible: false` says exactly that, but only Firefox implements it - Chromium
+                // `focusVisible: false` says exactly that, but only Firefox implements it. Chromium
                 // and WebKit, which is every engine this app ships on, accept and ignore the option,
                 // so on its own it did nothing and the ring appeared anyway. The option stays for
                 // the engines that honor it; suppressFocusRingOnce is what carries it everywhere

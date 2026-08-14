@@ -40,7 +40,7 @@ pub async fn download_channel_avatar_from_handle(
 /// not cached yet (see `services::thumbnail::display`).
 ///
 /// Each entry answers the corresponding `relative_paths` entry, and "no derivative" is an ordinary
-/// answer rather than a failure - the caller renders the stored thumbnail for it, which is what it
+/// answer rather than a failure. The caller renders the stored thumbnail for it, which is what it
 /// did before this existed. The command as a whole therefore only fails if the library path itself
 /// does not check out.
 ///
@@ -52,8 +52,8 @@ pub async fn download_channel_avatar_from_handle(
 /// so a caller cannot point this at a directory the user has not configured.
 ///
 /// Only one of these runs at a time. The per-call budgets inside the service bound what one call may
-/// do and say nothing about how many are doing it, and this request is fire-and-forget - the grid
-/// asks once per page and merely discards a result it no longer wants - so nothing else stops a
+/// do and say nothing about how many are doing it, and this request is fire-and-forget (the grid
+/// asks once per page and merely discards a result it no longer wants), so nothing else stops a
 /// scroll from stacking one long-running occupant of the blocking pool per page. A call that finds
 /// the slot taken answers `budgetSpent` for every path it was given, which is the answer the caller
 /// already re-asks about; see `services::thumbnail::display::try_reserve_resolve_slot`.
@@ -68,7 +68,7 @@ pub async fn resolve_display_thumbnails(
     // is the same answer for a valid and an invalid library path, and no path is touched either way.
     //
     // `all_retryable` bounds the answer by the module's own per-call ceiling rather than by the
-    // number the caller sent, which this exit used to inherit - the one place in the module that did.
+    // number the caller sent, which this exit used to inherit. The one place in the module that did.
     let Some(_resolve_slot) = display::try_reserve_resolve_slot() else {
         return Ok(display::all_retryable(relative_paths.len()));
     };

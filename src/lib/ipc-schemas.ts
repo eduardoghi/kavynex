@@ -3,15 +3,15 @@
 // `invokeCommand` (tauri-client.ts) is typed against `TauriCommandReturns`, and the ts-rs bindings
 // plus the CI "generated bindings are up to date" check keep those types in lockstep with the Rust
 // structs. That is a *compile-time* guarantee: it proves the code was built against the right shape,
-// not that a given response actually has it at runtime. These schemas add the runtime half - each
+// not that a given response actually has it at runtime. These schemas add the runtime half. Each
 // structured response is parsed against a zod schema mirroring its type, so a malformed payload
 // (a backend bug, a shape surprise on an edge case) fails loudly at the seam with a clear message
 // instead of flowing on as an object of the wrong shape and surfacing as a confusing failure deep
 // in a component.
 //
 // The registry below is typed `z.ZodType<TauriCommandReturns[K]>` per command, so a schema that
-// stops matching its command's declared return type - a dropped field, a wrong nullability, a wrong
-// element type - fails to compile here. That ties every schema to the generated types the same way
+// stops matching its command's declared return type (a dropped field, a wrong nullability, a wrong
+// element type) fails to compile here. That ties every schema to the generated types the same way
 // the command map ties every result type to its command, so the runtime schemas cannot silently
 // drift from the shapes they validate.
 //
@@ -222,7 +222,7 @@ const mediaRepositoryStatsSchema = z.object({
 });
 
 // The jump-to-the-media target the integrity check resolves for each path its report named. Keyed
-// by that path, so the map holds at most the handful of examples the report caps itself at - not
+// by that path, so the map holds at most the handful of examples the report caps itself at, not
 // one entry per media, which is what the renderer used to build for itself.
 const diagnosticsMediaTargetSchema = z.object({
     channelId: z.number(),
@@ -377,7 +377,7 @@ const databaseIntegrityFailedEventSchema = z.object({
 export type DatabaseIntegrityFailedEvent = z.infer<typeof databaseIntegrityFailedEventSchema>;
 
 // Payload of the pending-media-abandoned event: how many crashed media creations the startup sweep
-// gave up on. Frontend-owned like the one above, and deliberately just a count - the paths are
+// gave up on. Frontend-owned like the one above, and deliberately just a count. The paths are
 // library-relative names a banner cannot act on, and Diagnostics is what names them.
 const pendingMediaAbandonedEventSchema = z.object({
     abandoned: z.number(),
@@ -430,7 +430,7 @@ export function parseEventPayload<TSchema extends z.ZodTypeAny>(
 //
 // Exported for its tests rather than for a caller, and that is the point. Both functions above hand
 // their result to `console.error` and nothing else, so nothing an assertion can reach observes what
-// this produces - a mutation pass over this file reported every one of its parts surviving (the
+// this produces. A mutation pass over this file reported every one of its parts surviving (the
 // `(root)` fallback, the `.` path join, the `: ` between path and message, the `; ` between issues)
 // while the polarity decisions around it were killed. That asymmetry is the argument for pinning it
 // rather than accepting it: this string is the whole of what a malformed payload leaves behind. The

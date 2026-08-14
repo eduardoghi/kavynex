@@ -53,7 +53,7 @@ describe("DatabaseSection", () => {
         );
 
         // The formatted size comes from the backend, so the component must render that string
-        // rather than deriving its own from totalBytes - two formatters would drift.
+        // rather than deriving its own from totalBytes, two formatters would drift.
         expect(screen.getByText("2.25 GB")).toBeInTheDocument();
         expect(screen.getByText(/on this disk/i)).toBeInTheDocument();
         // Only the date part is asserted: the exact rendering is locale/timezone dependent, and

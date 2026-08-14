@@ -4,7 +4,7 @@
 //! the media file into the library, plus its thumbnail and live chat replay) and only then inserts
 //! the row. Between those two steps the files exist in the library with nothing pointing at them.
 //! The frontend's `catch` cleans that up when a step *fails*, but a `catch` only runs if the process
-//! survives - close the window, lose power, or have the OS kill the webview in that window and a
+//! survives. Close the window, lose power, or have the OS kill the webview in that window and a
 //! multi-GB video is stranded in the library forever, discoverable only by running Diagnostics by
 //! hand.
 //!
@@ -21,7 +21,7 @@
 //!
 //! It is *not* free to be wrong about *which* marker is a leftover, though, and that is what
 //! [`marker_is_sweepable`] decides. Reference-counting cannot tell a creation that died before its
-//! row from one that has simply not reached `insert_media` yet - both have artifacts on disk with
+//! row from one that has simply not reached `insert_media` yet, both have artifacts on disk with
 //! nothing pointing at them. So a marker belonging to a creation still in flight must never be
 //! consumed: the sweep would unlink the file the user is adding right now, then remove the marker,
 //! and the row that lands moments later would point at nothing with nothing left to reconcile it.
@@ -153,7 +153,7 @@ fn is_live_marker(name: &str) -> bool {
 /// Pinned through [`pin_process_start`] from `lib.rs`'s `setup()` rather than left to initialize
 /// lazily: the first caller would otherwise be the sweep itself, half a minute into the session, and
 /// every marker this session had written before that point would read as older than "process start"
-/// and become sweepable - defeating the filter exactly when it is needed.
+/// and become sweepable. Defeating the filter exactly when it is needed.
 fn process_start() -> SystemTime {
     static START: OnceLock<SystemTime> = OnceLock::new();
     *START.get_or_init(SystemTime::now)
@@ -191,7 +191,7 @@ pub(crate) fn marker_is_sweepable(
 
 /// How many launches may fail to reconcile one marker before the sweep stops retrying it.
 ///
-/// The retry exists for the transient case - the library drive not mounted yet, a lock still held -
+/// The retry exists for the transient case (the library drive not mounted yet, a lock still held),
 /// which resolves within a launch or two. A failure that survives this many is not transient: the
 /// library was repointed, or the path went permanently invalid. Retrying it forever turns a one-off
 /// failure into a tax on every launch, with nothing but a `warn` line nobody reads to show for it.
@@ -205,7 +205,7 @@ pub(crate) fn marker_is_sweepable(
 /// What this ceiling bounds is the *retrying*, and it is worth being exact about that because it is
 /// easy to read as bounding more. The directory itself is unbounded: an abandoned marker is
 /// deliberately left on disk (see [`marker_retries_are_exhausted`]), and `services::temp_cleanup`'s
-/// startup sweep does not reach it either - that sweep covers the three scratch directories by age
+/// startup sweep does not reach it either. That sweep covers the three scratch directories by age
 /// and the display cache by size, and `pending-media/` is in neither list, by design, since it is
 /// the one cache directory whose contents are a record rather than a derivative.
 ///
@@ -213,7 +213,7 @@ pub(crate) fn marker_is_sweepable(
 /// oversight, and it is cheap on both counts: a marker is a couple of hundred bytes, and reaching
 /// one takes a media creation that crashed *and* five consecutive launches that could not reconcile
 /// it. Against that, a sweep able to delete these files would be a sweep able to delete the only
-/// record of artifacts sitting in the user's library - which is exactly the decision
+/// record of artifacts sitting in the user's library, which is exactly the decision
 /// [`marker_is_sweepable`] refuses to make on anything uncertain. Diagnostics is what reports and
 /// removes what an abandoned marker names.
 const MAX_MARKER_SWEEP_ATTEMPTS: u32 = 5;
@@ -222,7 +222,7 @@ const MAX_MARKER_SWEEP_ATTEMPTS: u32 = 5;
 /// event: how many markers this sweep gave up on.
 ///
 /// The count and nothing else. The paths would be library-relative names of files the user cannot
-/// act on from a banner, and Diagnostics is the one place that can both name them and remove them -
+/// act on from a banner, and Diagnostics is the one place that can both name them and remove them.
 /// so the event says that something is there and the dialog says what, rather than the banner trying
 /// to be the dialog. Frontend-owned contract, like the integrity event, so it is a plain serde struct
 /// rather than a ts-rs export.
@@ -234,7 +234,7 @@ struct PendingMediaAbandonedEvent {
 
 /// Whether a marker has been retried enough times that its failure is not transient.
 ///
-/// Pure so both directions are pinned by a test, matching [`marker_is_sweepable`] next door - and
+/// Pure so both directions are pinned by a test, matching [`marker_is_sweepable`] next door, and
 /// for the same reason: the decision sits in front of artifacts belonging to the user, so it should
 /// be a function rather than a comparison buried in a loop.
 ///
@@ -246,7 +246,7 @@ struct PendingMediaAbandonedEvent {
 /// "Once" is only true because the count is persisted at the same moment and this predicate is
 /// consulted again by [`read_pending_markers`], which drops an exhausted marker before the sweep can
 /// see it. Without both halves the ceiling decides nothing: the marker would be re-read at one below
-/// it on every launch, retry the same failing cleanup, and re-emit the user-facing notice each time -
+/// it on every launch, retry the same failing cleanup, and re-emit the user-facing notice each time.
 /// strictly worse than the unbounded `warn` line this was meant to replace.
 pub(crate) fn marker_retries_are_exhausted(attempts: u32) -> bool {
     attempts >= MAX_MARKER_SWEEP_ATTEMPTS
@@ -283,8 +283,8 @@ fn pending_media_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
 /// which the caller passes back to [`clear_pending_media_artifacts`] once the row is registered.
 ///
 /// Written with `sync_all` plus a parent-directory fsync: the window this guards is a process that
-/// dies moments later, so a marker still sitting in the OS write cache - or whose directory entry
-/// was never flushed - would be exactly as absent as not writing one at all.
+/// dies moments later, so a marker still sitting in the OS write cache (or whose directory entry
+/// was never flushed) would be exactly as absent as not writing one at all.
 pub fn record_pending_media_artifacts<R: Runtime>(
     app: &AppHandle<R>,
     artifacts: PendingMediaArtifacts,
@@ -292,7 +292,7 @@ pub fn record_pending_media_artifacts<R: Runtime>(
     let sanitized = PendingMediaArtifacts {
         // A fresh record always starts its retry budget at zero, whatever the caller passed. The
         // count is the sweep's own bookkeeping, and a caller able to pre-set it could hand over a
-        // marker that is abandoned on its first failure - quietly turning off the recovery this
+        // marker that is abandoned on its first failure. Quietly turning off the recovery this
         // whole module exists for.
         attempts: 0,
         ..sanitize_pending_artifacts(artifacts)
@@ -354,13 +354,12 @@ fn write_marker_file(marker: &Path, contents: &str) -> AppResult<()> {
 /// Rewrites a marker with an incremented attempt count, so the ceiling survives a restart.
 ///
 /// Best effort by design, like everything else the sweep does: if this fails, the marker keeps its
-/// previous count and simply gets one more attempt than it should. That is the harmless direction -
-/// the alternative, treating a failed rewrite as a reason to give up, would abandon a record over a
+/// previous count and simply gets one more attempt than it should. That is the harmless direction (/// the alternative, treating a failed rewrite as a reason to give up, would abandon a record over a
 /// transient write error, which is exactly the mistake the retry exists to avoid.
 ///
 /// The rewrite refreshes the marker's mtime, which is deliberate and safe: `marker_is_sweepable`
 /// compares that against the *process* start, so a marker touched during this run is skipped by
-/// this run's remaining work (there is none - the sweep runs once) and is sweepable again on the
+/// this run's remaining work (there is none), the sweep runs once) and is sweepable again on the
 /// next launch, whose process start is later.
 fn record_marker_attempt<R: Runtime>(
     app: &AppHandle<R>,
@@ -389,7 +388,7 @@ fn record_marker_attempt<R: Runtime>(
     }
 }
 
-/// Removes a marker once its creation has finished - either the row was inserted, or the failure
+/// Removes a marker once its creation has finished, either the row was inserted, or the failure
 /// path already cleaned the artifacts up. A missing marker is not an error: the sweep may have
 /// consumed it, and the caller has nothing to do about it either way.
 pub fn clear_pending_media_artifacts<R: Runtime>(
@@ -405,7 +404,7 @@ pub fn clear_pending_media_artifacts<R: Runtime>(
 
     // The creation has resolved either way, so it is no longer in flight. Dropped unconditionally,
     // before the unlink: if the unlink fails the marker stays on disk, and leaving it registered would
-    // pin it in memory for the rest of the session for no benefit - its mtime already keeps this
+    // pin it in memory for the rest of the session for no benefit. Its mtime already keeps this
     // session's sweep off it, and the next launch reconciles it as the leftover it now is.
     lock_live_markers().remove(marker);
 
@@ -465,8 +464,8 @@ fn read_pending_markers<R: Runtime>(
             Some(contents) => match decode_marker(contents) {
                 Some(artifacts) if marker_retries_are_exhausted(artifacts.attempts) => {
                     // Already given up on by an earlier launch. Offering it again would re-run the
-                    // cleanup that has failed every time, and - since the sweep reports abandoning
-                    // it - would put an error line and a user-facing notice on every launch for the
+                    // cleanup that has failed every time, and (since the sweep reports abandoning
+                    // it) would put an error line and a user-facing notice on every launch for the
                     // rest of the library's life. The marker stays on disk regardless: it names
                     // artifacts in the user's library, which Diagnostics is what reports and removes.
                     continue;
@@ -489,7 +488,7 @@ fn read_pending_markers<R: Runtime>(
 /// Sweeps the markers a previous run left behind, removing any artifact no row references.
 ///
 /// Best effort throughout: this runs off the startup path and a failure never affects the app. The
-/// deletion decision is not made here - it is delegated to the same reference-counting cleanup the
+/// deletion decision is not made here. It is delegated to the same reference-counting cleanup the
 /// manual path uses, which keeps any file a registered row still points at. A marker is cleared once
 /// its paths have been handled, whether or not anything was actually deleted.
 ///
@@ -499,13 +498,13 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
     // Asked once, up front, and the whole sweep gives up when the answer is no.
     //
     // [`MAX_MARKER_SWEEP_ATTEMPTS`] bounds how often *one marker* may fail to reconcile, on the
-    // reasoning that a failure surviving that many launches is a property of that marker - a path
+    // reasoning that a failure surviving that many launches is a property of that marker. A path
     // gone permanently invalid, a library repointed. A database that will not open is the opposite
     // kind of failure: it has nothing to do with any particular marker, it fails every one of them
     // identically, and it is resolved elsewhere entirely (the recovery modal offers a restore on the
     // very same launch). Letting it through the loop would spend an attempt per marker per launch on
     // a verdict none of them earned, and five such launches would abandon every pending record the
-    // library holds at once - each one naming artifacts that are still on disk and still
+    // library holds at once. Each one naming artifacts that are still on disk and still
     // reconcilable the moment the database is back.
     //
     // So it is not classified after the fact, it is refused before the loop: nothing is read,
@@ -601,7 +600,7 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
     // One event for the whole sweep, not one per marker: what the user needs to know is that some
     // artifacts were left behind and where to look, which is one sentence however many there are.
     //
-    // Fire and forget, exactly like the integrity event: an emit failure (no window yet - this runs
+    // Fire and forget, exactly like the integrity event: an emit failure (no window yet. This runs
     // 30 seconds after launch, so there normally is one, but nothing guarantees it) must not affect
     // the sweep, and the `error`-level lines above have already recorded each marker regardless.
     if abandoned_markers > 0 {
@@ -623,7 +622,7 @@ mod tests {
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     /// A mock app is enough for the record/clear round trip: those only need `app.path()` and the
-    /// filesystem. Only the markers this test wrote are removed - the cache directory is the real
+    /// filesystem. Only the markers this test wrote are removed. The cache directory is the real
     /// per-OS one, shared with a running app, so the tree is never wiped.
     fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
         mock_builder().build(mock_context(noop_assets())).unwrap()
@@ -654,7 +653,7 @@ mod tests {
     #[test]
     fn marker_retries_are_exhausted_only_at_the_ceiling() {
         // Both directions, on the exact boundary. Getting this off by one either abandons a marker
-        // a launch too early - dropping a record that names files in the user's library - or leaves
+        // a launch too early (dropping a record that names files in the user's library), or leaves
         // the forever-retry this exists to end.
         for attempts in 0..MAX_MARKER_SWEEP_ATTEMPTS {
             assert!(
@@ -673,7 +672,7 @@ mod tests {
     #[test]
     fn the_attempt_count_survives_a_decode_so_the_budget_is_not_reset_each_launch() {
         // The count only means anything if it is carried across restarts, and sanitize runs on the
-        // decode path - so dropping it there would restart the budget on every launch and reinstate
+        // decode path, so dropping it there would restart the budget on every launch and reinstate
         // the forever-retry with extra steps. The paths still go through the same refusal.
         let decoded = decode_marker(
             r#"{"file_path":"video/media_abc.mp4","thumbnail_path":"../escape.jpg","attempts":3}"#,
@@ -723,7 +722,7 @@ mod tests {
         // The count only bounds anything if it reaches disk. Nothing above this test would notice if
         // the write-back were dropped or wrote the old value: the sweep's own logging is unobservable,
         // and the marker is only re-read on the *next* launch, so a broken write-back looks exactly
-        // like a working one until the retry never ends - which is the bug this whole change removes.
+        // like a working one until the retry never ends, which is the bug this whole change removes.
         //
         // The mutation gate found precisely that gap, in both shapes: deleting the call, and dropping
         // the incremented field so the struct update carried the old count through.
@@ -745,7 +744,7 @@ mod tests {
             after.attempts, 3,
             "the new count must be what lands on disk"
         );
-        // The artifacts it names have to survive the rewrite intact - the marker is what tells the
+        // The artifacts it names have to survive the rewrite intact. The marker is what tells the
         // next launch which files to reconcile, so losing them would strand exactly the leftover the
         // retry is still trying to clean up.
         assert_eq!(after.file_path.as_deref(), Some("video/media_abc.mp4"));
@@ -775,7 +774,7 @@ mod tests {
     #[test]
     fn sanitize_drops_anything_outside_the_managed_layout() {
         // A marker is a file on disk. If it could name an arbitrary path, it would be a way to ask
-        // the app to delete one - so a traversal, an absolute path, a bare filename at the library
+        // the app to delete one, so a traversal, an absolute path, a bare filename at the library
         // root and an unmanaged subdirectory are all dropped rather than passed on.
         let dropped = sanitize_pending_artifacts(artifacts(
             Some("../../etc/passwd"),
@@ -849,7 +848,7 @@ mod tests {
     #[test]
     fn an_in_flight_marker_is_held_out_even_once_it_is_older_than_the_process() {
         // Isolates the first of the two filters, which the sibling test above cannot. That one
-        // records a marker and finds it excluded - but the file it just wrote is newer than the
+        // records a marker and finds it excluded, but the file it just wrote is newer than the
         // process, so the mtime filter would have excluded it too. Both filters agree there, so the
         // assertion passes whichever one actually acted, and it passes just as happily if the
         // in-flight registration stops working altogether.
@@ -886,8 +885,8 @@ mod tests {
     #[test]
     fn a_marker_left_by_a_previous_run_is_read_back() {
         // The counterpart to the test above, and it is what keeps that filter from silently turning
-        // the sweep off altogether: a marker that really is a leftover - not registered as in flight,
-        // and older than this process - must still be picked up with exactly what it named.
+        // the sweep off altogether: a marker that really is a leftover (not registered as in flight,
+        // and older than this process) must still be picked up with exactly what it named.
         let app = mock_app();
         let handle = app.handle();
 
@@ -913,7 +912,7 @@ mod tests {
     async fn a_database_that_will_not_open_costs_no_marker_an_attempt() {
         // The failure this branch exists for, and the reason it is a pre-check rather than an error
         // classified inside the loop. A mock app manages no `Db`, so `shared_pool` fails exactly the
-        // way it does when the database cannot be opened for real - which is the case the recovery
+        // way it does when the database cannot be opened for real, which is the case the recovery
         // modal is resolving on the very same launch.
         //
         // Both halves are asserted because either alone passes while the bug is live: the marker
@@ -953,7 +952,7 @@ mod tests {
     fn a_marker_that_exhausted_its_retries_is_never_offered_again() {
         // The other half of the ceiling, and the half without which it decides nothing. The sweep
         // reports abandoning a marker, so re-reading one that has already been given up on does not
-        // merely waste a cleanup attempt - it puts an error line and a user-facing notice on every
+        // merely waste a cleanup attempt. It puts an error line and a user-facing notice on every
         // launch for the rest of the library's life, which is worse than the unbounded warning the
         // ceiling was added to replace.
         let app = mock_app();
@@ -993,8 +992,8 @@ mod tests {
     fn a_marker_one_attempt_short_of_the_ceiling_is_still_offered() {
         // The boundary from the other side, so the filter above cannot be widened into "stop
         // reconciling anything that has ever failed". A marker at one below the ceiling is still a
-        // leftover the sweep should try, and the transient case it exists for - a library drive that
-        // mounts late - is exactly the one that resolves on a later launch.
+        // leftover the sweep should try, and the transient case it exists for (a library drive that
+        // mounts late) is exactly the one that resolves on a later launch.
         let app = mock_app();
         let handle = app.handle();
 

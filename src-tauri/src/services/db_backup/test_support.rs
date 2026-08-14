@@ -2,7 +2,7 @@
 //!
 //! This exists because of a shape the family kept reproducing. `db_backup` was split into
 //! `snapshot`, `restore`, `integrity`, `external` and `import`, and every one of those splits moved
-//! the code while leaving its tests behind in `mod.rs` - not out of preference, but because the
+//! the code while leaving its tests behind in `mod.rs`, not out of preference, but because the
 //! tests shared the three helpers below and nothing else would have compiled. So `mod.rs` kept
 //! growing as code left it, which is the opposite of what a split is for, and each new split had to
 //! decide the question again and reach the same answer.

@@ -18,7 +18,7 @@ appVersion: string | null,
 eventListenOk: boolean, 
 /**
  * Whether an `<img>` pointed at `convertFileSrc(plan.assetPath)` fired `load`. Probes the
- * asset-protocol scope grant on the cache directory *and* the CSP's `img-src` tokens - the
+ * asset-protocol scope grant on the cache directory *and* the CSP's `img-src` tokens. The
  * only part of the CSP that a bundled build alone exercises.
  */
 assetLoadOk: boolean, 

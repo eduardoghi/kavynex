@@ -55,8 +55,8 @@ pub enum AppErrorCode {
     FileMoveFailed,
     SourceFileRemoveFailed,
     LiveChatCompressFailed,
-    // Split out from LiveChatCompressFailed, which covered every live chat failure - compressing,
-    // a missing file, a corrupt archive - with one code the frontend had no message for, so all of
+    // Split out from LiveChatCompressFailed, which covered every live chat failure (compressing,
+    // a missing file, a corrupt archive), with one code the frontend had no message for, so all of
     // them reached the user as the generic fallback plus a raw Rust string. These two are the ones
     // a user can actually act on, and they call for opposite actions: a moved/deleted file is
     // recoverable by putting it back, a corrupt archive is not.
@@ -391,7 +391,7 @@ impl AppError {
     /// Wraps a filesystem error with the failing path's final component in `details`, so a log
     /// line or bug report says *which* file or directory the OS refused ("Access is denied" alone
     /// is a guessing game once video/, audio/, thumbnails/ and two library roots are in play).
-    /// Only the redacted final component is included - a full path embeds the user's profile
+    /// Only the redacted final component is included. A full path embeds the user's profile
     /// directory, which must not leak into a pasted error message (see logger::redact_path).
     pub fn fs_error(
         code: AppErrorCode,

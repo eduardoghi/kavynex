@@ -47,7 +47,7 @@ fn validate_export_destination(destination_path: &str) -> AppResult<()> {
 /// True when `destination`'s directory resolves inside `protected_dir`. `export_database` removes
 /// and replaces the file at the destination, and the app's config directory holds the live
 /// `kavynex.db` plus every backup generation (`.bak`, `.corrupt`, `.pre-import`, ...), so an export
-/// aimed there - by a compromised frontend, or a user who navigated the save dialog into it - could
+/// aimed there (by a compromised frontend, or a user who navigated the save dialog into it) could
 /// clobber the live database or a recovery snapshot with a fresh export. The extension gate alone
 /// would allow that (they share the `.db` extension); this refuses it.
 ///
@@ -77,12 +77,12 @@ fn destination_is_inside_dir(destination: &Path, protected_dir: &Path) -> bool {
 /// Extracted from `export_database` as a pure function (the caller resolves `config_dir` from the
 /// `AppHandle` first) so the ordering it enforces is unit-testable without a live app: trim once,
 /// then the extension gate, then the network-location refusal, then the app-config-dir containment
-/// refusal - all against the *same* trimmed path, and the returned `PathBuf` is that same path. The
+/// refusal. All against the *same* trimmed path, and the returned `PathBuf` is that same path. The
 /// network check has to precede the containment one because that one canonicalizes (see below).
 /// That single-path invariant is the
 /// point: the earlier inline version gated the extension/containment on the trimmed path while the
 /// write used the raw one, so a padded destination could be validated on one path and written to
-/// another - a validate-here/act-there gap in a function whose whole job is to gate a destructive
+/// another. A validate-here/act-there gap in a function whose whole job is to gate a destructive
 /// overwrite.
 fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppResult<PathBuf> {
     let trimmed = destination_path.trim();
@@ -92,7 +92,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
     // Refuse a network destination before anything touches it. Two things follow from a UNC path
     // here, and the write is the worse one: `destination_is_inside_dir` below canonicalizes the
     // destination's parent, and on Windows that alone authenticates to the host over SMB and hands
-    // it the user's NTLM hash - and then the export writes the whole database (every channel,
+    // it the user's NTLM hash, and then the export writes the whole database (every channel,
     // title, comment and stored local path) to a host the caller chose. The mirror in
     // `db_backup::external.rs` calls the `export_database` *service* function rather than this
     // command, so an external backup folder on a share keeps working; only the manual export has
@@ -127,7 +127,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
 /// - **No network location.** `stage_database_import` stats and then opens this path, and on
 ///   Windows merely stat'ing a UNC share authenticates to that host over SMB, leaking the user's
 ///   NTLM hash. This value arrives raw over IPC, so the refusal belongs here rather than resting on
-///   the file picker - the same guard, for the same reason, as
+///   the file picker. The same guard, for the same reason, as
 ///   `library::resolve_path_inside_library` and `yt_dlp::cookies::normalize_cookies_path`. Importing
 ///   a database off a share still works; it just has to be copied locally first, which the staging
 ///   copy does anyway.
@@ -139,7 +139,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
 /// It lives here rather than inside `stage_database_import` on purpose: the undo path
 /// (`db_backup::stage_database_import_undo`) reuses that function with the `.pre-import` snapshot,
 /// whose extension this gate would reject. Keeping the gate on the caller-facing command leaves the
-/// undo - whose source the backend wrote itself and never took from IPC - untouched.
+/// undo (whose source the backend wrote itself and never took from IPC), untouched.
 ///
 /// Returns the trimmed path so the guard and the read act on exactly one value, the same
 /// single-path invariant `prepare_export_destination` documents.
@@ -179,10 +179,10 @@ fn prepare_import_source(source_path: &str) -> AppResult<PathBuf> {
 /// used to tell the user to do the wrong thing. There is exactly one caller
 /// (`use-app-bootstrap.ts`'s recovery modal, opened after `ensure_database_ready` failed); nothing
 /// in Settings offers a manual restore. So an open pool here does not mean "you are trying to
-/// restore at a bad moment" - it means the database opened successfully after the failed startup
+/// restore at a bad moment". It means the database opened successfully after the failed startup
 /// attempt, which is what happens when the failure was transient (a lock held by an antivirus scan,
-/// a file momentarily busy) and one of the background tasks that open the pool on their own - the
-/// pending-media sweep at 30s, the periodic backup at 60s, the integrity check at 120s - got in
+/// a file momentarily busy) and one of the background tasks that open the pool on their own (the
+/// pending-media sweep at 30s, the periodic backup at 60s, the integrity check at 120s) got in
 /// afterwards.
 ///
 /// The old message said "restart the app before restoring from backup", which is the wrong
@@ -234,8 +234,8 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
         AppError::from_code(AppErrorCode::AppError, "the database is not initialized")
     })?;
 
-    // Hold the open lock for the whole restore so no concurrent command can open the pool - which
-    // creates/renames the database file - while the restore renames it underneath. The
+    // Hold the open lock for the whole restore so no concurrent command can open the pool (which
+    // creates/renames the database file), while the restore renames it underneath. The
     // already-open check is re-done under the lock: the pool may have opened between the frontend's
     // recovery entry and this command acquiring the lock.
     let _open_guard = db.restore_guard().await;
@@ -388,7 +388,7 @@ mod tests {
 
         // A destination in a sibling directory is not inside it, even though its name is a prefix.
         // Built by extending `protected`'s own name rather than from a second unique suffix, which
-        // would not share that prefix - and the prefix is the whole point of this assertion.
+        // would not share that prefix, and the prefix is the whole point of this assertion.
         let sibling = protected.with_file_name(format!(
             "{}-elsewhere",
             protected.file_name().unwrap().to_string_lossy()
@@ -445,7 +445,7 @@ mod tests {
 
         let destination = outside_dir.join("backup.db");
         // Padded input: the returned path must be the *trimmed* destination. This pins the
-        // single-path invariant - the guard and the write both act on exactly this path - so the
+        // single-path invariant (the guard and the write both act on exactly this path), so the
         // validate-here/act-there regression (gate the trimmed path, write the raw one) stays dead.
         let padded = format!("   {}   ", destination.to_string_lossy());
 
@@ -501,7 +501,7 @@ mod tests {
     fn the_export_and_import_gates_refuse_the_same_network_spellings() {
         // The two directions already share DATABASE_FILE_EXTENSIONS; this pins that they share the
         // network rule too. The import gate got it first and the export side went without for a
-        // while, which is the asymmetry this asserts stays closed - the more so because the
+        // while, which is the asymmetry this asserts stays closed. The more so because the
         // extension parity test right below reads as though the two gates were already aligned.
         let config_dir = unique_dir("parity-net");
 
@@ -537,7 +537,7 @@ mod tests {
         for name in ["backup.db", "backup.sqlite", "backup.sqlite3", "BACKUP.DB"] {
             let source = unique_dir("import").join(name);
             // Padded input: the returned path must be the *trimmed* source, so the guard and the
-            // read act on one value - the same single-path invariant the export side pins.
+            // read act on one value. The same single-path invariant the export side pins.
             let padded = format!("   {}   ", source.to_string_lossy());
 
             let prepared = prepare_import_source(&padded)
@@ -604,7 +604,7 @@ mod tests {
     fn the_export_and_import_gates_accept_the_same_extensions() {
         // Both directions read DATABASE_FILE_EXTENSIONS, so they cannot drift apart. Asserting it
         // is what keeps a future change to one gate from quietly widening or narrowing only that
-        // side - the import gate is the newer of the two and the likelier one to be edited alone.
+        // side. The import gate is the newer of the two and the likelier one to be edited alone.
         for extension in DATABASE_FILE_EXTENSIONS {
             let candidate = unique_dir("parity").join(format!("db.{extension}"));
             let candidate = candidate.to_string_lossy().to_string();

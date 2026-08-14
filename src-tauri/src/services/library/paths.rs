@@ -7,7 +7,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Windows: rewrite a path to its extended-length (`\\?\`) form so filesystem calls made
 /// *before* `canonicalize` (create_dir_all, exists, is_dir) are not capped at the 260-char
-/// MAX_PATH limit - matching every post-canonicalize operation, which already builds off the
+/// MAX_PATH limit, matching every post-canonicalize operation, which already builds off the
 /// `\\?\` form `canonicalize` returns. Only a clean, absolute drive path (`C:\...`) is
 /// rewritten: verbatim, UNC and device paths, and any path still carrying `.`/`..` (which are
 /// literal under `\\?\`), are left untouched, so this never changes how an already-working
@@ -58,7 +58,7 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
 /// `services::library::resolve_path_inside_library`, which do): these helpers sit on the
 /// library-selection path (onboarding and change-library both call `ensure_directory_exists`/
 /// `resolve_existing_directory`/`is_directory_empty` on the candidate folder), and a library kept
-/// on a network share is a supported configuration (docs/THREAT-MODEL.md - it only loses the
+/// on a network share is a supported configuration (docs/THREAT-MODEL.md. It only loses the
 /// "reveal in file manager" convenience). Rejecting network paths here would break choosing such a
 /// library. The NTLM-hash-leak concern that motivates the rejection elsewhere is bounded here
 /// because the path always comes from a native folder picker the user drove, not from an

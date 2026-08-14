@@ -4,11 +4,11 @@
 // `1.0.0-pre.*`. This project pins `vitest` to an exact version and has already paid for a
 // bleeding-edge dependency once (the vite/rolldown transform flakiness), so a prerelease wrapper is
 // not worth taking on for what amounts to fifteen lines. axe-core itself is Deque's own, stable, and
-// dev-scope only - it is never bundled into the app.
+// dev-scope only. It is never bundled into the app.
 //
 // What these checks are for, and what they are not: they pin the *structure* the virtualized lists
 // depend on. `MediaGrid` and `ChannelSidebar` render only the rows near the viewport, so assistive
-// technology cannot count the items by walking the DOM - the explicit `list` role plus
+// technology cannot count the items by walking the DOM. The explicit `list` role plus
 // `aria-setsize`/`aria-posinset` on each row are what restore that, and nothing failed if a refactor
 // dropped them. They are also blind to the things jsdom has no answer for: colour contrast needs
 // real computed styles, and focus order needs a real layout. Neither is asserted here, and neither

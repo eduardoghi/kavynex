@@ -63,7 +63,7 @@ export async function readLiveChatMessagesFromFile(
                 parsedLines += 1;
             } catch {
                 // One corrupt/truncated line, or a JSON shape yt-dlp/YouTube changed, must not
-                // abort the whole replay - but it must not vanish silently either. Swallowing each
+                // abort the whole replay, but it must not vanish silently either. Swallowing each
                 // failure (the previous `catch { continue }`) meant a format drift dropped chat
                 // messages with no signal at all. Count them and warn once below so the loss shows
                 // up in the log (and in any bug report) instead of only as fewer messages.
@@ -128,7 +128,7 @@ export function getVisibleLiveChatMessages(
 // The pinned messages only, keeping their ascending-offset order (a filtered subset of the
 // already-sorted list). Extracted once per message list so the per-playback-tick active-pin lookup
 // is a binary search over this small array (getActiveLiveChatPinFromPins) instead of a backward
-// scan over every message - which was O(n) per tick whenever no pin preceded the playhead.
+// scan over every message, which was O(n) per tick whenever no pin preceded the playhead.
 export function extractLiveChatPins(
     messages: LiveChatMessageItem[]
 ): LiveChatMessageItem[] {
@@ -138,7 +138,7 @@ export function extractLiveChatPins(
 // The pin in effect at `playbackSeconds` given the pre-extracted, offset-sorted `pins`: the most
 // recent pin at or before the current time. O(log P) in the number of pins. A pin "stays until a
 // newer pin replaces it", so it is searched over the whole pin list, never the capped visible
-// window - it can have been set far more than MAX_VISIBLE_LIVE_CHAT_MESSAGES ago and must not
+// window. It can have been set far more than MAX_VISIBLE_LIVE_CHAT_MESSAGES ago and must not
 // vanish once it scrolls out of that window.
 export function getActiveLiveChatPinFromPins(
     pins: LiveChatMessageItem[],

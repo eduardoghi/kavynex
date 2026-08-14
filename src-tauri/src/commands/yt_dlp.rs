@@ -53,8 +53,8 @@ pub async fn check_external_tools(app: AppHandle) -> AppResult<ExternalToolsStat
 
 // `list_yt_dlp_formats`, `fetch_youtube_comments`, `download_media_from_url` and
 // `check_external_tools` all take an `app: AppHandle` parameter. `AppHandle` resolves
-// (via its default generic parameter) to the concrete type `AppHandle<tauri::Wry>` - the
-// real runtime - while `tauri::test::mock_builder()` builds an
+// (via its default generic parameter) to the concrete type `AppHandle<tauri::Wry>` (the
+// real runtime), while `tauri::test::mock_builder()` builds an
 // `App<tauri::test::MockRuntime>`, a different concrete runtime. Registering any of
 // those commands with `tauri::generate_handler!` for a mock app therefore fails to
 // *compile*: there is no `CommandArg<'_, MockRuntime>` impl for `AppHandle<Wry>`. (This

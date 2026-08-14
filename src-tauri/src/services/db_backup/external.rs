@@ -131,7 +131,7 @@ pub async fn mirror_database_to_external_dir(
     let staged = external_dir.join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"));
 
     // The directory probe and the throttle's mtime read both touch the external target, which may
-    // be an unplugged drive or an offline share - exactly the IO that can stall for seconds. Run
+    // be an unplugged drive or an offline share, exactly the IO that can stall for seconds. Run
     // them (and the rotate and promote below) off the async runtime so a slow target never holds
     // a Tokio worker thread.
     {
@@ -146,10 +146,10 @@ pub async fn mirror_database_to_external_dir(
 
             // A staged file with no promoted mirror beside it is the leftover of a failed
             // promotion below, and the rotation had already emptied generation 0 when it was
-            // written - so it is the newest good copy, not scrap. Adopt it as the mirror before
+            // written, so it is the newest good copy, not scrap. Adopt it as the mirror before
             // consulting the throttle: deleting it up front (as this function once did) combined
             // with a second failure of the same flaky target could leave the directory with no
-            // current copy at all. A leftover next to an intact mirror needs no cleanup here -
+            // current copy at all. A leftover next to an intact mirror needs no cleanup here.
             // export_database only ever replaces it atomically with a verified fresh export.
             if !current.exists() && staged.exists() {
                 let _ = std::fs::rename(&staged, &current);
@@ -195,7 +195,7 @@ pub async fn mirror_database_to_external_dir(
         }
 
         // Flush the external directory entry so a crash (or a drive pulled) right after the rename
-        // cannot lose the freshly promoted mirror - the very copy that exists to survive a failure
+        // cannot lose the freshly promoted mirror. The very copy that exists to survive a failure
         // of the app's own volume. The rotation renames above share this directory, so one flush
         // covers them. Best effort, like the on-volume snapshot.
         crate::services::filesystem::fsync_parent_dir(&current);

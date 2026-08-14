@@ -49,12 +49,12 @@ pub fn log_frontend_error(scope: String, message: String) {
 /// when reporting a bug" does not begin with the user finding a per-OS path by hand.
 ///
 /// **It takes no arguments, and that is the security property rather than an omission.** Every other
-/// path-revealing command in this app receives a path over IPC and has to defend it - the library
+/// path-revealing command in this app receives a path over IPC and has to defend it. The library
 /// one confines it to the configured library, behind the settings cross-check in `library::guard`.
 /// This one asks Tauri where the log directory is, so a compromised renderer has nothing to
 /// redirect. Reusing `open_path_in_system` instead was the tempting shortcut and is the wrong one:
 /// its containment check compares `path` against `library_path`, so passing the log directory as
-/// both would satisfy it trivially - the self-referential shape `docs/THREAT-MODEL.md` records as a
+/// both would satisfy it trivially. The self-referential shape `docs/THREAT-MODEL.md` records as a
 /// defect that guard exists to close, not a pattern to reuse.
 ///
 /// The spawn and the directory resolution are blocking filesystem work, so they run off the async
@@ -87,7 +87,7 @@ mod tests {
 
         // A void command: invoking it with the two string arguments must succeed across the IPC
         // boundary. This pins that the command is registered and that its `scope`/`message`
-        // arguments deserialize - the reason to drive it through invoke rather than call the
+        // arguments deserialize. The reason to drive it through invoke rather than call the
         // function directly (which the sanitize tests below already do).
         invoke(
             &webview,

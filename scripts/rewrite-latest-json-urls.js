@@ -3,7 +3,7 @@
 //
 // The reason tauri-action writes that one is real. While a release is still a draft its tag is not
 // attached to it yet, so an asset's download URL carries an `untagged-<hash>` path segment instead
-// of `v<version>` - baking that in would produce a manifest that breaks the moment the release is
+// of `v<version>`. Baking that in would produce a manifest that breaks the moment the release is
 // published. The asset API URL is stable across that transition, so it is the safe default for an
 // action that cannot know whether the draft will ever be published.
 //
@@ -13,15 +13,15 @@
 // public repository, but it moves the download onto a host with a 60-request/hour unauthenticated
 // rate limit and away from the one URL shape `verify-latest-json.js` accepts.
 //
-// The download prefix is derived by `releaseDownloadPrefix` - the same function the verification
-// gate uses - rather than being rebuilt here, so the rewrite and the check that polices it cannot
+// The download prefix is derived by `releaseDownloadPrefix` (the same function the verification
+// gate uses), rather than being rebuilt here, so the rewrite and the check that polices it cannot
 // disagree about what a valid URL looks like.
 
 import { readFileSync, writeFileSync } from "fs";
 import { releaseDownloadPrefix } from "./verify-latest-json.js";
 
 // Maps a manifest URL back to the asset it names. tauri-action writes the REST asset endpoint,
-// whose last path segment is the numeric asset id - which is *not* the `id` the GitHub CLI reports
+// whose last path segment is the numeric asset id, which is *not* the `id` the GitHub CLI reports
 // (that one is a GraphQL node id like `RA_kwDO...`), so the id is taken from the URL itself and
 // matched against the same field on the asset list.
 export function assetIdFromUrl(url) {
@@ -40,7 +40,7 @@ export function assetIdFromUrl(url) {
 // An unmatched entry is deliberately left untouched rather than dropped or guessed at: whatever it
 // points to, `verify-latest-json.js` runs afterwards and rejects anything not under the expected
 // prefix. Removing it here would turn that loud failure into a platform that quietly stops
-// receiving updates - the exact outcome that gate exists to prevent.
+// receiving updates. The exact outcome that gate exists to prevent.
 export function rewriteManifestUrls(manifest, assets, downloadPrefix, version) {
     const names = new Map(assets.map((asset) => [asset.id, asset.name]));
     const unmatched = [];

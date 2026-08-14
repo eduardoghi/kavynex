@@ -44,7 +44,7 @@ describe("useHasBeenTrue", () => {
     });
 
     it("latches per hook instance rather than across them", () => {
-        // A ref, not module state - two modals must not mount each other. Worth pinning because the
+        // A ref, not module state, two modals must not mount each other. Worth pinning because the
         // failure would be invisible in the app (mounting one modal early is not observable) and
         // would silently undo the split for whichever one opened second.
         const first = renderHook(({ value }) => useHasBeenTrue(value), {

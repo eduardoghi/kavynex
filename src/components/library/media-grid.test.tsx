@@ -120,7 +120,7 @@ describe("MediaGrid", () => {
 
         const cards = screen.getAllByText("watched action in flight");
 
-        // Only the card for media id 1 is busy - the other row must not read as in flight too.
+        // Only the card for media id 1 is busy. The other row must not read as in flight too.
         expect(cards).toHaveLength(1);
     });
 
@@ -263,7 +263,7 @@ describe("MediaGrid", () => {
             // A `//` comment written in JSX children position is a text node, not a comment: it
             // ships as visible page text. The spot that invites the mistake is the scroll
             // container that wraps the list, so assert on structure rather than on any one
-            // phrase - neither it nor the list itself may contribute text of its own; every
+            // phrase, neither it nor the list itself may contribute text of its own; every
             // string on screen has to come from a card.
             const list = screen.getByRole("list");
             const containers = [list, list.parentElement].filter(
@@ -319,7 +319,7 @@ describe("MediaGrid", () => {
 
     // The breakpoints decide how wide a card is drawn, and a card's thumbnail comes from a
     // derivative capped at 640px (DISPLAY_THUMBNAIL_MAX_WIDTH). The grid renders in jsdom at width
-    // 0, so nothing above this reaches any branch but the last one - which is why the function is
+    // 0, so nothing above this reaches any branch but the last one, which is why the function is
     // exercised directly rather than through a render.
     describe("getColumnCount", () => {
         it("keeps a card under the width its thumbnail derivative is capped at", () => {
@@ -357,7 +357,7 @@ describe("MediaGrid", () => {
 
         it("never returns zero columns, whatever the measured width", () => {
             // useElementSize reports 0 before the first layout pass, and the row grouping divides by
-            // this value - a zero would produce an infinite loop building the rows.
+            // this value. A zero would produce an infinite loop building the rows.
             expect(getColumnCount(0)).toBe(1);
             expect(getColumnCount(-1)).toBe(1);
         });

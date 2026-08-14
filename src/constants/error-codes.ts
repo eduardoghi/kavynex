@@ -3,8 +3,8 @@ import type { AppErrorCode } from "../types/generated/AppErrorCode";
 export const APP_ERROR_CODE = "APP_ERROR" as const;
 export const INVALID_INPUT_ERROR_CODE = "INVALID_INPUT" as const;
 // Tags an error authored on the frontend whose message is meant to be shown to the user verbatim
-// (see `ClientError` in utils/app-error.ts). Kept distinct from APP_ERROR - which the backend
-// uses deliberately to *suppress* raw internal messages - so a user-facing client message is
+// (see `ClientError` in utils/app-error.ts). Kept distinct from APP_ERROR (which the backend
+// uses deliberately to *suppress* raw internal messages), so a user-facing client message is
 // never mistaken for a backend one and hidden behind the generic fallback.
 export const CLIENT_ERROR_CODE = "CLIENT_ERROR" as const;
 export const DATABASE_SCHEMA_TOO_NEW_ERROR_CODE = "DATABASE_SCHEMA_TOO_NEW" as const;
@@ -13,7 +13,7 @@ export const INVALID_URL_ERROR_CODE = "INVALID_URL" as const;
 export const INVALID_LIBRARY_PATH_ERROR_CODE = "INVALID_LIBRARY_PATH" as const;
 // Raised when the library being registered in the asset scope was already released this session
 // (the app migrated away from it and back). Tauri's scope cannot withdraw a forbid, so the grant
-// would succeed while every media file stayed unreadable - this code is what turns that into a
+// would succeed while every media file stayed unreadable. This code is what turns that into a
 // message telling the user to restart. See src-tauri/src/commands/security.rs.
 export const ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE = "ASSET_SCOPE_RESTART_REQUIRED" as const;
 export const INVALID_DIRECTORY_PATH_ERROR_CODE = "INVALID_DIRECTORY_PATH" as const;
@@ -28,7 +28,7 @@ export const SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE = "SOURCE_THUMBNAIL_NOT_FOUND
 export const MEDIA_FILE_NOT_FOUND_ERROR_CODE = "MEDIA_FILE_NOT_FOUND" as const;
 export const LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE = "LIVE_CHAT_FILE_NOT_FOUND" as const;
 export const LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE = "LIVE_CHAT_FILE_UNREADABLE" as const;
-// The replay read refused by its concurrency gate, which is about load rather than about the file -
+// The replay read refused by its concurrency gate, which is about load rather than about the file.
 // so it sits with the other two rather than with them being reused for it. The distinction reaches
 // the user: the other two mean the replay is gone or damaged, this one means to try again shortly.
 export const TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE =

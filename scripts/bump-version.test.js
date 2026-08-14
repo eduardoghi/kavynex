@@ -86,7 +86,7 @@ describe("bumpVersion", () => {
         expect(exitCode).toBe(1);
         expect(error).toHaveBeenCalledWith(expect.stringContaining("version line not found"));
         // The Cargo.toml regex check must run before any file is written, so a mismatch here
-        // leaves package.json and tauri.conf.json exactly as they were - no partial bump left
+        // leaves package.json and tauri.conf.json exactly as they were. No partial bump left
         // behind for a caller to clean up.
         expect(after["package.json"]).toBe(packageJsonBefore);
         expect(after["tauri.conf.json"]).toBe(tauriConfBefore);

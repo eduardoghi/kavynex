@@ -57,7 +57,7 @@ export function AppUpdateSection({
                             // `loading` alone relies on Mantine having re-rendered before the next
                             // click lands, which is a promise about timing rather than about state.
                             // What makes overlapping checks safe is `useRequestGuard` inside
-                            // useAppUpdate - which also covers the overlap this button cannot see,
+                            // useAppUpdate, which also covers the overlap this button cannot see,
                             // between a user check and the opt-in startup one.
                             disabled={
                                 appUpdateStatus === "checking" || appUpdateStatus === "downloading"
@@ -87,7 +87,7 @@ export function AppUpdateSection({
                                     // `notes`, which tauri-action copies verbatim from the release
                                     // workflow's `releaseBody`. That body is deliberately one line
                                     // pointing at the release page (docs/RELEASING.md), because a
-                                    // release here can carry hundreds of commits - but the guarantee
+                                    // release here can carry hundreds of commits, but the guarantee
                                     // lives entirely in a YAML file a human edits, and this side had
                                     // no bound at all if it ever slipped. A wall of text would grow
                                     // the alert past the modal instead of scrolling inside it.

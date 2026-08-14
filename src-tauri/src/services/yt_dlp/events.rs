@@ -53,8 +53,8 @@ pub fn emit_download_log(
     })
 }
 
-/// Fire-and-forget variant of [`emit_download_log`] for callers - such as the spawned
-/// stdout/stderr reader tasks - that cannot propagate an emit failure.
+/// Fire-and-forget variant of [`emit_download_log`] for callers (such as the spawned
+/// stdout/stderr reader tasks), that cannot propagate an emit failure.
 pub fn emit_download_log_infallible(
     app: &AppHandle,
     run_id: &str,

@@ -6,7 +6,7 @@ import { parseLiveChatLine } from "./live-chat-parsing";
 // `live-chat-service.test.ts` covers the same code from the other side, feeding whole files through
 // a mocked stream, and those tests stay: they are how the batching, the offset ordering and the
 // warn-and-continue behavior are pinned. What they cannot state is what *one line* is worth on its
-// own, which is the whole of this module's job - and driving it directly is why the parser was split
+// own, which is the whole of this module's job, and driving it directly is why the parser was split
 // out of the service in the first place.
 //
 // Every case below is a line shape that arrives from yt-dlp rather than from this app, so the
@@ -53,7 +53,7 @@ describe("parseLiveChatLine", () => {
         // Each of these is an ordinary record in a replay file, not a failure: a blank line between
         // records, an object with no replay action, a heartbeat whose action list is empty, and an
         // action carrying a renderer this app does not display. All of them have to answer "no
-        // messages" quietly - the caller counts what it *cannot* parse and warns about the total, so
+        // messages" quietly. The caller counts what it *cannot* parse and warns about the total, so
         // treating these as failures would put a warning on every ordinary replay.
         const empty = [
             "",
@@ -76,7 +76,7 @@ describe("parseLiveChatLine", () => {
     it("throws on a line that is not parseable JSON, which is what the caller counts", () => {
         // The other half of the contract, and the distinction the caller depends on. A line that
         // will not parse is a corrupt file or a shape yt-dlp/YouTube changed, which
-        // readLiveChatMessagesFromFile tallies and warns about once - a signal that was lost while
+        // readLiveChatMessagesFromFile tallies and warns about once. A signal that was lost while
         // that loop silently swallowed every failure. Returning an empty array here instead would
         // make a format drift indistinguishable from a replay of heartbeats.
         for (const line of ["not json at all", "{", "[unclosed"]) {
@@ -103,7 +103,7 @@ describe("parseLiveChatLine", () => {
 
     it("reads the offset as a number and falls back to zero when it is not one", () => {
         // The offset is what the playback-time window seeks against, so a non-numeric value has to
-        // become 0 rather than NaN - a NaN offset compares false against every playback position and
+        // become 0 rather than NaN. A NaN offset compares false against every playback position and
         // makes the message invisible for the whole replay.
         const withOffset = parseLiveChatLine(
             textMessageLine({ id: "a", message: { runs: [{ text: "x" }] } }, "4200")

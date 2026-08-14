@@ -58,15 +58,14 @@ pub async fn cleanup_unreferenced_media_artifacts(
 // could name files it never created and have the next launch reconcile them, while one able to clear
 // one could drop the record of a creation that really did die. The same argument, one step down,
 // applies to the download and the import: both write into the library, and a caller invoking them
-// directly produced exactly the artifacts-with-no-row state this whole module exists to bound -
-// except with no marker behind it, because recording one was the renderer's job.
+// directly produced exactly the artifacts-with-no-row state this whole module exists to bound (// except with no marker behind it, because recording one was the renderer's job.
 //
 // The principle, for a command added later: the IPC surface exposes an operation, not its steps.
 // `services::pending_media`, `services::yt_dlp` and `services::library::media` still expose all of
 // these to the backend, which is now their only caller.
 //
 // `insert_media` and `find_media_by_channel_and_file_path` (`commands/videos.rs`) were the two that
-// stayed behind, because every IPC test in that file seeded its rows through the first one - test
+// stayed behind, because every IPC test in that file seeded its rows through the first one), test
 // surgery rather than a line in this change. That surgery has since been done: those tests seed
 // through `services::video_repository` directly, and both commands are gone. The validation
 // `insert_media` performed moved down into the repository rather than away, so it applies to every
@@ -75,12 +74,12 @@ pub async fn cleanup_unreferenced_media_artifacts(
 // No command in this file can be driven through a true IPC round trip with the
 // harness `commands/library.rs` uses (`tauri::test::mock_builder` + `get_ipc_response`).
 // Each takes an `app: AppHandle` parameter, and `AppHandle` resolves (via its default
-// generic parameter) to the concrete type `AppHandle<tauri::Wry>` - the real runtime.
+// generic parameter) to the concrete type `AppHandle<tauri::Wry>`. The real runtime.
 // `mock_builder()` builds an `App<tauri::test::MockRuntime>`, a different concrete
 // runtime, so registering any of them with `tauri::generate_handler!` for that app
 // fails to *compile*: there is no `CommandArg<'_, MockRuntime>` impl for
 // `AppHandle<Wry>`. (This is exactly why `library.rs`'s existing IPC tests only cover
-// `ensure_directory_exists` and `check_library_integrity` - the only two commands in
+// `ensure_directory_exists` and `check_library_integrity` (the only two commands in
 // that file with no `AppHandle` parameter.) The same mismatch means the underlying
 // async service functions (`library::media`/`library::cleanup`/`media_creation`) cannot be
 // called directly with a mock `AppHandle` either, since their signatures take the same
@@ -89,7 +88,7 @@ pub async fn cleanup_unreferenced_media_artifacts(
 // The runtime mismatch above is the whole of it: the database is no longer the obstacle.
 // The pool lives in managed state (`services::database::Db`, registered by `lib.rs`'s
 // setup and resolved through `try_state`), and `Db::from_pool` exists precisely so a test
-// can manage a `Db` backed by an in-memory schema onto a mock app - which is how the
+// can manage a `Db` backed by an in-memory schema onto a mock app), which is how the
 // pool-only commands (`settings.rs`, `channels.rs`, `videos.rs`, `database.rs`) are driven
 // through the real IPC boundary today. What keeps *these* commands out is only their
 // `AppHandle` parameter, not where their settings come from.
@@ -107,8 +106,8 @@ pub async fn cleanup_unreferenced_media_artifacts(
 // classification, the managed-path re-check), tested there; what is left in the command is
 // the library-path guard plus the orchestration, and neither can run without a live handle.
 //
-// What *is* tested below is `library::media::import_media_file_sync` - a plain sync
-// function taking only `&str`/`ImportMode` arguments (no `AppHandle`) - which is exactly
+// What *is* tested below is `library::media::import_media_file_sync` (a plain sync
+// function taking only `&str`/`ImportMode` arguments (no `AppHandle`)), which is exactly
 // what `import_media_file` runs inside `run_blocking` once its guard passes, and what a
 // local `create_media` runs to place the file. This locks down that behavior:
 // content-addressed destination naming, copy vs. move, and reuse of an already-imported

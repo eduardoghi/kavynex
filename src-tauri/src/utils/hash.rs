@@ -11,7 +11,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 const HASH_CHUNK_BYTES: usize = 8192;
 
 /// Streams everything `reader` yields into `writer`, returning the SHA-256 of the bytes that passed
-/// through - a tee that hashes what it copies.
+/// through. A tee that hashes what it copies.
 ///
 /// Written as one traversal rather than a hash pass plus a copy pass because its caller has a file
 /// it would otherwise read twice: `services::live_chat_storage` compresses a replay into a staged
@@ -21,12 +21,12 @@ const HASH_CHUNK_BYTES: usize = 8192;
 /// point: a replay of a long stream runs to hundreds of megabytes, and that module used to keep
 /// three copies of one alive at once.
 ///
-/// It lives here rather than beside its caller for the reason its shape makes obvious - it is a
+/// It lives here rather than beside its caller for the reason its shape makes obvious. It is a
 /// hashing primitive, and [`file_hash_cancellable`] below is the same loop with a cancel flag. There
 /// is a second consequence worth stating plainly rather than discovering later: `live_chat_storage`
 /// is inside the mutation gate (`src-tauri/.cargo/mutants.toml`) and this file is not, so the loop's
-/// `read == 0` mutant is not exercised there. That mutant is a genuine one - inverting the EOF check
-/// spins forever on an empty reader - and it is caught here by
+/// `read == 0` mutant is not exercised there. That mutant is a genuine one (inverting the EOF check
+/// spins forever on an empty reader), and it is caught here by
 /// `hashing_a_stream_matches_the_published_sha256_vectors`, whose empty-input case is exactly the
 /// input that would hang. Keeping the test is what makes the placement a placement rather than a
 /// dodge.
@@ -70,7 +70,7 @@ fn hex_digest(hasher: Sha256) -> String {
 }
 
 /// True once the caller's cancel flag is set. `None` means the caller did not offer one, which is
-/// every call site but the media import - so the common path pays one `Option` check per 8 KiB
+/// every call site but the media import, so the common path pays one `Option` check per 8 KiB
 /// chunk and nothing else.
 pub(crate) fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
     cancel.is_some_and(|flag| flag.load(Ordering::SeqCst))
@@ -79,7 +79,7 @@ pub(crate) fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
 /// Hashes a file, giving up promptly when `cancel` is set.
 ///
 /// The plain [`file_hash`] is this with no flag. It exists because hashing is a full read pass over
-/// a file that may be several gigabytes, and it is the *first* long step of a local import - so a
+/// a file that may be several gigabytes, and it is the *first* long step of a local import, so a
 /// user who changes their mind about importing a 50 GB file from a slow external drive would
 /// otherwise have nothing to click and no way out but killing the app.
 ///
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn hashing_a_stream_matches_the_published_sha256_vectors() {
         // Anchored on the published vectors rather than on this module's other hasher, so the two
-        // cannot agree by being wrong together - the same reason `file_hash_matches_known_sha256`
+        // cannot agree by being wrong together. The same reason `file_hash_matches_known_sha256`
         // above pins the "abc" digest.
         //
         // The empty case carries a second job. It is the one input where a mutated EOF check

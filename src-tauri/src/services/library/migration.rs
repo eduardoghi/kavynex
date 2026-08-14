@@ -16,7 +16,7 @@ pub struct MigrateLibraryDirectoryResult {
     pub final_library_path: String,
     pub changed: bool,
     /// True when the migration copied the library to the new location but kept the old directory
-    /// in place instead of removing it - which happens only when the crash-recovery commit marker
+    /// in place instead of removing it, which happens only when the crash-recovery commit marker
     /// could not be written (removing the old copy would then leave no recoverable path back). The
     /// copy succeeded and the new library is usable, but a full duplicate of the media remains on
     /// the old volume with nothing to clean it up automatically, so the frontend surfaces a notice.
@@ -31,7 +31,7 @@ fn library_migration_lock() -> &'static Mutex<()> {
 /// The destination must be empty, or contain only the app's managed subdirectories
 /// (video/audio/thumbnails/live_chat) and nothing else. Empty is the normal case; a destination
 /// that holds only managed folders is treated as a previously interrupted migration and allowed
-/// to resume - the copy phase is idempotent (identical files are skipped, differing ones error
+/// to resume. The copy phase is idempotent (identical files are skipped, differing ones error
 /// without overwriting), so re-running safely completes the copy. Any top-level entry that is
 /// not a managed directory means the folder holds unrelated user content and is rejected, so a
 /// crash mid-migration no longer wedges the retry with an opaque "not empty" error.
@@ -116,7 +116,7 @@ fn copy_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppR
     Ok(())
 }
 
-/// Phase 2: all copies confirmed - remove the old managed directories, then the old library
+/// Phase 2: all copies confirmed. Remove the old managed directories, then the old library
 /// directory itself if nothing unrelated is left in it. Best effort: a removal failure only
 /// leaves reclaimable disk behind, never lost data (the new location already holds a full copy).
 fn remove_old_library_contents(old_library_dir: &Path) {
@@ -126,7 +126,7 @@ fn remove_old_library_contents(old_library_dir: &Path) {
         if source_dir.exists() {
             // A partial failure here (a locked file, an AV scanner, a permission hiccup) leaves
             // the managed directory behind holding an unknown subset of its files. That is only
-            // reclaimable disk - the new location already holds a full copy - but it must be
+            // reclaimable disk (the new location already holds a full copy), but it must be
             // logged rather than swallowed: the recovery path keys off the marker target being a
             // complete copy, not off the old directory looking empty, precisely so a leftover
             // like this cannot strand the good copy.
@@ -241,7 +241,7 @@ pub fn migrate_library_directory_sync(
         }
         // A previous migration panicked while holding this lock. The mutex guards no shared
         // state (`Mutex<()>`; it only serializes migrations), so the poison carries no
-        // corrupted data - recover the guard and proceed. Treating poison as "already
+        // corrupted data. Recover the guard and proceed. Treating poison as "already
         // running" would instead wedge every future migration until the app is restarted.
         Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
     };
@@ -600,7 +600,7 @@ mod tests {
         let result = migrate_library_contents(&old_root, &new_root);
         assert!(result.is_err());
 
-        // Both source files must still exist - no data was lost despite partial progress
+        // Both source files must still exist. No data was lost despite partial progress
         assert!(
             old_root.join("video").join("a.mp4").exists(),
             "video file must remain in source after failed migration"

@@ -26,8 +26,8 @@ const REQUIRED_PLATFORMS = [
 // endpoint the client is actually pointed at (tauri.conf.json's updater `endpoints`). That
 // endpoint is `.../releases/latest/download/latest.json`, while the per-asset URLs are
 // `.../releases/download/v<version>/<asset>`, so they share everything up to `/releases/` and then
-// take `download/`. Deriving the prefix from the endpoint - rather than hardcoding the owner/repo a
-// second time here - keeps this in step with the one place the repo is already declared, so moving
+// take `download/`. Deriving the prefix from the endpoint (rather than hardcoding the owner/repo a
+// second time here) keeps this in step with the one place the repo is already declared, so moving
 // the repo cannot leave this check pointing at the old one. Returns null when the endpoint is
 // missing or not shaped like a GitHub release URL, so the caller can fail loudly.
 export function releaseDownloadPrefix(updaterEndpoint) {
@@ -73,8 +73,8 @@ export function findLatestJsonProblems(manifest, expectedVersion, expectedUrlPre
         if (!url) {
             problems.push(`${platform}: empty url`);
         } else if (expectedUrlPrefix && !url.startsWith(expectedUrlPrefix)) {
-            // A non-empty but wrong url - a mismatched owner/repo or a non-github host from a
-            // tauri-action misconfiguration - passes the emptiness check above and then points the
+            // A non-empty but wrong url (a mismatched owner/repo or a non-github host from a
+            // tauri-action misconfiguration), passes the emptiness check above and then points the
             // updater somewhere other than this release. Requiring the repo's own release-download
             // prefix rules that out (the trailing `/` after the repo name means a look-alike host
             // like github.com.evil or a `kavynex-evil` repo cannot match).

@@ -173,7 +173,7 @@ describe("useMediaActions", () => {
         );
 
         // Two different rows toggled back to back. A single shared re-entrancy flag made the
-        // second one a silent no-op - no request, no error, no disabled state to explain it -
+        // second one a silent no-op (no request, no error, no disabled state to explain it),
         // because these rows are independent and nothing serializes them.
         await act(async () => {
             await Promise.all([result.current.markAsWatched(1), result.current.markAsWatched(2)]);
@@ -506,7 +506,7 @@ describe("useMediaActions", () => {
 
         // A real failure to cancel used to be swallowed silently (only logged), leaving the user
         // to believe Cancel worked while the backup kept running. It must not become a blocking
-        // error either - this is a notice, not onError.
+        // error either. This is a notice, not onError.
         expect(onNotice).toHaveBeenCalledWith(
             "Could not confirm the comment refresh was cancelled. It may still be running in the background."
         );
@@ -545,7 +545,7 @@ describe("useMediaActions", () => {
 
     it("tells the pager a rename moved the row in the backend's sort", async () => {
         // The row is updated in place rather than reloaded, so the loaded list and the backend's
-        // sorted set now disagree - every ORDER BY ties on title_normalized. Without this the next
+        // sorted set now disagree. Every ORDER BY ties on title_normalized. Without this the next
         // page starts past the row the rename displaced, and that row is silently never fetched.
         const mediaPlayer = createMediaPlayer();
 
@@ -572,7 +572,7 @@ describe("useMediaActions", () => {
 
     it("does not move the cursor when the rename failed", async () => {
         // Nothing moved in the backend's sort, so giving a position back would refetch a page for
-        // no reason - and, on the last page of a channel, turn `hasMore` back on to do it.
+        // no reason, and, on the last page of a channel, turn `hasMore` back on to do it.
         const mediaPlayer = createMediaPlayer();
 
         vi.mocked(updateMediaTitle).mockRejectedValue(new Error("nope"));
@@ -653,7 +653,7 @@ describe("useMediaActions", () => {
 
     it("refreshes a second media while the first refresh is still in flight", async () => {
         // The guard used to be one shared flag, which returned undefined without throwing when it
-        // was already running - so the second refresh vanished with no error and no refreshed
+        // was already running, so the second refresh vanished with no error and no refreshed
         // comments, and nothing rendered a busy state to hint at why. The player's Back button is
         // live during a refresh, so "refresh A, go back, open B, refresh B" is an ordinary
         // sequence rather than a race the user has to engineer.

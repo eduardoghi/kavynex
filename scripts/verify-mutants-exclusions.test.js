@@ -85,12 +85,12 @@ describe("findDeadPatterns", () => {
     it("reads a listing cargo-mutants colourized", () => {
         // The false failure this check actually shipped with. cargo-mutants honours
         // CARGO_TERM_COLOR, which mutation.yml sets to `always` at the workflow level, and it
-        // colourizes the function name and the replacement *inside* each description - so
+        // colourizes the function name and the replacement *inside* each description, so
         // `replace pin_process_start with ()` arrives with escape sequences between the words and
         // every pattern naming a function stops matching.
         //
         // It fired on the check's first ever run against twenty-six live patterns, and the obvious
-        // response - delete the exclusions it names - would have silently unexcluded twenty-six
+        // response (delete the exclusions it names) would have silently unexcluded twenty-six
         // real mutants. The escape byte is spelled as a unicode escape rather than
         // pasted in literally, so no invisible control character sits in this file.
         const esc = "\u001b";
@@ -121,7 +121,7 @@ describe("findDeadPatterns", () => {
 
     it("separates a pattern JavaScript cannot compile from one that is merely dead", () => {
         // The flavors are not identical, so a pattern this script cannot judge has to be its own
-        // answer - counting it as dead would report a rename that never happened.
+        // answer. Counting it as dead would report a rename that never happened.
         const result = findDeadPatterns(["resolve_from_path", "a(b"], mutantList);
 
         expect(result.dead).toEqual([]);

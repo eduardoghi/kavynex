@@ -27,7 +27,7 @@ activity Kavynex initiates is:
   it in **Settings -> Privacy** ("Load comment and live chat images from Google"), avatars
   render as monograms, custom emojis fall back to their shortcut text, and viewing saved
   media makes no network requests at all. If you turn it on, only those small profile/emoji
-  images are fetched - never the video, your library, or any of your data.
+  images are fetched, never the video, your library, or any of your data.
 
 The optional "cookies from browser" option (used to back up member-only or otherwise
 authenticated content) reads cookies directly from your local browser profile and hands
@@ -41,24 +41,24 @@ Everything Kavynex holds is a plain file on your disk, so both are file operatio
 in-app flows:
 
 - **Your media, thumbnails and live chat replays** live in the library folder you chose (Settings >
-  Library folder shows the current path). They are ordinary files - copy the folder anywhere and it
+  Library folder shows the current path). They are ordinary files. Copy the folder anywhere and it
   is a complete backup of the media itself.
 - **The database** (channels, titles, watched state, comments) is a single SQLite file. Settings >
   Database > Export writes a snapshot of it wherever you choose, which is the portable copy to keep.
 - **The cache folder** holds nothing of yours that is not already in one of those two: temporary
   previews, and a smaller copy of each thumbnail the grid has drawn, so a card decodes a few hundred
   pixels instead of the stored image's full resolution. Deleting a media removes its copy along with
-  it, and the whole folder is safe to delete at any time - anything still needed is regenerated the
+  it, and the whole folder is safe to delete at any time. Anything still needed is regenerated the
   next time it is drawn. `DIRECTORIES.md` lists where it is per OS.
 
 The database's automatic `.bak` snapshots live next to the database itself, on the same disk, so a
 drive failure takes them with it. To guard against that, **Settings > Database > Automatic external
 backup** lets you point Kavynex at an external folder (another drive or a network share); it copies
-the database there once a day. Only the database is copied - the media files are large and are not
+the database there once a day. Only the database is copied. The media files are large and are not
 mirrored, so keep an off-drive copy of the library folder yourself (an external disk, or your own
 cloud backup).
 
-Uninstalling removes the app, not your data - by design, since the library is usually the point.
+Uninstalling removes the app, not your data, by design, since the library is usually the point.
 To remove everything, delete the library folder plus the three app directories (config, cache and
 logs). The Diagnostics dialog shows the resolved library folder; `DIRECTORIES.md` lists the
 per-OS paths of the other three and what each one holds. Note that the config directory is the one

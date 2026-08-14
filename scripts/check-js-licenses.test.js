@@ -3,7 +3,7 @@ import { isAllowed } from "./check-js-licenses.js";
 
 // The gate has no real compound-expression input today (94 production packages, 7 distinct
 // licenses, all single permissive names), so these tests are what exercise the AND/OR/paren
-// branches before a dependency ever ships such an expression - the moment a bug here would either
+// branches before a dependency ever ships such an expression. The moment a bug here would either
 // let a copyleft license through or block CI on a fine package.
 describe("isAllowed", () => {
     it("accepts a single permissive license", () => {

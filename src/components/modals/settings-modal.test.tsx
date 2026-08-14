@@ -333,8 +333,8 @@ describe("SettingsModal", () => {
     });
 
     it("has no detectable accessibility violations", async () => {
-        // Every destructive control the app has lives behind this modal - the library folder move,
-        // the database export/import/restore - and each is a button whose accessible name is the
+        // Every destructive control the app has lives behind this modal (the library folder move,
+        // the database export/import/restore), and each is a button whose accessible name is the
         // only thing telling a screen-reader user which of them they are about to press.
         vi.mocked(getLibrarySummary).mockResolvedValueOnce({
             total_bytes: 1024,

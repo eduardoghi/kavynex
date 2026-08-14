@@ -41,7 +41,7 @@ describe("useMemoObject", () => {
         // Stated as a test rather than left to the doc comment, because it is the helper's one sharp
         // edge: the comparison is over the top-level values, so a nested literal rebuilt with equal
         // contents is a *different* value and does break the identity. A caller that wants stability
-        // across that has to memoize the nested value itself - which is why the codebase passes
+        // across that has to memoize the nested value itself, which is why the codebase passes
         // already-stable callbacks and state slices here rather than fresh literals.
         const { result, rerender } = renderHook(
             ({ filters }: { filters: { watched: string } }) => useMemoObject({ filters }),

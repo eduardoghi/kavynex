@@ -2,7 +2,7 @@
 //! what is there.
 //!
 //! Split out of `mod.rs` alongside `restore.rs`, which was the largest file in the tree and held
-//! three independent machines - this one, the restore, and the marker-driven import - plus every
+//! three independent machines (this one, the restore, and the marker-driven import), plus every
 //! test for all of them. What stayed behind is what more than one of them needs: the scratch pool,
 //! the health check, the sibling-path helper, the generation rotation, and
 //! `managed_database_paths`, which is the map of *every* file this module owns and therefore
@@ -109,8 +109,8 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     rotate_backups(db_path);
 
     // Rotation has already moved the previous `.bak` to `.bak.1`, so a failure here leaves
-    // generation 0 absent until the next successful backup. A restore still succeeds - the
-    // candidate list falls through to `.bak.1` and beyond - but the newest snapshot silently
+    // generation 0 absent until the next successful backup. A restore still succeeds (the
+    // candidate list falls through to `.bak.1` and beyond), but the newest snapshot silently
     // did not land, which is only inferable from backup timestamps. Log it before propagating
     // so the state is observable.
     if let Err(error) = std::fs::rename(&temp, &backup) {
@@ -144,7 +144,7 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
 /// last, not first, even though it is the freshest: a run that instead died *during* the vacuum
 /// leaves a partial file under the same name, and there is no way to tell the two apart here.
 /// Every caller re-runs `quick_check` on the candidate it picks, which is what makes offering
-/// this safe - a torn file is rejected there, and a healthy one is only reached when no real
+/// this safe. A torn file is rejected there, and a healthy one is only reached when no real
 /// generation survived.
 pub(super) fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
     (0..=BACKUP_ROTATED_GENERATIONS)

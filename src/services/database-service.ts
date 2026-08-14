@@ -83,7 +83,7 @@ export async function undoDatabaseImport(): Promise<void> {
 /**
  * Runs a full `PRAGMA integrity_check` against the live database, a more thorough (and
  * slower) check than the quick check used by the automatic health paths. Resolves to what SQLite
- * reported - the problems it listed, not just whether the check passed - so a failing check can say
+ * reported: the problems it listed, not just whether the check passed, so a failing check can say
  * what is wrong rather than only that something is.
  */
 export async function checkDatabaseIntegrity(): Promise<DatabaseIntegrityReport> {

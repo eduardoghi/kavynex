@@ -67,7 +67,7 @@ describe("AddMediaModalActions", () => {
         );
 
         // Worded for the operation in front of the user: "Cancel download" over a file copy would
-        // describe the wrong thing. The handler is shared because the backend mechanism is - an
+        // describe the wrong thing. The handler is shared because the backend mechanism is. An
         // import registers the same kind of run a download does.
         const button = screen.getByRole("button", { name: /cancel import/i });
         fireEvent.click(button);

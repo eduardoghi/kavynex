@@ -11,13 +11,13 @@
 //
 // The allow-list mirrors src-tauri/deny.toml's, minus the entries no npm package here uses. Keep
 // the two in step: a license permissible for a crate is permissible for a package. OFL-1.1 is the
-// one deliberate exception to that mirroring - it covers a bundled font asset, which has no crate
+// one deliberate exception to that mirroring. It covers a bundled font asset, which has no crate
 // counterpart, so adding it to deny.toml would only imply a crate could ship under it.
 
 import { execFileSync } from "node:child_process";
 
 // Every license currently present in the production tree (measured: 94 packages, all permissive).
-// A new entry is a deliberate decision, not a formality - check the license actually permits
+// A new entry is a deliberate decision, not a formality. Check the license actually permits
 // redistribution inside an MIT app before adding it.
 const ALLOWED = new Set([
     "MIT",
@@ -34,7 +34,7 @@ const ALLOWED = new Set([
     // The SIL Open Font License, covering the bundled display typeface
     // (@fontsource-variable/bricolage-grotesque, imported in src/App.tsx, so Vite emits its woff2
     // into dist/ and the installer embeds them). OSI- and FSF-approved, and it explicitly permits
-    // bundling the font inside an application - including a proprietary one - without affecting the
+    // bundling the font inside an application (including a proprietary one), without affecting the
     // application's own license, so it does not reach the MIT code around it. What it does require
     // is that the copyright notice and license text accompany the distribution, which is why
     // public/licenses/ ships the font's own LICENSE verbatim (see README's Third-party assets).
@@ -42,10 +42,10 @@ const ALLOWED = new Set([
 ]);
 
 // pnpm reports SPDX expressions ("MIT OR Apache-2.0", "(MIT OR CC0-1.0)"). A dual license is fine
-// as long as one side is allowed - we can take that side. An AND expression needs every term to be
+// as long as one side is allowed. We can take that side. An AND expression needs every term to be
 // allowed, since all of them bind. Exported so the AND/OR/paren logic is unit-tested (see
 // scripts/check-js-licenses.test.js): the current tree has no compound expression, so nothing else
-// exercises this branch until the day a dependency ships one - exactly when a bug here would matter.
+// exercises this branch until the day a dependency ships one, exactly when a bug here would matter.
 export function isAllowed(expression) {
     const normalized = expression.trim().replace(/^\(|\)$/g, "");
 
@@ -66,7 +66,7 @@ function readProductionLicenses() {
     //
     // Note what the argv array does and does not buy on that Windows path: with `shell: true` Node
     // concatenates the array into a command line rather than passing it through, which is what
-    // DEP0190 warns about - the array is not an escaping mechanism there. What actually makes this
+    // DEP0190 warns about. The array is not an escaping mechanism there. What actually makes this
     // safe is that every argument below is a literal written in this file; none is derived from a
     // package name, a lockfile entry, or anything else outside it. Keep it that way: an argument
     // built from external data would need the shim resolved and invoked directly instead.

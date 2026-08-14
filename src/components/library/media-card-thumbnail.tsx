@@ -9,7 +9,7 @@ import { fileSrcFromAbsolutePath, fileSrcFromStoredPath } from "../../utils/medi
 //
 // Split out of `media-card.tsx` because it is the one part of a card that owns state. Everything
 // else there is a pure function of the props, so the failed-thumbnail handling was the only reason
-// that file had a `useState` at all - and it is state about the image, not about the card.
+// that file had a `useState` at all, and it is state about the image, not about the card.
 //
 // It resolves its own `src` from the two paths rather than being handed one, so the "prefer the
 // derivative, fall back to the stored file" rule lives with the element that draws the result.
@@ -72,7 +72,7 @@ type MediaCardThumbnailProps = {
     title: string;
     // The library-relative path stored on the row, and the absolute path of the display-sized copy
     // when one has been resolved (see hooks/use-display-thumbnails.ts). The derivative is preferred
-    // because the webview decodes an image at its natural size - a 1280x720 thumbnail costs the same
+    // because the webview decodes an image at its natural size. A 1280x720 thumbnail costs the same
     // bitmap in a 280px card as it would full screen. Both are optional: absent is the ordinary
     // state on first paint and the permanent state whenever a derivative cannot be produced.
     thumbnailPath: string | null;
@@ -99,7 +99,7 @@ export function MediaCardThumbnail({
     durationLabel,
     shellBorder,
 }: MediaCardThumbnailProps): JSX.Element {
-    // Both spellings go through the asset protocol - the derivative lives in the cache directory,
+    // Both spellings go through the asset protocol. The derivative lives in the cache directory,
     // authorized in `setup()`, and the stored file under the library, authorized by
     // `register_library_asset_scope`.
     const storedThumbSrc = fileSrcFromStoredPath(thumbnailPath, libraryPath);
@@ -148,7 +148,7 @@ export function MediaCardThumbnail({
                     alt={title}
                     loading="lazy"
                     decoding="async"
-                    // A row can point at a thumbnail that is no longer on disk - the file was moved
+                    // A row can point at a thumbnail that is no longer on disk. The file was moved
                     // or deleted outside the app, which the Diagnostics dialog reports as "some
                     // thumbnail files are missing on disk". Without this the card renders the
                     // browser's broken-image glyph, which reads as the app being broken rather than

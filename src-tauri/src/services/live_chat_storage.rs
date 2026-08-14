@@ -42,7 +42,7 @@ pub fn is_gzip(bytes: &[u8]) -> bool {
 /// The refusal is by the source's own size and it comes first, which is the ordering the old path
 /// had backwards. The read side caps a replay at the same ceiling
 /// ([`stream_live_chat_lines`]), so compressing past it produces a file this app can write and then
-/// never open again - and the previous implementation discovered that only after reading the whole
+/// never open again, and the previous implementation discovered that only after reading the whole
 /// file into memory, i.e. after paying the exact cost the ceiling exists to bound.
 ///
 /// `max_bytes` is a parameter rather than the constant so the boundary is testable against a
@@ -98,14 +98,14 @@ fn compress_file_to_temp(src: &Path, temp: &Path, max_bytes: u64) -> AppResult<S
 /// `stream_reader_lines` and the old `gzip_decompress_with_limit` both do. That extra byte exists so
 /// a counter can tell "landed exactly on the limit" apart from "went past it" and raise a specific
 /// error; here the digest comparison already draws that line for free. A payload of exactly
-/// `max_bytes` reads whole and matches, and anything larger is truncated and therefore cannot -
+/// `max_bytes` reads whole and matches, and anything larger is truncated and therefore cannot.
 /// whereas with the `+ 1` a payload one byte over the ceiling would read whole and verify, which is
 /// the opposite of what the ceiling is for. Copying the idiom without its counter was the first
 /// version of this function, and `verification_accepts_a_payload_landing_exactly_on_the_read_ceiling`
 /// is what caught it.
 ///
 /// An oversized source is already refused up front by `compress_file_to_temp`, so reaching this
-/// ceiling means the source changed underneath the pass - a round-trip failure in the honest sense.
+/// ceiling means the source changed underneath the pass. A round-trip failure in the honest sense.
 fn verify_compressed_matches(
     compressed: &Path,
     expected_digest: &str,
@@ -136,14 +136,14 @@ pub const LIVE_CHAT_STREAM_BATCH_LINES: usize = 500;
 /// This is the fourth spawn-or-blocking choke point to get a gate, and it was the one that did not
 /// have one. [`stream_live_chat_lines`] holds a blocking-pool thread for a whole gunzip pass over a
 /// file that runs to hundreds of megabytes for a long stream, and that pool is shared with the media
-/// import, the content hashing and the library cleanup - so an unbounded number of concurrent reads
+/// import, the content hashing and the library cleanup, so an unbounded number of concurrent reads
 /// starves work that has nothing to do with live chat. The bound is stated here rather than left to
 /// the caller for the same reason `MAX_MEDIA_PAGE_LIMIT`, `MAX_MEDIA_COMMENTS_LOADED` and
 /// `MAX_RUN_ID_LEN` are: the backend is the trust boundary, so it declares its own limit instead of
 /// inheriting whatever the renderer sends.
 ///
 /// Two is enough for every legitimate use. The player shows one media at a time, so the only way a
-/// second read overlaps a first is a user switching media before the first finishes - and a third
+/// second read overlaps a first is a user switching media before the first finishes, and a third
 /// concurrent read means either a third switch inside that window or a caller that is not the
 /// player.
 const MAX_CONCURRENT_LIVE_CHAT_READS: usize = 2;
@@ -158,7 +158,7 @@ const MAX_LIVE_CHAT_READS_IN_FLIGHT: usize = 16;
 
 // Both bounds above are numbers about legitimate use, so what is worth holding is the relationship
 // between them rather than either value. `BoundedSemaphore::new` documents that the ceiling must not
-// sit below the concurrency - a caller would otherwise be refused while a permit sat free - and
+// sit below the concurrency (a caller would otherwise be refused while a permit sat free), and
 // cannot enforce it, being a `const fn`. Asserted here in a `const` block so a future edit that
 // inverts them fails the build rather than a test, which is the earliest either could be caught.
 const _: () = {
@@ -185,12 +185,12 @@ static LIVE_CHAT_READ_SEMAPHORE: BoundedSemaphore = BoundedSemaphore::new(
 /// Named rather than written inline at the one call site below, because it is the only part of this
 /// gate a test can reach. Forcing a real refusal would mean filling the in-flight ceiling on a
 /// process-wide static whose permit count is far below it, which parks every caller past the second
-/// one on a permit nothing will release - see the test module for why that is a deadlock rather than
+/// one on a permit nothing will release. See the test module for why that is a deadlock rather than
 /// a slow test. So the value is pinned directly instead.
 ///
 /// It is worth pinning: a wrong code here is not a wrong log line. `src/constants/error-codes.ts`
 /// catalogues this one, and a code with no catalogued message degrades in the renderer to the
-/// generic "check the app log file" - which is precisely the wrong thing to tell someone whose only
+/// generic "check the app log file", which is precisely the wrong thing to tell someone whose only
 /// problem is that another replay is still loading.
 const READ_GATE_BUSY_CODE: AppErrorCode = AppErrorCode::TooManyConcurrentLiveChatReads;
 
@@ -218,7 +218,7 @@ pub async fn acquire_read_permit() -> AppResult<BoundedSemaphorePermit> {
 ///
 /// Enforces the same [`MAX_LIVE_CHAT_DECOMPRESSED_BYTES`] ceiling as before, counted across the
 /// decompressed stream via a `.take` on the reader, so a crafted tiny gzip (a decompression bomb)
-/// still cannot expand without limit even though nothing buffers it whole - including a single
+/// still cannot expand without limit even though nothing buffers it whole, including a single
 /// line that never ends. Blank lines are preserved as-is; the caller does the parsing and skips
 /// them, exactly as the whole-file path did.
 pub fn stream_live_chat_lines<F>(path: &Path, batch_lines: usize, emit: F) -> AppResult<()>
@@ -279,7 +279,7 @@ where
 
     // Bound the byte count with `.take` so a decompression bomb (or a single huge line with no
     // newline) can never buffer past the ceiling. `+ 1` so a stream landing exactly on the limit
-    // still reads, while anything larger is caught below - mirroring gzip_decompress_with_limit.
+    // still reads, while anything larger is caught below, mirroring gzip_decompress_with_limit.
     let mut reader = BufReader::new(reader.take(max_total_bytes + 1));
 
     let mut batch: Vec<String> = Vec::with_capacity(batch_lines);
@@ -459,7 +459,7 @@ fn temp_sibling_path(path: &Path) -> AppResult<PathBuf> {
 /// Nothing is promoted here and the source is never touched, so every failure path leaves the
 /// original exactly as it was. A failure does leave the staged `<name>.gztmp` behind, which is
 /// deliberate rather than overlooked: the next attempt truncates it (`File::create`), and removing
-/// it here would add a cleanup no test can observe - the only way to fail *after* the file exists is
+/// it here would add a cleanup no test can observe. The only way to fail *after* the file exists is
 /// a verification failure, which cannot be produced without corrupting the staged file mid-call.
 fn compress_to_temp_verified(src: &Path, temp: &Path) -> AppResult<()> {
     let digest = compress_file_to_temp(src, temp, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)?;
@@ -473,8 +473,8 @@ pub fn compress_file_to(src: &Path, dest: &Path) -> AppResult<()> {
     let temp = temp_sibling_path(dest)?;
 
     // This is the one call site where `src` is the only copy of a just-downloaded replay (a finished
-    // livestream may no longer be re-fetchable), so the round trip is proved - against the staged
-    // file, not against a buffer - before the source is removed below.
+    // livestream may no longer be re-fetchable), so the round trip is proved (against the staged
+    // file, not against a buffer), before the source is removed below.
     compress_to_temp_verified(src, &temp)?;
     replace_file_safely(&temp, dest)?;
 
@@ -503,7 +503,7 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
 /// Its own function for a reason that is about the mutation gate rather than about readability, and
 /// worth stating because the extraction otherwise looks gratuitous. cargo-mutants names a mutant by
 /// the function it lives in, so the five `+= 1` sites in `compress_existing_live_chat_files` all
-/// shared one description - four of them killable, this one not, since a `read_dir` entry that fails
+/// shared one description, four of them killable, this one not, since a `read_dir` entry that fails
 /// to yield cannot be produced portably. That made the file ungateable: excluding the description
 /// would have silently dropped four working checks along with the one that needed it.
 ///
@@ -516,7 +516,7 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
 /// a test.
 ///
 /// It also gained a log line it did not have. An entry that cannot even be read is the one case in
-/// this pass that left no trace anywhere - the count went up and nothing said why.
+/// this pass that left no trace anywhere. The count went up and nothing said why.
 fn record_unreadable_entry(summary: &mut LiveChatCompressionSummary) {
     summary.failed += 1;
 
@@ -603,7 +603,7 @@ mod tests {
     ///
     /// These two used to be both. `compress_verified` gzipped a whole file in memory and
     /// decompressed the result to check it, which is what made this module hold the source, the
-    /// archive and the restored copy alive at once - three copies of something that runs to
+    /// archive and the restored copy alive at once, three copies of something that runs to
     /// hundreds of megabytes for a long stream. The production path streams now, and what is left
     /// here is a different job: building a gzip fixture and reading one back, both on payloads
     /// measured in kilobytes.
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn compressing_refuses_a_source_larger_than_the_ceiling_before_reading_it() {
         // The ceiling this replaces was applied to the *decompressed output*, i.e. after the whole
-        // file had been read into memory - which is the cost the ceiling exists to avoid paying.
+        // file had been read into memory, which is the cost the ceiling exists to avoid paying.
         // It is checked against the source's own size now, so nothing is read at all.
         let dir = temp_dir("too-large");
         fs::create_dir_all(&dir).unwrap();
@@ -683,7 +683,7 @@ mod tests {
     fn compressing_accepts_a_source_landing_exactly_on_the_ceiling() {
         // The comparison is `> max_bytes`, so a source of exactly the allowed size must pass.
         // Both sides are asserted one byte apart, because relaxing it to `>=` would otherwise
-        // change nothing any test could see - the same boundary the previous ceiling test pinned,
+        // change nothing any test could see. The same boundary the previous ceiling test pinned,
         // moved to where the ceiling now lives.
         let dir = temp_dir("exact-ceiling");
         fs::create_dir_all(&dir).unwrap();
@@ -806,7 +806,7 @@ mod tests {
         // Pinned by value, not by re-deriving it from the same multiplication the constant uses:
         // the ceiling is a decompression-bomb guard, and an arithmetic slip in it (512 + 1024 +
         // 1024 is 2560 bytes, not 512 MiB) would either break every real replay or, the other way,
-        // remove the bound - neither of which any behavioral test can afford to exercise at that
+        // remove the bound, neither of which any behavioral test can afford to exercise at that
         // size. A literal is the only thing that catches it.
         assert_eq!(MAX_LIVE_CHAT_DECOMPRESSED_BYTES, 536_870_912);
     }
@@ -859,7 +859,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
 
         // Five lines with a batch size of two must arrive as three batches (2 + 2 + 1) rather than
-        // one whole-file read - the point of streaming.
+        // one whole-file read. The point of streaming.
         let file = dir.join("many.json");
         fs::write(&file, b"a\nb\nc\nd\ne\n").unwrap();
 
@@ -944,8 +944,8 @@ mod tests {
     #[test]
     fn stream_reader_lines_accepts_a_stream_landing_exactly_on_the_ceiling() {
         // Same boundary as the gzip ceiling above, and it was untested for the same reason: the
-        // existing case sits far over the cap, so tightening `>` to `>=` - which would refuse a
-        // stream of exactly the allowed size - was invisible. `a\nb\n` is four bytes, so a cap of
+        // existing case sits far over the cap, so tightening `>` to `>=` (which would refuse a
+        // stream of exactly the allowed size) was invisible. `a\nb\n` is four bytes, so a cap of
         // four is the exact boundary and a cap of three is one byte under it.
         let data = b"a\nb\n".to_vec();
 
@@ -966,8 +966,8 @@ mod tests {
     fn list_live_chat_relative_paths_returns_files_and_skips_directories() {
         // Two guards in one walk, and both were unpinned: the early return when `live_chat/` does
         // not exist, and the per-entry skip of anything that is not a file. Dropping the `!` from
-        // either inverts it - the first makes an existing directory report nothing, the second
-        // makes it report its subdirectories and hide its files - and a library that silently
+        // either inverts it (the first makes an existing directory report nothing, the second
+        // makes it report its subdirectories and hide its files), and a library that silently
         // reports no live chat files is how diagnostics would start deleting them as unreferenced.
         let library = temp_dir("list-relative");
         let live_chat = library.join("live_chat");
@@ -1016,7 +1016,7 @@ mod tests {
     #[test]
     fn migrate_live_chat_files_never_clobbers_an_existing_destination() {
         // A destination file already present (migrated on a previous run) must be kept
-        // intact, and the stale source dropped - never overwritten. The atomic copy in the
+        // intact, and the stale source dropped, never overwritten. The atomic copy in the
         // cross-volume path guarantees such a destination is always a complete file, so this
         // "already migrated" shortcut can be trusted.
         let app_data = temp_dir("mig-existing-appdata");
@@ -1138,8 +1138,8 @@ mod tests {
 
     #[test]
     fn an_unreadable_directory_entry_is_counted_as_a_failure() {
-        // The one counter in this pass that no portable test can reach through the real loop - a
-        // `read_dir` entry the OS refuses to yield - so it is asserted directly instead. That is
+        // The one counter in this pass that no portable test can reach through the real loop (a
+        // `read_dir` entry the OS refuses to yield), so it is asserted directly instead. That is
         // also why it lives in its own function: alone in there, the mutation gate can exclude it
         // by name without dropping the four counters around it that tests do cover.
         let mut summary = LiveChatCompressionSummary::default();
@@ -1160,7 +1160,7 @@ mod tests {
     }
 
     // The read gate. `BoundedSemaphore` has its own tests over the primitive; what is pinned here is
-    // that *this* module reaches it - that a replay read is bounded at all, and with which code.
+    // that *this* module reaches it. That a replay read is bounded at all, and with which code.
     //
     // The gate is a process-wide static, so these two tests share it and cannot assert an absolute
     // in-flight count the way the primitive's tests do (another test holding a permit would make
@@ -1187,7 +1187,7 @@ mod tests {
         // leaving as a gap. Reaching it means putting MAX_LIVE_CHAT_READS_IN_FLIGHT callers in
         // flight on a process-wide static that hands out MAX_CONCURRENT_LIVE_CHAT_READS permits, so
         // every caller past the second parks awaiting a permit no one in the test holds to release.
-        // That is a deadlock, not a slow test - the first version of this test was exactly that, and
+        // That is a deadlock, not a slow test. The first version of this test was exactly that, and
         // it hung the suite. `BoundedSemaphore`'s own tests avoid it by giving each a private gate
         // with `permits == max_in_flight`, which a shared static cannot be.
         //

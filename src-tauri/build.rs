@@ -7,7 +7,7 @@ fn main() {
 
     // Tauri's default app manifest is disabled above (new_without_app_manifest), so the app
     // must embed the checked-in windows-app-manifest.xml itself. Do it for every Windows MSVC
-    // artifact - the app binary and the test binaries alike - so both declare the
+    // artifact (the app binary and the test binaries alike), so both declare the
     // Common-Controls v6 dependency. Without a manifest the loader falls back to comctl32
     // v5.82, which does not export TaskDialogIndirect, and the process aborts with
     // STATUS_ENTRYPOINT_NOT_FOUND the moment a native task dialog is shown. Embedding it here
@@ -42,10 +42,10 @@ fn embed_windows_app_manifest() {
     // a linker *warning*, and link.exe would otherwise still produce a manifest-less binary that
     // then aborts at runtime with STATUS_ENTRYPOINT_NOT_FOUND (see the block comment in main).
     // /WX turns that silent warning into a hard build failure, which is far preferable to shipping
-    // the crash. The cost is that /WX is all-or-nothing - it cannot be scoped to just the manifest
+    // the crash. The cost is that /WX is all-or-nothing. It cannot be scoped to just the manifest
     // warnings, so any unrelated linker warning (e.g. LNK4098/LNK4099) also fails the MSVC build.
     // That is an accepted, deliberate tradeoff: a clean link is a reasonable bar, and a silent
-    // manifest-embed failure is the worse outcome. Do not drop /WX to quiet an unrelated warning -
+    // manifest-embed failure is the worse outcome. Do not drop /WX to quiet an unrelated warning.
     // fix the warning, or the manifest guarantee goes with it.
     println!("cargo:rustc-link-arg=/WX");
 }

@@ -109,8 +109,8 @@ describe("media-service", () => {
         vi.mocked(readMediaDurationInSeconds).mockResolvedValue(null);
     });
 
-    // The orchestration these tests used to cover - the duplicate pre-check, the artifact
-    // preparation, the crash marker, the insert and the failure cleanup - is not in this module any
+    // The orchestration these tests used to cover (the duplicate pre-check, the artifact
+    // preparation, the crash marker, the insert and the failure cleanup) is not in this module any
     // more. It runs in `services::media_creation` on the Rust side, and its ordering and refusals are
     // tested there. What is left here is the request this module hands over and the best-effort steps
     // it runs afterwards, so that is what is asserted.
@@ -172,7 +172,7 @@ describe("media-service", () => {
 
     it("propagates a backend failure without cleaning anything up itself", async () => {
         // The failure unwinds inside the backend, artifacts and all, so this side must not attempt
-        // its own cleanup - doing so was what made the sequence a distributed transaction.
+        // its own cleanup. Doing so was what made the sequence a distributed transaction.
         const input = ytDlpInput();
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
         vi.mocked(createMediaInBackend).mockRejectedValueOnce(
@@ -216,7 +216,7 @@ describe("media-service", () => {
     });
 
     it("still reports the created media when the duration step fails", async () => {
-        // The media is registered by then, so a failed measurement is a card without a runtime -
+        // The media is registered by then, so a failed measurement is a card without a runtime.
         // never a failed import, and never something the user is shown an error for.
         const input = localInput();
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
@@ -304,7 +304,7 @@ describe("media-service", () => {
         const messages: string[] = [];
         await createMedia(input, { onProgress: (message) => void messages.push(message) });
 
-        // Comments before live chat, matching the order the two steps run in - the terminal reads
+        // Comments before live chat, matching the order the two steps run in. The terminal reads
         // as a transcript of the run, so the sequence is part of what is asserted, not just the set.
         expect(messages).toEqual([
             "Registering media in local library...",

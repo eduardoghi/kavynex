@@ -60,7 +60,7 @@ const DEFAULT_ERROR_MESSAGE = "Unknown error.";
 
 // Shown when the backend returns an error code the frontend has no specific message for. The
 // raw backend message can carry local file paths or internal (canonicalization, rename)
-// failures, so it is kept in the details block rather than shown as the primary line - a
+// failures, so it is kept in the details block rather than shown as the primary line. A
 // newly added Rust error code therefore degrades to a controlled message instead of leaking
 // an internal string to the user.
 const GENERIC_BACKEND_ERROR_MESSAGE =
@@ -74,14 +74,14 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "This database was created by a newer version of Kavynex. Update the app and try again.",
     DATABASE_IMPORT_INVALID: "The selected file is not a valid Kavynex database.",
     // The three database-recovery refusals. Each is a state the user asked about rather than a
-    // failure, and each surfaces in the restore/import flow - the one place where telling someone
+    // failure, and each surfaces in the restore/import flow. The one place where telling someone
     // to go read a log file is the least useful answer the app could give.
     [NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE]:
         "No healthy backup was found to restore from. The current database was left untouched - Diagnostics shows where Kavynex keeps its files.",
     [NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE]:
         "There is no imported database to undo. The undo snapshot is kept only until the next import replaces it.",
     // Reaching this one means the database opened on its own after the startup check had already
-    // failed - a transient cause (a lock held by an antivirus scan, a file momentarily busy) plus
+    // failed. A transient cause (a lock held by an antivirus scan, a file momentarily busy) plus
     // one of the background tasks that open the pool by themselves. The recovery modal is the only
     // place a restore is offered, so there is nothing else the user could have been trying to do.
     // This used to read "Restart Kavynex and try the restore again", which is the opposite of the
@@ -185,7 +185,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
 // Backend AppError codes are SCREAMING_SNAKE_CASE tokens. `parseAppError` assigns a thrown JS
 // Error or a bare string the APP_ERROR code, so a code that reaches here matching this shape
 // but absent from the catalog above is always a real backend error code that simply has not
-// been catalogued yet - never an ad-hoc human message we would want to surface verbatim.
+// been catalogued yet, never an ad-hoc human message we would want to surface verbatim.
 function isUncataloguedBackendCode(code: string): boolean {
     return !(code in FRIENDLY_ERROR_MESSAGES) && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code);
 }

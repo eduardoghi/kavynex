@@ -43,7 +43,7 @@ export function useAppBootstrap({
                 }
 
                 // A database created by a newer build is valid, just unreadable by this
-                // version - not corruption. Offering a backup restore here would wrongly
+                // version, not corruption. Offering a backup restore here would wrongly
                 // replace a good database with an older snapshot, so surface a clear "update
                 // the app" message and skip the recovery flow entirely.
                 if (parseAppError(error).code === DATABASE_SCHEMA_TOO_NEW_ERROR_CODE) {

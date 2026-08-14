@@ -22,7 +22,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Resolves the configured library directory from the persisted settings. Media,
 /// thumbnails and live chat files all live under it, so commands never take the base
-/// directory from the caller - a compromised frontend cannot redirect reads/writes to an
+/// directory from the caller. A compromised frontend cannot redirect reads/writes to an
 /// arbitrary location.
 /// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is: the bare
 /// `AppHandle` alias is the real runtime, which a mock-runtime test cannot produce.
@@ -59,7 +59,7 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
 
     // A network (UNC) `requested` path forces an SMB/NTLM handshake the moment it is canonicalized
     // on Windows (see utils::path::is_network_path). Refuse it *before* the canonicalize below when
-    // the configured library is local - a caller-supplied UNC aimed at a local library is the
+    // the configured library is local. A caller-supplied UNC aimed at a local library is the
     // NTLM-leak vector, and the guard's whole job is to hold against a hostile IPC path. A library
     // the user deliberately put on a share (configured is itself a network path) keeps working, so
     // this never regresses a legitimately network-hosted library.
@@ -121,7 +121,7 @@ pub async fn ensure_configured_library_path_in_pool(
     // `paths_refer_to_same_location` and the fallback-detection canonicalize below both call
     // `std::fs::canonicalize`, a blocking filesystem call. A library the user put on a network
     // share (a supported configuration) can make it block for the OS timeout when the share is
-    // offline, so run the comparison off the async runtime rather than occupying a tokio worker -
+    // offline, so run the comparison off the async runtime rather than occupying a tokio worker.
     // consistent with every other filesystem touch in the backend.
     let requested = trimmed.to_string();
     run_blocking(move || {
@@ -133,7 +133,7 @@ pub async fn ensure_configured_library_path_in_pool(
         }
 
         // The match above compares canonical paths, but falls back to exact-string equality when a
-        // path cannot be canonicalized - typically because the library lives on a drive that is
+        // path cannot be canonicalized, typically because the library lives on a drive that is
         // currently offline. That fallback grants the match without confirming canonical
         // containment, so record when acceptance rested on it. It leaves the degraded check
         // observable in the log rather than silent; the request is still only accepted when the
@@ -179,7 +179,7 @@ where
 /// and stay drivable through a real IPC round trip.
 ///
 /// The coupling is the point here too. These are read-only commands, so the risk they carry is not
-/// a destructive write but a *read* through a base directory the caller chose - a directory listing
+/// a destructive write but a *read* through a base directory the caller chose. A directory listing
 /// or a file-manager spawn aimed anywhere on disk. Pairing the check with the work makes running
 /// one without the other impossible rather than merely discouraged.
 pub async fn verify_library_path_then_blocking_in_pool<F, T>(

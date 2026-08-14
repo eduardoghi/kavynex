@@ -10,7 +10,7 @@ is worth reading if you want the fuller version.
 
 ## The standard
 
-Everyone taking part in this project - issues, pull requests, code review, security reports - is
+Everyone taking part in this project (issues, pull requests, code review, security reports) is
 expected to be civil and to argue about the work rather than about each other.
 
 Concretely, what is expected:
@@ -23,15 +23,15 @@ Concretely, what is expected:
   person can maintain for years.
 
 What is not acceptable: harassment of any kind; insults or personal attacks; discriminatory or
-demeaning comments about who someone is - including race, gender, gender identity, sexual
+demeaning comments about who someone is, including race, gender, gender identity, sexual
 orientation, disability, appearance, age, religion, or nationality; publishing someone's private
 information; sexualized language or attention; and sustained disruption of a discussion after
 being asked to stop.
 
 ## Scope
 
-This applies in every space the project uses - issues, pull requests, commit messages, code
-review, and security advisories - and to anyone representing the project elsewhere.
+This applies in every space the project uses (issues, pull requests, commit messages, code
+review, and security advisories), and to anyone representing the project elsewhere.
 
 ## Reporting
 
@@ -41,7 +41,7 @@ conduct: it escalates the situation before anything has been looked into, and it
 who did not choose to be part of it.
 
 A report will be read and kept confidential. You will not be asked to justify being uncomfortable,
-and reporting something in good faith will not be held against you afterwards - including when the
+and reporting something in good faith will not be held against you afterwards, including when the
 outcome is that no action is taken.
 
 ## What happens next
@@ -49,7 +49,7 @@ outcome is that no action is taken.
 There is one maintainer, so there is no separate body to appeal to and it would be dishonest to
 imply otherwise. Depending on what happened, the response ranges from a private word, to editing
 or removing the offending content, to blocking the account from the repository. Anything severe
-enough to warrant it - harassment, threats, publishing private information - is a block on the
+enough to warrant it (harassment, threats, publishing private information) is a block on the
 first occurrence rather than a warning.
 
 Where the conduct also breaks GitHub's own

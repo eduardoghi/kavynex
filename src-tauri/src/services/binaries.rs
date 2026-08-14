@@ -62,7 +62,7 @@ fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String
     // on PATH (arbitrary code execution).
     //
     // PATHEXT is honored so a bare candidate like "yt-dlp" still resolves to "yt-dlp.exe",
-    // matching how the shell would find it - except that `.bat`/`.cmd` shims are skipped
+    // matching how the shell would find it. Except that `.bat`/`.cmd` shims are skipped
     // (see is_batch_shim_extension for why), so a real `.exe` alongside a shim still resolves
     // while a lone shim does not.
     let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
@@ -180,8 +180,8 @@ pub fn resolve_ffmpeg_binary(app: &AppHandle) -> AppResult<String> {
 /// Parses the release date out of a yt-dlp version string.
 ///
 /// yt-dlp versions are dates: `2026.07.01` for a stable release, with a trailing build counter on
-/// a nightly/master build (`2026.07.01.123456`). Anything that is not a plausible date - ffmpeg's
-/// `N-124716-g054dffd133-win64-gpl`, a distro-patched string, an empty read - yields `None` rather
+/// a nightly/master build (`2026.07.01.123456`). Anything that is not a plausible date (ffmpeg's
+/// `N-124716-g054dffd133-win64-gpl`, a distro-patched string, an empty read), yields `None` rather
 /// than a guess, since a wrong date here would show the user a warning about nothing.
 fn parse_release_date(version: &str) -> Option<NaiveDate> {
     let mut parts = version.trim().split('.');
@@ -210,8 +210,8 @@ fn release_age_days(version: &str, today: NaiveDate) -> Option<u32> {
 }
 
 /// How long a `--version` / `-version` health check may run before it is treated as a hung
-/// binary and killed. Generous - the call itself is near-instant, but a cold cache, a slow disk,
-/// or an antivirus scan of the executable can add a few seconds to the spawn - while still bounded,
+/// binary and killed. Generous (the call itself is near-instant, but a cold cache, a slow disk,
+/// or an antivirus scan of the executable can add a few seconds to the spawn), while still bounded,
 /// unlike the previous unbounded `output()`.
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -234,8 +234,8 @@ fn run_command_and_capture_first_line(
     )
 }
 
-/// Runs `binary_path args`, returns its first non-empty stdout line, and - unlike a plain
-/// `Command::output()` - gives up after `timeout`, killing the whole process tree. Every other
+/// Runs `binary_path args`, returns its first non-empty stdout line, and (unlike a plain
+/// `Command::output()`) gives up after `timeout`, killing the whole process tree. Every other
 /// external-process call site (download, metadata, thumbnail) already bounds its child this way; a
 /// health check, whose entire job is to survive a misbehaving binary, is the last place that should
 /// block a worker thread forever on a hung `.cmd`/`.bat` shim or a wedged executable.
@@ -516,7 +516,7 @@ mod tests {
             // ffmpeg's own version line: must never be mistaken for a date.
             "ffmpeg version N-124716-g054dffd133-win64-gpl",
             "N-124716-g054dffd133",
-            // Numeric but not a date - the shape a naive parser would happily accept.
+            // Numeric but not a date. The shape a naive parser would happily accept.
             "1.2.3",
             "2026.13.01",
             "2026.02.30",
@@ -682,7 +682,7 @@ mod tests {
         .unwrap_err();
 
         // The whole call must return shortly after the deadline, not run to the child's own
-        // 60-second lifetime - proof the child was killed rather than waited out.
+        // 60-second lifetime. Proof the child was killed rather than waited out.
         assert!(
             started.elapsed() < Duration::from_secs(20),
             "health check did not return promptly after the timeout"
