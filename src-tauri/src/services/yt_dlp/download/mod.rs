@@ -323,6 +323,12 @@ use command::{is_valid_format_id, MAX_RUN_ID_LEN};
 // remembered. See the function's own comment.
 pub(crate) use command::is_valid_run_id;
 
+// Re-exported for the same reason: `events::infer_log_level` labels a line for the in-app terminal
+// and the stderr reader below decides whether that same line may enter the failure evidence. A line
+// shown as a warning must not also be quoted back as the reason the download failed, so both ask
+// one function rather than each spelling the test.
+pub(crate) use command::line_is_warning;
+
 // Redacting the argument vector before it reaches the in-app terminal (and, from there, a public
 // bug report) also lives in its own submodule: it has a privacy consequence and no I/O, which is
 // exactly the shape that belongs under the mutation gate rather than buried in the orchestration.
@@ -768,14 +774,20 @@ pub async fn download_media_from_url_async(
                 // redacted too, not just the live stream.
                 let line = redact_cookies_path_from_line(&line, cookies_path_stderr.as_deref());
 
-                let mut guard = stderr_buffer_reader.lock().await;
+                // A warning goes to the terminal but never into this buffer. The buffer is joined
+                // verbatim into the user-facing failure message, so a run that warned about a
+                // missing format and then failed for an unrelated reason would report the warnings
+                // as the cause. Keeping them out is what makes dropping `--no-warnings` from the
+                // argv free: the terminal gains the diagnostic, the error message is unchanged.
+                if !line_is_warning(&line) {
+                    let mut guard = stderr_buffer_reader.lock().await;
 
-                if guard.len() >= MAX_CAPTURED_STDERR_LINES {
-                    guard.remove(0);
+                    if guard.len() >= MAX_CAPTURED_STDERR_LINES {
+                        guard.remove(0);
+                    }
+
+                    guard.push(line.clone());
                 }
-
-                guard.push(line.clone());
-                drop(guard);
 
                 emit_download_log_infallible(&app_stderr, &run_id_stderr, line, "stderr");
             }
@@ -1136,6 +1148,33 @@ mod tests {
         assert!(!args.iter().any(|arg| arg == "--write-subs"));
         assert!(!args.iter().any(|arg| arg == "--cookies"));
         assert!(!args.iter().any(|arg| arg == "--cookies-from-browser"));
+
+        // Warnings are not suppressed on a download. They are the category that explains an
+        // outcome the user did not ask for (a requested format that was unavailable, an extractor
+        // that is out of date), and the in-app terminal is the only place they can be read. The
+        // flag was here, so this pins its absence rather than leaving it to be re-added as tidying.
+        assert!(!args.iter().any(|arg| arg == "--no-warnings"));
+    }
+
+    #[test]
+    fn a_warning_line_is_recognized_however_yt_dlp_prefixes_it() {
+        // Both spellings appear in real output: bare, and with the reporting stage in between.
+        assert!(line_is_warning(
+            "WARNING: Requested format is not available"
+        ));
+        assert!(line_is_warning(
+            "WARNING: [youtube] falling back to a generic extractor"
+        ));
+        assert!(line_is_warning("  warning: low download speed  "));
+    }
+
+    #[test]
+    fn an_error_line_is_not_mistaken_for_a_warning() {
+        // The direction that costs something: a genuine failure classified as a warning would be
+        // dropped from the failure evidence, leaving the user an error message that says nothing.
+        assert!(!line_is_warning("ERROR: unable to download video data"));
+        assert!(!line_is_warning("[download] 12.3% of 4.00MiB"));
+        assert!(!line_is_warning(""));
     }
 
     #[test]

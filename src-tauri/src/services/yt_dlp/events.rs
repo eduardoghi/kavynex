@@ -8,21 +8,16 @@ use crate::models::yt_dlp::{
     DownloadFailedEvent, DownloadFinishedEvent, DownloadLogEvent, DownloadLogLevel,
     DownloadTerminalEvent, DownloadTerminalStatus,
 };
+use crate::services::yt_dlp::download::line_is_warning;
 use crate::{AppError, AppErrorCode, AppResult};
 
 pub fn infer_log_level(line: &str, stream: &str) -> DownloadLogLevel {
-    let normalized = line.trim().to_lowercase();
-
-    if stream == "stderr" {
-        if normalized.contains("warning") {
-            return DownloadLogLevel::Warn;
-        }
-
-        return DownloadLogLevel::Error;
+    if line_is_warning(line) {
+        return DownloadLogLevel::Warn;
     }
 
-    if normalized.contains("warning") {
-        return DownloadLogLevel::Warn;
+    if stream == "stderr" {
+        return DownloadLogLevel::Error;
     }
 
     DownloadLogLevel::Info

@@ -52,6 +52,21 @@ pub(super) fn is_valid_format_id(format_id: &str) -> bool {
     })
 }
 
+/// True for a yt-dlp output line that reports a warning rather than a failure.
+///
+/// One definition with two callers, which is the point of it being here rather than spelled twice.
+/// `yt_dlp::events::infer_log_level` uses it to label a line for the in-app terminal, and the
+/// stderr reader in the parent module uses it to decide what may enter the buffer that becomes the
+/// user-facing failure message. Those two have to agree: a line shown as a warning must not also be
+/// quoted back as the reason a download failed.
+///
+/// Substring rather than a `WARNING:` prefix match, because yt-dlp prefixes the reporting stage
+/// (`WARNING: [youtube] ...`) on some lines and not others, and a prefix test would silently
+/// reclassify the prefixed ones as errors, which is the direction that does damage.
+pub(crate) fn line_is_warning(line: &str) -> bool {
+    line.trim().to_lowercase().contains("warning")
+}
+
 #[derive(Debug)]
 pub(super) struct ValidatedDownloadInputs {
     pub(super) url: String,
@@ -153,7 +168,15 @@ pub(super) fn build_download_command_args(
         "--no-part".to_string(),
         "--newline".to_string(),
         "--progress".to_string(),
-        "--no-warnings".to_string(),
+        // No `--no-warnings` here, deliberately, and unlike the metadata calls in
+        // `yt_dlp::metadata`. Warnings are where yt-dlp says a requested format was unavailable and
+        // something else was used, that the extractor is out of date, or that a fragment was
+        // retried. That is the category which most often explains an outcome the user did not
+        // expect ("I picked 1080p and got 720p"), and suppressing it left the in-app terminal, the
+        // one diagnostic surface this app offers, silent about the reason. They are kept out of the
+        // failure evidence instead (see `line_is_warning` and the stderr reader in the parent
+        // module), so surfacing them costs the error message nothing. The metadata calls keep the
+        // flag: their output is parsed, not read.
         "--ffmpeg-location".to_string(),
         ffmpeg_location.to_string(),
         "-f".to_string(),
