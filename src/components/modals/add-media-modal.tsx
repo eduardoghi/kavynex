@@ -9,6 +9,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../../types/media";
 import { AddMediaModalActions } from "./add-media-sections/add-media-modal-actions";
+import { ExternalToolsWarning } from "./add-media-sections/external-tools-warning";
 import { LocalMediaSection } from "./add-media-sections/local-media-section";
 import { ThumbnailSection } from "./add-media-sections/thumbnail-section";
 import { YtDlpSection } from "./add-media-sections/yt-dlp-section";
@@ -20,6 +21,7 @@ import {
     formatPublishedAtForDisplay,
 } from "../../utils/published-date";
 import { toUnionValue } from "../../utils/guards";
+import { useExternalToolsAvailability } from "../../hooks/use-external-tools-availability";
 import { useModalLock } from "../../hooks/use-modal-lock";
 
 type AddMediaModalProps = {
@@ -115,6 +117,10 @@ export function AddMediaModal({
 
     const modalLock = useModalLock(isModalLocked, onClose);
 
+    // Probed while the modal is open rather than on every launch: it spawns both binaries, and the
+    // answer only matters to someone who is about to import something.
+    const { missingTools } = useExternalToolsAvailability(opened, sourceMode);
+
     const canSubmit = isUrlMode
         ? mediaUrl.trim() !== "" && selectedYtDlpFormatId.trim() !== ""
         : mediaPath.trim() !== "";
@@ -187,6 +193,8 @@ export function AddMediaModal({
             >
                 <ScrollArea h="100%" offsetScrollbars scrollbarSize={10} type="always">
                     <Stack gap="md" pr="xs">
+                        <ExternalToolsWarning missingTools={missingTools} />
+
                         <SegmentedControl
                             value={sourceMode}
                             onChange={(value) =>

@@ -4,6 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import { AddMediaModal } from "./add-media-modal";
 import { renderWithMantine } from "../../test/test-utils";
 import { describeViolations, findAccessibilityViolations } from "../../test/axe";
+import { getExternalToolsStatus } from "../../services/diagnostics-external-tools";
+
+vi.mock("../../services/diagnostics-external-tools", () => ({
+    getExternalToolsStatus: vi.fn(() => new Promise(() => {})),
+}));
 
 function createDefaultProps(): React.ComponentProps<typeof AddMediaModal> {
     return {
@@ -207,6 +212,30 @@ describe("AddMediaModal", () => {
         fireEvent.submit(form!);
 
         expect(onAdd).not.toHaveBeenCalled();
+    });
+
+    it("warns about a missing tool before anything is filled in", async () => {
+        // Composed with the real hook rather than a stubbed warning: what this pins is the wiring,
+        // which is the half that can silently come undone while both pieces keep passing their own
+        // tests.
+        vi.mocked(getExternalToolsStatus).mockResolvedValueOnce({
+            yt_dlp: {
+                path: "",
+                version: "",
+                healthy: false,
+                release_age_days: null,
+            },
+            ffmpeg: {
+                path: "ffmpeg",
+                version: "7.1",
+                healthy: true,
+                release_age_days: null,
+            },
+        });
+
+        renderAddMediaModal({ sourceMode: "yt-dlp" });
+
+        expect(await screen.findByText("yt-dlp was not found")).toBeInTheDocument();
     });
 
     it("has no detectable accessibility violations in each source mode", async () => {
