@@ -358,6 +358,8 @@ pub(super) async fn http_get_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     fn uri(s: &str) -> Uri {
         s.parse().unwrap()
@@ -468,4 +470,53 @@ mod tests {
     // The redirect resolution these tests used to cover moved with the decision, to
     // `services::thumbnail::redirect`, which is under the mutation gate, unlike this file. See that
     // module's header for why the extraction was worth making.
+
+    #[tokio::test]
+    async fn http_get_image_refuses_an_internal_address_without_dialing_it() {
+        // The composition, not the pieces: the guard and the resolver each have their own test
+        // above, and this is the only one that proves `http_get_image` actually runs them. A
+        // refactor that dropped the call from the loop would leave both of those passing.
+        //
+        // It asserts on the request that was never made rather than only on the error, because a
+        // fetch that connected and then failed for some unrelated reason would still be an error.
+        // A real listener is what makes that observable.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let port = listener.local_addr().expect("local addr").port();
+
+        let connections = Arc::new(AtomicUsize::new(0));
+        let accepted = Arc::clone(&connections);
+
+        tokio::spawn(async move {
+            while listener.accept().await.is_ok() {
+                accepted.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        // Both spellings of the same destination. The IP literal is refused by the pre-connection
+        // guard (HttpConnector skips the resolver for a literal), the hostname by both it and the
+        // resolver, so between them every way in is covered.
+        for url in [
+            format!("http://127.0.0.1:{port}/thumb.png"),
+            format!("http://localhost:{port}/thumb.png"),
+        ] {
+            let error = http_get_image(&url, 5)
+                .await
+                .expect_err("a loopback thumbnail url must be refused");
+
+            assert_eq!(
+                error.code,
+                AppErrorCode::InvalidUrl.as_str(),
+                "refused for the wrong reason: {}",
+                error.message
+            );
+        }
+
+        assert_eq!(
+            connections.load(Ordering::SeqCst),
+            0,
+            "the refusal must happen before anything is dialed"
+        );
+    }
 }
