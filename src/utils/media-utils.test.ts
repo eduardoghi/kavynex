@@ -16,6 +16,8 @@ import {
     joinNormalizedPath,
     mediaTypeFromFile,
     resolveStoredPath,
+    RESUME_COMPLETION_TOLERANCE_SECONDS,
+    resumePositionFor,
     shortPath,
     stripWindowsExtendedPrefix,
 } from "./media-utils";
@@ -483,6 +485,32 @@ describe("media-utils", () => {
             expect(isMediaWatched(null)).toBe(false);
             expect(isMediaWatched(undefined)).toBe(false);
             expect(isMediaWatched({ watched_at: "   " })).toBe(false);
+        });
+    });
+
+    describe("resumePositionFor", () => {
+        it("resumes at a position with real playback left after it", () => {
+            expect(resumePositionFor(42, 120)).toBe(42);
+        });
+
+        it("starts over when the stored position is at, near or past the end", () => {
+            const tolerance = RESUME_COMPLETION_TOLERANCE_SECONDS;
+
+            expect(resumePositionFor(100, 100)).toBeNull();
+            expect(resumePositionFor(500, 100)).toBeNull();
+            expect(resumePositionFor(100 - tolerance, 100)).toBeNull();
+
+            // One second earlier than the tolerance allows is still a resume, which pins the
+            // boundary rather than only the side of it that starts over.
+            expect(resumePositionFor(100 - tolerance - 1, 100)).toBe(100 - tolerance - 1);
+        });
+
+        it("starts over when there is no position or no usable duration", () => {
+            expect(resumePositionFor(0, 120)).toBeNull();
+            expect(resumePositionFor(-5, 120)).toBeNull();
+            expect(resumePositionFor(42, Number.NaN)).toBeNull();
+            expect(resumePositionFor(42, Number.POSITIVE_INFINITY)).toBeNull();
+            expect(resumePositionFor(42, 0)).toBeNull();
         });
     });
 });

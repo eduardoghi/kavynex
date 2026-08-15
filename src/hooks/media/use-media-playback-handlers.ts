@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { SyntheticEvent } from "react";
+import { resumePositionFor } from "../../utils/media-utils";
 import { useMemoObject } from "../use-memo-object";
 
 type UseMediaPlaybackHandlersOptions = {
@@ -26,10 +27,10 @@ export function useMediaPlaybackHandlers<T extends HTMLMediaElement = HTMLMediaE
     const handleLoadedMetadata = useCallback(
         (event: SyntheticEvent<T>): void => {
             const element = event.currentTarget;
+            const resumeAt = resumePositionFor(progressSeconds, element.duration);
 
-            if (progressSeconds > 0 && Number.isFinite(element.duration)) {
-                const safeProgress = Math.min(progressSeconds, Math.max(0, element.duration - 1));
-                element.currentTime = Math.max(0, safeProgress);
+            if (resumeAt !== null) {
+                element.currentTime = resumeAt;
             }
         },
         [progressSeconds]

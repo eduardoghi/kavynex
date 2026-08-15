@@ -126,6 +126,30 @@ export function isMediaWatched(
     return Boolean(media?.watched_at?.trim());
 }
 
+// How close to the end a saved position has to be for the media to count as finished rather than
+// as somewhere to resume. Generous on purpose: `ended` is what marks a row watched, and a position
+// saved a few seconds short of it means the user stopped at the credits, not that they want to be
+// dropped there.
+export const RESUME_COMPLETION_TOLERANCE_SECONDS = 5;
+
+// Where playback should start for a stored position, or null to start from the beginning.
+//
+// Returning null for a position at (or past) the end is what keeps a finished media from opening
+// on its last second, playing for an instant and ending again, which reads as a broken file. That
+// state is reachable from rows written before the player marked a finished media watched, and from
+// a duration that shrank under a stored position.
+export function resumePositionFor(progressSeconds: number, duration: number): number | null {
+    if (progressSeconds <= 0 || !Number.isFinite(duration) || duration <= 0) {
+        return null;
+    }
+
+    if (duration - progressSeconds <= RESUME_COMPLETION_TOLERANCE_SECONDS) {
+        return null;
+    }
+
+    return progressSeconds;
+}
+
 export function initials(value: string): string {
     const parts = value
         .trim()

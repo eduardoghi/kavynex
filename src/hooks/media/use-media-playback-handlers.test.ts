@@ -21,15 +21,25 @@ describe("useMediaPlaybackHandlers", () => {
         expect(element.currentTime).toBe(42);
     });
 
-    it("clamps the resume position to just before the end", () => {
+    it("starts from the beginning when the saved position is at or past the end", () => {
+        // A position saved past the end (a duration that shrank, or a row written before finishing
+        // a media marked it watched) must not resume there: the media would play for an instant
+        // and end again, which reads as a broken file.
         const { result } = renderHook(() =>
             useMediaPlaybackHandlers({ progressSeconds: 500 })
         );
 
-        const element: Partial<HTMLMediaElement> = { duration: 100, currentTime: 0 };
-        result.current.handleLoadedMetadata(mediaEvent(element));
+        const pastTheEnd: Partial<HTMLMediaElement> = { duration: 100, currentTime: 0 };
+        result.current.handleLoadedMetadata(mediaEvent(pastTheEnd));
+        expect(pastTheEnd.currentTime).toBe(0);
 
-        expect(element.currentTime).toBe(99);
+        const { result: atTheEnd } = renderHook(() =>
+            useMediaPlaybackHandlers({ progressSeconds: 99 })
+        );
+
+        const finished: Partial<HTMLMediaElement> = { duration: 100, currentTime: 0 };
+        atTheEnd.current.handleLoadedMetadata(mediaEvent(finished));
+        expect(finished.currentTime).toBe(0);
     });
 
     it("does not seek when there is no saved progress or the duration is unknown", () => {

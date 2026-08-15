@@ -107,7 +107,11 @@ export function MediaPlayerView({
     // Each concern the player owns lives in its own hook: watch-position persistence, loading the
     // saved comments and live chat replay, and the global keyboard shortcuts. This component is
     // left to compose them and render.
-    useMediaProgressPersistence(media, playerElement, onSaveProgress);
+    // Watching a media to the end is what marks it watched. Without this the only way to mark one
+    // was the header button, so finishing a video left a stored position at its very end, and
+    // reopening it resumed there: a second of playback and the end again, which reads as a broken
+    // file rather than as a video already seen.
+    useMediaProgressPersistence(media, playerElement, onSaveProgress, onMarkWatched);
     const {
         comments,
         isLoadingComments,

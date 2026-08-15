@@ -102,4 +102,76 @@ describe("useMediaProgressPersistence", () => {
 
         expect(onSave).not.toHaveBeenCalled();
     });
+
+    it("reports completion instead of the position when playback ends", () => {
+        const element = videoElementAt(600);
+        const onCompleted = vi.fn();
+
+        renderHook(() =>
+            useMediaProgressPersistence(createMedia({ id: 7 }), element, onSave, onCompleted)
+        );
+
+        act(() => {
+            element.dispatchEvent(new Event("ended"));
+        });
+
+        expect(onCompleted).toHaveBeenCalledTimes(1);
+        // Saving here would race the write that zeroes progress_seconds for the watched row, and
+        // could put the end position back on it.
+        expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it("reports completion once per media, however often the end is reached", () => {
+        const element = videoElementAt(600);
+        const onCompleted = vi.fn();
+
+        // The media prop keeps its unwatched value, standing in for the window before the write
+        // lands and re-renders: the guard cannot rely on watched_at alone.
+        renderHook(() =>
+            useMediaProgressPersistence(createMedia({ id: 7 }), element, onSave, onCompleted)
+        );
+
+        act(() => {
+            element.dispatchEvent(new Event("ended"));
+            element.dispatchEvent(new Event("ended"));
+        });
+
+        expect(onCompleted).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to flushing the position when there is no completion to report", () => {
+        const watched = videoElementAt(600);
+        const onCompleted = vi.fn();
+
+        // Already watched: nothing to mark, and persistProgress drops the save on its own.
+        const { unmount } = renderHook(() =>
+            useMediaProgressPersistence(
+                createMedia({ id: 7, watched_at: "2026-01-01T00:00:00.000Z" }),
+                watched,
+                onSave,
+                onCompleted
+            )
+        );
+
+        act(() => {
+            watched.dispatchEvent(new Event("ended"));
+        });
+
+        expect(onCompleted).not.toHaveBeenCalled();
+        unmount();
+
+        // No callback at all: ending still has to persist the position, which is what every
+        // caller that does not pass one relies on.
+        const element = videoElementAt(600);
+
+        renderHook(() =>
+            useMediaProgressPersistence(createMedia({ id: 9 }), element, onSave)
+        );
+
+        act(() => {
+            element.dispatchEvent(new Event("ended"));
+        });
+
+        expect(onSave).toHaveBeenCalledWith(9, 600);
+    });
 });
