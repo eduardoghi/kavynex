@@ -496,8 +496,8 @@ cookies (or falls back to `--cookies-from-browser`).
 
 Downloading a thumbnail is the one place the backend makes an HTTP request of its own rather than
 delegating to yt-dlp, so it carries its own set of controls
-(`services/thumbnail/download.rs`). `download_thumbnail_from_url` takes two paths depending on the
-URL, and **both gate the host**:
+(`services/thumbnail/download/`, with the request itself and its checks in `fetch.rs`).
+`download_thumbnail_from_url` takes two paths depending on the URL, and **both gate the host**:
 
 - A URL whose *path* ends in an image extension is fetched directly, and is restricted to the
   image CDNs YouTube actually serves thumbnails from (`ALLOWED_THUMBNAIL_IMAGE_HOSTS`:

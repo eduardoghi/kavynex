@@ -65,7 +65,7 @@
 # extracted into the pure `reword_unlink_error_after_reference_clear` so a test could pin it.
 # `src/services/ssrf_guard.rs` - the pure IP-classification SSRF guard behind the thumbnail/avatar
 # downloader (loopback/private/link-local/reserved, including IPv4-mapped/compatible and
-# 6to4/NAT64/Teredo tunnel-embedded addresses). Extracted from `thumbnail/download.rs` into its own
+# 6to4/NAT64/Teredo tunnel-embedded addresses). Extracted from `thumbnail/download/` into its own
 # module so the classifier can be gated without dragging in the downloader's untestable async network
 # code. ADDED after a measured pass (2026-07-21, `--in-place --no-config --file`): 73 mutants, 3
 # unviable, 70 caught, 0 missed. The tunnel decoders were split into pure functions pinned by an
@@ -180,7 +180,7 @@
 # branch of `download_thumbnail_from_url_async` that reaches the network without going through
 # yt-dlp. It is what keeps that branch from being an outbound channel to any public host (the
 # yt-dlp fallback has its own allow-list, in `yt_dlp/url.rs`, already in scope above). Extracted
-# from `thumbnail/download.rs` rather than widening the glob to that file, following the
+# from `thumbnail/download/` rather than widening the glob to that module, following the
 # `ssrf_guard.rs` and `yt_dlp/download/redaction.rs` precedent: the rest of that module is async
 # process orchestration a unit test cannot drive, so a whole-file glob would report dozens of
 # unkillable mutants and cost minutes per run. ADDED after a measured pass (2026-07-27,
@@ -320,7 +320,7 @@
 # `src/services/thumbnail/redirect.rs` - the per-hop decision behind the thumbnail downloader's
 # manual redirect following: the hop budget, the refusal of a 3xx naming no destination, and the
 # resolution of `Location` against the URI it arrived on. This one is here for the strongest reason
-# any of these extractions has had. `thumbnail/download.rs` uses a hand-rolled hyper client instead
+# any of these extractions has had. `thumbnail/download/fetch.rs` uses a hand-rolled hyper client instead
 # of the `reqwest` already in the tree *because* it follows redirects manually, so the SSRF guard
 # re-runs on every hop - and that per-hop decision was the one part of the module no gate could
 # reach, since the rest of the file is async network orchestration a unit test cannot drive. The
