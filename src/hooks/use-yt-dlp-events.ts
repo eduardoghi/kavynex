@@ -11,13 +11,23 @@ import { listenValidated } from "../lib/tauri-client";
 import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
+import type { DownloadLogLevel } from "../types/generated/DownloadLogLevel";
+
+// How a line is classified, reused verbatim from the backend's own generated union rather than
+// respelled here, so a level added on the Rust side is a type error in the terminal's colour map
+// instead of a line that silently renders as the fallback.
+export type YtDlpLogLevel = DownloadLogLevel;
 
 // One terminal line plus a stable, monotonic id assigned when the line is first appended. The id
 // is what the terminal keys its rows on: the scrollback is trimmed from the front at
 // MAX_YT_DLP_LOG_LINES, which shifts every array index, so an index-derived key would change
 // underneath React and remount the whole 500-row scrollback on each new line past the cap. A per-line
 // id never changes once assigned, so React reuses each row and only the genuinely new one mounts.
-export type YtDlpLogLine = { id: number; text: string };
+//
+// `level` is the backend's own classification, carried through rather than re-derived: the log
+// event already validates it (`ipc-schemas.ts`), and the terminal used to ignore it and sniff the
+// text for an `ERROR:` prefix instead.
+export type YtDlpLogLine = { id: number; text: string; level: YtDlpLogLevel };
 
 type UseYtDlpEventsReturn = {
     ytDlpLogs: YtDlpLogLine[];
@@ -60,8 +70,12 @@ function isProgressLine(line: string): boolean {
 
 // Wraps plain text lines as YtDlpLogLine, numbering them from `startId`. Used to seed a fresh
 // session (the command preview / header), where the log starts empty so ids begin at 0.
-function toLogLines(texts: string[], startId = 0): YtDlpLogLine[] {
-    return texts.map((text, index) => ({ id: startId + index, text }));
+function toLogLines(
+    texts: string[],
+    startId = 0,
+    level: YtDlpLogLevel = "info"
+): YtDlpLogLine[] {
+    return texts.map((text, index) => ({ id: startId + index, text, level }));
 }
 
 // The next id to assign. Ids are monotonic and only ever appended at the tail, so the last line
@@ -73,7 +87,11 @@ function nextLogId(lines: YtDlpLogLine[]): number {
     return lastLine ? lastLine.id + 1 : 0;
 }
 
-function appendProcessedLogs(current: YtDlpLogLine[], incoming: string[]): YtDlpLogLine[] {
+function appendProcessedLogs(
+    current: YtDlpLogLine[],
+    incoming: string[],
+    level: YtDlpLogLevel
+): YtDlpLogLine[] {
     const next = [...current];
     let id = nextLogId(current);
 
@@ -92,11 +110,11 @@ function appendProcessedLogs(current: YtDlpLogLine[], incoming: string[]): YtDlp
         if (isProgressLine(text) && lastLine && isProgressLine(lastLine.text)) {
             // Collapse consecutive progress lines by updating the last one in place, keeping its id
             // so React updates that row rather than remounting it.
-            next[next.length - 1] = { id: lastLine.id, text };
+            next[next.length - 1] = { id: lastLine.id, text, level };
             continue;
         }
 
-        next.push({ id, text });
+        next.push({ id, text, level });
         id += 1;
     }
 
@@ -109,22 +127,29 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
     const currentRunIdRef = useRef("");
 
-    const appendLogs = useCallback((...lines: string[]): void => {
-        setYtDlpLogs((current) => {
-            let next = current;
+    // The level is a required first argument rather than one defaulting to "info", because every
+    // caller genuinely knows it: a backend line carries its own, and an app-generated one is a
+    // deliberate choice. A default would let the interesting cases (a failure notice, a warning)
+    // fall back to "info" by omission, which is the bug this replaced.
+    const appendLogs = useCallback(
+        (level: YtDlpLogLevel, ...lines: string[]): void => {
+            setYtDlpLogs((current) => {
+                let next = current;
 
-            for (const entry of lines) {
-                const chunks = normalizeLogChunks(entry);
-                next = appendProcessedLogs(next, chunks);
-            }
+                for (const entry of lines) {
+                    const chunks = normalizeLogChunks(entry);
+                    next = appendProcessedLogs(next, chunks, level);
+                }
 
-            return next;
-        });
-    }, []);
+                return next;
+            });
+        },
+        []
+    );
 
     const appendManualLog = useCallback(
         (line: string): void => {
-            appendLogs(line);
+            appendLogs("info", line);
         },
         [appendLogs]
     );
@@ -155,10 +180,14 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         setIsYtDlpRunning(false);
     }, []);
 
+    // `level` is required, and it is what replaced the terminal's old `startsWith("ERROR:")` check.
+    // That sniff only ever matched one of these outcomes (the yt-dlp error event, whose text
+    // happens to start with the prefix), so a terminal-failed line rendered as ordinary output. The
+    // caller knows which outcome it is reporting, so it says so.
     const finalizeRun = useCallback(
-        (message?: string): void => {
+        (message: string, level: YtDlpLogLevel): void => {
             if (message) {
-                appendLogs("", message);
+                appendLogs(level, "", message);
             }
 
             currentRunIdRef.current = "";
@@ -189,7 +218,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                             return;
                         }
 
-                        appendLogs(payload.line);
+                        appendLogs(payload.level, payload.line);
                     }
                 );
 
@@ -209,7 +238,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                             return;
                         }
 
-                        finalizeRun(`Download finished: ${payload.file_path}`);
+                        finalizeRun(`Download finished: ${payload.file_path}`, "info");
                     }
                 );
 
@@ -229,7 +258,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                             return;
                         }
 
-                        finalizeRun(`ERROR: ${payload.message}`);
+                        finalizeRun(`ERROR: ${payload.message}`, "error");
                     }
                 );
 
@@ -249,7 +278,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                             return;
                         }
 
-                        finalizeRun(`Cancelled: ${payload.message}`);
+                        finalizeRun(`Cancelled: ${payload.message}`, "info");
                     }
                 );
 
@@ -271,24 +300,26 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
                         if (payload.status === "finished") {
                             if (payload.file_path?.trim()) {
-                                finalizeRun(`Terminal finished: ${payload.file_path}`);
+                                finalizeRun(`Terminal finished: ${payload.file_path}`, "info");
                                 return;
                             }
 
-                            finalizeRun("Terminal finished.");
+                            finalizeRun("Terminal finished.", "info");
                             return;
                         }
 
                         if (payload.status === "failed") {
                             finalizeRun(
-                                `Terminal failed: ${payload.message?.trim() || "Unknown failure"}`
+                                `Terminal failed: ${payload.message?.trim() || "Unknown failure"}`,
+                                "error"
                             );
                             return;
                         }
 
                         if (payload.status === "cancelled") {
                             finalizeRun(
-                                `Terminal cancelled: ${payload.message?.trim() || "Cancelled"}`
+                                `Terminal cancelled: ${payload.message?.trim() || "Cancelled"}`,
+                                "info"
                             );
                         }
                     }

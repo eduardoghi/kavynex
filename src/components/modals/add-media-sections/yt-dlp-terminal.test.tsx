@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { YtDlpTerminal } from "./yt-dlp-terminal";
-import type { YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
+import type { YtDlpLogLevel, YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
 import { renderWithMantine } from "../../../test/test-utils";
 
 // The virtualized scrollback only mounts rows near the viewport, and jsdom has no layout (every
@@ -23,9 +23,15 @@ vi.mock("@tanstack/react-virtual", () => ({
 }));
 
 // The terminal keys rows on a stable per-line id (see YtDlpLogLine); the ids are arbitrary here, so
-// number them positionally.
+// number them positionally. The level defaults to "info" because most of these cases are about
+// layout and virtualization rather than colour; the ones that are about colour use `leveledLogs`.
 function logs(...texts: string[]): YtDlpLogLine[] {
-    return texts.map((text, index) => ({ id: index, text }));
+    return texts.map((text, index) => ({ id: index, text, level: "info" }));
+}
+
+// The same, for the cases that assert on how a level is rendered.
+function leveledLogs(...entries: [string, YtDlpLogLevel][]): YtDlpLogLine[] {
+    return entries.map(([text, level], index) => ({ id: index, text, level }));
 }
 
 describe("YtDlpTerminal", () => {
@@ -98,6 +104,39 @@ describe("YtDlpTerminal", () => {
         );
 
         expect(screen.getAllByText("ERROR: download failed").length).toBeGreaterThan(0);
+    });
+
+    it("colours a line by its level rather than by what its text starts with", () => {
+        // The three levels must be visually distinct, and a warning in particular has to be: yt-dlp
+        // warnings are no longer suppressed on a download, and they are the lines that explain an
+        // outcome the user did not ask for. Rendering them like ordinary progress output would put
+        // them back out of reach in a terminal that scrolls fast.
+        //
+        // Asserted as "these three differ" rather than against the exact CSS variable Mantine emits,
+        // so a palette change is not a failing test while a level collapsing into another one is.
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={leveledLogs(
+                    ["plain progress", "info"],
+                    ["WARNING: requested format is not available", "warn"],
+                    ["ERROR: download failed", "error"]
+                )}
+                isYtDlpRunning={false}
+            />
+        );
+
+        const styleOf = (text: string): string =>
+            screen.getAllByText(text)[0]?.getAttribute("style") ?? "";
+
+        const info = styleOf("plain progress");
+        const warn = styleOf("WARNING: requested format is not available");
+        const error = styleOf("ERROR: download failed");
+
+        expect(warn).not.toBe(info);
+        expect(error).not.toBe(info);
+        expect(error).not.toBe(warn);
     });
 
     it("announces only the latest line while keeping the full log present", () => {

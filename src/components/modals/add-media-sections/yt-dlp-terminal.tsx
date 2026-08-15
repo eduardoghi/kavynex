@@ -1,7 +1,7 @@
 import { Badge, Box, Group, Text, VisuallyHidden, rem } from "@mantine/core";
 import { useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
+import type { YtDlpLogLevel, YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
 
 type YtDlpTerminalProps = {
     opened: boolean;
@@ -25,6 +25,20 @@ const TERMINAL_HEIGHT = "clamp(220px, 32vh, 460px)";
 // are measured after mount via measureElement, so this only shapes the first paint's scrollbar
 // estimate. A wrapped long line is measured at its true height, not this one.
 const ESTIMATED_LINE_HEIGHT = 21;
+
+// Colour per line level. A `Record` over the union rather than a chain of conditionals, so a level
+// added on the Rust side (the union is generated from `DownloadLogLevel`) fails to compile here
+// instead of silently falling through to the default.
+//
+// This replaced `line.text.startsWith("ERROR:")`. That sniff matched exactly one of the lines it
+// was meant to catch, the yt-dlp error event, whose text happens to carry the prefix, and missed
+// the terminal-failed line entirely; it also had no way at all to show a warning, which is the
+// level that now actually arrives (yt-dlp warnings are no longer suppressed on a download).
+const LINE_COLOR: Record<YtDlpLogLevel, string> = {
+    info: "gray.3",
+    warn: "yellow.4",
+    error: "red.4",
+};
 
 export function YtDlpTerminal({
     opened,
@@ -152,7 +166,7 @@ export function YtDlpTerminal({
                                         ref={virtualizer.measureElement}
                                         data-index={virtualRow.index}
                                         component="div"
-                                        c={line.text.startsWith("ERROR:") ? "red.4" : "gray.3"}
+                                        c={LINE_COLOR[line.level]}
                                         style={{
                                             fontFamily: "inherit",
                                             position: "absolute",
