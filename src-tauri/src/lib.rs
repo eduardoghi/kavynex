@@ -346,6 +346,42 @@ fn is_smoke_test_run(args: impl IntoIterator<Item = String>) -> bool {
     args.into_iter().any(|arg| arg == SMOKE_TEST_FLAG)
 }
 
+/// What to tell the user when the platform's webview runtime is the thing that is missing.
+///
+/// Each platform names the component it actually has to install, because that is the whole value
+/// of the message: the failure the runtime reports for a missing WebView2 is a COM registration
+/// error, which says nothing a user can act on. macOS is absent on purpose. WKWebView is part of
+/// the OS there, so a build failure on macOS is never this.
+#[cfg(windows)]
+const MISSING_WEBVIEW_HELP: &str = "Kavynex needs the Microsoft Edge WebView2 Runtime, and it is \
+     not installed on this computer.\n\nInstall it from \
+     https://developer.microsoft.com/microsoft-edge/webview2/ and start Kavynex again.";
+
+#[cfg(target_os = "linux")]
+const MISSING_WEBVIEW_HELP: &str = "Kavynex renders its interface with WebKitGTK, which is not \
+     available on this system.\n\nInstall the 4.1 series (libwebkit2gtk-4.1-0 on Debian/Ubuntu, \
+     webkit2gtk4.1 on Fedora) and start Kavynex again. Installing the .deb/.rpm through your \
+     package manager pulls it in for you; the AppImage carries its own copy.";
+
+/// The message a failed `Builder::build` should show, given whether the webview runtime resolved.
+///
+/// Pure so both branches can be asserted, since the caller terminates the process. The technical
+/// detail is kept in the friendly branch rather than replaced: it is what a bug report needs, and
+/// dropping it would trade one unhelpful message for another.
+#[cfg(any(windows, target_os = "linux"))]
+fn startup_failure_message(build_error: &str, webview_available: bool) -> String {
+    if webview_available {
+        return format!("failed to build the application: {build_error}");
+    }
+
+    format!("{MISSING_WEBVIEW_HELP}\n\nTechnical detail: {build_error}")
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn startup_failure_message(build_error: &str, _webview_available: bool) -> String {
+    format!("failed to build the application: {build_error}")
+}
+
 /// Reports a fatal startup failure and terminates with a non-zero code. The app is built with
 /// `windows_subsystem = "windows"` (no console), so a panic here would be invisible. The user
 /// would just see the app fail to open. This logs the reason (stderr, plus the file log if it
@@ -601,7 +637,15 @@ pub fn run() {
             commands::videos::get_media_repository_stats
         ])
         .build(tauri::generate_context!())
-        .unwrap_or_else(|error| fail_startup(&format!("failed to build the application: {error}")))
+        .unwrap_or_else(|error| {
+            // Asking the runtime rather than pattern-matching the error text: a missing WebView2
+            // surfaces as a COM registration failure whose wording belongs to Windows, not to us,
+            // and `webview_version()` answers the same question directly.
+            fail_startup(&startup_failure_message(
+                &error.to_string(),
+                tauri::webview_version().is_ok(),
+            ))
+        })
         .run(|_app_handle, event| {
             // Terminate any in-flight yt-dlp/ffmpeg work when the app is exiting so it is not
             // left running as orphaned processes after the window closes. The download sweep
@@ -633,6 +677,44 @@ mod tests {
             "--other",
             SMOKE_TEST_FLAG,
         ])));
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn a_build_failure_with_a_working_webview_reports_the_technical_error() {
+        let message = startup_failure_message("some other failure", true);
+
+        assert!(message.contains("some other failure"));
+        assert!(
+            !message.contains(MISSING_WEBVIEW_HELP),
+            "a failure that has nothing to do with the webview must not blame it"
+        );
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn a_build_failure_with_no_webview_runtime_leads_with_how_to_install_it() {
+        // This is the first thing a user sees on a machine without the runtime, and it arrives
+        // before any window exists, so the actionable half has to come first.
+        let message = startup_failure_message("Class not registered (0x80040154)", false);
+
+        assert!(message.starts_with(MISSING_WEBVIEW_HELP));
+        assert!(
+            message.contains("Class not registered"),
+            "the technical detail a bug report needs must survive"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_help_points_at_the_runtime_download() {
+        assert!(MISSING_WEBVIEW_HELP.contains("developer.microsoft.com/microsoft-edge/webview2"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_linux_help_names_the_package_to_install() {
+        assert!(MISSING_WEBVIEW_HELP.contains("libwebkit2gtk-4.1-0"));
     }
 
     #[test]
