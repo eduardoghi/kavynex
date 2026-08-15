@@ -492,7 +492,37 @@ fn report_for_unavailable_library(plan: ArtifactCleanupPlan) -> ArtifactCleanupR
     }
 }
 
+/// Removes a committed plan's artifacts under [`MEDIA_REGISTRATION_LOCK`].
+///
+/// The lock is here, and not only around `cleanup_unreferenced_artifacts`, because the three
+/// callers below (a media delete, a channel delete, an avatar replace) unlink exactly the same
+/// content-addressed files a concurrent creation can be adopting, and for a while they held nothing
+/// but `drop_paths_referenced_again`. A recount is not exclusion: it answers "is this referenced
+/// *now*", and a creation that inserts a moment later makes that answer stale between the recount
+/// and the unlink. `docs/THREAT-MODEL.md` described the lock as closing this class while these three
+/// paths sat outside it, which is the asymmetry this closes.
+///
+/// What it does **not** close is the window before `register_prepared_media` takes the same lock,
+/// i.e. between the artifacts landing and the creation reaching its critical section. Covering that
+/// would mean holding this lock across a download, which is the one thing the lock's own
+/// documentation rules out. `insert_prepared_media` re-checks the media file's existence inside the
+/// critical section instead, so what that window can still cost is a refused creation rather than a
+/// row pointing at nothing. See the residual recorded in `docs/THREAT-MODEL.md`.
 async fn execute_plan<R: Runtime>(
+    app: &AppHandle<R>,
+    plan: ArtifactCleanupPlan,
+) -> AppResult<ArtifactCleanupReport> {
+    let _guard = MEDIA_REGISTRATION_LOCK.lock().await;
+
+    execute_plan_locked(app, plan).await
+}
+
+/// The body of [`execute_plan`], for a caller that already holds [`MEDIA_REGISTRATION_LOCK`].
+///
+/// Exists for the same reason [`cleanup_unreferenced_artifacts_locked`] does: a creation's failure
+/// path cleans up while still inside its own critical section, so taking the lock a second time
+/// would deadlock.
+async fn execute_plan_locked<R: Runtime>(
     app: &AppHandle<R>,
     mut plan: ArtifactCleanupPlan,
 ) -> AppResult<ArtifactCleanupReport> {
@@ -688,7 +718,9 @@ pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
 
     drop(conn);
 
-    execute_plan(app, plan).await
+    // `_locked`, not `execute_plan`: this function's caller already holds
+    // MEDIA_REGISTRATION_LOCK, and taking it again would deadlock on the non-reentrant mutex.
+    execute_plan_locked(app, plan).await
 }
 
 /// Updates a channel's avatar path and decides, within the same transaction, whether the
@@ -872,6 +904,49 @@ mod tests {
         // No row references it, so it stays scheduled for removal.
         assert_eq!(paths(&plan.deletable), vec!["video/gone.mp4"]);
         assert!(plan.skipped_shared_paths.is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_plan_waits_for_a_media_registration_holding_the_lock() {
+        // The regression this pins: the three delete paths reached this function with no exclusion
+        // against a creation at all, relying on `drop_paths_referenced_again` above and nothing
+        // else. A recount is not exclusion. It answers "is this referenced *now*", and a creation
+        // that inserts a moment later makes that answer stale between the recount and the unlink,
+        // which is the window that strands a row on a file that has been removed.
+        //
+        // An empty plan is enough, and is the point: what is under test is that the lock is taken
+        // *before* any work is delegated, not what the work then does. A plan with real artifacts
+        // would need a library on disk and prove nothing extra about the ordering.
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let guard = media_registration_guard().await;
+
+        let handle = app.handle().clone();
+        let mut cleanup =
+            tokio::spawn(
+                async move { execute_plan(&handle, ArtifactCleanupPlan::default()).await },
+            );
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(200), &mut cleanup)
+                .await
+                .is_err(),
+            "execute_plan must block while a media registration holds MEDIA_REGISTRATION_LOCK"
+        );
+
+        drop(guard);
+
+        // Generously bounded rather than tight: the lock is a process-wide static, so another test
+        // in this binary can take it between the release above and this await. The assertion is
+        // that the cleanup proceeds at all, not how quickly.
+        let report = tokio::time::timeout(std::time::Duration::from_secs(10), cleanup)
+            .await
+            .expect("execute_plan must proceed once the registration releases the lock")
+            .expect("the cleanup task must not panic")
+            .expect("an empty plan is not an error");
+
+        assert!(report.deleted_paths.is_empty());
     }
 
     #[tokio::test]

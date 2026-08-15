@@ -817,16 +817,36 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
     }
 }
 
-/// The duplicate check and the insert, both against the shared pool.
+/// The existence re-check, the duplicate check and the insert.
 ///
 /// The pre-insert lookup exists for its message rather than for correctness: `(channel_id,
 /// file_path)` is unique in the schema, so a duplicate would be refused either way, just as a
 /// constraint violation rather than as "this media is already registered for the selected channel".
+///
+/// The existence re-check is the one that is about correctness, and it is here rather than in
+/// `prepare_*` precisely because it has to run **inside** the critical section. The artifacts land
+/// before [`register_prepared_media`] takes the lock, so a concurrent delete unlinking a
+/// content-addressed file this creation is adopting is not excluded by the lock and cannot be:
+/// covering that window would mean holding the lock across a download, which the lock's own
+/// documentation rules out. `library::cleanup::execute_plan` now takes the same lock, so nothing can
+/// unlink between this check and the insert below. What the earlier window can still cost is
+/// therefore a refused creation, never a row pointing at a file that is gone.
 async fn insert_prepared_media<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
     prepared: &PreparedArtifacts,
 ) -> AppResult<i64> {
+    let library_dir = library::guard::configured_library_dir(app).await?;
+    let media_file = library_dir.join(&prepared.file_path);
+
+    if !run_blocking(move || Ok(media_file.exists())).await? {
+        return Err(AppError::from_code(
+            AppErrorCode::MediaFileNotFound,
+            "the prepared media file is no longer in the library; it was removed before the row \
+             could be inserted",
+        ));
+    }
+
     let pool = shared_pool(app).await?;
 
     if repo::find_media_by_channel_and_file_path(&pool, request.channel_id, &prepared.file_path)
@@ -1547,6 +1567,51 @@ mod tests {
             assert!(
                 library.join(&file_path).exists(),
                 "a successful registration must not touch the artifacts"
+            );
+
+            let _ = std::fs::remove_dir_all(&library);
+        }
+
+        #[tokio::test]
+        async fn a_registration_whose_media_file_vanished_is_refused_rather_than_inserted() {
+            // The window this covers is the one the lock structurally cannot. The artifacts land
+            // *before* register_prepared_media takes MEDIA_REGISTRATION_LOCK, so a delete that
+            // unlinks a content-addressed file this creation is adopting is not excluded by that
+            // lock, and closing it there would mean holding the lock across a download. Removing
+            // the file here is exactly what such a delete leaves behind.
+            //
+            // What must not happen is the insert going through regardless. A row pointing at a
+            // file that is gone stays invisible until playback fails, and Diagnostics can only
+            // report it as missing with nothing left to reconcile it against. A refusal is
+            // recoverable: the user adds the media again.
+            let (app, library) = app_with_library("vanished").await;
+            let prepared = artifacts_on_disk(&library, "media_vanished.mp4");
+            let file_path = prepared.file_path.clone();
+
+            std::fs::remove_file(library.join(&file_path)).unwrap();
+
+            let error =
+                register_prepared_media(app.handle(), &request(MediaSourceMode::Local), prepared)
+                    .await
+                    .expect_err("a media file that is gone must not be registered");
+
+            assert_eq!(error.code, AppErrorCode::MediaFileNotFound.as_str());
+
+            let pool = crate::services::database::shared_pool(app.handle())
+                .await
+                .unwrap();
+            assert!(
+                video_repository::find_media_by_channel_and_file_path(&pool, 1, &file_path)
+                    .await
+                    .unwrap()
+                    .is_none(),
+                "no row may be left pointing at a media file that is not there"
+            );
+
+            assert_eq!(
+                markers_naming(&app, &file_path),
+                0,
+                "a refused registration must not leave a crash marker behind"
             );
 
             let _ = std::fs::remove_dir_all(&library);

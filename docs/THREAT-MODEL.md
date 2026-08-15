@@ -403,6 +403,35 @@ the section it guards is milliseconds long (the download and the import run outs
 serializing it costs nothing a user waits on, and a keying scheme would only add a way to get the key
 wrong.
 
+**That sentence was true of one caller and not of the other three, which is worth stating rather
+than quietly fixing.** The lock sat on `cleanup_unreferenced_media_artifacts`, and this section read
+as though it covered every unlink. It did not. `delete_media_with_artifacts`,
+`delete_channel_with_artifacts` and `replace_channel_avatar` reach the same removal through
+`library::cleanup::execute_plan`, which took no lock at all and rested entirely on
+`drop_paths_referenced_again`, a recount run immediately before the unlink. A recount is not
+exclusion: it answers "is this path referenced *now*", and a creation that inserts a moment later
+makes that answer stale in exactly the gap the recount was meant to close. The three delete paths
+are also the *common* ones, so the weaker half of the guarantee was carrying the heavier traffic.
+`execute_plan` takes the lock now, and the recount stays as the second line rather than the only
+one.
+
+**What the lock cannot cover, and does not.** A creation's artifacts land *before*
+`register_prepared_media` takes the lock, because what happens in between is a download or a
+multi-gigabyte copy and holding a process-wide lock across it would serialize the one operation a
+user actually waits on. So a delete that unlinks a content-addressed file an in-flight creation is
+adopting is still possible, in the window between the artifacts landing and the creation reaching
+its critical section. What bounds it is a re-check rather than exclusion:
+`media_creation::insert_prepared_media` confirms the media file is still on disk *inside* the
+critical section, where `execute_plan` can no longer be running. So the worst that window produces
+is a refused creation (`MEDIA_FILE_NOT_FOUND`, which the frontend already has a message for),
+never a row pointing at a file that is gone. The bytes can still be lost in one narrow case: a
+local import in **move** mode whose destination already held identical content deletes the source
+up front (`filesystem::move_or_copy_file_using`), so if the destination is then unlinked before the
+insert, both copies are gone and the user is told rather than left with a broken row. Closing that
+fully would mean registering the claim before the artifacts are produced, which is not possible for
+a yt-dlp source (the content-addressed path is not known until the download finishes). Recorded as
+an accepted residual, in the same spirit as the move-import TOCTOU below.
+
 This paragraph used to say that lock was deliberately not built, and that the exclusion rested
 instead on the add-media modal refusing to start a second creation (`isModalLocked`). The one
 guarantee in this document that depended on frontend behavior. That is what the move above removed.
