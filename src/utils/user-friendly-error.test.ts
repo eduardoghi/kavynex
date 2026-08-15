@@ -37,6 +37,11 @@ import {
     YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
     YT_DLP_THUMBNAIL_TIMEOUT_ERROR_CODE,
     YT_DLP_THUMBNAIL_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE,
+    YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE,
     FFMPEG_NOT_FOUND_ERROR_CODE,
     FFMPEG_FAILED_ERROR_CODE,
     FFMPEG_EXEC_FAILED_ERROR_CODE,
@@ -103,6 +108,26 @@ const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE, "The media download was cancelled."],
     [YT_DLP_THUMBNAIL_TIMEOUT_ERROR_CODE, "Timed out while downloading the thumbnail."],
     [YT_DLP_THUMBNAIL_FAILED_ERROR_CODE, "The thumbnail download failed."],
+    [
+        YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE,
+        "The comment download took too long and was interrupted. Your saved comments were kept.",
+    ],
+    [
+        YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE,
+        "yt-dlp could not be started to download the comments. Your saved comments were kept.",
+    ],
+    [
+        YT_DLP_COMMENTS_FAILED_ERROR_CODE,
+        "yt-dlp could not download the comments for this media. Your saved comments were kept.",
+    ],
+    [
+        YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE,
+        "yt-dlp returned comment data Kavynex could not read. Your saved comments were kept.",
+    ],
+    [
+        YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE,
+        "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Your saved comments were kept.",
+    ],
 
     [
         FFMPEG_NOT_FOUND_ERROR_CODE,

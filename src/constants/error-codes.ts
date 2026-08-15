@@ -59,6 +59,16 @@ export const YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE =
     "YT_DLP_SELECTED_FORMAT_NOT_FOUND" as const;
 export const YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE = "YT_DLP_RUN_ALREADY_ACTIVE" as const;
 
+// The comment backup failures. They only reach the user through the player's manual refresh (the
+// import path logs them and continues without comments), and there the fetch runs before anything
+// is written, so the comments already saved are always intact. That is the part worth saying, and
+// the generic fallback these used to take could not say it.
+export const YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE = "YT_DLP_COMMENTS_TIMEOUT" as const;
+export const YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE = "YT_DLP_COMMENTS_EXEC_FAILED" as const;
+export const YT_DLP_COMMENTS_FAILED_ERROR_CODE = "YT_DLP_COMMENTS_FAILED" as const;
+export const YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE = "YT_DLP_COMMENTS_PARSE_FAILED" as const;
+export const YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE = "YT_DLP_COMMENTS_INCOMPLETE" as const;
+
 export const UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE = "UNSUPPORTED_MEDIA_EXTENSION" as const;
 
 // A local import the user stopped. Deliberately its own code rather than reusing
@@ -149,6 +159,11 @@ export const KNOWN_ERROR_CODES = [
     TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE,
     YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE,
     YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE,
+    YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE,
+    YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE,
     UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE,
     MEDIA_IMPORT_CANCELLED_ERROR_CODE,
     NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE,

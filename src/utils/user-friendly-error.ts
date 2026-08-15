@@ -51,6 +51,11 @@ import {
     UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE,
     YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE,
     YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE,
+    YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE,
+    YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE,
+    YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE,
     NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE,
     NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE,
     DATABASE_ALREADY_OPEN_ERROR_CODE,
@@ -161,6 +166,20 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "The selected format is no longer offered for this media. Load the formats again and pick another one.",
     [YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE]:
         "This download is already running. Wait for it to finish, or cancel it first.",
+
+    // Every one of these ends by saying the saved comments survived, because that is what the user
+    // needs to know and cannot tell from the failure alone. It is true by construction: the refresh
+    // fetches first and only replaces what is stored once the fetch succeeded.
+    [YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE]:
+        "The comment download took too long and was interrupted. Your saved comments were kept.",
+    [YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE]:
+        "yt-dlp could not be started to download the comments. Your saved comments were kept.",
+    [YT_DLP_COMMENTS_FAILED_ERROR_CODE]:
+        "yt-dlp could not download the comments for this media. Your saved comments were kept.",
+    [YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE]:
+        "yt-dlp returned comment data Kavynex could not read. Your saved comments were kept.",
+    [YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE]:
+        "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Your saved comments were kept.",
 
     [FFMPEG_NOT_FOUND_ERROR_CODE]:
         "ffmpeg was not found. Install ffmpeg or place the binary in the app tools folder.",
