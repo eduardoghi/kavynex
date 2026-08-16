@@ -1,0 +1,61 @@
+{
+    "_comment": "Real `yt-dlp -J` output for https://www.youtube.com/watch?v=jNQXAC9IVRw, captured from yt-dlp 2026.07.04 on 2026-08-16 and trimmed to what the app actually reads. This exists because every other gate in this repository checks the app against itself: nothing compares the field names in models/yt_dlp.rs against what yt-dlp really emits, so a renamed or retyped field upstream passes cargo test, clippy, the coverage floor and both release self-checks, and reaches the user as a download that fails with no local explanation. Trimming is deliberate and so is what survived: three formats covering the shapes the code branches on (a muxed one, a video-only one with acodec none, an audio-only one with vcodec none), and a filesize of null next to a populated filesize_approx. Two things were edited rather than captured verbatim: the thumbnail query string (an expiring signature, irrelevant to parsing) is dropped, and comments is absent here because it is absent from real -J output too, which is the point of the assertion about it. Refresh with the ignored live-contract test that re-fetches this; do not hand-edit a field name into agreement.",
+    "id": "jNQXAC9IVRw",
+    "title": "Me at the zoo",
+    "extractor": "youtube",
+    "upload_date": "20050424",
+    "thumbnail": "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg",
+    "live_status": "not_live",
+    "was_live": false,
+    "comment_count": 10000000,
+    "formats": [
+        {
+            "format_id": "18",
+            "ext": "mp4",
+            "format": "18 - 320x240 (240p)",
+            "format_note": "240p",
+            "resolution": "320x240",
+            "filesize": null,
+            "filesize_approx": 635110,
+            "vcodec": "avc1.42001E",
+            "acodec": "mp4a.40.2",
+            "height": 240,
+            "fps": 15,
+            "abr": null,
+            "tbr": 266.531,
+            "protocol": "https"
+        },
+        {
+            "format_id": "160",
+            "ext": "mp4",
+            "format": "160 - 192x144 (144p)",
+            "format_note": "144p",
+            "resolution": "192x144",
+            "filesize": 195278,
+            "filesize_approx": 195277,
+            "vcodec": "avc1.4d400b",
+            "acodec": "none",
+            "height": 144,
+            "fps": 15,
+            "abr": 0,
+            "tbr": 82.513,
+            "protocol": "https"
+        },
+        {
+            "format_id": "139",
+            "ext": "m4a",
+            "format": "139 - audio only (low)",
+            "format_note": "low",
+            "resolution": "audio only",
+            "filesize": 117526,
+            "filesize_approx": 117524,
+            "vcodec": "none",
+            "acodec": "mp4a.40.5",
+            "height": null,
+            "fps": null,
+            "abr": 49.14,
+            "tbr": 49.14,
+            "protocol": "https"
+        }
+    ]
+}

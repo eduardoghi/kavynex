@@ -1370,6 +1370,210 @@ mod tests {
         assert_eq!(resolve_youtube_video_id(Some("   "), Some("youtube")), None);
     }
 
+    /// Real `yt-dlp -J` output, trimmed to what this app reads. See the fixture's own `_comment`
+    /// for how it was captured and what was edited.
+    const REAL_METADATA_FIXTURE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/yt-dlp-metadata-youtube.json"
+    ));
+
+    fn parse_real_metadata() -> crate::models::yt_dlp::YtDlpMetadata {
+        serde_json::from_str(REAL_METADATA_FIXTURE)
+            .expect("the captured yt-dlp output must still deserialize into YtDlpMetadata")
+    }
+
+    // The four tests below are this repository's only check against something it does not control.
+    // Everything else compares the app to itself, so a field yt-dlp renames or retypes passes cargo
+    // test, clippy, the coverage floor and both release self-checks, and arrives on a user's machine
+    // as a download that fails with nothing local to explain it. These pin the contract as it was
+    // observed; `live_yt_dlp_output_still_matches_the_committed_fixture` is what notices it moving.
+
+    #[test]
+    fn real_yt_dlp_metadata_deserializes_with_every_field_the_app_reads() {
+        let metadata = parse_real_metadata();
+
+        // Named individually rather than asserted as a whole, because the failure this catches is
+        // one field going quiet: serde maps an absent or renamed key to None on every one of these,
+        // so a blanket "it parsed" assertion would pass while the value the app depends on vanished.
+        assert_eq!(metadata.id.as_deref(), Some("jNQXAC9IVRw"));
+        assert_eq!(metadata.title.as_deref(), Some("Me at the zoo"));
+        assert_eq!(metadata.extractor.as_deref(), Some("youtube"));
+        assert_eq!(metadata.upload_date.as_deref(), Some("20050424"));
+        assert_eq!(metadata.live_status.as_deref(), Some("not_live"));
+        assert_eq!(metadata.was_live, Some(false));
+        assert_eq!(metadata.comment_count, Some(10_000_000));
+        assert!(metadata
+            .thumbnail
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://i.ytimg.com/")));
+        assert_eq!(metadata.formats.len(), 3);
+    }
+
+    #[test]
+    fn real_yt_dlp_metadata_normalizes_to_what_a_creation_stores() {
+        // The other half: not just that the fields parse, but that the values the row is built from
+        // come out right. `upload_date` is the one that transforms (yt-dlp's compact YYYYMMDD into
+        // the ISO date the schema holds), and `youtube_video_id` is derived from the extractor
+        // rather than read, so both are asserted against real input rather than a crafted string.
+        let metadata = parse_real_metadata();
+        let (id, extractor, suggested_title, youtube_video_id, published_at) =
+            super::normalize_download_metadata(&metadata).expect("real metadata must normalize");
+
+        assert_eq!(id, "jNQXAC9IVRw");
+        assert_eq!(extractor, "youtube");
+        assert_eq!(suggested_title, "Me at the zoo");
+        assert_eq!(youtube_video_id.as_deref(), Some("jNQXAC9IVRw"));
+        assert_eq!(published_at.as_deref(), Some("2005-04-24"));
+
+        // The filename the download lands under is built from the first three (see
+        // `place_downloaded_file`), so this is also what pins that a real video keeps producing the
+        // documented `youtube_<id>_<format>.<ext>` shape.
+        assert_eq!(
+            format!(
+                "{}_{}_{}",
+                sanitize_filename_component(&extractor),
+                sanitize_identifier_component(&id),
+                sanitize_filename_component("137")
+            ),
+            "youtube_jNQXAC9IVRw_137"
+        );
+    }
+
+    #[test]
+    fn real_yt_dlp_formats_carry_what_the_format_picker_branches_on() {
+        use crate::utils::format::codec_is_present;
+
+        let metadata = parse_real_metadata();
+        let by_id = |id: &str| {
+            metadata
+                .formats
+                .iter()
+                .find(|format| format.format_id.as_deref() == Some(id))
+                .unwrap_or_else(|| panic!("format {id} must be in the fixture"))
+        };
+
+        // `resolve_format_has_video` decides video-vs-audio from these two, and the literal it
+        // compares against is the string "none" that yt-dlp emits. If that ever became null, an
+        // empty string, or an omitted key, every audio-only download would be filed as video.
+        let muxed = by_id("18");
+        assert!(codec_is_present(&muxed.vcodec));
+        assert!(codec_is_present(&muxed.acodec));
+
+        let video_only = by_id("160");
+        assert_eq!(video_only.acodec.as_deref(), Some("none"));
+        assert!(codec_is_present(&video_only.vcodec));
+        assert!(!codec_is_present(&video_only.acodec));
+
+        let audio_only = by_id("139");
+        assert_eq!(audio_only.vcodec.as_deref(), Some("none"));
+        assert!(!codec_is_present(&audio_only.vcodec));
+        assert!(codec_is_present(&audio_only.acodec));
+
+        // A real muxed format reports no exact `filesize` and only an approximation, which is why
+        // the model carries both and the UI falls back. Captured rather than assumed.
+        assert_eq!(muxed.filesize, None);
+        assert!(muxed.filesize_approx.is_some());
+        assert_eq!(muxed.ext.as_deref(), Some("mp4"));
+        assert_eq!(audio_only.ext.as_deref(), Some("m4a"));
+    }
+
+    #[test]
+    fn real_yt_dlp_output_omits_comments_and_the_model_tolerates_it() {
+        // `-J` carries no `comments` key at all (they need `--write-comments`), so
+        // `YtDlpMetadata::comments` rests entirely on its `#[serde(default)]`. Dropping that
+        // attribute would make every metadata probe fail to parse, which no other test would catch
+        // because every crafted fixture in this file supplies the field.
+        assert!(
+            !REAL_METADATA_FIXTURE.contains("\"comments\""),
+            "the captured output must not carry a comments key, or this asserts nothing"
+        );
+
+        let metadata = parse_real_metadata();
+        assert!(metadata.comments.is_empty());
+    }
+
+    /// Re-fetches the metadata the committed fixture was captured from and holds the live answer to
+    /// the same contract.
+    ///
+    /// Ignored by default, and it has to be: it needs the network and a real `yt-dlp` on PATH,
+    /// neither of which a unit-test run may assume, and spawning a process that waits on a child is
+    /// the shape that hangs on the ubuntu CI runner (the same reason the other process-spawning test
+    /// in this repository is ignored). Run it deliberately:
+    ///
+    /// ```text
+    /// cargo test --manifest-path src-tauri/Cargo.toml -- --ignored live_yt_dlp_output
+    /// ```
+    ///
+    /// A failure here is not a bug in this code. It means yt-dlp's output moved and the fixture, and
+    /// probably `models/yt_dlp.rs` with it, needs updating. Skips rather than fails when yt-dlp is
+    /// absent or the network is unavailable, so "cannot answer" never reads as "the contract broke".
+    #[test]
+    #[ignore = "needs the network and a real yt-dlp; run deliberately, see the doc comment"]
+    fn live_yt_dlp_output_still_matches_the_committed_fixture() {
+        let output = match std::process::Command::new("yt-dlp")
+            .args([
+                "--ignore-config",
+                "-J",
+                "--no-warnings",
+                "--",
+                "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+            ])
+            .output()
+        {
+            Ok(output) if output.status.success() => output,
+            Ok(output) => {
+                eprintln!(
+                    "skipping: yt-dlp exited {:?}: {}",
+                    output.status.code(),
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!("skipping: yt-dlp could not be run: {error}");
+                return;
+            }
+        };
+
+        let live: crate::models::yt_dlp::YtDlpMetadata = serde_json::from_slice(&output.stdout)
+            .expect("live yt-dlp output must still deserialize into YtDlpMetadata");
+        let fixture = parse_real_metadata();
+
+        // The stable identity fields, which are facts about the video rather than about yt-dlp.
+        assert_eq!(live.id, fixture.id);
+        assert_eq!(live.title, fixture.title);
+        assert_eq!(live.extractor, fixture.extractor);
+        assert_eq!(live.upload_date, fixture.upload_date);
+        assert_eq!(live.live_status, fixture.live_status);
+        assert_eq!(live.was_live, fixture.was_live);
+
+        // The shape assertions, which are the ones that catch an upstream move. Deliberately not
+        // compared field-for-field against the fixture: format lists and comment totals change on
+        // their own, so equality there would cry wolf. What must hold is that the values are still
+        // there and still typed the way the app reads them.
+        assert!(live.comment_count.is_some());
+        assert!(live
+            .thumbnail
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://")));
+        assert!(!live.formats.is_empty());
+        assert!(live.comments.is_empty(), "-J must still omit comments");
+
+        assert!(live
+            .formats
+            .iter()
+            .any(|format| format.vcodec.as_deref() == Some("none")));
+        assert!(live
+            .formats
+            .iter()
+            .any(|format| format.acodec.as_deref() == Some("none")));
+
+        assert_eq!(
+            super::normalize_download_metadata(&live).expect("live metadata must normalize"),
+            super::normalize_download_metadata(&fixture).expect("fixture must normalize"),
+        );
+    }
+
     #[test]
     fn empty_comments_are_incomplete_only_when_a_positive_count_is_reported() {
         // Video reports comments but none came back -> extraction is incomplete (a failure).
