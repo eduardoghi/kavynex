@@ -15,7 +15,6 @@ export default defineConfig(
             "node_modules/**",
             "src-tauri/**",
             "src/types/generated/**",
-            "**/*.config.{js,cjs,ts}",
             // Stryker's working copies of the whole tree, and the report it writes. Both are
             // gitignored, which is not the same thing: eslint reads this list, not .gitignore, and
             // `pnpm lint` is `eslint .`. A run that finishes cleans its sandboxes up, so this is
@@ -140,6 +139,21 @@ export default defineConfig(
     {
         // Release/build helper scripts: plain ESM run by Node, not the browser bundle.
         files: ["scripts/**/*.js"],
+        languageOptions: {
+            globals: {
+                ...globals.node,
+            },
+        },
+    },
+    {
+        // Build/tooling config, which is run by Node rather than bundled. These were ignored
+        // outright until now, which is the reason this block exists rather than the config files
+        // simply inheriting: an ignore is invisible, so `eslint .` reported success on a tree it
+        // was not reading four files of. Only the `.cjs` one strictly needs these globals today
+        // (`module.exports`, which `no-undef` flags; typescript-eslint disables that rule for the
+        // `.ts` ones), but the whole group is named so a `process.env` added to any of them does
+        // not reintroduce the same silence.
+        files: ["*.config.{js,cjs,mjs,ts}"],
         languageOptions: {
             globals: {
                 ...globals.node,
