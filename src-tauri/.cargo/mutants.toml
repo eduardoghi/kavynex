@@ -1,362 +1,25 @@
 # cargo-mutants configuration.
 #
-# Mutation testing for the security-critical Rust modules: cargo-mutants rewrites their logic
-# (an inverted `starts_with`, a dropped `!`, an off-by-one, a swapped return) and fails if the
-# existing tests still pass. That proves whether those tests actually kill logic mutants rather
-# than merely covering the lines - line coverage on these files is already high, but coverage
-# alone does not prove a bypass would be caught.
+# Mutation testing for the modules whose regression cost is highest: cargo-mutants rewrites their
+# logic (an inverted `starts_with`, a dropped `!`, an off-by-one, a swapped return) and fails if the
+# tests still pass. Coverage on these files is already high; this is what proves the tests kill a
+# logic mutant rather than merely executing the line.
 #
-# Scoped to the modules whose regression cost is highest, so the run stays inside the CI time
-# budget. `examine_globs` below is that scope - read it rather than a summary here, because it is
-# what the run actually uses and a prose list beside it only drifts. It started at four entries
-# (path containment, the library-path guard, the yt-dlp host allow-list, external-binary
-# resolution) and has grown with every module whose tests earned the runtime; each addition is
-# recorded below with the measured pass that justified it. Widen it the same way. This is the Rust
-# counterpart to Stryker (stryker.config.json), which only mutates the frontend.
+# This file is the configuration. The reasoning is in `docs/MUTATION-TESTING.md`: how to widen the
+# scope, the measured pass behind every glob below, and the full triage behind every exclusion. Each
+# exclusion here carries a one-line reason and a category (equivalent / boundary / cfg-split /
+# AppHandle glue); the argument for it is in that document.
 #
-# Run locally with:
-#     cargo mutants --manifest-path src-tauri/Cargo.toml
-# CI runs it on a weekly schedule (.github/workflows/mutation.yml); a surviving mutant makes
-# cargo-mutants exit 2, which fails that run.
+# Run locally (`--in-place` is required, see the doc):
+#     cargo mutants --manifest-path src-tauri/Cargo.toml --in-place
+# CI runs it weekly (.github/workflows/mutation.yml); a surviving mutant exits 2 and fails the run.
+#
+# `scripts/verify-mutants-exclusions.js` fails CI when an `exclude_re` entry below stops matching
+# any mutant. Two entries have already died silently after a pure extraction renamed the mutant they
+# named, which is why that gate exists.
 
-# Test *only* these files (globs are relative to this package root, src-tauri/).
-#
-# `src/services/filesystem.rs` - the atomic copy/replace primitives (whose job is to refuse to
-# overwrite differing content and to restore the original when a replace fails) and the
-# file-matching helpers. ADDED below after triaging its survivors.
-#     Measured 2026-07-17 (`--no-config --file`): 121 mutants, 34 missed. Re-measured 2026-07-18 after
-#     the symlink-cycle/temp-cleanup changes: 131 mutants, 43 missed. The matching helpers
-#     (`find_latest_matching_file`, `find_unique_matching_file`, `find_best_matching_file`,
-#     `clean_matching_files_in_dir`) held most of the killable ones - the existing preference test
-#     picked the preferred file only because it was also the newest, so a flipped preference
-#     comparison slipped through; the rest were prefix-named-subdirectory and non-directory cases the
-#     filters guard but no test exercised. Those are now covered by tests. The remainder are excluded
-#     below with a reason each: boundary functions (EXDEV detection, directory fsync), cfg-split
-#     bodies, error-recovery branches a unit test cannot force, and equivalent mutants (a temp
-#     filename the following rename discards, a guard that short-circuits to the same value, a `!=`
-#     that only picks which line gets logged).
-#
-# `src/services/db_backup/mod.rs` - backup/restore/export/import, the most destructive operations
-# in the app. ADDED below after triaging its survivors.
-#     Measured 2026-07-19 (`--no-config --file`): 137 mutants, 14 missed. Most were off-by-one and
-#     boundary checks the existing tests skirted: the restore/import schema-version gates (a `>=`
-#     that would refuse a current-version backup or every normalized database), the backup-status
-#     timestamp (a fixed sentinel vs the file's real mtime), the throttle constant, and the
-#     apply-pending recovery guard (an `AND` weakened to `OR` would revert a leftover undo snapshot
-#     on every launch). Those are now covered by tests. The remainder are excluded below: the
-#     is_recent exact-second equality boundary (no deterministic input hits it) and the WAL-busy
-#     import branch (needs a second connection holding a lock to force busy=1 with frames left,
-#     which a unit test cannot arrange deterministically).
-#   - `src/services/library/media.rs` and `src/services/library/cleanup.rs` - content-addressing
-#     and the reference-count-before-unlink decision. ADDED below after a measured pass
-#     (2026-07-18, cargo-mutants 27.1.0, `--in-place --no-config --file <each>`): 111 mutants, 94
-#     unviable, 14 caught, and 3 initially missed - all three in `execute_plan`'s two early-return
-#     branches (the empty-plan and library-unavailable reports), whose field population the tests
-#     never asserted because that function needs a live `AppHandle`. Those branches were extracted
-#     into the pure `report_for_nothing_deletable` / `report_for_unavailable_library` and covered,
-#     so the glob goes in clean rather than red. (`--in-place` is needed to run cargo-mutants here
-#     at all: the copy mode leaves the repo-root `../shared` parity fixture behind - see
-#     mutation.yml.)
-# `src/commands/live_chat.rs` - the one command module that re-implements the containment
-# pattern (scope-to-live_chat/ plus symlink re-check) rather than delegating to library::guard,
-# so its logic deserves the same mutation gate as the guard itself. ADDED after a measured pass
-# (2026-07-20, `--in-place --no-config --file`): 32 mutants, 31 unviable (the AppHandle command
-# glue does not build under mutation), 1 viable and caught - the unlink-rewording code gate,
-# extracted into the pure `reword_unlink_error_after_reference_clear` so a test could pin it.
-# `src/services/ssrf_guard.rs` - the pure IP-classification SSRF guard behind the thumbnail/avatar
-# downloader (loopback/private/link-local/reserved, including IPv4-mapped/compatible and
-# 6to4/NAT64/Teredo tunnel-embedded addresses). Extracted from `thumbnail/download/` into its own
-# module so the classifier can be gated without dragging in the downloader's untestable async network
-# code. ADDED after a measured pass (2026-07-21, `--in-place --no-config --file`): 73 mutants, 3
-# unviable, 70 caught, 0 missed. The tunnel decoders were split into pure functions pinned by an
-# exact-value test - that is what kills the shift/mask/XOR operator mutants a classification-only test
-# had let survive, since many wrong octets still land in the same allow/deny band.
-# `src/services/db_backup/import.rs`, `external.rs` and `integrity.rs` - the rest of the
-# backup/restore/export/import/mirror machinery, the most destructive operations in the app. Joined
-# to `mod.rs` (already in scope) by widening the entry to the directory glob `db_backup/*.rs`, so a
-# future submodule split cannot silently fall out of scope. That paid off on 2026-07-31, when
-# `snapshot.rs` and `restore.rs` were split out of `mod.rs`: both were in scope from the moment they
-# existed, with nothing to remember to add here. ADDED after a measured pass (2026-07-24,
-# `--in-place --no-config --file <each>`): 108 mutants, 42 unviable, 49 caught, 17 missed. Five of the
-# missed were the WAL-busy `stage_database_import` branch already excluded below; the rest were killed
-# by new tests in the parent's `mod tests` - the live-chat import invariant's zero-violation and
-# missing-`live_chat_file_path`-column cases, the intact-mirror no-clobber case, and the one-week
-# integrity throttle - except the `run_full_integrity_check` operator survivors, which need a corrupt
-# database returning a *controlled* number of problem rows and are excluded below.
-# `src/services/yt_dlp/download/redaction.rs` - the argv redaction behind the `yt-dlp args: ...` line
-# streamed to the in-app terminal. It is the only thing keeping the cookies-file path, the ffmpeg
-# directory (which falls back to `<app_data_dir>/tools`, i.e. `C:\Users\<name>\AppData\...`), the
-# `--paths` temp directory and the raw pasted URL out of a line users copy into public bug reports -
-# pure logic with a privacy consequence, which is exactly what this gate is for. Extracted from
-# `mod.rs` (the async orchestration a unit test cannot drive) rather than widening the glob to the
-# whole directory, following the ssrf_guard.rs precedent. ADDED after a measured pass (2026-07-26,
-# `--in-place --no-config --file` over it and command.rs together): 34 mutants, 6 unviable, 28
-# caught, 0 missed - the existing argv test plus a new direct test for redact_paths_value's
-# no-scope branch (which the argv test cannot reach, since build_download_command_args always
-# emits the home:/temp: prefix) already kill every viable mutant.
-# `is_valid_run_id` / `is_valid_format_id` moved into `command.rs` in the same change: they were
-# defined in the ungated `mod.rs` while only `command.rs` used them, so no mutant was ever generated
-# for the character-class filter that keeps the value after `-f` from being read as a yt-dlp flag.
-# `src/services/yt_dlp/download/command.rs` - the pure yt-dlp download planning: request validation,
-# the argv builder (with the `--` separator that stops the URL being read as a flag), and the
-# terminal-outcome classifier - the command-injection defense-in-depth layer. ADDED after a measured
-# pass (2026-07-24): 12 mutants, 5 unviable, 7 caught, 0 missed; its existing tests already kill every
-# viable mutant. Scoped to `command.rs`, not the whole `yt_dlp/download` directory: `mod.rs` is the
-# async process-spawning orchestration a unit test cannot drive (like the excluded binaries.rs
-# boundary functions).
-# `src/services/db_schema/*.rs` - the versioned migrations, the table-rebuild machinery and the
-# schema introspection. This is the most destructive code in the app after db_backup: ensure_schema
-# runs synchronously as the shared pool opens, so a migration that goes wrong does not degrade, it
-# stops the app from opening at all - and the one real migration failure the project has had (the
-# v8..v10 index built over a column v11 is what adds) was found by a user's database refusing to
-# open, not by the suite. ADDED after a measured pass (2026-07-25, `--in-place --no-config --file
-# <each>`): 106 mutants, 84 unviable, 15 caught, 7 missed. Six of the missed were the `> 0` guards
-# that gate only a logger::warn line and are excluded below as equivalent; the seventh was the
-# RebuildConnection Drop impl, which is now killed by a pair of tests asserting both directions of
-# the detach-vs-return decision through the pool. Scoped by directory glob, like db_backup, so a
-# future submodule split cannot silently fall out of scope.
-# `src/services/pending_media.rs` and `src/services/library/recovery.rs` - the two crash-recovery
-# modules that decide, on their own, whether to act on a leftover the previous run left behind.
-# `marker_is_sweepable` is the reason: it gates the unlink of a media file the user may still want,
-# and it is pure precisely so it can be gated here. This is also the file of the project's only real
-# CRITICAL to date (a sweep that consumed markers belonging to creations still in flight, unlinking
-# a video the user had just downloaded), so a regression here has a known, expensive shape.
-# ADDED after a measured pass (2026-07-27, `--in-place --no-config --file <each>`):
-#   pending_media.rs - 89 mutants, 48 unviable, 31 caught, 10 missed. One of the ten was a real gap
-#   and is now covered by `an_unrelated_file_in_the_directory_is_never_read_as_a_marker`: weakening
-#   the `||` in the entry filter to `&&` let a file with an unrelated name fall through and be parsed
-#   as a marker, and what that function returns goes straight to a cleanup that unlinks files. The
-#   module doc already claimed that property; nothing tested it above `is_marker_file_name`. The
-#   other nine are excluded below in three groups, each for a different reason.
-#   Re-measured 2026-07-29 after the marker gained a retry ceiling: 95 mutants, 48 unviable, 36
-#   caught, 11 missed - nine of the eleven are the groups already excluded below, and the other two
-#   were a real gap the gate is exactly for. `record_marker_attempt` writes the incremented count
-#   back to the marker, and both deleting the call and dropping the incremented field from the
-#   struct-update expression survived: nothing above it observes the write, since the sweep's logging
-#   is unobservable and the marker is only re-read on the *next* launch, so a broken write-back looks
-#   identical to a working one until the retry never ends - which is the bug the ceiling removes.
-#   `a_failed_attempt_is_written_back_so_the_ceiling_survives_a_restart` now covers it; re-measured
-#   with `--examine-re record_marker_attempt` at 3 mutants, 3 caught.
-#   Re-measured 2026-07-31 after the ceiling gained the half that makes it decide anything - the
-#   exhausted count is written back, and `read_pending_markers` drops a marker already at the ceiling
-#   (`--examine-re read_pending_markers`): 21 mutants, 8 caught, 10 unviable, 3 missed, and all three
-#   missed are the `ErrorKind::NotFound` arms already excluded below (the measurement uses
-#   `--no-config`, which turns `exclude_re` off). The new guard is among the caught, which is the
-#   point: without a test on it the filter could be widened to "stop reconciling anything that has
-#   ever failed" and nothing would notice, since the sweep's own logging is unobservable.
-#   library/recovery.rs - 15 mutants, 1 unviable, 14 caught, 0 missed. Goes in clean.
-# The four remaining pure security gates: every function that decides whether a caller-supplied
-# value is allowed through, which is the profile this whole gate exists for. Each was already
-# covered by unit tests; what was untested was whether those tests kill a logic mutant.
-# ADDED after a measured pass (2026-07-27, `--in-place --no-config --file <each>`):
-#   `src/services/yt_dlp/cookies.rs` - the `.txt` gate and the network-path refusal on the
-#   `--cookies` argument, plus the browser allow-list that decides which cookie store yt-dlp is
-#   allowed to read. 11 mutants, 0 unviable, 11 caught, 0 missed. Goes in clean.
-#   `src/commands/security.rs` - the grant helpers behind the asset scope. Originally added for
-#   `validate_asset_file_for_preview`, the gate on the only command that widened the scope to a
-#   caller-chosen file (`allow_asset_file`), where a dropped `!` turned it into an arbitrary-file
-#   read through `convertFileSrc`. That command is gone - the manual preview now draws a staged copy
-#   from an already-authorized directory, see the module comment there - so its gate moved to
-#   `services::thumbnail::temp::validate_picked_thumbnail_path` and is tested with it. The file
-#   stays in scope for the grant helpers, which is where the surviving mutant of that pass was.
-#   32 mutants, 23
-#   unviable (the AppHandle command glue does not build under mutation, as in live_chat.rs), 8
-#   caught, 1 missed. The survivor was real and is now covered: `canonical != primary` in
-#   `grant_path_with_canonical` had no test at all, and inverting it skips the canonical grant in
-#   exactly the case the function exists for (the `\\?\` form convertFileSrc hands the scope on
-#   Windows), which fails as every thumbnail and video silently not loading. Three tests now pin
-#   both directions of that comparison and the documented propagate-primary/warn-on-canonical
-#   asymmetry; re-measured at 9 caught, 0 missed.
-#   `src/commands/database.rs` - `prepare_export_destination` / `prepare_import_source` and the
-#   `destination_is_inside_dir` containment behind them, i.e. both directions of the gate on a
-#   destructive overwrite. Measured with `--examine-re` scoped to those functions: 22 mutants, 16
-#   unviable, 6 caught, 0 missed. The scoping is a runtime concession, not a narrower claim - a
-#   full-file run generates ~35 further mutants that are all unviable command glue, and a partial
-#   full-file pass confirmed the same 6 viable mutants and no survivor. The glob below is the whole
-#   file regardless, matching live_chat.rs.
-#   `src/utils/validation.rs` - the media title/type and channel name/handle validators every write
-#   boundary calls. 31 mutants, 16 unviable, 15 caught, 0 missed. Goes in clean.
-# `src/services/thumbnail/url.rs` - the host allow-list on the *direct* thumbnail fetch, the one
-# branch of `download_thumbnail_from_url_async` that reaches the network without going through
-# yt-dlp. It is what keeps that branch from being an outbound channel to any public host (the
-# yt-dlp fallback has its own allow-list, in `yt_dlp/url.rs`, already in scope above). Extracted
-# from `thumbnail/download/` rather than widening the glob to that module, following the
-# `ssrf_guard.rs` and `yt_dlp/download/redaction.rs` precedent: the rest of that module is async
-# process orchestration a unit test cannot drive, so a whole-file glob would report dozens of
-# unkillable mutants and cost minutes per run. ADDED after a measured pass (2026-07-27,
-# `--in-place --no-config --file`): 4 mutants, 0 unviable, 4 caught, 0 missed, in 85s - the three
-# tests that moved with it (the real CDNs, the look-alike rejections, and the two-way CSP parity
-# check) already kill every viable mutant. The runtime is the extraction's whole payoff.
-# `src/services/thumbnail/picked.rs` - the gate on an image the user picked from the file dialog
-# (a network-location refusal and an image-extension check on a path that arrives raw over IPC),
-# plus the name its staged copy lands under. It is here because the gate it replaced was here: the
-# manual preview used to widen the asset scope to that file through
-# `commands::security::allow_asset_file`, whose `validate_asset_file_for_preview` this glob covered.
-# Staging a copy in an already-authorized directory removed that command, and the check moved with
-# the flow - so without this entry a security gate would have quietly left the mutation gate.
-# ADDED after a measured pass (2026-07-30, `--in-place --no-config --file`): 8 mutants, 4 caught,
-# 4 unviable, 0 missed. Its own module rather than a widened glob over `thumbnail/temp.rs`, where it
-# briefly lived: the same pass over that whole file reported 86 mutants with 15 missed, every one of
-# them in the FFmpeg spawn, the deadline arithmetic or the pipe-draining cap - boundary code no unit
-# test can pin, which would have meant six exclusions and a permanently noisy run. Same resolution,
-# and the same reasoning, as `ssrf_guard.rs`, `thumbnail/url.rs` and `yt_dlp/download/redaction.rs`.
-# `src/services/thumbnail/display.rs` - the addressing behind the display-thumbnail cache. Two
-# decisions there are worth a gate rather than only a test. `display_cache_key` decides which stored
-# file a cached derivative answers for, so a weakened check (a dropped length comparison, an
-# inverted hex test) makes one media's thumbnail render on another media's card - a wrong-data bug
-# that looks like a UI glitch, and one no crash reports. And `is_usable_file`'s emptiness check is
-# what stops a killed generation's zero-byte output from being cached as a permanent blank card,
-# which nothing ever regenerates. Both are pure and were written that way for this. The FFmpeg
-# spawn is excluded below, following the binaries.rs precedent; the AppHandle-bound entry point needs
-# no exclusion because it does not build under mutation and is reported unviable.
-# ADDED after a measured pass (2026-07-29, `--in-place --no-config --file`): 42 mutants, 14 unviable,
-# 24 caught, 4 missed - all four inside the excluded FFmpeg spawn, so the glob goes in clean. Two
-# rounds were needed and both are worth recording. The first left the generation budget's `== 0` and
-# `-= 1` surviving, because the branch that spends it is only reachable through a successful FFmpeg
-# run; extracting `take_generation_slot` put both one call from a test. The second left a `delete !`
-# on the caller's `if !take_generation_slot(..)`, which was genuinely unkillable at the time - with
-# or without the `!` the call returned `None` unless FFmpeg succeeded - so the function returned
-# `Option<()>` and the caller wrote `take_generation_slot(..)?`, stating the decision once. Removing
-# the restatement removed the mutant, which beat excluding it (the same resolution as the ssrf_guard
-# dead-code clause).
-#
-# That last paragraph is now history rather than a live constraint, and the reason is worth keeping:
-# the unkillability came entirely from both outcomes being spelled `None`. `resolve_one` returns
-# `DisplayThumbnail`, so an exhausted budget answers `BudgetSpent` and every other miss answers
-# `Unavailable` - two distinguishable values - and `an_exhausted_budget_is_reported_as_retryable_
-# rather_than_final` kills the mutant directly. The caller reads `take_generation_slot(..).is_none()`
-# again, which is fine now precisely because the branch it guards has an observable outcome. The
-# general lesson, since this file exists to record them: a mutant that cannot be killed is often not
-# a testing gap but a type that has collapsed two decisions into one value.
-# Re-measured 2026-07-30 after the call gained a wall-clock budget alongside the count-based one
-# (`--in-place --no-config --file`, scoped with `--examine-re`): `call_budget_spent` 3 mutants, 3
-# caught; `resolve_one` 2 mutants, 1 caught, 1 unviable. 0 missed in both, so the glob stays green.
-# The `>=` mutants on the new bound are killed by a boundary test rather than by a wall-clock wait,
-# which is why the predicate takes `now` as an argument instead of reading the clock - the same
-# shape, and the same reason, as `duration_is_recent` in db_backup.
-# Re-measured 2026-08-02 after the derivative's addressing was extracted into
-# `display_derivative_path` and `library/cleanup.rs` gained `drop_display_derivative`, which removes
-# a derivative whose canonical thumbnail was just unlinked (`--in-place --no-config --file` over
-# both files, scoped with `--examine-re`): 7 mutants, 7 caught, 0 missed. Both are in scope already,
-# so this records the pass rather than a new glob. The extraction is what makes the cleanup side
-# gateable at all - the naming lived inline in `resolve_one`, which is only reachable through an
-# FFmpeg run, so a second caller spelling it out by hand would have had no mutant of its own. The
-# `kind == Thumbnail` check is the one worth having here: deleting it is silent today (a
-# `video/...` path yields no cache key), and would only start removing an unrelated media's
-# derivative after some later change made it yield one.
-# `src/services/media_creation.rs` - the media creation transaction, which moved here out of the
-# renderer. It belongs in this gate for the reason the whole gate exists: every decision it makes
-# stands in front of the user's library. `fetched_thumbnail_to_discard` decides an unlink, and
-# inverted it removes the thumbnail the row is about to point at while keeping the one nothing
-# references. `nothing_to_clean_up` decides whether a failed creation cleans up at all, and weakened
-# from `&&` to `||` it answers "nothing to do" for the ordinary case (a media file with no live chat
-# replay), so the cleanup is skipped and the file it just wrote is stranded.
-# `needs_youtube_duplicate_pre_check` decides whether a re-added video is refused
-# now or after a full download. `normalize_create_media_request` is the boundary the whole request
-# crosses. All four are pure, and three of them were made pure *for* this gate.
-# ADDED after a measured pass (2026-07-30, `--in-place --no-config --file`): 105 mutants, 22 caught,
-# 66 unviable, 17 missed. Three of the seventeen were real and are now covered rather than excluded,
-# and each needed an extraction because the deciding line sat inside an `AppHandle`-bound async
-# function no unit test can drive - the same resolution as `ssrf_guard.rs` and
-# `thumbnail/display.rs`'s `take_generation_slot`:
-#   - `replace != with == in resolve_downloaded_thumbnail` -> `fetched_thumbnail_to_discard`.
-#   - `replace && with || in cleanup_artifacts_best_effort` (twice) -> `nothing_to_clean_up`.
-#   - `replace == with != in create_media_async` -> `needs_youtube_duplicate_pre_check`.
-# A fourth was a plain gap in the tests rather than in the structure: deleting `media_type` from the
-# struct-update expression in `normalize_create_media_request` left the value untrimmed, and the
-# normalization test only covered the other fields. Re-measured over those four functions
-# (`--examine-re`): 28 mutants, 24 caught, 4 unviable, 0 missed.
-# The rest are excluded below in two groups, and one restructuring is worth recording: the two
-# cleanup wrappers had an identical log-and-swallow body, so the same unkillable log-guard mutant was
-# reported against each. Folding that body into `report_cleanup_outcome` made it one site rather than
-# two - preferable to writing the same exclusion twice, and the same instinct as removing the dead
-# clause in `ssrf_guard` instead of excluding its mutant.
-# `src/services/library/migration.rs` - the copy-then-remove that moves the whole library, i.e. the
-# highest-regression-cost path in the tree. It was outside this list while `library/recovery.rs` and
-# `library/cleanup.rs` were inside it, which had no defensible reason behind it.
-#     Measured 2026-07-30 (`--in-place --no-config --file`, together with live_chat_storage.rs):
-#     37 mutants, 2 missed. Both were real gaps, not equivalents. The one that mattered was
-#     `replace && with || in ensure_destination_is_migratable` at the `is_dir() &&
-#     MANAGED_LIBRARY_DIRS.contains(name)` conjunction: weakened to a disjunction, *any*
-#     subdirectory reads as a managed one, so a folder full of the user's own files passes the
-#     "destination must be empty" gate and the library is migrated into it. Nothing failed, because
-#     every existing test placed either a managed directory or a loose file there - never an
-#     unrelated directory. The sibling `&&` on the next line was already caught, which is why the
-#     shared description could not be excluded and had to be killed by a test instead
-#     (`ensure_destination_is_migratable_rejects_a_directory_that_is_not_a_managed_one`, plus two
-#     more pinning the accepted shapes and the loose-file half). The second is excluded below.
-#
-# `src/services/live_chat_storage.rs` - the gzip storage behind every live chat replay, including
-# both decompression-bomb ceilings. It reads data this app did not produce (a gzip stream yt-dlp
-# fetched from YouTube), which is the profile this gate exists for, and it was the largest file
-# outside it.
-#     First measured 2026-07-30: 136 mutants, 11 missed. Six were real gaps and were killed by tests
-#     then: both decompression-bomb ceilings (`gzip_decompress_with_limit` and `stream_reader_lines`)
-#     had only their over-the-limit side covered, so tightening `>` to `>=` - which would refuse a
-#     payload of exactly the allowed size, the case the code's own comment promises - was invisible;
-#     the 512 MiB ceiling constant had nothing pinning its arithmetic; and both guards in
-#     `list_live_chat_relative_paths` were unpinned, where inverting either makes a populated library
-#     report no live chat files at all.
-#     What blocked the file were the remaining five, and the note here used to say gating it needed
-#     the `summary.failed` counter sites "made distinguishable" so they could be excluded. That was
-#     half right, and the half it got wrong is the useful part. Both counters are now *killed*, not
-#     excluded, and neither needed a distinguishable name to get there:
-#       - The compression-failure branch was assumed to need a permission trick no test can do
-#         portably. It does not. `compress_file_in_place` stages through a `<name>.gztmp` sibling, so
-#         a *directory* at that path makes the staged write fail on every platform, with no
-#         permissions involved - and the directory is skipped by the loop's own `is_file` guard, so
-#         it does not disturb the scan.
-#       - The unreadable-`read_dir`-entry branch really is unreachable portably, so it moved into
-#         `record_unreadable_entry` - which was done to make an exclusion precise and instead made
-#         one unnecessary, because a counter behind a named function is one call from a test. Both of
-#         its mutants are caught by `an_unreadable_directory_entry_is_counted_as_a_failure`.
-#     That is worth generalizing, since this file exists to record such things: "there is no portable
-#     way to trigger this branch" is a statement about the caller, not about the decision. Moving the
-#     decision out is what turns a planned exclusion into a test - the same shape as
-#     `thumbnail::display::take_generation_slot` and `media_creation`'s three extractions, arrived at
-#     from the opposite direction.
-#     Re-measured 2026-07-31 after both: 137 mutants, 44 caught, 93 unviable, 0 missed. Goes in with
-#     no exclusions at all.
-# `src/services/thumbnail/redirect.rs` - the per-hop decision behind the thumbnail downloader's
-# manual redirect following: the hop budget, the refusal of a 3xx naming no destination, and the
-# resolution of `Location` against the URI it arrived on. This one is here for the strongest reason
-# any of these extractions has had. `thumbnail/download/fetch.rs` uses a hand-rolled hyper client instead
-# of the `reqwest` already in the tree *because* it follows redirects manually, so the SSRF guard
-# re-runs on every hop - and that per-hop decision was the one part of the module no gate could
-# reach, since the rest of the file is async network orchestration a unit test cannot drive. The
-# module's whole justification was untested.
-#     ADDED after a measured pass (2026-07-31, `--in-place --no-config --file`): 12 mutants, 4
-#     caught, 8 unviable, 0 missed. The eight unviable are cargo-mutants trying to build an
-#     `AppResult<Uri>` out of `Default`, which `Uri` does not implement - noise, not a gap. The four
-#     viable ones are the whole point: both directions of `hop_budget_exhausted -> bool` and the
-#     `>=` at its boundary, which inside the loop was reachable only by standing up a server that
-#     redirects eleven times, plus the `||` in the absolute-scheme test.
-#     Re-measured 2026-07-31 after `next_hop` gained the image-CDN host gate on the resolved
-#     destination: 13 mutants, 5 caught, 8 unviable, 0 missed. The gate landed here rather than in
-#     the loop precisely so it would be one of those five - it had been applied to the initial URL
-#     only, so a redirect out of an allowed CDN was followed anywhere public, and nothing in
-#     `download.rs` can be mutation-tested to catch that coming back.
-# `src/services/video_repository/media_page.rs` - the grid's paginated query: the `ORDER BY`
-# resolver, the `WHERE` builder, and the enum validators in front of both. It is the app's hottest
-# read path, and `resolve_order_by` is exactly the shape this gate exists for - a `match` returning a
-# `&'static str`, where a swapped arm is not a crash and not an error but the wrong rows in the wrong
-# order, which surfaces as "the sort is broken" with nothing pointing at the query. The whole file is
-# pure or pool-only (no `AppHandle`), which is why the glob is the file rather than an extraction -
-# the first entry here that needed neither.
-#     ADDED after a measured pass (2026-07-31, `--in-place --no-config --file`): 21 mutants, 6
-#     caught, 15 unviable, 0 missed, in 3 minutes. The fifteen unviable are cargo-mutants trying to
-#     build a `MediaPage`/`QueryBuilder` out of `Default`, which neither implements - noise, not a
-#     gap.
-#     It goes in clean because `every_media_page_sort_is_served_by_an_index` was already doing the
-#     hard part: it runs `EXPLAIN QUERY PLAN` for each of the five sort categories *in both
-#     directions* against the real schema, so an arm returning another category's clause loses its
-#     index and fails there.
-#     Worth recording what this pass did *not* establish, since a clean first measurement invites the
-#     wrong conclusion. The file is covered because of a test written for a different purpose (index
-#     coverage), not because each clause is pinned on its own. A sixth sort category added later with
-#     no index would be caught by that same test; one added *with* an index but the wrong direction
-#     would not be, and this gate would not see it either - the mutants are generated from the arms
-#     that exist, never from the one somebody forgot to add.
+# Test *only* these files (globs are relative to this package root, src-tauri/). Adding one is a
+# measured pass plus a row in docs/MUTATION-TESTING.md, never a glob on its own.
 examine_globs = [
     "src/services/video_repository/media_page.rs",
     "src/services/live_chat_storage.rs",
@@ -387,19 +50,9 @@ examine_globs = [
     "src/commands/database.rs",
 ]
 
-# The one file the directory globs above pull in that this gate has nothing to say about.
-#
-# `db_backup/test_support.rs` holds the family's test fixtures (a temp directory, a seeded database,
-# a file mtime setter). It is declared `#[cfg(test)] mod`, so a mutant in it can only make a fixture
-# wrong - and a wrong fixture is a red suite, which is the opposite of the undetected regression this
-# gate exists to find. The directory glob is deliberately kept as a glob (that is what keeps a future
-# submodule split in scope with nothing to remember), so the one file that should not be in it is
-# named here instead.
-#
-# NOT MEASURED, and stated as such rather than left to read like the entries above: cargo-mutants may
-# already skip it by following the `cfg(test)` on the module declaration, and the tool is not
-# installed on the machine this was written on. A redundant exclusion costs nothing; the reverse
-# would put unkillable noise in a weekly run. Drop it if a `--list` ever shows it was never needed.
+# The one file the directory globs above pull in that this gate has nothing to say about: it holds
+# the db_backup family's test fixtures, so a mutant in it can only make a fixture wrong, which is a
+# red suite rather than the undetected regression this gate looks for. NOT MEASURED; see the doc.
 exclude_globs = ["src/services/db_backup/test_support.rs"]
 
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the
@@ -407,93 +60,43 @@ exclude_globs = ["src/services/db_backup/test_support.rs"]
 # dependencies.
 additional_cargo_args = ["--locked"]
 
-# Skip mutants a unit test cannot deterministically kill, so the gate stays meaningful (a red run
-# means a real gap) instead of perpetually red on things no test can pin. What stays in scope is
-# the actual security logic: `sanitize_relative_path_strict` / `ensure_managed_library_relative_path`
-# and the containment helpers, `is_allowed_youtube_url` / `is_allowed_youtube_host`, and
-# `paths_refer_to_same_location` (the canonical-path comparison behind the library guard). Every
-# exclusion below is a function whose behavior is a filesystem/process/env boundary, a
-# cfg-split body cargo-mutants cannot evaluate, or an equivalent mutant.
+# Mutants no unit test can deterministically kill, so the gate stays meaningful (a red run means a
+# real gap) instead of perpetually red on things nothing can pin. Four categories, one reason each;
+# the argument behind every entry is in docs/MUTATION-TESTING.md under "Exclusions".
+#
+# What stays in scope regardless is the security logic itself: sanitize_relative_path_strict,
+# ensure_managed_library_relative_path and the containment helpers, is_allowed_youtube_url /
+# is_allowed_youtube_host, and paths_refer_to_same_location.
 exclude_re = [
-    # library/migration.rs (triaged 2026-07-30). Equivalent: the `!leftovers.is_empty()` guard in
-    # `remove_old_library_contents` only decides whether a `logger::warn` line naming the entries
-    # left behind is emitted. The removal has already happened by then and the list is the value
-    # being reported, so inverting the guard changes the log and nothing observable - the same
-    # argument as `report_cleanup_outcome` below. Precise rather than broad: this description occurs
-    # once, and the only other mutant in that function (`replace remove_old_library_contents with
-    # ()`) is caught and reads differently, so nothing working is dropped by it.
+    # Equivalent: gates only a logger::warn naming the leftovers; the removal already happened.
     'delete ! in remove_old_library_contents',
-    # media_creation.rs survivors (triaged 2026-07-30), in two groups.
-    #
-    # 1. `AppHandle`-bound glue. These need a live handle to reach the shared pool, the library and
-    # the cache directory, none of which exists under the unit-test harness - the same reason the
-    # binaries.rs boundary functions and `sweep_pending_media_artifacts` are excluded above. They are
-    # reported viable rather than unviable because the *function* still compiles when replaced; what
-    # cannot be built is a test that calls it. The decisions inside them are not here: the three that
-    # matter were extracted into pure functions and are in scope and covered (see the note above).
+    # AppHandle glue: needs a live handle for the pool, the library and the cache directory. The
+    # decisions were extracted into pure functions that are in scope and covered.
     'replace cleanup_artifacts_best_effort(_locked)? with \(\)',
     'replace record_marker_best_effort -> Option<String>',
     'replace clear_marker_best_effort with \(\)',
-    # 2. Equivalent: `report_cleanup_outcome` writes a `logger::warn` line and does nothing else. The
-    # cleanup has already run by then, and its outcome is the report being matched on, so replacing
-    # the function or mutating its `failed_paths` guard changes the log and nothing observable. Same
-    # class, and the same reason, as the `> 0` guards excluded for apply_migration_13/14 below. The
-    # bare name is deliberate: it covers both `replace report_cleanup_outcome with ()` and the
-    # `... in report_cleanup_outcome` guard mutants, which are the same argument twice.
+    # Equivalent: writes a logger::warn and nothing else. The bare name covers both the `with ()`
+    # mutant and the failed_paths guard mutants, which are the same argument twice.
     'report_cleanup_outcome',
-    # thumbnail/display.rs: `generate_display_thumbnail` spawns FFmpeg and polls it to a deadline,
-    # which no unit test can pin on an arbitrary machine - the same reason binaries.rs's resolution
-    # functions are excluded above. Its four survivors are the return value and the deadline
-    # arithmetic, all of which need a real FFmpeg to distinguish. Nothing is excluded for
-    # `resolve_display_thumbnails_sync`. Nothing is excluded for it, and the reason this file used to
-    # give was wrong: it said that being AppHandle-bound made its mutants unviable rather than missed.
-    # Unviable means the mutated tree does not *compile*, which has nothing to do with whether a test
-    # can reach the function - so a comparison inside its body compiles fine and comes back missed.
-    # The 2026-08-01 run duly reported `<` swapped for `>` and for `<=` on the truncation guard.
-    # The fix was to extract that comparison (`request_was_truncated`), not to exclude it. Kept as a
-    # note rather than deleted: the same mistaken reasoning would readmit the next one.
+    # Boundary: spawns FFmpeg and polls it to a deadline. Note that nothing is excluded for
+    # resolve_display_thumbnails_sync, and the doc records why the reason once given was wrong.
     'generate_display_thumbnail',
-    # commands/security.rs (triaged 2026-08-01). `register_cache_asset_scope` is what is left of that
-    # function once the half with an observable effect was extracted into `prepare_cache_scope_dirs`
-    # (created and covered in the same change): a loop that hands each prepared directory to
-    # `allow_directory_in_asset_scope`, which needs a live `AppHandle`. Replacing it with `()` still
-    # compiles and still cannot be observed, so it is excluded rather than left to fail the gate
-    # forever. Narrow on purpose - `prepare_cache_scope_dirs`, `managed_cache_scope_dirs` and
-    # `grant_path_with_canonical` all stay in scope, and the first two are what a gutted body would
-    # have to defeat to leave the webview unable to read a thumbnail.
+    # AppHandle glue: what is left once prepare_cache_scope_dirs took the observable half. Narrow on
+    # purpose; prepare_cache_scope_dirs, managed_cache_scope_dirs and grant_path_with_canonical stay.
     'replace register_cache_asset_scope with \(\)',
-    # pending_media.rs survivors (triaged 2026-07-27), in three groups.
-    #
-    # 1. `pin_process_start` exists to initialize a process-global OnceLock early, while the launch
-    # instant is still accurate - if the sweep were the first caller half a minute in, every marker
-    # written before that point would read as older than "process start" and become sweepable, which
-    # is the bug it prevents. Deleting the call cannot be observed from a test: any test that reads
-    # `process_start()` initializes the same OnceLock, and there is no second process to compare
-    # against. Genuinely unkillable in-process rather than merely awkward.
+    # Boundary: initializes a process-global OnceLock. Any test that reads it initializes the same
+    # one, and there is no second process to compare against. Unkillable in-process.
     'replace pin_process_start with \(\)',
-    # 2. The `ErrorKind::NotFound` arms. These are not just hard to force, they are unreachable:
-    # `pending_media_dir` runs `create_dir_all` before returning, so the `read_dir` below never sees
-    # a missing directory, and `clear_pending_media_artifacts` treats an already-removed marker as
-    # success. Forcing a *different* io error (a permission denial) deterministically and
-    # cross-platform is not something a unit test can arrange either.
+    # Boundary: unreachable rather than merely hard. pending_media_dir runs create_dir_all first, and
+    # clear_pending_media_artifacts treats an already-removed marker as success.
     'error.kind\(\) == std::io::ErrorKind::NotFound.* in (read_pending_markers|clear_pending_media_artifacts)',
     'replace == with != in read_pending_markers',
-    # 3. `sweep_pending_media_artifacts` is AppHandle/pool-bound glue: it needs a live handle and the
-    # shared SQLite pool to reach the reference-counting cleanup, neither of which exists under the
-    # unit-test harness. Excluded wholesale, like the binaries.rs boundary functions above, and for
-    # the same reason. The decision that matters is not in it - `marker_is_sweepable` is, and it is
-    # pure, in scope, and covered. Note the `||` filter in `read_pending_markers` is deliberately
-    # *not* excluded: it is killed by
-    # `an_unrelated_file_in_the_directory_is_never_read_as_a_marker`.
+    # AppHandle glue: needs the handle and the pool to reach the reference-counting cleanup. The
+    # decision that matters (marker_is_sweepable) is pure, in scope and covered. The `||` filter in
+    # read_pending_markers is deliberately NOT excluded.
     'in sweep_pending_media_artifacts',
-    # Boundary functions in binaries.rs: they read the process `PATH`, spawn `--version` health
-    # checks, or resolve app directories from the `AppHandle`, none of which a unit test can pin
-    # to a deterministic result on an arbitrary machine. `resolve_from_path` also matches
-    # `resolve_from_path_var`, which is split into `#[cfg(windows)]` / `#[cfg(not(windows))]`
-    # bodies: cargo-mutants does not evaluate cfg, so on any single platform the *other* body is
-    # reported as an unkillable "missed" mutant (so it can never be green cross-platform). Its
-    # actual no-CWD guarantee stays covered directly by the binaries.rs unit tests
-    # (`resolve_from_path_var_only_searches_listed_directories` and the PATHEXT test).
+    # Boundary: binaries.rs reads PATH, spawns --version health checks, or resolves app directories
+    # from the AppHandle. The no-CWD guarantee stays covered by the resolve_from_path_var tests.
     'is_executable_file',
     'resolve_from_path',
     'resolve_binary_from_candidates',
@@ -503,112 +106,54 @@ exclude_re = [
     'validate_yt_dlp_binary',
     'validate_ffmpeg_binary',
     'resolve_external_tools_status',
-    # AppHandle/pool-bound guard entrypoints: they need the shared SQLite pool and settings row,
-    # which do not exist under the unit-test harness (an AppHandle command cannot run there - the
-    # pure comparison they delegate to, paths_refer_to_same_location, stays in scope and tested).
+    # AppHandle glue: guard entrypoints needing the pool and the settings row. The pure comparison
+    # they delegate to (paths_refer_to_same_location) stays in scope and tested.
     'configured_library_dir',
     'ensure_configured_library_path',
     'verify_library_path_then_blocking',
-    # Equivalent mutant: with `&&`, one empty input still returns false, because canonicalize("")
-    # always errors and an empty string never equals a non-empty one, so the fallback compare
-    # yields the same false. No input distinguishes it, so no test can kill it.
+    # Equivalent: with `&&`, one empty input still returns false, because canonicalize("") errors and
+    # an empty string never equals a non-empty one.
     'replace \|\| with && in paths_refer_to_same_location',
-    # filesystem.rs boundary/cfg/equivalent survivors (triaged 2026-07-18; see the note above).
-    # EXDEV detection is cfg-split (unix errno 18 / windows 17) and needs a real cross-device rename
-    # to exercise; the name also matches the match-guard mutants in move_or_copy_file that call it.
+    # cfg-split: EXDEV detection is unix errno 18 / windows 17. The name also matches the match-guard
+    # mutants in move_or_copy_file that call it.
     'is_cross_device_error',
-    # Directory-entry fsync: cfg-split (unix File::sync_all / windows FlushFileBuffers), best-effort,
-    # and its only effect - flushing the dir entry - is invisible to any functional test.
+    # cfg-split: unix File::sync_all / windows FlushFileBuffers, best effort, and flushing a
+    # directory entry is invisible to any functional test.
     'fsync_parent_dir',
-    # Equivalent: with `&&`, a missing or non-file path still returns Ok(false), because the next
-    # guard (or the hash of a non-file) yields the same result; the directory-vs-file case it defends
-    # has no caller. Covers both the exists() and is_file() guards.
+    # Equivalent: with `&&`, a missing or non-file path still returns Ok(false). Covers both guards.
     'replace \|\| with && in file_paths_have_same_content',
-    # Equivalent: only changes the internal temp filename, which the following rename discards.
+    # Equivalent: changes only the internal temp filename, which the following rename discards.
     'delete ! in build_temp_destination_path',
-    # The failed-rename recovery branch in copy_file_atomic, reachable only when the temp->dest
-    # rename itself fails - which a unit test cannot force deterministically.
+    # Boundary: the failed-rename recovery branch, reachable only when the rename itself fails.
     'replace && with \|\| in copy_file_atomic',
-    # The backup-vanished race branch in replace_file_safely: needs the destination to disappear
-    # between the exists check and the rename, which no deterministic test can arrange.
+    # Boundary: the backup-vanished race needs the destination to disappear between the exists check
+    # and the rename.
     'error.kind\(\) == ErrorKind::NotFound.* in replace_file_safely',
     'replace == with != in replace_file_safely',
-    # Equivalent: this `!=` gates only an eprintln diagnostic during migration - no observable change.
+    # Equivalent: gates only an eprintln diagnostic during migration.
     'replace != with == in migrate_directory_contents',
-    # The symlink-cycle test is cfg(unix) (creating a symlink on Windows needs privilege), so this
-    # mutant survives only on a non-unix measurement; the ubuntu CI gate's unix test kills it. Its
-    # `-> true` counterpart stays in scope (a plain copy test catches it on every platform).
+    # cfg-split: the symlink-cycle test is cfg(unix). The `-> true` counterpart stays in scope.
     'replace dir_entry_is_symlink -> bool with false',
-    # Equivalent: the ext guard in alternative_destination_path only differs from `true` when the
-    # extension is an empty string, which Path::extension never yields (a trailing-dot name has no
-    # extension). The `with false`/`delete !` variants are killed by the migration extension test.
+    # Equivalent: differs from `true` only for an empty extension, which Path::extension never
+    # yields. The `with false` / `delete !` variants are killed by the migration extension test.
     'replace match guard !ext.trim\(\).is_empty\(\) with true in alternative_destination_path',
-    # db_backup/mod.rs survivors that no unit test can deterministically kill (triaged 2026-07-19).
-    #
-    # There used to be a `replace < with <= in is_recent` entry here, excluded because the throttle
-    # boundary differs only when a file's age is exactly the interval to the second and a real clock
-    # advancing between the set and the read never lets a test hit that. It is gone for two reasons,
-    # both worth stating so it is not re-added: the comparison was extracted into the pure
-    # `duration_is_recent(now, modified, interval)`, which takes `now` as an argument and can
-    # therefore be handed the exact boundary; and `duration_is_recent_classifies_recent_stale_and_
-    # backward_clock` now asserts that boundary, so the mutant is caught rather than excluded
-    # (verified by applying it: the test fails on the `now - 60s` assertion). The entry also never
-    # matched anything after the extraction - the mutant is named for `duration_is_recent`, and
-    # `in is_recent` is not a substring of `in duration_is_recent`.
-    #
-    # The WAL-checkpoint "still in use" branch (busy != 0 && frames > 0): forcing a busy checkpoint
-    # with frames left needs a second connection holding a lock on the source during the import,
-    # which no deterministic unit test can arrange. The valid (busy == 0) path is exercised by the
-    # import tests.
+    # Boundary: the WAL-checkpoint "still in use" branch needs a second connection holding a lock on
+    # the source during the import. The valid path is exercised by the import tests.
     'replace && with \|\| in stage_database_import',
     'replace != with == in stage_database_import',
     'replace > with (==|<|>=) in stage_database_import',
-    # run_full_integrity_check (integrity.rs) survivors that need a corrupt database returning a
-    # *controlled* number of problem rows, which no deterministic unit test can force. The
-    # damaged-database test that exists returns a multi-row result, where these operators are
-    # equivalent: `let ok = rows.len() == 1 && rows[0].0 == "ok"` would only be weakened by an `||`
-    # when the pragma returns a *single* non-"ok" row (a corruption shape that cannot be produced on
-    # demand), and `truncated: rows.len() > problems.len()` differs only when SQLite returns more than
-    # MAX_INTEGRITY_PROBLEMS rows (again a specific, unforceable corruption). The one-week throttle
-    # interval itself is not excluded - it is covered by
-    # integrity_check_is_not_due_within_the_weekly_throttle_window.
+    # Equivalent against any forceable input: distinguishing these needs a corrupt database returning
+    # a controlled number of problem rows. The weekly throttle itself is NOT excluded.
     'replace && with \|\| in run_full_integrity_check',
     'replace > with (==|<|>=) in run_full_integrity_check',
-    # db_schema/migrations.rs equivalents (triaged 2026-07-25). Both `> 0` guards gate nothing but a
-    # logger::warn line reporting how many rows the migration repaired - the repair itself is the
-    # UPDATE above, which runs unconditionally. Every mutation of the comparison changes only
-    # whether that line is written, which no test can observe; same class as the migrate_directory_contents
-    # `!=` excluded above. The repair counts themselves stay covered by the migration tests, which
-    # assert the repaired rows rather than the log.
+    # Equivalent: both `> 0` guards gate only a logger::warn counting repaired rows. The repair is
+    # the unconditional UPDATE above, and the counts stay covered by the migration tests.
     'replace > with (==|<|>=) in apply_migration_13',
     'replace > with (==|<|>=) in apply_migration_14',
-    # `is_batch_shim_extension` is `#[cfg(windows)]`, and so is the test that pins it. The gate runs
-    # on ubuntu, where neither is compiled, so both directions of the mutant are reported missed on
-    # every run and nothing on that platform can ever kill them. Same class, and the same reason, as
-    # the `resolve_from_path_var` cfg-split exclusion above. The BatBadBut guard itself stays covered
-    # by `is_batch_shim_extension_flags_only_bat_and_cmd`, which runs on Windows.
+    # cfg-split: #[cfg(windows)], and so is the test that pins it. The gate runs on ubuntu.
     'is_batch_shim_extension',
-    # `current < target` weakened to `<=` in needs_migration re-runs the migration the database is
-    # already at. Every migration is idempotent by construction - `CREATE TABLE/INDEX/TRIGGER IF NOT
-    # EXISTS`, column-existence-guarded `ALTER`, and repairs that are plain `UPDATE ... WHERE` - and
-    # each stamps the version it just re-applied, so the end state is byte-identical and only the
-    # work is wasted. No assertion can distinguish it.
-    #
-    # The `== N` direction is deliberately NOT excluded. That one skips a migration outright, which
-    # is a real defect, and it survived until 2026-07-28 because reaching head was the only thing
-    # asserted - the later migrations stamp their version on the way past a skipped one, so the
-    # database still ends at SCHEMA_VERSION while missing that migration's indexes.
-    # `every_historical_version_migrates_to_the_current_schema` now asserts every index and trigger
-    # in `INDEX_DDLS`/`TRIGGER_DDLS` exists after migrating from each historical version, which is
-    # what kills it.
-    #
-    # This entry read `in ensure_schema` until 2026-07-31 and had matched nothing since the guard was
-    # extracted into `needs_migration`: the exclusion was written against the inlined comparison, and
-    # the extraction renamed the mutant out from under it. `in ensure_schema` is not a substring of
-    # `in needs_migration`, so the mutant it names was live and the next scheduled run would have
-    # reported it as a survivor - with nothing in this file to suggest the entry, rather than the
-    # tests, was what had gone stale. That is the second dead entry here. Both were found the same
-    # cheap way: match every pattern in this list against `cargo mutants --list`, which takes seconds
-    # and is worth doing whenever a gated function is renamed or moved.
+    # Equivalent: re-runs a migration the database is already at, and every migration is idempotent,
+    # so only the work is wasted. The `== N` direction is deliberately NOT excluded: that one skips a
+    # migration outright, and it survived undetected until 2026-07-28. See the doc.
     'replace < with <= in needs_migration',
 ]
