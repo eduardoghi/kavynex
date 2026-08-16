@@ -64,6 +64,11 @@ the database there once a day. Only the database is copied. The media files are 
 mirrored, so keep an off-drive copy of the library folder yourself (an external disk, or your own
 cloud backup).
 
+**That setting is off until you set it**, so a fresh install has no copy of the database anywhere
+but the one disk. It is worth turning on early rather than after the fact, because the database is
+the half that cannot be re-fetched: your media files can be downloaded again, but the comments and
+live chat you saved for a video that has since been removed from YouTube cannot.
+
 Uninstalling removes the app, not your data, by design, since the library is usually the point.
 To remove everything, delete the library folder plus the three app directories (config, cache and
 logs). The Diagnostics dialog shows the resolved library folder; `DIRECTORIES.md` lists the

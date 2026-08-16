@@ -37,6 +37,39 @@ prefixes) so a sibling directory like `library-evil` next to `library` can never
 mistaken for it. This is what stops a compromised frontend from redirecting a delete/move
 operation at an arbitrary directory by simply passing a different `library_path`.
 
+### Which rule a given path argument needs
+
+The two paragraphs above describe rules that answer different questions, and telling them apart is
+the whole of getting a new command right. They are named together here because the failure that
+made this section necessary was applying one and assuming it covered the other.
+
+- **`ensure_configured_library_path` (`services/library/guard.rs`) answers "is this the library?"**
+  It applies to an *absolute* `library_path` argument, and it settles where the operation is
+  rooted. Documented at length above and throughout this file.
+- **`ensure_managed_library_relative_path` (`utils/path.rs`) answers "is this one of ours inside
+  it?"** It applies to a *relative* path naming an artifact, and it requires the first component to
+  be one of `MANAGED_LIBRARY_DIRS` (`video/`, `audio/`, `thumbnails/`, `live_chat/`). Its sibling
+  `ensure_relative_path_in_managed_dir` is the same rule pinned to one named directory, used by the
+  live-chat commands.
+
+Neither implies the other, and the second is the one that gets forgotten, because the containment
+helpers look like they already cover it. They do not. `sanitize_relative_path_strict` rejects `..`
+and absolute paths, and `ensure_existing_path_inside_dir` rejects anything that canonicalizes
+outside the base, so together they guarantee a path stays *inside the library tree*. They say
+nothing about it being an artifact the app wrote. A bare name like `contract.docx` satisfies both
+and is a file the user happens to keep in the folder they chose as their library, which is not
+required to be empty. The asset scope already reasons this way in the other direction:
+`commands/security.rs::managed_asset_scope_dirs` refuses to grant the library root for exactly that
+reason.
+
+Where each applies today: the write side of a creation runs the relative rule on everything it
+produces (`media_creation::ensure_managed_prepared_paths`), the live-chat commands run it on the
+`relative_path` they receive, and `cleanup_unreferenced_media_artifacts` runs it on its three
+artifact paths (see its own section below for what its absence cost). `library_path` arguments run
+the absolute rule. A command taking both runs both.
+
+### The UNC / network-path refusal
+
 A third rule cuts across both, and is stated here as a rule rather than left to be inferred from
 the places it appears: **every command that accepts a path from the caller refuses a UNC / network
 location before any filesystem call touches it.** The reason is specific to Windows and easy to
@@ -330,7 +363,7 @@ is the app's largest path surface.
 | `library_path` | Checked against the persisted setting by the command layer (`ensure_configured_library_path`) before any file is written, like every other library write. |
 | `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::import_media_file_cancellable_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
 | `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch refuses a network location and gates the extension (`services/thumbnail/picked.rs`); the remote branch goes through the image-CDN allow-list and the SSRF guard. |
-| `cookies_path` | Refused as a network location and gated to `.txt` before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). |
+| `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). The header check is not cosmetic: yt-dlp rewrites the file it is given, so the extension alone left "an arbitrary text file is not destroyed" resting on yt-dlp's parser refusing it first. |
 
 Every path the creation *produces* is re-checked as a managed library-relative path before it can
 reach a row (`ensure_managed_prepared_paths`), which is the last point at which a value that escaped

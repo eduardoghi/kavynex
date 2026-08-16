@@ -78,12 +78,24 @@ snapshot and restore machinery moved into submodules of their own, because it is
 that has to know about all of them at once.
 
 All of the snapshots above sit on the same volume as the live database, so a disk failure takes
-them with it. The **optional** external backup (Settings > Database) addresses that: when a folder
-is configured (`external_backup_dir` in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir`
-writes `kavynex-backup.db` there once a day, rotated as `kavynex-backup.db.1` /
-`kavynex-backup.db.2` (`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the same atomic
-`export_database`. Only the database is mirrored (the media files are not), and the folder is left
-untouched when it is unreachable (an unplugged drive) rather than recreated.
+them with it. Every generation, not just the newest: the seven `.bak` files and the `.corrupt` ones
+are siblings of `kavynex.db`, so the rotation buys nothing against losing the disk. It is depth
+against corruption, not against hardware.
+
+**The external backup is what addresses that, and it is off unless you turn it on.** There is no
+default folder and nothing prompts for one, so a fresh install has no off-volume copy at all, which
+is worth stating plainly because the paragraph above otherwise reads as though the problem were
+already solved. When a folder *is* configured (Settings > Database, stored as `external_backup_dir`
+in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir` writes
+`kavynex-backup.db` there once a day, rotated as `kavynex-backup.db.1` / `kavynex-backup.db.2`
+(`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the same atomic `export_database`. Only the
+database is mirrored (the media files are not), and the folder is left untouched when it is
+unreachable (an unplugged drive) rather than recreated.
+
+What is at stake if it is left off is the metadata rather than the media: the comments, the live
+chat, the titles, the publication dates and the channel/watched state all live only in the database,
+and for a video that has since been removed from YouTube none of it can be fetched again. The media
+files are the recoverable half, and `PRIVACY.md` is where that trade is stated for the user.
 
 Note that on Windows and macOS, Tauri's `app_config_dir` and `app_data_dir` resolve to
 the *same* directory; on Linux they differ (`~/.config/...` vs `~/.local/share/...`).

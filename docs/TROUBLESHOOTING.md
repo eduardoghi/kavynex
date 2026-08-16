@@ -180,6 +180,32 @@ drive first and the whole situation does not arise.
 exact-string match because it could not be canonicalized. That line is the app noting it could not
 confirm where the folder really is, which is exactly what an absent drive looks like from inside.)
 
+## Adding a video again downloads nothing, or downloads and then keeps the old file
+
+Both are deliberate, and which one you see depends on whether the video is going back into the
+*same* channel.
+
+- **Same channel.** The add is refused before anything is downloaded, with "this media is already
+  registered for the selected channel". The check is on the video's YouTube id, so it applies
+  whichever format you pick, and no bytes are fetched.
+
+- **A different channel.** This is allowed, because the same video can legitimately belong to two
+  channels, so the download runs normally. If the library already holds that video *in that same
+  format*, the finished download is then discarded and the file already on disk is reused. The
+  terminal says so: "A file for this video and format already existed in the library; kept the
+  existing copy and discarded the new download." A live chat replay is handled the same way, with
+  its own message. Both entries now point at one file, and deleting either one leaves the file
+  alone while the other still references it; it is removed when the last reference goes.
+
+What this is **not** is a reason a higher-quality download fails to appear. A downloaded file is
+named after the video *and* the format you chose (`youtube_<id>_<format>.mp4`), so a different
+format is a different file and downloads normally. If a re-download seems to have been ignored,
+check that you picked a different format and not the same one.
+
+To genuinely replace a file rather than reuse it (an interrupted download left it truncated, say),
+delete the media in Kavynex first. That removes the file too, unless another entry still points at
+it, and the next add downloads fresh. `DIRECTORIES.md` has the naming rules behind all of this.
+
 ## Kavynex reports a corrupted database
 
 This is handled automatically and nothing is silently lost. On the next launch Kavynex restores

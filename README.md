@@ -158,8 +158,9 @@ Both outgrew being README sections and now have documents of their own:
 
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md): yt-dlp/FFmpeg not being found, the app not
   starting (WebView2 on Windows, Gatekeeper on macOS, FUSE and WebKitGTK on Linux), a library on a
-  drive that is not connected, a corrupted database, why "Open file location" behaves differently
-  on each platform, and where the log file lives.
+  drive that is not connected, why adding a video again downloads nothing or keeps the file you
+  already have, a corrupted database, why "Open file location" behaves differently on each
+  platform, and where the log file lives.
 - [`docs/PRIVACY.md`](docs/PRIVACY.md): everything Kavynex stores, the only three things it sends
   over the network, and how to take your data with you or remove it.
 
