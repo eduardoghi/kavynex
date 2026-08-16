@@ -230,22 +230,44 @@ jobs:
                 # minutes of this ceiling is already over it on some future Tuesday, and the reading
                 # to act on is the *slowest* leg rather than the average. A fifth shard takes each
                 # leg to roughly 291 mutants, which is about 73 minutes at the pace measured today.
+                #
+                # Still five on 2026-08-16, when `library/verification.rs` and `library/integrity.rs`
+                # joined `examine_globs` (+87 net, scope 1462 -> 1549, so ~310 per leg). The reason
+                # to record a change that did *not* happen is that the paragraph above would have
+                # predicted one: 73 plus the ~6 minutes those mutants add reads as 79 against this
+                # ceiling, which is the margin the 2026-08-03 entry calls "not one". But 73 was a
+                # projection, and the run it projected has since happened. The real legs on the last
+                # run (31367767720) were 58, 65, 65, 66 and 67 minutes, so the slowest was 67 and not
+                # 73, and ~310 per leg lands near 71. That is 19 minutes of headroom rather than 11.
+                #
+                # Which is the lesson this matrix keeps teaching, arriving from the other side for
+                # once: read the slowest leg, and read it from a run rather than from the last
+                # estimate written down here. Adding a sixth shard on the projection would have cost
+                # a runner every Monday to solve a problem the measurement says does not exist yet.
                 shard: [1, 2, 3, 4, 5]
         # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
         # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
         # was killed at 2h00m having produced no verdict - the two runs before it took ~56 minutes.
-        # The scope is 1450 mutants today (`cargo mutants --list | wc -l`, which applies the config
-        # and so counts what a run actually mutates - the same command without it reports 1634), so a
-        # quarter of it plus one baseline build sits well inside this, and the ceiling stays low
-        # enough to be a real signal rather than a number nothing ever approaches. When a leg starts
-        # creeping toward it, add a shard rather than minutes - see the matrix above.
+        # The scope is 1549 mutants today (`cargo mutants --list | wc -l`, which applies the config
+        # and so counts what a run actually mutates), so a fifth of it plus one baseline build sits
+        # well inside this, and the ceiling stays low enough to be a real signal rather than a number
+        # nothing ever approaches. When a leg starts creeping toward it, add a shard rather than
+        # minutes - see the matrix above, including the 2026-08-16 entry on when not to.
         #
-        # That number is what this decision is read against, so it is worth knowing it drifts: it
-        # said 1383 until 2026-08-02, when a re-measurement put it at 1450, and 1454 the day after.
-        # Five percent does not change the shard count, which is the point of re-measuring rather
-        # than assuming either way - and 2026-08-03 showed the other half of that lesson: the shard
-        # count needed changing anyway, for pace rather than for scope. Read the slowest leg, not
-        # this number alone.
+        # The same command with `--no-config`, i.e. over the whole crate rather than the gated files,
+        # reports 3292. That is a rough sense of how much of the tree this gate covers and an input to
+        # nothing here, so it is refreshed rather than investigated - but note it said 1634 when this
+        # line was last touched on 2026-08-02, and a gap that wide is the crate growing rather than
+        # the same scope re-counting. Do not read a small movement into it next time.
+        #
+        # The gated scope is what this decision is read against, so it is worth knowing it moves for
+        # two different reasons. It drifts: 1383 until 2026-08-02, then 1450 on a re-measurement and
+        # 1454 the day after, with nothing added. And it is raised deliberately: 1549 on 2026-08-16,
+        # when two files joined `examine_globs` with a row in docs/MUTATION-TESTING.md behind them.
+        # Neither moved the shard count, which is the point of re-measuring rather than assuming
+        # either way - and 2026-08-03 showed the other half of that lesson: the shard count needed
+        # changing anyway, for pace rather than for scope. Read the slowest leg, not this number
+        # alone.
         timeout-minutes: 90
         # Trim debuginfo like ci.yml's Rust job: cargo-mutants rebuilds the tree once per mutant, so
         # keeping the per-build cost down matters more here than anywhere else.

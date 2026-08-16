@@ -49,6 +49,8 @@ examine_globs = [
     "src/commands/live_chat.rs",
     "src/commands/security.rs",
     "src/commands/database.rs",
+    "src/services/library/verification.rs",
+    "src/services/library/integrity.rs",
 ]
 
 # The one file the directory globs above pull in that this gate has nothing to say about: it holds
@@ -79,6 +81,11 @@ exclude_re = [
     # Equivalent: writes a logger::warn and nothing else. The bare name covers both the `with ()`
     # mutant and the failed_paths guard mutants, which are the same argument twice.
     'report_cleanup_outcome',
+    # Equivalent: the `report.corrupt > 0` guard in front of a logger::warn. All three weakenings
+    # return a byte-identical report; only whether the line is written changes, and logger::write
+    # returns early when LOG_PATH is unset, which is every unit test. Narrow on purpose: the rest of
+    # verify_library_content_sync (the two cancel checks and the loop) stays in scope and is killed.
+    'replace > with (==|<|>=) in verify_library_content_sync',
     # Boundary: spawns FFmpeg and polls it to a deadline. Note that nothing is excluded for
     # resolve_display_thumbnails_sync, and the doc records why the reason once given was wrong.
     'generate_display_thumbnail',
