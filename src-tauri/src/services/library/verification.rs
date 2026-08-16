@@ -628,4 +628,74 @@ mod tests {
 
         let _ = fs::remove_dir_all(&library);
     }
+
+    #[test]
+    fn every_example_list_is_capped_while_its_count_stays_complete() {
+        // `record` is the one place the report grows, and it does two things that fail in opposite
+        // directions: it counts every outcome, and it keeps a bounded sample of the paths. A cap
+        // that reached the count would under-report corruption to the user; a cap missing from the
+        // list would put every corrupt path in a library-sized report onto the IPC boundary.
+        //
+        // Driven through `record` rather than through a sweep because the cap is its decision and a
+        // sweep would need MAX_EXAMPLES + 1 real files per category to reach it. The three
+        // list-keeping outcomes are covered together since they share the one guard; `Verified`
+        // returns before it and is asserted separately below.
+        let over_cap = MAX_EXAMPLES + 1;
+
+        for outcome in [
+            ContentVerification::Corrupt,
+            ContentVerification::Unverifiable,
+            ContentVerification::Unreadable,
+        ] {
+            let mut report = ContentVerificationReport::default();
+
+            for index in 0..over_cap {
+                record(&mut report, &format!("video/media_{index}.mp4"), outcome);
+            }
+
+            let (count, examples) = match outcome {
+                ContentVerification::Corrupt => (report.corrupt, &report.corrupt_examples),
+                ContentVerification::Unverifiable => {
+                    (report.unverifiable, &report.unverifiable_examples)
+                }
+                ContentVerification::Unreadable => (report.unreadable, &report.unreadable_examples),
+                ContentVerification::Verified => unreachable!("not one of the three above"),
+            };
+
+            assert_eq!(report.checked, over_cap, "{outcome:?} counts every file");
+            assert_eq!(
+                count, over_cap,
+                "{outcome:?} counts every file in its category"
+            );
+            // Exactly the cap, not merely "at most": `<=` in the guard keeps one more than the
+            // constant says, which is the off-by-one neither count above can reveal.
+            assert_eq!(
+                examples.len(),
+                MAX_EXAMPLES,
+                "{outcome:?} caps its examples"
+            );
+        }
+    }
+
+    #[test]
+    fn a_verified_file_is_counted_without_being_kept_as_an_example() {
+        // The early return in `record`. A clean library is the common case, so keeping a sample of
+        // it would be a list the dialog never shows, and `checked` plus `verified` already say
+        // everything there is to say about it.
+        let mut report = ContentVerificationReport::default();
+
+        for index in 0..(MAX_EXAMPLES + 1) {
+            record(
+                &mut report,
+                &format!("video/media_{index}.mp4"),
+                ContentVerification::Verified,
+            );
+        }
+
+        assert_eq!(report.checked, MAX_EXAMPLES + 1);
+        assert_eq!(report.verified, MAX_EXAMPLES + 1);
+        assert!(report.corrupt_examples.is_empty());
+        assert!(report.unverifiable_examples.is_empty());
+        assert!(report.unreadable_examples.is_empty());
+    }
 }

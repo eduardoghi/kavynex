@@ -9,6 +9,23 @@ use crate::services::logger;
 use crate::services::video_repository::MediaIntegrityReference;
 use crate::AppResult;
 
+/// How many example paths the report carries per category (missing, corrupt, invalid, orphan).
+///
+/// The counts in the report are complete; these are the sample the dialog shows next to each one.
+/// The cap is what keeps the report a fixed size: a library with fifty thousand orphans would
+/// otherwise send fifty thousand strings over IPC to fill a list nobody scrolls.
+///
+/// Named rather than spelled `5` at each of the four sites, which is what it was. Not because four
+/// literals are untidy, but because nothing named the invariant they share, so a mutation run
+/// reported all four as separate survivors and an edit to any one of them would read as deliberate.
+///
+/// `verification.rs` declares its own constant of the same value, and the duplication is the
+/// intended shape rather than a missed extraction: the two cap different reports, so either could
+/// move without the other, while the value is deliberately kept equal so the two Diagnostics
+/// sections show samples of the same size. Sharing one constant would make that agreement a
+/// constraint instead of a choice.
+const MAX_EXAMPLES: usize = 5;
+
 // usize counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs
 // emits by default).
 #[derive(Serialize, Clone, Debug, ts_rs::TS)]
@@ -249,7 +266,7 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
         if escapes_via_parent || resolves_outside {
             outcome.invalid += 1;
 
-            if outcome.invalid_examples.len() < 5 {
+            if outcome.invalid_examples.len() < MAX_EXAMPLES {
                 outcome.invalid_examples.push(stored_path);
             }
 
@@ -268,7 +285,7 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
         if !exists_within_library {
             outcome.missing += 1;
 
-            if outcome.missing_examples.len() < 5 {
+            if outcome.missing_examples.len() < MAX_EXAMPLES {
                 outcome.missing_examples.push(stored_path);
             }
 
@@ -285,7 +302,7 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
         if is_zero_length {
             outcome.corrupt += 1;
 
-            if outcome.corrupt_examples.len() < 5 {
+            if outcome.corrupt_examples.len() < MAX_EXAMPLES {
                 outcome.corrupt_examples.push(stored_path);
             }
         }
@@ -356,7 +373,7 @@ fn collect_orphan_paths(
 
             orphan_count += 1;
 
-            if orphan_examples.len() < 5 {
+            if orphan_examples.len() < MAX_EXAMPLES {
                 orphan_examples.push(relative);
             }
         }
@@ -887,6 +904,79 @@ mod tests {
 
         assert_eq!(outcome.checked, 1);
         assert_eq!(outcome.missing, 1);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn every_example_list_is_capped_while_its_count_stays_complete() {
+        // The report's counts are the answer; the example lists are a sample of each. Both halves
+        // are asserted here because they fail in opposite directions: a cap applied to the count
+        // would under-report the damage, and a cap missing from the list would put every path in a
+        // library-sized report onto the IPC boundary.
+        //
+        // All three of `collect_missing_paths`' lists in one test, because they are one decision
+        // written three times and splitting them would only pin whichever one a later edit did not
+        // touch. `collect_orphan_paths` has the fourth copy and gets its own test below, since it
+        // takes different inputs.
+        let library = unique_test_dir("example-cap");
+        fs::create_dir_all(library.join("video")).unwrap();
+
+        let over_cap = MAX_EXAMPLES + 1;
+        let mut stored = Vec::new();
+
+        for index in 0..over_cap {
+            // Absent from disk.
+            stored.push(format!("video/missing-{index}.mp4"));
+
+            // Present but hollow, which is corrupt rather than fine.
+            let zero_length = library.join("video").join(format!("empty-{index}.mp4"));
+            fs::write(&zero_length, b"").unwrap();
+            stored.push(format!("video/empty-{index}.mp4"));
+
+            // Escapes the library, which is an anomaly rather than a miss.
+            stored.push(format!("video/../../outside-{index}.mp4"));
+        }
+
+        let outcome = collect_missing_paths(&library, stored);
+
+        assert_eq!(outcome.missing, over_cap, "every missing path is counted");
+        assert_eq!(outcome.corrupt, over_cap, "every hollow file is counted");
+        assert_eq!(outcome.invalid, over_cap, "every escaping path is counted");
+
+        // Exactly the cap, not merely "at most": `<=` in the guard stores one more than the
+        // constant says, which is the off-by-one no count above can reveal.
+        assert_eq!(outcome.missing_examples.len(), MAX_EXAMPLES);
+        assert_eq!(outcome.corrupt_examples.len(), MAX_EXAMPLES);
+        assert_eq!(outcome.invalid_examples.len(), MAX_EXAMPLES);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn the_orphan_example_list_is_capped_while_its_count_stays_complete() {
+        // The fourth copy of the cap above, on the one list built from what is on disk rather than
+        // from what the database stored. Same two directions asserted for the same reason: the
+        // count is what tells the user how much is there, and the list is what crosses IPC.
+        let library = unique_test_dir("orphan-cap");
+        fs::create_dir_all(library.join("video")).unwrap();
+
+        let over_cap = MAX_EXAMPLES + 1;
+
+        for index in 0..over_cap {
+            fs::write(
+                library.join("video").join(format!("stray-{index}.mp4")),
+                b"x",
+            )
+            .unwrap();
+        }
+
+        // Nothing is referenced, so every file on disk is an orphan.
+        let expected = HashSet::new();
+        let (count, examples) = collect_orphan_paths(&library, &["video"], &expected);
+
+        assert_eq!(count, over_cap, "every unreferenced file is counted");
+        assert_eq!(examples.len(), MAX_EXAMPLES);
 
         let _ = fs::remove_dir_all(&library);
     }
