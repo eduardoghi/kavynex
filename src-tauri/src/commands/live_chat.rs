@@ -96,7 +96,8 @@ pub async fn stream_live_chat_file(
 ) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
 
-    // Bind the permit for the whole read (see live_chat_storage::acquire_read_permit). Binding it (// rather than writing `acquire_read_permit().await?;`) is the load-bearing part: a temporary
+    // Bind the permit for the whole read (see live_chat_storage::acquire_read_permit). Binding it
+    // (rather than writing `acquire_read_permit().await?;`) is the load-bearing part: a temporary
     // dropped at the end of its own statement would release the slot before `run_blocking` even
     // starts, leaving a gate that admits everyone and a counter that is always zero. It is taken
     // after the library guard so a request for a path that is not the configured library is refused

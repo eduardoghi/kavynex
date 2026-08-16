@@ -1345,7 +1345,8 @@ mod tests {
 
     // The guard these three functions exist for: a destination that already holds *different*
     // bytes is someone else's file, and must come back as an error with the file untouched. Only
-    // the identical-content path may proceed. A flipped comparison here would not fail loudly (// it would silently overwrite a file in the user's library), so each test asserts the
+    // the identical-content path may proceed. A flipped comparison here would not fail loudly
+    // (it would silently overwrite a file in the user's library), so each test asserts the
     // destination's bytes are unchanged, not just that an error came back.
 
     #[test]

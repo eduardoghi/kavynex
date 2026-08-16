@@ -362,7 +362,8 @@ mod tests {
         assert_eq!(stats["total_audio_media"], 0);
     }
 
-    // The IPC test for `list_media_integrity_references` went with the command. What it asserted (// that the query returns the stored paths and the channel each belongs to) is covered by
+    // The IPC test for `list_media_integrity_references` went with the command. What it asserted
+    // (that the query returns the stored paths and the channel each belongs to) is covered by
     // `services::video_repository`'s own test, which drives the function directly, and the shape
     // the integrity check needs out of it is pinned in `library::integrity`.
 }

@@ -37,8 +37,9 @@ const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 /// third yt-dlp spawn site and gets its own.
 const MAX_CONCURRENT_THUMBNAIL_RUNS: usize = 4;
 // Ceiling on how many thumbnail/avatar runs may be in flight (running or queued) at once. The
-// concurrency cap bounds only how many spawn together; this bounds the queue behind it so a burst (// a bulk import or a compromised frontend firing the commands in a loop) is refused up front rather
-// than enqueued without limit (see BoundedSemaphore). Set well above a realistic bulk import.
+// concurrency cap bounds only how many spawn together; this bounds the queue behind it so a burst
+// (a bulk import or a compromised frontend firing the commands in a loop) is refused up front
+// rather than enqueued without limit (see BoundedSemaphore). Set well above a realistic bulk import.
 const MAX_THUMBNAIL_RUNS_IN_FLIGHT: usize = 32;
 static THUMBNAIL_RUN_SEMAPHORE: BoundedSemaphore =
     BoundedSemaphore::new(MAX_CONCURRENT_THUMBNAIL_RUNS, MAX_THUMBNAIL_RUNS_IN_FLIGHT);

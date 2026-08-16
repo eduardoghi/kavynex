@@ -424,9 +424,10 @@ async fn run_yt_dlp_and_capture_json(
     failed_message: &str,
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<(String, Vec<String>, Vec<String>)> {
-    // Bound concurrent standalone runs (see STANDALONE_RUN_SEMAPHORE). Held for the whole function (// spawn through wait), so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers queue
-    // here rather than each spawning a process and buffering up to 128 MiB, and a queue deeper than
-    // the in-flight ceiling is refused up front rather than enqueued without limit.
+    // Bound concurrent standalone runs (see STANDALONE_RUN_SEMAPHORE). Held for the whole function
+    // (spawn through wait), so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers
+    // queue here rather than each spawning a process and buffering up to 128 MiB, and a queue
+    // deeper than the in-flight ceiling is refused up front rather than enqueued without limit.
     let _permit = STANDALONE_RUN_SEMAPHORE
         .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
         .await?;
@@ -783,8 +784,9 @@ pub async fn fetch_youtube_comments_async(
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let url = format!("https://www.youtube.com/watch?v={}", normalized_video_id);
 
-    // Register the run (when a run_id was supplied) so the frontend can cancel this comment backup (// which can run for up to YT_DLP_COMMENTS_TIMEOUT_SECS), promptly, instead of waiting it out. The
-    // guard unregisters the run when this function returns.
+    // Register the run (when a run_id was supplied) so the frontend can cancel this comment backup
+    // (which can run for up to YT_DLP_COMMENTS_TIMEOUT_SECS) promptly, instead of waiting it out.
+    // The guard unregisters the run when this function returns.
     let (cancel_flag, _run_release_guard) = optional_cancellable_run(run_id)?;
 
     let metadata = fetch_yt_dlp_metadata_with_comments(

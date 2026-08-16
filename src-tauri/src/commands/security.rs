@@ -110,7 +110,8 @@ pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
 ///
 /// Split out of [`register_cache_asset_scope`] because it is the whole of what that function does
 /// that a test can observe. The grant itself needs a live `AppHandle`, so the mutation run reported
-/// `replace register_cache_asset_scope with ()` as surviving: the entire body could become a no-op (/// no directories created, nothing authorized, every thumbnail preview and display derivative
+/// `replace register_cache_asset_scope with ()` as surviving: the entire body could become a no-op
+/// (no directories created, nothing authorized, every thumbnail preview and display derivative
 /// silently unreadable), and the suite would not notice. It still cannot observe the grant, but the
 /// creation is now one call from a test, which is the half that has an effect on disk.
 fn prepare_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {

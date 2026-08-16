@@ -354,8 +354,9 @@ fn write_marker_file(marker: &Path, contents: &str) -> AppResult<()> {
 /// Rewrites a marker with an incremented attempt count, so the ceiling survives a restart.
 ///
 /// Best effort by design, like everything else the sweep does: if this fails, the marker keeps its
-/// previous count and simply gets one more attempt than it should. That is the harmless direction (/// the alternative, treating a failed rewrite as a reason to give up, would abandon a record over a
-/// transient write error, which is exactly the mistake the retry exists to avoid.
+/// previous count and simply gets one more attempt than it should. That is the harmless direction
+/// (the alternative, treating a failed rewrite as a reason to give up, would abandon a record over
+/// a transient write error, which is exactly the mistake the retry exists to avoid).
 ///
 /// The rewrite refreshes the marker's mtime, which is deliberate and safe: `marker_is_sweepable`
 /// compares that against the *process* start, so a marker touched during this run is skipped by
