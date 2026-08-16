@@ -1,6 +1,6 @@
 # A command with no caller is removed, not kept for later
 
-**2026-08-16**, commit `2ec098b` (*refactor: drop the two commands nothing in the app calls*).
+**2026-08-16**, commit `360a9f6` (*refactor: drop the two commands nothing in the app calls*).
 
 ## What the code does now
 
