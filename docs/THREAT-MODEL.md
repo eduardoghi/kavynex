@@ -490,9 +490,9 @@ not a substitute for it. Binaries are always invoked via `std::process::Command`
 shell-interpolation step for injection to exploit in the first place.
 
 The optional cookies-file path (`--cookies <path>`) is similarly restricted: only an
-existing, non-network `.txt` file is accepted (`services/yt_dlp/cookies.rs::normalize_cookies_path`),
-mirroring the file picker's own filter, and the resolved path is redacted before it is
-ever shown in the in-app terminal preview. The network-path refusal has to come *before* the
+existing, non-network `.txt` file **that actually starts with a Netscape cookie-file header** is
+accepted (`services/yt_dlp/cookies.rs::normalize_cookies_path`), and the resolved path is redacted
+before it is ever shown in the in-app terminal preview. The network-path refusal has to come *before* the
 `is_file()` check rather than after it: stat'ing a UNC share is itself what makes Windows
 authenticate to that host over SMB and leak the user's NTLM hash, so a check that ran later
 would already have paid the cost it exists to avoid. This is the same guard, closing the same
@@ -501,6 +501,25 @@ escalation, as `library::resolve_path_inside_library` and
 ability to be pointed at directly. An invalid value is dropped rather than raised as an error,
 matching how this function treats every other rejection. The run simply proceeds without
 cookies (or falls back to `--cookies-from-browser`).
+
+**The header check is there because `--cookies` is a path yt-dlp writes *back* to**, which the
+extension gate alone did not account for. At the end of a run yt-dlp rewrites that file in full
+with the cookies it acquired (verified against yt-dlp 2026.07.04), so accepting any existing `.txt`
+made "a compromised renderer cannot destroy an arbitrary text file" rest on yt-dlp's own parser
+refusing to load it first. It does refuse, today: a `.txt` that is not a cookie jar produces
+`does not look like a Netscape format cookies file` and the file is left untouched. But that is a
+guarantee owned by an external tool whose version this app does not pin and whose output format it
+already treats as unstable elsewhere, and resting on it is exactly what the `.bat`/`.cmd` refusal in
+`services/binaries.rs` declines to do with the compiler's BatBadBut fix. Reading the header moves
+the decision back to this side of the boundary.
+
+The accepted spellings are taken from what yt-dlp accepts rather than from the spec, because the
+only failure that matters in the other direction is refusing a real cookies file, which would
+surface as the cookies option silently doing nothing. yt-dlp loads the file through Python's
+`http.cookiejar.MozillaCookieJar`, whose magic is `#( Netscape)? HTTP Cookie File` matched at the
+start of the first line, so both forms are accepted, with anything appended after them on the same
+line. `#Netscape` without the space, a lowercased spelling, a leading blank line and a header
+preceded by another comment are all refused here, and all four are refused by yt-dlp too.
 
 ## Outbound image fetches (thumbnails and channel avatars)
 

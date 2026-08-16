@@ -35,6 +35,12 @@ them to yt-dlp for that request only; Kavynex does not transmit, store, or displ
 cookie values. See `DATABASE.md` and `THREAT-MODEL.md` for more detail on what is stored
 locally and how it is protected.
 
+If you point Kavynex at a cookies *file* instead of a browser, be aware of one thing that is
+yt-dlp's behavior rather than Kavynex's: at the end of a download yt-dlp **rewrites that file**
+with the cookies it acquired during the run, so the file you selected is updated in place rather
+than only read. Kavynex only accepts a `.txt` file that already begins with a Netscape cookie-file
+header, so a note or a document cannot be selected by mistake and overwritten.
+
 ## Taking your data with you, or removing it
 
 Everything Kavynex holds is a plain file on your disk, so both are file operations rather than
