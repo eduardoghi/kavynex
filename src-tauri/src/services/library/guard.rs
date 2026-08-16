@@ -201,6 +201,117 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
+    /// An in-memory pool with the schema applied, for the guard tests that need a persisted
+    /// setting to cross-check against rather than only the pure comparison.
+    async fn memory_pool() -> SqlitePool {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory database");
+
+        crate::services::db_schema::ensure_schema(&pool)
+            .await
+            .expect("apply schema");
+
+        pool
+    }
+
+    async fn pool_with_library_path(library_path: &str) -> SqlitePool {
+        let pool = memory_pool().await;
+
+        crate::services::database::set_app_settings_in_pool(
+            &pool,
+            &crate::services::database::StoredAppSettings {
+                library_path: Some(library_path.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("persist the configured library path");
+
+        pool
+    }
+
+    /// The combination the two halves of this module are only tested apart: a library the app
+    /// cannot see (an external disk that is not plugged in, the state a user is most likely to be
+    /// in right after restoring a database) still has to be *usable* through the guard.
+    ///
+    /// `same_location_falls_back_to_string_equality_for_missing_paths` pins the comparison itself,
+    /// but nothing drove the guard end to end against a pool, so nothing said the fallback actually
+    /// reaches a caller. If it did not, every library command would refuse while the drive was
+    /// away, and reconnecting it would be the only cure for what looks like a corrupted install.
+    #[tokio::test]
+    async fn an_offline_library_is_still_accepted_by_its_exact_stored_path() {
+        let offline = unique_test_dir("offline-library");
+        let offline_str = offline.to_string_lossy().to_string();
+        assert!(
+            !offline.exists(),
+            "the point of this test is a path that cannot be canonicalized"
+        );
+
+        let pool = pool_with_library_path(&offline_str).await;
+
+        ensure_configured_library_path_in_pool(&pool, &offline_str)
+            .await
+            .expect("the configured library must stay usable while its drive is away");
+
+        // Trailing whitespace is trimmed on both sides, so the same path spelled loosely still
+        // matches. This is the one leniency the fallback has, and it is the caller's own value.
+        ensure_configured_library_path_in_pool(&pool, &format!("  {offline_str}  "))
+            .await
+            .expect("the trimmed form of the stored path must match");
+    }
+
+    /// The other direction, and the one that makes the leniency above safe to have. While the
+    /// library is offline the guard cannot canonicalize anything, so it is comparing strings; a
+    /// different path must still be refused, or the degraded mode would be an open door for exactly
+    /// the redirection this module exists to stop.
+    #[tokio::test]
+    async fn an_offline_library_still_refuses_a_path_that_is_not_it() {
+        let offline = unique_test_dir("offline-library-refuse");
+        let offline_str = offline.to_string_lossy().to_string();
+        let pool = pool_with_library_path(&offline_str).await;
+
+        for requested in [
+            // A sibling whose name merely starts with the configured one: the case a `starts_with`
+            // comparison would wave through.
+            format!("{offline_str}-evil"),
+            format!("{offline_str}/nested"),
+            "/some/other/missing".to_string(),
+            // A UNC path aimed at a local library, refused ahead of any filesystem call.
+            r"\\evil\share".to_string(),
+            String::new(),
+        ] {
+            let error = ensure_configured_library_path_in_pool(&pool, &requested)
+                .await
+                .expect_err("a path that is not the configured library must be refused");
+
+            assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+        }
+    }
+
+    /// A library that *is* reachable takes the canonical path rather than the string fallback, so
+    /// the two spellings of one directory agree. Asserted through the pool for the same reason as
+    /// above: this is the normal case, and if it regressed the app would be unusable outright.
+    #[tokio::test]
+    async fn a_reachable_library_matches_through_canonicalization() {
+        let library = unique_test_dir("reachable-library");
+        fs::create_dir_all(&library).unwrap();
+        let pool = pool_with_library_path(&library.to_string_lossy()).await;
+
+        // Routing through a `..` segment gives a different string for the same directory on every
+        // platform, which only a canonicalizing comparison accepts.
+        let indirect = library.join("sub").join("..");
+        fs::create_dir_all(library.join("sub")).unwrap();
+
+        ensure_configured_library_path_in_pool(&pool, &indirect.to_string_lossy())
+            .await
+            .expect("a different spelling of the same reachable directory must match");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
     fn unique_test_dir(suffix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "kavynex-library-guard-test-{suffix}-{}",
