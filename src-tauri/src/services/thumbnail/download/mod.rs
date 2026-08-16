@@ -213,6 +213,24 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
                 AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
             })?;
 
+            // Cleartext is refused here rather than by `direct_image_extension` returning None,
+            // which is the tempting place for it and the wrong one: that function decides which of
+            // the two branches handles a URL, so a None would route `http://cdn/x.jpg` into the
+            // yt-dlp fallback, which refuses it for a different reason ("must be a YouTube URL")
+            // and points whoever reads the error at the wrong list. The scheme is a policy about
+            // this branch, so it is refused on this branch, beside the host gate that answers the
+            // other half of "may this fetch start at all".
+            //
+            // `http_get_image`'s connector is `https_only()` regardless, so this is the message
+            // rather than the enforcement. Redirect hops are gated separately, on the resolved
+            // destination, in `thumbnail::redirect::next_hop`.
+            if direct_uri.scheme_str() != Some("https") {
+                return Err(AppError::from_code(
+                    AppErrorCode::InvalidUrl,
+                    "direct thumbnail download requires https",
+                ));
+            }
+
             if !is_allowed_thumbnail_image_host(&direct_uri) {
                 return Err(AppError::from_code(
                     AppErrorCode::InvalidUrl,

@@ -639,6 +639,25 @@ delegating to yt-dlp, so it carries its own set of controls
   `is_allowed_youtube_url`. The same allow-list, for the same reason, as every other yt-dlp
   invocation: the extractor runs with access to the user's browser cookies.
 
+**The transport is https, and only https.** The connector is built with `https_only()`
+(`services/thumbnail/download/fetch.rs`), the caller refuses a cleartext URL before the fetch starts
+(`download_thumbnail_from_url_async`), and `redirect::next_hop` refuses a hop whose *resolved*
+destination is not https. Three places because they answer different questions: the caller names the
+reason for the URL it was given, `next_hop` names it for a hop (and reads the resolved URI, since a
+relative `Location` inherits the current scheme and only the resolved form carries the one the
+request would use), and the connector is the backstop a future caller inherits without knowing about
+either.
+
+This is stated as its own paragraph because the list that follows describes controls on the
+*destination* and on the *response*, and for a while that read as a complete accounting when it was
+not. The connector was `https_or_http()`, so a `302` out of an allowed CDN to `http://<same cdn>/...`
+was followed in the clear. The host gate does not see that (the host is still allowed), the SSRF
+guard does not either (the address is still public), and every remaining constraint applies after the
+request has already gone out. An on-path attacker could substitute any payload under the size cap
+that passes the magic-byte sniff, and the result is written into the library under a
+content-addressed name, so the substitution is persisted rather than merely displayed. Closing it
+cost nothing: every thumbnail YouTube serves is https.
+
 The direct fetch is additionally constrained on the way back: a hard 10 MiB cap, an allow-listed
 `Content-Type`, and a magic-byte sniff (the header is attacker-controlled, so it is only a first
 filter). It follows redirects **manually**, re-running *both* checks on every hop (the address

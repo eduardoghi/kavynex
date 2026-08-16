@@ -111,14 +111,29 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 /// module stays free of the allow-list it enforces, and so a test can drive both answers without
 /// naming a real CDN. See the note on the check order below for why it is here at all.
 ///
-/// The order of the four checks is not interchangeable. The budget comes first so a chain that has
+/// The order of the five checks is not interchangeable. The budget comes first so a chain that has
 /// already gone too far is refused as a chain rather than being reported as whatever happens to be
 /// wrong with its next `Location`; the missing-destination refusal comes before the resolution so
-/// `resolve_redirect` never has to describe an absence; and the host gate comes last because it is
-/// the only one of the four that needs the destination already resolved. A relative `Location`
-/// carries no host of its own.
+/// `resolve_redirect` never has to describe an absence; and the scheme and host gates come last
+/// because they are the two that need the destination already resolved. A relative `Location`
+/// carries neither a scheme nor a host of its own.
 ///
-/// That last check is the one worth explaining, because for a while it was not here and the loop
+/// The scheme gate sits ahead of the host gate because it is the coarser policy: a cleartext hop is
+/// refused whether or not it names an allowed CDN, so reporting it as a host problem would name the
+/// wrong reason. It is also why this check reads the *resolved* destination rather than the raw
+/// `Location` string. A protocol-relative or path-relative value inherits the current scheme, so
+/// only the resolved URI carries the scheme the request would actually be made with.
+///
+/// What it closes: `http_get_image` used to build its connector with `https_or_http()`, so a `302`
+/// out of an allowed CDN to `http://<same cdn>/...` was followed in the clear. The host gate below
+/// does not see that (the host is still allowed), the SSRF guard does not either (the address is
+/// still public), and every remaining constraint applies to the response, after the request has
+/// already gone out. An on-path attacker could therefore substitute any payload under the size cap
+/// that passes the magic-byte sniff, and the result is persisted into the library as that media's
+/// thumbnail under a content-addressed name. The connector is `https_only()` now, so this refusal
+/// is the one that names the reason rather than surfacing it as a connect error.
+///
+/// The host gate is the one worth explaining, because for a while it was not here and the loop
 /// did not have it either. The caller gates the *initial* URL against the image CDNs before the
 /// fetch starts, which reads as a gate on the whole operation and is not one: only
 /// `assert_url_host_is_public` re-ran per hop, so a `302` out of an allowed CDN was followed to any
@@ -147,6 +162,13 @@ pub(crate) fn next_hop(
     };
 
     let destination = resolve_redirect(current, location)?;
+
+    if destination.scheme_str() != Some("https") {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "thumbnail redirect downgraded away from https",
+        ));
+    }
 
     if !host_is_allowed(&destination) {
         return Err(AppError::from_code(
@@ -188,12 +210,29 @@ mod tests {
     }
 
     #[test]
-    fn absolute_http_redirect_accepted() {
-        let result = resolve_redirect(
+    fn absolute_http_redirect_resolves_here_and_is_refused_by_the_policy_above() {
+        // `resolve_redirect` stays a resolver: it turns a `Location` into an absolute URI and says
+        // nothing about whether the fetch may go there. Cleartext is refused by `next_hop`, on the
+        // resolved destination, because a relative value inherits the current scheme and only the
+        // resolved URI carries the one the request would use. Asserting both halves here is what
+        // keeps the split visible; moving the refusal down into this function would make the
+        // relative cases answer the wrong question.
+        let resolved = resolve_redirect(
             &uri("http://img.example.com/old.jpg"),
             "http://img.example.com/other.jpg",
         );
-        assert_eq!(result.unwrap(), uri("http://img.example.com/other.jpg"));
+        assert_eq!(resolved.unwrap(), uri("http://img.example.com/other.jpg"));
+
+        let error = next_hop(
+            &uri("http://img.example.com/old.jpg"),
+            Some("http://img.example.com/other.jpg"),
+            0,
+            any_host,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+        assert!(error.to_string().contains("downgraded away from https"));
     }
 
     #[test]
@@ -256,6 +295,25 @@ mod tests {
             "HTTPS://cdn.example.com/new.jpg",
         );
         assert_eq!(result.unwrap(), uri("HTTPS://cdn.example.com/new.jpg"));
+    }
+
+    #[test]
+    fn an_uppercase_https_hop_passes_the_scheme_gate() {
+        // The scheme gate compares `scheme_str()` against a lowercase literal, which is only
+        // correct because `http::Uri` normalizes the scheme on parse (RFC 3986 makes it
+        // case-insensitive). Pinned as its own case because the failure would be silent and
+        // one-directional: a gate that refused this would reject a legitimate redirect and surface
+        // as "some thumbnails stopped loading", with the CDN's capitalization as the only
+        // difference between a working fetch and a broken one.
+        let followed = next_hop(
+            &uri("https://cdn.example.com/old.jpg"),
+            Some("HTTPS://cdn.example.com/new.jpg"),
+            0,
+            only_cdn_example,
+        )
+        .unwrap();
+
+        assert_eq!(followed.scheme_str(), Some("https"));
     }
 
     #[test]
@@ -334,6 +392,62 @@ mod tests {
 
         assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
         assert!(error.to_string().contains("allowed image cdns"));
+    }
+
+    #[test]
+    fn a_hop_downgrading_to_cleartext_on_an_allowed_host_is_refused() {
+        // The shape this gate exists for, and the one the host gate cannot see: the destination is
+        // the *same* allowed CDN, so `only_cdn_example` admits it and `assert_url_host_is_public`
+        // admits it too (the address is public). Only the scheme is wrong. Following it would put
+        // the response on the wire in the clear, where an on-path attacker can substitute any
+        // payload under the size cap that passes the magic-byte sniff. That payload is then
+        // persisted into the library as the media's thumbnail.
+        let error = next_hop(
+            &uri("https://cdn.example.com/thumb.jpg"),
+            Some("http://cdn.example.com/thumb.jpg"),
+            0,
+            only_cdn_example,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+        assert!(error.to_string().contains("downgraded away from https"));
+    }
+
+    #[test]
+    fn the_scheme_gate_is_what_refuses_a_hop_that_also_leaves_the_allowed_hosts() {
+        // Both refusals apply, and the scheme has to win: it is the coarser policy, so reporting a
+        // cleartext hop as a host problem would send whoever reads the log to the allow-list for a
+        // destination the allow-list would refuse anyway. Pins the order of the two post-resolution
+        // checks, which is the only thing that distinguishes them for a hop that fails both.
+        let error = next_hop(
+            &uri("https://cdn.example.com/thumb.jpg"),
+            Some("http://attacker.example/x.jpg"),
+            0,
+            only_cdn_example,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("downgraded away from https"));
+    }
+
+    #[test]
+    fn a_relative_hop_out_of_a_cleartext_current_uri_is_refused_on_the_inherited_scheme() {
+        // Why the gate reads the resolved destination rather than the raw `Location`: this value
+        // names no scheme at all, so a check on the header text would see nothing to refuse and the
+        // hop would inherit `http` from the current URI unnoticed. `http_get_image`'s connector is
+        // `https_only()`, so such a current URI cannot arise there today; the gate does not depend
+        // on that staying true.
+        let error = next_hop(
+            &uri("http://cdn.example.com/a/b/old.jpg"),
+            Some("/new/image.jpg"),
+            0,
+            only_cdn_example,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+        assert!(error.to_string().contains("downgraded away from https"));
     }
 
     #[test]

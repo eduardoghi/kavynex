@@ -254,7 +254,14 @@ pub(super) async fn http_get_image(
                 format!("failed to initialize TLS: {e}"),
             )
         })?
-        .https_or_http()
+        // `https_only()`, not `https_or_http()`: every other control here constrains the
+        // destination or the response, none of them the transport, so a cleartext hop out of an
+        // allowed CDN satisfied all of them (see `redirect::next_hop` for what that let through).
+        //
+        // This is the backstop, not the message. The caller and `next_hop` both refuse cleartext
+        // with a reason; a caller added later that skips them still fails here, at connect time,
+        // with hyper's own error. Worse to read, and still a refusal.
+        .https_only()
         .enable_http1()
         .wrap_connector(http_connector);
 
