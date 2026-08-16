@@ -40,6 +40,105 @@ most up-to-date Windows 10 installs already have it. If the window fails to open
 blank, install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 and try again.
 
+## macOS: "kavynex is damaged and can't be opened", or "unidentified developer"
+
+Neither message means the download is corrupt. Kavynex's installers are not code-signed (see
+[`RELEASE-SECURITY.md`](RELEASE-SECURITY.md) for why), so macOS quarantines the app on first launch
+and reports it in whichever of those two ways your version prefers. The "damaged" wording is the one
+a genuinely broken bundle gets too, which is exactly why this belongs here: it reads as a failed
+download rather than as the expected first run of an unsigned app.
+
+Confirm the file is authentic *before* clearing the quarantine, since that is the check Gatekeeper
+is standing in for:
+
+```bash
+gh attestation verify kavynex_*_aarch64.dmg --repo eduardoghi/kavynex
+```
+
+(Or compare its hash against `SHA256SUMS.txt` on the release page. Both apply from v1.2.0 onward;
+see the README's "Verifying a download".)
+
+Then drag the app into Applications and let it open, either way:
+
+- **Without a terminal.** Try to open the app once, so macOS records the block. Then open System
+  Settings > Privacy & Security, scroll to the Security section, and click **Open Anyway** next to
+  the line naming kavynex. On macOS 15 and later this is the only route, since Apple removed the
+  Control-click > Open bypass earlier versions offered.
+- **With a terminal.** Clear the quarantine attribute directly:
+
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/kavynex.app
+  ```
+
+Either one is a once-per-install step. An update installed through Settings > Application update
+does not bring it back: that artifact is fetched by Kavynex itself rather than by a browser, so
+nothing marks it as quarantined, and the updater verifies its minisign signature before installing
+it.
+
+## Linux: the AppImage does not start
+
+Two things stop it, both about the AppImage format rather than about Kavynex, and neither says much
+on its own.
+
+**It is not executable yet.** A file downloaded through a browser has no execute bit, so a
+double-click does nothing at all:
+
+```bash
+chmod +x kavynex_*_amd64.AppImage
+./kavynex_*_amd64.AppImage
+```
+
+**FUSE 2 is missing.** An AppImage mounts itself in order to run, and the failure names the library
+it could not load (`dlopen(): error loading libfuse.so.2`). Current distributions ship FUSE 3 and no
+longer install FUSE 2 alongside it, so it has to be added:
+
+```bash
+sudo apt install libfuse2      # Debian/Ubuntu (libfuse2t64 on Ubuntu 24.04 and later)
+sudo dnf install fuse-libs     # Fedora/RHEL
+sudo pacman -S fuse2           # Arch
+```
+
+Or skip the mount entirely, which needs nothing installed:
+
+```bash
+./kavynex_*_amd64.AppImage --appimage-extract-and-run
+```
+
+If neither appeals, the `.deb` and `.rpm` on the release page carry no FUSE requirement.
+
+## Linux: the window opens blank, or the app exits immediately
+
+The Linux counterpart of the WebView2 entry above. Kavynex renders its UI with WebKitGTK, and these
+are the two ways that dependency goes wrong.
+
+**WebKitGTK is missing or too old.** Tauri v2 needs the 4.1 series (`libwebkit2gtk-4.1-0`), not the
+4.0 one an older distribution may be the only thing carrying. Installing the `.deb`/`.rpm` through
+the package manager rather than by double-clicking it is what pulls the dependency in, and what
+reports it when it cannot:
+
+```bash
+sudo apt install ./kavynex_*_amd64.deb
+```
+
+Ubuntu 22.04 and Debian 12 are the oldest releases carrying the 4.1 series. On anything older the
+AppImage is the way out, since it brings its own copy.
+
+**The GPU driver and WebKitGTK's compositing disagree.** On some setups, most often the proprietary
+NVIDIA driver, the window opens and stays blank, or the process dies at launch. Two environment
+variables turn off the rendering paths that fail; try them one at a time:
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 kavynex
+WEBKIT_DISABLE_COMPOSITING_MODE=1 kavynex
+```
+
+If one of them works, set it for this app alone (a `.desktop` file's `Exec=` line, or a shell alias)
+rather than globally, so it does not change how every other WebKitGTK app on the machine renders.
+
+Launch from a terminal while working through either case. A fatal startup failure (a database
+directory that cannot be resolved, a plugin that fails to register) is written to stderr, and
+unlike Windows there is no dialog for it, so the terminal is the only place that line appears.
+
 ## "This library was released earlier in this session" after changing the library folder
 
 Restart Kavynex and it works again. Nothing is lost and nothing needs to be repaired. The media,
