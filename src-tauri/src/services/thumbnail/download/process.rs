@@ -333,15 +333,23 @@ mod tests {
         // child must not be able to grow this buffer without bound, and must not be left blocked on
         // a pipe nobody is emptying either. Both are asserted, because a change that satisfied only
         // the first (breaking out of the loop at the cap) would look correct and hang a real run.
+        //
+        // The chunk size deliberately does not divide the cap, and that is what makes this test
+        // test anything. The first version read 512 bytes into a 100-byte cap, so the buffer filled
+        // to exactly the cap on the first chunk and the remaining-capacity arithmetic
+        // (`max_bytes - buffer.len()`) was never evaluated with a non-zero buffer. The mutation run
+        // caught it: replacing that `-` with a `+` survived. At 30 into 100 the last chunk straddles
+        // the cap (30, 60, 90, then 10 of the next 30), which is the only shape where that
+        // subtraction has a value to get wrong.
         let payload = vec![b'x'; 5000];
-        let (reader, read_total) = CountingReader::new(payload.clone(), 512);
+        let (reader, read_total) = CountingReader::new(payload.clone(), 30);
 
         let captured = read_drain_capped_async(Some(reader), 100).await;
 
         assert_eq!(
             captured.len(),
             100,
-            "the retained buffer must stop at the cap"
+            "the retained buffer must stop at the cap, not overshoot on the straddling chunk"
         );
         assert!(captured.iter().all(|byte| *byte == b'x'));
         assert_eq!(

@@ -89,6 +89,12 @@ exclude_re = [
     # cap property actually live. build_thumbnail_command_args stays in scope too.
     'replace wait_with_capped_output',
     'run_thumbnail_yt_dlp_with_timeout',
+    # Equivalent: with `<=`, the extra iteration it admits is the one where buffer.len() equals
+    # max_bytes, and there `max_bytes - buffer.len()` is 0, so the extend_from_slice copies nothing.
+    # Same buffer, same drain. The sibling mutant on the next line (`-` to `+`) is NOT excluded and
+    # is a real one: it overshoots the cap on the chunk that straddles it, which is what
+    # a_stream_over_the_cap_is_truncated_but_still_drained_to_the_end was rewritten to catch.
+    'replace < with <= in read_drain_capped_async',
     # AppHandle glue: what is left once prepare_cache_scope_dirs took the observable half. Narrow on
     # purpose; prepare_cache_scope_dirs, managed_cache_scope_dirs and grant_path_with_canonical stay.
     'replace register_cache_asset_scope with \(\)',
