@@ -1495,10 +1495,11 @@ mod tests {
     /// Re-fetches the metadata the committed fixture was captured from and holds the live answer to
     /// the same contract.
     ///
-    /// Ignored by default, and it has to be: it needs the network and a real `yt-dlp` on PATH,
-    /// neither of which a unit-test run may assume, and spawning a process that waits on a child is
-    /// the shape that hangs on the ubuntu CI runner (the same reason the other process-spawning test
-    /// in this repository is ignored). Run it deliberately:
+    /// Ignored by default because it needs the network and a real `yt-dlp` on PATH, neither of
+    /// which a unit-test run may assume. Not because it spawns a process: the yt-dlp
+    /// process-kill/timeout/cancel tests in this file used to be `#[ignore]`d for that reason and no
+    /// longer are, since the hang was specific to the ubuntu-22.04 runner (see the note beside
+    /// `release.yml`'s "Run Rust tests" step). Run it deliberately:
     ///
     /// ```text
     /// cargo test --manifest-path src-tauri/Cargo.toml -- --ignored live_yt_dlp_output

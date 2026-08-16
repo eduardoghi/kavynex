@@ -384,9 +384,16 @@ jobs:
 
             # Covers the yt-dlp process-kill/timeout/cancel tests too: they used to be `#[ignore]`d
             # (they hung on the ubuntu-22.04 runner) and needed a dedicated step here, but the hang
-            # is gone on ubuntu-26.04 and the attribute was dropped, so they run in the step above
-            # on every platform. A second step filtering on `--ignored` would now match nothing and
-            # pass vacuously.
+            # is gone on ubuntu-26.04 and the attribute was dropped, so they run in the step below
+            # on every platform.
+            #
+            # There is still no `--ignored` step, and the reason is now that the two tests it would
+            # match must not run here rather than that it would match nothing. One regenerates a
+            # migration fixture (a manual generator, whose whole effect is rewriting a checked-in
+            # file), and the other fetches live yt-dlp metadata to check the captured fixture has
+            # not drifted, which needs the network and a real yt-dlp. Neither belongs on the path
+            # that builds a published binary. Run the second deliberately when yt-dlp is bumped;
+            # see its doc comment in services/yt_dlp/metadata.rs.
             - name: Run Rust tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
