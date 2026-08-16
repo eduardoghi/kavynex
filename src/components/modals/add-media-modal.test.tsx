@@ -30,6 +30,7 @@ function createDefaultProps(): React.ComponentProps<typeof AddMediaModal> {
         isCancellingYtDlp: false,
         ytDlpLogs: [],
         isYtDlpRunning: false,
+        ytDlpProgress: null,
         ytDlpFormats: [],
         selectedYtDlpFormatId: "",
         isLoadingYtDlpFormats: false,

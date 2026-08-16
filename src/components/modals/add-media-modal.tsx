@@ -15,6 +15,7 @@ import { ThumbnailSection } from "./add-media-sections/thumbnail-section";
 import { YtDlpSection } from "./add-media-sections/yt-dlp-section";
 import { YtDlpTerminal } from "./add-media-sections/yt-dlp-terminal";
 import type { YtDlpLogLine } from "../../hooks/use-yt-dlp-events";
+import type { YtDlpProgress } from "../../services/yt-dlp-progress";
 import {
     applyPublishedAtMask,
     displayDateToIso,
@@ -46,6 +47,7 @@ type AddMediaModalProps = {
 
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
+    ytDlpProgress: YtDlpProgress | null;
     ytDlpFormats: YtDlpFormatOption[];
     selectedYtDlpFormatId: string;
     isLoadingYtDlpFormats: boolean;
@@ -86,6 +88,7 @@ export function AddMediaModal({
     isCancellingYtDlp = false,
     ytDlpLogs,
     isYtDlpRunning,
+    ytDlpProgress,
     ytDlpFormats,
     selectedYtDlpFormatId,
     isLoadingYtDlpFormats,
@@ -273,6 +276,7 @@ export function AddMediaModal({
                             visible={isUrlMode}
                             ytDlpLogs={ytDlpLogs}
                             isYtDlpRunning={isYtDlpRunning}
+                            ytDlpProgress={ytDlpProgress}
                         />
 
                         <ThumbnailSection

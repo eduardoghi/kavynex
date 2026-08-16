@@ -13,6 +13,7 @@ import type {
 import type { AppSettings, ImportMode } from "./settings";
 import type { MediaQueryFilters } from "../utils/media-library-filters";
 import type { YtDlpLogLine } from "../hooks/use-yt-dlp-events";
+import type { YtDlpProgress } from "../services/yt-dlp-progress";
 
 export type AddMediaFormController = {
     sourceMode: MediaSourceMode;
@@ -96,6 +97,7 @@ export type MediaLibraryController = {
     isCancellingYtDlp: boolean;
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
+    ytDlpProgress: YtDlpProgress | null;
     addMediaForm: AddMediaFormController;
     mediaPlayer: MediaPlayerController;
     applyMediaQuery: (filters: MediaQueryFilters) => Promise<void>;

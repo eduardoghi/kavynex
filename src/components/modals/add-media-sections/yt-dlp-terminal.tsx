@@ -2,12 +2,15 @@ import { Badge, Box, Group, Text, VisuallyHidden, rem } from "@mantine/core";
 import { useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { YtDlpLogLevel, YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
+import type { YtDlpProgress } from "../../../services/yt-dlp-progress";
+import { YtDlpProgressBar } from "./yt-dlp-progress-bar";
 
 type YtDlpTerminalProps = {
     opened: boolean;
     visible: boolean;
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
+    ytDlpProgress: YtDlpProgress | null;
 };
 
 // Height of the scrollback viewport. Previously a Mantine ScrollArea `h`; the virtualizer needs a
@@ -45,6 +48,7 @@ export function YtDlpTerminal({
     visible,
     ytDlpLogs,
     isYtDlpRunning,
+    ytDlpProgress,
 }: YtDlpTerminalProps): JSX.Element | null {
     const terminalViewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -105,6 +109,8 @@ export function YtDlpTerminal({
             <VisuallyHidden role="log" aria-live="polite" aria-label="yt-dlp latest output">
                 {latestLine}
             </VisuallyHidden>
+
+            <YtDlpProgressBar progress={ytDlpProgress} isRunning={isYtDlpRunning} />
 
             <Group justify="space-between" mb="xs">
                 <Text fw={800}>Integrated terminal</Text>

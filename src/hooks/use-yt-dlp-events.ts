@@ -12,6 +12,7 @@ import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
 import type { DownloadLogLevel } from "../types/generated/DownloadLogLevel";
+import { advanceYtDlpProgress, type YtDlpProgress } from "../services/yt-dlp-progress";
 
 // How a line is classified, reused verbatim from the backend's own generated union rather than
 // respelled here, so a level added on the Rust side is a type error in the terminal's colour map
@@ -32,6 +33,10 @@ export type YtDlpLogLine = { id: number; text: string; level: YtDlpLogLevel };
 type UseYtDlpEventsReturn = {
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
+    // How far the run has got, or null when nothing has reported a stage yet. Derived from the same
+    // lines the terminal shows, so it needs no second event: the information was always arriving,
+    // it just had nowhere to be read except a scrolling wall of text.
+    ytDlpProgress: YtDlpProgress | null;
     currentRunIdRef: React.RefObject<string>;
     startRun: (runId: string, commandPreview: string) => void;
     startManualSession: (runId: string, header: string) => void;
@@ -124,6 +129,7 @@ function appendProcessedLogs(
 export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const [ytDlpLogs, setYtDlpLogs] = useState<YtDlpLogLine[]>([]);
     const [isYtDlpRunning, setIsYtDlpRunning] = useState(false);
+    const [ytDlpProgress, setYtDlpProgress] = useState<YtDlpProgress | null>(null);
 
     const currentRunIdRef = useRef("");
 
@@ -133,16 +139,19 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     // fall back to "info" by omission, which is the bug this replaced.
     const appendLogs = useCallback(
         (level: YtDlpLogLevel, ...lines: string[]): void => {
-            setYtDlpLogs((current) => {
-                let next = current;
+            const chunks = lines.flatMap(normalizeLogChunks);
 
-                for (const entry of lines) {
-                    const chunks = normalizeLogChunks(entry);
-                    next = appendProcessedLogs(next, chunks, level);
-                }
+            setYtDlpLogs((current) => appendProcessedLogs(current, chunks, level));
 
-                return next;
-            });
+            // Folded outside the log updater rather than inside it: a state updater has to stay
+            // pure (StrictMode runs it twice), and a second setState there would be a side effect
+            // in a reducer. Reading the same chunks twice is free next to that.
+            setYtDlpProgress((current) =>
+                chunks.reduce<YtDlpProgress | null>(
+                    (progress, line) => advanceYtDlpProgress(progress, line),
+                    current
+                )
+            );
         },
         []
     );
@@ -157,6 +166,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const resetYtDlpState = useCallback((clearLogs = false): void => {
         currentRunIdRef.current = "";
         setIsYtDlpRunning(false);
+        setYtDlpProgress(null);
 
         if (clearLogs) {
             setYtDlpLogs([]);
@@ -167,17 +177,20 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         currentRunIdRef.current = runId;
         setYtDlpLogs(toLogLines([commandPreview, ""]));
         setIsYtDlpRunning(true);
+        setYtDlpProgress(null);
     }, []);
 
     const startManualSession = useCallback((runId: string, header: string): void => {
         currentRunIdRef.current = runId;
         setYtDlpLogs(toLogLines([header, ""]));
         setIsYtDlpRunning(true);
+        setYtDlpProgress(null);
     }, []);
 
     const markStopped = useCallback((): void => {
         currentRunIdRef.current = "";
         setIsYtDlpRunning(false);
+        setYtDlpProgress(null);
     }, []);
 
     // `level` is required, and it is what replaced the terminal's old `startsWith("ERROR:")` check.
@@ -192,6 +205,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
             currentRunIdRef.current = "";
             setIsYtDlpRunning(false);
+            setYtDlpProgress(null);
         },
         [appendLogs]
     );
@@ -349,6 +363,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     return useMemoObject({
         ytDlpLogs,
         isYtDlpRunning,
+        ytDlpProgress,
         currentRunIdRef,
         startRun,
         startManualSession,

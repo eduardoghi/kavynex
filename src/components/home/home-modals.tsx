@@ -268,6 +268,7 @@ export function HomeModals({
                 isCancellingYtDlp={media.isCancellingYtDlp}
                 ytDlpLogs={media.ytDlpLogs}
                 isYtDlpRunning={media.isYtDlpRunning}
+                ytDlpProgress={media.ytDlpProgress}
                 ytDlpFormats={addMediaForm.ytDlpFormats}
                 selectedYtDlpFormatId={addMediaForm.selectedYtDlpFormatId}
                 isLoadingYtDlpFormats={addMediaForm.isLoadingYtDlpFormats}

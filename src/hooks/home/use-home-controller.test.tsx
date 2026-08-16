@@ -183,6 +183,7 @@ const mockMediaLibrary = {
 
     ytDlpLogs: [],
     isYtDlpRunning: false,
+    ytDlpProgress: null,
 
     addMediaForm: {
         sourceMode: "local" as const,

@@ -4,6 +4,7 @@ import { cancelMediaDownload, createMedia } from "../services";
 import { useAddMediaForm } from "./use-add-media-form";
 import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents, type YtDlpLogLine } from "./use-yt-dlp-events";
+import type { YtDlpProgress } from "../services/yt-dlp-progress";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
 import {
@@ -42,6 +43,7 @@ type UseAddMediaWorkflowReturn = {
     isCancellingYtDlp: boolean;
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
+    ytDlpProgress: YtDlpProgress | null;
     addMediaForm: ReturnType<typeof useAddMediaForm>;
     addMedia: () => Promise<void>;
     cancelYtDlpDownload: () => Promise<void>;
@@ -103,8 +105,15 @@ export function useAddMediaWorkflow({
     // can depend on them directly instead of on the whole ytDlpEvents object, whose identity
     // changes on every log line (ytDlpLogs is part of it), which was churning addMedia's identity
     // on each stdout line during an active download.
-    const { ytDlpLogs, isYtDlpRunning, resetYtDlpState, startRun, appendManualLog, markStopped } =
-        ytDlpEvents;
+    const {
+        ytDlpLogs,
+        isYtDlpRunning,
+        ytDlpProgress,
+        resetYtDlpState,
+        startRun,
+        appendManualLog,
+        markStopped,
+    } = ytDlpEvents;
 
     // addMedia reads the form's field values only when the user clicks add, never during render, so
     // mirror the per-render form controller into a ref and read it live inside the callback. That
@@ -371,6 +380,7 @@ export function useAddMediaWorkflow({
         isCancellingYtDlp,
         ytDlpLogs,
         isYtDlpRunning,
+        ytDlpProgress,
         addMediaForm,
         addMedia,
         cancelYtDlpDownload,

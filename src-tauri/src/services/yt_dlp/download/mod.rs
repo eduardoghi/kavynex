@@ -839,6 +839,25 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 .unwrap_or(0);
 
                 if current_temp_size > last_observed_temp_size {
+                    // Say so. This branch is the app knowing something the user cannot see: the
+                    // child has printed nothing for the whole stall threshold, and the only reason
+                    // it is not being killed is that its output file is still growing. That is
+                    // exactly the stretch (a large ffmpeg merge) where the terminal stops moving and
+                    // the reasonable read is that the download hung, so cancelling is the next thing
+                    // a user does. Bounded by construction: reaching here resets the activity clock,
+                    // so this can only be reported once per stall threshold.
+                    emit_download_log_infallible(
+                        app,
+                        &normalized_run_id,
+                        format!(
+                            "Still working: no output for {}s, but the file is still growing ({}). \
+                             This is normal while audio and video are being combined.",
+                            YT_DLP_STALL_TIMEOUT_SECS,
+                            crate::utils::format::format_bytes(current_temp_size)
+                        ),
+                        "system",
+                    );
+
                     last_observed_temp_size = current_temp_size;
                     last_activity_ms.store(
                         download_start.elapsed().as_millis() as u64,

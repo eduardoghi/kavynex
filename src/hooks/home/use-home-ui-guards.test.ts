@@ -50,6 +50,7 @@ describe("useHomeUiGuards", () => {
 
             ytDlpLogs: [],
             isYtDlpRunning: false,
+            ytDlpProgress: null,
 
             addMediaForm: {
                 sourceMode: "local" as const,

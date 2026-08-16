@@ -39,6 +39,7 @@ describe("useHomeMediaActions", () => {
 
             ytDlpLogs: [],
             isYtDlpRunning: false,
+            ytDlpProgress: null,
 
             addMediaForm: {
                 sourceMode: "local" as const,

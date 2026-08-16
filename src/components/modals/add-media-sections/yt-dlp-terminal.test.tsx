@@ -42,6 +42,7 @@ describe("YtDlpTerminal", () => {
                 visible={false}
                 ytDlpLogs={[]}
                 isYtDlpRunning={false}
+                ytDlpProgress={null}
             />
         );
 
@@ -55,6 +56,7 @@ describe("YtDlpTerminal", () => {
                 visible
                 ytDlpLogs={[]}
                 isYtDlpRunning={false}
+                ytDlpProgress={null}
             />
         );
 
@@ -70,6 +72,7 @@ describe("YtDlpTerminal", () => {
                 visible
                 ytDlpLogs={logs("Downloading...")}
                 isYtDlpRunning
+                ytDlpProgress={null}
             />
         );
 
@@ -86,6 +89,7 @@ describe("YtDlpTerminal", () => {
                 visible
                 ytDlpLogs={logs("Done")}
                 isYtDlpRunning={false}
+                ytDlpProgress={null}
             />
         );
 
@@ -100,6 +104,7 @@ describe("YtDlpTerminal", () => {
                 visible
                 ytDlpLogs={logs("ERROR: download failed")}
                 isYtDlpRunning={false}
+                ytDlpProgress={null}
             />
         );
 
@@ -124,6 +129,7 @@ describe("YtDlpTerminal", () => {
                     ["ERROR: download failed", "error"]
                 )}
                 isYtDlpRunning={false}
+                ytDlpProgress={null}
             />
         );
 
@@ -146,6 +152,7 @@ describe("YtDlpTerminal", () => {
                 visible
                 ytDlpLogs={logs("Downloading...", "[download] 5%")}
                 isYtDlpRunning={false}
+                ytDlpProgress={null}
             />
         );
 

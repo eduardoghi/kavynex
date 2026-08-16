@@ -186,6 +186,7 @@ export function useMediaLibrary({
 
         ytDlpLogs: addMediaWorkflow.ytDlpLogs,
         isYtDlpRunning: addMediaWorkflow.isYtDlpRunning,
+        ytDlpProgress: addMediaWorkflow.ytDlpProgress,
 
         addMediaForm: addMediaWorkflow.addMediaForm,
         mediaPlayer,

@@ -131,6 +131,7 @@ function createMedia(): MediaLibraryController {
         isCancellingYtDlp: false,
         ytDlpLogs: [],
         isYtDlpRunning: false,
+        ytDlpProgress: null,
         addMediaForm: createAddMediaForm(),
         mediaPlayer: createMediaPlayer(),
         applyMediaQuery: vi.fn().mockResolvedValue(undefined),
