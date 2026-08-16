@@ -47,6 +47,16 @@ function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
     };
 }
 
+// The props every render needs, so the tests below can name only what they are about. Kept minimal
+// on purpose: a fixture carrying `commentsState` would make the tests that assert on it pass for the
+// fixture's reason rather than the component's.
+const baseProps = {
+    comments: [],
+    hasComments: false,
+    isLoadingComments: false,
+    shellBorder: "rgba(255,255,255,0.1)",
+} as const;
+
 describe("CommentsPanel", () => {
     beforeEach(() => {
         vi.useFakeTimers();
@@ -339,5 +349,83 @@ describe("CommentsPanel", () => {
         expect(
             screen.queryByRole("button", { name: UI_TEXT.comments.fetchComments })
         ).not.toBeInTheDocument();
+    });
+
+    it("offers the fetch button while nothing has been fetched yet", () => {
+        // `unknown` is what an interrupted backup looks like (a crash between registering the media
+        // and saving its comments), so the recovery button belongs here.
+        renderWithMantine(
+            <CommentsPanel
+                {...baseProps}
+                comments={[]}
+                hasComments={false}
+                commentsState="unknown"
+                canFetchComments
+                onFetchComments={vi.fn()}
+            />
+        );
+
+        expect(
+            screen.getByRole("button", { name: UI_TEXT.comments.fetchComments })
+        ).toBeInTheDocument();
+    });
+
+    it("stops offering a fetch once one has come back with nothing", () => {
+        // The defect this state was added for. `hasComments` is 0 in both cases, so the button was
+        // shown either way and clicking it changed nothing on screen. A user with a video whose
+        // comments are off could click it forever.
+        renderWithMantine(
+            <CommentsPanel
+                {...baseProps}
+                comments={[]}
+                hasComments={false}
+                commentsState="none"
+                canFetchComments
+                onFetchComments={vi.fn()}
+            />
+        );
+
+        expect(
+            screen.queryByRole("button", { name: UI_TEXT.comments.fetchComments })
+        ).not.toBeInTheDocument();
+        expect(screen.getByText(UI_TEXT.comments.noneToSave)).toBeInTheDocument();
+    });
+
+    it("says nothing about why a fetch found nothing", () => {
+        // Worded as what was observed rather than as a claim about the video: yt-dlp reports a
+        // comment count and no separate "comments are disabled" flag, so distinguishing a video with
+        // comments switched off from one that simply has none would be a guess shown as fact.
+        renderWithMantine(
+            <CommentsPanel
+                {...baseProps}
+                comments={[]}
+                hasComments={false}
+                commentsState="none"
+                canFetchComments
+                onFetchComments={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByText(/disabled/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/turned off/i)).not.toBeInTheDocument();
+    });
+
+    it("keeps the read failure in front of the settled-empty notice", () => {
+        // A transient read failure is not an answer about the video, and reporting "there is nothing
+        // to save" over it would turn a retryable error into a verdict.
+        renderWithMantine(
+            <CommentsPanel
+                {...baseProps}
+                comments={[]}
+                hasComments={false}
+                commentsState="none"
+                error="The saved comments could not be read."
+                canFetchComments
+                onFetchComments={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("The saved comments could not be read.")).toBeInTheDocument();
+        expect(screen.queryByText(UI_TEXT.comments.noneToSave)).not.toBeInTheDocument();
     });
 });

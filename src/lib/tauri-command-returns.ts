@@ -78,6 +78,7 @@ export type TauriCommandReturns = {
     cancel_media_download: void;
     fetch_youtube_comments: YtDlpComment[];
     replace_media_comments: number;
+    mark_media_comments_absent: void;
 
     is_directory_empty: boolean;
 

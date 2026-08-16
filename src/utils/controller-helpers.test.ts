@@ -32,6 +32,7 @@ function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
         progress_seconds: 0,
         has_comments: 0,
         comments_count: 0,
+        comments_state: "unknown",
         is_live: 0,
         has_live_chat: 0,
         live_chat_file_path: null,

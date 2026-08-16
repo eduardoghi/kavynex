@@ -26,6 +26,15 @@ pub(super) const VIDEOS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS videos (
     progress_seconds INTEGER NOT NULL DEFAULT 0,
     has_comments INTEGER NOT NULL DEFAULT 0,
     comments_count INTEGER NOT NULL DEFAULT 0,
+    -- What a comment fetch last concluded for this media, which has_comments cannot say. That
+    -- flag is derived from the stored count, so 0 covers both a media nothing was ever fetched
+    -- for and one whose fetch ran and found nothing to store. The second is a final answer and
+    -- the first is not, and the player offered its Fetch button on both, so a user could re-run
+    -- an operation that could never return anything. 'unknown' is this DEFAULT and nothing in
+    -- the crate writes it, so the state only moves forward; see media_comments::CommentsState
+    -- for the two values that are written and why there are two rather than three.
+    comments_state TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (comments_state IN ('unknown', 'none', 'available')),
     is_live INTEGER NOT NULL DEFAULT 0,
     has_live_chat INTEGER NOT NULL DEFAULT 0,
     live_chat_file_path TEXT CHECK (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) <> ''),
@@ -286,4 +295,11 @@ pub(super) const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     // Nullable and backfilled by migration v11 (SQLite cannot accent-fold in SQL, so the
     // backfill is computed in Rust); populated on every insert/title-update thereafter.
     ("title_normalized", "TEXT"),
+    // Added by v15. Defaults to 'unknown' for every existing row, which is the honest value:
+    // nothing recorded whether a fetch had run, so the app cannot claim one did. v15 promotes
+    // the rows that do carry evidence.
+    (
+        "comments_state",
+        "TEXT NOT NULL DEFAULT 'unknown' CHECK (comments_state IN ('unknown', 'none', 'available'))",
+    ),
 ];

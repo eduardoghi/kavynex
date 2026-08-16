@@ -15,6 +15,18 @@ pub async fn replace_media_comments(
     media_comments::replace_media_comments(&pool, media_id, comments).await
 }
 
+/// Records that a comment fetch for this media found nothing, leaving any comments already stored
+/// untouched.
+///
+/// Its own command rather than an empty `replace_media_comments`, because that one deletes before
+/// it inserts: calling it with nothing would wipe a saved backup on the strength of a later fetch
+/// coming back empty. See `media_comments::mark_media_comments_absent`.
+#[tauri::command]
+pub async fn mark_media_comments_absent(db: State<'_, Db>, media_id: i64) -> AppResult<()> {
+    let pool = db.pool().await?;
+    media_comments::mark_media_comments_absent(&pool, media_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

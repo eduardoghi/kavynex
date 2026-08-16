@@ -35,6 +35,7 @@ vi.mock("./media-download-service", () => ({
 
 vi.mock("./media-comments-service", () => ({
     replaceMediaCommentsInBackend: vi.fn(),
+    markMediaCommentsAbsentInBackend: vi.fn(),
 }));
 
 vi.mock("../utils/app-logger", () => ({
@@ -52,7 +53,10 @@ import {
 import { validateCreateMediaInput, validateMediaId } from "./media-input-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
 import { fetchYouTubeComments } from "./media-download-service";
-import { replaceMediaCommentsInBackend } from "./media-comments-service";
+import {
+    markMediaCommentsAbsentInBackend,
+    replaceMediaCommentsInBackend,
+} from "./media-comments-service";
 import { logError } from "../utils/app-logger";
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type { CreateMediaInput } from "./media-input-service";
@@ -423,6 +427,13 @@ describe("media-service", () => {
         // A genuinely empty result is not an error and must not overwrite saved comments.
         expect(replaceMediaCommentsInBackend).not.toHaveBeenCalled();
         expect(result).toEqual({ updated: false, totalComments: 0 });
+
+        // But it does have to be recorded. Returning without telling the backend anything left the
+        // media indistinguishable from one nothing had ever been fetched for, so the player kept
+        // offering a Fetch button and the user could re-run a refresh that could never return
+        // anything. The two assertions belong together: the outcome is written *and* the comments
+        // are not, which is exactly why this is a separate command rather than an empty replace.
+        expect(markMediaCommentsAbsentInBackend).toHaveBeenCalledWith(10);
     });
 
     it("propagates a real fetch failure from refresh", async () => {
@@ -433,6 +444,9 @@ describe("media-service", () => {
             "extraction incomplete"
         );
         expect(replaceMediaCommentsInBackend).not.toHaveBeenCalled();
+        // A failed fetch is not an answer about the video. Recording it as "no comments" would turn
+        // a rate limit into a permanent verdict and take the Fetch button away for good.
+        expect(markMediaCommentsAbsentInBackend).not.toHaveBeenCalled();
     });
 
     it("marks media as unwatched", async () => {

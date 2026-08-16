@@ -81,6 +81,7 @@ const mediaRowSchema = z.object({
     progress_seconds: z.number(),
     has_comments: z.number(),
     comments_count: z.number(),
+    comments_state: z.enum(["unknown", "none", "available"]),
     is_live: z.number(),
     has_live_chat: z.number(),
     live_chat_file_path: z.string().nullable(),

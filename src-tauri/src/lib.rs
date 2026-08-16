@@ -599,6 +599,7 @@ pub fn run() {
             commands::thumbnail::delete_temporary_thumbnail,
             commands::thumbnail::delete_thumbnail_file,
             commands::comments::replace_media_comments,
+            commands::comments::mark_media_comments_absent,
             commands::yt_dlp::fetch_youtube_comments,
             commands::yt_dlp::list_yt_dlp_formats,
             commands::yt_dlp::cancel_media_download,

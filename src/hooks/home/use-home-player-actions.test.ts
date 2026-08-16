@@ -24,6 +24,7 @@ function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
         created_at: "2026-03-31T10:00:00.000Z",
         has_comments: 0,
         comments_count: 0,
+        comments_state: "unknown",
         is_live: 0,
         has_live_chat: 0,
         live_chat_file_path: null,

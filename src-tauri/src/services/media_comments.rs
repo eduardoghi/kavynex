@@ -15,6 +15,42 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// The two must stay in sync), a db_schema test pins the DDL value against this constant.
 pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 
+/// The states this code *writes* to `videos.comments_state`.
+///
+/// The column has a third value, `unknown`, and it is deliberately not here: it is the column's
+/// DEFAULT, produced by SQLite when a row is inserted, and nothing in this crate ever writes it
+/// back. That is a property worth having rather than an omission. The state only moves forward,
+/// from "nobody has asked" to an answer, so no write path can quietly undo a recorded outcome and
+/// return a media to looking un-fetched.
+///
+/// **Two answers, not three, and the missing one is deliberate too.** The obvious third is a
+/// `disabled` distinct from `none`, so the player could say the author turned comments off. yt-dlp
+/// does not report that: its metadata carries `comment_count: Option<i64>` and no separate flag, so
+/// telling a video with comments switched off from one that simply has none would rest on reading
+/// an absent field as an intention. That inference is usually right and is not something to store
+/// in a column and then show a user as fact. Both are also the same answer to the only question the
+/// UI asks, which is whether fetching again could return anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommentsState {
+    /// A fetch ran and stored comments.
+    Available,
+    /// A fetch ran and there was nothing to store. A final answer: fetching again cannot help.
+    ///
+    /// Reached only after a *successful* fetch. A fetch that failed, or one the metadata says was
+    /// incomplete (`comments_extraction_looks_incomplete`), errors before any of this, so a
+    /// rate-limited attempt is never recorded as an empty video.
+    None,
+}
+
+impl CommentsState {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Available => "available",
+            Self::None => "none",
+        }
+    }
+}
+
 /// Returns `value` unchanged when it is within `max_chars`, otherwise its first `max_chars` scalar
 /// values. Truncation is on a character boundary (never mid-scalar), so the result is always valid
 /// UTF-8.
@@ -87,6 +123,36 @@ struct PreparedComment {
 }
 
 /// Dedupes the payload, drops comments whose text is blank, and normalizes every field into the
+/// Records that a comment fetch found nothing, without touching the comments already stored.
+///
+/// The manual refresh needs this and `replace_media_comments` cannot serve it: that one deletes the
+/// existing rows before inserting, so calling it with an empty payload would wipe a backup because
+/// a later fetch came back empty, which is the opposite of what this app is for. The refresh
+/// therefore returns early on an empty result and leaves the stored comments alone. What it could
+/// not do before was record that it had *asked*, so the media stayed `unknown` and the user could
+/// re-run a fetch that could never return anything.
+///
+/// The `comments_count = 0` guard is what makes it safe to call blind: a media that does have
+/// stored comments keeps its `available` state, so an empty refresh of a video whose comments were
+/// removed from YouTube never downgrades the backup this app exists to keep.
+pub async fn mark_media_comments_absent(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
+    if media_id <= 0 {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidInput,
+            "media id must be a positive number",
+        ));
+    }
+
+    sqlx::query("UPDATE videos SET comments_state = ? WHERE id = ? AND comments_count = 0")
+        .bind(CommentsState::None.as_str())
+        .bind(media_id)
+        .execute(pool)
+        .await
+        .map_err(|error| sqlite_error("failed to record that no comments were found", error))?;
+
+    Ok(())
+}
+
 /// row shape persisted below, preserving insertion order.
 fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
     // Drop blank-text comments before deduping by id. Dedup keeps the first occurrence of a repeated
@@ -205,12 +271,25 @@ async fn replace_media_comments_in_pool(
             r#"
             UPDATE videos
             SET has_comments = ?,
-                comments_count = ?
+                comments_count = ?,
+                comments_state = ?
             WHERE id = ?
             "#,
         )
         .bind(if inserted_count > 0 { 1_i64 } else { 0_i64 })
         .bind(i64::try_from(inserted_count).unwrap_or(i64::MAX))
+        // Reaching here means a fetch ran and succeeded, so zero stored comments is a final answer
+        // rather than the absence of an attempt. That is the whole distinction the column exists
+        // for: `has_comments = 0` alone cannot tell the two apart, and the player offered its Fetch
+        // button on both.
+        .bind(
+            if inserted_count > 0 {
+                CommentsState::Available
+            } else {
+                CommentsState::None
+            }
+            .as_str(),
+        )
         .bind(media_id)
         .execute(&mut *tx)
         .await?;
@@ -285,7 +364,12 @@ mod tests {
             CREATE TABLE videos (
                 id INTEGER PRIMARY KEY,
                 has_comments INTEGER NOT NULL DEFAULT 0,
-                comments_count INTEGER NOT NULL DEFAULT 0
+                comments_count INTEGER NOT NULL DEFAULT 0,
+                -- The CHECK is mirrored from the real DDL rather than left off: these tests are
+                -- what pin which state each write records, and a column that accepted any string
+                -- would let a typo pass here and fail against the real schema.
+                comments_state TEXT NOT NULL DEFAULT 'unknown'
+                    CHECK (comments_state IN ('unknown', 'none', 'available'))
             );
             "#,
         )
@@ -423,6 +507,117 @@ mod tests {
         assert_eq!(total_comments, 1);
         assert_eq!(has_comments, 1);
         assert_eq!(comments_count, 1);
+    }
+
+    /// The state stored on a media row, so each test below reads it the same way.
+    async fn stored_state(pool: &SqlitePool, media_id: i64) -> String {
+        let (state,): (String,) = sqlx::query_as("SELECT comments_state FROM videos WHERE id = ?")
+            .bind(media_id)
+            .fetch_one(pool)
+            .await
+            .expect("read comments state");
+
+        state
+    }
+
+    #[tokio::test]
+    async fn storing_comments_records_that_a_fetch_found_some() {
+        let pool = create_test_pool().await;
+
+        replace_media_comments_in_pool(&pool, 1, vec![sample_comment("Great video!")])
+            .await
+            .expect("replace comments");
+
+        assert_eq!(
+            stored_state(&pool, 1).await,
+            CommentsState::Available.as_str()
+        );
+    }
+
+    #[tokio::test]
+    async fn storing_no_comments_records_a_final_answer_rather_than_an_absent_attempt() {
+        // The distinction the column was added for. `has_comments` and `comments_count` are both 0
+        // here and were also 0 before any fetch ran, so neither can say that this media has been
+        // asked about and has nothing to give. Without that, the player kept offering a Fetch
+        // button for an operation that could never return anything.
+        let pool = create_test_pool().await;
+
+        // Spelled as a literal because `CommentsState` deliberately does not name it: `unknown`
+        // is the column's DEFAULT and nothing in this crate writes it, which is what keeps the
+        // state from ever moving backwards.
+        assert_eq!(
+            stored_state(&pool, 1).await,
+            "unknown",
+            "a row starts out never having been asked"
+        );
+
+        replace_media_comments_in_pool(&pool, 1, vec![])
+            .await
+            .expect("replace comments");
+
+        assert_eq!(stored_state(&pool, 1).await, CommentsState::None.as_str());
+
+        let (has_comments, comments_count): (i64, i64) =
+            sqlx::query_as("SELECT has_comments, comments_count FROM videos WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("read video flags");
+        assert_eq!(
+            (has_comments, comments_count),
+            (0, 0),
+            "the two older columns cannot tell this apart, which is why the state exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn marking_comments_absent_records_the_outcome_without_deleting_anything() {
+        // What the manual refresh needs: it returns early on an empty result so a later fetch coming
+        // back empty can never wipe a saved backup, and this is how it records that it asked.
+        let pool = create_test_pool().await;
+
+        mark_media_comments_absent(&pool, 1)
+            .await
+            .expect("mark absent");
+
+        assert_eq!(stored_state(&pool, 1).await, CommentsState::None.as_str());
+    }
+
+    #[tokio::test]
+    async fn marking_comments_absent_never_downgrades_a_media_that_has_some() {
+        // The guard that makes the call safe to make blind. A video whose comments were removed from
+        // YouTube still has the copy this app saved, and an empty refresh of it must not report the
+        // backup as absent. That would be the app contradicting its own stored data.
+        let pool = create_test_pool().await;
+
+        replace_media_comments_in_pool(&pool, 1, vec![sample_comment("Kept forever")])
+            .await
+            .expect("replace comments");
+
+        mark_media_comments_absent(&pool, 1)
+            .await
+            .expect("mark absent");
+
+        assert_eq!(
+            stored_state(&pool, 1).await,
+            CommentsState::Available.as_str(),
+            "a media with stored comments keeps its state"
+        );
+
+        let (total,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE video_id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("count comments");
+        assert_eq!(total, 1, "and keeps the comments themselves");
+    }
+
+    #[tokio::test]
+    async fn marking_comments_absent_refuses_an_invalid_media_id() {
+        let pool = create_test_pool().await;
+
+        let error = mark_media_comments_absent(&pool, 0).await.unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
     }
 
     #[tokio::test]

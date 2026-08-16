@@ -15,7 +15,7 @@ import {
 import { useDebouncedValue } from "@mantine/hooks";
 import { MessageCircle, RefreshCw, Search, X } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
-import type { MediaCommentRow } from "../../types/media";
+import type { MediaCommentRow, MediaRow } from "../../types/media";
 import { AsyncStatusRegion } from "../common/async-status-region";
 import { CommentItem } from "./comment-item";
 import { CommentSearchResults } from "./comment-search-results";
@@ -56,6 +56,11 @@ type CommentsPanelProps = {
     // between registering the media and saving its comments) can be recovered where the absence is
     // noticed, rather than only from the header's "Refresh comments" button.
     canFetchComments?: boolean;
+    // What a fetch last concluded for this media. `hasComments` cannot answer this: it is derived
+    // from the stored count, so 0 means both "nothing was ever fetched" and "a fetch ran and found
+    // nothing", and the Fetch button used to be offered on both. A user could therefore re-run an
+    // operation that could never return anything, with the screen unchanged each time.
+    commentsState?: MediaRow["comments_state"];
     isFetchingComments?: boolean;
     onFetchComments?: () => void | Promise<void>;
 };
@@ -68,6 +73,7 @@ export function CommentsPanel({
     error = null,
     shellBorder,
     canFetchComments = false,
+    commentsState = "unknown",
     isFetchingComments = false,
     onFetchComments,
 }: CommentsPanelProps): JSX.Element {
@@ -254,8 +260,22 @@ export function CommentsPanel({
                         </Text>
                     )}
 
+                    {/* A settled "there are none" is the one case with nothing to offer: fetching
+                        again cannot change it, so saying so is more useful than a button that
+                        appears to do nothing. Any other state keeps the button, including `unknown`,
+                        which is what an interrupted backup looks like. */}
+                    {!isLoadingComments &&
+                        !error &&
+                        comments.length === 0 &&
+                        commentsState === "none" && (
+                            <Text size="sm" c="dimmed" mt="sm">
+                                {UI_TEXT.comments.noneToSave}
+                            </Text>
+                        )}
+
                     {!isLoadingComments &&
                         comments.length === 0 &&
+                        commentsState !== "none" &&
                         canFetchComments &&
                         onFetchComments && (
                             <Stack gap="xs" mt="sm">

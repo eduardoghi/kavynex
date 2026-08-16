@@ -207,6 +207,59 @@ pub(super) async fn apply_migration_14(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
+/// v15: adds `videos.comments_state` and promotes the rows that already carry evidence of a
+/// comment fetch.
+///
+/// The column records what a fetch *concluded*, which `has_comments`/`comments_count` cannot say:
+/// both are derived from the number of rows stored, so 0 means "nothing was ever fetched" and "a
+/// fetch ran and found nothing to store" alike. The first is not a final answer and the second is,
+/// and the player offered its Fetch button on both, so a user could re-run an operation that could
+/// never return anything.
+///
+/// The backfill is deliberately one-directional. A row with stored comments is promoted to
+/// `available`, because the count is proof a fetch ran and returned something. A row with none is
+/// left at `unknown`, which is the honest value: nothing before this column recorded whether a
+/// fetch had been attempted, so the app cannot claim one was. Those rows settle themselves the
+/// first time the user refreshes them.
+///
+/// The column-add, the promotion and the version stamp share one transaction, so a crash leaves
+/// the database fully at v14 or fully at v15.
+pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    // Adds `comments_state` when the table predates it. Idempotent, as everywhere this is used.
+    ensure_videos_additive_columns(&mut tx).await?;
+
+    // The promotion reads `comments_count`, which is part of the base table DDL rather than of the
+    // additive list, so `ensure_videos_additive_columns` above does not create it. A `videos` table
+    // old enough to predate that column therefore reaches here without it, and the UPDATE would
+    // fail the whole migration with "no such column" instead of adding the new one. Ask first.
+    //
+    // Skipping the promotion on such a database is not a loss: with no stored count there is no
+    // evidence a fetch ever ran, so every row keeping the `unknown` default is the honest outcome,
+    // which is the same answer the backfill reaches for a row with no comments anyway. The same
+    // shape of guard v13 applies before it reads `title_normalized`.
+    if table_has_column(&mut *tx, "videos", "comments_count").await? {
+        sqlx::query(
+            "UPDATE videos SET comments_state = 'available'              WHERE comments_state = 'unknown' AND comments_count > 0",
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to promote rows with stored comments", error))?;
+    }
+
+    set_user_version(&mut tx, 15).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
 /// v10: creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
 /// (video_id, comment_id)" invariant out of application code (media_comments::
 /// dedupe_comments_by_id) and into the schema. Unlike the index-only migrations above it cannot

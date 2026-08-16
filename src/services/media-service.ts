@@ -22,7 +22,10 @@ import {
 } from "./media-input-service";
 import { createAppError } from "../utils/app-error";
 import { commentsRefreshRunId, fetchYouTubeComments } from "./media-download-service";
-import { replaceMediaCommentsInBackend } from "./media-comments-service";
+import {
+    markMediaCommentsAbsentInBackend,
+    replaceMediaCommentsInBackend,
+} from "./media-comments-service";
 import { logError } from "../utils/app-logger";
 
 type CreateMediaResult = {
@@ -223,6 +226,16 @@ export async function refreshMediaComments(
     // could be retrieved" into an error). Keep the saved comments untouched and report that
     // nothing was updated, so the caller can show a neutral notice instead of a failure.
     if (comments.length === 0) {
+        // Record that the question was asked, which is the part this path used to skip. Returning
+        // without telling the backend anything left the media indistinguishable from one nothing
+        // had ever been fetched for, so the player kept offering a Fetch button and the user could
+        // re-run a refresh that could never return anything.
+        //
+        // Deliberately not `replaceMediaCommentsInBackend(mediaId, [])`: that deletes before it
+        // inserts, so it would wipe a saved backup because a later fetch came back empty. This one
+        // writes only the state, and only when no comments are stored.
+        await markMediaCommentsAbsentInBackend(mediaId);
+
         return {
             updated: false,
             totalComments: 0,

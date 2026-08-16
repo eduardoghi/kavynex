@@ -372,6 +372,7 @@ export function MediaPlayerView({
                     error={commentsError}
                     shellBorder={shellBorder}
                     canFetchComments={Boolean(media?.youtube_video_id?.trim())}
+                    commentsState={media?.comments_state}
                     isFetchingComments={isRefreshingComments}
                     onFetchComments={onRefreshComments}
                 />

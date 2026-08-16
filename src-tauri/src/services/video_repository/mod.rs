@@ -37,6 +37,11 @@ pub struct MediaRow {
     pub has_comments: i64,
     #[ts(type = "number")]
     pub comments_count: i64,
+    /// What a comment fetch last concluded: `unknown`, `none` or `available`. See
+    /// `media_comments::CommentsState`; the CHECK on the column keeps it to those three, and
+    /// the player reads it to decide whether offering a Fetch button would be honest.
+    #[ts(type = "\"unknown\" | \"none\" | \"available\"")]
+    pub comments_state: String,
     #[ts(type = "number")]
     pub is_live: i64,
     #[ts(type = "number")]
@@ -181,7 +186,7 @@ const MAX_MEDIA_COMMENTS_LOADED: i64 = 50_000;
 
 const MEDIA_COLUMNS: &str = "id, channel_id, title, file_path, thumbnail_path, media_type, \
     youtube_video_id, watched_at, published_at, duration_seconds, progress_seconds, has_comments, \
-    comments_count, is_live, has_live_chat, live_chat_file_path, created_at";
+    comments_count, comments_state, is_live, has_live_chat, live_chat_file_path, created_at";
 
 // The channel media grid's paginated query and its filter/sort SQL-building helpers live in the
 // `media_page` submodule. list_media_page is re-exported; resolve_order_by is reached by the
@@ -791,6 +796,8 @@ mod tests {
                 progress_seconds INTEGER NOT NULL DEFAULT 0,
                 has_comments INTEGER NOT NULL DEFAULT 0,
                 comments_count INTEGER NOT NULL DEFAULT 0,
+                comments_state TEXT NOT NULL DEFAULT 'unknown'
+                    CHECK (comments_state IN ('unknown', 'none', 'available')),
                 is_live INTEGER NOT NULL DEFAULT 0,
                 has_live_chat INTEGER NOT NULL DEFAULT 0,
                 live_chat_file_path TEXT,
@@ -902,6 +909,8 @@ mod tests {
                 progress_seconds INTEGER NOT NULL DEFAULT 0,
                 has_comments INTEGER NOT NULL DEFAULT 0,
                 comments_count INTEGER NOT NULL DEFAULT 0,
+                comments_state TEXT NOT NULL DEFAULT 'unknown'
+                    CHECK (comments_state IN ('unknown', 'none', 'available')),
                 is_live INTEGER NOT NULL DEFAULT 0,
                 has_live_chat INTEGER NOT NULL DEFAULT 0,
                 live_chat_file_path TEXT,

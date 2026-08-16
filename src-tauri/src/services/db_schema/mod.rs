@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 14;
+pub(crate) const SCHEMA_VERSION: i64 = 15;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
@@ -35,7 +35,8 @@ pub(crate) use introspection::{
 mod migrations;
 use migrations::{
     apply_baseline_schema, apply_migration_10, apply_migration_11, apply_migration_12,
-    apply_migration_13, apply_migration_14, apply_migration_8, apply_migration_9,
+    apply_migration_13, apply_migration_14, apply_migration_15, apply_migration_8,
+    apply_migration_9,
 };
 
 // SQLite's table-rebuild procedure, for a change `ALTER TABLE ADD COLUMN` or a trigger cannot
@@ -161,6 +162,13 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     // (no table rebuild), same shape as v13. See apply_migration_14.
     if needs_migration(current_version, 14) {
         apply_migration_14(pool).await?;
+    }
+
+    // v15: adds `videos.comments_state`, which records what a comment fetch concluded rather than
+    // only how many comments were stored. Additive, plus a one-off promotion of the rows that carry
+    // evidence of a fetch. See apply_migration_15.
+    if needs_migration(current_version, 15) {
+        apply_migration_15(pool).await?;
     }
 
     // Each migration is guarded by version and transactional (it stamps the new

@@ -47,6 +47,8 @@ CREATE TABLE videos (
     progress_seconds INTEGER NOT NULL DEFAULT 0,
     has_comments INTEGER NOT NULL DEFAULT 0,
     comments_count INTEGER NOT NULL DEFAULT 0,
+    comments_state TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (comments_state IN ('unknown', 'none', 'available')),
     is_live INTEGER NOT NULL DEFAULT 0,
     has_live_chat INTEGER NOT NULL DEFAULT 0,
     live_chat_file_path TEXT CHECK (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) <> ''),
@@ -270,6 +272,25 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   over-length body, all in one transaction that stamps `user_version = 14`. A `db_schema` test pins
   the DDL literal against the constant so the stored ceiling and the app-side truncation cannot
   drift.
+- **v15** adds `videos.comments_state`, which records what a comment fetch *concluded* rather than
+  only how many comments were stored. `has_comments` and `comments_count` are both derived from the
+  stored rows, so 0 covers a media nothing was ever fetched for and one whose fetch ran and found
+  nothing alike. The player offered its Fetch button on both, so a user could re-run an operation
+  that could never return anything. The migration adds the column and promotes the rows carrying
+  evidence of a fetch (`comments_count > 0` becomes `available`), leaving the rest at `unknown`,
+  which is the honest value: nothing before the column recorded whether a fetch had been attempted.
+  The promotion is guarded on `comments_count` existing, because that column is part of the base
+  DDL rather than of the additive list, so a `videos` table old enough to predate it would otherwise
+  fail the whole migration with "no such column".
+
+  Three values and not four: the obvious fourth is a `disabled` distinct from `none`, and yt-dlp
+  does not report it. Its metadata carries `comment_count: Option<i64>` and no separate flag, so
+  telling a video with comments switched off from one that has none would rest on reading an absent
+  field as an intention.
+
+  `media_comments::CommentsState` names only two of the three, and that is deliberate: `unknown`
+  is the column's DEFAULT and nothing in the crate ever writes it, so the state only moves
+  forward and no write path can return a media to looking un-fetched.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive: guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
