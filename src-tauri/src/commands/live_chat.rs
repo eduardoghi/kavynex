@@ -11,7 +11,7 @@ use crate::services::live_chat_storage::{
 };
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir,
-    ensure_relative_path_in_managed_dir,
+    ensure_relative_path_in_managed_dir, ManagedSubtree,
 };
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -52,7 +52,8 @@ where
     F: FnMut(Vec<String>) -> AppResult<()>,
 {
     ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_LIVE_CHAT)?;
-    let absolute = absolute_path_from_relative(library_dir, relative_path)?;
+    let absolute =
+        absolute_path_from_relative(library_dir, relative_path, ManagedSubtree::LiveChat)?;
     ensure_existing_path_inside_dir(&absolute, library_dir)?;
     stream_live_chat_lines(&absolute, batch_lines, emit)
 }
@@ -65,7 +66,8 @@ fn delete_live_chat_relative_sync(library_dir: &Path, relative_path: &str) -> Ap
     // file (the raw relative_path comes straight from IPC).
     ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_LIVE_CHAT)?;
 
-    let absolute = absolute_path_from_relative(library_dir, relative_path)?;
+    let absolute =
+        absolute_path_from_relative(library_dir, relative_path, ManagedSubtree::LiveChat)?;
 
     if absolute.exists() {
         // Re-resolve symlinks and re-check containment before unlinking, matching

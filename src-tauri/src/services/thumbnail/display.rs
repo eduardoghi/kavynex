@@ -47,7 +47,9 @@ use crate::constants::{
 use crate::services::binaries::resolve_ffmpeg_binary;
 use crate::services::logger;
 use crate::services::temp_paths::thumb_display_dir;
-use crate::utils::path::{absolute_path_from_relative, ensure_relative_path_in_managed_dir};
+use crate::utils::path::{
+    absolute_path_from_relative, ensure_relative_path_in_managed_dir, ManagedSubtree,
+};
 use crate::utils::process::{
     configure_process_group_blocking, hide_console, kill_process_tree_blocking,
 };
@@ -539,8 +541,11 @@ fn resolve_one(
         return DisplayThumbnail::Unavailable;
     }
 
-    let Ok(source_path) = absolute_path_from_relative(Path::new(library_path), relative_path)
-    else {
+    let Ok(source_path) = absolute_path_from_relative(
+        Path::new(library_path),
+        relative_path,
+        ManagedSubtree::Thumbnails,
+    ) else {
         return DisplayThumbnail::Unavailable;
     };
 

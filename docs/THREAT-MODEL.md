@@ -62,6 +62,25 @@ required to be empty. The asset scope already reasons this way in the other dire
 `commands/security.rs::managed_asset_scope_dirs` refuses to grant the library root for exactly that
 reason.
 
+**The second rule is no longer a call a caller can omit.** Every resolution of a library-relative
+path goes through `utils/path.rs::absolute_path_from_relative`, and that function now takes a
+required `ManagedSubtree` argument (`Media`, `Thumbnails`, `LiveChat`) naming which part of the
+library the path may sit in. There is no spelling of the call that declines to answer, so the
+question is asked by the compiler at each of the six sites rather than by a reviewer noticing its
+absence. Both commands that got this wrong would have failed to build.
+
+That is stronger than the rule the separate check expressed, and deliberately so: the subtree is
+the *specific* directory, not "one of the four". A thumbnail delete handed `video/media_abc.mp4` is
+refused, where the generic managed check accepted it. It also composes with, rather than replaces,
+the checks the command layer still runs: those fail fast at the IPC boundary before a settings read,
+and this one is the backstop that a new call site inherits whether or not its author knew about
+them.
+
+What it does not do is make containment redundant. The subtree check is lexical, like the rest of
+that function, so a caller that unlinks or reads the result still re-checks with
+`ensure_existing_path_inside_dir`, which canonicalizes and therefore also catches a symlinked
+intermediate component.
+
 Where each applies today: the write side of a creation runs the relative rule on everything it
 produces (`media_creation::ensure_managed_prepared_paths`), the live-chat commands run it on the
 `relative_path` they receive, and `cleanup_unreferenced_media_artifacts` and `delete_thumbnail_file`

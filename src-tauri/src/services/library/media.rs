@@ -12,7 +12,7 @@ use crate::utils::format::{
 use crate::utils::hash::{file_hash_cancellable, is_cancelled};
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir, ensure_path_parent_inside_dir,
-    extension_from_path, is_network_path, relative_path_from_base,
+    extension_from_path, is_network_path, relative_path_from_base, ManagedSubtree,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -209,7 +209,7 @@ pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<
     let _library_guard = crate::services::library::lock::library_read_guard();
 
     let library_dir = resolve_existing_library_dir(library_path)?;
-    let target_path = absolute_path_from_relative(&library_dir, file_path)?;
+    let target_path = absolute_path_from_relative(&library_dir, file_path, ManagedSubtree::Media)?;
 
     if !target_path.exists() {
         logger::warn(

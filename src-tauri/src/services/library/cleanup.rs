@@ -39,7 +39,9 @@ use crate::services::thumbnail::persist::delete_thumbnail_file_sync;
 /// `BEGIN IMMEDIATE` takes the write lock up front, so the wait happens where `busy_timeout`
 /// does apply and the snapshot is guaranteed writable once acquired.
 const BEGIN_IMMEDIATE: &str = "BEGIN IMMEDIATE";
-use crate::utils::path::{absolute_path_from_relative, ensure_existing_path_inside_dir};
+use crate::utils::path::{
+    absolute_path_from_relative, ensure_existing_path_inside_dir, ManagedSubtree,
+};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -288,7 +290,8 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
     // call, so the per-artifact loop in remove_planned_artifacts_sync releases between files.
     let _library_guard = crate::services::library::lock::library_read_guard();
 
-    let absolute = absolute_path_from_relative(library_dir, relative_path)?;
+    let absolute =
+        absolute_path_from_relative(library_dir, relative_path, ManagedSubtree::LiveChat)?;
 
     if absolute.exists() {
         // Re-resolve symlinks and re-check containment before unlinking, matching the sibling

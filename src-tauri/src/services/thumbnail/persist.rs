@@ -8,7 +8,7 @@ use crate::utils::format::{allowed_thumbnail_extensions_label, is_allowed_thumbn
 use crate::utils::hash::file_hash;
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir, ensure_path_parent_inside_dir,
-    extension_from_path, relative_path_from_base,
+    extension_from_path, relative_path_from_base, ManagedSubtree,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -95,7 +95,8 @@ pub fn delete_thumbnail_file_sync(thumbnail_path: &str, library_path: &str) -> A
     let _library_guard = crate::services::library::lock::library_read_guard();
 
     let library_dir = resolve_existing_library_dir(library_path)?;
-    let target_path = absolute_path_from_relative(&library_dir, thumbnail_path)?;
+    let target_path =
+        absolute_path_from_relative(&library_dir, thumbnail_path, ManagedSubtree::Thumbnails)?;
 
     if !target_path.exists() {
         return Ok(());

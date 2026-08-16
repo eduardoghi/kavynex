@@ -300,7 +300,66 @@ pub fn ensure_path_parent_inside_dir(path: &Path, base_dir: &Path) -> AppResult<
     Ok(())
 }
 
-pub fn absolute_path_from_relative(base_dir: &Path, relative_path: &str) -> AppResult<PathBuf> {
+/// Which managed subtree of the library a relative path is being resolved into.
+///
+/// This is a *required* argument of [`absolute_path_from_relative`] rather than a check a caller
+/// remembers to run first, and that is the whole point of it existing. Every resolution of a
+/// library-relative path goes through that function, so requiring the subtree here makes "which part
+/// of the library may this path name" a question the compiler asks at each of them.
+///
+/// The rule it enforces was previously a separate call the caller made, or did not.
+/// `cleanup_unreferenced_media_artifacts` and `delete_thumbnail_file` both shipped without it, five
+/// weeks apart, each confining a caller-supplied path to the library *root* instead: containment
+/// stopped a traversal, and a bare `contract.docx` still resolved inside the folder the user chose
+/// as their library and was unlinked. Both were listed in the IPC path inventory the whole time (see
+/// `scripts/verify-command-path-surface.js`), which is why the answer had to move from a list into
+/// the type of the thing every one of them calls.
+///
+/// The variants are the subtrees an operation actually targets, not the four directories: a media
+/// file is `video/` or `audio/` depending on what was downloaded, and the delete that removes one
+/// cannot know which ahead of time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagedSubtree {
+    /// `video/` or `audio/`. One operation covers both because a media row's kind is data, not a
+    /// property of the call.
+    Media,
+    Thumbnails,
+    LiveChat,
+}
+
+impl ManagedSubtree {
+    /// The managed directory names a path in this subtree may start with.
+    pub fn dirs(self) -> &'static [&'static str] {
+        match self {
+            Self::Media => &[
+                crate::constants::LIBRARY_DIR_VIDEO,
+                crate::constants::LIBRARY_DIR_AUDIO,
+            ],
+            Self::Thumbnails => &[crate::constants::LIBRARY_DIR_THUMBNAILS],
+            Self::LiveChat => &[crate::constants::LIBRARY_DIR_LIVE_CHAT],
+        }
+    }
+}
+
+/// Resolves a library-relative path to an absolute one inside `base_dir`, refusing anything that is
+/// not in `subtree`.
+///
+/// The `subtree` argument is what makes the managed-directory rule impossible to omit; see
+/// [`ManagedSubtree`] for the two production bugs that came from it being a separate, forgettable
+/// call. Note what this does *not* do: the containment check here is lexical, so a caller unlinking
+/// or reading the result still re-checks it with [`ensure_existing_path_inside_dir`], which
+/// canonicalizes and therefore also resolves a symlinked intermediate component.
+///
+/// A path stored in the database is validated on the way in (`video_repository::insert_media` runs
+/// `ensure_managed_library_relative_path`), so a row written by this app always passes. One written
+/// before that validation existed, or by a hand-edited or imported database, can fail here, and that
+/// is the intended direction: the caller reports the artifact as one it could not remove rather than
+/// unlinking a file outside the managed tree on a corrupt row's say-so.
+pub fn absolute_path_from_relative(
+    base_dir: &Path,
+    relative_path: &str,
+    subtree: ManagedSubtree,
+) -> AppResult<PathBuf> {
     let canonical_base = base_dir.canonicalize().map_err(|e| {
         AppError::from_code(
             AppErrorCode::CanonicalizeBaseDirFailed,
@@ -309,6 +368,22 @@ pub fn absolute_path_from_relative(base_dir: &Path, relative_path: &str) -> AppR
     })?;
 
     let sanitized_relative = sanitize_relative_path_strict(relative_path)?;
+
+    let first_component = sanitized_relative
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str());
+
+    if !first_component.is_some_and(|dir| subtree.dirs().contains(&dir)) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidRelativePath,
+            format!(
+                "path must be inside the {} library directory",
+                subtree.dirs().join(" or ")
+            ),
+        ));
+    }
+
     let absolute = canonical_base.join(sanitized_relative);
 
     if let Some(parent) = absolute.parent() {
@@ -325,21 +400,6 @@ pub fn absolute_path_from_relative(base_dir: &Path, relative_path: &str) -> AppR
         ));
     }
 
-    Ok(absolute)
-}
-
-pub fn writable_path_from_relative(base_dir: &Path, relative_path: &str) -> AppResult<PathBuf> {
-    if !base_dir.exists() {
-        fs::create_dir_all(base_dir).map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::CreateBaseDirFailed,
-                format!("failed to create base directory: {e}"),
-            )
-        })?;
-    }
-
-    let absolute = absolute_path_from_relative(base_dir, relative_path)?;
-    ensure_path_parent_inside_dir(&absolute, base_dir)?;
     Ok(absolute)
 }
 
@@ -564,11 +624,96 @@ mod tests {
         let nested_parent = base_dir.join("video");
         assert!(!nested_parent.exists());
 
-        let absolute = absolute_path_from_relative(&base_dir, "video/test.mp4").unwrap();
+        let absolute =
+            absolute_path_from_relative(&base_dir, "video/test.mp4", ManagedSubtree::Media)
+                .unwrap();
         assert!(absolute.starts_with(base_dir.canonicalize().unwrap()));
         assert!(!nested_parent.exists());
 
         let _ = fs::remove_dir_all(base_dir);
+    }
+
+    #[test]
+    fn absolute_path_from_relative_refuses_a_path_outside_the_requested_subtree() {
+        // The rule the `subtree` argument exists to make unforgettable. Before it, this function
+        // confined a path to the base directory and said nothing about which part of it, so a bare
+        // name resolved inside the user's own library folder and the caller unlinked it. Two
+        // commands shipped that way (see ManagedSubtree).
+        let base_dir = unique_test_dir();
+        fs::create_dir_all(&base_dir).unwrap();
+
+        for (relative, subtree) in [
+            // A file of the user's that merely shares the folder.
+            ("contract.docx", ManagedSubtree::Media),
+            ("photos/wedding.jpg", ManagedSubtree::Thumbnails),
+            // A sibling managed directory: managed, and still not the one this call is for. The
+            // generic "is it one of the four" check would have allowed each of these.
+            ("video/media_abc.mp4", ManagedSubtree::Thumbnails),
+            ("thumbnails/thumb_abc.jpg", ManagedSubtree::LiveChat),
+            ("live_chat/chat.json.gz", ManagedSubtree::Media),
+        ] {
+            let error = absolute_path_from_relative(&base_dir, relative, subtree)
+                .expect_err("a path outside the requested subtree must be refused");
+
+            assert_eq!(
+                error.code,
+                AppErrorCode::InvalidRelativePath.as_str(),
+                "{relative} under {subtree:?}"
+            );
+        }
+
+        let _ = fs::remove_dir_all(base_dir);
+    }
+
+    #[test]
+    fn absolute_path_from_relative_accepts_both_media_directories() {
+        // `Media` covers two directories because a media row's kind is data: the delete that
+        // removes one cannot know whether it was a video or an audio download ahead of time.
+        let base_dir = unique_test_dir();
+        fs::create_dir_all(&base_dir).unwrap();
+
+        for relative in ["video/media_abc.mp4", "audio/media_abc.mp3"] {
+            absolute_path_from_relative(&base_dir, relative, ManagedSubtree::Media)
+                .unwrap_or_else(|error| panic!("{relative} must resolve, got {error:?}"));
+        }
+
+        let _ = fs::remove_dir_all(base_dir);
+    }
+
+    #[test]
+    fn managed_subtree_dirs_are_the_managed_directory_names() {
+        // Pins the mapping against the constants rather than against a literal, so a renamed
+        // directory cannot leave a subtree pointing at a name the library no longer uses.
+        assert_eq!(
+            ManagedSubtree::Media.dirs(),
+            [
+                crate::constants::LIBRARY_DIR_VIDEO,
+                crate::constants::LIBRARY_DIR_AUDIO
+            ]
+        );
+        assert_eq!(
+            ManagedSubtree::Thumbnails.dirs(),
+            [crate::constants::LIBRARY_DIR_THUMBNAILS]
+        );
+        assert_eq!(
+            ManagedSubtree::LiveChat.dirs(),
+            [crate::constants::LIBRARY_DIR_LIVE_CHAT]
+        );
+
+        // Every name a subtree names is one of the four the library manages, so no subtree can
+        // authorize a directory outside the managed layout.
+        for subtree in [
+            ManagedSubtree::Media,
+            ManagedSubtree::Thumbnails,
+            ManagedSubtree::LiveChat,
+        ] {
+            for dir in subtree.dirs() {
+                assert!(
+                    crate::constants::MANAGED_LIBRARY_DIRS.contains(dir),
+                    "{dir} is not a managed library directory"
+                );
+            }
+        }
     }
 
     #[test]
@@ -587,30 +732,6 @@ mod tests {
         assert!(base_dir.join("video").exists());
 
         let _ = fs::remove_dir_all(&base_dir);
-    }
-
-    #[test]
-    fn writable_path_from_relative_creates_parent_inside_base() {
-        let base_dir = unique_test_dir();
-        fs::create_dir_all(&base_dir).unwrap();
-
-        let absolute = writable_path_from_relative(&base_dir, "video/test.mp4").unwrap();
-        assert!(absolute.starts_with(base_dir.canonicalize().unwrap()));
-        assert!(base_dir.join("video").exists());
-
-        let _ = fs::remove_dir_all(base_dir);
-    }
-
-    #[test]
-    fn writable_path_from_relative_creates_base_dir_when_missing() {
-        let base_dir = unique_test_dir();
-
-        let absolute = writable_path_from_relative(&base_dir, "video/test.mp4").unwrap();
-        assert!(base_dir.exists());
-        assert!(absolute.starts_with(base_dir.canonicalize().unwrap()));
-        assert!(base_dir.join("video").exists());
-
-        let _ = fs::remove_dir_all(base_dir);
     }
 
     #[test]
