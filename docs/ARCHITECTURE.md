@@ -107,9 +107,14 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     built from the shared unique suffix" step enforces this, since the convention had already
     drifted back twice.
   - `validation.rs`: the channel name/handle and media title/type validators every write
-    boundary calls, including the length ceilings. Under the mutation gate
-    (`src-tauri/.cargo/mutants.toml`), and its handle rule is asserted against
-    `shared/youtube-handle-cases.json` so it cannot drift from the frontend's copy.
+    boundary calls, including the control-character and length rules. Under the mutation gate
+    (`src-tauri/.cargo/mutants.toml`), and its handle *shape* rule is asserted against
+    `shared/youtube-handle-cases.json` so it cannot drift from the frontend's copy. Note the split
+    that follows from that: the shape lives in `is_valid_youtube_handle`, which the shared fixture
+    pins, while the control-character and length rules sit beside it in
+    `ensure_valid_youtube_handle`, matching how the name and title validators are already built.
+    They are not part of the shared contract because they are not part of the shape, and folding
+    them in would mean changing the frontend to keep the fixture honest.
   - `text.rs`: accent stripping, whitespace collapsing and `LIKE`-metacharacter escaping,
     behind the normalized columns the media search queries against.
   - `format.rs`: the allowed media/thumbnail extension lists (and their user-facing labels),
