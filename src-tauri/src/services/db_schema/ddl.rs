@@ -100,6 +100,11 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // the composite indexes below, not this one. Kept because dropping it entangles the v8
     // migration identity and its dedicated idempotency test (a standalone cleanup, not part of
     // removing that caller), and it still fits any future newest-first-only listing.
+    //
+    // MEASURED DEAD (2026-08-16), confirming the paragraph above rather than adding to it: it is
+    // chosen by nothing the backend issues. It is also the most entangled of the dead ones, since
+    // `index_introduced_in` in the tests maps it to v8 so `seed_database_at_version` can rebuild a
+    // faithful pre-v9 database. That map is why removal costs more here than anywhere else.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)"),
     // Serves the title-sorted page of a channel's media (the paginated library list ordering by
     // title_normalized within a channel), so that sort does not filesort the whole channel.
@@ -122,6 +127,9 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // three terms, and desc is the grid's default view, i.e. the hottest query in the app.
     // The term directions here mirror that clause exactly.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_desc ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) DESC, title_normalized ASC)"),
+    // MEASURED DEAD (2026-08-16): never chosen. `channels.youtube_handle` is declared UNIQUE, so
+    // SQLite already maintains `sqlite_autoindex_channels_1` on exactly this column, and the handle
+    // lookup uses that one. This is a duplicate of an index the table definition creates for free.
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)"),
@@ -134,15 +142,41 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_file_path ON videos(file_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_live_chat_file_path ON videos(live_chat_file_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)"),
+    // MEASURED DEAD (2026-08-16): none of the six below is chosen by any statement the backend
+    // issues. The first three would each serve a standalone lookup and there is none, because every
+    // query reaching those columns is scoped by `channel_id` first, so a `idx_videos_channel_*`
+    // composite above wins. The last three index booleans (cardinality 2); the only statements
+    // touching them are `get_media_repository_stats`, a full scan of `SUM(CASE ...)` with no WHERE,
+    // and the migration repairs, whose `<> 0` is not selective either.
+    //
+    // Left in place rather than dropped, deliberately: the cost is write amplification on a table
+    // this app inserts into a handful of rows at a time, and the removal is a schema migration plus
+    // surgery on the version-history map and migration-identity tests below. Bad trade. If a
+    // library-wide search (not scoped to a channel) ever arrives, it will want a *composite* tuned
+    // to its own clause anyway, not these. Re-measure before assuming any of this still holds; the
+    // method is EXPLAIN QUERY PLAN over the real statements on a schema with no ANALYZE, which is
+    // the planner production runs.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_has_comments ON videos(has_comments)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)"),
+    // NOT dead, despite never appearing in a query plan, and the distinction matters because a
+    // reader cleaning up on plan evidence alone would drop it. It is UNIQUE: it exists to enforce
+    // "one row per (channel, youtube video id)", not to be chosen. It goes unused for lookups
+    // because it is partial, and SQLite only uses a partial index when the query's WHERE proves the
+    // index's; `youtube_video_id = ?` does not prove the `TRIM(...) <> ''`. So the duplicate
+    // pre-check falls back to idx_videos_channel_id, and the constraint still holds.
     ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_youtube_video_id_unique ON videos(channel_id, youtube_video_id) WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''"),
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)"),
+    // MEASURED DEAD (2026-08-16): the backend never looks a comment up by its parent. The reply
+    // threads are rebuilt in the renderer (src/components/player/comment-tree.ts) from the flat list
+    // the `video_id` query returns. Same trade as the group above for why it stays.
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)"),
+    // Used, though not by any runtime query: v10's comment dedup walks it
+    // (SEARCH video_comments USING COVERING INDEX idx_video_comments_comment_id), and that migration
+    // runs on any database old enough to need it.
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)"),
 ];
 
