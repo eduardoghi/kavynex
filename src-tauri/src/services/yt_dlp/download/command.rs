@@ -63,8 +63,19 @@ pub(super) fn is_valid_format_id(format_id: &str) -> bool {
 /// Substring rather than a `WARNING:` prefix match, because yt-dlp prefixes the reporting stage
 /// (`WARNING: [youtube] ...`) on some lines and not others, and a prefix test would silently
 /// reclassify the prefixed ones as errors, which is the direction that does damage.
+///
+/// The explicit refusal of `error` closes the other direction of that same looseness, which the
+/// substring test opened. A yt-dlp error line carries text this app does not control: the message
+/// YouTube returned for the video, quoted back verbatim. One that happens to mention a warning
+/// (YouTube uses the word for a strike on a channel) would be classified as a warning here, kept
+/// out of the stderr buffer by the reader in the parent module, and therefore absent from the
+/// failure message. When it is the only error line, the user is told `yt-dlp download failed:
+/// yt-dlp failed`, which is the empty-buffer fallback saying nothing at all. A line that declares
+/// itself an error is not a warning, whatever else it contains.
 pub(crate) fn line_is_warning(line: &str) -> bool {
-    line.trim().to_lowercase().contains("warning")
+    let lowered = line.trim().to_lowercase();
+
+    lowered.contains("warning") && !lowered.contains("error")
 }
 
 #[derive(Debug)]

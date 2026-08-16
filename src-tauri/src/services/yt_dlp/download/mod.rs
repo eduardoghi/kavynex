@@ -1178,6 +1178,32 @@ mod tests {
     }
 
     #[test]
+    fn an_error_line_that_mentions_a_warning_is_still_an_error() {
+        // The substring test alone answered "warning" to all three of these, which kept them out
+        // of the stderr buffer and therefore out of the failure message. The text of a yt-dlp error
+        // line is not this app's: it quotes back what YouTube returned for the video, and YouTube
+        // uses "warning" for a strike on a channel, so this is reachable from content rather than
+        // only from an unlucky phrasing.
+        for line in [
+            "ERROR: [youtube] abc123: Video unavailable. This channel received a warning.",
+            "ERROR: Postprocessing: ignoring the warning above",
+            "error: unable to download video data; see the warning above",
+        ] {
+            assert!(
+                !line_is_warning(line),
+                "a line declaring itself an error must not be classified as a warning: {line}"
+            );
+        }
+
+        // And the case that keeps the refusal from being a blanket one: a warning line that
+        // mentions no error is still a warning, so the terminal keeps the diagnostic that dropping
+        // `--no-warnings` was meant to surface.
+        assert!(line_is_warning(
+            "WARNING: Requested format is not available; falling back"
+        ));
+    }
+
+    #[test]
     fn build_download_command_args_adds_live_chat_and_browser_cookies() {
         let temp = PathBuf::from(if cfg!(windows) {
             "C:\\tmp\\run"
