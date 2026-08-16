@@ -429,6 +429,17 @@ harness), and `commands/media.rs`'s tests pin both directions.
 which is what made the omission visible: two commands taking a caller-supplied library-relative path,
 one applying the rule and one not.
 
+**`delete_thumbnail_file` was the same defect, and it was found only by classifying every path
+argument by the rule it needs rather than by reading each command.** That is worth recording as a
+method, not just as a fix. It had been read past twice: once by the audit that found the cleanup, and
+once while writing the section above, because its `verify_library_path_then_blocking` call makes the
+command *look* guarded. It settles `library_path` and says nothing about `thumbnail_path`, which
+`delete_thumbnail_file_sync` then confined to the library root alone. It was in fact the sharper of
+the two, since the cleanup at least reference-counts each path against the database before unlinking
+and this one unlinks whatever it is handed. It now requires `thumbnails/` specifically
+(`ensure_relative_path_in_managed_dir`), matching what `resolve_display_thumbnails` already applied to
+the same kind of value, so a sibling managed directory is refused too rather than merely a bare name.
+
 #### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
 `cleanup_unreferenced_media_artifacts` reference-counts each artifact path against the database and
