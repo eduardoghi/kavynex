@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
 
 use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata};
@@ -338,8 +338,8 @@ use redaction::redact_paths_value;
 use redaction::redacted_args_for_log;
 
 #[allow(clippy::too_many_arguments)]
-pub async fn download_media_from_url_async(
-    app: &AppHandle,
+pub async fn download_media_from_url_async<R: Runtime>(
+    app: &AppHandle<R>,
     url: &str,
     library_path: &str,
     run_id: &str,

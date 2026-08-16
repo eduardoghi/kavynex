@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
 use crate::services::binaries::resolve_ffmpeg_binary;
@@ -359,7 +359,10 @@ fn generate_audio_embedded_temporary_thumbnail(
     )
 }
 
-pub fn generate_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult<String> {
+pub fn generate_temporary_thumbnail_sync<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+) -> AppResult<String> {
     let source_path = validate_source_media_path(path)?;
     let ext = extension_from_path(&source_path);
     let media_kind = media_subdir_from_extension(&ext);
@@ -398,7 +401,10 @@ pub fn generate_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResu
 /// file that eventually lands in the library is exactly what it was before. Staging also gives the
 /// picked image the same lifecycle every generated preview already has: it is swept by age, and the
 /// frontend deletes it through the existing `delete_temporary_thumbnail`.
-pub fn stage_manual_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult<String> {
+pub fn stage_manual_thumbnail_sync<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+) -> AppResult<String> {
     let source_path = super::picked::validate_picked_thumbnail_path(path)?;
     let extension = extension_from_path(&source_path);
 
@@ -417,7 +423,10 @@ pub fn stage_manual_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult<Str
     Ok(staged.to_string_lossy().to_string())
 }
 
-pub fn delete_temporary_thumbnail_sync(app: &AppHandle, path: &str) -> AppResult<()> {
+pub fn delete_temporary_thumbnail_sync<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+) -> AppResult<()> {
     let Some(target_path) = validate_temporary_thumbnail_delete_path(path)? else {
         return Ok(());
     };

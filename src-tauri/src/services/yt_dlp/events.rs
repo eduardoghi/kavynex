@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::constants::{
     EVENT_YT_DLP_CANCELLED, EVENT_YT_DLP_ERROR, EVENT_YT_DLP_FINISHED, EVENT_YT_DLP_LOG,
@@ -23,8 +23,8 @@ pub fn infer_log_level(line: &str, stream: &str) -> DownloadLogLevel {
     DownloadLogLevel::Info
 }
 
-pub fn emit_download_log(
-    app: &AppHandle,
+pub fn emit_download_log<R: Runtime>(
+    app: &AppHandle<R>,
     run_id: &str,
     line: impl Into<String>,
     stream: &str,
@@ -50,8 +50,8 @@ pub fn emit_download_log(
 
 /// Fire-and-forget variant of [`emit_download_log`] for callers (such as the spawned
 /// stdout/stderr reader tasks), that cannot propagate an emit failure.
-pub fn emit_download_log_infallible(
-    app: &AppHandle,
+pub fn emit_download_log_infallible<R: Runtime>(
+    app: &AppHandle<R>,
     run_id: &str,
     line: impl Into<String>,
     stream: &str,
@@ -59,8 +59,8 @@ pub fn emit_download_log_infallible(
     let _ = emit_download_log(app, run_id, line, stream);
 }
 
-pub fn emit_terminal_event(
-    app: &AppHandle,
+pub fn emit_terminal_event<R: Runtime>(
+    app: &AppHandle<R>,
     run_id: &str,
     status: DownloadTerminalStatus,
     message: Option<String>,
@@ -79,7 +79,11 @@ pub fn emit_terminal_event(
     );
 }
 
-pub fn emit_download_error(app: &AppHandle, run_id: &str, message: impl Into<String>) {
+pub fn emit_download_error<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    message: impl Into<String>,
+) {
     let message = message.into();
 
     let _ = app.emit(
@@ -100,7 +104,11 @@ pub fn emit_download_error(app: &AppHandle, run_id: &str, message: impl Into<Str
     );
 }
 
-pub fn emit_download_cancelled(app: &AppHandle, run_id: &str, message: impl Into<String>) {
+pub fn emit_download_cancelled<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    message: impl Into<String>,
+) {
     let message = message.into();
 
     let _ = app.emit(
@@ -121,8 +129,8 @@ pub fn emit_download_cancelled(app: &AppHandle, run_id: &str, message: impl Into
     );
 }
 
-pub fn emit_download_finished(
-    app: &AppHandle,
+pub fn emit_download_finished<R: Runtime>(
+    app: &AppHandle<R>,
     run_id: &str,
     file_path: String,
     suggested_title: String,

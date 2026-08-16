@@ -251,6 +251,127 @@ pub(super) fn build_thumbnail_command_args(
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::{Context, Poll};
+    use tokio::io::ReadBuf;
+
+    /// An `AsyncRead` over a fixed buffer that hands back a few bytes at a time and records how many
+    /// were taken from it in total.
+    ///
+    /// Both halves are load-bearing. The short reads make the accumulation loop run more than once,
+    /// which is what the cap arithmetic is actually about; a reader that satisfied the whole request
+    /// in one call would leave the `min` untested. The counter is what lets a test assert that the
+    /// stream was drained *past* the cap rather than abandoned at it, which is the property the
+    /// truncation cannot be allowed to break: a child whose pipe stops being read blocks on the
+    /// write and never exits, so this would trade bounded memory for a hung process.
+    struct CountingReader {
+        data: Vec<u8>,
+        position: usize,
+        chunk: usize,
+        read_total: Arc<AtomicUsize>,
+    }
+
+    impl CountingReader {
+        fn new(data: Vec<u8>, chunk: usize) -> (Self, Arc<AtomicUsize>) {
+            let read_total = Arc::new(AtomicUsize::new(0));
+
+            (
+                Self {
+                    data,
+                    position: 0,
+                    chunk,
+                    read_total: Arc::clone(&read_total),
+                },
+                read_total,
+            )
+        }
+    }
+
+    impl tokio::io::AsyncRead for CountingReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            let remaining = self.data.len() - self.position;
+            let take = remaining.min(self.chunk).min(buf.remaining());
+
+            if take > 0 {
+                let start = self.position;
+                let slice = self.data[start..start + take].to_vec();
+                buf.put_slice(&slice);
+                self.position += take;
+                self.read_total.fetch_add(take, Ordering::Relaxed);
+            }
+
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn draining_an_absent_stream_yields_nothing() {
+        // `Child::stdout` is an `Option`, and a command configured without a pipe hands back `None`.
+        assert!(read_drain_capped_async(None::<&[u8]>, 1024)
+            .await
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_stream_under_the_cap_is_retained_whole() {
+        let (reader, read_total) = CountingReader::new(b"yt-dlp: wrote thumbnail".to_vec(), 4);
+
+        let captured = read_drain_capped_async(Some(reader), 1024).await;
+
+        assert_eq!(captured, b"yt-dlp: wrote thumbnail");
+        assert_eq!(read_total.load(Ordering::Relaxed), captured.len());
+    }
+
+    #[tokio::test]
+    async fn a_stream_over_the_cap_is_truncated_but_still_drained_to_the_end() {
+        // The whole point of the "read and discard" wording in the doc comment. A chatty or hostile
+        // child must not be able to grow this buffer without bound, and must not be left blocked on
+        // a pipe nobody is emptying either. Both are asserted, because a change that satisfied only
+        // the first (breaking out of the loop at the cap) would look correct and hang a real run.
+        let payload = vec![b'x'; 5000];
+        let (reader, read_total) = CountingReader::new(payload.clone(), 512);
+
+        let captured = read_drain_capped_async(Some(reader), 100).await;
+
+        assert_eq!(
+            captured.len(),
+            100,
+            "the retained buffer must stop at the cap"
+        );
+        assert!(captured.iter().all(|byte| *byte == b'x'));
+        assert_eq!(
+            read_total.load(Ordering::Relaxed),
+            payload.len(),
+            "every byte must still be read off the stream, or the child blocks on a full pipe"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_zero_cap_retains_nothing_and_still_drains() {
+        // The boundary of the `buffer.len() < max_bytes` guard. With `<=` instead of `<` this keeps
+        // one byte, which is the kind of off-by-one no behavioural test at 1 MiB would ever notice.
+        let (reader, read_total) = CountingReader::new(vec![b'y'; 64], 8);
+
+        let captured = read_drain_capped_async(Some(reader), 0).await;
+
+        assert!(captured.is_empty());
+        assert_eq!(read_total.load(Ordering::Relaxed), 64);
+    }
+
+    #[test]
+    fn the_captured_output_ceiling_is_one_mebibyte_per_stream() {
+        // Pinned by value rather than re-derived from the same multiplication the constant uses, for
+        // the reason the live-chat decompression ceiling is pinned the same way: an arithmetic slip
+        // (1024 + 1024 is 2048 bytes, not 1 MiB) either truncates every real error message to
+        // nothing useful or removes the bound, and no behavioural test can afford to exercise the
+        // real size to tell the difference.
+        assert_eq!(MAX_PROCESS_OUTPUT_BYTES, 1_048_576);
+    }
 
     fn sample_temp_dir() -> PathBuf {
         PathBuf::from(if cfg!(windows) {

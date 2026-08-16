@@ -16,7 +16,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use http::Uri;
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 use tokio::process::Command;
 
 use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
@@ -150,8 +150,8 @@ fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
 /// `create_dir_all` touches disk), so callers invoke this through `run_blocking` off the async
 /// runtime, matching the convention the rest of the app follows for filesystem calls. Returns the
 /// canonical library directory and the created temp directory.
-fn prepare_thumbnail_dirs(
-    app: AppHandle,
+fn prepare_thumbnail_dirs<R: Runtime>(
+    app: AppHandle<R>,
     library_path: String,
     temp_dir_name: String,
 ) -> AppResult<(PathBuf, PathBuf)> {
@@ -169,8 +169,8 @@ fn prepare_thumbnail_dirs(
     Ok((library_dir, thumb_temp_dir))
 }
 
-pub async fn download_thumbnail_from_url_async(
-    app: &AppHandle,
+pub async fn download_thumbnail_from_url_async<R: Runtime>(
+    app: &AppHandle<R>,
     url: &str,
     library_path: &str,
 ) -> AppResult<String> {
@@ -369,8 +369,8 @@ pub async fn download_thumbnail_from_url_async(
     result
 }
 
-pub async fn download_thumbnail_for_media_async(
-    app: &AppHandle,
+pub async fn download_thumbnail_for_media_async<R: Runtime>(
+    app: &AppHandle<R>,
     media_url: &str,
     library_path: &str,
     metadata: &YtDlpMetadata,
@@ -480,8 +480,8 @@ pub async fn download_thumbnail_for_media_async(
     result
 }
 
-pub async fn download_channel_avatar_from_handle_async(
-    app: &AppHandle,
+pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
+    app: &AppHandle<R>,
     youtube_handle: &str,
     library_path: &str,
 ) -> AppResult<String> {

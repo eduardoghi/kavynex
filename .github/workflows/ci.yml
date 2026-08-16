@@ -465,7 +465,7 @@ jobs:
                   node scripts/summarize-cargo-deny-bans.js deny-bans.json >> "$GITHUB_STEP_SUMMARY"
 
     rust-coverage:
-        name: "Rust coverage (floor: 68% lines)"
+        name: "Rust coverage (floor: 74% lines)"
         # Pinned like the rust job; see its comment. Coverage is measured on this exact image, so a
         # silent OS-major jump could move the number for a reason unrelated to the tests.
         runs-on: ubuntu-26.04
@@ -489,17 +489,21 @@ jobs:
         # current answer.
         #
         # The floor stays deliberately below the real reading, to avoid the flaky-threshold trap
-        # this job warns about: coverage is measured here on Linux and cannot be validated against a
-        # local (Windows) run, where `#[cfg]`-gated platform code differs in both directions (the
-        # Windows-only console dialog, batch-shim and verbatim-path code is measured locally and
-        # absent here; the Linux-only file-manager lookup is the reverse). The gap between the two
-        # is real but unmeasured, so the floor is set with room for it rather than against the
-        # highest number seen.
+        # this job warns about: coverage is measured here on Linux, and a local (Windows) run
+        # measures `#[cfg]`-gated platform code that differs in both directions (the Windows-only
+        # console dialog, batch-shim and verbatim-path code is measured locally and absent here; the
+        # Linux-only file-manager lookup is the reverse).
         #
-        # Raised 60 -> 68 on 2026-07-30. A local run measured 76.93% lines / 79.86% regions
-        # (`cargo llvm-cov --summary-only`), so 60 was leaving roughly seventeen points of slack -
-        # enough for a whole module to land untested without turning this red, which is the
-        # regression the job exists to catch. 68 keeps about nine points for the platform drift.
+        # That gap used to be described here as real but unmeasured. It has now been measured once,
+        # which is worth recording because it is smaller than the slack it was being given: the
+        # 2026-08-10 run of this job read 78.58% lines / 81.34% regions, and a local Windows run of
+        # the same commit range read 79.37% / 81.99%. Windows reads about 0.8 points higher. One
+        # pair of readings is not a guarantee, so the floor still carries more room than that.
+        #
+        # Raised 60 -> 68 on 2026-07-30, then 68 -> 74 on 2026-08-16. 68 was leaving over ten points
+        # against the 78.58% this job actually published, which is enough for a whole module to land
+        # untested without turning it red, i.e. the regression the job exists to catch. 74 keeps
+        # about four and a half points, which covers the measured platform gap several times over.
         # Ratchet further from the number this job publishes to the step summary on a real run,
         # which is the only Linux reading anyone has; do not ratchet from a local one.
         env:
@@ -557,10 +561,10 @@ jobs:
                       --html --output-dir coverage/rust
                   status=0
                   cargo llvm-cov report --manifest-path src-tauri/Cargo.toml --summary-only \
-                      --fail-under-lines 68 > coverage-summary.txt 2>&1 || status=$?
+                      --fail-under-lines 74 > coverage-summary.txt 2>&1 || status=$?
                   cat coverage-summary.txt
                   {
-                      echo "### Rust coverage (floor: 68% lines)"
+                      echo "### Rust coverage (floor: 74% lines)"
                       echo ""
                       echo '```'
                       cat coverage-summary.txt

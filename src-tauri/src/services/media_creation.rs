@@ -277,8 +277,8 @@ pub(crate) fn normalize_create_media_request(
 /// `Managed` is returned untouched. It already names a file in the library, and re-persisting it
 /// would copy a file onto itself. The other two go through the same persist/download the renderer
 /// used to call directly.
-async fn store_thumbnail_source(
-    app: &AppHandle,
+async fn store_thumbnail_source<R: Runtime>(
+    app: &AppHandle<R>,
     source: ThumbnailSource,
     library_path: &str,
 ) -> AppResult<Option<String>> {
@@ -306,8 +306,8 @@ async fn store_thumbnail_source(
 /// temporary copy is removed either way. A failure to remove it is logged rather than raised,
 /// since the preview directory is swept by age anyway and losing the media over a leftover would be
 /// the wrong trade.
-async fn generate_and_store_thumbnail(
-    app: &AppHandle,
+async fn generate_and_store_thumbnail<R: Runtime>(
+    app: &AppHandle<R>,
     source_value: &str,
     library_path: &str,
 ) -> AppResult<String> {
@@ -383,8 +383,8 @@ fn local_import_cancellation(
 /// That order is required rather than incidental. A `move` import removes the source once it is in
 /// the library, and the thumbnail for a file with no supplied one is generated *from that source*.
 /// so generating it afterwards would run FFmpeg against a path that no longer exists.
-async fn prepare_local_artifacts(
-    app: &AppHandle,
+async fn prepare_local_artifacts<R: Runtime>(
+    app: &AppHandle<R>,
     request: &CreateMediaRequest,
 ) -> AppResult<PreparedArtifacts> {
     let thumbnail_source = classify_thumbnail_source(request.thumbnail_source_path.as_deref());
@@ -499,8 +499,8 @@ pub(crate) fn fetched_thumbnail_to_discard(
 /// its own thumbnail when a manual one is supplied, so a fetched file should not exist, but if one
 /// does it is now unreferenced and is handed to the reference-counted cleanup rather than left in
 /// the library.
-async fn resolve_downloaded_thumbnail(
-    app: &AppHandle,
+async fn resolve_downloaded_thumbnail<R: Runtime>(
+    app: &AppHandle<R>,
     request: &CreateMediaRequest,
     downloaded: &DownloadedMediaResult,
 ) -> AppResult<Option<String>> {
@@ -531,8 +531,8 @@ async fn resolve_downloaded_thumbnail(
     }
 }
 
-async fn prepare_yt_dlp_artifacts(
-    app: &AppHandle,
+async fn prepare_yt_dlp_artifacts<R: Runtime>(
+    app: &AppHandle<R>,
     request: &CreateMediaRequest,
 ) -> AppResult<PreparedArtifacts> {
     // A supplied thumbnail makes the run's own thumbnail fetch pointless work whose output would be
@@ -630,8 +630,8 @@ fn report_cleanup_outcome(outcome: AppResult<library::cleanup::ArtifactCleanupRe
 }
 
 /// Hands artifacts to the reference-counted cleanup, taking the registration lock.
-async fn cleanup_artifacts_best_effort(
-    app: &AppHandle,
+async fn cleanup_artifacts_best_effort<R: Runtime>(
+    app: &AppHandle<R>,
     file_path: Option<String>,
     thumbnail_path: Option<String>,
     live_chat_file_path: Option<String>,
@@ -883,8 +883,8 @@ pub(crate) fn needs_youtube_duplicate_pre_check(request: &CreateMediaRequest) ->
     request.source_mode == MediaSourceMode::YtDlp && request.yt_dlp_youtube_video_id.is_some()
 }
 
-async fn ensure_youtube_media_is_new(
-    app: &AppHandle,
+async fn ensure_youtube_media_is_new<R: Runtime>(
+    app: &AppHandle<R>,
     request: &CreateMediaRequest,
 ) -> AppResult<()> {
     let Some(video_id) = request.yt_dlp_youtube_video_id.as_deref() else {
@@ -908,8 +908,8 @@ async fn ensure_youtube_media_is_new(
 ///
 /// `library_path` is verified against the persisted settings by the command layer before this runs,
 /// like every other library write.
-pub async fn create_media_async(
-    app: &AppHandle,
+pub async fn create_media_async<R: Runtime>(
+    app: &AppHandle<R>,
     request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
     let request = normalize_create_media_request(request)?;
@@ -1514,6 +1514,208 @@ mod tests {
                         .is_ok_and(|contents| contents.contains(file_path))
                 })
                 .count()
+        }
+
+        /// A media file on disk outside the library, named so the import accepts its extension.
+        fn source_media_outside_the_library(label: &str) -> PathBuf {
+            let dir = std::env::temp_dir().join(format!(
+                "kavynex_mediasrc_{label}_{}",
+                crate::utils::naming::unique_temp_suffix()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+
+            let source = dir.join("clip.mp4");
+            std::fs::write(&source, b"media bytes").unwrap();
+
+            source
+        }
+
+        /// A local-import request against `library`, carrying an already-managed thumbnail path.
+        ///
+        /// The thumbnail matters: `classify_thumbnail_source` returns `Managed` for it and
+        /// `store_thumbnail_source` hands it back untouched, so this drives the whole creation
+        /// without reaching the FFmpeg preview. Leaving it absent would make the test pass or fail
+        /// depending on whether the machine running it happens to have FFmpeg installed.
+        fn local_request(library: &Path, source: &Path, label: &str) -> CreateMediaRequest {
+            CreateMediaRequest {
+                channel_id: 1,
+                title: "An imported clip".to_string(),
+                source_mode: MediaSourceMode::Local,
+                source_value: source.to_string_lossy().to_string(),
+                thumbnail_source_path: Some("thumbnails/thumb_abc.jpg".to_string()),
+                media_type: "video".to_string(),
+                import_mode: ImportMode::Copy,
+                library_path: library.to_string_lossy().to_string(),
+                published_at: None,
+                // Unique per test: the id goes into the process-global download registry, and two
+                // tests sharing one would make the second uncancellable for a reason unrelated to
+                // what it asserts.
+                yt_dlp_run_id: format!(
+                    "run-{label}-{}",
+                    crate::utils::naming::unique_temp_suffix()
+                ),
+                yt_dlp_format_id: String::new(),
+                yt_dlp_youtube_video_id: None,
+                download_live_chat: false,
+                cookies_browser: None,
+                cookies_path: None,
+            }
+        }
+
+        /// How many rows the videos table holds, so a refusal can assert that nothing was inserted.
+        async fn media_row_count(app: &MockApp) -> i64 {
+            let pool = shared_pool(app.handle()).await.unwrap();
+            let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            count
+        }
+
+        // The three tests below are the first that drive `create_media_async` itself rather than
+        // the half of it `register_prepared_media` covers. What they pin is the *sequence*: which
+        // step runs before which, which is the property that has no other guard. Reaching them at
+        // all took generalizing the chain from `AppHandle` (i.e. `AppHandle<Wry>`) to `R: Runtime`
+        // down through binaries, the thumbnail tree and the yt-dlp tree, because the mock runtime
+        // is a different concrete type and one bare `AppHandle` anywhere in the chain put the whole
+        // thing out of reach.
+        //
+        // Only the local mode runs to completion here, and deliberately: the yt-dlp mode's
+        // preparation spawns yt-dlp and FFmpeg, which does not belong in a unit test. Its ordering
+        // is pinned from the other side, by a refusal that has to happen *before* that spawn.
+
+        #[tokio::test]
+        async fn a_local_import_runs_the_whole_creation_and_lands_a_row() {
+            let (app, library) = app_with_library("create-local").await;
+            let source = source_media_outside_the_library("create-local");
+
+            let created =
+                create_media_async(app.handle(), local_request(&library, &source, "local"))
+                    .await
+                    .expect("a local import of a real file must succeed");
+
+            // The file landed content-addressed under video/, which is the import step having run.
+            let expected_hash = crate::utils::hash::file_hash(&source).unwrap();
+            assert_eq!(
+                created.file_path,
+                format!("video/media_{expected_hash}.mp4")
+            );
+            assert!(library.join(&created.file_path).is_file());
+
+            // Copy mode, so the source survives.
+            assert!(source.is_file());
+
+            // The supplied managed thumbnail was carried through rather than re-persisted.
+            assert_eq!(
+                created.thumbnail_path.as_deref(),
+                Some("thumbnails/thumb_abc.jpg")
+            );
+
+            // The registration step ran to the end: a row exists and its marker is gone.
+            let pool = shared_pool(app.handle()).await.unwrap();
+            let row =
+                video_repository::find_media_by_channel_and_file_path(&pool, 1, &created.file_path)
+                    .await
+                    .unwrap();
+            assert!(row.is_some(), "the creation must have inserted a row");
+            assert_eq!(markers_naming(&app, &created.file_path), 0);
+
+            let _ = std::fs::remove_dir_all(&library);
+            let _ = std::fs::remove_dir_all(source.parent().unwrap());
+        }
+
+        #[tokio::test]
+        async fn an_invalid_request_is_refused_before_the_source_file_is_consumed() {
+            // Normalization runs first, and a `move` import is what makes that observable rather
+            // than merely tidy: the import removes the user's original once it is in the library,
+            // so a request validated only at the write boundary would consume the source, fail the
+            // insert, and have the cleanup unlink the library copy. The user's file would be gone
+            // and no row would exist.
+            //
+            // The surviving source is therefore the assertion, and it is the one that discriminates.
+            // Asserting an empty video/ directory does not: the failure path unlinks the imported
+            // file either way, so that check passes whether the refusal came before the import or
+            // after it. Verified by neutralizing `ensure_valid_media_title` and watching this test
+            // keep passing on that assertion alone, which is why it is not the one relied on here.
+            let (app, library) = app_with_library("create-invalid").await;
+            let source = source_media_outside_the_library("create-invalid");
+
+            let mut request = local_request(&library, &source, "invalid");
+            request.title = "   ".to_string();
+            request.import_mode = ImportMode::Move;
+
+            let error = create_media_async(app.handle(), request)
+                .await
+                .expect_err("a blank title must be refused");
+
+            assert_eq!(error.code, AppErrorCode::InvalidMediaTitle.as_str());
+            assert!(
+                source.is_file(),
+                "the refusal must land before the import, or a move consumes the user's file"
+            );
+            assert_eq!(media_row_count(&app).await, 0);
+
+            let _ = std::fs::remove_dir_all(&library);
+            let _ = std::fs::remove_dir_all(source.parent().unwrap());
+        }
+
+        #[tokio::test]
+        async fn an_already_registered_youtube_video_is_refused_before_the_download_starts() {
+            // The ordering that saves a gigabyte. `needs_youtube_duplicate_pre_check` gates a query
+            // that runs *before* `prepare_yt_dlp_artifacts`, so a video already registered for this
+            // channel fails now rather than after the whole file has been fetched.
+            //
+            // It is also why the yt-dlp mode is drivable here at all: the refusal lands before
+            // anything spawns. If the two steps were ever reordered this test would not merely
+            // fail, it would try to run yt-dlp, which is the loud kind of failure.
+            let (app, library) = app_with_library("create-duplicate").await;
+
+            let pool = shared_pool(app.handle()).await.unwrap();
+            video_repository::insert_media(
+                &pool,
+                1,
+                "Already saved",
+                "video/media_existing.mp4",
+                None,
+                "video",
+                Some("dQw4w9WgXcQ"),
+                None,
+                None,
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+
+            let request = CreateMediaRequest {
+                source_mode: MediaSourceMode::YtDlp,
+                source_value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_string(),
+                yt_dlp_format_id: "137+140".to_string(),
+                yt_dlp_youtube_video_id: Some("dQw4w9WgXcQ".to_string()),
+                thumbnail_source_path: None,
+                ..local_request(&library, Path::new("unused"), "duplicate")
+            };
+
+            let error = create_media_async(app.handle(), request)
+                .await
+                .expect_err("a video already registered for the channel must be refused");
+
+            assert_eq!(
+                error.code,
+                AppErrorCode::VideoAlreadyExistsForChannel.as_str()
+            );
+
+            // Nothing beyond the pre-existing row, and nothing on disk: the refusal landed before
+            // the preparation, which is the whole claim.
+            assert_eq!(media_row_count(&app).await, 1);
+            assert_eq!(
+                std::fs::read_dir(library.join(crate::constants::LIBRARY_DIR_VIDEO))
+                    .unwrap()
+                    .count(),
+                0
+            );
+
+            let _ = std::fs::remove_dir_all(&library);
         }
 
         #[tokio::test]

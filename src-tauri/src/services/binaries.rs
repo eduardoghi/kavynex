@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use chrono::{NaiveDate, Utc};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::models::yt_dlp::{ExternalToolHealth, ExternalToolsStatus};
 use crate::utils::process::hide_console;
@@ -117,8 +117,8 @@ fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String
     None
 }
 
-fn resolve_binary_from_candidates(
-    app: &AppHandle,
+fn resolve_binary_from_candidates<R: Runtime>(
+    app: &AppHandle<R>,
     candidates: &[&str],
     error_code: AppErrorCode,
     error_message: &str,
@@ -147,7 +147,7 @@ fn resolve_binary_from_candidates(
     Err(AppError::from_code(error_code, error_message))
 }
 
-pub fn resolve_yt_dlp_binary(app: &AppHandle) -> AppResult<String> {
+pub fn resolve_yt_dlp_binary<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
     let candidates = if cfg!(target_os = "windows") {
         vec!["yt-dlp.exe", "yt-dlp"]
     } else {
@@ -162,7 +162,7 @@ pub fn resolve_yt_dlp_binary(app: &AppHandle) -> AppResult<String> {
     )
 }
 
-pub fn resolve_ffmpeg_binary(app: &AppHandle) -> AppResult<String> {
+pub fn resolve_ffmpeg_binary<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
     let candidates = if cfg!(target_os = "windows") {
         vec!["ffmpeg.exe", "ffmpeg"]
     } else {
@@ -346,7 +346,9 @@ pub fn validate_ffmpeg_binary(binary_path: &str) -> AppResult<String> {
     )
 }
 
-pub fn resolve_external_tools_status(app: &AppHandle) -> AppResult<ExternalToolsStatus> {
+pub fn resolve_external_tools_status<R: Runtime>(
+    app: &AppHandle<R>,
+) -> AppResult<ExternalToolsStatus> {
     let yt_dlp_path = resolve_yt_dlp_binary(app)?;
     let ffmpeg_path = resolve_ffmpeg_binary(app)?;
 
@@ -377,18 +379,18 @@ pub fn resolve_external_tools_status(app: &AppHandle) -> AppResult<ExternalTools
 // Async wrappers so callers on the Tokio runtime do not block a worker thread while these
 // shell out (where.exe/which, and the `--version` health checks). Blocking work is moved to
 // the dedicated blocking pool via `run_blocking`.
-pub async fn resolve_yt_dlp_binary_async(app: &AppHandle) -> AppResult<String> {
+pub async fn resolve_yt_dlp_binary_async<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
     let app = app.clone();
     run_blocking(move || resolve_yt_dlp_binary(&app)).await
 }
 
-pub async fn resolve_ffmpeg_binary_async(app: &AppHandle) -> AppResult<String> {
+pub async fn resolve_ffmpeg_binary_async<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
     let app = app.clone();
     run_blocking(move || resolve_ffmpeg_binary(&app)).await
 }
 
-pub async fn resolve_external_tools_status_async(
-    app: &AppHandle,
+pub async fn resolve_external_tools_status_async<R: Runtime>(
+    app: &AppHandle<R>,
 ) -> AppResult<ExternalToolsStatus> {
     let app = app.clone();
     run_blocking(move || resolve_external_tools_status(&app)).await

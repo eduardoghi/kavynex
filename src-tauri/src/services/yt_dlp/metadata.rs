@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, BufReader},
     process::Command,
@@ -758,8 +758,8 @@ fn comments_extraction_looks_incomplete(reported_count: Option<i64>, extracted: 
     extracted == 0 && reported_count.is_some_and(|count| count > 0)
 }
 
-pub async fn fetch_youtube_comments_async(
-    app: &AppHandle,
+pub async fn fetch_youtube_comments_async<R: Runtime>(
+    app: &AppHandle<R>,
     video_id: &str,
     cookies_browser: Option<&str>,
     cookies_path: Option<&str>,
@@ -819,8 +819,8 @@ pub async fn fetch_youtube_comments_async(
     Ok(comments)
 }
 
-pub async fn list_yt_dlp_formats_async(
-    app: &AppHandle,
+pub async fn list_yt_dlp_formats_async<R: Runtime>(
+    app: &AppHandle<R>,
     url: &str,
     cookies_browser: Option<&str>,
     cookies_path: Option<&str>,

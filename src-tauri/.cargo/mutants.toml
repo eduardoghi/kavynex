@@ -40,6 +40,7 @@ examine_globs = [
     "src/services/db_backup/*.rs",
     "src/services/db_schema/*.rs",
     "src/services/yt_dlp/download/command.rs",
+    "src/services/thumbnail/download/process.rs",
     "src/services/yt_dlp/download/redaction.rs",
     "src/services/ssrf_guard.rs",
     "src/services/thumbnail/url.rs",
@@ -81,6 +82,13 @@ exclude_re = [
     # Boundary: spawns FFmpeg and polls it to a deadline. Note that nothing is excluded for
     # resolve_display_thumbnails_sync, and the doc records why the reason once given was wrong.
     'generate_display_thumbnail',
+    # Boundary: the two halves of the thumbnail spawn that need a live child process, one to take
+    # its pipes and one to kill its tree on a deadline. Narrow on purpose: read_drain_capped_async
+    # takes its cap as an argument and reads any AsyncRead, so it is tested directly against a
+    # counting reader and stays in scope, which is where the cap arithmetic and the drain-past-the-
+    # cap property actually live. build_thumbnail_command_args stays in scope too.
+    'replace wait_with_capped_output',
+    'run_thumbnail_yt_dlp_with_timeout',
     # AppHandle glue: what is left once prepare_cache_scope_dirs took the observable half. Narrow on
     # purpose; prepare_cache_scope_dirs, managed_cache_scope_dirs and grant_path_with_canonical stay.
     'replace register_cache_asset_scope with \(\)',
