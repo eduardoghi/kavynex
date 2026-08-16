@@ -584,6 +584,8 @@ pub fn run() {
             commands::library::migrate_library_directory,
             commands::library::get_library_summary,
             commands::library::check_library_integrity,
+            commands::library::verify_library_content,
+            commands::library::cancel_library_verification,
             commands::library::open_path_in_system,
             commands::media::create_media,
             commands::live_chat::stream_live_chat_file,

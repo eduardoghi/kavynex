@@ -49,6 +49,10 @@ export type TauriCommandReturns = {
     // The report plus the media row behind each path it named. One command rather than two,
     // because both are answered from one snapshot of the database (see the Rust struct).
     check_library_integrity: LibraryIntegrityCheck;
+    // Resolves when the run ends; the report itself arrives on the progress channel's
+    // terminal `done` message, not here.
+    verify_library_content: void;
+    cancel_library_verification: void;
     open_path_in_system: void;
 
     // The whole creation, not a step of it: the backend produces the artifacts, records the crash

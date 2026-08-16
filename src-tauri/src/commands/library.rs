@@ -1,3 +1,4 @@
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
 use crate::services::channel_repository;
@@ -10,8 +11,9 @@ use crate::services::library::guard::{
 use crate::services::library::summary::LibrarySummaryInfo;
 use crate::services::logger;
 use crate::services::video_repository;
+use crate::utils::path::ManagedSubtree;
 use crate::utils::task::run_blocking;
-use crate::AppResult;
+use crate::{AppError, AppErrorCode, AppResult};
 
 /// Withdraws the asset-protocol grant on a library directory the app no longer uses.
 ///
@@ -232,6 +234,119 @@ pub async fn check_library_integrity(
     .await
 }
 
+/// Re-reads every content-addressed artifact in the library and compares it against the hash its
+/// own filename declares, streaming progress over `on_progress`.
+///
+/// **Separate from `check_library_integrity`, and user-triggered, because it costs a full read of
+/// the library.** That check answers whether the database and the directory agree and does it from
+/// `stat`, which is why it can run whenever Diagnostics opens; the only corruption a `stat` reveals
+/// is a zero-length file. This one catches the corruption that actually happens to a large library
+/// on an external drive: a bad sector inside a file whose size never changed, a truncated copy, a
+/// cloud-sync placeholder. See `services::library::verification`.
+///
+/// Only one runs at a time (`try_begin_verification`), refused rather than queued: the work is
+/// proportional to the size of the library, so a second concurrent sweep would read every byte
+/// twice while competing for the same disk.
+///
+/// The library path is verified against the persisted setting before anything is read, like every
+/// other library command. The guard runs before the slot is claimed so a refused path fails as one
+/// rather than occupying the slot it will not use.
+#[tauri::command]
+pub async fn verify_library_content(
+    db: State<'_, Db>,
+    library_path: String,
+    on_progress: Channel<library::verification::ContentVerificationEvent>,
+) -> AppResult<()> {
+    let pool = db.pool().await?;
+
+    ensure_configured_library_path_in_pool(&pool, &library_path).await?;
+
+    let Some(_run) = library::verification::try_begin_verification() else {
+        return Err(AppError::from_code(
+            AppErrorCode::LibraryVerificationInProgress,
+            "a library verification is already running",
+        ));
+    };
+
+    let references = video_repository::list_media_integrity_references(&pool).await?;
+    let avatar_paths = channel_repository::list_channel_avatar_paths(&pool).await?;
+
+    // Media files and thumbnails only. Live chat replays are named after the yt-dlp output file
+    // rather than after their content, so there is no digest in the name to check them against and
+    // including them would inflate the "unverifiable" count with files that could never be anything
+    // else.
+    let mut artifacts: Vec<library::verification::VerifiableArtifact> = Vec::new();
+
+    for reference in references {
+        artifacts.push(library::verification::VerifiableArtifact {
+            relative_path: reference.file_path,
+            subtree: ManagedSubtree::Media,
+        });
+
+        if let Some(thumbnail) = reference.thumbnail_path {
+            artifacts.push(library::verification::VerifiableArtifact {
+                relative_path: thumbnail,
+                subtree: ManagedSubtree::Thumbnails,
+            });
+        }
+    }
+
+    for avatar in avatar_paths {
+        artifacts.push(library::verification::VerifiableArtifact {
+            relative_path: avatar,
+            subtree: ManagedSubtree::Thumbnails,
+        });
+    }
+
+    let progress_channel = on_progress.clone();
+
+    let report = run_blocking(move || {
+        // Serialize against a concurrent library migration, like every other read that walks the
+        // library tree (see services::library::lock).
+        let _library_guard = crate::services::library::lock::library_read_guard();
+
+        library::verification::verify_library_content_sync(
+            std::path::Path::new(&library_path),
+            &artifacts,
+            Some(library::verification::verification_cancel_flag()),
+            |checked, total| {
+                progress_channel
+                    .send(library::verification::ContentVerificationEvent::Progress {
+                        checked,
+                        total,
+                    })
+                    .map_err(|error| {
+                        AppError::from_code(
+                            AppErrorCode::LibraryVerificationFailed,
+                            format!("failed to report verification progress: {error}"),
+                        )
+                    })
+            },
+        )
+    })
+    .await?;
+
+    on_progress
+        .send(library::verification::ContentVerificationEvent::Done { report })
+        .map_err(|error| {
+            AppError::from_code(
+                AppErrorCode::LibraryVerificationFailed,
+                format!("failed to report the verification result: {error}"),
+            )
+        })
+}
+
+/// Asks a running library verification to stop.
+///
+/// Takes no arguments, and that is deliberate rather than an omission: only one verification runs at
+/// a time, so there is no run to name and therefore nothing for a caller to point at the wrong one.
+/// A cancel arriving when nothing is running is a no-op, because the flag is cleared by the next run
+/// that begins rather than by this one.
+#[tauri::command]
+pub fn cancel_library_verification() {
+    library::verification::request_verification_cancel();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +441,7 @@ mod tests {
                 is_directory_empty,
                 get_library_summary,
                 check_library_integrity,
+                verify_library_content,
                 open_path_in_system
             ])
             .build(mock_context(noop_assets()))
@@ -586,6 +702,43 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+
+        let _ = fs::remove_dir_all(&configured);
+        let _ = fs::remove_dir_all(&elsewhere);
+    }
+
+    #[test]
+    fn verify_library_content_command_rejects_a_path_that_is_not_the_configured_library() {
+        // The same guard the cheap check gets, and it is worth pinning separately because this
+        // command reads every byte of what it is pointed at and reports example filenames back. A
+        // trusted library_path would make it both a directory enumerator and a way to make the app
+        // read an arbitrary tree from end to end.
+        //
+        // The guard runs before the single-run slot is claimed, so a refused call also has to leave
+        // the slot free; the assertion below that a later run can still begin is what pins that.
+        let configured = unique_test_dir("verify-configured");
+        let elsewhere = unique_test_dir("verify-elsewhere");
+        fs::create_dir_all(&configured).unwrap();
+        fs::create_dir_all(elsewhere.join("video")).unwrap();
+        fs::write(elsewhere.join("video").join("private.mp4"), b"data").unwrap();
+
+        let webview = test_webview(memory_db_with_library(&configured));
+
+        let error = invoke(
+            &webview,
+            "verify_library_content",
+            serde_json::json!({
+                "libraryPath": elsewhere.to_string_lossy(),
+                "onProgress": "__CHANNEL__:1"
+            }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+
+        let slot = library::verification::try_begin_verification()
+            .expect("a refused call must not have claimed the single-run slot");
+        drop(slot);
 
         let _ = fs::remove_dir_all(&configured);
         let _ = fs::remove_dir_all(&elsewhere);

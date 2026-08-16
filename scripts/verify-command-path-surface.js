@@ -618,6 +618,7 @@ export const DECLARED_PATH_SURFACE = [
     { command: "set_external_backup_dir", parameters: ["path"], guard: "chosen-directory" },
     { command: "stage_manual_thumbnail", parameters: ["path"], guard: "user-picked" },
     { command: "stream_live_chat_file", parameters: ["relative_path"], guard: "managed-relative" },
+    { command: "verify_library_content", parameters: ["library_path"], guard: "configured-library" },
 ];
 
 export function readCommandFiles(commandsDir) {

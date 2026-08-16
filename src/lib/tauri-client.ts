@@ -8,9 +8,12 @@ import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { TAURI_COMMANDS, type TauriCommandName } from "../constants/tauri-commands";
 import type { TauriCommandReturns } from "./tauri-command-returns";
 import {
+    contentVerificationEventSchema,
     liveChatStreamEventSchema,
     parseEventPayload,
     validateIpcResult,
+    type ContentVerificationEvent,
+    type ContentVerificationReport,
     type LiveChatStreamEvent,
 } from "./ipc-schemas";
 import { parseAppError } from "../utils/app-error";
@@ -96,6 +99,63 @@ export async function streamLiveChatFile(
 
     await invokeCommand(TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE, { relativePath, onBatch: channel });
     await done;
+}
+
+// Runs the deep library verification, reporting progress through `onProgress` and resolving with
+// the report the backend sends on its terminal `done` message.
+//
+// The same two-phase shape as streamLiveChatFile, and for the same reason: channel messages and the
+// invoke response travel independently, so resolving when the command returns could race the last
+// in-flight message. Here that would drop the report itself, since `done` is what carries it.
+//
+// Rejects when the command fails (a library path that is not the configured one, a verification
+// already running), and also when the run ends without a `done` message, which would otherwise be
+// an await that never settles and a dialog stuck on "verifying" forever.
+export async function streamLibraryVerification(
+    libraryPath: string,
+    onProgress: (checked: number, total: number) => void
+): Promise<ContentVerificationReport> {
+    const channel = new Channel<ContentVerificationEvent>();
+
+    let settle: (report: ContentVerificationReport) => void = () => {};
+    let fail: (error: Error) => void = () => {};
+
+    const done = new Promise<ContentVerificationReport>((resolve, reject) => {
+        settle = resolve;
+        fail = reject;
+    });
+
+    channel.onmessage = (rawEvent) => {
+        const event = parseEventPayload(
+            contentVerificationEventSchema,
+            TAURI_COMMANDS.VERIFY_LIBRARY_CONTENT,
+            rawEvent
+        );
+
+        if (!event) {
+            // Unlike the live chat stream, a message this seam cannot validate ends the run here
+            // rather than being dropped and logged. There the dropped message is one batch of lines
+            // out of many; here it may be the terminal `done`, which is the only thing that carries
+            // the report and the only thing that settles the promise below. Dropping it silently
+            // would leave the caller awaiting forever, which reaches the user as a dialog stuck on
+            // "verifying" with no error and no way back.
+            fail(new Error("The verification reported a result this app could not read."));
+            return;
+        }
+
+        if (event.kind === "progress") {
+            onProgress(event.checked, event.total);
+            return;
+        }
+
+        settle(event.report);
+    };
+
+    await invokeCommand(TAURI_COMMANDS.VERIFY_LIBRARY_CONTENT, { libraryPath, onProgress: channel });
+
+    // Awaited after the invoke, not instead of it: channel messages and the invoke response travel
+    // independently, so resolving on the return could race the `done` that carries the report.
+    return await done;
 }
 
 export async function listenTauri<TPayload>(

@@ -17,6 +17,8 @@ export const TAURI_COMMANDS = {
     MIGRATE_LIBRARY_DIRECTORY: "migrate_library_directory",
     GET_LIBRARY_SUMMARY: "get_library_summary",
     CHECK_LIBRARY_INTEGRITY: "check_library_integrity",
+    VERIFY_LIBRARY_CONTENT: "verify_library_content",
+    CANCEL_LIBRARY_VERIFICATION: "cancel_library_verification",
     OPEN_PATH_IN_SYSTEM: "open_path_in_system",
 
     // Creating a media is one command rather than the chain of steps this list used to name

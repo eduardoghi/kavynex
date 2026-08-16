@@ -29,6 +29,8 @@ import type { AppErrorShape } from "../utils/app-error";
 
 import type {
     Channel,
+    ContentVerificationEvent,
+    ContentVerificationReport,
     LiveChatStreamEvent,
     MediaCommentRow,
     YtDlpComment,
@@ -403,6 +405,28 @@ export const liveChatStreamEventSchema = z.union([
 ]) satisfies z.ZodType<LiveChatStreamEvent>;
 
 export type { LiveChatStreamEvent };
+
+// The deep library verification's channel: a run of `progress` messages, ended by a single `done`
+// carrying the report. Tied to the generated ContentVerificationEvent binding by the `satisfies`
+// below, for the same reason as the live chat one above.
+const contentVerificationReportSchema = z.object({
+    checked: z.number(),
+    verified: z.number(),
+    corrupt: z.number(),
+    corruptExamples: z.array(z.string()),
+    unverifiable: z.number(),
+    unverifiableExamples: z.array(z.string()),
+    unreadable: z.number(),
+    unreadableExamples: z.array(z.string()),
+    cancelled: z.boolean(),
+}) satisfies z.ZodType<ContentVerificationReport>;
+
+export const contentVerificationEventSchema = z.union([
+    z.object({ kind: z.literal("progress"), checked: z.number(), total: z.number() }),
+    z.object({ kind: z.literal("done"), report: contentVerificationReportSchema }),
+]) satisfies z.ZodType<ContentVerificationEvent>;
+
+export type { ContentVerificationEvent, ContentVerificationReport };
 
 // Validates an event/channel payload against `schema`. Returns the parsed value on success, or
 // `null` on a mismatch after logging the specific fields that failed. Unlike `validateIpcResult`

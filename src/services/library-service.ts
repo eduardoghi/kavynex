@@ -1,13 +1,42 @@
 import { openFileDialog, openUrl } from "../lib/tauri-platform";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
-import { invokeCommand, invokeVoid } from "../lib/tauri-client";
+import { invokeCommand, invokeVoid, streamLibraryVerification } from "../lib/tauri-client";
 import { normalizeString } from "../utils/guards";
 import { logError } from "../utils/app-logger";
 import { ClientError } from "../utils/app-error";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
+import type { ContentVerificationReport } from "../types/generated/ContentVerificationReport";
 
 export type { LibrarySummaryInfo };
+
+/**
+ * Re-reads every content-addressed file in the library and checks it against the hash in its own
+ * name, calling `onProgress` as it goes and resolving with the report.
+ *
+ * Long by nature: it reads every byte the library holds, which is why the caller drives a progress
+ * bar and offers `cancelLibraryVerification` rather than showing a spinner. Only one runs at a time;
+ * a second call is refused by the backend rather than queued.
+ */
+export async function verifyLibraryContent(
+    libraryPath: string,
+    onProgress: (checked: number, total: number) => void
+): Promise<ContentVerificationReport> {
+    const normalized = normalizeString(libraryPath);
+
+    if (!normalized) {
+        throw new ClientError("A library folder is required.");
+    }
+
+    return streamLibraryVerification(normalized, onProgress);
+}
+
+/**
+ * Asks a running verification to stop. Safe to call when none is running.
+ */
+export async function cancelLibraryVerification(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.CANCEL_LIBRARY_VERIFICATION);
+}
 
 export function createEmptyLibrarySummary(): LibrarySummaryInfo {
     return {

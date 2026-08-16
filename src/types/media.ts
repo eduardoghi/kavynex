@@ -19,6 +19,8 @@ export type { YtDlpFormat } from "./generated/YtDlpFormat";
 export type { YtDlpFormatsResult } from "./generated/YtDlpFormatsResult";
 export type { DownloadedMediaResult } from "./generated/DownloadedMediaResult";
 export type { LiveChatStreamEvent } from "./generated/LiveChatStreamEvent";
+export type { ContentVerificationEvent } from "./generated/ContentVerificationEvent";
+export type { ContentVerificationReport } from "./generated/ContentVerificationReport";
 
 // What the format picker renders, as opposed to what the backend reports.
 //

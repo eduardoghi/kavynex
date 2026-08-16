@@ -101,6 +101,13 @@ export const INVALID_LIBRARY_MIGRATION_ERROR_CODE = "INVALID_LIBRARY_MIGRATION" 
 // refusal with no message of its own.
 export const LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE =
     "LIBRARY_MIGRATION_ALREADY_RUNNING" as const;
+// The deep library verification is single-run: a second request is refused rather than queued,
+// because the work is proportional to the size of the library and two sweeps would read every
+// byte twice while competing for the same disk. Nothing is wrong and the action is to wait, the
+// same shape as LIBRARY_MIGRATION_ALREADY_RUNNING above.
+export const LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE =
+    "LIBRARY_VERIFICATION_IN_PROGRESS" as const;
+export const LIBRARY_VERIFICATION_FAILED_ERROR_CODE = "LIBRARY_VERIFICATION_FAILED" as const;
 export const PATH_OUTSIDE_BASE_DIR_ERROR_CODE = "PATH_OUTSIDE_BASE_DIR" as const;
 
 export const CHANNEL_ALREADY_EXISTS_ERROR_CODE = "CHANNEL_ALREADY_EXISTS" as const;
@@ -190,6 +197,8 @@ export const KNOWN_ERROR_CODES = [
     DESTINATION_ALREADY_EXISTS_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
     LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE,
+    LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE,
+    LIBRARY_VERIFICATION_FAILED_ERROR_CODE,
     ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
     PATH_OUTSIDE_BASE_DIR_ERROR_CODE,
     CHANNEL_ALREADY_EXISTS_ERROR_CODE,

@@ -15,6 +15,7 @@ pub mod migration;
 pub mod paths;
 pub mod recovery;
 pub mod summary;
+pub mod verification;
 
 pub use media::{delete_media_file_sync, import_media_file_sync};
 pub use migration::migrate_library_directory_sync;

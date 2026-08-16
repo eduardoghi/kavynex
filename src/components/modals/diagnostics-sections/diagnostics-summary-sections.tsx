@@ -1,6 +1,7 @@
 import { Box, Group, Paper, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { Cpu, HardDrive, MessagesSquare, Wrench } from "lucide-react";
 import type { DiagnosticsSummary, ExternalToolStatus } from "../../../types/diagnostics";
+import { DiagnosticsContentVerification } from "./diagnostics-content-verification";
 import { DiagnosticsDatabaseIntegrityCheck } from "./diagnostics-database-integrity-check";
 import { DiagnosticsMetricCard } from "./diagnostics-metric-card";
 import {
@@ -367,6 +368,11 @@ export function DiagnosticsSummarySections({
                             ...diagnostics.libraryIntegrity.corrupt_thumbnail_examples,
                         ]}
                     />
+
+                    {/* The deep version of this same section. Everything above it is derived from
+                        `stat`, which is why it is here on open; the only damage a `stat` reveals is
+                        a zero-length file. */}
+                    <DiagnosticsContentVerification libraryPath={diagnostics.libraryPath} />
                 </Stack>
             </Paper>
 

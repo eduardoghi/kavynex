@@ -40,6 +40,8 @@ pub enum AppErrorCode {
     CanonicalizeDirectoryFailed,
     InvalidLibraryMigration,
     LibraryMigrationAlreadyRunning,
+    LibraryVerificationInProgress,
+    LibraryVerificationFailed,
 
     InvalidDirectoryPath,
     CreateDirectoryFailed,
@@ -213,6 +215,8 @@ impl AppErrorCode {
             Self::CanonicalizeDirectoryFailed => "CANONICALIZE_DIRECTORY_FAILED",
             Self::InvalidLibraryMigration => "INVALID_LIBRARY_MIGRATION",
             Self::LibraryMigrationAlreadyRunning => "LIBRARY_MIGRATION_ALREADY_RUNNING",
+            Self::LibraryVerificationInProgress => "LIBRARY_VERIFICATION_IN_PROGRESS",
+            Self::LibraryVerificationFailed => "LIBRARY_VERIFICATION_FAILED",
 
             Self::InvalidDirectoryPath => "INVALID_DIRECTORY_PATH",
             Self::CreateDirectoryFailed => "CREATE_DIRECTORY_FAILED",
