@@ -64,9 +64,18 @@ reason.
 
 Where each applies today: the write side of a creation runs the relative rule on everything it
 produces (`media_creation::ensure_managed_prepared_paths`), the live-chat commands run it on the
-`relative_path` they receive, and `cleanup_unreferenced_media_artifacts` runs it on its three
-artifact paths (see its own section below for what its absence cost). `library_path` arguments run
-the absolute rule. A command taking both runs both.
+`relative_path` they receive, and `cleanup_unreferenced_media_artifacts` and `delete_thumbnail_file`
+run it on the artifact paths they receive (see the cleanup's own section below for what its absence
+cost). `library_path` arguments run the absolute rule. A command taking both runs both.
+
+**Which rule each path answers to is now declared per parameter**, in
+`scripts/verify-command-path-surface.js`'s `DECLARED_PATH_SURFACE`, and CI refuses an unclassified
+one. That inventory already listed every command taking a path; what it did not ask was which rule
+the path was owed, and both commands that got this wrong were in it, correctly, the whole time. The
+check still does not verify that a command *implements* the class it declares, which needs the call
+chain (the guards sit at three different depths today). It makes the question unavoidable in the
+diff, which is what neither the prose here nor the previous inventory managed. The class vocabulary
+lives beside that constant; this section is what it means.
 
 ### The UNC / network-path refusal
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     DECLARED_NETWORK_REFUSAL_SITES,
     DECLARED_PATH_SURFACE,
+    collectGuardProblems,
     collectPathSurface,
     diffSurface,
     extractNetworkRefusalSites,
@@ -349,9 +350,47 @@ describe("formatSurface", () => {
     it("renders entries in the literal shape the declared inventory uses", () => {
         // The failure message tells the maintainer to paste `--print` output into the inventory, so
         // the rendering has to be valid JavaScript in that position.
-        expect(formatSurface([{ command: "a", parameters: ["path", "dir"] }])).toBe(
-            '    { command: "a", parameters: ["path", "dir"] },'
+        const declared = [
+            { command: "a", parameters: ["path", "dir"], guard: "user-picked" },
+        ];
+
+        expect(formatSurface([{ command: "a", parameters: ["path", "dir"] }], declared)).toBe(
+            '    { command: "a", parameters: ["path", "dir"], guard: "user-picked" },'
         );
+    });
+
+    it("carries an existing per-parameter classification through a regeneration", () => {
+        // Regenerating must not flatten a map into a single class: the two mean different things,
+        // and a command whose paths answer to different rules is exactly the one worth keeping
+        // precise.
+        const declared = [
+            {
+                command: "a",
+                parameters: ["path", "library_path"],
+                guard: { path: "user-picked", library_path: "configured-library" },
+            },
+        ];
+
+        expect(
+            formatSurface([{ command: "a", parameters: ["path", "library_path"] }], declared)
+        ).toBe(
+            '    { command: "a", parameters: ["path", "library_path"], guard: { path: "user-picked", library_path: "configured-library" } },'
+        );
+    });
+
+    it("emits a placeholder for a command it has never seen", () => {
+        // The parser cannot infer a class from a signature, so a new command has to be classified by
+        // hand. Emitting a placeholder that fails `collectGuardProblems` is what stops pasting
+        // `--print` output from being a way to make the gate green without deciding anything.
+        const rendered = formatSurface([{ command: "brand_new", parameters: ["path"] }], []);
+
+        expect(rendered).toContain('guard: "CLASSIFY-ME"');
+        expect(
+            collectGuardProblems(
+                [{ command: "brand_new", parameters: ["path"] }],
+                [{ command: "brand_new", parameters: ["path"], guard: "CLASSIFY-ME" }]
+            )
+        ).toEqual(['brand_new: unknown guard class "CLASSIFY-ME".']);
     });
 });
 
@@ -513,5 +552,120 @@ describe("the declared inventory", () => {
         for (const entry of DECLARED_PATH_SURFACE) {
             expect(entry.parameters.length, entry.command).toBeGreaterThan(0);
         }
+    });
+
+    it("classifies every path in the real inventory", () => {
+        // The gate against itself. Everything below drives collectGuardProblems with crafted
+        // entries; this is the one case that runs it over the inventory the repository ships.
+        const actual = DECLARED_PATH_SURFACE.map(({ command, parameters }) => ({
+            command,
+            parameters,
+        }));
+
+        expect(collectGuardProblems(actual, DECLARED_PATH_SURFACE)).toEqual([]);
+    });
+});
+
+describe("collectGuardProblems", () => {
+    // What this gate is for: a command can be in the inventory, correctly, and still have a path
+    // nobody decided a rule for. Two commands shipped that way (the artifact cleanup and the
+    // thumbnail delete), each confining a library-relative path to the library root instead of to a
+    // managed subdirectory, and both passed the inventory check for years because listing a command
+    // never required an opinion about its paths. These pin that a missing or malformed opinion is
+    // now a failure rather than a silence.
+    const one = [{ command: "one", parameters: ["path"] }];
+    const two = [{ command: "two", parameters: ["a", "b"] }];
+
+    it("accepts a single class for the whole command", () => {
+        expect(
+            collectGuardProblems(one, [
+                { command: "one", parameters: ["path"], guard: "user-picked" },
+            ])
+        ).toEqual([]);
+    });
+
+    it("accepts a per-parameter map covering every parameter", () => {
+        expect(
+            collectGuardProblems(two, [
+                {
+                    command: "two",
+                    parameters: ["a", "b"],
+                    guard: { a: "user-picked", b: "configured-library" },
+                },
+            ])
+        ).toEqual([]);
+    });
+
+    it("reports a command with no guard at all", () => {
+        const [problem] = collectGuardProblems(one, [
+            { command: "one", parameters: ["path"] },
+        ]);
+
+        expect(problem).toContain("no guard class");
+        // The message carries the vocabulary, because the person who hits this is being asked to
+        // choose from a closed set and should not have to go find it.
+        expect(problem).toContain("managed-relative");
+    });
+
+    it("reports a class name that is not one of the known ones", () => {
+        // A typo is the realistic case, and it is the one a free-text field would have accepted
+        // silently while reading as though a rule had been declared.
+        expect(
+            collectGuardProblems(one, [
+                { command: "one", parameters: ["path"], guard: "managed-relatve" },
+            ])
+        ).toEqual(['one: unknown guard class "managed-relatve".']);
+
+        expect(
+            collectGuardProblems(two, [
+                {
+                    command: "two",
+                    parameters: ["a", "b"],
+                    guard: { a: "user-picked", b: "nope" },
+                },
+            ])
+        ).toEqual(['two: unknown guard class "nope" for "b".']);
+    });
+
+    it("reports a map that has drifted from the parameters found in the code", () => {
+        // Both directions, because a signature change moves the classification either way: a
+        // renamed parameter leaves the old name stranded, and an added one leaves a path with no
+        // rule. `parameters` comes from the parser rather than from the declaration precisely so
+        // this can be noticed.
+        expect(
+            collectGuardProblems(two, [
+                {
+                    command: "two",
+                    parameters: ["a", "b"],
+                    guard: { a: "user-picked", b: "user-picked", gone: "user-picked" },
+                },
+            ])
+        ).toEqual([
+            'two: guard names "gone", which is not one of its path parameters (a, b).',
+        ]);
+
+        const [missing] = collectGuardProblems(two, [
+            { command: "two", parameters: ["a", "b"], guard: { a: "user-picked" } },
+        ]);
+
+        expect(missing).toContain('no guard class for "b"');
+    });
+
+    it("reports a guard that is neither a class name nor a map", () => {
+        for (const guard of [["user-picked"], null, 7]) {
+            const [problem] = collectGuardProblems(one, [
+                { command: "one", parameters: ["path"], guard },
+            ]);
+
+            expect(problem, JSON.stringify(guard)).toContain(
+                "must be a class name, or a map"
+            );
+        }
+    });
+
+    it("stays quiet about a command that is not in the inventory at all", () => {
+        // That is diffSurface's finding. Reporting it here too would bury the classification
+        // problems under duplicates of a failure the run already names.
+        expect(collectGuardProblems(one, [])).toEqual([]);
     });
 });

@@ -24,6 +24,13 @@
 // existing one), fails CI until the inventory is updated, and updating it is where the author has to
 // decide which of the threat model's cases the new path falls into.
 //
+// That last sentence described a hope until the inventory started carrying a `guard` class per path
+// (see DECLARED_PATH_SURFACE). Updating the inventory used to mean adding a name, which took no
+// opinion at all, and two commands reached production with a library-relative path confined to the
+// library root rather than to a managed subdirectory while sitting in this list the whole time. The
+// class is not verified against the code, for the reason above; what it does is make "which rule
+// does this answer to" a question the diff cannot avoid.
+//
 // The failure is deliberately two-directional. A removed or renamed command fails too, so the
 // inventory cannot rot into a list of names that no longer exist, which is how the prose version
 // died.
@@ -331,11 +338,26 @@ export function collectPathSurface(files, structSources = []) {
 
 // Renders a surface as the literal below, so a failing run can be fixed by pasting the output of
 // `--print` rather than by hand-editing 28 entries and getting one wrong.
-export function formatSurface(surface) {
+// `declared` is consulted only to carry an existing classification through a regeneration. The
+// parser cannot infer a guard class from a signature (that is the whole reason the class is written
+// by hand), so a command it has never seen is emitted with a placeholder that fails the check until
+// someone replaces it. That is deliberate: pasting `--print` output must not be a way to make the
+// gate green without deciding anything.
+export function formatSurface(surface, declared = DECLARED_PATH_SURFACE) {
+    const byCommand = new Map(declared.map((entry) => [entry.command, entry]));
+
     return surface
         .map(({ command, parameters }) => {
             const rendered = parameters.map((name) => `"${name}"`).join(", ");
-            return `    { command: "${command}", parameters: [${rendered}] },`;
+            const guard = byCommand.get(command)?.guard ?? "CLASSIFY-ME";
+            const renderedGuard =
+                typeof guard === "string"
+                    ? `"${guard}"`
+                    : `{ ${Object.entries(guard)
+                          .map(([parameter, guardClass]) => `${parameter}: "${guardClass}"`)
+                          .join(", ")} }`;
+
+            return `    { command: "${command}", parameters: [${rendered}], guard: ${renderedGuard} },`;
         })
         .join("\n");
 }
@@ -359,6 +381,77 @@ export function diffSurface(actual, declared) {
     const render = ({ command, parameters }) => `${command}(${parameters.join(", ")})`;
 
     return diffEntries(actual.map(render), declared.map(render));
+}
+
+// Checks the guard classification is answerable, not that it is true. See DECLARED_PATH_SURFACE for
+// why the second is out of reach and why the first is still worth a gate.
+//
+// `parameters` is taken from `actual` (what the parser found in the tree) rather than from the
+// declared entry, so a per-parameter map cannot drift into naming a parameter that no longer
+// exists, or quietly stop covering one that was added. `diffSurface` already fails on the parameter
+// list changing at all; this is what makes the *classification* move with it instead of being left
+// describing the previous signature.
+export function collectGuardProblems(actual, declared = DECLARED_PATH_SURFACE) {
+    const known = new Set(Object.keys(GUARD_CLASSES));
+    const byCommand = new Map(declared.map((entry) => [entry.command, entry]));
+    const problems = [];
+
+    for (const { command, parameters } of actual) {
+        const entry = byCommand.get(command);
+
+        // A command missing from the inventory entirely is diffSurface's finding, not this one.
+        // Reporting it twice would bury the classification problems among duplicates.
+        if (entry === undefined) {
+            continue;
+        }
+
+        const { guard } = entry;
+
+        if (guard === undefined) {
+            problems.push(
+                `${command}: no guard class. Say which rule its path answers to; the classes are ${[...known].join(", ")}.`
+            );
+            continue;
+        }
+
+        if (typeof guard === "string") {
+            if (!known.has(guard)) {
+                problems.push(`${command}: unknown guard class "${guard}".`);
+            }
+            continue;
+        }
+
+        if (typeof guard !== "object" || guard === null || Array.isArray(guard)) {
+            problems.push(
+                `${command}: guard must be a class name, or a map from parameter to class name.`
+            );
+            continue;
+        }
+
+        for (const [parameter, guardClass] of Object.entries(guard)) {
+            if (!parameters.includes(parameter)) {
+                problems.push(
+                    `${command}: guard names "${parameter}", which is not one of its path parameters (${parameters.join(", ")}).`
+                );
+            }
+
+            if (!known.has(guardClass)) {
+                problems.push(
+                    `${command}: unknown guard class "${guardClass}" for "${parameter}".`
+                );
+            }
+        }
+
+        for (const parameter of parameters) {
+            if (!(parameter in guard)) {
+                problems.push(
+                    `${command}: no guard class for "${parameter}". Every path parameter needs one, or use a single class for the whole command.`
+                );
+            }
+        }
+    }
+
+    return problems.sort();
 }
 
 // The source with its `#[cfg(test)] mod tests { ... }` block removed, so a call site that only
@@ -450,40 +543,83 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
     "services/yt_dlp/cookies.rs::normalize_cookies_path",
 ];
 
-// The declared path surface. Every entry is a command that takes a path from the caller; how each
-// one satisfies the rule (a network refusal, the library guard, a strictly-relative path that
-// cannot express an absolute one, or a documented exception) is recorded in docs/THREAT-MODEL.md, not here.
-// duplicating it would give this file a second job it cannot keep honest.
+// The classes of rule a caller-supplied path can be required to satisfy, from docs/THREAT-MODEL.md.
+//
+// This list used to live only in that document, on the stated grounds that duplicating it here
+// would give this file a second job it could not keep honest. That reasoning was right about the
+// job and wrong about the cost of not doing it. Naming the class is not a second job, because
+// nothing here verifies it: the check below is that every path *has* a class and that the class
+// names a real parameter, not that the code implements it. What it buys is a thinking step at the
+// only moment anyone is guaranteed to be looking, which is the moment CI refuses the diff.
+//
+// The evidence for the change is two commands, found five weeks apart, that took a
+// library-relative path and confined it to the library *root* rather than to a managed
+// subdirectory, so a bare `contract.docx` resolved inside the user's own library folder and was
+// unlinked. Both were in the inventory below the whole time, correctly, and both passed this gate,
+// because listing a command required no opinion about which rule its paths answer to. The second
+// one (`delete_thumbnail_file`) had additionally been read past twice by a human specifically
+// looking for the first one's siblings, because the library-path guard on the line above it makes
+// the command look settled. Writing the class down is what separated them.
+const GUARD_CLASSES = {
+    // An absolute library path, accepted only when it canonicalizes to the one in app_settings.
+    "configured-library": "services/library/guard.rs::ensure_configured_library_path*",
+    // A library-relative path required to name one of MANAGED_LIBRARY_DIRS.
+    "managed-relative": "utils/path.rs::ensure_managed_library_relative_path / _in_managed_dir",
+    // Confined to the library root by canonical containment, and deliberately no further. Only for
+    // an operation where reaching a non-managed file is harmless; today that is the read-only
+    // reveal in the file manager, which writes and deletes nothing.
+    "library-confined": "services/library/mod.rs::resolve_path_inside_library",
+    // An absolute path confined to an app cache subdirectory rather than to the library.
+    "cache-confined": "utils/path.rs::ensure_existing_path_inside_dir against a temp_paths dir",
+    // An absolute path the user chose in a file dialog. Bounded by an extension gate and the
+    // network refusal, never by the library, because it has to reach a file that is not in one yet.
+    "user-picked": "an extension gate plus utils/path.rs::is_network_path",
+    // A directory the user chose in a folder dialog, on the path where nothing is persisted yet so
+    // there is nothing to cross-check against. Refused inside the app config directory; the absent
+    // network refusal is the documented accepted residual, not an omission.
+    "chosen-directory": "an existence/containment check, no network refusal (see THREAT-MODEL.md)",
+};
+
+// The declared path surface. Every entry is a command that takes a path from the caller, plus the
+// class of rule each of those paths answers to. `guard` is a single class when every path in the
+// command shares one, or a per-parameter map when they differ.
+//
+// What the check enforces about `guard`: that it is present, that every class name is one of the
+// above, and that a per-parameter map names exactly the parameters found in the code. What it
+// deliberately does not enforce is that the command implements the class, which needs the call
+// chain (see the header). The guards sit at three different depths today (in the command file, one
+// hop into a service, and at the write boundary deep inside one), so a textual check would report
+// confidently and be wrong, which is worse on this surface than reporting nothing.
 //
 // Regenerate with: node scripts/verify-command-path-surface.js --print
 export const DECLARED_PATH_SURFACE = [
-    { command: "check_library_integrity", parameters: ["library_path"] },
-    { command: "cleanup_unreferenced_media_artifacts", parameters: ["file_path", "thumbnail_path", "live_chat_file_path"] },
-    { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"] },
-    { command: "delete_live_chat_file", parameters: ["relative_path"] },
-    { command: "delete_temporary_thumbnail", parameters: ["path"] },
-    { command: "delete_thumbnail_file", parameters: ["thumbnail_path", "library_path"] },
-    { command: "download_channel_avatar_from_handle", parameters: ["library_path"] },
-    { command: "ensure_directory_exists", parameters: ["path"] },
-    { command: "export_database", parameters: ["destination_path"] },
-    { command: "fetch_youtube_comments", parameters: ["cookies_path"] },
-    { command: "generate_temporary_thumbnail", parameters: ["path"] },
-    { command: "get_library_summary", parameters: ["library_path"] },
-    { command: "import_database", parameters: ["source_path"] },
-    { command: "insert_channel", parameters: ["avatar_path"] },
-    { command: "is_directory_empty", parameters: ["path"] },
-    { command: "list_yt_dlp_formats", parameters: ["cookies_path"] },
-    { command: "migrate_library_directory", parameters: ["old_library_path", "new_library_path"] },
-    { command: "open_path_in_system", parameters: ["path", "library_path"] },
-    { command: "persist_thumbnail_file", parameters: ["path", "library_path"] },
-    { command: "register_library_asset_scope", parameters: ["library_path"] },
-    { command: "replace_channel_avatar", parameters: ["avatar_path"] },
-    { command: "resolve_display_thumbnails", parameters: ["relative_paths", "library_path"] },
-    { command: "resolve_existing_directory", parameters: ["path"] },
-    { command: "set_app_settings", parameters: ["library_path"] },
-    { command: "set_external_backup_dir", parameters: ["path"] },
-    { command: "stage_manual_thumbnail", parameters: ["path"] },
-    { command: "stream_live_chat_file", parameters: ["relative_path"] },
+    { command: "check_library_integrity", parameters: ["library_path"], guard: "configured-library" },
+    { command: "cleanup_unreferenced_media_artifacts", parameters: ["file_path", "thumbnail_path", "live_chat_file_path"], guard: "managed-relative" },
+    { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"], guard: { source_value: "user-picked", thumbnail_source_path: "user-picked", library_path: "configured-library", cookies_path: "user-picked" } },
+    { command: "delete_live_chat_file", parameters: ["relative_path"], guard: "managed-relative" },
+    { command: "delete_temporary_thumbnail", parameters: ["path"], guard: "cache-confined" },
+    { command: "delete_thumbnail_file", parameters: ["thumbnail_path", "library_path"], guard: { thumbnail_path: "managed-relative", library_path: "configured-library" } },
+    { command: "download_channel_avatar_from_handle", parameters: ["library_path"], guard: "configured-library" },
+    { command: "ensure_directory_exists", parameters: ["path"], guard: "chosen-directory" },
+    { command: "export_database", parameters: ["destination_path"], guard: "user-picked" },
+    { command: "fetch_youtube_comments", parameters: ["cookies_path"], guard: "user-picked" },
+    { command: "generate_temporary_thumbnail", parameters: ["path"], guard: "user-picked" },
+    { command: "get_library_summary", parameters: ["library_path"], guard: "configured-library" },
+    { command: "import_database", parameters: ["source_path"], guard: "user-picked" },
+    { command: "insert_channel", parameters: ["avatar_path"], guard: "managed-relative" },
+    { command: "is_directory_empty", parameters: ["path"], guard: "chosen-directory" },
+    { command: "list_yt_dlp_formats", parameters: ["cookies_path"], guard: "user-picked" },
+    { command: "migrate_library_directory", parameters: ["old_library_path", "new_library_path"], guard: { old_library_path: "configured-library", new_library_path: "chosen-directory" } },
+    { command: "open_path_in_system", parameters: ["path", "library_path"], guard: { path: "library-confined", library_path: "configured-library" } },
+    { command: "persist_thumbnail_file", parameters: ["path", "library_path"], guard: { path: "user-picked", library_path: "configured-library" } },
+    { command: "register_library_asset_scope", parameters: ["library_path"], guard: "configured-library" },
+    { command: "replace_channel_avatar", parameters: ["avatar_path"], guard: "managed-relative" },
+    { command: "resolve_display_thumbnails", parameters: ["relative_paths", "library_path"], guard: { relative_paths: "managed-relative", library_path: "configured-library" } },
+    { command: "resolve_existing_directory", parameters: ["path"], guard: "chosen-directory" },
+    { command: "set_app_settings", parameters: ["library_path"], guard: "chosen-directory" },
+    { command: "set_external_backup_dir", parameters: ["path"], guard: "chosen-directory" },
+    { command: "stage_manual_thumbnail", parameters: ["path"], guard: "user-picked" },
+    { command: "stream_live_chat_file", parameters: ["relative_path"], guard: "managed-relative" },
 ];
 
 export function readCommandFiles(commandsDir) {
@@ -560,6 +696,10 @@ function main() {
 
     const surface = verifyCommandPathSurface(files, DECLARED_PATH_SURFACE, structSources);
     const refusals = verifyNetworkRefusalSites(structSources, DECLARED_NETWORK_REFUSAL_SITES);
+    const guardProblems = collectGuardProblems(
+        collectPathSurface(files, structSources),
+        DECLARED_PATH_SURFACE
+    );
 
     const report = (changed, title) => {
         if (changed.added.length === 0 && changed.removed.length === 0) {
@@ -596,11 +736,20 @@ function main() {
         "The set of functions refusing a network path has changed."
     );
 
-    if (!surfaceChanged && !refusalsChanged) {
+    if (guardProblems.length > 0) {
+        console.error("Every caller-supplied path has to say which rule it answers to.\n");
+        for (const problem of guardProblems) {
+            console.error(`  ! ${problem}`);
+        }
+        console.error("");
+    }
+
+    if (!surfaceChanged && !refusalsChanged && guardProblems.length === 0) {
         console.log(
             `The command path surface matches the declared inventory ` +
                 `(${DECLARED_PATH_SURFACE.length} commands, ` +
-                `${DECLARED_NETWORK_REFUSAL_SITES.length} network-refusal sites).`
+                `${DECLARED_NETWORK_REFUSAL_SITES.length} network-refusal sites, ` +
+                `every path classified).`
         );
         return;
     }
