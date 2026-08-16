@@ -58,35 +58,6 @@ where
     stream_live_chat_lines(&absolute, batch_lines, emit)
 }
 
-/// Resolves a library-relative path to an absolute path inside the library and removes the live
-/// chat replay file if it exists (a missing file is a no-op). Extracted for the same reason as
-/// [`read_live_chat_relative_sync`]; the caller holds the library read guard.
-fn delete_live_chat_relative_sync(library_dir: &Path, relative_path: &str) -> AppResult<()> {
-    // Scope to the live_chat/ subtree so this delete cannot be repointed at a video/audio/thumbnail
-    // file (the raw relative_path comes straight from IPC).
-    ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_LIVE_CHAT)?;
-
-    let absolute =
-        absolute_path_from_relative(library_dir, relative_path, ManagedSubtree::LiveChat)?;
-
-    if absolute.exists() {
-        // Re-resolve symlinks and re-check containment before unlinking, matching
-        // delete_media_file_sync / delete_thumbnail_file_sync: absolute_path_from_relative only does
-        // a lexical check, so an intermediate symlink component pointing outside the library would
-        // otherwise let this remove a file outside the managed tree.
-        ensure_existing_path_inside_dir(&absolute, library_dir)?;
-
-        std::fs::remove_file(&absolute).map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::RemoveMediaFailed,
-                format!("failed to remove live chat file: {e}"),
-            )
-        })?;
-    }
-
-    Ok(())
-}
-
 /// Streams a live chat replay file from the library to the frontend over `on_batch`, one batch of
 /// lines at a time (transparently gunzipped), so a long replay is never materialized as one giant
 /// string on either side of the IPC boundary. A terminal `Done` event follows the last batch.
@@ -136,52 +107,6 @@ pub async fn stream_live_chat_file(
                 format!("failed to signal live chat stream completion: {error}"),
             )
         })
-    })
-    .await
-}
-
-/// Rewords a failed unlink after the database reference was already cleared: a bare "failed to
-/// remove" reads as "nothing happened, retry the delete", when the entry is in fact gone and the
-/// file (if still present) is an orphan for the library diagnostics to reconcile. Only the unlink
-/// failure is reworded. A containment rejection happens before anything is touched and keeps its
-/// own error. Extracted from the command so the code gate is unit-testable (the command itself
-/// needs an AppHandle the IPC mock cannot host).
-fn reword_unlink_error_after_reference_clear(error: AppError) -> AppError {
-    if error.code == AppErrorCode::RemoveMediaFailed.as_str() {
-        AppError::from_code(
-            AppErrorCode::RemoveMediaFailed,
-            format!(
-                "the live chat entry was removed from the library, but its file could \
-                 not be deleted and was left behind - run Diagnostics to clean it up \
-                 ({})",
-                error.message
-            ),
-        )
-    } else {
-        error
-    }
-}
-
-/// Deletes a live chat replay file from the library, if it exists, and clears the live-chat columns
-/// on the video row that referenced it.
-#[tauri::command]
-pub async fn delete_live_chat_file(app: AppHandle, relative_path: String) -> AppResult<()> {
-    let library_dir = configured_library_dir(&app).await?;
-    let pool = crate::services::database::shared_pool(&app).await?;
-
-    // Clear the referencing row's live-chat columns before removing the file. A crash between the
-    // two steps then leaves only an orphaned file (which the library diagnostics reconcile), never a
-    // row flagged has_live_chat = 1 pointing at a deleted file. A path-without-file state the v13
-    // CHECK constraint does not catch.
-    crate::services::video_repository::clear_live_chat_reference(&pool, relative_path.trim())
-        .await?;
-
-    run_blocking(move || {
-        // Serialize against a concurrent library migration (see services::library::lock).
-        let _library_guard = crate::services::library::lock::library_read_guard();
-
-        delete_live_chat_relative_sync(&library_dir, &relative_path)
-            .map_err(reword_unlink_error_after_reference_clear)
     })
     .await
 }
@@ -301,69 +226,6 @@ mod tests {
     }
 
     #[test]
-    fn delete_live_chat_relative_sync_removes_an_existing_file() {
-        let library = unique_library_dir("delete");
-        let file = library.join("live_chat").join("clip.live_chat.json");
-        fs::write(&file, b"{}").unwrap();
-
-        delete_live_chat_relative_sync(&library, "live_chat/clip.live_chat.json").unwrap();
-        assert!(!file.exists());
-
-        let _ = fs::remove_dir_all(&library);
-    }
-
-    #[test]
-    fn delete_live_chat_relative_sync_is_a_no_op_for_a_missing_file() {
-        let library = unique_library_dir("delete-missing");
-
-        // Deleting a file that is not there succeeds without error (idempotent).
-        delete_live_chat_relative_sync(&library, "live_chat/missing.json").unwrap();
-
-        let _ = fs::remove_dir_all(&library);
-    }
-
-    #[test]
-    fn delete_live_chat_relative_sync_rejects_a_traversal_path() {
-        let library = unique_library_dir("delete-traversal");
-        let outside = library.parent().unwrap().join("keep.json");
-        fs::write(&outside, b"keep").unwrap();
-
-        let error = delete_live_chat_relative_sync(&library, "../keep.json").unwrap_err();
-        assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
-        // The traversal was rejected before any removal, so the outside file is untouched.
-        assert!(outside.exists());
-
-        let _ = fs::remove_file(&outside);
-        let _ = fs::remove_dir_all(&library);
-    }
-
-    #[test]
-    fn a_failed_unlink_is_reworded_after_the_reference_was_cleared() {
-        let error = AppError::from_code(
-            AppErrorCode::RemoveMediaFailed,
-            "failed to remove live chat file: access denied",
-        );
-
-        let reworded = reword_unlink_error_after_reference_clear(error);
-        assert_eq!(reworded.code, AppErrorCode::RemoveMediaFailed.as_str());
-        assert!(
-            reworded.message.contains("was removed from the library"),
-            "the message must say the reference is already gone: {}",
-            reworded.message
-        );
-        assert!(reworded.message.contains("access denied"));
-    }
-
-    #[test]
-    fn a_containment_rejection_keeps_its_own_error() {
-        let error = AppError::from_code(AppErrorCode::InvalidRelativePath, "path escapes library");
-
-        let unchanged = reword_unlink_error_after_reference_clear(error);
-        assert_eq!(unchanged.code, AppErrorCode::InvalidRelativePath.as_str());
-        assert_eq!(unchanged.message, "path escapes library");
-    }
-
-    #[test]
     fn stream_live_chat_relative_sync_rejects_a_non_live_chat_managed_path() {
         // A path inside the library but outside live_chat/ (a real media file) must be rejected:
         // the command must not double as a reader for arbitrary library files.
@@ -373,21 +235,6 @@ mod tests {
 
         let error = collect_relative(&library, "video/media.mp4").unwrap_err();
         assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
-
-        let _ = fs::remove_dir_all(&library);
-    }
-
-    #[test]
-    fn delete_live_chat_relative_sync_rejects_a_non_live_chat_managed_path() {
-        // The delete must not be repointable at a video/audio/thumbnail file.
-        let library = unique_library_dir("delete-scope");
-        fs::create_dir_all(library.join("video")).unwrap();
-        let file = library.join("video").join("media.mp4");
-        fs::write(&file, b"data").unwrap();
-
-        let error = delete_live_chat_relative_sync(&library, "video/media.mp4").unwrap_err();
-        assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
-        assert!(file.exists(), "a non-live-chat file must not be deleted");
 
         let _ = fs::remove_dir_all(&library);
     }

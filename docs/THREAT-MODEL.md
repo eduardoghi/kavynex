@@ -82,10 +82,10 @@ that function, so a caller that unlinks or reads the result still re-checks with
 intermediate component.
 
 Where each applies today: the write side of a creation runs the relative rule on everything it
-produces (`media_creation::ensure_managed_prepared_paths`), the live-chat commands run it on the
-`relative_path` they receive, and `cleanup_unreferenced_media_artifacts` and `delete_thumbnail_file`
-run it on the artifact paths they receive (see the cleanup's own section below for what its absence
-cost). `library_path` arguments run the absolute rule. A command taking both runs both.
+produces (`media_creation::ensure_managed_prepared_paths`), `stream_live_chat_file` runs it on the
+`relative_path` it receives, and `delete_thumbnail_file` runs it on the artifact path it receives
+(see its own section below for what its absence cost). `library_path` arguments run the absolute
+rule. A command taking both runs both.
 
 **Which rule each path answers to is now declared per parameter**, in
 `scripts/verify-command-path-surface.js`'s `DECLARED_PATH_SURFACE`, and CI refuses an unclassified
@@ -429,33 +429,39 @@ validated on its own. `media_creation` mostly does, with one gap that made the p
 `media_type` a yt-dlp creation stores is the download's own value and never passes through
 `normalize_create_media_request`, so nothing but the table's `CHECK` would stand behind it.
 
-#### The cleanup's three paths are confined to the managed subdirectories, not only to the library
+#### The two commands that unlinked a caller-named file were removed, after being fixed
 
-`cleanup_unreferenced_media_artifacts` is the app's one command that unlinks a file named by the
-caller, so it belongs in the path table above rather than only in the concurrency discussion below.
-Its base directory was never caller-supplied (`library::cleanup::execute_plan_locked` re-derives it
-from the persisted settings) and the per-file deletes canonicalize before unlinking
-(`ensure_existing_path_inside_dir`), so nothing could escape the library tree. The half that was
-missing is the other one: containment to the library *root* still admitted a name like
-`contract.docx` or `photos/wedding.jpg`, and the reference count that decides an unlink answers "no
-row points at this" for every file the app never wrote. The library folder is one the user picked
-and is not required to be empty, which the asset scope already accounts for
-(`managed_asset_scope_dirs` refuses to grant the root for exactly that reason), so those are the
-user's own files and the command would have deleted them and reported success.
+For most of this app's life `cleanup_unreferenced_media_artifacts` was the one command that unlinked
+a file named by the caller. Its base directory was never caller-supplied
+(`library::cleanup::execute_plan_locked` re-derives it from the persisted settings) and the per-file
+deletes canonicalize before unlinking (`ensure_existing_path_inside_dir`), so nothing could escape
+the library tree. The half that was missing is the other one: containment to the library *root*
+still admitted a name like `contract.docx` or `photos/wedding.jpg`, and the reference count that
+decides an unlink answers "no row points at this" for every file the app never wrote. The library
+folder is one the user picked and is not required to be empty, which the asset scope already
+accounts for (`managed_asset_scope_dirs` refuses to grant the root for exactly that reason), so
+those are the user's own files and the command would have deleted them and reported success.
 
-`commands/media.rs::ensure_managed_artifact_paths` now requires each of the three to name one of
-`MANAGED_LIBRARY_DIRS` before anything is counted or unlinked. It is the same
-`utils::path::ensure_managed_library_relative_path` that `media_creation::ensure_managed_prepared_paths`
-already ran on every path a creation *produces*, whose doc comment names arbitrary file deletion as
-the thing it prevents; the delete side simply did not apply it. Applying it costs nothing, because
-the only caller passes paths this backend just returned and those are managed by construction. The
-guard is a separate pure function so it is one call from a test, which the command itself is not
-(every command in that file takes an `AppHandle` and cannot be driven through the mock-runtime IPC
-harness), and `commands/media.rs`'s tests pin both directions.
-
+The fix was to require each of the three paths to name one of `MANAGED_LIBRARY_DIRS` before anything
+was counted or unlinked, the same `utils::path::ensure_managed_library_relative_path` that
+`media_creation::ensure_managed_prepared_paths` already ran on every path a creation *produces*.
 `delete_live_chat_file` had the equivalent check (`ensure_relative_path_in_managed_dir`) all along,
-which is what made the omission visible: two commands taking a caller-supplied library-relative path,
-one applying the rule and one not.
+which is what made the omission visible: two commands taking a caller-supplied library-relative
+path, one applying the rule and one not.
+
+**Both commands are gone now, and the sequence is the point.** Neither had a caller in `src/`.
+`cleanup_unreferenced_media_artifacts` lost its last one when the creation sequence moved into the
+backend and nothing noticed; `delete_live_chat_file` was never wired to a UI at all. So the work
+above hardened a door nothing walked through, and it was five days between that hardening and the
+deletion of the command. The effect they exposed survives where it is actually used:
+`library::cleanup::cleanup_unreferenced_artifacts` is still what a failed creation and the
+pending-media sweep run, and a media delete still removes its replay through the plan
+`delete_media_row_and_plan_cleanup` builds.
+
+What stops that from recurring is not this paragraph. `scripts/verify-command-surface-is-used.js`
+runs in CI and refuses a registered command that no wrapper in `src/` calls, which is the same
+answer this repository gives every other inventory it keeps. See
+[`decisions/2026-08-16-no-command-without-a-caller.md`](decisions/2026-08-16-no-command-without-a-caller.md).
 
 **`delete_thumbnail_file` was the same defect, and it was found only by classifying every path
 argument by the rule it needs rather than by reading each command.** That is worth recording as a
@@ -470,12 +476,13 @@ the same kind of value, so a sibling managed directory is refused too rather tha
 
 #### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
-`cleanup_unreferenced_media_artifacts` reference-counts each artifact path against the database and
-then unlinks the files nothing points at (`services/library/cleanup.rs`). Folding that count and the
-unlink into one backend call closed the multi-round-trip race the frontend used to have, but the two
-steps are still not atomic against a *concurrent* media creation that resolves to the same
-content-addressed path. A wrapping transaction cannot help. The unlink necessarily happens after
-any commit, since the filesystem cannot join a SQLite transaction.
+`library::cleanup::cleanup_unreferenced_artifacts` reference-counts each artifact path against the
+database and then unlinks the files nothing points at (`services/library/cleanup.rs`). It runs on a
+failed creation and on the pending-media startup sweep. Folding the count and the unlink into one
+backend call closed the multi-round-trip race the frontend used to have when it drove the sequence,
+but the two steps are still not atomic against a *concurrent* media creation that resolves to the
+same content-addressed path. A wrapping transaction cannot help. The unlink necessarily happens
+after any commit, since the filesystem cannot join a SQLite transaction.
 
 What closes it is a lock: `library::cleanup::MEDIA_REGISTRATION_LOCK`, taken by the cleanup around
 its count-and-unlink and by `media_creation::register_prepared_media` around its
@@ -486,7 +493,7 @@ serializing it costs nothing a user waits on, and a keying scheme would only add
 wrong.
 
 **That sentence was true of one caller and not of the other three, which is worth stating rather
-than quietly fixing.** The lock sat on `cleanup_unreferenced_media_artifacts`, and this section read
+than quietly fixing.** The lock sat on the unreferenced-artifact cleanup alone, and this section read
 as though it covered every unlink. It did not. `delete_media_with_artifacts`,
 `delete_channel_with_artifacts` and `replace_channel_avatar` reach the same removal through
 `library::cleanup::execute_plan`, which took no lock at all and rested entirely on

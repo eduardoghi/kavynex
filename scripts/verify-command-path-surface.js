@@ -594,9 +594,7 @@ const GUARD_CLASSES = {
 // Regenerate with: node scripts/verify-command-path-surface.js --print
 export const DECLARED_PATH_SURFACE = [
     { command: "check_library_integrity", parameters: ["library_path"], guard: "configured-library" },
-    { command: "cleanup_unreferenced_media_artifacts", parameters: ["file_path", "thumbnail_path", "live_chat_file_path"], guard: "managed-relative" },
     { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"], guard: { source_value: "user-picked", thumbnail_source_path: "user-picked", library_path: "configured-library", cookies_path: "user-picked" } },
-    { command: "delete_live_chat_file", parameters: ["relative_path"], guard: "managed-relative" },
     { command: "delete_temporary_thumbnail", parameters: ["path"], guard: "cache-confined" },
     { command: "delete_thumbnail_file", parameters: ["thumbnail_path", "library_path"], guard: { thumbnail_path: "managed-relative", library_path: "configured-library" } },
     { command: "download_channel_avatar_from_handle", parameters: ["library_path"], guard: "configured-library" },

@@ -48,3 +48,4 @@ of the codebase the alternative was rejected against.
 - [2026-07-30, the IPC surface exposes operations, not steps](2026-07-30-ipc-exposes-operations-not-steps.md)
 - [2026-07-30, every command taking a library_path verifies it](2026-07-30-no-unguarded-library-path.md)
 - [2026-07-30, no per-file grant in the asset-protocol scope](2026-07-30-no-per-file-asset-scope-grant.md)
+- [2026-08-16, a command with no caller is removed, not kept for later](2026-08-16-no-command-without-a-caller.md)

@@ -17,13 +17,6 @@ export type {
 } from "./live-chat-parsing";
 
 /**
- * Deletes a live chat replay file from the library, if it exists.
- */
-export async function deleteLiveChatFile(relativePath: string): Promise<void> {
-    await invokeVoid(TAURI_COMMANDS.DELETE_LIVE_CHAT_FILE, { relativePath });
-}
-
-/**
  * Lists stored live chat files as library-relative paths (e.g. `live_chat/<file>`), for
  * diagnostics.
  */

@@ -57,17 +57,6 @@ export async function updateMediaProgress(
     await invokeVoid(TAURI_COMMANDS.UPDATE_MEDIA_PROGRESS, { mediaId, progressSeconds });
 }
 
-export async function cleanupUnreferencedMediaArtifacts(
-    filePath: string | null,
-    thumbnailPath: string | null,
-    liveChatFilePath: string | null
-): Promise<ArtifactCleanupReport> {
-    return invokeCommand(
-        TAURI_COMMANDS.CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS,
-        { filePath, thumbnailPath, liveChatFilePath }
-    );
-}
-
 // Records the duration measured for an already-created media. Separate from `createMedia` because
 // the measurement is: the probe decodes the file through a media element, which only the webview
 // can do, so it runs here once the row exists rather than inside the creation.

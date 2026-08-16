@@ -69,7 +69,7 @@ unless you `cd src-tauri` first):
 - `cargo fmt --manifest-path src-tauri/Cargo.toml --all`: format (CI runs
   `--check`, i.e. it fails if this would change anything, it does not auto-fix for you).
 
-Repository consistency (plain Node, no install needed. CI runs all three on every push):
+Repository consistency (plain Node, no install needed. CI runs all five on every push):
 
 - `node scripts/verify-release-version.js`: fails when `package.json`,
   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
@@ -83,8 +83,16 @@ Repository consistency (plain Node, no install needed. CI runs all three on ever
   in unexamined; adding or removing a guard stops here too, so that document's table of enforcement
   sites cannot drift from the code the way it once did. Run it with `--print` to regenerate both
   inventories once the document is right.
+- `node scripts/verify-capability-surface.js`: fails when the Tauri APIs the two seam files import
+  and the permissions `src-tauri/capabilities/` grants drift apart in either direction, so a new
+  binding cannot ship without its permission being decided and a grant cannot outlive the call that
+  needed it. Run it with `--print` to see the current seam surface.
+- `node scripts/verify-command-surface-is-used.js`: fails when a command registered in
+  `generate_handler!` has no constant, no wrapper, or no caller anywhere in `src/`. A command
+  nothing calls is still reachable from the renderer, and two that unlinked files stayed registered
+  for weeks that way. Run it with `--print` to see each command's wrapper and how many files call it.
 
-A fourth consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
+A sixth consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
 on every push:
 
 - `node scripts/verify-mutants-exclusions.js <cargo mutants --list output>`: fails when an

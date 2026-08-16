@@ -104,6 +104,21 @@ jobs:
             - name: Verify the capability surface matches the Tauri seam
               run: node scripts/verify-capability-surface.js
 
+            # The sibling of the check above, over this app's own IPC commands rather than over the
+            # Tauri permissions: every command `generate_handler!` registers must be reachable from a
+            # constant, a wrapper and at least one caller in `src/`.
+            #
+            # The gap it closes is the one the capability gate does not: the ACL does not gate a
+            # `#[tauri::command]` at all, so the Rust command layer is the trust boundary, and a
+            # command with no caller is surface the renderer holds for nothing. Two shipped that way
+            # for weeks, both of them unlinking files, and one was hardened five days before it was
+            # deleted. See docs/decisions/2026-08-16-no-command-without-a-caller.md.
+            #
+            # Node-only and reads the sources as text, so it runs before the install like the checks
+            # around it.
+            - name: Verify every registered command is actually called
+              run: node scripts/verify-command-surface-is-used.js
+
             # This project writes a plain `-` and never a unicode dash, in code and in comments
             # alike. That is a house style rather than a correctness rule, which is exactly why it
             # needs enforcing rather than remembering: a convention with no gate behind it drifts

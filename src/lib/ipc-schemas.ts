@@ -301,8 +301,6 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     migrate_library_directory:
         migrateLibraryDirectoryResultSchema satisfies z.ZodType<MigrateLibraryDirectoryResult>,
     list_live_chat_files: z.array(z.string()),
-    cleanup_unreferenced_media_artifacts:
-        artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
     // The registered media. Worth validating rather than trusting even though it comes straight
     // back from a command this app wrote: the caller feeds `filePath`/`mediaType` to the duration
     // probe and `youtubeVideoId` to the comment backup, so a wrong shape here would surface two

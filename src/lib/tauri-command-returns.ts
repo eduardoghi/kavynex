@@ -55,10 +55,8 @@ export type TauriCommandReturns = {
     // marker, inserts the row and clears the marker, and answers with the registered media.
     create_media: CreatedMedia;
     stream_live_chat_file: void;
-    delete_live_chat_file: void;
     list_live_chat_files: string[];
     migrate_live_chat_to_library: void;
-    cleanup_unreferenced_media_artifacts: ArtifactCleanupReport;
 
     generate_temporary_thumbnail: string;
     // The path of the staged copy in the preview directory, not the path the user picked.

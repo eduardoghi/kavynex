@@ -25,10 +25,8 @@ export const TAURI_COMMANDS = {
     // src-tauri/src/commands/media.rs for why they were removed rather than left registered.
     CREATE_MEDIA: "create_media",
     STREAM_LIVE_CHAT_FILE: "stream_live_chat_file",
-    DELETE_LIVE_CHAT_FILE: "delete_live_chat_file",
     LIST_LIVE_CHAT_FILES: "list_live_chat_files",
     MIGRATE_LIVE_CHAT_TO_LIBRARY: "migrate_live_chat_to_library",
-    CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS: "cleanup_unreferenced_media_artifacts",
 
     GENERATE_TEMP_THUMBNAIL: "generate_temporary_thumbnail",
     STAGE_MANUAL_THUMBNAIL: "stage_manual_thumbnail",

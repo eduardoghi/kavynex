@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
-    cleanupUnreferencedMediaArtifacts,
     createMedia,
     deleteMediaWithArtifacts,
     getMediaRepositoryStats,
@@ -137,31 +136,6 @@ describe("media-repository command wiring", () => {
             mediaId: 9,
             progressSeconds: 42,
         });
-    });
-
-    it("cleanupUnreferencedMediaArtifacts passes every path and returns the cleanup report", async () => {
-        const report = {
-            deleted_paths: ["video/a.mp4"],
-            skipped_shared_paths: ["thumbnails/shared.jpg"],
-            failed_paths: [],
-        };
-        invokeCommandMock.mockResolvedValueOnce(report as never);
-
-        await expect(
-            cleanupUnreferencedMediaArtifacts(
-                "video/a.mp4",
-                "thumbnails/shared.jpg",
-                "live_chat/a.json.gz"
-            )
-        ).resolves.toBe(report);
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.CLEANUP_UNREFERENCED_MEDIA_ARTIFACTS,
-            {
-                filePath: "video/a.mp4",
-                thumbnailPath: "thumbnails/shared.jpg",
-                liveChatFilePath: "live_chat/a.json.gz",
-            }
-        );
     });
 
     it("getMediaRepositoryStats invokes the stats command", async () => {
