@@ -481,6 +481,26 @@ browser cookies; without the host check, a compromised frontend could point yt-d
 those cookies) at an arbitrary site. The app only ever needs YouTube, so this closes the
 gap without losing functionality.
 
+**"Every URL" includes the ones the backend builds itself**, which is a distinction
+`normalize_channel_handle_to_url` (`services/thumbnail/download/mod.rs`) did not make. It has five
+exits: one for a pasted URL, which was checked, and four that concatenate a handle onto a literal
+`https://www.youtube.com/` prefix, which were not. The reasoning was sound as far as it went, since
+the literal prefix fixes the authority and no handle can steer it into a different host. But that is
+a property of string formatting rather than a check, nothing asserted it, and the argument has to be
+re-derived by every reader. The gate is now a single exit every branch passes through, and a test
+pins it over all four constructed shapes plus the ways a caller might try to move the authority (a
+leading slash, a userinfo `@`, a protocol-relative prefix, a query or fragment carrying another URL).
+
+It matters more on this path than on the others because the handle does not have to be a validated
+one: `download_channel_avatar_from_handle` (`commands/thumbnail.rs`) takes it straight from IPC and
+never calls `utils::validation::ensure_valid_youtube_handle`, so this function is the only gate that
+value meets before it becomes a yt-dlp argument.
+
+One behavior follows and is worth naming rather than discovering: a handle carrying a character no
+URI may hold (a space, a control character) no longer parses, so it is refused here instead of being
+handed to yt-dlp to fail on. No real `@name`, `c/` or `user/` form contains one, and a refusal up
+front is the clearer of the two failures.
+
 Every yt-dlp invocation also places a literal `--` separator before the URL argument
 (the argv builder in `services/yt_dlp/download/command.rs`, and `services/yt_dlp/metadata.rs`
 for the metadata calls), so the URL can never be reinterpreted as a

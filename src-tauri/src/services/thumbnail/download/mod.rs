@@ -89,6 +89,22 @@ async fn finalize_thumbnail_download(
     persist_thumbnail_from_source_async(downloaded_thumb, library_dir).await
 }
 
+/// Turns a stored/typed channel handle into the URL yt-dlp is asked to extract from.
+///
+/// Every exit goes through `is_allowed_youtube_url`, including the branches that *build* the URL
+/// rather than receive one. That single gate is the point rather than a formality: the pasted-URL
+/// branch was checked and the four constructed branches were not, on the reasonable grounds that a
+/// literal `https://www.youtube.com/` prefix fixes the authority. It does, but that is a property of
+/// string formatting rather than a check, nothing asserted it, and the value reaching this function
+/// is not always a validated handle. `download_channel_avatar_from_handle` takes it straight from
+/// IPC without running `utils::validation::ensure_valid_youtube_handle` at all, so this is the only
+/// gate on that path. The rule the rest of the backend states, that every URL handed to yt-dlp
+/// passes the host allow-list, now holds here by construction instead of by argument.
+///
+/// One consequence worth naming: a handle that cannot be parsed as a URI at all (an embedded space,
+/// a control character, a stray `[`) is now refused here instead of being handed to yt-dlp to fail
+/// on. Real handles are unaffected. YouTube's own `@name`, `c/` and `user/` forms carry none of
+/// those, and the refusal is the clearer of the two failures.
 fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
     let normalized = youtube_handle.trim();
 
@@ -99,37 +115,34 @@ fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
         ));
     }
 
-    if normalized.starts_with("http://") || normalized.starts_with("https://") {
-        // A pasted URL is handed straight to yt-dlp (with access to browser cookies),
-        // so it must be restricted to YouTube. Without this a compromised frontend, or a
-        // user pasting an arbitrary URL into the handle field, could point yt-dlp at an
-        // internal/loopback host, bypassing the SSRF guard used elsewhere.
-        if !is_allowed_youtube_url(normalized) {
-            return Err(AppError::from_code(
-                AppErrorCode::InvalidUrl,
-                "channel handle URL must point to YouTube",
-            ));
-        }
-
-        return Ok(normalized.to_string());
-    }
-
-    if normalized.starts_with('@') {
-        return Ok(format!("https://www.youtube.com/{normalized}"));
-    }
-
-    // The frontend also accepts and stores the `channel/UC...`, `c/name` and `user/name` forms
-    // (see `normalizeYoutubeHandle` in src/utils/youtube.ts). These are path prefixes, not
-    // handles, so they must be appended as-is; prefixing them with `@` (the fallback below)
-    // would build a broken URL such as `https://www.youtube.com/@channel/UC...`.
-    if normalized.starts_with("channel/")
+    let candidate = if normalized.starts_with("http://") || normalized.starts_with("https://") {
+        // A pasted URL is handed straight to yt-dlp (with access to browser cookies), so it must be
+        // restricted to YouTube. Without this a compromised frontend, or a user pasting an arbitrary
+        // URL into the handle field, could point yt-dlp at an internal/loopback host, bypassing the
+        // SSRF guard used elsewhere. Passed through unchanged for the gate below to judge.
+        normalized.to_string()
+    } else if normalized.starts_with('@')
+        // The frontend also accepts and stores the `channel/UC...`, `c/name` and `user/name` forms
+        // (see `normalizeYoutubeHandle` in src/utils/youtube.ts). These are path prefixes, not
+        // handles, so they must be appended as-is; prefixing them with `@` (the fallback below)
+        // would build a broken URL such as `https://www.youtube.com/@channel/UC...`.
+        || normalized.starts_with("channel/")
         || normalized.starts_with("c/")
         || normalized.starts_with("user/")
     {
-        return Ok(format!("https://www.youtube.com/{normalized}"));
+        format!("https://www.youtube.com/{normalized}")
+    } else {
+        format!("https://www.youtube.com/@{normalized}")
+    };
+
+    if !is_allowed_youtube_url(&candidate) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "channel handle must resolve to a YouTube URL",
+        ));
     }
 
-    Ok(format!("https://www.youtube.com/@{normalized}"))
+    Ok(candidate)
 }
 
 /// Resolves the library directory and creates the fresh temp subdirectory a thumbnail/avatar run
@@ -589,6 +602,64 @@ mod tests {
             assert!(
                 normalize_channel_handle_to_url(url).is_err(),
                 "{url} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn every_built_url_passes_the_host_allow_list() {
+        // The gate this function's exit now goes through, asserted over the four branches that
+        // *construct* a URL rather than receive one. Those were unchecked, on the grounds that the
+        // literal prefix fixes the authority, and nothing said so. This is what says so: whatever a
+        // branch builds, the host allow-list is what lets it out. Covers the shapes a caller could
+        // use to try to steer the authority (a leading slash, a userinfo `@`, a protocol-relative
+        // prefix, a backslash), all of which stay on www.youtube.com as path or query.
+        for handle in [
+            "@Hardwareunboxed",
+            "Hardwareunboxed",
+            "channel/UCabcdEFGH1234567890xyzA",
+            "c/SomeChannel",
+            "user/LegacyName",
+            "channel/UC/with/slashes",
+            "//evil.example/x",
+            "@evil.example",
+            "/evil.example",
+            "c//evil.example/",
+            "@x?redirect=https://evil.example",
+            "@x#evil.example",
+            // Brackets are only special in the authority (an IPv6 literal), so in a path they
+            // parse and stay on-host. Kept here rather than among the refusals because that is
+            // the safe outcome, and because it is the near-miss most likely to be assumed hostile.
+            "channel/UC[brackets]",
+        ] {
+            let url = normalize_channel_handle_to_url(handle)
+                .unwrap_or_else(|error| panic!("{handle} should build a url, got {error:?}"));
+
+            assert!(
+                is_allowed_youtube_url(&url),
+                "{handle} built {url}, which the host allow-list must accept"
+            );
+            assert!(
+                url.starts_with("https://www.youtube.com/"),
+                "{handle} built {url}, which must stay on the youtube host"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_channel_handle_refuses_a_handle_that_cannot_form_a_uri() {
+        // The behavior change the single gate brings: a handle carrying a character no URI may hold
+        // fails to parse, so the allow-list refuses it here rather than yt-dlp failing on it later.
+        // No real YouTube handle looks like this, and a clear refusal beats a confusing extractor
+        // error. Named so the trade is visible if a legitimate handle ever lands in this class.
+        for handle in [
+            "user/legacy name",
+            "c/name\nwith-newline",
+            "@name\twith-tab",
+        ] {
+            assert!(
+                normalize_channel_handle_to_url(handle).is_err(),
+                "{handle} should be refused: it cannot form a URI"
             );
         }
     }
