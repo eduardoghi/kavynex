@@ -45,22 +45,6 @@ pub async fn list_media_page(
     repo::list_media_page(&pool, channel_id, &query).await
 }
 
-// `insert_media` and `find_media_by_channel_and_file_path` used to be commands here, and are gone
-// for the reason the six removed from `commands/media.rs` were: each was a *step* of creating a
-// media, exposed only because the renderer once ran that sequence itself. `create_media` is the
-// sequence now, so `services::media_creation` is the only caller of either, and the comment in
-// `commands/media.rs` that recorded them as a deliberate leftover no longer has to.
-//
-// They outlived that change because every IPC test below seeded its rows through `insert_media`,
-// which made removing them test surgery rather than a line in the same commit. The tests seed
-// through `repo::insert_media` directly now.
-//
-// The validation `insert_media` carried moved with it, into `repo::insert_media`, rather than being
-// deleted along with the command. It belongs at the write boundary rather than at the IPC one: as a
-// command-layer check it applied to arriving over IPC, which left the one remaining caller trusted
-// to have validated on its own, and it mostly had, except that a yt-dlp download's `media_type` is
-// the download's own value and never the normalized request's.
-
 #[tauri::command]
 pub async fn list_media_comments_by_media_id(
     db: State<'_, Db>,

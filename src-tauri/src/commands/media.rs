@@ -46,30 +46,18 @@ pub async fn cleanup_unreferenced_media_artifacts(
     .await
 }
 
-// This file used to expose four more commands, and they are gone rather than left registered:
-// `record_pending_media_artifacts` / `clear_pending_media_artifacts` (the two ends of the crash
-// marker) and `import_media_file`, alongside `download_media_from_url`, `download_thumbnail_from_url`
-// and `media_exists_for_channel_and_youtube_id` in their own files. Every one of them was a *step* of
-// a media creation, exposed only because the renderer ran the sequence and therefore needed each
-// step individually. `create_media` above is that sequence, so the steps are internal now.
+// The rule this file holds, for a command added later: the IPC surface exposes an operation, not
+// its steps. `services::pending_media`, `services::yt_dlp` and `services::library::media` hold the
+// steps of a media creation, and the backend is their only caller.
 //
-// Removing them is the point rather than a tidy-up, and the marker pair shows why most clearly: a
-// marker names library artifacts and the startup sweep acts on it, so a renderer able to write one
-// could name files it never created and have the next launch reconcile them, while one able to clear
-// one could drop the record of a creation that really did die. The same argument, one step down,
-// applies to the download and the import: both write into the library, and a caller invoking them
-// directly produced exactly the artifacts-with-no-row state this whole module exists to bound (// except with no marker behind it, because recording one was the renderer's job.
+// The crash-marker pair shows why that matters most clearly. A marker names library artifacts and
+// the startup sweep acts on what it names, so a caller able to write one could name files it never
+// created and have the next launch reconcile them, while a caller able to clear one could drop the
+// record of a creation that really did die. The same argument, one step down, covers the download
+// and the import: both write into the library, so reaching either directly produces the
+// artifacts-with-no-row state this module exists to bound, with no marker behind it.
 //
-// The principle, for a command added later: the IPC surface exposes an operation, not its steps.
-// `services::pending_media`, `services::yt_dlp` and `services::library::media` still expose all of
-// these to the backend, which is now their only caller.
-//
-// `insert_media` and `find_media_by_channel_and_file_path` (`commands/videos.rs`) were the two that
-// stayed behind, because every IPC test in that file seeded its rows through the first one), test
-// surgery rather than a line in this change. That surgery has since been done: those tests seed
-// through `services::video_repository` directly, and both commands are gone. The validation
-// `insert_media` performed moved down into the repository rather than away, so it applies to every
-// caller instead of only to the one that arrived over IPC.
+// See `docs/decisions/2026-07-30-ipc-exposes-operations-not-steps.md`.
 
 // No command in this file can be driven through a true IPC round trip with the
 // harness `commands/library.rs` uses (`tauri::test::mock_builder` + `get_ipc_response`).

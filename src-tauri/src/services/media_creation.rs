@@ -5,26 +5,13 @@
 //! at them be inserted. Between those two points the files sit in the library with nothing
 //! referencing them, and that window is what everything here is shaped around.
 //!
-//! This used to be orchestrated by the renderer, across seven IPC calls, and two properties fell out
-//! of that which neither is true any more:
-//!
-//! - **The window crossed the process boundary.** Each hop was a place the process could stop with
-//!   artifacts on disk and no row. The crash marker (`services::pending_media`) covered the part of
-//!   it that a `catch` structurally cannot, and still does, but the window it has to cover is now
-//!   the inside of one function rather than the span of five round trips.
-//! - **The exclusion rested on the frontend.** Nothing kept two creations from resolving to the same
-//!   content-addressed path except the add-media modal refusing to start a second one, which
-//!   `docs/THREAT-MODEL.md` recorded as the one guarantee in that document depending on renderer behavior. It
-//!   is now [`library::cleanup::media_registration_guard`], a lock the reference-counted cleanup
-//!   takes too, so a queue or a batch import cannot reopen it by construction.
-//!
 //! What deliberately stayed in the renderer is everything *after* the row lands: the comment backup,
 //! the live-chat notice, the duration probe. None of them is inside the window (the media is
 //! registered and safe by then), and the duration probe in particular reads the file through a
 //! `<video>` element, which is a webview capability rather than something to reimplement over
-//! FFmpeg. Keeping it outside also removed a real hazard: that probe resolves on `loadedmetadata` or
-//! `error` and had no timeout, so a source that produced neither used to hang the creation with the
-//! marker on disk. It cannot now. The row is already in.
+//! FFmpeg. It also has to stay outside the window: the probe resolves on `loadedmetadata` or
+//! `error` and carries no timeout, so a source that fires neither would hang a creation that still
+//! had its marker on disk.
 //!
 //! The ordering inside [`create_media_async`] is load-bearing in two places, and both are the same
 //! rule stated twice: never record something that is not true yet. The marker is written *after* the

@@ -262,24 +262,6 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
     .await
 }
 
-// There used to be an `allow_asset_file` command here: it granted one user-picked image in the
-// asset-protocol scope so the manual-thumbnail preview could draw it through `convertFileSrc`. It is
-// gone rather than fixed, and the reason is worth keeping where the scope machinery lives.
-//
-// Tauri's scope has no way to withdraw a grant, so every picked image stayed authorized for the rest
-// of the session. A set that only grew, in the one command whose whole job was to widen this app's
-// arbitrary-local-file-read boundary to a caller-chosen path. The obvious cleanup is worse than the
-// problem: a forbid outranks every later allow (see `session_forbidden_dirs` above), so revoking a
-// discarded preview would make the same image picked for a second media silently render nothing.
-//
-// `commands::thumbnail::stage_manual_thumbnail` replaced it by copying the picked image into
-// `thumbs-temp/`, which `register_cache_asset_scope` already authorizes as a directory. The preview
-// then needs no grant at all, the copy is swept and deleted like every other preview, and the file
-// that eventually lands in the library is byte-identical because the copy is. It also closed a gap
-// this command carried: it called `is_file()` straight on the caller's path with no network-location
-// refusal, so a `\\host\share\x.png` handed over IPC would have authenticated to `host` over SMB.
-// the guard every other caller-supplied path in this codebase applies.
-
 #[cfg(test)]
 mod tests {
     use super::*;

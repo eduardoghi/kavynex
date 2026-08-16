@@ -163,36 +163,22 @@ case has limited blast radius:
   (`stage_database_import_undo`) reuses that function with the `.pre-import` snapshot, whose
   extension it would reject; that source is written by the backend and never comes from IPC.
 
-### The three library-reading commands are guarded, and were not always
+### The three library-reading commands are guarded
 
 `get_library_summary`, `check_library_integrity` and `open_path_in_system` take a `library_path`
 over IPC and verify it against the persisted setting
 (`library::guard::ensure_configured_library_path_in_pool`), like every other command that takes
-one. They are called out here because they used to be listed *above*, as a deliberate exception,
-on the grounds that the onboarding and change-library flows needed them to act on a candidate
-folder before it was persisted.
+one.
 
-That premise did not hold. No caller ever passed a candidate: the settings modal and the
-diagnostics summary both pass `settings.libraryPath` (the persisted value), and the
-change-library flow (`src/use-cases/change-library-path.ts`) previews a candidate with
-`ensure_directory_exists` / `is_directory_empty`, which are a different group with their own
-residual below. The exception cost the project's central rule and bought nothing, so it is gone.
+They are named here rather than left to the rule above because they were an exception to it until
+2026-07-30, on the grounds that onboarding and the change-library flow needed them to act on a
+candidate folder before it was persisted. No caller ever did. What the exception cost while it
+stood, per command, is in
+[`decisions/2026-07-30-no-unguarded-library-path.md`](decisions/2026-07-30-no-unguarded-library-path.md);
+the short version is that the integrity report names real filenames, so a trusted `library_path`
+made it a directory enumerator for any tree on disk.
 
-What it had cost, in order of severity:
-
-- **`check_library_integrity` was a directory enumerator.** Its report carries up to five real
-  filenames per category (`orphan_media_examples` and its siblings), gathered by walking
-  `<library_path>/video`, `/audio`, `/thumbnails` and `/live_chat`. A trusted `library_path`
-  therefore let a compromised renderer name files in any tree on disk holding one of those
-  subdirectories. The names are worth reporting (Diagnostics exists to tell the user which of
-  their own files are unreferenced), so the fix is the guard, not a poorer report.
-- **`get_library_summary` disclosed directory sizes and counts** for any path.
-- **`open_path_in_system`'s containment check was self-referential.**
-  `resolve_path_inside_library` confines `path` to `library_path`, so a caller supplying both
-  satisfied it trivially by passing the same directory as each. The guard is what makes that
-  containment mean something.
-
-Two platform-specific defenses inside `open_path_in_system` predate the guard and stay, because
+Two platform-specific defenses inside `open_path_in_system` sit alongside the guard, because
 defense in depth is the point and neither costs anything:
 
 - A UNC / network path (`\\host\share`): merely resolving one on Windows triggers an
@@ -211,8 +197,8 @@ The guard also subsumes part of the cross-cutting UNC rule for the other two: a 
 library still resolves, which is the supported configuration.
 
 Each command has an IPC-level test pinning the refusal
-(`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`), so the exception
-cannot come back by accident.
+(`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`), so an unguarded
+`library_path` cannot come back by accident.
 
 Two of the three reach the guard through `verify_library_path_then_blocking_in_pool`, which couples
 the check to the work so neither can run without the other. `check_library_integrity` applies
@@ -357,34 +343,30 @@ silent growth that check exists to prevent, in the shape this codebase deliberat
 `source_value` needs a `// path-surface:` marker on the field even so, because its name is honest
 about being a URL half the time and therefore says nothing about the other half.
 
-**The artifacts-without-a-row window used to cross the process boundary.** Between the file landing
+**The artifacts-without-a-row window does not cross the process boundary.** Between the file landing
 in the library and the row pointing at it, the library holds bytes nothing references. That window
 still exists (it is inherent, since a file cannot join a SQLite transaction), but it is now the
 inside of one function instead of the span of five round trips, and no step of it is separately
 reachable.
 
-**The steps are no longer exposed.** `import_media_file`, `download_media_from_url`,
-`download_thumbnail_from_url`, `media_exists_for_channel_and_youtube_id` and the two crash-marker
-commands (`record_pending_media_artifacts` / `clear_pending_media_artifacts`) were removed from the
-IPC surface with the same change, because each existed only so the renderer could run one step of the
-sequence. Two of them mattered more than the rest: a caller invoking the download or the import
-directly wrote into the library and produced exactly that artifacts-with-no-row state, with no marker
-behind it. The marker was the renderer's job to write. The rule for a command added later is that
-the IPC surface exposes an operation, not its steps.
+**The steps are not exposed.** No individual step of a creation is a registered command: the
+download, the import, the thumbnail fetch, the duplicate check and both ends of the crash marker are
+reachable from `services::media_creation` alone. The rule for a command added later is that the IPC
+surface exposes an operation, not its steps.
 
-`insert_media` and `find_media_by_channel_and_file_path` stayed registered for a while after that,
-and are now gone too. The reason they lingered was not a security judgment: `insert_media` was what
-every IPC test in `commands/videos.rs` seeded its rows with, so removing it was test surgery rather
-than a line in the same change. Those tests seed through `services::video_repository` directly now,
-which is what let the surface actually shrink to what the rule says.
+Two of those mattered more than the rest, and are why the rule is stated as a security property
+rather than a tidiness one. A caller able to invoke the download or the import directly writes into
+the library and produces exactly the artifacts-with-no-row state above, with no marker behind it,
+because writing the marker was the renderer's job. A caller able to write a marker names library
+artifacts the startup sweep will act on. The eight commands this removed, and when, are in
+[`decisions/2026-07-30-ipc-exposes-operations-not-steps.md`](decisions/2026-07-30-ipc-exposes-operations-not-steps.md).
 
-The validation `insert_media` carried moved rather than being deleted with it, and where it moved to
-is the point. As a command-layer check it was a property of *arriving over IPC*, which left
-`media_creation` (the one remaining caller), trusted to have validated on its own. It mostly had,
-with one gap: the `media_type` a yt-dlp creation stores is the download's own value and never passes
-through `normalize_create_media_request`, so nothing but the table's `CHECK` stood behind it. The
-checks now live in `video_repository::insert_media`, which is the write boundary every caller
-reaches. The rule this document applies everywhere else, applied here.
+**The write validation lives at the write boundary**, in `video_repository::insert_media`, rather
+than on a command. That distinction is the reason it is mentioned here at all: as a command-layer
+check it would be a property of *arriving over IPC*, which leaves an internal caller trusted to have
+validated on its own. `media_creation` mostly does, with one gap that made the point. the
+`media_type` a yt-dlp creation stores is the download's own value and never passes through
+`normalize_create_media_request`, so nothing but the table's `CHECK` would stand behind it.
 
 #### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
@@ -680,23 +662,19 @@ is ever widened too far:
   matches the persisted settings (the same check described above), so a compromised
   frontend cannot widen the scope to an arbitrary directory.
 
-There used to be a second one, `allow_asset_file`, which granted a single user-picked image so the
-manual-thumbnail preview could draw it. It is gone rather than tightened, and the reasoning is the
-useful part. Tauri's scope has no way to *withdraw* a grant, so every image a user previewed stayed
-authorized for the rest of the session. A set that only ever grew, in the one command whose purpose
-was to widen this boundary to a caller-chosen path. The obvious cleanup is worse than the problem: a
-forbid outranks every later allow (the same asymmetry `session_forbidden_dirs` exists to work
-around), so revoking a discarded preview would make the same image, picked again for a second media,
-silently render nothing.
+**No command grants a single file.** The manual-thumbnail preview needs to draw an image the user
+picked from anywhere on disk, and it does so without a grant:
+`commands::thumbnail::stage_manual_thumbnail` copies that image into `thumbs-temp/`, which is
+already authorized as a directory (below), and the preview draws the copy. The file that eventually
+reaches the library is byte-identical because it is a copy, and the copy is swept like every other
+preview.
 
-`commands::thumbnail::stage_manual_thumbnail` replaced it by copying the picked image into
-`thumbs-temp/`, which is already authorized as a directory (below). The preview then needs no grant
-at all, the copy is swept and deleted like every other preview, and the file that eventually reaches
-the library is byte-identical because the copy is. Removing the command also closed a gap it
-carried: it called `is_file()` directly on the caller's path with no network-location refusal, so a
-`\\host\share\x.png` arriving over IPC would have authenticated to `host` over SMB and leaked the
-user's NTLM hash. The guard every other caller-supplied path here applies. The replacement refuses
-one before it touches the filesystem.
+That shape is deliberate and the alternative is worse, which is worth knowing before anyone proposes
+it: Tauri's scope has no way to *withdraw* a grant, so a per-file grant accumulates for the whole
+session, and revoking one is not a fix either, since a forbid outranks every later allow (the
+asymmetry `session_forbidden_dirs` exists to work around). A command doing exactly that existed
+until 2026-07-30; see
+[`decisions/2026-07-30-no-per-file-asset-scope-grant.md`](decisions/2026-07-30-no-per-file-asset-scope-grant.md).
 
 Two subdirectories of the app's cache directory are authorized once, in `lib.rs`'s `setup()`
 (`register_cache_asset_scope`): `thumbs-temp/`, which holds the preview shown before a thumbnail is
