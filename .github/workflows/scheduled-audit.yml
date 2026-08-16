@@ -115,6 +115,136 @@ jobs:
                       2> deny-bans.json
                   node scripts/summarize-cargo-deny-bans.js deny-bans.json >> "$GITHUB_STEP_SUMMARY"
 
+    # The third thing that decays while nothing in this repository changes, and the one the two jobs
+    # above cannot see: yt-dlp's output format.
+    #
+    # Every other external input here is pinned - the toolchain, Node, the runner images, every
+    # action by SHA, every `cargo install` by version. yt-dlp is the structural exception and cannot
+    # be pinned: it is a system binary resolved from PATH (services/binaries.rs), whatever version
+    # the user's package manager last installed. `models/yt_dlp.rs` deserializes its
+    # `--dump-single-json`, and every test covering that reads a committed fixture, which passes
+    # forever no matter what upstream does.
+    #
+    # WHAT THIS JOB DOES NOT DO, since the obvious reading of its name is the wrong one: it does not
+    # check the contract. That needs a real YouTube fetch, and it was tried here first - the test
+    # already exists (`live_yt_dlp_output_still_matches_the_committed_fixture`) and is already
+    # written to run unattended. On a GitHub runner YouTube answers "Sign in to confirm you're not a
+    # bot", because runners are datacenter IPs, so the test skipped and the job went green having
+    # verified nothing. Measured, not assumed: run 31979578316.
+    #
+    # A non-YouTube extractor was the next idea and does not work either. The fields that break the
+    # app (`vcodec`, `acodec`, `height`, `resolution`, `comment_count`) are generic InfoDict *keys*
+    # but are only populated by extractors doing real format enumeration; yt-dlp's generic extractor
+    # against a locally served file returns one empty format, so a test against it would pass forever
+    # regardless of upstream. Which is worse than no test.
+    #
+    # So the verification stays local, where it works, and what is automated is the part that was
+    # actually missing. The gap was never "this cannot be checked" - it is that checking depended on
+    # the maintainer noticing yt-dlp had moved. This job notices. It compares the version the fixture
+    # records against yt-dlp's latest release and opens an issue when they differ, which needs no
+    # YouTube, no third-party site and no network beyond the GitHub API this workflow already uses.
+    yt-dlp-fixture-freshness:
+        name: yt-dlp fixture freshness
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            contents: read
+            # Self-contained on purpose: it opens and closes its own tracker rather than routing
+            # through the shared alert/close jobs below. Those key off a job *failing*, and a new
+            # yt-dlp release is not a failure of anything. Wiring it in would have meant either a red
+            # run every couple of weeks until the fixture is refreshed - the "trains you to ignore
+            # it" outcome this repository keeps arguing against - or threading a third result through
+            # two conditions that exist to stay identical to mutation.yml's.
+            issues: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            # Compared for *equality*, not ordering. yt-dlp versions are dates (`2026.07.04`) with
+            # occasional point releases (`2026.07.04.1`), and the question here is not "is the
+            # fixture older" but "was it captured from something other than what a user installs
+            # today". Any difference means refresh it, which sidesteps date parsing entirely.
+            #
+            # The version is read from `_captured_from_yt_dlp` in the fixture rather than from the
+            # prose in its `_comment`, which states the same fact in a sentence: a reworded comment
+            # would break this silently, and this file already carries two other gates whose whole
+            # reason for existing is that a prose-and-code pair drifted.
+            - name: Compare the fixture's yt-dlp version against the latest release
+              id: freshness
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  CAPTURED=$(node -p "require('./src-tauri/tests/fixtures/yt-dlp-metadata-youtube.json')._captured_from_yt_dlp")
+                  LATEST=$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq '.tag_name')
+
+                  if [ -z "$CAPTURED" ] || [ "$CAPTURED" = "undefined" ]; then
+                      echo "::error::the fixture has no _captured_from_yt_dlp version to compare against"
+                      exit 1
+                  fi
+
+                  echo "captured=$CAPTURED" >> "$GITHUB_OUTPUT"
+                  echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+                  echo "Fixture captured from $CAPTURED; yt-dlp latest is $LATEST."
+
+                  if [ "$CAPTURED" = "$LATEST" ]; then
+                      echo "stale=false" >> "$GITHUB_OUTPUT"
+                      echo "### yt-dlp fixture: current ($CAPTURED)" >> "$GITHUB_STEP_SUMMARY"
+                  else
+                      echo "stale=true" >> "$GITHUB_OUTPUT"
+                      echo "### yt-dlp fixture: behind" >> "$GITHUB_STEP_SUMMARY"
+                      echo "Captured from \`$CAPTURED\`, latest release is \`$LATEST\`. Run the local contract check." >> "$GITHUB_STEP_SUMMARY"
+                  fi
+
+            # Matched exactly rather than by substring, like the close job below: `--search` is full
+            # text, so a prefix match could comment on an unrelated issue opened by hand.
+            - name: Open or update the tracking issue
+              if: steps.freshness.outputs.stale == 'true'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  CAPTURED: ${{ steps.freshness.outputs.captured }}
+                  LATEST: ${{ steps.freshness.outputs.latest }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="yt-dlp has released a version the fixture was not captured from"
+                  BODY=$(printf '%s' \
+                      "yt-dlp \`$LATEST\` is out; \`src-tauri/tests/fixtures/yt-dlp-metadata-youtube.json\` was captured from \`$CAPTURED\`. " \
+                      "This is a reminder, not a failure: nothing is known to be broken, and the fixture-based tests still pass either way, which is exactly why this needs saying out loud. " \
+                      "Run the contract check locally, where YouTube answers (CI gets a bot check):"$'\n\n' \
+                      '```'$'\n' \
+                      "cargo test --manifest-path src-tauri/Cargo.toml -- --ignored live_yt_dlp_output"$'\n' \
+                      '```'$'\n\n' \
+                      "If it passes, refresh \`_captured_from_yt_dlp\` to \`$LATEST\` and this issue closes itself on the next run. If it fails, yt-dlp's output moved: update the fixture and probably \`models/yt_dlp.rs\` with it. Run: $RUN_URL")
+
+                  EXISTING=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$EXISTING" ]; then
+                      gh issue comment "$EXISTING" --body "$BODY"
+                  else
+                      gh issue create --title "$TITLE" --body "$BODY"
+                  fi
+
+            - name: Close the tracking issue once the fixture caught up
+              if: steps.freshness.outputs.stale == 'false'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  CAPTURED: ${{ steps.freshness.outputs.captured }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="yt-dlp has released a version the fixture was not captured from"
+                  NUMBER=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$NUMBER" ]; then
+                      echo "Closing #$NUMBER ($TITLE)"
+                      gh issue close "$NUMBER" \
+                          --comment "The fixture is now captured from \`$CAPTURED\`, which is yt-dlp's latest release: $RUN_URL"
+                  fi
+
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
     # signal - the header of this file frames the workflow's whole job as "surfacing" a new
     # advisory, and an email alone barely does that. Open (or comment on) a tracking issue so a
