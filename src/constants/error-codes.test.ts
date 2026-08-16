@@ -86,70 +86,179 @@ describe("error codes stay in sync with the backend", () => {
 });
 
 // The checks above run frontend -> backend: every code the frontend claims to mirror still exists
-// in Rust, which catches a rename. This is the other direction, and it is the one that was missing.
+// in Rust, which catches a rename. This is the other direction, and it is deliberately *total*:
+// every code error.rs emits is either catalogued with a message of its own, or named below as one
+// that falls back on purpose. There is no third outcome, and that is the whole point.
 //
-// It is deliberately not "every backend code needs a message". Most of the ~125 do not: an
-// unreachable canonicalize failure is exactly what GENERIC_BACKEND_ERROR_MESSAGE is for. What the
-// generic line is *not* for is a failure the user caused and can fix, and there is nothing about a
-// code's shape that distinguishes the two, so the distinction is declared here. A code added to
-// error.rs for a new user-facing refusal, and not catalogued, degrades in silence to "check the app
-// log file", which is how the six added alongside this test went unnoticed.
+// It replaced a hand-listed USER_FACING_BACKEND_CODES: thirty codes asserted not to reach the
+// generic line. That list was opt-in on precisely the act it existed to protect. A code added to
+// error.rs for a new user-facing refusal was only checked once someone remembered to list it, and
+// forgetting to list it degrades in silence exactly the way forgetting the message does. A
+// partition has nothing to remember: a new Rust code fails this file until it is classified, and
+// classifying it means reading the generic line and deciding whether it is the right answer.
 //
-// Adding to this list is the deliberate act; the payoff is that forgetting the message is not.
-const USER_FACING_BACKEND_CODES = [
-    // Local import and the FFmpeg thumbnail preview: the user picked a file Kavynex does not take.
-    "UNSUPPORTED_MEDIA_EXTENSION",
-    // The yt-dlp add flow.
-    "INVALID_URL",
-    "INVALID_FORMAT_ID",
-    "YT_DLP_NOT_FOUND",
-    "YT_DLP_SELECTED_FORMAT_NOT_FOUND",
-    "YT_DLP_RUN_ALREADY_ACTIVE",
-    "TOO_MANY_CONCURRENT_YT_DLP_RUNS",
-    "YT_DLP_DOWNLOAD_FAILED",
-    "YT_DLP_DOWNLOAD_CANCELLED",
-    "YT_DLP_DOWNLOAD_TIMEOUT",
-    "FFMPEG_NOT_FOUND",
-    // Channel and media writes the user drives directly.
-    "CHANNEL_ALREADY_EXISTS",
-    "VIDEO_ALREADY_EXISTS_FOR_CHANNEL",
-    "INVALID_CHANNEL_NAME",
-    "INVALID_YOUTUBE_HANDLE",
-    "CHANNEL_NOT_FOUND",
-    "MEDIA_NOT_FOUND",
-    // The library folder, and files that moved out from under it.
-    "INVALID_LIBRARY_PATH",
-    "INVALID_LIBRARY_MIGRATION",
-    "ASSET_SCOPE_RESTART_REQUIRED",
-    "MEDIA_FILE_NOT_FOUND",
-    "LIVE_CHAT_FILE_NOT_FOUND",
-    "LIVE_CHAT_FILE_UNREADABLE",
-    "TOO_MANY_CONCURRENT_LIVE_CHAT_READS",
-    "THUMBNAIL_NOT_SUPPORTED_FOR_AUDIO",
-    "INVALID_THUMBNAIL_FILE",
-    // Settings > Database. These reach the user at the worst moment there is (the recovery flow
-    // after the database failed to open), so the generic line is least acceptable here.
-    "DATABASE_SCHEMA_TOO_NEW",
-    "NO_DATABASE_BACKUP_AVAILABLE",
-    "NO_DATABASE_IMPORT_TO_UNDO",
-    "DATABASE_ALREADY_OPEN",
-] as const;
+// Most codes belong below, and that is not a shortcoming. An unreachable canonicalize failure, a
+// temp-directory create that only fails when the disk is full: the generic line plus the backend
+// detail is the right answer for those, and a bespoke message for each would be noise the user
+// reads instead of a message that matters. What the generic line is NOT for is a failure the user
+// caused and can fix, and nothing about a code's shape separates the two, which is why the split
+// is declared here rather than inferred.
+const INTERNAL_BACKEND_CODES = new Set([
+    // Runtime plumbing. Reaching any of these means something failed that has no user-side cause.
+    "BLOCKING_TASK_JOIN_FAILED",
+    "ASSET_SCOPE_REGISTER_FAILED",
+    "YT_DLP_EVENT_EMIT_FAILED",
 
-describe("every user-facing backend code has a friendly message", () => {
-    it.each(USER_FACING_BACKEND_CODES)("does not fall back to the generic line for %s", (code) => {
-        const message = toUserFriendlyError({ code, message: "raw internal backend text" });
+    // Resolving Tauri's own per-OS directories. A failure here is a broken host, not a wrong click.
+    "DATA_DIRECTORY_RESOLVE_FAILED",
+    "CACHE_DIRECTORY_RESOLVE_FAILED",
+    "CACHE_DIRECTORY_CREATE_FAILED",
+    "VIDEO_DIRECTORY_RESOLVE_FAILED",
 
-        expect(message).not.toContain("check the app log file");
-        expect(message).not.toContain("raw internal backend text");
+    // Creating and canonicalizing directories. The user-facing refusals of the library folder
+    // (INVALID_LIBRARY_PATH, INVALID_LIBRARY_MIGRATION, LIBRARY_MIGRATION_ALREADY_RUNNING) are
+    // catalogued; these are the failures underneath them, where the path was already accepted.
+    "CREATE_LIBRARY_DIR_FAILED",
+    "CREATE_DEFAULT_LIBRARY_DIR_FAILED",
+    "CREATE_NEW_LIBRARY_DIR_FAILED",
+    "CANONICALIZE_LIBRARY_PATH_FAILED",
+    "CANONICALIZE_DIRECTORY_FAILED",
+    "CREATE_DIRECTORY_FAILED",
+    "READ_DIR_ENTRY_FAILED",
+    "INVALID_SOURCE_DIRECTORY",
+
+    // The containment primitives in utils/path.rs. PATH_OUTSIDE_BASE_DIR is catalogued because a
+    // user reaches it by picking a file outside the library; the rest are the internal steps of
+    // that same check and say nothing actionable on their own.
+    "INVALID_RELATIVE_PATH",
+    "PATH_NOT_FOUND",
+    "INVALID_TARGET_PATH",
+    "CREATE_BASE_DIR_FAILED",
+    "CREATE_TARGET_PARENT_FAILED",
+    "CANONICALIZE_BASE_DIR_FAILED",
+    "CANONICALIZE_TARGET_PATH_FAILED",
+    "CANONICALIZE_TARGET_PARENT_FAILED",
+    "RELATIVE_PATH_RESOLVE_FAILED",
+
+    // services/filesystem.rs: the atomic copy/replace primitives and the post-download file
+    // matching. Every one is an I/O failure mid-operation, where the detail line (the OS error) is
+    // the diagnostic and a rephrasing would add nothing.
+    "SOURCE_FILE_NOT_FOUND",
+    "INVALID_SOURCE_FILE",
+    "FILE_OPEN_FAILED",
+    "FILE_READ_FAILED",
+    "FILE_COPY_FAILED",
+    "FILE_RENAME_FAILED",
+    "FILE_MOVE_FAILED",
+    "SOURCE_FILE_REMOVE_FAILED",
+    "SOURCE_METADATA_FAILED",
+    "DESTINATION_METADATA_FAILED",
+    "INVALID_DESTINATION_PATH",
+    "CREATE_DESTINATION_PARENT_FAILED",
+    "INVALID_DESTINATION_FILE",
+    "DESTINATION_BACKUP_FAILED",
+    "DESTINATION_RESTORE_FAILED",
+    "MATCHING_FILE_NOT_FOUND",
+    "MULTIPLE_MATCHING_FILES_FOUND",
+
+    // Writing into and unlinking from the managed library subdirectories.
+    "CREATE_MEDIA_DIR_FAILED",
+    "REMOVE_MEDIA_FAILED",
+    "CREATE_THUMBNAILS_DIR_FAILED",
+    "REMOVE_THUMBNAIL_FAILED",
+    // The compression step itself. The two live chat failures a user meets while opening a replay
+    // (LIVE_CHAT_FILE_NOT_FOUND / _UNREADABLE) were split out of this code precisely so they could
+    // be catalogued; what is left runs during the startup migration, where nothing is watching.
+    "LIVE_CHAT_COMPRESS_FAILED",
+
+    // The app cache directory and its scratch subdirectories. Regenerable by construction, so a
+    // failure here costs a preview, never data.
+    "INVALID_TEMP_DIRECTORY",
+    "TEMP_DIRECTORY_READ_FAILED",
+    "TEMP_DIRECTORY_ENTRY_READ_FAILED",
+    "CREATE_TEMP_THUMBS_DIR_FAILED",
+    "CREATE_TEMP_THUMB_ROOT_FAILED",
+    "CREATE_TEMP_THUMB_DIR_FAILED",
+    "CREATE_TEMP_ROOT_DIR_FAILED",
+    "CREATE_TEMP_DIR_FAILED",
+    "REMOVE_TEMP_THUMBNAIL_FAILED",
+
+    // Driving the yt-dlp child process. The outcomes a user asked about (not found, cancelled,
+    // failed, timed out, format gone, metadata unreadable) are catalogued; these are the mechanics
+    // of spawning it and reading its pipes.
+    "YT_DLP_INVALID_METADATA",
+    "YT_DLP_DOWNLOAD_SPAWN_FAILED",
+    "YT_DLP_STDOUT_CAPTURE_FAILED",
+    "YT_DLP_STDERR_CAPTURE_FAILED",
+    "YT_DLP_WAIT_FAILED",
+    "YT_DLP_DOWNLOADED_FILE_NOT_FOUND",
+    "INVALID_DOWNLOADED_FILE",
+    // A thumbnail is optional: the add flow logs its absence and continues, so neither of these
+    // stops anything the user asked for.
+    "YT_DLP_THUMBNAIL_EXEC_FAILED",
+    "YT_DLP_THUMBNAIL_NOT_FOUND",
+]);
+
+// Passed as the backend message so the two outcomes can be told apart: a catalogued code answers
+// with its own line and must never quote this, while an internal one falls back and folds it into
+// the details block.
+const RAW_BACKEND_TEXT = "raw internal backend text";
+
+describe("every backend error code is classified", () => {
+    const rustCodes = [...extractRustErrorCodes(readFileSync(errorRsPath, "utf-8"))];
+
+    // Derived rather than written out, so the assertions below survive a rewording of the fallback.
+    // The code cannot collide with a real one: error.rs has no variant named for this test.
+    const genericFallback = toUserFriendlyError({
+        code: "SYNTHETIC_UNCATALOGUED_CODE_FOR_THIS_TEST",
+        message: "",
     });
 
-    it("still lists a code the backend actually emits", () => {
-        // Guards the list itself: a code renamed in error.rs would otherwise sit here forever,
-        // asserting a friendly message for something nothing can produce.
-        const rustCodes = extractRustErrorCodes(readFileSync(errorRsPath, "utf-8"));
+    it("finds a sane number of codes in error.rs (regression guard for the extraction regex)", () => {
+        expect(rustCodes.length).toBeGreaterThan(100);
+    });
 
-        for (const code of USER_FACING_BACKEND_CODES) {
-            expect(rustCodes.has(code), `${code} is not emitted by error.rs`).toBe(true);
+    it("derives a generic fallback rather than a real message", () => {
+        // Guards the probe itself: if this synthetic code ever resolved to something specific,
+        // every assertion below would pass while checking nothing.
+        expect(genericFallback).toContain("check the app log file");
+    });
+
+    it.each(rustCodes)("resolves %s the way its classification says it does", (code) => {
+        const message = toUserFriendlyError({ code, message: RAW_BACKEND_TEXT });
+
+        if (INTERNAL_BACKEND_CODES.has(code)) {
+            expect(message).toContain(genericFallback);
+            return;
+        }
+
+        // A failure here for a code just added to error.rs is the check working: either write it a
+        // message in utils/user-friendly-error.ts, or add it to INTERNAL_BACKEND_CODES above,
+        // having decided that "check the app log file" is the right thing to tell the user.
+        expect(message).not.toContain(genericFallback);
+        // The raw backend message can carry a local path or an internal failure reason, so a
+        // catalogued code answers in its own words rather than passing it through.
+        expect(message).not.toContain(RAW_BACKEND_TEXT);
+    });
+
+    it("does not name a code that has since gained a friendly message", () => {
+        // The anti-rot half. Cataloguing a code without removing it here would leave this file
+        // asserting a fallback that no longer happens, which is how a stale list starts.
+        for (const code of INTERNAL_BACKEND_CODES) {
+            const message = toUserFriendlyError({ code, message: "" });
+
+            expect(
+                message,
+                `${code} now has a friendly message; drop it from INTERNAL_BACKEND_CODES`
+            ).toBe(genericFallback);
+        }
+    });
+
+    it("does not name a code error.rs no longer emits", () => {
+        const emitted = new Set(rustCodes);
+
+        for (const code of INTERNAL_BACKEND_CODES) {
+            expect(emitted.has(code), `${code} is not emitted by error.rs`).toBe(true);
         }
     });
 });

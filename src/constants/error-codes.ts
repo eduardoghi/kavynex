@@ -18,6 +18,10 @@ export const INVALID_LIBRARY_PATH_ERROR_CODE = "INVALID_LIBRARY_PATH" as const;
 export const ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE = "ASSET_SCOPE_RESTART_REQUIRED" as const;
 export const INVALID_DIRECTORY_PATH_ERROR_CODE = "INVALID_DIRECTORY_PATH" as const;
 export const READ_DIR_FAILED_ERROR_CODE = "READ_DIR_FAILED" as const;
+// Diagnostics > Open log folder could not spawn the file manager. Catalogued because the generic
+// fallback answers it by telling the user to go read the log file, which is exactly what just
+// failed to open.
+export const LOG_DIRECTORY_OPEN_FAILED_ERROR_CODE = "LOG_DIRECTORY_OPEN_FAILED" as const;
 export const INVALID_MEDIA_PATH_ERROR_CODE = "INVALID_MEDIA_PATH" as const;
 export const INVALID_THUMBNAIL_PATH_ERROR_CODE = "INVALID_THUMBNAIL_PATH" as const;
 export const INVALID_TEMP_THUMBNAIL_PATH_ERROR_CODE = "INVALID_TEMP_THUMBNAIL_PATH" as const;
@@ -50,6 +54,12 @@ export const YT_DLP_DOWNLOAD_FAILED_ERROR_CODE = "YT_DLP_DOWNLOAD_FAILED" as con
 export const YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE = "YT_DLP_DOWNLOAD_CANCELLED" as const;
 export const YT_DLP_THUMBNAIL_FAILED_ERROR_CODE = "YT_DLP_THUMBNAIL_FAILED" as const;
 export const YT_DLP_METADATA_FAILED_ERROR_CODE = "YT_DLP_METADATA_FAILED" as const;
+// The two remaining metadata failures of the paste-a-URL flow. Their comment-fetch counterparts
+// (YT_DLP_COMMENTS_EXEC_FAILED / _PARSE_FAILED) were catalogued and these were not, which left the
+// app's hottest path answering with the generic line for the two causes a user can act on: a yt-dlp
+// that cannot be started, and one too old to read what YouTube now returns.
+export const YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE = "YT_DLP_METADATA_EXEC_FAILED" as const;
+export const YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE = "YT_DLP_METADATA_PARSE_FAILED" as const;
 export const INVALID_FORMAT_ID_ERROR_CODE = "INVALID_FORMAT_ID" as const;
 export const INVALID_RUN_ID_ERROR_CODE = "INVALID_RUN_ID" as const;
 export const TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE =
@@ -86,6 +96,11 @@ export const DATABASE_ALREADY_OPEN_ERROR_CODE = "DATABASE_ALREADY_OPEN" as const
 
 export const DESTINATION_ALREADY_EXISTS_ERROR_CODE = "DESTINATION_ALREADY_EXISTS" as const;
 export const INVALID_LIBRARY_MIGRATION_ERROR_CODE = "INVALID_LIBRARY_MIGRATION" as const;
+// A second library folder change started while one is still copying. Nothing is wrong and the
+// action is to wait, the same shape as YT_DLP_RUN_ALREADY_ACTIVE. It was the one "already running"
+// refusal with no message of its own.
+export const LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE =
+    "LIBRARY_MIGRATION_ALREADY_RUNNING" as const;
 export const PATH_OUTSIDE_BASE_DIR_ERROR_CODE = "PATH_OUTSIDE_BASE_DIR" as const;
 
 export const CHANNEL_ALREADY_EXISTS_ERROR_CODE = "CHANNEL_ALREADY_EXISTS" as const;
@@ -130,6 +145,7 @@ export const KNOWN_ERROR_CODES = [
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,
     READ_DIR_FAILED_ERROR_CODE,
+    LOG_DIRECTORY_OPEN_FAILED_ERROR_CODE,
     INVALID_MEDIA_PATH_ERROR_CODE,
     INVALID_THUMBNAIL_PATH_ERROR_CODE,
     INVALID_TEMP_THUMBNAIL_PATH_ERROR_CODE,
@@ -154,6 +170,8 @@ export const KNOWN_ERROR_CODES = [
     YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
     YT_DLP_THUMBNAIL_FAILED_ERROR_CODE,
     YT_DLP_METADATA_FAILED_ERROR_CODE,
+    YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE,
     INVALID_FORMAT_ID_ERROR_CODE,
     INVALID_RUN_ID_ERROR_CODE,
     TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE,
@@ -171,6 +189,7 @@ export const KNOWN_ERROR_CODES = [
     DATABASE_ALREADY_OPEN_ERROR_CODE,
     DESTINATION_ALREADY_EXISTS_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
+    LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE,
     ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
     PATH_OUTSIDE_BASE_DIR_ERROR_CODE,
     CHANNEL_ALREADY_EXISTS_ERROR_CODE,

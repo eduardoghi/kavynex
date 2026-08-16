@@ -11,8 +11,10 @@ import {
     TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,
     READ_DIR_FAILED_ERROR_CODE,
+    LOG_DIRECTORY_OPEN_FAILED_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
+    LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE,
     ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
     INVALID_MEDIA_PATH_ERROR_CODE,
     INVALID_THUMBNAIL_PATH_ERROR_CODE,
@@ -30,6 +32,7 @@ import {
     CHANNEL_ALREADY_EXISTS_ERROR_CODE,
     INVALID_YOUTUBE_HANDLE_ERROR_CODE,
     INVALID_CHANNEL_NAME_ERROR_CODE,
+    INVALID_MEDIA_TITLE_ERROR_CODE,
     INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE,
     MEDIA_IMPORT_FAILED_ERROR_CODE,
     MEDIA_IMPORT_CANCELLED_ERROR_CODE,
@@ -43,6 +46,8 @@ import {
     YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
     YT_DLP_THUMBNAIL_FAILED_ERROR_CODE,
     YT_DLP_METADATA_FAILED_ERROR_CODE,
+    YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE,
     FFMPEG_NOT_FOUND_ERROR_CODE,
     FFMPEG_FAILED_ERROR_CODE,
     FFMPEG_EXEC_FAILED_ERROR_CODE,
@@ -56,6 +61,7 @@ import {
     YT_DLP_COMMENTS_FAILED_ERROR_CODE,
     YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE,
     YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE,
+    INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE,
     NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE,
     NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE,
     DATABASE_ALREADY_OPEN_ERROR_CODE,
@@ -109,6 +115,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [INVALID_DIRECTORY_PATH_ERROR_CODE]: "Choose a valid folder.",
     [INVALID_LIBRARY_PATH_ERROR_CODE]: "Configure a valid library folder before continuing.",
     [INVALID_LIBRARY_MIGRATION_ERROR_CODE]: "The selected library migration path is not valid.",
+    [LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE]:
+        "A library folder change is already running. Wait for it to finish before starting another one.",
     [ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE]:
         "The library folder was changed and then changed back during this session. Your files are safe, but Kavynex has to be restarted before it can play them again.",
     [INVALID_MEDIA_PATH_ERROR_CODE]: "The selected media item is invalid.",
@@ -142,6 +150,12 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
 
     [INVALID_CHANNEL_NAME_ERROR_CODE]: "Enter a valid channel name.",
     [INVALID_YOUTUBE_HANDLE_ERROR_CODE]: "Enter a valid YouTube handle.",
+    // The third of the write-boundary validators, and the one that was missing while its two
+    // siblings above had messages. It is raised by the rename flow, i.e. by text the user just
+    // typed, so the generic "check the app log file" line was the least useful answer available.
+    // Which of the three rules failed (blank, control characters, too long) arrives in the
+    // backend details and is appended after this line.
+    [INVALID_MEDIA_TITLE_ERROR_CODE]: "Enter a valid media title.",
     [CHANNEL_ALREADY_EXISTS_ERROR_CODE]: "A channel with this YouTube handle already exists.",
 
     [INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE]: "Invalid media creation arguments.",
@@ -157,6 +171,13 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "yt-dlp was not found. Install yt-dlp or place the binary in the app tools folder.",
     [YT_DLP_METADATA_TIMEOUT_ERROR_CODE]: "Timed out while loading media information from yt-dlp.",
     [YT_DLP_METADATA_FAILED_ERROR_CODE]: "yt-dlp could not load media information for this URL.",
+    [YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE]:
+        "yt-dlp could not be started to load the media information.",
+    // Unreadable metadata is the classic symptom of a yt-dlp that predates a YouTube change, so the
+    // fix is named rather than left to be guessed. It also covers the 128 MiB output cap, which no
+    // realistic single video reaches.
+    [YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE]:
+        "yt-dlp returned media information Kavynex could not read. Updating yt-dlp usually fixes this.",
     [YT_DLP_DOWNLOAD_TIMEOUT_ERROR_CODE]: "The media download took too long and was interrupted.",
     [YT_DLP_DOWNLOAD_FAILED_ERROR_CODE]: "The media download failed.",
     [YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE]: "The media download was cancelled.",
@@ -180,6 +201,11 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "yt-dlp returned comment data Kavynex could not read. Your saved comments were kept.",
     [YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE]:
         "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Your saved comments were kept.",
+    // Refused before yt-dlp is even started: the stored id is not an 11-character YouTube id. Only
+    // reachable for a row that did not come from this app's own add flow (an imported database, a
+    // hand-edited row), which is why it names the id rather than the network.
+    [INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE]:
+        "This media has no valid YouTube video id, so its comments cannot be refreshed.",
 
     [FFMPEG_NOT_FOUND_ERROR_CODE]:
         "ffmpeg was not found. Install ffmpeg or place the binary in the app tools folder.",
@@ -192,6 +218,10 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "The selected file path is outside the allowed library folder.",
 
     [READ_DIR_FAILED_ERROR_CODE]: "Could not read the selected folder.",
+    // The one code whose generic fallback is actively wrong: it ends by telling the user to check
+    // the app log file, and this is the failure to open the folder holding it.
+    [LOG_DIRECTORY_OPEN_FAILED_ERROR_CODE]:
+        "Kavynex could not open the log folder. Diagnostics shows its path, so it can still be opened by hand.",
     // The codes below are not (yet) emitted by the Rust backend (see src-tauri/src/error.rs)
     // and are kept as bare literals rather than added to KnownErrorCode.
     CREATE_DIR_FAILED: "Could not create the selected folder.",
