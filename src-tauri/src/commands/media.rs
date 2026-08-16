@@ -4,6 +4,7 @@ use crate::services::library;
 use crate::services::library::cleanup::ArtifactCleanupReport;
 use crate::services::library::guard::ensure_configured_library_path;
 use crate::services::media_creation::{self, CreateMediaRequest, CreatedMedia};
+use crate::utils::path::ensure_managed_library_relative_path;
 use crate::AppResult;
 
 /// Creates a media: produces its artifacts, records the crash marker, inserts the row and clears
@@ -25,11 +26,45 @@ pub async fn create_media(app: AppHandle, request: CreateMediaRequest) -> AppRes
     media_creation::create_media_async(&app, request).await
 }
 
+/// Confines the three artifact paths this command may unlink to the managed library layout.
+///
+/// The base directory was already safe (it is re-derived from the persisted settings, never taken
+/// from the caller), and the per-file deletes canonicalize before unlinking, so nothing could ever
+/// escape the library tree. What was missing is the *other* half: containment to the library root
+/// alone still let a name like `contract.docx` or `photos/wedding.jpg` through, and the reference
+/// count that decides an unlink answers "no row points at this", which is trivially true of a file
+/// the app never wrote. The library folder is one the user picked and is not required to be empty,
+/// so those are their own files.
+///
+/// `ensure_managed_library_relative_path` is the same check `media_creation::ensure_managed_prepared_paths`
+/// runs on every path a creation *produces*, which is why applying it here costs nothing: the only
+/// caller passes paths this backend just returned, and those are managed by construction.
+///
+/// Pure and separate from the command so it can be tested: every command in this file takes an
+/// `AppHandle` and therefore cannot be driven through the mock-runtime IPC harness (see the note
+/// below the command).
+fn ensure_managed_artifact_paths(
+    file_path: Option<&str>,
+    thumbnail_path: Option<&str>,
+    live_chat_file_path: Option<&str>,
+) -> AppResult<()> {
+    for path in [file_path, thumbnail_path, live_chat_file_path]
+        .into_iter()
+        .flatten()
+    {
+        ensure_managed_library_relative_path(path)?;
+    }
+
+    Ok(())
+}
+
 /// Removes on-disk artifacts (media file, thumbnail, live chat replay) that were prepared for
 /// a media creation which never inserted a row, deleting each only when no registered row
 /// still references it. The reference count and the unlink happen in one command, so the
 /// frontend cannot interleave another operation between them. The library directory is
-/// re-derived from the persisted settings, so no untrusted base path is accepted here.
+/// re-derived from the persisted settings, so no untrusted base path is accepted here, and each
+/// path is required to name a managed subdirectory before anything is counted or unlinked (see
+/// [`ensure_managed_artifact_paths`]).
 #[tauri::command]
 pub async fn cleanup_unreferenced_media_artifacts(
     app: AppHandle,
@@ -37,6 +72,12 @@ pub async fn cleanup_unreferenced_media_artifacts(
     thumbnail_path: Option<String>,
     live_chat_file_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
+    ensure_managed_artifact_paths(
+        file_path.as_deref(),
+        thumbnail_path.as_deref(),
+        live_chat_file_path.as_deref(),
+    )?;
+
     library::cleanup::cleanup_unreferenced_artifacts(
         &app,
         file_path,
@@ -89,6 +130,11 @@ pub async fn cleanup_unreferenced_media_artifacts(
 // their own in-memory sqlite pool and call the plan/cleanup functions directly instead of
 // going through `shared_pool`.
 //
+// What those cannot cover is which paths are allowed to be counted in the first place, because
+// they call the plan functions with paths a test chose. That is this command's own decision, and
+// it is why `ensure_managed_artifact_paths` is a separate pure function: the guard is one call
+// from a test even though the command it protects is not.
+//
 // `create_media` is the same shape one level up: the decisions it makes that a test can pin
 // are pure and live in `services::media_creation` (request normalization, thumbnail-source
 // classification, the managed-path re-check), tested there; what is left in the command is
@@ -121,6 +167,75 @@ mod tests {
         let path = dir.join(name);
         fs::write(&path, content).unwrap();
         path
+    }
+
+    #[test]
+    fn cleanup_accepts_every_managed_subdirectory() {
+        // The shapes the only real caller sends back: paths this backend produced, which are
+        // content-addressed under one of the four managed directories. All three slots are
+        // exercised together because the guard loops over them and a break in the loop would
+        // otherwise pass by only ever checking the first.
+        ensure_managed_artifact_paths(
+            Some("video/media_abc.mp4"),
+            Some("thumbnails/thumb_abc.jpg"),
+            Some("live_chat/media_abc.json.gz"),
+        )
+        .expect("the managed layout the app writes must be accepted");
+
+        ensure_managed_artifact_paths(Some("audio/media_abc.mp3"), None, None)
+            .expect("audio is a managed directory too");
+
+        // Nothing to delete is not an error: the creation failure path sends only the artifacts
+        // that got as far as being written.
+        ensure_managed_artifact_paths(None, None, None).expect("no paths must be accepted");
+    }
+
+    #[test]
+    fn cleanup_refuses_a_path_outside_the_managed_directories() {
+        // The reason this guard exists. The library folder is one the user picked and is not
+        // required to be empty, so a bare name is one of their own files, and the reference count
+        // that decides an unlink answers "no row points at this" for every file the app never
+        // wrote. Without the check these would be counted, found unreferenced, and deleted.
+        for path in [
+            "contract.docx",
+            "photos/wedding.jpg",
+            "Videos/holiday.mp4", // near-miss: managed names are lowercase
+            "video_notes/plan.txt",
+        ] {
+            let Err(error) = ensure_managed_artifact_paths(Some(path), None, None) else {
+                panic!("a path outside the managed layout must be refused: {path}");
+            };
+            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+        }
+
+        // Each slot is guarded, not just the first: a caller can reach the same deletion through
+        // whichever one it fills.
+        for (file, thumbnail, live_chat) in [
+            (None, Some("contract.docx"), None),
+            (None, None, Some("contract.docx")),
+        ] {
+            let Err(error) = ensure_managed_artifact_paths(file, thumbnail, live_chat) else {
+                panic!("every artifact slot must be guarded");
+            };
+            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+        }
+    }
+
+    #[test]
+    fn cleanup_refuses_absolute_and_traversing_paths() {
+        // Inherited from sanitize_relative_path_strict rather than added here, and asserted anyway:
+        // this is the command's entry point, so the refusals it depends on belong in its own tests.
+        #[cfg(windows)]
+        let absolute = r"C:\Windows\System32\drivers\etc\hosts";
+        #[cfg(not(windows))]
+        let absolute = "/etc/passwd";
+
+        for path in [absolute, "../outside.mp4", "video/../../outside.mp4", "   "] {
+            let Err(error) = ensure_managed_artifact_paths(Some(path), None, None) else {
+                panic!("an absolute or traversing path must be refused: {path}");
+            };
+            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
+        }
     }
 
     #[test]

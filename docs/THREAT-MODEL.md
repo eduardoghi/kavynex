@@ -368,6 +368,34 @@ validated on its own. `media_creation` mostly does, with one gap that made the p
 `media_type` a yt-dlp creation stores is the download's own value and never passes through
 `normalize_create_media_request`, so nothing but the table's `CHECK` would stand behind it.
 
+#### The cleanup's three paths are confined to the managed subdirectories, not only to the library
+
+`cleanup_unreferenced_media_artifacts` is the app's one command that unlinks a file named by the
+caller, so it belongs in the path table above rather than only in the concurrency discussion below.
+Its base directory was never caller-supplied (`library::cleanup::execute_plan_locked` re-derives it
+from the persisted settings) and the per-file deletes canonicalize before unlinking
+(`ensure_existing_path_inside_dir`), so nothing could escape the library tree. The half that was
+missing is the other one: containment to the library *root* still admitted a name like
+`contract.docx` or `photos/wedding.jpg`, and the reference count that decides an unlink answers "no
+row points at this" for every file the app never wrote. The library folder is one the user picked
+and is not required to be empty, which the asset scope already accounts for
+(`managed_asset_scope_dirs` refuses to grant the root for exactly that reason), so those are the
+user's own files and the command would have deleted them and reported success.
+
+`commands/media.rs::ensure_managed_artifact_paths` now requires each of the three to name one of
+`MANAGED_LIBRARY_DIRS` before anything is counted or unlinked. It is the same
+`utils::path::ensure_managed_library_relative_path` that `media_creation::ensure_managed_prepared_paths`
+already ran on every path a creation *produces*, whose doc comment names arbitrary file deletion as
+the thing it prevents; the delete side simply did not apply it. Applying it costs nothing, because
+the only caller passes paths this backend just returned and those are managed by construction. The
+guard is a separate pure function so it is one call from a test, which the command itself is not
+(every command in that file takes an `AppHandle` and cannot be driven through the mock-runtime IPC
+harness), and `commands/media.rs`'s tests pin both directions.
+
+`delete_live_chat_file` had the equivalent check (`ensure_relative_path_in_managed_dir`) all along,
+which is what made the omission visible: two commands taking a caller-supplied library-relative path,
+one applying the rule and one not.
+
 #### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
 `cleanup_unreferenced_media_artifacts` reference-counts each artifact path against the database and
