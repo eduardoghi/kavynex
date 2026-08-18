@@ -81,7 +81,7 @@ function parseRendererMessage(renderer: Record<string, unknown>): string {
 }
 
 // Live chat image URLs (custom emoji / sticker thumbnails) may be protocol-relative
-// ("//host/.."); upgrade those to https and reject anything that is not an http(s) URL, so a
+// ("//host/.."). Upgrade those to https and reject anything that is not an http(s) URL, so a
 // tampered replay file cannot smuggle a data:/javascript:/file: value into an <img> src and
 // bypass the "load remote images" privacy toggle. Mirrors resolveAvatarSrc for avatars.
 function normalizeRemoteImageUrl(url: string): string | null {
@@ -104,7 +104,7 @@ function emojiImageUrl(emoji: Record<string, unknown>): string | null {
 }
 
 // Preserves message structure so custom channel emojis can render as inline images.
-// Standard unicode emojis become their character; custom emojis become an image part
+// Standard unicode emojis become their character. Custom emojis become an image part
 // (with the shortcut kept as label / fallback).
 function parseMessageParts(renderer: Record<string, unknown>): LiveChatMessagePart[] {
     const runs = (renderer.message as Record<string, unknown> | undefined)?.runs;
@@ -277,7 +277,7 @@ function parsePurchaseAmount(renderer: Record<string, unknown> | undefined): str
     return null;
 }
 
-// YouTube stores super chat colors as ARGB integers; keep the RGB part as a CSS hex.
+// YouTube stores super chat colors as ARGB integers. Keep the RGB part as a CSS hex.
 function argbColorToHex(value: unknown): string | null {
     if (typeof value !== "number" || !Number.isFinite(value)) {
         return null;
@@ -352,7 +352,7 @@ function buildChatMessage(
     const parts = parseMessageParts(renderer);
     const text = partsToText(parts);
 
-    // Regular messages must have content; super chats keep the amount as content.
+    // Regular messages must have content. Super chats keep the amount as content.
     if (!text && !isPaid) {
         return null;
     }
@@ -396,11 +396,12 @@ function extractRunsFrom(value: unknown): string {
 }
 
 function buildMembership(renderer: Record<string, unknown>, offset: number): LiveChatMessageItem {
-    // New members carry the announcement in headerSubtext; milestone messages add the
+    // New members carry the announcement in headerSubtext. Milestone messages add the
     // member's own message.
     const headerText = extractRunsFrom(renderer.headerSubtext);
     const memberMessage = parseRendererMessage(renderer);
-    const text = [headerText, memberMessage].filter(Boolean).join(" - ");
+    const text =
+        headerText && memberMessage ? `${headerText} (${memberMessage})` : headerText || memberMessage;
 
     return makeMessage({
         kind: "membership",

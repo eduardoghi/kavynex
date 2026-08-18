@@ -54,7 +54,7 @@ import {
 // different from the friendly one so a broken mapping cannot hide behind the
 // message fallback.
 const GENERIC_BACKEND_MESSAGE =
-    "The operation could not be completed. If it keeps happening, check the app log file for details - Diagnostics shows where Kavynex keeps its files.";
+    "The operation could not be completed. If it keeps happening, check the app log file for details. Diagnostics shows where Kavynex keeps its files.";
 
 const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [INVALID_INPUT_ERROR_CODE, "Invalid input."],
@@ -307,7 +307,7 @@ describe("toUserFriendlyError", () => {
                 details: "socket closed unexpectedly",
             })
         ).toBe(
-            `${GENERIC_BACKEND_MESSAGE}\n\nDetails: Custom backend failure - socket closed unexpectedly`
+            `${GENERIC_BACKEND_MESSAGE}\n\nDetails: Custom backend failure (socket closed unexpectedly)`
         );
     });
 

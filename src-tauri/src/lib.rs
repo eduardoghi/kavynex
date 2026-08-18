@@ -162,11 +162,12 @@ async fn run_external_database_backup(app_handle: &AppHandle, db_path: &Path) {
 
 /// Runs a full `PRAGMA integrity_check` in the background, off the startup critical path and
 /// throttled to once a week. The automatic paths use the fast `quick_check`, which a subtly
-/// damaged page can pass and then be migrated over; this thorough check catches that. On a clean
-/// result the throttle marker is refreshed; on a failing one it is deliberately not, so a damaged
-/// database is re-checked every launch, and the failure is logged prominently (with a pointer to
-/// the Settings > Database restore) rather than left for the user to discover via the manual
-/// Diagnostics check. Best effort throughout: any failure to run the check never affects the app.
+/// damaged page can pass and then be migrated over, but this thorough check catches that. On a
+/// clean result the throttle marker is refreshed. On a failing one it is deliberately not, so a
+/// damaged database is re-checked every launch, and the failure is logged prominently (with a
+/// pointer to the Settings > Database restore) rather than left for the user to discover via the
+/// manual Diagnostics check. Best effort throughout: any failure to run the check never affects
+/// the app.
 fn spawn_startup_integrity_check(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(INTEGRITY_CHECK_STARTUP_DELAY_SECS)).await;
@@ -209,7 +210,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
                 services::logger::error(
                     "db_integrity",
                     format!(
-                        "background integrity check found {} problem(s); the database may be corrupt - open Settings > Database to restore from a backup: {}",
+                        "background integrity check found {} problem(s). The database may be corrupt. Open Settings > Database to restore from a backup: {}",
                         report.problems.len(),
                         report.problems.join("; ")
                     ),
@@ -236,7 +237,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
 
 /// Reconciles the artifacts a media creation wrote but never registered a row for, because the
 /// process did not survive the window between the two. The frontend's failure path handles a step
-/// that *fails*; nothing there can run when the process is gone, so a marker left on disk is what
+/// that *fails*. Nothing there can run when the process is gone, so a marker left on disk is what
 /// records the intent (see `services::pending_media`).
 ///
 /// Runs after a short delay rather than inline with setup: it needs the database pool, and the
@@ -319,7 +320,7 @@ fn spawn_webview_check_watchdog() {
         services::logger::error(
             "webview_check",
             format!(
-                "the webview reported nothing within {WEBVIEW_CHECK_TIMEOUT_SECS}s - the window \
+                "the webview reported nothing within {WEBVIEW_CHECK_TIMEOUT_SECS}s: the window \
                  did not open, the frontend bundle did not load, or IPC from the renderer is \
                  refused"
             ),
@@ -332,7 +333,7 @@ fn spawn_webview_check_watchdog() {
 /// True when this process was launched to prove it starts, rather than to be used.
 ///
 /// This exists because nothing else in the pipeline runs the binary. `cargo test` links the
-/// `rlib` and never initializes the Tauri runtime, the webview, or `setup()`; `pnpm build` only
+/// `rlib` and never initializes the Tauri runtime, the webview, or `setup()`. `pnpm build` only
 /// produces the frontend bundle. So the entire class of failure that happens between "the code
 /// compiles" and "the window opens" (a bad application manifest, a runtime library the bundle
 /// does not resolve, a plugin that fails to register, a panic in `setup()`), passes every gate in
@@ -341,7 +342,7 @@ fn spawn_webview_check_watchdog() {
 /// all, invisible to `cargo test`).
 ///
 /// Kept a pure function over an iterator rather than reading `std::env::args()` directly so the
-/// matching can be unit-tested; the caller passes the real arguments.
+/// matching can be unit-tested (the caller passes the real arguments).
 fn is_smoke_test_run(args: impl IntoIterator<Item = String>) -> bool {
     args.into_iter().any(|arg| arg == SMOKE_TEST_FLAG)
 }
@@ -361,7 +362,7 @@ const MISSING_WEBVIEW_HELP: &str = "Kavynex needs the Microsoft Edge WebView2 Ru
 const MISSING_WEBVIEW_HELP: &str = "Kavynex renders its interface with WebKitGTK, which is not \
      available on this system.\n\nInstall the 4.1 series (libwebkit2gtk-4.1-0 on Debian/Ubuntu, \
      webkit2gtk4.1 on Fedora) and start Kavynex again. Installing the .deb/.rpm through your \
-     package manager pulls it in for you; the AppImage carries its own copy.";
+     package manager pulls it in for you. The AppImage carries its own copy.";
 
 /// The message a failed `Builder::build` should show, given whether the webview runtime resolved.
 ///
@@ -420,7 +421,7 @@ fn show_startup_error_dialog(message: &str) {
     let text = to_wide(message);
     let caption = to_wide("Kavynex could not start");
 
-    // SAFETY: both buffers are NUL-terminated UTF-16 and outlive the call; a null hwnd shows
+    // SAFETY: both buffers are NUL-terminated UTF-16 and outlive the call. A null hwnd shows
     // an unowned modal dialog, which is what we want when there is no application window yet.
     unsafe {
         MessageBoxW(
@@ -435,7 +436,7 @@ fn show_startup_error_dialog(message: &str) {
 #[cfg(not(windows))]
 fn show_startup_error_dialog(_message: &str) {
     // Non-Windows builds do not hide the console, so the stderr line logged above is already
-    // visible in the terminal/journal; no native dialog is needed.
+    // visible in the terminal/journal. No native dialog is needed.
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -474,7 +475,7 @@ pub fn run() {
             // Apply a database import staged by the import command before the pool can open.
             // The connection pool is a process-wide singleton that cannot be swapped
             // in-process, so the actual file swap is deferred to this pre-open point. A
-            // failed restore/import is logged but must not stop the app from starting; a
+            // failed restore/import is logged but must not stop the app from starting. A
             // database *path* that cannot be resolved at all is fatal instead, without it
             // `Db` is never managed and every database-backed command would fail, leaving
             // the app an open but dead shell with no explanation.
@@ -568,7 +569,7 @@ pub fn run() {
             if commands::webview_check::is_webview_check_run(std::env::args()) {
                 services::logger::info(
                     "app",
-                    "webview check requested; waiting for the renderer to report",
+                    "webview check requested, waiting for the renderer to report",
                 );
 
                 spawn_webview_check_watchdog();
@@ -650,7 +651,7 @@ pub fn run() {
         .run(|_app_handle, event| {
             // Terminate any in-flight yt-dlp/ffmpeg work when the app is exiting so it is not
             // left running as orphaned processes after the window closes. The download sweep
-            // signals cancellation and kills the main download trees; the process-registry
+            // signals cancellation and kills the main download trees. The process-registry
             // sweep additionally covers the metadata, thumbnail and standalone (comment/format/
             // avatar) children, which the download registry never tracked.
             if let tauri::RunEvent::ExitRequested { .. } = event {

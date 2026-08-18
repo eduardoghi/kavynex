@@ -23,8 +23,8 @@ fn allow_directory_in_asset_scope(app: &AppHandle, dir: &Path) -> AppResult<()> 
 /// Grants `primary` in the asset-protocol scope via `grant`, then best-effort also grants its
 /// canonical (`\\?\`) form when that differs, logging a warning if the second grant fails rather
 /// than dropping it silently. Shared by the directory and file registration paths, which differ
-/// only in the grant closure; `subject` names the target in the warning ("library path" / "asset
-/// file"). The primary grant's failure is propagated; only the canonical retry is best-effort.
+/// only in the grant closure. `subject` names the target in the warning ("library path" / "asset
+/// file"). The primary grant's failure is propagated. Only the canonical retry is best-effort.
 fn grant_path_with_canonical<F>(primary: &Path, subject: &str, grant: F) -> AppResult<()>
 where
     F: Fn(&Path) -> AppResult<()>,
@@ -49,8 +49,8 @@ where
 /// media/thumbnail/live-chat trees the app writes itself (`video/`, `audio/`, `thumbnails/`,
 /// `live_chat/`), never the library root. Every path the app legitimately reproduces is
 /// content-addressed under one of these, so confining the grant to them keeps `convertFileSrc` from
-/// reaching an unrelated file the user's chosen library folder happens to hold (a document, a photo)
-/// - which granting the root recursively would expose.
+/// reaching an unrelated file the user's chosen library folder happens to hold (a document, a photo),
+/// which granting the root recursively would expose.
 pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
     crate::constants::MANAGED_LIBRARY_DIRS
         .iter()
@@ -85,7 +85,8 @@ pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
 /// Each directory is created before it is granted so its canonical (`\\?\`) form resolves and can be
 /// authorized alongside the plain one. The same two-form grant the library subdirectories need, for
 /// the same reason (see [`grant_path_with_canonical`]). The directories are created on demand by
-/// their writers anyway; doing it here is what makes the canonical grant possible on a first run.
+/// their writers anyway, but doing it here is what makes the canonical grant possible on a first
+/// run.
 pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
     for managed_dir in prepare_cache_scope_dirs(cache_root) {
         let granted = grant_path_with_canonical(&managed_dir, "cache subdirectory", |dir| {
@@ -154,8 +155,9 @@ fn session_forbidden_dirs() -> &'static Mutex<HashSet<PathBuf>> {
     FORBIDDEN.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-/// The critical sections are a single insert or membership test, so a panic inside one is not a real
-/// possibility; recover the guard rather than let poisoning propagate into a settings command.
+/// The critical sections are a single insert or membership test, so a panic inside one is not a
+/// real possibility, so recover the guard rather than let poisoning propagate into a settings
+/// command.
 fn lock_forbidden_dirs() -> MutexGuard<'static, HashSet<PathBuf>> {
     session_forbidden_dirs()
         .lock()
@@ -233,7 +235,7 @@ pub async fn register_library_asset_scope(app: AppHandle, library_path: String) 
         ));
     }
 
-    // canonicalize() and the asset scope registration are blocking filesystem/IPC calls;
+    // canonicalize() and the asset scope registration are blocking filesystem/IPC calls, so
     // run them off the async runtime's worker threads, consistent with other commands
     // (e.g. commands/library.rs, commands/thumbnail.rs).
     run_blocking(move || {
@@ -277,7 +279,7 @@ mod tests {
     }
 
     // The asset-scope registration itself needs the Tauri runtime, which does not run under the
-    // mock runtime; these cover the grant helpers and the managed-directory lists that decide what
+    // mock runtime. These cover the grant helpers and the managed-directory lists that decide what
     // the scope is ever widened to. The library-path guard behind register_library_asset_scope is
     // covered by services::library::guard's paths_refer_to_same_location tests.
 

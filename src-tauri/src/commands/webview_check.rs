@@ -14,7 +14,7 @@
 //!   call the user makes, not at build time. This is the reason the module exists: the grant list
 //!   was narrowed from the scaffolded `core:default` to the exact set the seam uses, which is the
 //!   right thing to have done and also exactly the change where a miss is silent.
-//! - **The packaged CSP.** Tauri injects `tauri.conf.json`'s `csp` only in a bundled app; `pnpm
+//! - **The packaged CSP.** Tauri injects `tauri.conf.json`'s `csp` only in a bundled app. `pnpm
 //!   tauri dev` serves the page from the Vite origin with no CSP header at all (see `docs/THREAT-MODEL.md`).
 //!   So `img-src`'s `asset:` / `http://asset.localhost` tokens (without which every thumbnail and
 //!   every video silently fails to load) are exercised by a packaged build and nothing else.
@@ -76,7 +76,7 @@ const PROBE_IMAGE_GIF: [u8; 43] = [
 /// True when this process was launched to check the webview rather than to be used.
 ///
 /// A pure function over an iterator, like [`crate::is_smoke_test_run`] next to it, so the matching
-/// can be unit-tested; the caller passes the real arguments. Matched by equality rather than by
+/// can be unit-tested. The caller passes the real arguments. Matched by equality rather than by
 /// prefix, so neither flag can be triggered by a near miss.
 pub fn is_webview_check_run(args: impl IntoIterator<Item = String>) -> bool {
     args.into_iter().any(|arg| arg == WEBVIEW_CHECK_FLAG)
@@ -91,7 +91,7 @@ pub struct WebviewCheckPlan {
     pub asset_path: String,
 }
 
-/// What the frontend observed. Every field is one probe; `failures` carries the frontend's own
+/// What the frontend observed. Every field is one probe. `failures` carries the frontend's own
 /// description of anything that threw, which is what turns "the asset did not load" into a line
 /// naming the URL that was refused.
 #[derive(Debug, Clone, Default, Deserialize, ts_rs::TS)]
@@ -133,13 +133,13 @@ pub(crate) fn webview_check_failures(report: &WebviewCheckReport) -> Vec<String>
 
     if version.is_empty() {
         failures.push(
-            "getVersion() returned no version - check the core:app:allow-version grant".to_string(),
+            "getVersion() returned no version. Check the core:app:allow-version grant".to_string(),
         );
     }
 
     if !report.event_listen_ok {
         failures.push(
-            "listen()/unlisten() did not both resolve - check the core:event:allow-listen and \
+            "listen()/unlisten() did not both resolve. Check the core:event:allow-listen and \
              core:event:allow-unlisten grants"
                 .to_string(),
         );
@@ -147,7 +147,7 @@ pub(crate) fn webview_check_failures(report: &WebviewCheckReport) -> Vec<String>
 
     if !report.asset_load_ok {
         failures.push(
-            "an image served through convertFileSrc did not load - check the asset-protocol scope \
+            "an image served through convertFileSrc did not load. Check the asset-protocol scope \
              grant on the cache directory and the img-src asset:/http://asset.localhost tokens in \
              the CSP"
                 .to_string(),
@@ -229,7 +229,7 @@ pub async fn report_webview_check(app: AppHandle, report: WebviewCheckReport) ->
     if !is_webview_check_run(std::env::args()) {
         logger::warn(
             "webview_check",
-            "a webview check report arrived outside a check run; ignoring it",
+            "a webview check report arrived outside a check run, ignoring it",
         );
 
         return Ok(());
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn a_missing_app_version_fails_the_check() {
         // Both spellings of "no version": the field absent, and present but blank. A grant that is
-        // missing surfaces as the call throwing, which the frontend reports as `None`; a whitespace
+        // missing surfaces as the call throwing, which the frontend reports as `None`. A whitespace
         // string would otherwise pass a bare `is_some()` check.
         for app_version in [None, Some(String::new()), Some("   ".to_string())] {
             let report = WebviewCheckReport {

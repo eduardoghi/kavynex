@@ -17,13 +17,13 @@ type UsePendingMediaAlertOptions = {
 function abandonedMessage(abandoned: number): string {
     return (
         `${formatCount(abandoned, "unfinished media import")} left files in your library that no ` +
-        "entry points at, and the app has stopped retrying them automatically. Nothing was lost - " +
-        "open Diagnostics to review the unreferenced files and remove them if you no longer want them."
+        "entry points at, and the app has stopped retrying them automatically. Nothing was lost. " +
+        "Open Diagnostics to review the unreferenced files and remove them if you no longer want them."
     );
 }
 
 // Subscribes to the backend's pending-media-abandoned event and surfaces it. The startup sweep
-// reconciles a crashed media creation on the next launch and retries a failure a few times; once it
+// reconciles a crashed media creation on the next launch and retries a failure a few times. Once it
 // gives up, the files stay in the library and only a log line records it. This is what turns that
 // into something the user can act on, matching how useDatabaseIntegrityAlert treats the background
 // integrity check.
@@ -31,7 +31,7 @@ export function usePendingMediaAlert({
     onArtifactsAbandoned,
 }: UsePendingMediaAlertOptions): void {
     useEffect(() => {
-        // StrictMode double-invokes effects; guard so a late-resolving listener registered by the
+        // StrictMode double-invokes effects. Guard so a late-resolving listener registered by the
         // torn-down first pass is cleaned up rather than leaking.
         let isDisposed = false;
         let unlisten: (() => void) | null = null;
@@ -60,7 +60,7 @@ export function usePendingMediaAlert({
 
                 unlisten = stop;
             } catch (error) {
-                // Failing to subscribe must never affect the app; the sweep's own error-level lines
+                // Failing to subscribe must never affect the app. The sweep's own error-level lines
                 // still record every abandoned marker in the log file regardless.
                 logError(
                     "pending-media",

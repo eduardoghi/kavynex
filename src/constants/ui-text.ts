@@ -56,7 +56,7 @@ export const UI_TEXT = {
     player: {
         errorBoundaryTitle: "The player ran into a problem",
         errorBoundaryDescription:
-            "This media could not be displayed. The rest of your library is unaffected - you can close the player and try another item. The details were saved to the application log.",
+            "This media could not be displayed. The rest of your library is unaffected. You can close the player and try another item. The details were saved to the application log.",
         errorBoundaryClose: "Close player",
     },
 

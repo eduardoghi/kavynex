@@ -22,7 +22,7 @@ fn has_database_extension(path: &str) -> bool {
 /// Validates the caller-provided export destination. `export_database` unconditionally removes
 /// and replaces the file at this path, so accepting an arbitrary string would let a compromised
 /// frontend overwrite any writable file (a document, a key) with the exported database. The
-/// backend cannot see the save dialog, so it enforces a database file extension here; the export
+/// backend cannot see the save dialog, so it enforces a database file extension here. The export
 /// UI always targets a `.db` file, so this never rejects a legitimate export.
 fn validate_export_destination(destination_path: &str) -> AppResult<()> {
     let trimmed = destination_path.trim();
@@ -49,11 +49,11 @@ fn validate_export_destination(destination_path: &str) -> AppResult<()> {
 /// `kavynex.db` plus every backup generation (`.bak`, `.corrupt`, `.pre-import`, ...), so an export
 /// aimed there (by a compromised frontend, or a user who navigated the save dialog into it) could
 /// clobber the live database or a recovery snapshot with a fresh export. The extension gate alone
-/// would allow that (they share the `.db` extension); this refuses it.
+/// would allow that (they share the `.db` extension), so this refuses it instead.
 ///
 /// Compares canonical paths so a symlink or a `..`-laden path cannot dodge the check. The
 /// destination file need not exist yet (it is a save target), so its parent directory is
-/// canonicalized instead; a parent that cannot be canonicalized is treated as *not* inside
+/// canonicalized instead. A parent that cannot be canonicalized is treated as *not* inside
 /// (fail open), because the export would fail later on that path anyway and rejecting a legitimate
 /// destination on a canonicalize error would be worse than leaving the extension gate as the guard.
 fn destination_is_inside_dir(destination: &Path, protected_dir: &Path) -> bool {
@@ -95,13 +95,13 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
     // it the user's NTLM hash, and then the export writes the whole database (every channel,
     // title, comment and stored local path) to a host the caller chose. The mirror in
     // `db_backup::external.rs` calls the `export_database` *service* function rather than this
-    // command, so an external backup folder on a share keeps working; only the manual export has
+    // command, so an external backup folder on a share keeps working. Only the manual export has
     // to be written locally and copied from there, exactly as `prepare_import_source` requires on
     // the way in.
     if is_network_path(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidTargetPath,
-            "a database cannot be exported to a network location; export it to a local folder and copy it from there",
+            "a database cannot be exported to a network location, so export it to a local folder and copy it from there",
         ));
     }
 
@@ -129,8 +129,8 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
 ///   NTLM hash. This value arrives raw over IPC, so the refusal belongs here rather than resting on
 ///   the file picker. The same guard, for the same reason, as
 ///   `library::resolve_path_inside_library` and `yt_dlp::cookies::normalize_cookies_path`. Importing
-///   a database off a share still works; it just has to be copied locally first, which the staging
-///   copy does anyway.
+///   a database off a share still works, but it just has to be copied locally first, which the
+///   staging copy does anyway.
 /// - **A database file extension.** Not a security boundary on its own (the source is only read,
 ///   and `validate_import_source` still has to recognize it as a kavynex database), but it turns a
 ///   mistyped or hostile path into a clear refusal instead of an "is this a valid SQLite file?"
@@ -156,7 +156,7 @@ fn prepare_import_source(source_path: &str) -> AppResult<PathBuf> {
     if is_network_path(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidTargetPath,
-            "a database on a network location cannot be imported; copy it to a local folder first",
+            "a database on a network location cannot be imported, so copy it to a local folder first",
         ));
     }
 
@@ -173,11 +173,11 @@ fn prepare_import_source(source_path: &str) -> AppResult<PathBuf> {
 /// The guard `restore_database_from_backup` applies before touching the database file: a restore
 /// renames the live database aside, so it must never run while the pool is open (which would be
 /// operating on a file being renamed underneath). Extracted so both branches are unit-testable
-/// without a live pool; `is_open` is `Db::is_initialized`, re-read under the restore lock.
+/// without a live pool. `is_open` is `Db::is_initialized`, re-read under the restore lock.
 ///
 /// The refusal message is worth reading against how this command is actually reached, because it
 /// used to tell the user to do the wrong thing. There is exactly one caller
-/// (`use-app-bootstrap.ts`'s recovery modal, opened after `ensure_database_ready` failed); nothing
+/// (`use-app-bootstrap.ts`'s recovery modal, opened after `ensure_database_ready` failed). Nothing
 /// in Settings offers a manual restore. So an open pool here does not mean "you are trying to
 /// restore at a bad moment". It means the database opened successfully after the failed startup
 /// attempt, which is what happens when the failure was transient (a lock held by an antivirus scan,
@@ -188,14 +188,14 @@ fn prepare_import_source(source_path: &str) -> AppResult<PathBuf> {
 /// The old message said "restart the app before restoring from backup", which is the wrong
 /// instruction in that state: restoring would replace a working database with an older snapshot,
 /// and the user who followed it would restart, find the app opening normally, and have no idea
-/// whether anything was restored. Refusing is correct; telling them there is nothing to restore is
-/// the honest way to say so.
+/// whether anything was restored. Refusing is correct, and telling them there is nothing to
+/// restore is the honest way to say so.
 fn ensure_closed_before_restore(is_open: bool) -> AppResult<()> {
     if is_open {
         return Err(AppError::from_code(
             AppErrorCode::DatabaseAlreadyOpen,
             "the database opened successfully after the failed startup attempt, so there is \
-             nothing to restore; close this dialog and keep using the app - your data is intact",
+             nothing to restore. Close this dialog and keep using the app. Your data is intact",
         ));
     }
 
@@ -216,8 +216,8 @@ pub async fn ensure_database_ready(db: State<'_, Db>) -> AppResult<()> {
 #[tauri::command]
 pub async fn get_database_backup_status(app: AppHandle) -> AppResult<DatabaseBackupStatus> {
     // database_path (create_dir_all) and database_backup_status (read_dir + stat of each backup
-    // generation) are blocking filesystem calls; run them off the async runtime's worker threads,
-    // consistent with the other filesystem commands.
+    // generation) are blocking filesystem calls, so run them off the async runtime's worker
+    // threads, consistent with the other filesystem commands.
     run_blocking(move || {
         let path = database_path(&app)?;
         Ok(db_backup::database_backup_status(&path))
@@ -285,7 +285,7 @@ pub async fn import_database(app: AppHandle, source_path: String) -> AppResult<(
 #[tauri::command]
 pub async fn get_database_import_undo_status(app: AppHandle) -> AppResult<bool> {
     // database_path (create_dir_all) and database_import_undo_available (a stat) are blocking
-    // filesystem calls; run them off the async runtime's worker threads.
+    // filesystem calls, so run them off the async runtime's worker threads.
     run_blocking(move || {
         let path = database_path(&app)?;
         Ok(db_backup::database_import_undo_available(&path))
@@ -294,7 +294,7 @@ pub async fn get_database_import_undo_status(app: AppHandle) -> AppResult<bool> 
 }
 
 /// Reverts the last applied database import by staging the pre-import snapshot as a pending
-/// import; the swap is applied on the next startup (reusing the import path so the live pool
+/// import. That swap is applied on the next startup (reusing the import path so the live pool
 /// is never swapped underneath), so the caller should relaunch the app after this succeeds.
 #[tauri::command]
 pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
@@ -499,9 +499,9 @@ mod tests {
 
     #[test]
     fn the_export_and_import_gates_refuse_the_same_network_spellings() {
-        // The two directions already share DATABASE_FILE_EXTENSIONS; this pins that they share the
-        // network rule too. The import gate got it first and the export side went without for a
-        // while, which is the asymmetry this asserts stays closed. The more so because the
+        // The two directions already share DATABASE_FILE_EXTENSIONS, so this pins that they share
+        // the network rule too. The import gate got it first and the export side went without for
+        // a while, which is the asymmetry this asserts stays closed. The more so because the
         // extension parity test right below reads as though the two gates were already aligned.
         let config_dir = unique_dir("parity-net");
 
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn prepare_import_source_rejects_a_network_location() {
-        // stage_database_import stats and opens this path; on Windows a UNC share authenticates
+        // stage_database_import stats and opens this path. On Windows a UNC share authenticates
         // over SMB on the stat alone and leaks the user's NTLM hash. Every spelling Windows
         // resolves to a share is covered, and each one carries a valid `.db` extension so only
         // the network check can be what rejects it.
@@ -635,12 +635,12 @@ mod tests {
 
         assert!(
             error.message.contains("nothing to restore"),
-            "the refusal must say the database needs no restore; got: {}",
+            "the refusal must say the database needs no restore (got: {})",
             error.message
         );
         assert!(
             !error.message.contains("restart"),
-            "the refusal must not tell the user to restart and restore a working database; got: {}",
+            "the refusal must not tell the user to restart and restore a working database (got: {})",
             error.message
         );
     }

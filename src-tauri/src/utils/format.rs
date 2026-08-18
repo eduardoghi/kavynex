@@ -30,7 +30,7 @@ pub fn allowed_media_extensions() -> Vec<&'static str> {
 }
 
 /// The managed subdirectory an extension belongs in. Anything not recognized as audio is treated
-/// as video, which is the fallback the import path relies on; `is_allowed_media_extension` is what
+/// as video, which is the fallback the import path relies on. `is_allowed_media_extension` is what
 /// keeps an unrecognized extension from reaching here in the first place.
 pub fn media_subdir_from_extension(ext: &str) -> &'static str {
     if ALLOWED_AUDIO_EXTENSIONS.contains(&normalize_extension(ext).as_str()) {
@@ -59,8 +59,8 @@ pub fn allowed_media_extensions_label() -> String {
 ///
 /// Declared as a list rather than only spelled out inside the predicate below so the message shown
 /// when a file is rejected can be built from it (see [`allowed_thumbnail_extensions_label`]). The
-/// two had already drifted once. `gif` was accepted here while the message still named six formats
-/// - which is the kind of mismatch that sends a user looking for a bug in their file.
+/// two had already drifted once. `gif` was accepted here while the message still named six formats,
+/// which is the kind of mismatch that sends a user looking for a bug in their file.
 pub const ALLOWED_THUMBNAIL_EXTENSIONS: [&str; 7] =
     ["png", "jpg", "jpeg", "webp", "bmp", "avif", "gif"];
 
@@ -218,7 +218,7 @@ mod tests {
 
         // The allow_asset_file command uses this to decide what can be authorized for the asset
         // protocol, so a non-image extension must be rejected. svg stays rejected because it can
-        // carry script; gif is accepted (a raster image, safe as an <img> source).
+        // carry script, while gif is accepted (a raster image, safe as an <img> source).
         for ext in ["txt", "exe", "mp4", "svg", ""] {
             assert!(!is_allowed_thumbnail_extension(ext), "should reject {ext}");
         }

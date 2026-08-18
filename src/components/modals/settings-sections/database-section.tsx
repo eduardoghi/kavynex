@@ -3,7 +3,7 @@ import { Database, Download, FolderClock, Undo2, Upload, X } from "lucide-react"
 import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
 
-// "the backup from <date>" in the recovery modal uses the same locale call; keep them reading the
+// "the backup from <date>" in the recovery modal uses the same locale call. Keep them reading the
 // same way. A status with no backup yet has no timestamp, which the caller renders as its own line
 // rather than passing here.
 function formatBackedUpAt(backedUpAtMs: number): string {
@@ -219,14 +219,14 @@ export function DatabaseSection({
                         The automatic backups above live next to the database, on the same disk, so
                         a drive failure takes them with it. Choose an external folder (another drive
                         or a network share) and Kavynex copies the database there once a day. Only
-                        the database is copied; back up the library folder separately.
+                        the database is copied. Back up the library folder separately.
                     </Text>
 
                     <TextInput
                         label="External backup folder"
                         value={externalBackupDir}
                         readOnly
-                        placeholder="Off - no external backup folder selected"
+                        placeholder="Off (no external backup folder selected)"
                     />
 
                     <Group gap="sm">

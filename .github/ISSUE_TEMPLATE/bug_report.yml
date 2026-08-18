@@ -24,7 +24,7 @@ body:
           placeholder: |
               1. Opened the add-media dialog and pasted a URL
               2. Picked the 1080p format and clicked Add
-              3. Expected the video in the library; got an error dialog saying ...
+              3. Expected the video in the library, but got an error dialog saying ...
       validations:
           required: true
 
@@ -42,7 +42,7 @@ body:
       attributes:
           label: Operating system
           description: >
-              Behavior differs by platform more than you would expect - path handling, the
+              Behavior differs by platform more than you would expect: path handling, the
               webview engine and how external processes are launched are all platform-specific.
           options:
               - Windows
@@ -77,7 +77,7 @@ body:
       attributes:
           label: Relevant log lines
           description: >
-              From kavynex.log - docs/DIRECTORIES.md lists where it lives on each platform.
+              From kavynex.log (docs/DIRECTORIES.md lists where it lives on each platform).
               Paste the lines around the failure rather than the whole file.
 
 

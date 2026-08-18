@@ -26,7 +26,7 @@ import { readFileSync } from "fs";
 // Both come from the diagnostic's label spans, which are data (one lock entry per line, in
 // `<name> <version> <source>` form), and never from `fields.message`, which is English prose
 // ("found 2 duplicate entries for crate 'base64'"). A message is free to be reworded between
-// cargo-deny releases without that being a breaking change; the span is the thing being reported.
+// cargo-deny releases without that being a breaking change. The span is the thing being reported.
 //
 // Returns null for a diagnostic whose labels carry nothing usable, so the caller can count it as
 // unread rather than invent an entry for it.
@@ -126,12 +126,12 @@ export function renderBansSummary({ duplicates, reportedWarnings = null, unparse
 
             lines.push(
                 `Could not read cargo-deny's output: it carried no \`summary\` diagnostic${noise}. ` +
-                    "The `bans` check itself still gated this run - only this report is missing."
+                    "The `bans` check itself still gated this run. Only this report is missing."
             );
         } else if (reportedWarnings > 0) {
             lines.push(
                 `cargo-deny reported ${reportedWarnings} \`bans\` warning(s), but none of them could be read ` +
-                    "as a duplicate-version finding. Its output shape has probably changed; update " +
+                    "as a duplicate-version finding. Its output shape has probably changed. Update " +
                     "`scripts/summarize-cargo-deny-bans.js`."
             );
         } else {
@@ -163,7 +163,7 @@ export function renderBansSummary({ duplicates, reportedWarnings = null, unparse
         // own codes), but a gap worth naming rather than leaving the reader to reconcile two
         // numbers that came from the same run.
         lines.push(
-            `> cargo-deny reported ${reportedWarnings} \`bans\` warning(s); ${duplicates.length} of them were read ` +
+            `> cargo-deny reported ${reportedWarnings} \`bans\` warning(s). ${duplicates.length} of them were read ` +
                 "as duplicate-version findings. The difference is either another `bans` rule firing or a " +
                 "shape this script does not handle.",
             ""

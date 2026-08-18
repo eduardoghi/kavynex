@@ -11,7 +11,7 @@
 // without its permission surfaces "on the first click a user makes". Nothing before this ran the
 // ACL. `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
 // `--smoke-test` exits inside `setup()`. `--webview-check` (release.yml) closes the runtime half for
-// the three grants it can exercise without a side effect; the four plugin grants cannot be probed
+// the three grants it can exercise without a side effect. The four plugin grants cannot be probed
 // that way (a file picker, a browser launch, a network call, a restart) and were left to a manual
 // pass that was never written down.
 //
@@ -181,7 +181,7 @@ export function verifyCapabilitySurface({ seams, capabilities, aclManifest = nul
         return {
             ok: false,
             message:
-                "No @tauri-apps import was found in either seam file. Either the seam moved or this scan no longer matches it - and an empty surface would make every check below pass vacuously.",
+                "No @tauri-apps import was found in either seam file. Either the seam moved or this scan no longer matches it, and an empty surface would make every check below pass vacuously.",
         };
     }
 
@@ -189,13 +189,13 @@ export function verifyCapabilitySurface({ seams, capabilities, aclManifest = nul
         DECLARED_CAPABILITY_SURFACE.map((entry) => [entry.binding, entry])
     );
 
-    // A binding the seam imports with no entry here: the author has to decide which permission it
-    // needs, which is the whole point of the gate.
+    // A binding the seam imports with no entry here forces the author to decide which permission
+    // it needs. That decision is the whole point of the gate.
     const undeclared = seamBindings.filter((entry) => !declaredByBinding.has(entry.binding));
 
     if (undeclared.length > 0) {
         problems.push(
-            "These Tauri APIs are imported by a seam but have no entry in DECLARED_CAPABILITY_SURFACE. Add one naming the permission each needs (or an empty list, if it needs none - see the three that do):\n" +
+            "These Tauri APIs are imported by a seam but have no entry in DECLARED_CAPABILITY_SURFACE. Add one naming the permission each needs (or an empty list when nothing is needed, as the three entries below already do):\n" +
                 undeclared
                     .map(({ binding, module, file }) => `  - ${binding} (${module}) in ${file}`)
                     .join("\n")
@@ -237,7 +237,7 @@ export function verifyCapabilitySurface({ seams, capabilities, aclManifest = nul
 
     if (unused.length > 0) {
         problems.push(
-            "These permissions are granted but no seam API needs them. A grant nothing calls is surface the renderer holds for free - remove it, or add the entry that explains what uses it:\n" +
+            "These permissions are granted but no seam API needs them. A grant nothing calls is surface the renderer holds for free. Remove it, or add the entry that explains what uses it:\n" +
                 unused.map((identifier) => `  - ${identifier}`).join("\n")
         );
     }

@@ -428,7 +428,7 @@ describe("useYtDlpFormatLoader", () => {
     });
 });
 
-describe("useYtDlpFormatLoader - display label formatting", () => {
+describe("useYtDlpFormatLoader: display label formatting", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -689,7 +689,7 @@ describe("useYtDlpFormatLoader - display label formatting", () => {
     });
 });
 
-describe("useYtDlpFormatLoader - merge eligibility and duplicate removal", () => {
+describe("useYtDlpFormatLoader: merge eligibility and duplicate removal", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -875,7 +875,7 @@ describe("useYtDlpFormatLoader - merge eligibility and duplicate removal", () =>
     });
 });
 
-describe("useYtDlpFormatLoader - preferred audio selection (compareAudioPreference)", () => {
+describe("useYtDlpFormatLoader: preferred audio selection (compareAudioPreference)", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -987,7 +987,7 @@ describe("useYtDlpFormatLoader - preferred audio selection (compareAudioPreferen
     });
 });
 
-describe("useYtDlpFormatLoader - final display ordering (compareDisplayOrder)", () => {
+describe("useYtDlpFormatLoader: final display ordering (compareDisplayOrder)", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -1038,7 +1038,7 @@ describe("useYtDlpFormatLoader - final display ordering (compareDisplayOrder)", 
     });
 });
 
-describe("useYtDlpFormatLoader - inferPreferredFormatId", () => {
+describe("useYtDlpFormatLoader: inferPreferredFormatId", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -1086,7 +1086,7 @@ describe("useYtDlpFormatLoader - inferPreferredFormatId", () => {
     });
 });
 
-describe("useYtDlpFormatLoader - inferSelectedMediaType", () => {
+describe("useYtDlpFormatLoader: inferSelectedMediaType", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -1143,7 +1143,7 @@ describe("useYtDlpFormatLoader - inferSelectedMediaType", () => {
     });
 });
 
-describe("useYtDlpFormatLoader - setSelectedYtDlpFormatId trimming", () => {
+describe("useYtDlpFormatLoader: setSelectedYtDlpFormatId trimming", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -1159,7 +1159,7 @@ describe("useYtDlpFormatLoader - setSelectedYtDlpFormatId trimming", () => {
     });
 });
 
-describe("useYtDlpFormatLoader - command building", () => {
+describe("useYtDlpFormatLoader: command building", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -1280,7 +1280,7 @@ describe("useYtDlpFormatLoader - command building", () => {
     });
 });
 
-describe("useYtDlpFormatLoader - result handling and logging", () => {
+describe("useYtDlpFormatLoader: result handling and logging", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -1388,7 +1388,7 @@ describe("useYtDlpFormatLoader - result handling and logging", () => {
     });
 });
 
-describe("useYtDlpFormatLoader - error handling", () => {
+describe("useYtDlpFormatLoader: error handling", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -1448,7 +1448,7 @@ describe("useYtDlpFormatLoader - error handling", () => {
         const { result, onTerminalLog } = renderLoader();
 
         // A real backend AppError arrives as a structured object. resolveErrorMessage already
-        // folds its `details` into the message via the "Details:" block; the loader must not
+        // folds its `details` into the message via the "Details:" block. The loader must not
         // append them a second time (the regression this guards).
         vi.mocked(listYtDlpFormats).mockRejectedValueOnce({
             code: "YT_DLP_METADATA_FAILED",

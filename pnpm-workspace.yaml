@@ -2,8 +2,8 @@ packages:
   - .
 
 # Supply-chain hardening (https://pnpm.io/settings).
-# Block transitive dependencies resolved from non-registry sources (git/tarball URLs);
-# a legitimate dependency should always come from the registry.
+# Block transitive dependencies resolved from non-registry sources (git/tarball URLs).
+# A legitimate dependency should always come from the registry.
 blockExoticSubdeps: true
 
 # Refuse to install any package version published less than 2 days ago, so a freshly
@@ -12,9 +12,9 @@ blockExoticSubdeps: true
 minimumReleaseAge: 2880
 
 # Both entries below are **floors, not pins**, and the difference is the whole point of writing them
-# this way. An exact version here raises the minimum today and freezes the package forever after:
-# nothing can bump past an override, so Dependabot opens no PR, and `scripts/check-js-advisories.js`
-# sees only the resolved tree - which has no *open* advisory precisely because the override pinned it.
+# this way. An exact version here raises the minimum today and freezes the package forever after.
+# Nothing can bump past an override, so Dependabot opens no PR, and `scripts/check-js-advisories.js`
+# sees only the resolved tree, which has no *open* advisory precisely because the override pinned it.
 # A security gate quietly becomes a security ceiling, and the next advisory on the same package is the
 # one nobody hears about. A `>=` raises the minimum and lets later patches in, which is what was
 # actually wanted both times.
@@ -24,9 +24,9 @@ overrides:
   # Floors the transitive qs at the release that fixes CVE-2026-8723 (GHSA/GLAD): a remotely
   # triggerable DoS where qs.stringify throws a TypeError on null/undefined entries in comma-format
   # arrays when encodeValuesOnly is set, affecting >=6.11.1 <6.15.2. Transitive and dev/build-scope
-  # like fast-uri below (never shipped in the app); the floor clears the open Dependabot alert.
+  # like fast-uri below (never shipped in the app). The floor clears the open Dependabot alert.
   #
-  # REMOVE WHEN: every dependent's own range already floors qs at 6.15.2 or later - check with
+  # REMOVE WHEN: every dependent's own range already floors qs at 6.15.2 or later: check with
   # `pnpm why qs`, and confirm by deleting this line and seeing what `pnpm install` resolves.
   qs: ">=6.15.2"
   # Floors the transitive fast-uri (pulled by ajv, itself dev/build-only via Stryker) past two
@@ -37,11 +37,11 @@ overrides:
   #
   # The second advisory is the reason the note at the top of this block is not theory. This entry was
   # written as `>=3.1.4` rather than a pin precisely so a later patch could still be resolved, and
-  # that is what happened: a new advisory landed on the same package four months later, and the fix
+  # that is what happened. A new advisory landed on the same package four months later, and the fix
   # was to raise this floor by one patch. A pin at 3.1.4 would have held the tree *at* the newly
   # vulnerable version, with the override reading as though the package were handled.
   #
-  # Raising the floor is still a manual step, though - the range permits 3.1.5 but the lockfile keeps
+  # Raising the floor is still a manual step, though: the range permits 3.1.5 but the lockfile keeps
   # whatever it resolved, so `pnpm install` had to be re-run for it to move. The range is what makes
   # that a one-line change instead of a decision.
   #

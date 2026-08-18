@@ -1,10 +1,10 @@
 version: 2
 
-# Grouping rule, applied the same way to every ecosystem: routine bumps (minor/patch) arrive as
+# Grouping rule, applied the same way to every ecosystem. Routine bumps (minor/patch) arrive as
 # a single PR per ecosystem per week, while a major update is deliberately left out of the group
 # so it gets its own PR. The dependency graph behind this repo is large (hundreds of npm packages
 # and crates once transitive deps are counted), and ungrouped weekly updates open one PR per
-# bump - volume that a single maintainer ends up ignoring, which quietly turns Dependabot into
+# bump, a volume that a single maintainer ends up ignoring, which quietly turns Dependabot into
 # noise instead of a safety net. A major is the case that actually needs to be read on its own
 # (breaking changes, migration notes), so it stays unbatched.
 updates:
@@ -15,7 +15,7 @@ updates:
       open-pull-requests-limit: 10
       # Wait out a version's first days on the registry before opening a bump PR, so a freshly
       # published (possibly compromised) release is not picked up before the ecosystem has had a
-      # chance to flag it. This is the Dependabot-native, source-agnostic cooling-off: pnpm's
+      # chance to flag it. The cooldown is Dependabot-native and source-agnostic. pnpm's
       # minimumReleaseAge (pnpm-workspace.yaml) only guards a pnpm install, and the Cargo tree had
       # no equivalent at all, so this closes that asymmetry by applying the same gate to all three
       # ecosystems here.
@@ -39,7 +39,7 @@ updates:
           interval: weekly
       open-pull-requests-limit: 10
       # The Cargo tree has no publish-age gate of its own (cargo-deny restricts source/license, not
-      # age), so this cooldown is the only cooling-off it gets - see the npm block above.
+      # age), so this cooldown is the only cooling-off it gets. See the npm block above.
       cooldown:
           default-days: 5
       commit-message:
@@ -49,7 +49,7 @@ updates:
               patterns:
                   - "*"
               # sqlx is the one crate this grouping is wrong for. It is pre-1.0, where semver makes
-              # the MINOR the breaking bump - so 0.9 -> 0.10 is exactly the "read it on its own,
+              # the MINOR the breaking bump, so 0.9 -> 0.10 is exactly the "read it on its own,
               # with its migration notes" case this group's own reasoning reserves for a major, yet
               # it would arrive batched with five routine updates under a title that says minor and
               # patch. It also carries the entire persistence layer, and the cargo-audit step has a
@@ -66,7 +66,7 @@ updates:
       schedule:
           interval: weekly
       open-pull-requests-limit: 10
-      # Same cooling-off for action bumps: an action is pinned by SHA, but a freshly tagged release
+      # Same cooling-off for action bumps. An action is pinned by SHA, but a freshly tagged release
       # a bump would repoint to still benefits from a few days on the registry first.
       cooldown:
           default-days: 5

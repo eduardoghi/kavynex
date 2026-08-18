@@ -51,7 +51,7 @@ export function DiagnosticsDatabaseIntegrityCheck(): JSX.Element {
                 <Stack gap={4}>
                     <Text size="sm" c="dimmed">
                         Your data is still on disk. To recover, open Settings and restore the
-                        database from a backup - Kavynex keeps several automatic snapshots.
+                        database from a backup. Kavynex keeps several automatic snapshots.
                     </Text>
 
                     {result.problems.length > 0 && (

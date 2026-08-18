@@ -31,7 +31,7 @@ pub(super) const VIDEOS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS videos (
     -- for and one whose fetch ran and found nothing to store. The second is a final answer and
     -- the first is not, and the player offered its Fetch button on both, so a user could re-run
     -- an operation that could never return anything. 'unknown' is this DEFAULT and nothing in
-    -- the crate writes it, so the state only moves forward; see media_comments::CommentsState
+    -- the crate writes it, so the state only moves forward. See media_comments::CommentsState
     -- for the two values that are written and why there are two rather than three.
     comments_state TEXT NOT NULL DEFAULT 'unknown'
         CHECK (comments_state IN ('unknown', 'none', 'available')),
@@ -62,9 +62,9 @@ pub(super) const VIDEO_COMMENTS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS vi
     author_thumbnail TEXT,
     -- Ceiling on a stored comment body, mirrored from media_comments::MAX_COMMENT_TEXT_CHARS (the
     -- app-side truncation ceiling). LENGTH counts characters on a TEXT value, matching that
-    -- character cap. On a fresh database this CHECK is the primary guard; databases whose table
+    -- character cap. On a fresh database this CHECK is the primary guard. Databases whose table
     -- predates it get the equivalent trigger via migration v14 (see db_schema). Keep the literal in
-    -- sync with the constant - a db_schema test pins it.
+    -- sync with the constant: a db_schema test pins it.
     text TEXT NOT NULL CHECK (LENGTH(text) <= 16000),
     like_count INTEGER NOT NULL DEFAULT 0,
     reply_count INTEGER NOT NULL DEFAULT 0,
@@ -98,14 +98,14 @@ pub(super) const TABLE_DDLS: &[&str] = &[
 pub(super) const LEGACY_TABLE_DROPS: &[&str] = &["DROP TABLE IF EXISTS video_live_chat_messages"];
 
 // Every index, paired with the table it belongs to. The baseline and versioned migrations
-// recreate all of them (every table exists at that point); the table-rebuild path uses the
+// recreate all of them (every table exists at that point). The table-rebuild path uses the
 // pairing to recreate only the indexes of the tables it actually dropped, since dropping a
 // table only drops that table's indexes.
 pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)"),
     // Covers a channel's media newest-first (channel_id = ? ORDER BY created_at DESC, id DESC)
     // without a separate sort step. Its original caller (the unpaginated list_media_by_channel)
-    // was removed; the paginated list_media_page sorts include title_normalized and are served by
+    // was removed. The paginated list_media_page sorts include title_normalized and are served by
     // the composite indexes below, not this one. Kept because dropping it entangles the v8
     // migration identity and its dedicated idempotency test (a standalone cleanup, not part of
     // removing that caller), and it still fits any future newest-first-only listing.
@@ -154,7 +154,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // MEASURED DEAD (2026-08-16): none of the six below is chosen by any statement the backend
     // issues. The first three would each serve a standalone lookup and there is none, because every
     // query reaching those columns is scoped by `channel_id` first, so a `idx_videos_channel_*`
-    // composite above wins. The last three index booleans (cardinality 2); the only statements
+    // composite above wins. The last three index booleans (cardinality 2). The only statements
     // touching them are `get_media_repository_stats`, a full scan of `SUM(CASE ...)` with no WHERE,
     // and the migration repairs, whose `<> 0` is not selective either.
     //
@@ -162,7 +162,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // this app inserts into a handful of rows at a time, and the removal is a schema migration plus
     // surgery on the version-history map and migration-identity tests below. Bad trade. If a
     // library-wide search (not scoped to a channel) ever arrives, it will want a *composite* tuned
-    // to its own clause anyway, not these. Re-measure before assuming any of this still holds; the
+    // to its own clause anyway, not these. Re-measure before assuming any of this still holds. The
     // method is EXPLAIN QUERY PLAN over the real statements on a schema with no ANALYZE, which is
     // the planner production runs.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)"),
@@ -175,7 +175,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // reader cleaning up on plan evidence alone would drop it. It is UNIQUE: it exists to enforce
     // "one row per (channel, youtube video id)", not to be chosen. It goes unused for lookups
     // because it is partial, and SQLite only uses a partial index when the query's WHERE proves the
-    // index's; `youtube_video_id = ?` does not prove the `TRIM(...) <> ''`. So the duplicate
+    // index's. `youtube_video_id = ?` does not prove the `TRIM(...) <> ''`. So the duplicate
     // pre-check falls back to idx_videos_channel_id, and the constraint still holds.
     ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_youtube_video_id_unique ON videos(channel_id, youtube_video_id) WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''"),
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)"),
@@ -260,7 +260,7 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
     ),
     // Enforce the comment-body length ceiling on databases whose video_comments table predates the
     // CHECK (the CHECK in VIDEO_COMMENTS_TABLE_DDL only reaches fresh installs). Same 16000-char
-    // ceiling as media_comments::MAX_COMMENT_TEXT_CHARS; installed by migration v14.
+    // ceiling as media_comments::MAX_COMMENT_TEXT_CHARS, installed by migration v14.
     (
         "video_comments",
         "CREATE TRIGGER IF NOT EXISTS trg_video_comments_text_length_insert \
@@ -282,7 +282,7 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
 ];
 
 /// Additive columns for the videos table. Fresh databases already get these from the
-/// base CREATE TABLE; the guarded ALTERs only add them to databases created by older
+/// base CREATE TABLE. The guarded ALTERs only add them to databases created by older
 /// app versions that predate the columns.
 pub(super) const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     ("is_live", "INTEGER NOT NULL DEFAULT 0"),
@@ -293,7 +293,7 @@ pub(super) const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     ),
     // Accent/case-folded copy of `title` for the server-side library search and title sort.
     // Nullable and backfilled by migration v11 (SQLite cannot accent-fold in SQL, so the
-    // backfill is computed in Rust); populated on every insert/title-update thereafter.
+    // backfill is computed in Rust), populated on every insert/title-update thereafter.
     ("title_normalized", "TEXT"),
     // Added by v15. Defaults to 'unknown' for every existing row, which is the honest value:
     // nothing recorded whether a fetch had run, so the app cannot claim one did. v15 promotes

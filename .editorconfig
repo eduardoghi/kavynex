@@ -1,9 +1,9 @@
 # Indentation was the one formatting rule this repo had no gate for. The Rust side has
-# `cargo fmt --check` in ci.yml; the TypeScript side has ESLint, which carries no formatting rules
-# here on purpose - adding Prettier would put a new package into a tree that deliberately runs
+# `cargo fmt --check` in ci.yml, but the TypeScript side has ESLint, which carries no formatting
+# rules here on purpose: adding Prettier would put a new package into a tree that deliberately runs
 # `minimumReleaseAge` and `blockExoticSubdeps`, for a problem an editor setting already solves.
 #
-# The drift this exists to stop was real rather than hypothetical: every file under `src/` uses four
+# The drift this exists to stop was real rather than hypothetical. Every file under `src/` uses four
 # spaces except `src/main.tsx`, which was scaffolded with two and stayed that way because nothing
 # read it.
 

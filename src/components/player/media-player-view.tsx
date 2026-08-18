@@ -80,7 +80,7 @@ export function MediaPlayerView({
     // Move focus into the player when it opens (the library grid stays mounted but hidden behind
     // it, so focus would otherwise be dropped on <body>), and restore it to whatever opened the
     // player (the originating card) when it closes, if that element is still around. Runs once for
-    // the player's lifetime; the back control is the natural landing spot.
+    // the player's lifetime, and the back control is the natural landing spot.
     useEffect(() => {
         const previouslyFocused = document.activeElement as HTMLElement | null;
         backButtonRef.current?.focus();
@@ -95,7 +95,7 @@ export function MediaPlayerView({
                 // `focusVisible: false` says exactly that, but only Firefox implements it. Chromium
                 // and WebKit, which is every engine this app ships on, accept and ignore the option,
                 // so on its own it did nothing and the ring appeared anyway. The option stays for
-                // the engines that honor it; suppressFocusRingOnce is what carries it everywhere
+                // the engines that honor it. suppressFocusRingOnce is what carries it everywhere
                 // else, and it must be called before focus() so the mark is present when the style
                 // is evaluated.
                 suppressFocusRingOnce(previouslyFocused);
@@ -312,13 +312,13 @@ export function MediaPlayerView({
                             {/* Deliberately does not claim the file is still on disk. The webview
                                 reports a file that is gone and a format it cannot decode with the
                                 same MediaError code (MEDIA_ERR_SRC_NOT_SUPPORTED), so the player
-                                cannot tell them apart - and asserting the wrong one is worse than
+                                cannot tell them apart, and asserting the wrong one is worse than
                                 naming both. "Open file location" resolves the path in the backend,
                                 which does know, and says so when the file is missing. */}
                             <Text size="sm">
                                 Kavynex's built-in player couldn't play this file. Either it uses a
                                 format the player doesn't support, or the file is no longer where
-                                the library expects it. Open its location to check - a file that is
+                                the library expects it. Open its location to check. A file that is
                                 there will usually play in another app.
                             </Text>
 

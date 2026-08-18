@@ -7,7 +7,7 @@ import { isValidSemver, replaceCargoVersion } from "./version-utils.js";
 // Rewrites the app version in package.json, tauri.conf.json and Cargo.toml (and regenerates
 // Cargo.lock) to `newVersion`, returning a process exit code. The filesystem and cargo are injected
 // (`readFile`, `writeFile`, `runCargoUpdate`) and logging goes through `log`/`error`, so the glue (// the write sequence, the missing-version-line branch, the cargo-failure handling) is unit-tested
-// without touching real files; version-utils.js already covers the semver/regex primitives.
+// without touching real files. version-utils.js already covers the semver/regex primitives.
 export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpdate, log, error }) {
     if (!newVersion) {
         error("Usage: node scripts/bump-version.js <version>");
@@ -40,7 +40,7 @@ export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpd
     const cargo = readFile(cargoPath);
     const updatedCargo = replaceCargoVersion(cargo, newVersion);
     if (updatedCargo === null) {
-        error("Cargo.toml: version line not found - update manually");
+        error("Cargo.toml: version line not found. Update manually.");
         return 1;
     }
 
@@ -54,7 +54,7 @@ export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpd
     writeFile(cargoPath, updatedCargo);
     log(`Cargo.toml       ${oldVersion} -> ${newVersion}`);
 
-    // Cargo.lock records the package version too; regenerate it so a bump commit never
+    // Cargo.lock records the package version too. Regenerate it so a bump commit never
     // leaves the lockfile stale (the release builds with --locked and would fail late).
     if (runCargoUpdate() === 0) {
         log(`Cargo.lock       ${oldVersion} -> ${newVersion}`);

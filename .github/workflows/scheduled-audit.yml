@@ -1,11 +1,11 @@
 name: scheduled-audit
 
 # The dependency audits in ci.yml only run on push/pull_request, so a new advisory published
-# against an already-vendored dependency goes unnoticed until the next commit lands - which, on a
+# against an already-vendored dependency goes unnoticed until the next commit lands, which, on a
 # quiet week for a solo project, can be a long time. This runs the same JS (osv.dev) and Rust
 # (cargo-audit/cargo-deny) gates on a weekly schedule against the committed lockfiles, so a freshly
 # disclosed advisory surfaces on its own rather than waiting for the next push. Also dispatchable by
-# hand. The gates and their pins are kept identical to ci.yml; a red run here means the same thing.
+# hand. The gates and their pins are kept identical to ci.yml. A red run here means the same thing.
 on:
     schedule:
         # Thursdays 07:00 UTC, offset from mutation.yml's Monday run so the two never contend.
@@ -70,8 +70,8 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-            # Runs the duplicate-version report at the end of this job; pinned like every other
-            # toolchain here. No pnpm setup or install - the report script is dependency-free.
+            # Runs the duplicate-version report at the end of this job. Pinned like every other
+            # toolchain here. No pnpm setup or install: the report script is dependency-free.
             - name: Setup Node.js
               uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
               with:
@@ -89,7 +89,7 @@ jobs:
             - name: Install cargo-audit
               run: cargo install cargo-audit@0.22.2 --locked
 
-            # Same flags as ci.yml's audit job; see its comments for why each ignore/deny is set the
+            # Same flags as ci.yml's audit job. See its comments for why each ignore/deny is set the
             # way it is (the GTK3/unic-* unmaintained tree, the yanked spin via sqlx, RUSTSEC-2024-0429).
             - name: Audit Rust dependencies
               run: >
@@ -103,10 +103,10 @@ jobs:
             - name: Check licenses, sources and bans
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
 
-            # The duplicate-version count on this run's summary page; see ci.yml's step of the same
+            # The duplicate-version count on this run's summary page. See ci.yml's step of the same
             # name for why it is a second cargo-deny invocation and why it never fails the job. It
             # belongs here as much as there: this workflow's whole purpose is surfacing what decays
-            # while nothing changes in the repository, and dependency bloat is exactly that - a
+            # while nothing changes in the repository, and dependency bloat is exactly that. A
             # Dependabot bump can add a duplicate without a single line of this project's code
             # moving, so a weekly reading is the one that shows the drift.
             - name: Report duplicate dependency versions
@@ -115,18 +115,18 @@ jobs:
                       2> deny-bans.json
                   node scripts/summarize-cargo-deny-bans.js deny-bans.json >> "$GITHUB_STEP_SUMMARY"
 
-    # The third thing that decays while nothing in this repository changes, and the one the two jobs
-    # above cannot see: yt-dlp's output format.
+    # The third thing that decays while nothing in this repository changes is yt-dlp's output
+    # format, which the two jobs above cannot see.
     #
-    # Every other external input here is pinned - the toolchain, Node, the runner images, every
+    # Every other external input here is pinned: the toolchain, Node, the runner images, every
     # action by SHA, every `cargo install` by version. yt-dlp is the structural exception and cannot
     # be pinned: it is a system binary resolved from PATH (services/binaries.rs), whatever version
     # the user's package manager last installed. `models/yt_dlp.rs` deserializes its
     # `--dump-single-json`, and every test covering that reads a committed fixture, which passes
     # forever no matter what upstream does.
     #
-    # WHAT THIS JOB DOES NOT DO, since the obvious reading of its name is the wrong one: it does not
-    # check the contract. That needs a real YouTube fetch, and it was tried here first - the test
+    # WHAT THIS JOB DOES NOT DO, since the obvious reading of its name is the wrong one. It does not
+    # check the contract. That needs a real YouTube fetch, and it was tried here first: the test
     # already exists (`live_yt_dlp_output_still_matches_the_committed_fixture`) and is already
     # written to run unattended. On a GitHub runner YouTube answers "Sign in to confirm you're not a
     # bot", because runners are datacenter IPs, so the test skipped and the job went green having
@@ -134,12 +134,12 @@ jobs:
     #
     # A non-YouTube extractor was the next idea and does not work either. The fields that break the
     # app (`vcodec`, `acodec`, `height`, `resolution`, `comment_count`) are generic InfoDict *keys*
-    # but are only populated by extractors doing real format enumeration; yt-dlp's generic extractor
+    # but are only populated by extractors doing real format enumeration. yt-dlp's generic extractor
     # against a locally served file returns one empty format, so a test against it would pass forever
     # regardless of upstream. Which is worse than no test.
     #
     # So the verification stays local, where it works, and what is automated is the part that was
-    # actually missing. The gap was never "this cannot be checked" - it is that checking depended on
+    # actually missing. The gap was never "this cannot be checked". It is that checking depended on
     # the maintainer noticing yt-dlp had moved. This job notices. It compares the version the fixture
     # records against yt-dlp's latest release and opens an issue when they differ, which needs no
     # YouTube, no third-party site and no network beyond the GitHub API this workflow already uses.
@@ -152,8 +152,8 @@ jobs:
             # Self-contained on purpose: it opens and closes its own tracker rather than routing
             # through the shared alert/close jobs below. Those key off a job *failing*, and a new
             # yt-dlp release is not a failure of anything. Wiring it in would have meant either a red
-            # run every couple of weeks until the fixture is refreshed - the "trains you to ignore
-            # it" outcome this repository keeps arguing against - or threading a third result through
+            # run every couple of weeks until the fixture is refreshed (the "trains you to ignore
+            # it" outcome this repository keeps arguing against) or threading a third result through
             # two conditions that exist to stay identical to mutation.yml's.
             issues: write
         steps:
@@ -246,7 +246,7 @@ jobs:
                   fi
 
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
-    # signal - the header of this file frames the workflow's whole job as "surfacing" a new
+    # signal: the header of this file frames the workflow's whole job as "surfacing" a new
     # advisory, and an email alone barely does that. Open (or comment on) a tracking issue so a
     # failing audit is visible in the repository itself. Runs only when a gate above did not
     # succeed, and only on the schedule/dispatch this workflow already runs on.
@@ -255,20 +255,20 @@ jobs:
         needs: [js-advisories, rust-advisories]
         # Not `if: failure()`, which is what this said and which does not do what it reads as. A job
         # killed by its own `timeout-minutes` is marked **cancelled**, not failed, and `failure()`
-        # does not match cancelled - so the alert is skipped on exactly the run where the gate
+        # does not match cancelled, so the alert is skipped on exactly the run where the gate
         # stopped producing a verdict. That is the worse half of the failure: a gate that fails
         # loudly is merely broken, while a gate that goes silent reads as green.
         #
         # It is not hypothetical here. Both jobs above `cargo install` two tools from source with no
         # build cache under a 30-minute ceiling, which is the shape that hits a timeout first. And it
-        # already happened once in this repository, to mutation.yml's identical job on 2026-07-27;
-        # that job's condition was fixed then and this one was not, even though this file was
+        # already happened once in this repository, to mutation.yml's identical job on 2026-07-27.
+        # That job's condition was fixed then and this one was not, even though this file was
         # revisited afterwards for the GH_REPO half of the same lesson (see below).
         #
         # So the dependency results are checked explicitly rather than leaning on a status function.
-        # `always()` is what lets this run at all once a dependency is cancelled; the consequence is
+        # `always()` is what lets this run at all once a dependency is cancelled. The consequence is
         # that cancelling the run by hand also opens an issue, which is the right direction to err.
-        # Kept identical to mutation.yml's condition on purpose - the two must not drift again.
+        # Kept identical to mutation.yml's condition on purpose: the two must not drift again.
         if: >
             always() &&
             (needs.js-advisories.result == 'failure' || needs.js-advisories.result == 'cancelled' ||
@@ -284,12 +284,12 @@ jobs:
                   # No checkout step here either, so `gh issue` has no git remote to resolve the
                   # repository from and would fail before opening anything. Proven by the mutation
                   # workflow's identical job, which failed exactly that way the first time it ever
-                  # ran; this one has the same shape and has never fired, so it would have too.
+                  # ran. This one has the same shape and has never fired, so it would have too.
                   GH_REPO: ${{ github.repository }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   TITLE="Scheduled dependency audit failed"
-                  BODY="The weekly scheduled dependency audit failed against the committed lockfiles - a JS advisory/license or a Rust cargo-audit/cargo-deny gate is red. Review the run and update or pin the affected dependency: $RUN_URL"
+                  BODY="The weekly scheduled dependency audit failed against the committed lockfiles: a JS advisory/license or a Rust cargo-audit/cargo-deny gate is red. Review the run and update or pin the affected dependency: $RUN_URL"
                   EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
                   if [ -n "$EXISTING" ]; then
                       gh issue comment "$EXISTING" --body "$BODY"
@@ -298,7 +298,7 @@ jobs:
                   fi
 
     # The other half of the job above. It only ever opened or commented, so a tracking issue outlived
-    # the advisory it described and stayed open across every later green run - at which point "there
+    # the advisory it described and stayed open across every later green run, at which point "there
     # is an open alert issue" stops meaning "there is a failing gate now", and the next real advisory
     # arrives as a comment on an issue that already reads as known.
     #

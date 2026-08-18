@@ -77,7 +77,7 @@ const DEFAULT_ERROR_MESSAGE = "Unknown error.";
 // newly added Rust error code therefore degrades to a controlled message instead of leaking
 // an internal string to the user.
 const GENERIC_BACKEND_ERROR_MESSAGE =
-    "The operation could not be completed. If it keeps happening, check the app log file for details - Diagnostics shows where Kavynex keeps its files.";
+    "The operation could not be completed. If it keeps happening, check the app log file for details. Diagnostics shows where Kavynex keeps its files.";
 
 const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [APP_ERROR_CODE]: DEFAULT_ERROR_MESSAGE,
@@ -90,7 +90,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     // failure, and each surfaces in the restore/import flow. The one place where telling someone
     // to go read a log file is the least useful answer the app could give.
     [NO_DATABASE_BACKUP_AVAILABLE_ERROR_CODE]:
-        "No healthy backup was found to restore from. The current database was left untouched - Diagnostics shows where Kavynex keeps its files.",
+        "No healthy backup was found to restore from. The current database was left untouched. Diagnostics shows where Kavynex keeps its files.",
     [NO_DATABASE_IMPORT_TO_UNDO_ERROR_CODE]:
         "There is no imported database to undo. The undo snapshot is kept only until the next import replaces it.",
     // Reaching this one means the database opened on its own after the startup check had already
@@ -100,7 +100,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     // This used to read "Restart Kavynex and try the restore again", which is the opposite of the
     // right action: the database is working, and restoring would replace it with an older snapshot.
     [DATABASE_ALREADY_OPEN_ERROR_CODE]:
-        "The database recovered on its own and is working normally, so there is nothing to restore. Close this dialog and keep using Kavynex - your data is intact.",
+        "The database recovered on its own and is working normally, so there is nothing to restore. Close this dialog and keep using Kavynex. Your data is intact.",
 
     // Catalogued even though the add-media flow routes it to the neutral notice channel before it
     // reaches here: a cancel raised on any other path (a future batch import, a retry) must still
@@ -142,12 +142,12 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE]:
         "The saved live chat file is missing from the library folder. It may have been moved or deleted outside Kavynex.",
     [LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE]:
-        "The saved live chat file could not be read - it looks damaged. The video itself is unaffected.",
+        "The saved live chat file could not be read. It looks damaged, but the video itself is unaffected.",
     // Deliberately says nothing is wrong, because nothing is: the read was refused for load, and the
     // two neighbouring live chat messages both describe a file the user has to go and fix. Retrying
     // is the whole action here, so it is the whole message.
     [TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE]:
-        "Kavynex is still loading another live chat replay. Wait for it to finish and open this one again - nothing is wrong with the file.",
+        "Kavynex is still loading another live chat replay. Wait for it to finish and open this one again. Nothing is wrong with the file.",
     [INVALID_SOURCE_THUMBNAIL_ERROR_CODE]: "Select a valid thumbnail image.",
     [SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE]: "The selected thumbnail image was not found.",
     [INVALID_THUMBNAIL_FILE_ERROR_CODE]: "Choose a valid thumbnail image file.",
@@ -270,8 +270,8 @@ function resolveFriendlyMessage(parsed: AppErrorShape): string {
     return DEFAULT_ERROR_MESSAGE;
 }
 
-// The diagnostic text appended after "Details:". For a catalogued/known message that is the
-// backend `details` field; for the generic backend fallback the raw `message` is itself the
+// The diagnostic text appended after "Details:". For a catalogued/known message, that is the
+// backend `details` field. For the generic backend fallback, the raw `message` is itself the
 // useful diagnostic, so it is folded in (with `details`) instead of being dropped.
 function technicalDetailFor(parsed: AppErrorShape, resolvedMessage: string): string {
     const details = parsed.details?.trim() ?? "";
@@ -284,7 +284,12 @@ function technicalDetailFor(parsed: AppErrorShape, resolvedMessage: string): str
     // which carries no diagnostic value, so it is not worth folding into the details line.
     const message = parsed.message?.trim() ?? "";
     const diagnosticMessage = message === DEFAULT_ERROR_MESSAGE ? "" : message;
-    return [diagnosticMessage, details].filter((value) => value.length > 0).join(" - ");
+
+    if (diagnosticMessage && details) {
+        return `${diagnosticMessage} (${details})`;
+    }
+
+    return diagnosticMessage || details;
 }
 
 function shouldAppendDetails(resolvedMessage: string, technicalDetail: string): boolean {

@@ -11,7 +11,7 @@
     outline-offset: -3px;
 }
 
-/* Escape hatch for a programmatic focus restore that must not draw the ring - closing the player
+/* Escape hatch for a programmatic focus restore that must not draw the ring. Closing the player
    returns focus to the card that opened it, and a mouse user should not see a keyboard outline
    appear there. `focus({ focusVisible: false })` is the standard way to express that, but only
    Firefox implements it; Chromium and WebKit (i.e. every engine this app ships on) ignore it. The

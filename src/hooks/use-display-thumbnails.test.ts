@@ -70,7 +70,7 @@ describe("useDisplayThumbnails", () => {
     it("keeps earlier pages resolved when a new page is appended", async () => {
         // The regression this guards is visible and ugly: the grid paginates, so replacing the map
         // per page would swap every already-resolved card back to its full-size thumbnail mid-scroll
-        // - the opposite of what the hook is for.
+        // (the opposite of what the hook is for).
         vi.mocked(resolveDisplayThumbnails)
             .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }))
             .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_b.jpg": "/cache/b.jpg" }));
@@ -411,7 +411,7 @@ describe("useDisplayThumbnails", () => {
     });
 
     it("ignores a resolution that lands after the hook is unmounted", async () => {
-        // A channel switch unmounts the grid while a resolve is in flight; setting state then is a
+        // A channel switch unmounts the grid while a resolve is in flight. Setting state then is a
         // no-op in React 18+, but the guard keeps the intent explicit and the test pins it.
         let settle: (value: DisplayThumbnailResolution) => void = () => {};
         vi.mocked(resolveDisplayThumbnails).mockReturnValue(

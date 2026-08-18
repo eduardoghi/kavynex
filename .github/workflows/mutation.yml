@@ -24,7 +24,7 @@ jobs:
         outputs:
             # "scored" when Stryker reached the end and reported a mutation score, "no-score" when it
             # aborted before producing one. The alert job turns the two into differently-titled
-            # issues; see the step that sets this for why the distinction is not cosmetic.
+            # issues. See the step that sets this for why the distinction is not cosmetic.
             verdict: ${{ steps.stryker.outputs.verdict }}
         # Generous timeout: a full mutation run is long, and this is a weekly scheduled run rather
         # than a per-PR gate, so a longer wall-clock is fine. A too-tight timeout would also report
@@ -56,12 +56,12 @@ jobs:
             # 20 after a local run hit the 5-minute default at 6633 mutants without producing any
             # score at all) aborts the run, and so does an install or instrumentation error. Both
             # arrive here as "the mutation job failed", which reads as a loss of test strength while
-            # actually meaning the gate stopped answering - the same confusion that let the Rust
-            # leg's timeout go unreported on 2026-07-27, one layer up.
+            # actually meaning the gate stopped answering. That is the same confusion that let the
+            # Rust leg's timeout go unreported on 2026-07-27, one layer up.
             #
-            # So the outcome is classified rather than inferred: a run that reported a score leaves a
+            # So the outcome is classified rather than inferred. A run that reported a score leaves a
             # report behind, one that aborted does not. The step still exits with Stryker's own
-            # status, so the job's pass/fail is unchanged - this only records *which* kind of
+            # status, so the job's pass/fail is unchanged: this only records *which* kind of
             # non-zero it was. Written before the exit so the output survives a failing step.
             - name: Run mutation testing
               id: stryker
@@ -79,7 +79,7 @@ jobs:
 
                   exit "$status"
 
-            # Without this the HTML report - the only artifact that says *which* mutants survived -
+            # Without this the HTML report (the only artifact that says *which* mutants survived)
             # dies with the runner, so triaging a red run means reproducing a ~29-minute local run
             # first. `if: always()` because the failing run is precisely the one worth reading.
             - name: Upload the Stryker report
@@ -92,7 +92,7 @@ jobs:
 
     # An `exclude_re` entry that stops matching anything is silent, and costly in both directions:
     # the mutant it suppressed comes back and turns this run red for a reason unrelated to the tests,
-    # or - the worse case - the function it named was renamed and its real mutant is now unexcluded
+    # or, in the worse case, the function it named was renamed and its real mutant is now unexcluded
     # and unnoticed among the survivors, with nothing in the config to suggest that the entry rather
     # than the tests had gone stale.
     #
@@ -102,7 +102,7 @@ jobs:
     #
     # It is a job rather than a step of the shard below, and the reason is the failure mode this
     # whole workflow keeps running into. It used to be `if: strategy.job-index == 0` inside
-    # `rust-mutation`, so it lived under that job's 90-minute ceiling - and a job killed by its own
+    # `rust-mutation`, so it lived under that job's 90-minute ceiling, and a job killed by its own
     # `timeout-minutes` is marked *cancelled*, which is exactly how shard 0 died on 2026-07-27. The
     # check would then not have run at all, while nothing distinguished that from having run and
     # passed. The verdict of the following 90 minutes rests on this having happened, so it must be
@@ -110,13 +110,13 @@ jobs:
     #
     # It is also nearly free, which is what makes the split obvious in hindsight: `cargo mutants
     # --list` parses the sources and never builds the tree (measured at 0.5s over the 54 files the
-    # scope names), so this job needs no apt packages, no build cache and no compile - only
+    # scope names), so this job needs no apt packages, no build cache and no compile: only
     # `cargo install cargo-mutants` itself, which is the whole of its runtime.
     verify-exclusions:
         name: Verify every mutants.toml exclusion still names a real mutant
         runs-on: ubuntu-26.04
         # Bounded far below the shards' ceiling. Nothing here compiles the crate, so the only thing
-        # that takes real time is building cargo-mutants - and a ceiling this low stays a signal
+        # that takes real time is building cargo-mutants, and a ceiling this low stays a signal
         # instead of a number nothing approaches.
         timeout-minutes: 30
         steps:
@@ -145,7 +145,7 @@ jobs:
             # `--no-config` is required and is the subtle part: a `--list` that applied the config
             # would already have removed every mutant the exclusions name, so every pattern would
             # read as dead and the gate would be inverted. `--no-config` also drops `examine_globs`,
-            # so the scope is passed back in as `--file` arguments generated from that same list -
+            # so the scope is passed back in as `--file` arguments generated from that same list,
             # which is why the script emits them rather than the workflow restating them.
             #
             # Read into an array rather than interpolated: two of those globs are directory globs
@@ -154,14 +154,14 @@ jobs:
             # The listing this reads is uploaded below, and that is not decoration. On its first
             # ever run (2026-08-03) this step reported twenty patterns as naming no mutant, and
             # every one of the twenty matched when the same command was reproduced by hand on the
-            # same commit with the same pinned cargo-mutants - so the disagreement is between two
+            # same commit with the same pinned cargo-mutants, so the disagreement is between two
             # *listings*, not between the config and the code. Without the listing that produced
             # the verdict there is nothing to compare against, and the only available response to
             # a red run is to delete twenty exclusions on a guess. That is precisely the failure
-            # this gate exists to prevent: an exclusion removed is a real mutant silently
+            # this gate exists to prevent. An exclusion removed is a real mutant silently
             # unexcluded.
             #
-            # `set -o pipefail` is not needed here - nothing is piped - but the counts are echoed
+            # `set -o pipefail` is not needed here (nothing is piped), but the counts are echoed
             # so a truncated or empty listing is visible in the log itself rather than only inside
             # an artifact somebody has to download.
             - name: Verify every mutants.toml exclusion still names a real mutant
@@ -170,12 +170,12 @@ jobs:
                   echo "Scope: ${#FILE_ARGS[@]} --file arguments."
 
                   # `--colors never` because this workflow sets CARGO_TERM_COLOR: always, which
-                  # cargo-mutants honours even writing to a file - and it colourizes the function
+                  # cargo-mutants honours even writing to a file, and it colourizes the function
                   # name *inside* each description, so `replace pin_process_start with ()` arrives
                   # with escape sequences between the words. Every exclusion here names a function,
                   # so with colour on they stop matching and the gate reports live exclusions as
                   # dead. That is how this check failed on its first ever run, against twenty-six
-                  # patterns that were all fine. The script strips the sequences too; this keeps
+                  # patterns that were all fine. The script strips the sequences too. This keeps
                   # the uploaded listing readable for whoever compares it by hand.
                   cargo mutants --manifest-path src-tauri/Cargo.toml --list --no-config \
                       --colors never "${FILE_ARGS[@]}" > mutants-list.txt
@@ -186,7 +186,7 @@ jobs:
 
             # Uploaded whether or not the check passed: a green run's listing is the baseline the
             # next red one is read against, and a red run's is the evidence. Small (a line per
-            # mutant) and cheap - the job builds nothing.
+            # mutant) and cheap: the job builds nothing.
             - name: Upload the mutant listing
               if: always()
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -197,7 +197,7 @@ jobs:
 
     rust-mutation:
         name: Rust mutation testing (shard ${{ strategy.job-index }})
-        # Pinned like the job above and ci.yml's rust job; see those comments.
+        # Pinned like the job above and ci.yml's rust job. See those comments.
         runs-on: ubuntu-26.04
         strategy:
             # One shard failing must not cancel the others: each covers a distinct slice of the
@@ -208,14 +208,14 @@ jobs:
                 # `strategy.job-total` in the run step below, so only the *length* of this list
                 # matters: adding or removing an entry changes the shard count with nothing else to
                 # keep in step. Spelling the count in two places is what this avoids, and the
-                # failure it avoids is silent - a matrix of three against a hardcoded `/4` would
+                # failure it avoids is silent. A matrix of three against a hardcoded `/4` would
                 # simply never run the fourth shard's mutants, and the run would go green.
                 #
                 # Four since 2026-07-31, and the reasoning is worth keeping because this is the knob
                 # to reach for again. The scope was 1234 mutants across three shards on 2026-07-29,
-                # whose legs took 68, 75 and 79 minutes against the ceiling below; adding
+                # whose legs took 68, 75 and 79 minutes against the ceiling below. Adding
                 # `live_chat_storage.rs` and `thumbnail/redirect.rs` took it to 1383, which puts the
-                # slowest leg at roughly 88 - inside the ceiling by a margin that is not one. The
+                # slowest leg at roughly 88, inside the ceiling by a margin that is not one. The
                 # alternative was raising the ceiling, and that is the wrong direction: it exists to
                 # be a number nothing approaches, and a leg killed by it reports as *cancelled*
                 # rather than failed, which is exactly the outcome that went unreported on
@@ -224,7 +224,7 @@ jobs:
                 # Five since 2026-08-03, and this one is worth reading before reaching for the knob
                 # again, because the trigger was not what the paragraph above would predict. Shard 1
                 # was killed at 91 minutes and shard 2 finished at 89, while the scope had barely
-                # moved - 1454 against the 1450 measured the day before. So nothing grew; the margin
+                # moved: 1454 against the 1450 measured the day before. So nothing grew. The margin
                 # the note above already called "not one" simply ran out, and an ordinary swing in
                 # runner speed was enough to cross it. The lesson is that a leg sitting within a few
                 # minutes of this ceiling is already over it on some future Tuesday, and the reading
@@ -241,22 +241,22 @@ jobs:
                 # 73, and ~310 per leg lands near 71. That is 19 minutes of headroom rather than 11.
                 #
                 # Which is the lesson this matrix keeps teaching, arriving from the other side for
-                # once: read the slowest leg, and read it from a run rather than from the last
+                # once. Read the slowest leg, and read it from a run rather than from the last
                 # estimate written down here. Adding a sixth shard on the projection would have cost
                 # a runner every Monday to solve a problem the measurement says does not exist yet.
                 shard: [1, 2, 3, 4, 5]
         # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
         # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
-        # was killed at 2h00m having produced no verdict - the two runs before it took ~56 minutes.
+        # was killed at 2h00m having produced no verdict: the two runs before it took ~56 minutes.
         # The scope is 1549 mutants today (`cargo mutants --list | wc -l`, which applies the config
         # and so counts what a run actually mutates), so a fifth of it plus one baseline build sits
         # well inside this, and the ceiling stays low enough to be a real signal rather than a number
         # nothing ever approaches. When a leg starts creeping toward it, add a shard rather than
-        # minutes - see the matrix above, including the 2026-08-16 entry on when not to.
+        # minutes. See the matrix above, including the 2026-08-16 entry on when not to.
         #
         # The same command with `--no-config`, i.e. over the whole crate rather than the gated files,
         # reports 3292. That is a rough sense of how much of the tree this gate covers and an input to
-        # nothing here, so it is refreshed rather than investigated - but note it said 1634 when this
+        # nothing here, so it is refreshed rather than investigated, but note it said 1634 when this
         # line was last touched on 2026-08-02, and a gap that wide is the crate growing rather than
         # the same scope re-counting. Do not read a small movement into it next time.
         #
@@ -265,7 +265,7 @@ jobs:
         # 1454 the day after, with nothing added. And it is raised deliberately: 1549 on 2026-08-16,
         # when two files joined `examine_globs` with a row in docs/MUTATION-TESTING.md behind them.
         # Neither moved the shard count, which is the point of re-measuring rather than assuming
-        # either way - and 2026-08-03 showed the other half of that lesson: the shard count needed
+        # either way, and 2026-08-03 showed the other half of that lesson. The shard count needed
         # changing anyway, for pace rather than for scope. Read the slowest leg, not this number
         # alone.
         timeout-minutes: 90
@@ -286,7 +286,7 @@ jobs:
 
             # These apt packages are intentionally unpinned, like ci.yml/release.yml: exact pins on
             # a hosted image go stale as the archive drops old versions and break the build for a
-            # reason unrelated to this project; they are dev headers, not shipped in any bundle.
+            # reason unrelated to this project. They are dev headers, not shipped in any bundle.
             - name: Install Linux dependencies
               run: |
                   sudo apt-get update
@@ -297,7 +297,7 @@ jobs:
             # cache-on-failure is deliberately off here (unlike a normal build job): this job runs
             # cargo-mutants with `--in-place`, and a job-timeout kill (SIGKILL) can leave the working
             # tree mutated mid-run. Saving a cache derived from that mutated tree on a failed/cancelled
-            # run is the one interaction worth avoiding; a fresh checkout would re-fingerprint and
+            # run is the one interaction worth avoiding. A fresh checkout would re-fingerprint and
             # rebuild the changed files next run, but not persisting a failure-run cache removes the
             # question entirely. A successful run still caches normally.
             #
@@ -319,19 +319,19 @@ jobs:
 
             # Mutates only the security-critical modules (see src-tauri/.cargo/mutants.toml's
             # examine_globs): path containment, the library-path guard, the yt-dlp host allow-list,
-            # and external-binary resolution. cargo-mutants exits 2 when a mutant survives - a logic
-            # change its tests did not catch - which fails this scheduled run, the mutation-level
+            # and external-binary resolution. cargo-mutants exits 2 when a mutant survives (a logic
+            # change its tests did not catch), which fails this scheduled run, the mutation-level
             # counterpart to Stryker for the frontend. The generous per-mutant timeout keeps a
             # mutation-induced infinite loop from being misreported instead of caught.
             #
             # `--in-place` is required, not a preference: cargo-mutants' default copies only the
             # `src-tauri` package into a scratch dir, but the youtube-handle parity test
             # (utils/validation.rs) `include_str!`s `../shared/youtube-handle-cases.json` from the
-            # repo root - a fixture deliberately shared with the TypeScript side. The copy leaves
+            # repo root, a fixture deliberately shared with the TypeScript side. The copy leaves
             # that sibling behind, so the unmutated baseline build fails there ("cargo build failed
             # in an unmutated tree") before a single mutant runs. Testing in the real tree keeps the
             # `../shared` path resolvable. The CI checkout is disposable, so the in-place caveats
-            # (no parallel copies; a killed run leaves the tree mutated) do not apply here.
+            # (no parallel copies, and a killed run leaves the tree mutated) do not apply here.
             #
             # No explicit `--locked` here, unlike every other cargo invocation in this repo: it is
             # already covered by `additional_cargo_args = ["--locked"]` in
@@ -344,9 +344,10 @@ jobs:
             # right knob here: `examine_globs`, `exclude_re` and `additional_cargo_args` all stay
             # exactly as mutants.toml declares them, and the shards partition the same set the
             # unsharded run would have produced. Verified against the pinned 27.1.0 on this tree:
-            # the full list is 1047 mutants and shards 0/3, 1/3 and 2/3 list 349 each - an exact
-            # partition, nothing dropped and nothing run twice. `k` is zero-based (`3/3` is refused
-            # with "shard k must be less than n"), which is what `strategy.job-index` already is.
+            # the full list is 1047 mutants and shards 0/3, 1/3 and 2/3 list 349 each, an exact
+            # partition with nothing dropped and nothing run twice. `k` is zero-based (`3/3` is
+            # refused with "shard k must be less than n"), which is what `strategy.job-index`
+            # already is.
             #
             # `round-robin` rather than the default `slice`: consecutive mutants come from the same
             # file, so slicing would hand one shard a run of db_backup mutants and another a run of
@@ -365,7 +366,7 @@ jobs:
             # mutants.out/ also carries outcomes.json, caught/unviable lists and the debug log.
             #
             # The name carries the shard index because upload-artifact refuses two artifacts with
-            # the same name in one run - and it has to be the index rather than the `k/n` spec,
+            # the same name in one run, and it has to be the index rather than the `k/n` spec,
             # since an artifact name cannot contain a slash. Each shard reports only its own slice,
             # so triaging a red run means reading the artifact of the shard that failed.
             - name: Upload the cargo-mutants output
@@ -377,7 +378,7 @@ jobs:
                   retention-days: 30
 
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
-    # signal - mirrors scheduled-audit.yml's alert-on-failure job for the same reason. Open (or
+    # signal. This mirrors scheduled-audit.yml's alert-on-failure job for the same reason. Open (or
     # comment on) a tracking issue so a failing mutation run is visible in the repository itself.
     # Runs only when a job above did not succeed, and only on the schedule/dispatch this workflow
     # already runs on.
@@ -387,11 +388,11 @@ jobs:
         # `failure()` alone was wrong, and it cost a real run: a job killed by its own
         # `timeout-minutes` is marked **cancelled**, not failed, so on 2026-07-27 the Rust leg died
         # at the 2h ceiling and this job was *skipped*. The gate stopped producing a verdict and the
-        # one mechanism built to make that visible stayed quiet - the worse half of the bug, since a
+        # one mechanism built to make that visible stayed quiet, the worse half of the bug, since a
         # gate that fails loudly is merely broken while a gate that goes silent reads as green.
         #
         # So the dependency results are checked explicitly instead of leaning on a status function.
-        # `always()` is what lets this run at all once a dependency is cancelled; the consequence is
+        # `always()` is what lets this run at all once a dependency is cancelled. The consequence is
         # that cancelling the run by hand also opens an issue. That is the right direction to err:
         # a stray comment on an existing tracking issue costs a moment, whereas the alternative is
         # the failure mode this whole condition exists to close.
@@ -409,7 +410,7 @@ jobs:
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   # This job has no checkout step, and `gh issue` resolves the repository from the
-                  # git remote of the working directory - so without this it dies with "fatal: not a
+                  # git remote of the working directory, so without this it dies with "fatal: not a
                   # git repository" before it can open anything. That was latent for as long as the
                   # job existed: `if: failure()` never matched a timeout, so it had never actually
                   # run. Setting GH_REPO is what a checkout would otherwise be needed for, minus the
@@ -428,7 +429,7 @@ jobs:
                   # A run that produced a verdict and a run that never got to one are different
                   # problems with different owners, and collapsing them into one issue title was
                   # costing the more urgent of the two. "A mutant survived" is a request to write a
-                  # test; "the gate stopped answering" is a request to fix the gate, and it is the
+                  # test. "The gate stopped answering" is a request to fix the gate, and it is the
                   # one that quietly turns a green-looking schedule into no coverage at all. They get
                   # separate tracking issues so neither is read as the other, and so closing one does
                   # not silence the next occurrence of the other.
@@ -442,7 +443,7 @@ jobs:
                   #
                   # No verdict means: a shard was killed by its own timeout-minutes (GitHub marks
                   # that *cancelled*, not failed), or Stryker aborted before reporting a score (a
-                  # dry-run timeout is the observed case - see the classification step above).
+                  # dry-run timeout is the observed case. See the classification step above).
                   NO_VERDICT=""
 
                   if [ "$MUTATION_RESULT" = "cancelled" ] || [ "$RUST_MUTATION_RESULT" = "cancelled" ]; then
@@ -451,7 +452,7 @@ jobs:
 
                   # A cancelled exclusion check is the case that job was split out to make visible:
                   # it never answered, so nothing establishes that the exclusions still name real
-                  # mutants - which is the same "the gate stopped answering" class as the two above.
+                  # mutants, which is the same "the gate stopped answering" class as the two above.
                   if [ "$VERIFY_EXCLUSIONS_RESULT" = "cancelled" ]; then
                       NO_VERDICT="yes"
                   fi
@@ -465,10 +466,10 @@ jobs:
                       BODY="The weekly scheduled mutation run found an exclude_re entry in src-tauri/.cargo/mutants.toml that matches nothing. That is silent in both directions: either the mutant it suppressed is back and will redden this run for a reason unrelated to the tests, or the function it named was renamed and its real mutant is now unexcluded and unnoticed among the survivors. The run log lists the dead patterns; fix or delete them in mutants.toml: $RUN_URL"
                   elif [ -n "$NO_VERDICT" ]; then
                       TITLE="Scheduled mutation testing produced no verdict"
-                      BODY="The weekly scheduled mutation testing run ended without a mutation score. Either a job was killed by its timeout-minutes (which GitHub reports as cancelled rather than failed) or Stryker aborted before reporting - a dry-run timeout is the case this has happened for. This is not a loss of test strength; the gate stopped answering, which reads as green until someone looks. Fix the run itself - add a shard, or raise dryRunTimeoutMinutes in stryker.config.json: $RUN_URL"
+                      BODY="The weekly scheduled mutation testing run ended without a mutation score. Either a job was killed by its timeout-minutes (which GitHub reports as cancelled rather than failed) or Stryker aborted before reporting: a dry-run timeout is the case this has happened for. This is not a loss of test strength; the gate stopped answering, which reads as green until someone looks. Fix the run itself by adding a shard, or raising dryRunTimeoutMinutes in stryker.config.json: $RUN_URL"
                   else
                       TITLE="Scheduled mutation testing failed"
-                      BODY="The weekly scheduled mutation testing run reported a verdict and it was red - a mutant survived, or the score fell under thresholds.break. Read the uploaded report (Stryker HTML, or the failing shard's mutants.out/missed.txt) and shore up the affected tests: $RUN_URL"
+                      BODY="The weekly scheduled mutation testing run reported a verdict and it was red: a mutant survived, or the score fell under thresholds.break. Read the uploaded report (Stryker HTML, or the failing shard's mutants.out/missed.txt) and shore up the affected tests: $RUN_URL"
                   fi
 
                   EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
@@ -479,9 +480,9 @@ jobs:
                   fi
 
     # The other half of the job above, and without it that one degrades into noise. It only ever
-    # opens or comments; nothing closed what it opened, so a tracking issue outlived the failure it
+    # opens or comments. Nothing closed what it opened, so a tracking issue outlived the failure it
     # described and stayed open across every later green run. That is the same failure mode this
-    # workflow keeps fixing elsewhere, with the sign flipped: "there is an open alert issue" stops
+    # workflow keeps fixing elsewhere, with the sign flipped. "There is an open alert issue" stops
     # meaning "there is a failure now", and the next real one arrives as a comment on an issue that
     # already reads as known.
     #
@@ -509,7 +510,7 @@ jobs:
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   # No checkout step, so `gh issue` has no git remote to resolve the repository
-                  # from - the same reason the job above sets this. See its comment.
+                  # from, the same reason the job above sets this. See its comment.
                   GH_REPO: ${{ github.repository }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |

@@ -6,20 +6,20 @@
 # duplicating the same gate). See .github/workflows/ci.yml.
 
 [graph]
-# No `targets` filter: evaluate every crate in Cargo.lock across all platforms the app ships
+# No `targets` filter. Every crate in Cargo.lock is evaluated across all platforms the app ships
 # on, so a bad license in a platform-specific dependency is caught even on a different runner.
 
 [licenses]
 # Allowlist of the permissive licenses actually present in the tree (verified with
 # `cargo deny check licenses`). No *strong* copyleft (GPL/LGPL/AGPL) is allowed, so a future
 # dependency that pulls one in fails CI instead of silently shipping inside an MIT-licensed app. The
-# underlying GTK/WebKit system libraries on Linux are (L)GPL C libraries linked dynamically - they
-# are not Rust crates and never appear here; the Rust GTK bindings themselves are MIT.
+# underlying GTK/WebKit system libraries on Linux are (L)GPL C libraries linked dynamically. They
+# are not Rust crates and never appear here, but the Rust GTK bindings themselves are MIT.
 #
 # "Strong" is doing real work in that sentence, and it used to be missing. MPL-2.0 below *is*
 # copyleft, so the blanket "no copyleft" this said before described a stricter policy than the list
-# actually enforces - and a comment that overstates its own gate is worse than none, because the next
-# reader trusts it. What MPL-2.0 obliges is file-scoped: the source of the covered files has to reach
+# actually enforces, and a comment that overstates its own gate is worse than none, because the next
+# reader trusts it. What MPL-2.0 obliges is file-scoped. The source of the covered files has to reach
 # whoever receives the binary, with no claim on the rest of the app. This project publishes its
 # entire source, so that is satisfied by construction rather than by anything the build does.
 #
@@ -49,21 +49,21 @@ confidence-threshold = 0.9
 # release over, but surface them so the bloat/audit surface stays visible.
 #
 # "Surface" used to be doing no work in that sentence, and the same objection applies to it as to
-# the licenses comment above: a `warn` writes to the log of a job that passes, and nobody opens the
+# the licenses comment above. A `warn` writes to the log of a job that passes, and nobody opens the
 # log of a green job. So the promise was kept by nothing for as long as it was written down. The
 # "Report duplicate dependency versions" step in ci.yml and scheduled-audit.yml now renders the
 # count and the offending crates into the run's step summary (scripts/summarize-cargo-deny-bans.js),
-# which is where it is actually read. That step reports and never gates - changing this back to
+# which is where it is actually read. That step reports and never gates. Changing this back to
 # "deny" is still the only thing that would make a duplicate fail a build, and it is deliberately
 # not what this line says.
 multiple-versions = "warn"
 # A wildcard ("*") version requirement in our own manifest would let an unreviewed major land
-# silently; the app pins real ranges, so forbid it.
+# silently. The app pins real ranges, so forbid it.
 wildcards = "deny"
 allow-wildcard-paths = true
 
 [sources]
-# Every dependency must come from crates.io; one pulled from an arbitrary git host or a private
+# Every dependency must come from crates.io. One pulled from an arbitrary git host or a private
 # registry fails, closing that supply-chain vector.
 unknown-registry = "deny"
 unknown-git = "deny"

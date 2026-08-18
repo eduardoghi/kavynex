@@ -4,24 +4,24 @@ on:
     workflow_dispatch:
 
 # Least-privilege default for the whole workflow, matching ci.yml/mutation.yml. The jobs that need
-# more escalate in their own `permissions:` block (publish-tauri: contents/id-token/attestations
-# write; checksums: contents write); the audit job stays read-only. Declaring the read-only default
-# here means a job added later without its own block inherits read-only rather than the
+# more escalate in their own `permissions:` block: publish-tauri gets contents/id-token/attestations
+# write, checksums gets contents write. The audit job stays read-only. Declaring the read-only
+# default here means a job added later without its own block inherits read-only rather than the
 # repository/organization default, so a new job cannot silently gain write access.
 permissions:
     contents: read
 
 # Only one release may be in flight at a time. Without this, two manual dispatches (the classic
 # "I don't think the first one started") both pass the "tag does not exist yet" check below,
-# both build and sign on four runners, and both upload assets to the same draft - leaving the
+# both build and sign on four runners, and both upload assets to the same draft, leaving the
 # checksums job to hash whatever mix of the two happened to land. That is a corrupted release,
 # not just wasted minutes.
 #
-# `cancel-in-progress: false` is the point: cancelling a run that is already signing or
+# `cancel-in-progress: false` is the point. Cancelling a run that is already signing or
 # uploading is worse than making the second one wait. The queued run starts only after the
 # first finishes, by which time the tag exists and its own guard fails it with a clear message.
 #
-# Unlike ci.yml/mutation.yml this group is deliberately not keyed on `github.ref`: what is
+# Unlike ci.yml/mutation.yml this group is deliberately not keyed on `github.ref`. What is
 # contended here is not the ref but the release itself (one tag, one draft, one set of assets),
 # which is repository-global. Two dispatches from different refs carrying the same package.json
 # version would still collide on the same tag, and a per-ref group would happily let them.
@@ -30,7 +30,7 @@ concurrency:
     cancel-in-progress: false
 
 jobs:
-    # The dependency gates run in their own job, deliberately kept out of publish-tauri: they
+    # The dependency gates run in their own job, deliberately kept out of publish-tauri. They
     # `cargo install` third-party tools, which compiles and runs those crates' build scripts on
     # the runner, and publish-tauri is the runner that holds TAURI_SIGNING_PRIVATE_KEY. Building
     # them here instead keeps that code off the signing job entirely, and compiles each tool once
@@ -39,10 +39,10 @@ jobs:
     # ref already passed ci.yml's identical checks).
     audit:
         name: Cargo audit and deny
-        # Pinned like the build matrix below; `-latest` can silently jump an OS major mid-release.
+        # Pinned like the build matrix below. `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 60
-        # No secrets are needed to read the lockfile; this job never gets the signing key.
+        # No secrets are needed to read the lockfile. This job never gets the signing key.
         permissions:
             contents: read
         steps:
@@ -56,17 +56,17 @@ jobs:
               with:
                   toolchain: 1.96.0
 
-            # Pin the tool version (keep in sync with ci.yml): an unpinned `cargo install` builds
+            # Pin the tool version (keep in sync with ci.yml). An unpinned `cargo install` builds
             # whatever the latest release happens to be at dispatch time, so the code executing on
             # the runner is not the code this repository last reviewed. Pinning costs nothing in
-            # security freshness - cargo-audit downloads the RustSec advisory database at run
+            # security freshness. cargo-audit downloads the RustSec advisory database at run
             # time, so a pinned tool still checks against today's advisories.
             - name: Install cargo-audit
               run: cargo install cargo-audit@0.22.2 --locked
 
-            # RUSTSEC advisories are not covered by the JS advisory check; this closes that gap
-            # for the Rust dependency tree. Same flags as ci.yml's audit job, which is where the
-            # reasoning for each one is written down - they have to stay in step, since the release
+            # RUSTSEC advisories are not covered by the JS advisory check, closing that gap for
+            # the Rust dependency tree. Same flags as ci.yml's audit job, which is where the
+            # reasoning for each one is written down. They have to stay in step, since the release
             # is dispatched by hand and cannot assume CI ever ran against the chosen commit.
             - name: Audit Rust dependencies
               run: >
@@ -77,16 +77,16 @@ jobs:
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked
 
-            # cargo-audit covers advisories; cargo-deny adds the checks it does not: license
+            # cargo-audit covers advisories. cargo-deny adds the checks it does not: license
             # compliance, dependency source trust (crates.io only), and wildcard requirements.
             # Config: src-tauri/deny.toml.
             - name: Check licenses, sources and bans
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
 
     # The production JS advisory, license and lint gates run in their own job that publish-tauri
-    # `needs`, so every build leg is blocked until they pass - symmetric with the `audit` (Rust)
+    # `needs`, so every build leg is blocked until they pass, symmetric with the `audit` (Rust)
     # job above. Previously these ran inside publish-tauri gated to the Ubuntu leg, which failed
-    # only that leg: with fail-fast off, the Windows and macOS legs would still build, sign and
+    # only that leg. With fail-fast off, the Windows and macOS legs would still build, sign and
     # upload their installers to the draft before the Ubuntu failure was even visible. These checks
     # are platform-independent (they read the lockfile / run ESLint), so one Ubuntu run gates all
     # four build legs. The frontend test suite stays in publish-tauri instead of moving here,
@@ -111,7 +111,7 @@ jobs:
                   node-version: 26.5.0
                   cache: pnpm
 
-            # Re-gate the Node version pin here too: the release is dispatched by hand, so nothing
+            # Re-gate the Node version pin here too. The release is dispatched by hand, so nothing
             # guarantees the chosen ref went through ci.yml's identical check.
             - name: Verify Node version consistency
               run: node scripts/verify-node-version.js
@@ -148,7 +148,7 @@ jobs:
                 # The Rust toolchain and Node are pinned to the version, so leaving the OS itself
                 # free is the one thing that could still change what a release is built on between
                 # two otherwise identical runs. These are the images those runs actually used, so
-                # this pins current behavior rather than changing it; bump them deliberately.
+                # this pins current behavior rather than changing it. Bump them deliberately.
                 include:
                     - platform: macos-26
                       args: --target aarch64-apple-darwin
@@ -162,7 +162,7 @@ jobs:
                     - platform: windows-2025
                       args: ""
 
-                    # aarch64 legs build natively on the arm64-hosted runners: the host default
+                    # aarch64 legs build natively on the arm64-hosted runners. The host default
                     # target is already aarch64, so they need no `--target` and no extra rustup
                     # target, exactly like the x64 ubuntu/windows legs above. ubuntu-26.04-arm keeps
                     # the same OS major as the x64 Linux leg (pin symmetry) at the cost of being a
@@ -171,10 +171,10 @@ jobs:
                     #
                     # Both shipped in v1.2.0 and are proven end to end. Worth recording what the one
                     # failure actually was, since "preview image" is the tempting explanation and was
-                    # the wrong one: the aarch64 leg died bundling the AppImage because the arm64
+                    # the wrong one. The aarch64 leg died bundling the AppImage because the arm64
                     # runner image does not carry xdg-utils, which that bundler requires and the x64
-                    # image happens to provide. Switching to ubuntu-24.04-arm would not have helped;
-                    # installing the package did. Move to the GA image only if queueing becomes a
+                    # image happens to provide. Switching to ubuntu-24.04-arm would not have helped.
+                    # Installing the package did. Move to the GA image only if queueing becomes a
                     # real problem, not on a suspicion that preview means unstable.
                     - platform: ubuntu-26.04-arm
                       args: ""
@@ -191,11 +191,11 @@ jobs:
         steps:
             # This is the job that holds TAURI_SIGNING_PRIVATE_KEY and `contents: write`, so it is
             # where a stray dispatch must be stopped. `workflow_dispatch` lets the runner pick any
-            # ref, and nothing else pins it to main - so without this a build from a throwaway or
+            # ref, and nothing else pins it to main, so without this a build from a throwaway or
             # unreviewed branch would be compiled, signed with the real minisign key, and published
             # as a draft. Fail before checkout, before any secret is in scope. `github.ref` is
             # `refs/heads/<branch>` for a branch dispatch.
-            # `github.ref` goes through `env:` rather than being interpolated into the script:
+            # `github.ref` goes through `env:` rather than being interpolated into the script.
             # `${{ }}` is substituted before the shell ever parses the line, and a branch name may
             # contain shell metacharacters, so interpolating it directly would let a branch named
             # `$(...)` run its own code in a job that holds `id-token: write`. It takes push access
@@ -215,21 +215,21 @@ jobs:
                   # A shallow checkout is enough, and stated explicitly rather than left to the
                   # default because this step carried a full clone (`fetch-depth: 0`) until the
                   # reason for it was traced and found to be gone. That reason was the release
-                  # notes, which used to list every commit since the previous tag with `git log`;
-                  # that step was removed once it turned out tauri-action copies the whole body
+                  # notes, which used to list every commit since the previous tag with `git log`.
+                  # That step was removed once it turned out tauri-action copies the whole body
                   # into latest.json's `notes`, where the app renders it unscrolled.
                   #
                   # Nothing left in this job walks history: the tag guard uses `git ls-remote`
                   # (which queries the remote, not the local clone), the bindings check diffs the
                   # working tree against HEAD, and tauri-action creates the tag through the GitHub
-                  # REST API - `repos.createRelease` with `target_commitish` defaulting to
-                  # `context.sha`, i.e. the GITHUB_SHA string - never a local `git tag`. Verified
+                  # REST API (`repos.createRelease` with `target_commitish` defaulting to
+                  # `context.sha`, i.e. the GITHUB_SHA string), never a local `git tag`. Verified
                   # by reading tauri-action's source at the SHA this workflow pins for it further
-                  # down; re-check that when the pin moves. The sbom and checksums jobs have always
+                  # down. Re-check that when the pin moves. The sbom and checksums jobs have always
                   # checked out shallow, which is the same claim already proven by a real release.
                   fetch-depth: 1
 
-            # No version input: the pnpm version comes from package.json's packageManager
+            # No version input. The pnpm version comes from package.json's packageManager
             # field, so CI and local Corepack install the same pinned pnpm.
             - name: Setup pnpm
               uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -252,30 +252,30 @@ jobs:
                   components: rustfmt, clippy
                   targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-            # No Rust build cache here, deliberately - and unlike ci.yml, whose Rust jobs use
+            # No Rust build cache here, deliberately, and unlike ci.yml, whose Rust jobs use
             # Swatinem/rust-cache. These are the bytes that get minisign-signed and provenance-
             # attested below, so the release compiles the whole dependency tree from source on every
-            # run rather than restoring a cache: a poisoned or stale cache entry could otherwise
+            # run rather than restoring a cache. A poisoned or stale cache entry could otherwise
             # influence a signed artifact without leaving a trace. The 90-minute job timeout already
-            # accommodates the cold compile - build time is not the constraint that matters on the
+            # accommodates the cold compile. Build time is not the constraint that matters on the
             # job that holds the signing key.
 
             # These apt packages are deliberately not version-pinned, unlike the Rust toolchain,
-            # Node and the runner image. Exact apt pins on a GitHub-hosted image are brittle: the
+            # Node and the runner image. Exact apt pins on a GitHub-hosted image are brittle. The
             # archive supersedes old versions and drops them, so a pinned `pkg=version` starts
             # failing the moment the image refreshes, turning a green build red for a reason
-            # unrelated to this project. The cost of leaving them free is bounded: these are the
+            # unrelated to this project. The cost of leaving them free is bounded. These are the
             # Linux WebKit/GTK dev headers used to build against, dynamically linked at runtime
             # against the end user's own system libraries, so they are not shipped inside the
             # bundle and cannot change what a user actually runs.
-            # startsWith so this also runs on ubuntu-26.04-arm: the aarch64 leg needs the same
+            # startsWith so this also runs on ubuntu-26.04-arm. The aarch64 leg needs the same
             # WebKit/GTK dev headers, installed natively (the runner is arm64, so apt fetches the
-            # arm64 packages - no multiarch/cross setup).
+            # arm64 packages, with no multiarch/cross setup needed).
             #
             # xdg-utils supplies /usr/bin/xdg-open, which the AppImage bundler copies into the
             # bundle and refuses to proceed without. The x64 image happens to ship it, the arm64
             # one does not, so the first aarch64 dispatch built the deb and the rpm and then died
-            # on the AppImage - taking all three down, since the leg uploads nothing when the
+            # on the AppImage, taking all three down, since the leg uploads nothing when the
             # bundle step fails. Installed explicitly on both rather than relying on either image
             # to keep providing it, which is what made this a surprise in the first place.
             - name: Install Linux dependencies
@@ -291,11 +291,11 @@ jobs:
             # tauri-action further down, i.e. *before* the sbom and checksums jobs run, so a
             # dispatch that got as far as building and then failed one of those later gates leaves
             # the tag behind on a release that is still a draft. Treating "the tag exists" as
-            # "already released" would make every such failure cost a version number: the fix for a
+            # "already released" would make every such failure cost a version number. The fix for a
             # wrong asset-name pattern in the checksums job would be a version bump, not a retry.
             # So the guard asks what the tag actually means. A tag on a *published* release is
-            # final - bump the version. A tag whose release is still a draft is the residue of an
-            # incomplete dispatch, and re-running over it is the intended recovery: tauri-action
+            # final. Bump the version. A tag whose release is still a draft is the residue of an
+            # incomplete dispatch, and re-running over it is the intended recovery. tauri-action
             # reuses the existing draft and re-uploads its assets. A tag with no release at all
             # (the release was deleted by hand, or the tag was pushed some other way) is refused
             # too, since nothing proves what it points at.
@@ -316,14 +316,14 @@ jobs:
                   IS_DRAFT=$(gh release view "v$VERSION" --json isDraft --jq '.isDraft' 2>/dev/null || true)
 
                   if [ "$IS_DRAFT" = "true" ]; then
-                      echo "::warning::Tag v$VERSION already exists, but its release is still a draft - retrying that dispatch."
+                      echo "::warning::Tag v$VERSION already exists, but its release is still a draft, retrying that dispatch."
                       exit 0
                   fi
 
                   if [ "$IS_DRAFT" = "false" ]; then
-                      echo "::error::Release v$VERSION is already published; bump the version before releasing." >&2
+                      echo "::error::Release v$VERSION is already published. Bump the version before releasing." >&2
                   else
-                      echo "::error::Tag v$VERSION exists with no release behind it; delete the tag or bump the version." >&2
+                      echo "::error::Tag v$VERSION exists with no release behind it. Delete the tag or bump the version." >&2
                   fi
 
                   exit 1
@@ -332,17 +332,17 @@ jobs:
               id: release_notes
               shell: bash
               run: |
-                  # This body is not only the release description: tauri-action also writes it into
+                  # This body is not only the release description. tauri-action also writes it into
                   # latest.json's `notes`, which the in-app update notice renders as a single
                   # unscrolled block (app-update-section.tsx). So it stays one short line, and the
-                  # commit log is deliberately not inlined - it would be unreadable there, and this
+                  # commit log is deliberately not inlined. It would be unreadable there, and this
                   # release alone carries hundreds of commits. The changelog belongs on the release
-                  # page, written by hand on the draft before publishing; editing the draft does not
+                  # page, written by hand on the draft before publishing. Editing the draft does not
                   # regenerate latest.json, so that text reaches GitHub without reaching the app.
                   #
                   # The repository comes from GITHUB_REPOSITORY rather than being spelled out, for
                   # the same reason verify-latest-json.js derives its URL prefix from the updater
-                  # endpoint: moving the repo must not leave a second hardcoded copy pointing at the
+                  # endpoint. Moving the repo must not leave a second hardcoded copy pointing at the
                   # old one.
                   VERSION=$(node -p "require('./package.json').version")
                   # The body is fully controlled here (a fixed sentence plus the version from
@@ -360,16 +360,16 @@ jobs:
               run: pnpm install --frozen-lockfile
 
             # The JS advisory, license and lint gates run in the separate `frontend-audit` job that
-            # this job `needs`, so they block every build leg before any binary is signed - see that
-            # job for why they were moved out of here. The frontend tests stay below because, unlike
+            # this job `needs`, so they block every build leg before any binary is signed (see that
+            # job for why they were moved out of here). The frontend tests stay below because, unlike
             # those three, they are not fully platform-independent.
 
-            # `test:coverage` rather than a plain run, mirroring ci.yml: the coverage floors live
+            # `test:coverage` rather than a plain run, mirroring ci.yml. The coverage floors live
             # in vitest.config.ts and are only enforced when coverage is collected, so running
-            # without it silently drops that gate from the release path - the one path that cannot
-            # assume ci.yml ever ran against this ref. Kept on every matrix target rather than
-            # Ubuntu-only like Lint: the suite is jsdom-based but not fully platform-independent
-            # (date formatting varies with the runner's ICU - see the U+202F handling in
+            # without it silently drops that gate from the release path (the one path that cannot
+            # assume ci.yml ever ran against this ref). Kept on every matrix target rather than
+            # Ubuntu-only like Lint. The suite is jsdom-based but not fully platform-independent
+            # (date formatting varies with the runner's ICU: see the U+202F handling in
             # media-utils.test.ts), so each platform is worth exercising.
             - name: Run tests
               run: pnpm test:coverage
@@ -382,7 +382,7 @@ jobs:
             - name: Clippy
               run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
-            # Covers the yt-dlp process-kill/timeout/cancel tests too: they used to be `#[ignore]`d
+            # Covers the yt-dlp process-kill/timeout/cancel tests too. They used to be `#[ignore]`d
             # (they hung on the ubuntu-22.04 runner) and needed a dedicated step here, but the hang
             # is gone on ubuntu-26.04 and the attribute was dropped, so they run in the step below
             # on every platform.
@@ -392,14 +392,14 @@ jobs:
             # migration fixture (a manual generator, whose whole effect is rewriting a checked-in
             # file), and the other fetches live yt-dlp metadata to check the captured fixture has
             # not drifted, which needs the network and a real yt-dlp. Neither belongs on the path
-            # that builds a published binary. Run the second deliberately when yt-dlp is bumped;
-            # see its doc comment in services/yt_dlp/metadata.rs.
+            # that builds a published binary. Run the second deliberately when yt-dlp is bumped.
+            # See its doc comment in services/yt_dlp/metadata.rs.
             - name: Run Rust tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
             # Mirror ci.yml's bindings-freshness gate so a release cannot ship with the
             # checked-in TypeScript bindings out of sync with the Rust types they are generated
-            # from. Ubuntu only, matching ci.yml; the check is platform-independent.
+            # from. Ubuntu only, matching ci.yml. The check is platform-independent.
             - name: Verify generated TS bindings are up to date
               if: matrix.platform == 'ubuntu-26.04'
               run: |
@@ -415,29 +415,29 @@ jobs:
             # Y?". Neither statement is worth anything unless the signed binary is compiled from
             # that exact lockfile.
             #
-            # Every other cargo invocation in this job already passes `--locked`; the build did not,
+            # Every other cargo invocation in this job already passes `--locked`. The build did not,
             # and `Cargo.toml` uses caret requirements (`tauri = "2"`), so a lockfile that had drifted
-            # out of sync with the manifest would be silently re-resolved here - producing a binary
+            # out of sync with the manifest would be silently re-resolved here, producing a binary
             # containing crates the SBOM does not list and `cargo audit` never examined. Nothing else
             # in the pipeline would notice.
             #
             # Two defenses, because they fail at different points. This one fails the run *before*
             # the build if the lockfile is not already consistent with the manifest (`cargo metadata`
-            # resolves the graph without compiling, so it is seconds); the `-- --locked` below makes
-            # cargo itself refuse to re-resolve even if this step is ever dropped.
+            # resolves the graph without compiling, so it is seconds), and the `-- --locked` below
+            # makes cargo itself refuse to re-resolve even if this step is ever dropped.
             # `shell: bash` because of the redirect, and it is not optional here. This job is a
             # matrix, and GitHub's default shell on the Windows legs is PowerShell, where
-            # `/dev/null` is not a null device but a path - so both Windows legs failed with
+            # `/dev/null` is not a null device but a path, so both Windows legs failed with
             # "Could not find a part of the path 'D:\dev\null'" the first time this step ran on
-            # them. It could not have failed earlier: the step landed after v1.2.0, so the release
+            # them. It could not have failed earlier. The step landed after v1.2.0, so the release
             # that proved the Windows legs predates it.
             #
             # The redirect itself stays. Only the exit code matters here, and `--format-version 1`
-            # prints the whole resolved dependency graph as JSON - hundreds of kilobytes of log for
-            # a check whose entire output is pass or fail.
+            # prints the whole resolved dependency graph as JSON. That is hundreds of kilobytes of
+            # log for a check whose entire output is pass or fail.
             #
             # actionlint does not catch this class of mistake, which is worth knowing rather than
-            # trusting: it runs shellcheck over `run:` blocks as *bash*, so a POSIX-ism in a step
+            # trusting. It runs shellcheck over `run:` blocks as *bash*, so a POSIX-ism in a step
             # that will actually execute under PowerShell reads as correct to it.
             - name: Verify the lockfile matches the manifest
               shell: bash
@@ -456,9 +456,9 @@ jobs:
                   releaseDraft: true
                   prerelease: false
                   # Everything after `--` is forwarded verbatim to the runner (cargo) by the Tauri
-                  # CLI - see `tauri build --help`, whose ARGS are documented as "Command line
+                  # CLI (see `tauri build --help`, whose ARGS are documented as "Command line
                   # arguments passed to the runner. Use `--` to explicitly mark the start of the
-                  # arguments". So this is the build's own `--locked`, matching the clippy/test/
+                  # arguments"). So this is the build's own `--locked`, matching the clippy/test/
                   # bindings steps above. See the lockfile step for why it matters here.
                   args: ${{ matrix.args }} -- --locked
 
@@ -468,8 +468,8 @@ jobs:
             # above proves the code compiles and its tests pass: `cargo test` links the `rlib` and
             # never initializes the Tauri runtime, the webview or `setup()`, and `pnpm build` only
             # emits the frontend bundle. So every failure that lives between "compiles" and "opens"
-            # - an application manifest the loader rejects, a runtime library the bundle does not
-            # resolve, a plugin that fails to register, a panic in `setup()` - crossed six green
+            # (an application manifest the loader rejects, a runtime library the bundle does not
+            # resolve, a plugin that fails to register, a panic in `setup()`) crossed six green
             # matrix legs and reached the user as an app that does not open, with a provenance
             # attestation vouching for it. This project has already shipped one such bug.
             #
@@ -477,9 +477,9 @@ jobs:
             # entering the event loop. It is placed after the build so the real artifact is what
             # gets exercised, and before the attestation below so a broken binary is never attested.
             # A failure here leaves assets on the draft and turns the run red, which is the intended
-            # outcome: the draft is published by hand, and the maintainer must not publish a red run.
+            # outcome. The draft is published by hand, and the maintainer must not publish a red run.
             #
-            # xvfb on Linux because the webview needs a display to initialize at all - the check
+            # xvfb on Linux because the webview needs a display to initialize at all. The check
             # would otherwise fail for the wrong reason. Windows and macOS runners have a session.
             - name: Smoke-test the built binary (Linux)
               if: startsWith(matrix.platform, 'ubuntu-')
@@ -509,9 +509,9 @@ jobs:
                   echo "Smoke-testing $binary"
                   "$binary" --smoke-test
 
-            # The x86_64 macOS leg is a cross-compile: `macos-26` is an arm64 runner, so its output
+            # The x86_64 macOS leg is a cross-compile. `macos-26` is an arm64 runner, so its output
             # cannot be executed here without Rosetta, which the image is not guaranteed to carry.
-            # Skipping it is honest rather than convenient - that one binary is built and signed
+            # Skipping it is honest rather than convenient. That one binary is built and signed
             # without ever being run, and nothing in this workflow can change that. The aarch64 leg
             # is native and covers the same code on the same OS.
             - name: Smoke-test the built binary (macOS)
@@ -530,27 +530,27 @@ jobs:
             # The deeper half of the same idea, and the only thing in this pipeline that opens the
             # window.
             #
-            # `--smoke-test` above exits inside `setup()`, before the event loop - so everything the
+            # `--smoke-test` above exits inside `setup()`, before the event loop, so everything the
             # user actually meets is still unverified at that point: the frontend bundle loading,
             # the CSP Tauri injects only into a *packaged* app (`pnpm tauri dev` serves the page
             # from the Vite origin with no CSP header at all), and every permission in
             # `src-tauri/capabilities/`, which the ACL evaluates at runtime and nowhere else. That
-            # last one is why this step exists: the grant list was narrowed from the scaffolded
+            # last one is why this step exists. The grant list was narrowed from the scaffolded
             # `core:default` to the exact set the seam uses, which is right, and is also exactly the
             # change whose failure mode is a call the renderer makes being silently refused.
             #
             # `--webview-check` (src-tauri/src/commands/webview_check.rs) lets the launch proceed
-            # normally, has the renderer drive one call of each family - getVersion, listen/unlisten,
-            # and an image served through convertFileSrc out of the granted cache directory - and
+            # normally, has the renderer drive one call of each family (getVersion, listen/unlisten,
+            # and an image served through convertFileSrc out of the granted cache directory), and
             # exits 0 or 1. A renderer that never loads reports nothing, which a watchdog turns into
             # a non-zero exit with a message rather than a hang.
             #
             # What it deliberately does not cover, since neither can run without a side effect: the
             # dialog/opener/updater/process plugin grants. Those stay a manual pass.
             #
-            # It cannot live in ci.yml: that workflow never builds a bundle, and the CSP and the
+            # It cannot live in ci.yml. That workflow never builds a bundle, and the CSP and the
             # embedded frontend only exist in one. Placed beside the smoke test for the same reason
-            # that one is here - after the build so the real artifact is what runs, and before the
+            # that one is here: after the build so the real artifact is what runs, and before the
             # attestation so a broken binary is never attested.
             - name: Webview check on the built binary (Linux)
               if: startsWith(matrix.platform, 'ubuntu-')
@@ -585,7 +585,7 @@ jobs:
                   echo "Webview-checking $binary"
                   "$binary" --webview-check
 
-            # Skipped on the x86_64 macOS leg for the same reason as the smoke test above: that leg
+            # Skipped on the x86_64 macOS leg for the same reason as the smoke test above. That leg
             # is a cross-compile on an arm64 runner and its output cannot be executed here.
             - name: Webview check on the built binary (macOS)
               if: startsWith(matrix.platform, 'macos-') && !contains(matrix.args, 'x86_64')
@@ -604,9 +604,9 @@ jobs:
             # were built by this workflow, from this commit. Independent of the minisign updater
             # signature: users can run `gh attestation verify <file> --repo eduardoghi/kavynex`
             # to confirm a downloaded installer's provenance. The `**` before `release` matches
-            # both the plain (windows/linux) and target-triple (macOS) bundle layouts; only the
+            # both the plain (windows/linux) and target-triple (macOS) bundle layouts. Only the
             # extensions produced on each runner match, which is enough for at least one subject.
-            # The `.app.tar.gz` is the macOS updater bundle - the artifact a mac user actually
+            # The `.app.tar.gz` is the macOS updater bundle. It is the artifact a mac user actually
             # receives via in-app auto-update (the .dmg is only for a manual install), so it must be
             # attested too, not just the disk image.
             - name: Attest build provenance
@@ -623,11 +623,11 @@ jobs:
 
     # A CycloneDX SBOM (Software Bill of Materials) of the Rust dependency tree that goes into the
     # shipped binary, published as a release asset. It is generated from the committed Cargo.lock, so
-    # it lists the exact crate versions a downloader received - the machine-readable answer to "does
+    # it lists the exact crate versions a downloader received: the machine-readable answer to "does
     # this release contain crate X at version Y?" when an advisory lands later. Kept in its own job,
-    # out of publish-tauri, for the same reason as the audit job: `cargo install` compiles a
+    # out of publish-tauri, for the same reason as the audit job. `cargo install` compiles a
     # third-party tool (and its build scripts) on the runner, which must never run on the leg that
-    # holds the signing key. The JS build-time tree is deliberately not included here - it is bundled
+    # holds the signing key. The JS build-time tree is deliberately not included here. It is bundled
     # into the frontend assets rather than being a native dependency of the binary, and is already
     # advisory/license-gated by the frontend-audit job and pinned in pnpm-lock.yaml.
     sbom:
@@ -636,10 +636,11 @@ jobs:
         # Run even if a build leg failed (but not on a manual cancel), so this and the completeness
         # gates in the checksums job still execute on a *partial* draft. With the default behavior a
         # failed leg skips both jobs, leaving an incomplete-but-complete-looking draft with no
-        # automated check between it and a manual "Publish" - the whole failure these gates exist to
-        # catch. A missing SBOM/asset then fails the checksums job loudly instead of being skipped.
+        # automated check between it and a manual "Publish". That is the whole failure these gates
+        # exist to catch. A missing SBOM/asset then fails the checksums job loudly instead of being
+        # skipped.
         if: ${{ !cancelled() }}
-        # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
+        # Pinned like the build matrix. `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 30
         permissions:
@@ -656,7 +657,7 @@ jobs:
                   toolchain: 1.96.0
 
             # Pin the tool version (keep in sync when bumping), same reasoning as the cargo-audit /
-            # cargo-deny pins in the audit job: an unpinned `cargo install` builds whatever the latest
+            # cargo-deny pins in the audit job. An unpinned `cargo install` builds whatever the latest
             # release is at dispatch time, so the code executing on the runner is not what this
             # repository last reviewed.
             - name: Install cargo-cyclonedx
@@ -671,8 +672,8 @@ jobs:
               run: |
                   VERSION=$(node -p "require('./package.json').version")
                   cargo cyclonedx --manifest-path src-tauri/Cargo.toml --format json
-                  # cargo-cyclonedx writes <crate>.cdx.json next to the manifest it processed; there
-                  # is one package here. Locate it rather than hard-coding the derived name.
+                  # cargo-cyclonedx writes <crate>.cdx.json next to the manifest it processed, and
+                  # there is one package here. Locate it rather than hard-coding the derived name.
                   SBOM=$(find src-tauri -maxdepth 2 -name '*.cdx.json' | head -n1)
                   if [ -z "$SBOM" ]; then
                       echo "::error::cargo-cyclonedx produced no .cdx.json file" >&2
@@ -684,11 +685,11 @@ jobs:
     checksums:
         name: Publish checksums
         needs: [publish-tauri, sbom]
-        # Run on a partial draft too (see the SBOM job): a failed build leg must not skip the
-        # asset-completeness and latest.json checks below - those are exactly what should turn a
+        # Run on a partial draft too (see the SBOM job). A failed build leg must not skip the
+        # asset-completeness and latest.json checks below. Those are exactly what should turn a
         # partial release red with a list of what is missing, rather than being silently skipped.
         if: ${{ !cancelled() }}
-        # Pinned like the build matrix; `-latest` can silently jump an OS major mid-release.
+        # Pinned like the build matrix. `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 60
         permissions:
@@ -701,20 +702,20 @@ jobs:
             # Point every latest.json entry at the tagged download URL the updater will actually be
             # served from, rather than the api.github.com asset URL tauri-action writes.
             #
-            # The reason it writes that one is real: while the release is a draft the tag is not
+            # The reason it writes that one is real. While the release is a draft the tag is not
             # attached to it yet, so an asset's download URL carries an `untagged-<hash>` path
             # segment instead of `v<version>`. Baking that in would produce a manifest that breaks
             # the moment the release is published, so tauri-action uses the asset API URL, which is
             # stable across the transition. (tauri-action v0, which built v1.1.1, constructed the
-            # tag URL instead - hence the difference from that release's manifest.)
+            # tag URL instead, hence the difference from that release's manifest.)
             #
-            # For this project the tag URL is the correct one regardless: the updater endpoint is
+            # For this project the tag URL is the correct one regardless. The updater endpoint is
             # `releases/latest/download/latest.json`, which only ever resolves to a *published*
             # release, so no user reaches this manifest while it is still a draft. The api.github.com
             # form would also work on a public repo, but it moves the download onto a host with a
             # 60-request/hour unauthenticated rate limit and away from the one URL shape
-            # verify-latest-json.js is written to accept - a gate that stays untouched here and
-            # remains the authority: if this rewrite ever fails or targets the wrong repo, that
+            # verify-latest-json.js is written to accept (a gate that stays untouched here and
+            # remains the authority): if this rewrite ever fails or targets the wrong repo, that
             # check fails the release.
             #
             # Runs before the checksums below so SHA256SUMS.txt covers the corrected file, and
@@ -750,8 +751,8 @@ jobs:
                   gh release upload "v$VERSION" SHA256SUMS.txt --clobber
 
             # The four build legs upload to the draft independently (fail-fast is off), so a leg
-            # that dies leaves a draft holding the other three - complete-looking, and one manual
-            # "Publish" away from shipping a release with, say, no Windows installer. This job is
+            # that dies leaves a draft holding the other three (complete-looking, and one manual
+            # "Publish" away from shipping a release with, say, no Windows installer). This job is
             # skipped entirely when a leg fails, so the only thing standing between that draft and
             # publication is the maintainer noticing the run is red. Name the expected set instead,
             # and fail loudly listing what is missing.
@@ -766,15 +767,15 @@ jobs:
                   echo "$ASSETS"
 
                   # One entry per artifact the matrix is expected to produce, as a glob. The
-                  # `.sig` files are the updater's; note the two .dmg files deliberately have
-                  # none - tauri signs the macOS updater bundle (.app.tar.gz), not the disk image.
+                  # `.sig` files are the updater's. Note the two .dmg files deliberately have none:
+                  # tauri signs the macOS updater bundle (.app.tar.gz), not the disk image.
                   #
                   # Every name here is now confirmed against a real dispatch (v1.2.0), including the
                   # aarch64 ones this comment previously flagged as derived rather than observed:
                   # NSIS, WiX (MSI) and deb do use `arm64` while AppImage and rpm use `aarch64`, so
-                  # those held. What did not hold was the pair that had been observed - the macOS
+                  # those held. What did not hold was the pair that had been observed. The macOS
                   # `.app.tar.gz` names carried no version on v1.1.1 and carry one now, which is why
-                  # they are built from ${VERSION} below. Treat the whole list as perishable: it
+                  # they are built from ${VERSION} below. Treat the whole list as perishable. It
                   # tracks tauri's per-bundler naming, and this check exists precisely to fail loudly
                   # (echoing the real names above) rather than let a partial draft look complete.
                   MISSING=""
@@ -825,7 +826,7 @@ jobs:
                   echo "The draft release v$VERSION has every expected asset."
 
             # README.md's Installation section is a third inventory of these same names, after the
-            # completeness list above and the attestation's subject-path - and it was the only one
+            # completeness list above and the attestation's subject-path, and it was the only one
             # with nothing holding it. It is also the one a *user* reads to choose a download, so a
             # name that drifted there sends someone looking for a file the release page does not
             # serve, and an architecture that shipped without being added there is a download
@@ -837,8 +838,8 @@ jobs:
             # first shipped in v1.2.0 and had to be added to the README by hand afterwards.
             #
             # Checked against the assets the release actually carries rather than against the list
-            # above, so a release where both lists drifted together - the case a cross-check between
-            # them would pass - still fails here. Runs after the completeness check because that one
+            # above, so a release where both lists drifted together (the case a cross-check between
+            # them would pass) still fails here. Runs after the completeness check because that one
             # is the stronger signal: when installers are missing, the README is not the problem to
             # report first.
             - name: Verify the README documents this release's installers
@@ -853,11 +854,11 @@ jobs:
             # complete. Every build leg merges its own entries into that one file on the release, so
             # a leg that uploaded its installer but lost the merge (a transient API error, two legs
             # racing) leaves a latest.json that parses fine and simply never offers an update to one
-            # platform. Nothing else would notice: the file is there, the installers are there, and
+            # platform. Nothing else would notice. The file is there, the installers are there, and
             # only users on the missing platform would silently stop getting updates.
             #
             # Reads the copy the checksums step already downloaded, and checks the four keys the
-            # updater actually looks up - tauri also emits `-app`/`-msi`/`-nsis`/`-appimage`/`-deb`/
+            # updater actually looks up: tauri also emits `-app`/`-msi`/`-nsis`/`-appimage`/`-deb`/
             # `-rpm` variants, but the client resolves the bare `<os>-<arch>` one.
             - name: Verify latest.json offers every platform
               run: node scripts/verify-latest-json.js assets/latest.json

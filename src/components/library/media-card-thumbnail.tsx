@@ -52,7 +52,7 @@ const DURATION_BADGE_STYLE: CSSProperties = {
 };
 
 // The static base of the container. Only the `border` (which reacts to isActive/isWatched and the
-// shellBorder prop) is spread over this inline below; the three rem() sizes and the multi-layer
+// shellBorder prop) is spread over this inline below, but the three rem() sizes and the multi-layer
 // gradient background are built once here.
 const THUMBNAIL_CONTAINER_BASE_STYLE: CSSProperties = {
     height: rem(MEDIA_THUMBNAIL_HEIGHT),
@@ -82,7 +82,7 @@ type MediaCardThumbnailProps = {
     isActive: boolean;
     isWatched: boolean;
     isLive: boolean;
-    // Already formatted by the caller; empty means the media has no known duration.
+    // Already formatted by the caller. Empty means the media has no known duration.
     durationLabel: string;
     shellBorder: string;
 };
@@ -127,7 +127,7 @@ export function MediaCardThumbnail({
     return (
         /* The thumbnail carries the watched border too, not just the card around it. Of the card's
            292px this block is 158, so the outer border is a thin line drawn around a mass that is
-           almost entirely image - the state has to appear on the part the eye is already looking at,
+           almost entirely image. The state has to appear on the part the eye is already looking at,
            or it is only technically on screen. Kept a step below the outer border's alpha so the
            card still reads as one shape rather than two rings. */
         <Box
@@ -152,7 +152,7 @@ export function MediaCardThumbnail({
                     // or deleted outside the app, which the Diagnostics dialog reports as "some
                     // thumbnail files are missing on disk". Without this the card renders the
                     // browser's broken-image glyph, which reads as the app being broken rather than
-                    // as a missing file; the placeholder below is the same thing a media with no
+                    // as a missing file, and the placeholder below is the same thing a media with no
                     // thumbnail at all shows.
                     onError={() => setThumbFailed(true)}
                     style={THUMBNAIL_IMG_STYLE}
@@ -172,13 +172,13 @@ export function MediaCardThumbnail({
 
                 {/* Watched carries no badge here on purpose. The card's own green states it, and a
                     pill on top of the thumbnail was stating it twice while covering the top-left
-                    corner - where a face or a YouTube thumbnail's own title text usually sits, i.e.
+                    corner, where a face or a YouTube thumbnail's own title text usually sits, i.e.
                     the part the user is scanning by.
 
                     The visual signal is therefore colour alone, which is a real limit rather than a
                     free win: a viewer with red-green colour blindness gets a weaker version of it (a
                     luminance shift rather than a hue). It is accepted for the cleaner grid. What is
-                    not given up is the screen-reader signal - the card's accessible name carries the
+                    not given up is the screen-reader signal: the card's accessible name carries the
                     state instead, so it is announced without occupying a pixel. */}
                 {isLive && (
                     <Badge variant="filled" color="red" leftSection={<Radio size={12} />}>

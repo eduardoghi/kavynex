@@ -22,7 +22,7 @@ const EXTERNAL_BACKUP_DIR_KEY: &str = "external_backup_dir";
 
 /// The application database, held in Tauri-managed state (`app.manage`) rather than a
 /// process-wide static. The pool is created once, lazily, on first access and reused for the
-/// lifetime of the app; connection options (WAL, busy timeout, foreign keys) are applied per
+/// lifetime of the app. Connection options (WAL, busy timeout, foreign keys) are applied per
 /// connection so every pooled connection is configured consistently. Keeping it in managed
 /// state (keyed to the resolved database path captured at startup) takes the database out of a
 /// global mutable static and lets tests inject an in-memory pool via [`Db::from_pool`].
@@ -37,7 +37,7 @@ pub struct Db {
 }
 
 impl Db {
-    /// Creates the managed handle for the database at `path`. The pool is not opened here; it
+    /// Creates the managed handle for the database at `path`. The pool is not opened here. It
     /// opens lazily on the first [`Db::pool`] call.
     pub fn new(path: PathBuf) -> Self {
         Self {
@@ -103,7 +103,7 @@ impl Db {
     }
 }
 
-// Exposed to the frontend as `StoredAppSettingsPayload`; serde camelCase is honored by
+// Exposed to the frontend as `StoredAppSettingsPayload`, and serde camelCase is honored by
 // ts-rs so the generated keys are importMode/libraryPath.
 #[derive(Debug, Default, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
@@ -115,10 +115,10 @@ impl Db {
 pub struct StoredAppSettings {
     pub import_mode: Option<String>,
     pub library_path: Option<String>,
-    // "true"/"false" (absent means never set); controls whether the webview loads remote
+    // "true"/"false" (absent means never set). Controls whether the webview loads remote
     // comment/live-chat author avatars and custom emojis from Google's CDNs.
     pub load_remote_images: Option<String>,
-    // "true"/"false" (absent means never set); when "true" the app runs one passive update check
+    // "true"/"false" (absent means never set). When "true" the app runs one passive update check
     // on startup. Off by default, so the app contacts the update endpoint only when explicitly
     // asked, preserving the manual-only privacy stance unless the user opts in.
     pub check_updates_on_startup: Option<String>,
@@ -196,7 +196,7 @@ const SETTINGS: &[SettingSpec] = &[
 ];
 
 /// Renders a boolean setting the way the table stores it. The `app_settings` value column is
-/// TEXT, so every flag is `"true"`/`"false"`; keeping the conversion in one place is what stops a
+/// TEXT, so every flag is `"true"`/`"false"`. Keeping the conversion in one place is what stops a
 /// second spelling (`"1"`, `"yes"`) from being introduced by a later caller, since the read side
 /// treats anything that is not exactly `"true"` as false.
 pub(crate) fn bool_setting(value: bool) -> Option<String> {
@@ -266,7 +266,7 @@ pub fn database_path(app: &AppHandle) -> AppResult<PathBuf> {
 async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
     // The pre-migration snapshot only matters when a migration will actually run (so a bad
     // migration or corruption can be rolled back). When one is pending, snapshot
-    // synchronously before opening the pool; otherwise defer the daily snapshot to a
+    // synchronously before opening the pool. Otherwise, defer the daily snapshot to a
     // background task so a normal launch is never blocked by a VACUUM of a large database.
     // Best effort either way: a backup failure must not stop the app from opening.
     let migration_pending = crate::services::db_backup::is_schema_migration_pending(path).await;
@@ -279,20 +279,20 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         // When the file exists but fails quick_check, stop here: the frontend's startup recovery
         // then offers to restore from the last healthy backup (see use-app-bootstrap.ts) instead of
         // migrating over a bad file. A missing file (first run) is not a database yet, so it is
-        // exempt; a subtly damaged file that still passes the fast quick_check is not caught here
+        // exempt. A subtly damaged file that still passes the fast quick_check is not caught here
         // (that would need a full integrity_check on every launch), which is an accepted limit.
         if path.exists() && !crate::services::db_backup::database_quick_check_ok(path).await {
             return Err(AppError::from_code_with_details(
                 AppErrorCode::AppError,
-                "the database failed an integrity check and a schema migration is pending; restore from a backup before continuing",
-                "quick_check failed on the existing database before a pending migration; refused to migrate to avoid amplifying corruption",
+                "the database failed an integrity check and a schema migration is pending, so restore from a backup before continuing",
+                "quick_check failed on the existing database before a pending migration, refusing to migrate to avoid amplifying corruption",
             ));
         }
 
         // The pre-migration snapshot is the only rollback point once schema DDL runs, so a real
         // backup failure must block the migration rather than proceed unprotected. A throttled or
         // skipped backup returns Ok(false). A recent snapshot already predates this migration, so
-        // that case is fine; only an Err (disk full, permission denied, a failed VACUUM) is fatal.
+        // that case is fine. Only an Err (disk full, permission denied, a failed VACUUM) is fatal.
         // A brand-new database (first run, no file yet) never reaches here as an Err either:
         // backup_database returns Ok(false) immediately when the file is missing, so first-run setup
         // is not blocked. The frontend's startup recovery flow handles this AppError the same way it
@@ -300,8 +300,8 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         if let Err(error) = crate::services::db_backup::backup_database(path).await {
             return Err(AppError::from_code_with_details(
                 AppErrorCode::AppError,
-                "could not snapshot the database before a pending schema migration; free up disk \
-                 space and check permissions on the app config directory, then restart - or restore \
+                "could not snapshot the database before a pending schema migration, so free up disk \
+                 space and check permissions on the app config directory, then restart, or restore \
                  from a backup in Settings > Database",
                 error.to_string(),
             ));
@@ -330,7 +330,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
     crate::services::db_schema::ensure_schema(&pool).await?;
 
     if !migration_pending {
-        // No migration ran, so the snapshot was skipped above; take the (throttled) daily
+        // No migration ran, so the snapshot was skipped above. Take the (throttled) daily
         // one off the critical path.
         let background_path = path.to_path_buf();
         tauri::async_runtime::spawn(async move {
@@ -348,9 +348,9 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
 }
 
 /// Returns the shared database pool, initializing it on first use. Resolves the managed [`Db`]
-/// handle from the app and delegates to it; kept as a free function so the many call sites that
-/// only hold an `AppHandle` do not each need to reach into managed state. The returned pool is a
-/// cheap `Arc` clone.
+/// handle from the app and delegates to it. It's kept as a free function so the many call sites
+/// that only hold an `AppHandle` do not each need to reach into managed state. The returned pool
+/// is a cheap `Arc` clone.
 ///
 /// Generic over the runtime rather than tied to `AppHandle<Wry>`. That is not a style preference:
 /// `AppHandle` alone resolves to the real runtime, and `tauri::test::mock_builder` produces an
@@ -434,7 +434,7 @@ fn validate_import_mode(value: &str) -> AppResult<&str> {
         mode @ ("copy" | "move") => Ok(mode),
         other => Err(AppError::from_code(
             AppErrorCode::InvalidInput,
-            format!("unsupported import mode '{other}'; expected 'copy' or 'move'"),
+            format!("unsupported import mode '{other}' (expected 'copy' or 'move')"),
         )),
     }
 }
@@ -452,7 +452,7 @@ pub(crate) async fn set_library_path_in_pool(
 }
 
 /// Upserts only the external backup directory setting (Settings > Database). An empty value is the
-/// valid "turn the feature off" state; a non-empty value is validated by the command layer before
+/// valid "turn the feature off" state. A non-empty value is validated by the command layer before
 /// it reaches here. Kept a standalone setting rather than folded into `set_app_settings_in_pool`
 /// so toggling the backup destination never has to round-trip the whole settings form.
 pub async fn set_external_backup_dir_in_pool(

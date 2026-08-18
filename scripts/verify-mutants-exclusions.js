@@ -10,7 +10,7 @@
 // That is not hypothetical here. Two entries in that file have already died this way, both after a
 // pure extraction moved the code they named: `replace < with <= in is_recent` (the comparison became
 // `duration_is_recent`) and `in ensure_schema` (the guard became `needs_migration`). Both were found
-// by hand, by someone deciding to check; nothing in the pipeline was looking.
+// by hand, by someone deciding to check. Nothing in the pipeline was looking.
 //
 // The check is deliberately narrow. It answers "does this pattern still name something?" and not
 // "is this exclusion still *justified*". The second needs the triage the file's comments record,
@@ -62,7 +62,7 @@ function extractQuotedArray(tomlContent, name, quote) {
             continue;
         }
 
-        // One value per line is the shape this file uses throughout; anything else is not something
+        // One value per line is the shape this file uses throughout. Anything else is not something
         // to guess at, so it simply yields nothing rather than a half-parsed pattern.
         const match = new RegExp(`^${quote}(.*)${quote},?$`).exec(trimmed);
 
@@ -117,7 +117,7 @@ function stripAnsi(value) {
 // The regex flavors are not identical (cargo-mutants uses the Rust `regex` crate and this runs in
 // JavaScript), so a pattern that JavaScript refuses is reported as its own outcome rather than
 // silently counted as dead. Every pattern in the file today is plain enough that the two agree
-// (character classes, alternation, escaped parens and pipes); a future one that needs a
+// (character classes, alternation, escaped parens and pipes). A future one that needs a
 // Rust-specific construct should show up here as a question to answer, not as a false failure.
 export function findDeadPatterns(patterns, mutantList) {
     const lines = stripAnsi(mutantList)
@@ -154,7 +154,7 @@ export function verifyMutantsExclusions({ tomlContent, mutantList }) {
         return {
             ok: false,
             message:
-                "No exclude_re array was found in mutants.toml. If the key was renamed or removed, update this check; if it was not, the parse above is wrong and this gate is verifying nothing.",
+                "No exclude_re array was found in mutants.toml. If the key was renamed or removed, update this check. If it was not, the parse above is wrong and this gate is verifying nothing.",
         };
     }
 
@@ -192,7 +192,7 @@ export function verifyMutantsExclusions({ tomlContent, mutantList }) {
         return {
             ok: false,
             message:
-                "An exclude_re pattern in src-tauri/.cargo/mutants.toml matches no mutant. The function it names was probably renamed, moved or extracted - so the exclusion suppresses nothing and the mutant it was written for is now unexcluded. Re-triage each one: either point it at the mutant's new description, or delete it because the code it covered is gone.\n" +
+                "An exclude_re pattern in src-tauri/.cargo/mutants.toml matches no mutant. The function it names was probably renamed, moved or extracted, so the exclusion suppresses nothing and the mutant it was written for is now unexcluded. Re-triage each one: either point it at the mutant's new description, or delete it because the code it covered is gone.\n" +
                 dead.map((pattern) => `  - ${pattern}`).join("\n"),
         };
     }

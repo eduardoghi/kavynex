@@ -21,7 +21,7 @@ describe("error-message bridge", () => {
                 message: "Something custom happened",
             })
         ).toBe(
-            "The operation could not be completed. If it keeps happening, check the app log file for details - Diagnostics shows where Kavynex keeps its files.\n\nDetails: Something custom happened"
+            "The operation could not be completed. If it keeps happening, check the app log file for details. Diagnostics shows where Kavynex keeps its files.\n\nDetails: Something custom happened"
         );
     });
 });

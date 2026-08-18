@@ -5,7 +5,7 @@ on:
         branches: [main]
     pull_request:
 
-# CI only needs to read the repository; keep the token minimal regardless of the
+# CI only needs to read the repository. Keep the token minimal regardless of the
 # repository/organization default.
 permissions:
     contents: read
@@ -17,18 +17,18 @@ concurrency:
 jobs:
     frontend:
         name: Frontend
-        # Pinned rather than `ubuntu-latest` for the same reason as the rust job below: `-latest`
-        # silently moves to a new OS major (the 2026-07-14 run already saw it happen for macOS).
-        # This job ships nothing, but pinning keeps its toolchain from shifting without a deliberate
-        # bump - the same rule the whole repo follows.
+        # Pinned rather than `ubuntu-latest` for the same reason as the rust job below.
+        # `-latest` silently moves to a new OS major (the 2026-07-14 run already saw it happen for
+        # macOS). This job ships nothing, but pinning keeps its toolchain from shifting without a
+        # deliberate bump, the same rule the whole repo follows.
         runs-on: ubuntu-26.04
-        # Same reasoning as the rust job below: never run toward the 6h default.
+        # Same reasoning as the rust job below. Never run toward the 6h default.
         timeout-minutes: 30
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-            # No version input: the pnpm version comes from package.json's packageManager
+            # No version input. The pnpm version comes from package.json's packageManager
             # field, so CI and local Corepack install the same pinned pnpm.
             - name: Setup pnpm
               uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -51,25 +51,26 @@ jobs:
             - name: Verify Node version consistency
               run: node scripts/verify-node-version.js
 
-            # `docs/THREAT-MODEL.md` states a cross-cutting rule - every command taking a path from
+            # `docs/THREAT-MODEL.md` states a cross-cutting rule (every command taking a path from
             # the caller refuses a UNC/network location before any filesystem call, or reaches it
-            # through the library guard or a strictly-relative path - and then names the commands
-            # satisfying it. Prose cannot hold that list against the code, and it did not: an audit
+            # through the library guard or a strictly-relative path) and then names the commands
+            # satisfying it. Prose cannot hold that list against the code, and it did not. An audit
             # found the documented list had drifted, and three commands were trusting a
             # caller-supplied `library_path` on a premise no caller relied on.
             #
-            # This does not verify that a command applies the right guard - that needs the call
-            # chain, and a check that guessed would hand out false confidence on exactly the surface
-            # it protects. It makes the surface impossible to grow silently: a new path-taking
-            # command, or a path parameter added to an existing one, fails here until the inventory
-            # is refreshed, which is where the author has to decide which case the new path is.
+            # It does not verify that a command applies the right guard. That needs the call chain,
+            # and a check that guessed would hand out false confidence on exactly the surface it
+            # protects. It makes the surface impossible to grow silently. A new path-taking command,
+            # or a path parameter added to an existing one, fails here until the inventory is
+            # refreshed, which is where the author has to decide which case the new path is.
             #
             # It gates a second inventory for the same reason, added after the first proved to cover
-            # less than it read as covering: the enforcement side. That document also enumerates
-            # *which functions* refuse a network location, and that table is what a review is checked
-            # against - but nothing held it, so it drifted again while this step stayed green. One
-            # site applied the rule without being listed, and one command stat'd a caller-supplied
-            # path with no refusal at all; both were correctly in the command inventory, which is
+            # less than it read as covering. The gap was the enforcement side. That document also
+            # enumerates *which functions* refuse a network location, and that table is what a review
+            # is checked against, but nothing held it, so it drifted again while this step stayed
+            # green. One site applied the rule without being listed, and one command stat'd a
+            # caller-supplied
+            # path with no refusal at all. Both were correctly in the command inventory, which is
             # exactly why the command inventory could not see either. Every `is_network_path` call in
             # the backend now has to appear in that table, and every row in it has to still exist.
             #
@@ -88,27 +89,27 @@ jobs:
             # runtime, `pnpm build` only emits the bundle, and `--smoke-test` exits inside `setup()`.
             # `--webview-check` (release.yml) closes the runtime half for the three grants it can
             # exercise without a side effect, but it only runs on a release, and the four plugin
-            # grants cannot be probed that way at all - a file picker, a browser launch, a network
+            # grants cannot be probed that way at all: a file picker, a browser launch, a network
             # call, a restart.
             #
             # So this gates the declaration half, which is where the drift actually happens, on every
             # push. Both directions: an API added to a seam fails until its permission is decided,
-            # and a permission granted for nothing fails too. That second one is not hypothetical -
-            # the list was the scaffolded `core:default` (92 individual permissions) through four
+            # and a permission granted for nothing fails too. That second one is not hypothetical.
+            # The list was the scaffolded `core:default` (92 individual permissions) through four
             # rounds of capability hardening, because nothing compared it against those two files.
             #
             # Node-only and reads the sources as text, so it runs before the install like the checks
             # around it. It additionally validates each identifier against the generated ACL manifest
             # when one is present, which it is not here (`src-tauri/gen/schemas/` comes from a Tauri
-            # build and is gitignored) - the run says so rather than skipping quietly.
+            # build and is gitignored). The run says so rather than skipping quietly.
             - name: Verify the capability surface matches the Tauri seam
               run: node scripts/verify-capability-surface.js
 
             # The sibling of the check above, over this app's own IPC commands rather than over the
-            # Tauri permissions: every command `generate_handler!` registers must be reachable from a
+            # Tauri permissions. Every command `generate_handler!` registers must be reachable from a
             # constant, a wrapper and at least one caller in `src/`.
             #
-            # The gap it closes is the one the capability gate does not: the ACL does not gate a
+            # The gap it closes is the one the capability gate does not. The ACL does not gate a
             # `#[tauri::command]` at all, so the Rust command layer is the trust boundary, and a
             # command with no caller is surface the renderer holds for nothing. Two shipped that way
             # for weeks, both of them unlinking files, and one was hardened five days before it was
@@ -121,20 +122,20 @@ jobs:
 
             # This project writes a plain `-` and never a unicode dash, in code and in comments
             # alike. That is a house style rather than a correctness rule, which is exactly why it
-            # needs enforcing rather than remembering: a convention with no gate behind it drifts
+            # needs enforcing rather than remembering. A convention with no gate behind it drifts
             # back, and this one already had. There is a `chore: use a plain hyphen in a migration
             # test comment` in the history, and dashes had reappeared in three places by the time
-            # the next sweep looked - a loading placeholder rendered in Settings, and the separator
+            # the next sweep looked: a loading placeholder rendered in Settings, and the separator
             # between a membership announcement and the member's own message.
             #
-            # Scoped to the source trees, not the whole repository: the rule is about code, so the
+            # Scoped to the source trees, not the whole repository. The rule is about code, so the
             # markdown is deliberately left alone. All four unicode dashes are matched, not just the
-            # em dash, because the en dash is the one that arrives by accident - an editor's smart
+            # em dash, because the en dash is the one that arrives by accident. An editor's smart
             # substitution turns a hyphen into one inside a range without anybody typing it.
             #
             # If a test ever needs one of these characters as *data* (the way media-utils.test.ts
-            # pins U+202F for ICU date formatting), write it as a unicode escape - backslash-u
-            # followed by the four hex digits - rather than pasting the character itself. That keeps
+            # pins U+202F for ICU date formatting), write it as a unicode escape (backslash-u
+            # followed by the four hex digits) rather than pasting the character itself. That keeps
             # the file passing this check while still exercising the codepoint, and it is what a
             # failure here should prompt.
             #
@@ -146,7 +147,7 @@ jobs:
                       --include='*.ts' --include='*.tsx' --include='*.rs' --include='*.js' || true)
 
                   if [ -n "$offenders" ]; then
-                      echo "::error::write a plain hyphen (-) instead of a unicode dash; for a test that needs the character as data, spell it as an escape"
+                      echo "::error::write a plain hyphen (-) instead of a unicode dash. For a test that needs the character as data, spell it as an escape"
                       printf '%s\n' "$offenders"
                       exit 1
                   fi
@@ -157,29 +158,29 @@ jobs:
               run: pnpm install --frozen-lockfile
 
             # Fail only on high/critical advisories so a low-severity transitive
-            # finding does not block all CI; RUSTSEC advisories are covered separately
+            # finding does not block all CI. RUSTSEC advisories are covered separately
             # by the cargo-audit job.
             #
-            # Not `pnpm audit`: npm retired the legacy audit endpoints on 2026-07-15 and every
+            # Not `pnpm audit`. npm retired the legacy audit endpoints on 2026-07-15 and every
             # pnpm release (10.34.5 and 11.13.0 both verified) still calls them, so that command
             # now fails with HTTP 410 whether or not an advisory exists. The script queries
-            # osv.dev - the same GitHub Advisory data, via the source osv-scanner wraps - and
+            # osv.dev (the same GitHub Advisory data, via the source osv-scanner wraps) and
             # keeps the same high/critical bar. See scripts/check-js-advisories.js.
             - name: Audit production JS dependencies
               run: pnpm run advisories:check
 
             # `--prod` above skips devDependencies (the build/test toolchain, which still
-            # runs arbitrary code during install/build). Scan them too, but non-blocking:
-            # a dev-only advisory should surface in the logs without gating every PR, since
+            # runs arbitrary code during install/build). Scan them too, but non-blocking.
+            # A dev-only advisory should surface in the logs without gating every PR, since
             # it never ships in a release artifact.
             - name: Audit dev JS dependencies (non-blocking)
               continue-on-error: true
               run: pnpm run advisories:check --dev
 
             # cargo-deny has enforced a license allow-list on the Rust side since it landed
-            # (src-tauri/deny.toml); the npm side only had pnpm audit, which reports security
+            # (src-tauri/deny.toml). The npm side only had pnpm audit, which reports security
             # advisories and says nothing about licensing. For an MIT-licensed public project
-            # that asymmetry is the gap a copyleft transitive would slip through - the more so
+            # that asymmetry is the gap a copyleft transitive would slip through, the more so
             # now that Dependabot groups routine bumps into a single PR. Gated rather than
             # informational because the tree was measured first: 94 production packages, 7
             # distinct licenses, every one already permissive.
@@ -201,8 +202,8 @@ jobs:
     frontend-tests-cross-platform:
         name: Frontend tests (${{ matrix.platform }})
         # The `frontend` job above runs the full suite (lint/test/build/audit) on Ubuntu only. The
-        # test suite is jsdom-based but not fully platform-independent - date formatting varies with
-        # the runner's ICU (see the U+202F handling in media-utils.test.ts) - so a Windows/macOS-only
+        # test suite is jsdom-based but not fully platform-independent. Date formatting varies with
+        # the runner's ICU (see the U+202F handling in media-utils.test.ts), so a Windows/macOS-only
         # regression would otherwise stay invisible until a release build exercised it, failing
         # expensively partway through a multi-platform signed build. Run just the tests on the other
         # two platforms here to catch it on a cheap PR check instead. Lint/build/audit are
@@ -237,10 +238,10 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                # macOS is included because the release ships macOS binaries; without it,
+                # macOS is included because the release ships macOS binaries. Without it,
                 # platform-specific bugs (path semantics, canonicalization) would only
                 # surface at release time.
-                # Pinned images rather than the `-latest` aliases, matching release.yml: `-latest`
+                # Pinned images rather than the `-latest` aliases, matching release.yml. `-latest`
                 # silently moves to a new major OS (the 2026-07-14 run already resolved
                 # `macos-latest` to macos-26-arm64), and CI is only worth anything here if it tests
                 # on what the release actually builds on.
@@ -248,7 +249,7 @@ jobs:
         runs-on: ${{ matrix.platform }}
         # Never let a job run toward the 6h default: a hang fails in bounded time.
         timeout-minutes: 30
-        # Trim debuginfo (and, on ubuntu below, link with lld): CI never needs full debuginfo, and
+        # Trim debuginfo (and, on ubuntu below, link with lld). CI never needs full debuginfo, and
         # this keeps the cold ubuntu compile/link on the slow 2-vCPU runner fast. A panic still
         # prints file:line, so failures stay diagnosable.
         env:
@@ -261,7 +262,7 @@ jobs:
             - name: Install Rust toolchain
               # Pin the exact toolchain (keep in sync with rust-toolchain.toml) instead of pulling
               # whatever "stable" is at build time. rust-toolchain.toml already forces this version
-              # at cargo time; pinning the action too keeps the pre-installed compiler deterministic
+              # at cargo time. Pinning the action too keeps the pre-installed compiler deterministic
               # and avoids downloading a moving "stable" toolchain the build never uses.
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
@@ -269,9 +270,9 @@ jobs:
                   components: rustfmt, clippy
 
             # These apt packages are deliberately not version-pinned, unlike the toolchain/Node/image.
-            # Exact apt pins on a GitHub-hosted image are brittle: the archive drops superseded
+            # Exact apt pins on a GitHub-hosted image are brittle. The archive drops superseded
             # versions, so a pinned `pkg=version` starts failing the moment the image refreshes, for
-            # a reason unrelated to this project. Leaving them free is bounded - they are Linux
+            # a reason unrelated to this project. Leaving them free is bounded. They are Linux
             # WebKit/GTK dev headers built against and dynamically linked at runtime against the
             # user's own system libraries, never shipped in the bundle.
             - name: Install Linux dependencies
@@ -279,7 +280,7 @@ jobs:
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf lld
-                  # Link with lld instead of the slow default ld.bfd (Linux only; macOS/Windows
+                  # Link with lld instead of the slow default ld.bfd (Linux only, since macOS/Windows
                   # already use fast linkers). Scoped to this job via $GITHUB_ENV.
                   echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
 
@@ -307,16 +308,16 @@ jobs:
                   git diff --exit-code -- src/types/generated
 
             # A temporary path built from pid + nanos alone collides when two callers land in the
-            # same clock tick, and that was a real intermittent failure here: two tests took the
+            # same clock tick, and that was a real intermittent failure here. Two tests took the
             # same directory and one deleted the other's files, surfacing on macOS (coarser timer)
             # nowhere near its cause. `utils::naming::unique_temp_suffix` adds the monotonic counter
             # that actually fixes it.
             #
             # This is a lint rather than a convention because the convention kept losing. It was
-            # written as a doc comment naming the three helpers to convert, and the next sweep -
-            # whose commit message claimed "every temp-directory test helper" - missed eight more
+            # written as a doc comment naming the three helpers to convert, and the next sweep
+            # (whose commit message claimed "every temp-directory test helper") missed eight more
             # whose names simply were not on that list, three of which had drifted to a bare
-            # timestamp with no pid at all. So the property is enforced instead of the naming: only
+            # timestamp with no pid at all. So the property is enforced instead of the naming. Only
             # naming.rs derives anything from a raw nanosecond timestamp. Anything else that
             # genuinely needs one (a duration measurement, not a path) belongs behind its own
             # helper, which is what a failure here should prompt.
@@ -337,23 +338,23 @@ jobs:
             # A log line is something the README asks users to attach to a bug report, and an
             # absolute Windows path embeds `C:\Users\<name>\...`. `services::logger::redact_path`
             # exists for that and is applied at roughly twenty sites, including every `AppError`
-            # built through `fs_error` - but two `Path::display()` calls inside `logger::warn`
+            # built through `fs_error`, but two `Path::display()` calls inside `logger::warn`
             # survived every round of that work, in exactly the code that handles the library
             # directory.
             #
-            # This is a lint rather than a convention for the same reason the check above is: a
+            # This is a lint rather than a convention for the same reason the check above is. A
             # property enforced nowhere is a property that drifts back. The check is deliberately
-            # crude - it flags either spelling within a few lines of a logger call - because the cost
+            # crude (it flags either spelling within a few lines of a logger call) because the cost
             # of a false positive is naming the value explicitly, while the cost of a miss is a
             # username in someone's public issue.
             #
-            # Both spellings, because `display()` alone was only half the property: `{:?}` on a
+            # Both spellings, because `display()` alone was only half the property. `{:?}` on a
             # `Path` prints the entire path too (quoted), so a `Debug`-formatted value would have
             # walked straight past a check written to catch exactly this. There was no such site when
-            # this was widened - the one `{:?}` near a logger call formatted an `ImportMode` enum, now
-            # spelled through `ImportMode::as_str` - which is the point: the gap was closed while it
-            # was still theoretical rather than after a path had reached someone's public issue. A
-            # future `{:?}` on something harmless is a false positive worth paying; name the value.
+            # this was widened (the one `{:?}` near a logger call formatted an `ImportMode` enum, now
+            # spelled through `ImportMode::as_str`). The gap was closed while it was still theoretical
+            # rather than after a path had reached someone's public issue, which is the point. A
+            # future `{:?}` on something harmless is a false positive worth paying. Name the value.
             - name: Verify log lines redact absolute paths
               if: matrix.platform == 'ubuntu-26.04'
               run: |
@@ -361,7 +362,7 @@ jobs:
                       --include='*.rs' | grep -E 'display\(\)|\{:\?\}' || true)
 
                   if [ -n "$offenders" ]; then
-                      echo "::error::log a path through services::logger::redact_path - not Path::display, and not {:?}, which prints the whole path too"
+                      echo "::error::log a path through services::logger::redact_path: not Path::display, and not {:?}, which prints the whole path too"
                       printf '%s\n' "$offenders"
                       exit 1
                   fi
@@ -370,7 +371,7 @@ jobs:
 
     audit:
         name: Cargo audit and deny
-        # Pinned like the rust job below; see its comment on why `-latest` is avoided repo-wide.
+        # Pinned like the rust job below. See its comment on why `-latest` is avoided repo-wide.
         runs-on: ubuntu-26.04
         timeout-minutes: 30
         steps:
@@ -378,8 +379,8 @@ jobs:
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
             # Node runs the duplicate-version report at the end of this job. Pinned like every
-            # other toolchain here rather than left to whatever the runner image preinstalls -
-            # "this job ships nothing" is not the reason the frontend job gives for pinning either.
+            # other toolchain here rather than left to whatever the runner image preinstalls.
+            # "This job ships nothing" is not the reason the frontend job gives for pinning either.
             # No pnpm setup or install: the report script is deliberately dependency-free.
             - name: Setup Node.js
               uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -393,34 +394,34 @@ jobs:
               with:
                   toolchain: 1.96.0
 
-            # Pin the tool version (keep in sync with release.yml): an unpinned `cargo install`
+            # Pin the tool version (keep in sync with release.yml). An unpinned `cargo install`
             # builds whatever the latest release happens to be on the day CI runs, so the code
             # executing here is not the code this repository last reviewed, and a green run stops
-            # being reproducible. Pinning costs nothing in security freshness - cargo-audit
+            # being reproducible. Pinning costs nothing in security freshness. cargo-audit
             # downloads the RustSec advisory database at run time, so a pinned tool still checks
             # against today's advisories.
             - name: Install cargo-audit
               run: cargo install cargo-audit@0.22.2 --locked
 
-            # RUSTSEC advisories are not covered by the JS advisory check above; this closes
+            # RUSTSEC advisories are not covered by the JS advisory check above, and this closes
             # that gap for the Rust dependency tree.
             #
-            # `--deny unsound` because without it cargo audit exits 0 on one: the tree carries 18
+            # `--deny unsound` because without it cargo audit exits 0 on one. The tree carries 18
             # warnings today, so a new unsound advisory would land in that pile and ship silently.
             # An unsound crate is a real defect (UB reachable from safe code), unlike the bulk of
             # those warnings, which are unmaintained notices.
             #
-            # Not `--deny warnings`: it fails today on the GTK3 and unic-* crates, which are
+            # Not `--deny warnings`. It fails today on the GTK3 and unic-* crates, which are
             # unmaintained upstream and arrive transitively through tauri itself. Gating on
             # something this project cannot act on only trains everyone to ignore a red run.
             #
-            # Not `--deny yanked` either, for the same reason and no other: `spin 0.9.8` is yanked
+            # Not `--deny yanked` either, for the same reason and no other. `spin 0.9.8` is yanked
             # and comes in via sqlx-sqlite -> flume, so it is equally out of reach. Unlike an
             # advisory it has no RUSTSEC id, so it cannot be ignored one-by-one the way the line
-            # below does - it is deny-all or nothing. Worth revisiting whenever sqlx moves.
+            # below does. It is deny-all or nothing. Worth revisiting whenever sqlx moves.
             #
             # RUSTSEC-2024-0429 (glib unsound, via that same GTK3 tree) is ignored by name rather
-            # than by omission: naming it is what makes a *new* unsound advisory fail the run
+            # than by omission. Naming it is what makes a *new* unsound advisory fail the run
             # instead of hiding among the allowed warnings. Re-check it when GTK3 moves.
             - name: Audit Rust dependencies
               run: >
@@ -431,17 +432,17 @@ jobs:
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked
 
-            # cargo-audit covers advisories; cargo-deny adds the checks it does not: license
+            # cargo-audit covers advisories. cargo-deny adds the checks it does not: license
             # compliance (no copyleft license in an MIT-licensed app), dependency source trust
             # (crates.io only), and wildcard version requirements. Advisories are left to
             # cargo-audit above so the same gate is not run twice. Config: src-tauri/deny.toml.
             - name: Check licenses, sources and bans
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
 
-            # `multiple-versions = "warn"` in src-tauri/deny.toml is a deliberate choice - duplicate
+            # `multiple-versions = "warn"` in src-tauri/deny.toml is a deliberate choice (duplicate
             # versions are ordinary in a transitive tree this size and are not worth failing a build
-            # over - and its comment promises they are surfaced "so the bloat/audit surface stays
-            # visible". That was the one claim in that file nothing delivered: a warning lands in the
+            # over), and its comment promises they are surfaced "so the bloat/audit surface stays
+            # visible". That was the one claim in that file nothing delivered. A warning lands in the
             # log of a job that passes, and nobody opens the log of a green job. This puts the number
             # on the run's summary page instead, which is where it can actually be noticed.
             #
@@ -450,7 +451,7 @@ jobs:
             # run mixes in licenses/sources diagnostics this report would only have to filter back
             # out. It re-resolves Cargo.lock without compiling anything, so it costs seconds.
             #
-            # Reporting only. The script never exits non-zero over what cargo-deny said - an output
+            # Reporting only. The script never exits non-zero over what cargo-deny said. An output
             # shape it no longer understands describes itself in the summary rather than turning the
             # audit red, since a reporting step that can fail the job it reports on would be strictly
             # worse than the log line it replaces. Placed after the gate so a `bans` *error* fails
@@ -466,18 +467,18 @@ jobs:
 
     rust-coverage:
         name: "Rust coverage (floor: 74% lines)"
-        # Pinned like the rust job; see its comment. Coverage is measured on this exact image, so a
+        # Pinned like the rust job. See its comment. Coverage is measured on this exact image, so a
         # silent OS-major jump could move the number for a reason unrelated to the tests.
         runs-on: ubuntu-26.04
         timeout-minutes: 30
         # A low backstop floor, not a tight per-PR ratchet. This job publishes the per-file
         # coverage table AND fails only if line coverage falls under a deliberately conservative
-        # floor - a guard against a catastrophic regression (a new module landing with no tests, a
-        # mass test deletion), never a percentage chase. The frontend has tight coverage floors
-        # (vitest.config.ts, ~89% lines) and broad Stryker mutation testing; the Rust side - the
-        # actual trust boundary - has `cargo test` (pass/fail) plus cargo-mutants scoped to the
+        # floor. That floor is a guard against a catastrophic regression (a new module landing with
+        # no tests, a mass test deletion), never a percentage chase. The frontend has tight coverage
+        # floors (vitest.config.ts, ~89% lines) and broad Stryker mutation testing. The Rust side
+        # (the actual trust boundary) has `cargo test` (pass/fail) plus cargo-mutants scoped to the
         # security-critical modules in src-tauri/.cargo/mutants.toml's examine_globs. That file is
-        # the scope; this comment deliberately does not restate it, and did not always - the copy
+        # the scope. The comment deliberately does not restate it, and did not always. The copy
         # kept here named ten areas while the globs had grown past twenty, and listed the schema
         # migrations and input validation as *outside* the gate a week after both had been put
         # inside it. A list of what is covered is exactly the thing someone reads to decide where
@@ -489,10 +490,10 @@ jobs:
         # current answer.
         #
         # The floor stays deliberately below the real reading, to avoid the flaky-threshold trap
-        # this job warns about: coverage is measured here on Linux, and a local (Windows) run
+        # this job warns about. Coverage is measured here on Linux, and a local (Windows) run
         # measures `#[cfg]`-gated platform code that differs in both directions (the Windows-only
-        # console dialog, batch-shim and verbatim-path code is measured locally and absent here; the
-        # Linux-only file-manager lookup is the reverse).
+        # console dialog, batch-shim and verbatim-path code is measured locally and absent here, but
+        # the Linux-only file-manager lookup is the reverse).
         #
         # That gap used to be described here as real but unmeasured. It has now been measured once,
         # which is worth recording because it is smaller than the slack it was being given: the
@@ -505,7 +506,7 @@ jobs:
         # untested without turning it red, i.e. the regression the job exists to catch. 74 keeps
         # about four and a half points, which covers the measured platform gap several times over.
         # Ratchet further from the number this job publishes to the step summary on a real run,
-        # which is the only Linux reading anyone has; do not ratchet from a local one.
+        # which is the only Linux reading anyone has. Do not ratchet from a local one.
         env:
             CARGO_PROFILE_DEV_DEBUG: "0"
             CARGO_PROFILE_TEST_DEBUG: "0"
@@ -522,10 +523,10 @@ jobs:
                   components: llvm-tools-preview
 
             - name: Install Linux dependencies
-              # No lld/RUSTFLAGS here, unlike the rust job: cargo-llvm-cov sets its own RUSTFLAGS
+              # No lld/RUSTFLAGS here, unlike the rust job. cargo-llvm-cov sets its own RUSTFLAGS
               # for instrumentation, and a second value in the environment would fight it. These apt
               # packages are intentionally unpinned for the same reason as the rust job above (exact
-              # pins on a hosted image go stale and break the build; they are not shipped anyway).
+              # pins on a hosted image go stale and break the build. They are not shipped anyway).
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
@@ -540,7 +541,7 @@ jobs:
                   cache-on-failure: "true"
 
             - name: Install cargo-llvm-cov
-              # Pinned like every other tool install (ci.yml/release.yml/mutation.yml): an
+              # Pinned like every other tool install (ci.yml/release.yml/mutation.yml). An
               # unpinned `cargo install` builds whatever released today, so the measurement could
               # move because the tool changed rather than because the tests did.
               run: cargo install cargo-llvm-cov@0.8.7 --locked
@@ -548,7 +549,7 @@ jobs:
             - name: Measure coverage and enforce the floor
               # The instrumented suite runs once (`--no-report`), then both reports are rendered
               # from that one profile: the browsable HTML uploaded below, and the summary this step
-              # gates on. Rendering twice costs nothing - a second `cargo llvm-cov` run would
+              # gates on. Rendering twice costs nothing: a second `cargo llvm-cov` run would
               # re-execute every test.
               #
               # `--fail-under-lines` prints the summary and then exits non-zero when line coverage
@@ -572,9 +573,9 @@ jobs:
                   } >> "$GITHUB_STEP_SUMMARY"
                   exit "$status"
 
-            # The step summary carries the per-file table; this carries the line-by-line HTML, which
-            # is what actually answers "which branch of this function is untested". `if: always()` so
-            # a run that failed the floor - the one worth reading - still publishes it.
+            # The step summary carries the per-file table. The report carries the line-by-line HTML,
+            # which is what actually answers "which branch of this function is untested". `if:
+            # always()` so a run that failed the floor (the one worth reading) still publishes it.
             - name: Upload the coverage report
               if: always()
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -585,7 +586,7 @@ jobs:
 
     workflow-lint:
         name: Workflow lint (actionlint)
-        # Pinned like every other job here; see the frontend job's comment on why `-latest` is
+        # Pinned like every other job here. See the frontend job's comment on why `-latest` is
         # avoided repo-wide.
         runs-on: ubuntu-26.04
         timeout-minutes: 10
@@ -595,10 +596,10 @@ jobs:
 
             # Static-check the workflow YAML themselves: actionlint validates syntax, ${{ }}
             # expression types and undefined contexts, matrix/glob shapes and deprecated features,
-            # and runs shellcheck over every `run:` script - the class of mistake these large,
+            # and runs shellcheck over every `run:` script. That is the class of mistake these large,
             # hand-maintained workflows (release.yml is ~500 lines of bash-in-YAML) would otherwise
             # only surface as a failed run. Unknown-runner-label false positives for the pinned
-            # images (ubuntu-26.04/macos-26) are silenced in .github/actionlint.yaml; shellcheck is
+            # images (ubuntu-26.04/macos-26) are silenced in .github/actionlint.yaml. shellcheck is
             # preinstalled on the runner and auto-detected.
             #
             # Installed at a pinned version via `go install` (Go ships on the image) rather than a
@@ -608,13 +609,13 @@ jobs:
             - name: Install actionlint
               run: |
                   go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-                  # `go install` drops the binary in GOPATH/bin, which is not on PATH by default;
-                  # add it so the next step can call `actionlint` directly. GITHUB_PATH changes apply
+                  # `go install` drops the binary in GOPATH/bin, which is not on PATH by default.
+                  # Add it so the next step can call `actionlint` directly. GITHUB_PATH changes apply
                   # to subsequent steps, not this one.
                   echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
             # actionlint globs .github/workflows/*.yml itself, so no path argument is needed. Run on
-            # every push/PR rather than gating on workflow-file changes: it takes seconds, and every
+            # every push/PR rather than gating on workflow-file changes. It takes seconds, and every
             # other job in this file runs unconditionally too.
             - name: Run actionlint
               run: actionlint -color

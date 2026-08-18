@@ -21,10 +21,10 @@ import { RegularChatMessage } from "./live-chat-sections/regular-chat-message";
 import { SuperChatMessage } from "./live-chat-sections/super-chat-message";
 
 // Distance (px) from the bottom within which the replay is considered "stuck to bottom" and
-// keeps auto-scrolling as new messages arrive; past it, the user has scrolled up to read.
+// keeps auto-scrolling as new messages arrive. Past it, the user has scrolled up to read.
 const STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 
-// A rough first guess at a chat row's height; real heights are measured after mount
+// A rough first guess at a chat row's height. Real heights are measured after mount
 // (measureElement), so this only shapes the first paint's scrollbar estimate, never final layout.
 const ESTIMATED_MESSAGE_HEIGHT = 72;
 
@@ -43,9 +43,9 @@ type LiveChatPanelProps = {
     // instead of the "no messages" empty state, so a failed read is not reported as an empty chat.
     error?: string | null;
     // Whether newly revealed messages should be announced by the screen-reader live region. True
-    // during ordinary playback (each message scrolls in, one at a time); the parent sets it false
-    // around a seek, where the whole visible window is replaced at once and announcing the jump
-    // would flood the speech queue with activity that is not live.
+    // during ordinary playback (each message scrolls in, one at a time), but the parent sets it
+    // false around a seek, where the whole visible window is replaced at once and announcing the
+    // jump would flood the speech queue with activity that is not live.
     announceAdditions?: boolean;
     shellBorder: string;
 };
@@ -132,7 +132,7 @@ const LiveChatItem = memo(function LiveChatItem({
     // whose purchase amount could not be parsed still has no message_text (stickers never carry
     // one) and its image lives in sticker_image_url, which only SuperChatMessage renders, so
     // routing it by amount alone dropped it into RegularChatMessage as a near-empty row, image and
-    // all. The amount is what the badge shows; it is not what the message is.
+    // all. The amount is what the badge shows. It is not what the message is.
     if (message.kind === "superchat" || message.kind === "sticker") {
         return (
             <SuperChatMessage
@@ -162,7 +162,7 @@ export function LiveChatPanel({
 
     // Pinned banners are shown sticky at the top (YouTube-style) instead of inline. The active pin
     // (`activePin`) is derived by the parent from the full message list so a long-standing pin does
-    // not disappear when it scrolls out of the capped visible window; here we only strip pinned
+    // not disappear when it scrolls out of the capped visible window. Here we only strip pinned
     // messages out of the inline list so a pin never renders twice. Memoized so it is recomputed
     // only when the visible window actually changes, not on every parent render.
     const inlineMessages = useMemo(
@@ -170,7 +170,7 @@ export function LiveChatPanel({
         [visibleLiveChatMessages]
     );
 
-    // Only show the virtualized list when there is something to show; loading/error/empty states go
+    // Only show the virtualized list when there is something to show. Loading/error/empty states go
     // through AsyncStatusRegion instead. Keeping them mutually exclusive means the list's sizer is
     // the first (and only) child of the scroll viewport, so the virtualizer's offsets are not thrown
     // off by a status node rendered above it.
@@ -196,7 +196,7 @@ export function LiveChatPanel({
     const totalSize = virtualizer.getTotalSize();
 
     // Force an initial measurement pass once the list is shown. The virtualizer computes its first
-    // visible range from the scroll element's measured size; when that size does not change from its
+    // visible range from the scroll element's measured size. When that size does not change from its
     // 0x0 starting rect (a container that has not laid out yet, which is also every environment
     // without a layout engine), it would otherwise never leave the empty initial range. The media
     // grid does the same for the same reason.
@@ -270,9 +270,9 @@ export function LiveChatPanel({
             }}
         >
             {/* The screen-reader live region. Decoupled from the virtualized visual list (which
-                cannot host a reliable aria-live region - see liveChatAnnouncement) and always
+                cannot host a reliable aria-live region: see liveChatAnnouncement) and always
                 mounted so assistive tech has it before the first addition. It announces only the
-                newest revealed message; keying that message by identity swaps the node when it
+                newest revealed message. Keying that message by identity swaps the node when it
                 changes, which is the "addition" aria-relevant reports. Silenced (aria-live off)
                 during a seek, when the whole window is replaced at once. */}
             <VisuallyHidden>
@@ -353,7 +353,7 @@ export function LiveChatPanel({
                                 const message = inlineMessages[virtualRow.index];
 
                                 // The virtualizer only yields in-range indices, so this is never
-                                // null in practice; the guard satisfies the checked-index type.
+                                // null in practice, but the guard satisfies the checked-index type.
                                 if (!message) {
                                     return null;
                                 }

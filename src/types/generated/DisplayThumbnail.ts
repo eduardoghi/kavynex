@@ -17,7 +17,7 @@
  * legitimate flow reaches it.
  *
  * So the backend states which it is, because the backend is the only side that knows. Only
- * [`DisplayThumbnail::BudgetSpent`] means "ask again"; everything else is final for this library.
+ * [`DisplayThumbnail::BudgetSpent`] means "ask again". Everything else is final for this library.
  *
  * The uncertain cases resolve to [`DisplayThumbnail::Unavailable`] deliberately. A source that is
  * gone might come back, and an FFmpeg run that failed might succeed on a retry, but the cost of

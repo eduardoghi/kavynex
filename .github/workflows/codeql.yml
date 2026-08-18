@@ -4,26 +4,26 @@ name: codeql
 # themselves, the frontend, and the Rust backend.
 #
 # This replaces GitHub's *default setup*, which had been running the same three languages since
-# 2026-07 and doing so correctly. The move is not about coverage - it is about where the
+# 2026-07 and doing so correctly. The move is not about coverage. It is about where the
 # configuration lives. Every other gate in this repository pins what it runs: the Rust toolchain
 # (rust-toolchain.toml), Node (.nvmrc plus a consistency check), every action by SHA, every
 # `cargo install` by exact version, and every runner image by OS major. Default setup was the one
-# gate whose behavior lived in the repository *settings* rather than in a file, so a change to it -
-# a language dropped, the query suite narrowed, the schedule loosened - left no trace anybody could
-# review, and nothing in a diff would show that the analysis had changed.
+# gate whose behavior lived in the repository *settings* rather than in a file, so a change to it
+# (a language dropped, the query suite narrowed, the schedule loosened) left no trace anybody
+# could review, and nothing in a diff would show that the analysis had changed.
 #
 # The settings this file reproduces are the ones default setup was configured with, read back from
 # the API before the switch (languages actions/javascript-typescript/rust, the `default` query
 # suite, the `remote` threat model, a weekly schedule). The push/pull_request triggers are the
-# additions: default setup ran on push and weekly, and running on PRs as well means a finding
+# additions. Default setup ran on push and weekly, and running on PRs as well means a finding
 # arrives on the change that introduced it rather than after it has landed.
 #
 # IMPORTANT, and the reason this file may sit unused for a moment: default setup and advanced setup
 # cannot both be active. While default setup is enabled, this workflow's `upload-sarif` step is
-# refused by the API ("Code scanning default setup is enabled"). Disable it first - Settings > Code
+# refused by the API ("Code scanning default setup is enabled"). Disable it first: Settings > Code
 # security > Code scanning > Set up > Disable CodeQL, or
-# `gh api -X PATCH repos/eduardoghi/kavynex/code-scanning/default-setup -f state=not-configured` -
-# and only then push this file. Dispatch it by hand once afterwards to confirm all three languages
+# `gh api -X PATCH repos/eduardoghi/kavynex/code-scanning/default-setup -f state=not-configured`.
+# Only then push this file. Dispatch it by hand once afterwards to confirm all three languages
 # analyze before relying on the schedule.
 
 on:
@@ -59,7 +59,7 @@ jobs:
         timeout-minutes: 60
 
         permissions:
-            # Uploading the SARIF results is what needs a write scope; nothing else here does.
+            # Uploading the SARIF results is what needs a write scope. Nothing else here does.
             security-events: write
             # Required for the action to read the workflow run's own metadata on a private repo,
             # and harmless on a public one. Kept explicit rather than inherited.
@@ -71,12 +71,12 @@ jobs:
             matrix:
                 # One leg per language, exactly the three the default setup was analyzing (the API
                 # additionally listed `javascript` and `typescript`, which are aliases of
-                # `javascript-typescript` and produce no separate analysis - confirmed against the
+                # `javascript-typescript` and produce no separate analysis, confirmed against the
                 # analyses endpoint, which reported three categories, not five).
                 #
                 # `build-mode: none` for all three: none of them is a compiled language as far as
                 # CodeQL is concerned. That is the mode the Rust extractor supports, and it is why
-                # this workflow needs no toolchain, no apt packages and no build step - it reads
+                # this workflow needs no toolchain, no apt packages and no build step: it reads
                 # the sources rather than observing a compilation. If a future CodeQL release
                 # requires a build for Rust, that leg fails loudly here rather than silently
                 # analyzing nothing.

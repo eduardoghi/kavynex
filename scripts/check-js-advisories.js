@@ -8,8 +8,8 @@
 // fix it, so the gate had to move off that command rather than wait.
 //
 // Data comes from OSV (osv.dev), Google's aggregator of the same GitHub Advisory data npm audit
-// reports, queried over its public batch API. That is the source `osv-scanner` itself wraps; this
-// queries it directly rather than adding the scanner because it is a Go binary with no npm
+// reports, queried over its public batch API. That is the source `osv-scanner` itself wraps, and
+// this queries it directly rather than adding the scanner because it is a Go binary with no npm
 // package, which would mean a new third-party Action in a workflow that deliberately pins
 // everything by commit SHA. A ~90-line script with no dependency is less supply-chain surface
 // than either, and it mirrors scripts/check-js-licenses.js, which already resolves its inventory
@@ -28,25 +28,25 @@ const OSV_VULN_URL = "https://api.osv.dev/v1/vulns";
 // finding should not block every push, and it never shipped in a release artifact anyway.
 const BLOCKING_SEVERITIES = new Set(["HIGH", "CRITICAL"]);
 
-// OSV's batch endpoint accepts many queries per call; keep batches modest so one failure retries
+// OSV's batch endpoint accepts many queries per call. Keep batches modest so one failure retries
 // cheaply and the request stays well inside any body limit.
 const QUERY_BATCH_SIZE = 100;
 
 // Bound each OSV request. Without this a stalled endpoint (a TCP/TLS hang rather than a quick
 // error) would hold the read open until the CI job's own timeout (tens of minutes) killed it,
 // failing the whole run for a reason unrelated to the code under review. A slow network still gets
-// generous room; only a genuine stall trips it, and it fails fast with a message that names the
+// generous room. Only a genuine stall trips it, and it fails fast with a message that names the
 // outage rather than looking like an advisory was found.
 const OSV_REQUEST_TIMEOUT_MS = 15_000;
 
 function readInstalledPackages(scope) {
     // `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to spawn
-    // `.bat`/`.cmd` without one (CVE-2024-27980); CI runs on Linux and takes the shell-free path.
+    // `.bat`/`.cmd` without one (CVE-2024-27980). CI runs on Linux and takes the shell-free path.
     //
     // Note what the argv array does and does not buy on that Windows path: with `shell: true` Node
     // concatenates the array into a command line rather than passing it through, which is what
     // DEP0190 warns about. The array is not an escaping mechanism there. What actually makes this
-    // safe is that every argument below is a literal written in this file; none is derived from a
+    // safe is that every argument below is a literal written in this file, not derived from a
     // package name, a lockfile entry, or anything else outside it. Keep it that way: an argument
     // built from external data would need the shim resolved and invoked directly instead.
     //
@@ -94,7 +94,7 @@ export function chunk(items, size) {
 }
 
 // `fetch` under a per-request deadline. On a timeout, `fetch` rejects with a `TimeoutError`
-// DOMException; it is remapped to a plain Error that names the outage, so the gate's failure reads
+// DOMException. It is remapped to a plain Error that names the outage, so the gate's failure reads
 // as "osv.dev unreachable" rather than being mistaken for an advisory.
 async function fetchWithTimeout(url, options) {
     try {
@@ -105,8 +105,8 @@ async function fetchWithTimeout(url, options) {
     } catch (error) {
         if (error instanceof Error && error.name === "TimeoutError") {
             throw new Error(
-                `${url} did not respond within ${OSV_REQUEST_TIMEOUT_MS} ms; ` +
-                    "osv.dev appears unreachable (this is a network/service failure, not an advisory)",
+                `${url} did not respond within ${OSV_REQUEST_TIMEOUT_MS} ms, ` +
+                    "so osv.dev appears unreachable (this is a network/service failure, not an advisory)",
                 { cause: error }
             );
         }
@@ -281,7 +281,7 @@ function severityFromCvssVectors(severities) {
 }
 
 // The batch endpoint returns ids only, so severity needs one lookup per advisory. There are
-// normally none; a handful at most. Prefers the database_specific.severity label GHSA-sourced
+// normally none. A handful at most. Prefers the database_specific.severity label GHSA-sourced
 // advisories carry, and falls back to the CVSS vector in the top-level `severity` array for any that
 // omit it, so a high/critical finding published without the label is still classified, not silently
 // treated as unknown. Exported for tests.
@@ -314,7 +314,7 @@ export function isBlockingAdvisory(vuln) {
     // label and no parseable CVSS vector) is not proven to be below the high/critical floor, so it
     // must not pass silently. That is the whole point of this gate, which states the same
     // fail-closed rule for a transport failure below. It surfaces for a human to classify in the PR
-    // rather than being treated as cleared; a severity we did resolve to low/moderate/none does not
+    // rather than being treated as cleared. A severity we did resolve to low/moderate/none does not
     // block.
     return severity === "UNKNOWN";
 }
@@ -329,14 +329,14 @@ async function main() {
     for (const [id, affected] of affectedBy) {
         const vuln = await getJson(`${OSV_VULN_URL}/${encodeURIComponent(id)}`);
 
-        // A withdrawn advisory is skipped and anything below high/critical does not gate; both live
-        // in isBlockingAdvisory so the decision is testable without the network.
+        // A withdrawn advisory is skipped and anything below high/critical does not gate. Both
+        // decisions live in isBlockingAdvisory so they are testable without the network.
         if (!isBlockingAdvisory(vuln)) {
             continue;
         }
 
         blocking.push(
-            `${severityOf(vuln)} ${id} - ${[...affected].sort().join(", ")}\n` +
+            `${severityOf(vuln)} ${id}: ${[...affected].sort().join(", ")}\n` +
                 `    ${vuln.summary ?? "(no summary)"}\n` +
                 `    https://osv.dev/vulnerability/${id}`
         );
@@ -350,7 +350,7 @@ async function main() {
                 "\n\nUpgrade the affected package(s). An advisory whose severity could not be" +
                 " determined is listed as UNKNOWN and blocks by design (fail closed), rather than" +
                 " passing silently. If a finding does not apply here, it must be argued in the PR" +
-                " rather than silenced - there is no ignore-list by design."
+                " rather than silenced: there is no ignore-list by design."
         );
         process.exit(1);
     }

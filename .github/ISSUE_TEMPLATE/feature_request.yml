@@ -5,7 +5,7 @@ body:
     - type: markdown
       attributes:
           value: |
-              Ideas are welcome. One thing worth knowing before you write it up: Kavynex has a
+              Ideas are welcome. One thing is worth knowing before you write it up. Kavynex has a
               single maintainer, so the scope that stays maintainable for years is narrower than
               the scope that would be nice to have. A request may be declined for that reason
               alone, and that is not a judgement of the idea.
@@ -37,8 +37,8 @@ body:
       attributes:
           label: What you do today instead
           description: >
-              The workaround you currently use, if any. This is genuinely useful - it shows how
-              much the gap costs, and sometimes the workaround is good enough that the feature
-              is not worth its maintenance.
+              The workaround you currently use, if any. Knowing it is genuinely useful: it shows
+              how much the gap costs, and sometimes the workaround is good enough that the
+              feature is not worth its maintenance.
       validations:
           required: false

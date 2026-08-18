@@ -3,7 +3,7 @@
 // touching one. Either changing without its declared inventory below being updated fails the run.
 //
 // The second half was added after the first proved to cover less than it read as covering. The
-// command inventory answers "which commands take a path"; `docs/THREAT-MODEL.md` also enumerates
+// command inventory answers "which commands take a path". `docs/THREAT-MODEL.md` also enumerates
 // *which functions apply the refusal*, and that second list is what a review of a new command is
 // checked against. Nothing held it: an audit found one enforcement site missing from the document
 // and another command stat-ing a caller-supplied path with no refusal at all, while this gate
@@ -28,8 +28,8 @@
 // (see DECLARED_PATH_SURFACE). Updating the inventory used to mean adding a name, which took no
 // opinion at all, and two commands reached production with a library-relative path confined to the
 // library root rather than to a managed subdirectory while sitting in this list the whole time. The
-// class is not verified against the code, for the reason above; what it does is make "which rule
-// does this answer to" a question the diff cannot avoid.
+// class is not verified against the code, for the reason above, but what it does is make "which
+// rule does this answer to" a question the diff cannot avoid.
 //
 // The failure is deliberately two-directional. A removed or renamed command fails too, so the
 // inventory cannot rot into a list of names that no longer exist, which is how the prose version
@@ -60,7 +60,7 @@ export function isPathParameter(name) {
 
 // Splits a Rust parameter list on the commas that actually separate parameters. Generic arguments
 // carry their own commas (`db: State<'_, Db>`), so a plain `split(",")` would tear one parameter
-// into two and lose the name; depth is tracked across `<>`, `()` and `[]` for that reason.
+// into two and lose the name. Depth is tracked across `<>`, `()` and `[]` for that reason.
 export function splitParameters(parameterList) {
     const parameters = [];
     let depth = 0;
@@ -244,8 +244,8 @@ export function structPathFields(typeName, sources) {
 // `{ command, parameters }` with the path parameters in declaration order. A command with no path
 // parameter is omitted entirely. The inventory is about the path surface, not about every command.
 //
-// `structSources` are the files searched for a struct declaration when a parameter's type names one;
-// pass none and the function behaves exactly as it did before struct parameters were followed.
+// `structSources` are the files searched for a struct declaration when a parameter's type names
+// one. Pass none and the function behaves exactly as it did before struct parameters were followed.
 export function extractPathTakingCommands(source, structSources = []) {
     const found = [];
     let searchFrom = 0;
@@ -389,8 +389,8 @@ export function diffSurface(actual, declared) {
 // `parameters` is taken from `actual` (what the parser found in the tree) rather than from the
 // declared entry, so a per-parameter map cannot drift into naming a parameter that no longer
 // exists, or quietly stop covering one that was added. `diffSurface` already fails on the parameter
-// list changing at all; this is what makes the *classification* move with it instead of being left
-// describing the previous signature.
+// list changing at all, and this is what makes the *classification* move with it instead of being
+// left describing the previous signature.
 export function collectGuardProblems(actual, declared = DECLARED_PATH_SURFACE) {
     const known = new Set(Object.keys(GUARD_CLASSES));
     const byCommand = new Map(declared.map((entry) => [entry.command, entry]));
@@ -409,7 +409,7 @@ export function collectGuardProblems(actual, declared = DECLARED_PATH_SURFACE) {
 
         if (guard === undefined) {
             problems.push(
-                `${command}: no guard class. Say which rule its path answers to; the classes are ${[...known].join(", ")}.`
+                `${command}: no guard class. Say which rule its path answers to: the classes are ${[...known].join(", ")}.`
             );
             continue;
         }
@@ -471,7 +471,7 @@ export function stripTestModule(source) {
 // cross-cutting network-path rule, as `<file>::<fn>` in the order they appear.
 //
 // This is the second half of what this script gates, and it exists because the first half does not
-// cover it. `DECLARED_PATH_SURFACE` answers "which commands take a path from the caller"; it says
+// cover it. `DECLARED_PATH_SURFACE` answers "which commands take a path from the caller". It says
 // nothing about which functions refuse a UNC before touching one, and that second list is the one
 // `docs/THREAT-MODEL.md` enumerates and a review is actually checked against. It drifted: an audit
 // found `thumbnail::picked::validate_picked_thumbnail_path` applying the rule while the document
@@ -481,7 +481,7 @@ export function stripTestModule(source) {
 //
 // The enclosing function is found by scanning back for the nearest `fn` declaration, which is
 // enough here because these are all free functions. A line whose trimmed form starts with `//` is
-// skipped so prose *about* the rule is not read as an application of it; a trailing comment on a
+// skipped so prose *about* the rule is not read as an application of it. A trailing comment on a
 // code line is deliberately not stripped, because a false positive fails loudly and gets fixed
 // while a false negative hides a missing guard.
 export function extractNetworkRefusalSites(fileName, source) {
@@ -566,7 +566,7 @@ const GUARD_CLASSES = {
     // A library-relative path required to name one of MANAGED_LIBRARY_DIRS.
     "managed-relative": "utils/path.rs::ensure_managed_library_relative_path / _in_managed_dir",
     // Confined to the library root by canonical containment, and deliberately no further. Only for
-    // an operation where reaching a non-managed file is harmless; today that is the read-only
+    // an operation where reaching a non-managed file is harmless: today that is the read-only
     // reveal in the file manager, which writes and deletes nothing.
     "library-confined": "services/library/mod.rs::resolve_path_inside_library",
     // An absolute path confined to an app cache subdirectory rather than to the library.
@@ -575,8 +575,8 @@ const GUARD_CLASSES = {
     // network refusal, never by the library, because it has to reach a file that is not in one yet.
     "user-picked": "an extension gate plus utils/path.rs::is_network_path",
     // A directory the user chose in a folder dialog, on the path where nothing is persisted yet so
-    // there is nothing to cross-check against. Refused inside the app config directory; the absent
-    // network refusal is the documented accepted residual, not an omission.
+    // there is nothing to cross-check against. Refused inside the app config directory, and the
+    // absent network refusal is the documented accepted residual, not an omission.
     "chosen-directory": "an existence/containment check, no network refusal (see THREAT-MODEL.md)",
 };
 
@@ -755,8 +755,8 @@ function main() {
 
     console.error(
         "Every command taking a path from the caller has to satisfy the cross-cutting path rule in\n" +
-            "docs/THREAT-MODEL.md - a UNC/network refusal before any filesystem call, the library\n" +
-            "guard, or a strictly-relative path - and say which in that document. The second list is\n" +
+            "docs/THREAT-MODEL.md (a UNC/network refusal before any filesystem call, the library\n" +
+            "guard, or a strictly-relative path) and say which in that document. The second list is\n" +
             "the enforcement side of the same rule: that document enumerates the functions applying\n" +
             "it, and a new one belongs in the enumeration before it belongs here. Once both are\n" +
             "right, refresh the inventories with:\n\n" +

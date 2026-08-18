@@ -56,8 +56,8 @@ use crate::utils::process::{
 use crate::AppResult;
 
 /// How long one derivative generation may run before FFmpeg is treated as hung and its process
-/// tree killed. Scaling a single already-decoded image is near-instant; this is generous headroom
-/// for a cold disk while staying bounded, matching every other external-process call site.
+/// tree killed. Scaling a single already-decoded image is near-instant, so this is generous
+/// headroom for a cold disk while staying bounded, matching every other external-process call site.
 const DISPLAY_THUMBNAIL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// How often the bounded wait re-checks for exit. Matches `thumbnail/temp.rs`'s generator.
@@ -65,7 +65,7 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 
 /// How long one resolve call may spend generating before it stops starting new FFmpeg runs.
 ///
-/// [`DISPLAY_THUMBNAIL_TIMEOUT`] bounds *one* child; nothing bounded a page of them. The two
+/// [`DISPLAY_THUMBNAIL_TIMEOUT`] bounds *one* child. Nothing bounded a page of them. The two
 /// multiply: at [`MAX_GENERATIONS_PER_CALL`] generations each allowed the full per-process timeout,
 /// a page where FFmpeg reproducibly hangs could hold one blocking-pool thread for over half an hour,
 /// and the caller cannot see it or cancel it. The request is fire-and-forget, and its failure path
@@ -73,7 +73,7 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 /// competes for that pool, so the cost is not confined to thumbnails.
 ///
 /// Sized so a legitimate call never meets it, which is the constraint that matters and the one that
-/// is easy to get wrong. A full page of 100 real generations runs a few seconds; even at 300ms
+/// is easy to get wrong. A full page of 100 real generations runs a few seconds. Even at 300ms
 /// each (a cold disk on a slow machine) it is 30s. Cutting close to that would recreate the bug
 /// [`MAX_GENERATIONS_PER_CALL`] was raised from 64 to fix: the tail of a first-visited page would
 /// come back unresolved, and a channel that fits in one page has no later append to trigger the
@@ -118,9 +118,9 @@ const MAX_RESOLVED_PER_CALL: usize = 512;
 /// Ceiling on the total size of the derivative cache directory.
 ///
 /// A derivative is capped at [`DISPLAY_THUMBNAIL_MAX_WIDTH`] wide and JPEG-encoded, so it runs tens
-/// of kilobytes; this holds a few thousand of them, which is more than a session draws. It exists
-/// because the directory otherwise has no bound at all. A derivative is never deleted when its
-/// media is, since nothing in the database refers to one (see the module docs).
+/// of kilobytes, and this holds a few thousand of them, which is more than a session draws. It
+/// exists because the directory otherwise has no bound at all. A derivative is never deleted when
+/// its media is, since nothing in the database refers to one (see the module docs).
 ///
 /// **Enforced by the startup sweep** (`services::temp_cleanup::cleanup_stale_temp_files_sync`), not on
 /// write: a session that draws more than this grows past it and is trimmed back on the next launch.
@@ -134,7 +134,7 @@ const DISPLAY_CACHE_MAX_BYTES: u64 = 200 * 1024 * 1024;
 
 /// Admits one resolve call at a time onto the blocking pool.
 ///
-/// [`RESOLVE_CALL_BUDGET`] and [`MAX_GENERATIONS_PER_CALL`] bound what *one* call may do; neither
+/// [`RESOLVE_CALL_BUDGET`] and [`MAX_GENERATIONS_PER_CALL`] bound what *one* call may do. Neither
 /// bounds how many calls are doing it. Nothing else does either, because this request is
 /// fire-and-forget: `useDisplayThumbnails` asks once per page of the grid and only discards the
 /// result it no longer wants, so a user scrolling a large channel on a machine where FFmpeg
@@ -201,7 +201,7 @@ pub(crate) fn capped_call_length(requested: usize) -> usize {
 /// legitimate flow reaches it.
 ///
 /// So the backend states which it is, because the backend is the only side that knows. Only
-/// [`DisplayThumbnail::BudgetSpent`] means "ask again"; everything else is final for this library.
+/// [`DisplayThumbnail::BudgetSpent`] means "ask again". Everything else is final for this library.
 ///
 /// The uncertain cases resolve to [`DisplayThumbnail::Unavailable`] deliberately. A source that is
 /// gone might come back, and an FFmpeg run that failed might succeed on a retry, but the cost of
@@ -298,8 +298,8 @@ pub(crate) fn display_cache_max_bytes() -> u64 {
 
 /// The prefix of `relative_paths` one call will resolve, bounded by [`MAX_RESOLVED_PER_CALL`].
 ///
-/// Pure over the slice so both directions of the ceiling are one call from a test; the entry point
-/// that applies it is `AppHandle`-bound and cannot be driven by one.
+/// Pure over the slice so both directions of the ceiling are one call from a test, but the entry
+/// point that applies it is `AppHandle`-bound and cannot be driven by one.
 pub(crate) fn within_call_ceiling(relative_paths: &[String]) -> &[String] {
     &relative_paths[..capped_call_length(relative_paths.len())]
 }
@@ -363,7 +363,7 @@ fn display_thumbnail_file_name(cache_key: &str) -> String {
 ///
 /// It also means the cleanup needs no reference counting of its own. A derivative is addressed *by*
 /// the canonical thumbnail's content hash, so two rows sharing a thumbnail share its derivative
-/// exactly as they share the file; the count the cleanup already ran before unlinking the canonical
+/// exactly as they share the file. The count the cleanup already ran before unlinking the canonical
 /// file is therefore the same count, and there is nothing further to decide.
 pub(crate) fn display_derivative_path(display_dir: &Path, relative_path: &str) -> Option<PathBuf> {
     let cache_key = display_cache_key(relative_path)?;
@@ -391,7 +391,7 @@ fn display_cache_key(relative_path: &str) -> Option<String> {
 /// sizes (a yt-dlp `maxresdefault` at 1280 wide, an FFmpeg frame already capped at 640).
 ///
 /// Extracted as a pure function, like `thumbnail::temp::build_video_thumbnail_args`, so the argv can
-/// be asserted without spawning a process; a wrong filter here is otherwise only observable as a
+/// be asserted without spawning a process. A wrong filter here is otherwise only observable as a
 /// blurry or oversized card on someone's machine.
 fn build_display_thumbnail_args(source_path: &Path, out_path: &Path) -> Vec<String> {
     vec![
@@ -419,7 +419,7 @@ fn build_display_thumbnail_args(source_path: &Path, out_path: &Path) -> Vec<Stri
 /// restatement removes the mutant, which is preferable to excluding it.
 ///
 /// The budget itself exists so a caller-supplied list cannot turn into an unbounded run of FFmpeg
-/// invocations; see [`MAX_GENERATIONS_PER_CALL`].
+/// invocations. See [`MAX_GENERATIONS_PER_CALL`].
 fn take_generation_slot(generations_left: &mut usize) -> Option<()> {
     if *generations_left == 0 {
         return None;
@@ -491,7 +491,7 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
             kill_process_tree_blocking(pid);
             let _ = child.wait();
 
-            // A killed run can still have created a partial file; drop it so the next call retries
+            // A killed run can still have created a partial file. Drop it so the next call retries
             // instead of caching a truncated image forever.
             let _ = std::fs::remove_file(out_path);
             return false;
@@ -606,7 +606,7 @@ pub fn resolve_display_thumbnails_sync(
     let Ok(display_dir) = thumb_display_dir(app) else {
         logger::warn(
             "thumbnail_display",
-            "could not resolve the display thumbnail cache directory; serving the stored thumbnails",
+            "could not resolve the display thumbnail cache directory, serving the stored thumbnails",
         );
 
         // Unavailable rather than BudgetSpent: a cache directory that cannot be resolved will not
@@ -624,7 +624,7 @@ pub fn resolve_display_thumbnails_sync(
         logger::warn(
             "thumbnail_display",
             format!(
-                "a display thumbnail request named {} paths; resolving the first {} and serving the \
+                "a display thumbnail request named {} paths, resolving the first {} and serving the \
                  stored thumbnails for the rest",
                 relative_paths.len(),
                 considered.len()
@@ -669,7 +669,7 @@ pub fn resolve_display_thumbnails_sync(
         logger::warn(
             "thumbnail_display",
             format!(
-                "a display thumbnail request used its whole {}s budget; the remaining entries were \
+                "a display thumbnail request used its whole {}s budget. The remaining entries were \
                  left for a later call and are being served from the stored thumbnails",
                 RESOLVE_CALL_BUDGET.as_secs()
             ),
@@ -714,7 +714,7 @@ mod tests {
 
         assert!(
             try_reserve_resolve_slot().is_none(),
-            "a second caller must be refused rather than queued - a page whose rows the user has \
+            "a second caller must be refused rather than queued: a page whose rows the user has \
              already scrolled past would otherwise occupy the blocking pool ahead of the one they \
              are looking at"
         );
@@ -875,7 +875,7 @@ mod tests {
         // left 36 cards of a first-visited channel without a derivative, and (because the caller
         // re-asks only when its item list changes), a channel that fits in one page never got them.
         // A budget *above* the page size is fine (it only bounds a caller asking for more than a
-        // page); below it silently degrades the feature, so this is the direction that is asserted.
+        // page). Below it silently degrades the feature, so this is the direction that is asserted.
         let page_size = shared_media_page_size();
 
         assert!(
@@ -1074,7 +1074,7 @@ mod tests {
     #[test]
     fn the_source_path_is_passed_as_a_single_argument() {
         // A path with spaces has to stay one argv entry. The commands are spawned without a shell,
-        // so this is already true by construction; asserting it is what stops a future rewrite from
+        // so this is already true by construction. Asserting it is what stops a future rewrite from
         // joining the argv into a string.
         let args = build_display_thumbnail_args(
             Path::new("/lib/My Library/thumb.jpg"),
@@ -1460,7 +1460,7 @@ mod tests {
         // Final rather than retryable, which is a judgment worth stating: the file could come back
         // (a drive remounted), but re-asking on every page will not be what brings it back, and a
         // fresh launch retries it anyway. Being wrong here costs one session of drawing the stored
-        // thumbnail; being wrong the other way costs the unbounded re-asking this change removes.
+        // thumbnail. Being wrong the other way costs the unbounded re-asking this change removes.
         assert_eq!(resolved, DisplayThumbnail::Unavailable);
         assert_eq!(
             generations_left, 4,

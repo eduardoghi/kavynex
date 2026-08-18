@@ -131,7 +131,7 @@ export function verifyReadmeAssetNames({ readmeContent, assetNames }) {
 
     if (unmatched.length > 0) {
         problems.push(
-            "README.md names a download this release does not carry. Its bundler's naming has probably shifted - compare against the asset list printed above, and update the README together with release.yml's asset-completeness list, which holds the same names:\n" +
+            "README.md names a download this release does not carry. Its bundler's naming has probably shifted: compare against the asset list printed above, and update the README together with release.yml's asset-completeness list, which holds the same names:\n" +
                 unmatched.map((pattern) => `  - ${pattern}`).join("\n")
         );
     }

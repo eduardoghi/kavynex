@@ -24,8 +24,9 @@ It was built to preserve the channels I follow, and it is what I use for that.
 
 - Organize media by channel, with the channel avatar fetched from its handle
 - Import video and audio files you already have on disk
-- Search, filter and sort within a channel; mark media watched or unwatched; resume where you
-  stopped
+- Search, filter and sort within a channel
+- Mark media watched or unwatched
+- Resume where you stopped
 - Reconcile the database against the files on disk with the built-in diagnostics
 - Everything stays local: nothing is uploaded, and loading remote images is off by default
 
@@ -85,8 +86,9 @@ not an inconsistency in the build.)
 
 ### Verifying a download
 
-The installers are not code-signed (a deliberate tradeoff. See `docs/RELEASE-SECURITY.md`), so
-SmartScreen/Gatekeeper will warn on first run. To confirm a download is authentic:
+The installers are not code-signed (a deliberate tradeoff explained in
+`docs/RELEASE-SECURITY.md`), so SmartScreen/Gatekeeper will warn on first run. To confirm a
+download is authentic:
 
 - Compare its hash against `SHA256SUMS.txt`, published alongside the installers.
 - Or, with the [GitHub CLI](https://cli.github.com/), verify its build provenance:
@@ -186,14 +188,14 @@ repository), and applies to the font files only, not to Kavynex itself.
   where the log file lives.
 - `docs/PRIVACY.md`: what Kavynex stores, what it sends over the network, and how to take your
   data with you or remove it.
-- `docs/RELEASING.md`, how a release is cut and published (needs repository write access).
+- `docs/RELEASING.md`: how a release is cut and published (needs repository write access).
 - `CONTRIBUTING.md`: development setup, commands, and commit conventions.
 - `docs/THREAT-MODEL.md`: what the app defends against at runtime: the IPC trust boundary, path
   safety, the capability grants, the asset-protocol scope and the CSP.
 - `docs/RELEASE-SECURITY.md`: what makes a shipped build verifiable: the updater, why installers
   are unsigned, checksums, build provenance, the SBOM, static analysis and the dependency supply
   chain.
-- `SECURITY.md`, how to report a vulnerability, and which versions are supported.
-- `SUPPORT.md`, where to report a bug, what to include, and what to expect.
+- `SECURITY.md`: how to report a vulnerability, and which versions are supported.
+- `SUPPORT.md`: where to report a bug, what to include, and what to expect.
 - `CODE_OF_CONDUCT.md`: the standard expected of everyone taking part, and how to report a problem.
 
