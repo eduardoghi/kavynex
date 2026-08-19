@@ -1,6 +1,6 @@
 import { memo, type CSSProperties } from "react";
-import { Badge, Box, Group, Stack, Text, rem } from "@mantine/core";
-import { MessageCircle } from "lucide-react";
+import { Badge, Box, Group, Stack, Text, Tooltip, rem } from "@mantine/core";
+import { Headphones, MessageCircle, Video } from "lucide-react";
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import { MediaCardActionsMenu } from "./media-card-actions-menu";
 import { MediaCardThumbnail } from "./media-card-thumbnail";
@@ -111,6 +111,15 @@ const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
     fontWeight: 800,
 };
 
+// The media-type badge carries an icon where the others carry text, and Badge lays its label out
+// for text. Without this the glyph sits on the text baseline instead of the middle of the pill.
+// Only the centring lives here. Height, padding and colour stay on the two style objects above,
+// which is what keeps this badge the same size as CHAT and the comment count beside it.
+const MEDIA_TYPE_BADGE_LABEL_STYLE: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+};
+
 // The resting elevation of a card that is neither active nor watched.
 //
 // `light-dark()` resolves a *color*, so it has to sit in the color slot of each shadow, not around
@@ -156,6 +165,11 @@ function MediaCardComponent({
     onEditTitle,
 }: MediaCardProps): JSX.Element {
     const isAudio = media.media_type === "audio";
+    // Names the media type once. The tooltip and the aria-label have to say the same thing,
+    // since the icon is the only other way to tell them apart.
+    const mediaTypeLabel = isAudio
+        ? UI_TEXT.library.mediaTypeAudio
+        : UI_TEXT.library.mediaTypeVideo;
     const isWatched = isMediaWatched(media);
     const publishedLabel = formatPublishedDate(media.published_at);
     const commentsCount = media.comments_count;
@@ -279,18 +293,34 @@ function MediaCardComponent({
                             </Badge>
                         )}
 
-                        <Badge
-                            variant="outline"
-                            style={
-                                isAudio
-                                    ? MEDIA_TYPE_BADGE_STYLE_AUDIO
-                                    : MEDIA_TYPE_BADGE_STYLE_VIDEO
-                            }
-                        >
-                            {isAudio
-                                ? UI_TEXT.library.mediaTypeAudio
-                                : UI_TEXT.library.mediaTypeVideo}
-                        </Badge>
+                        {/* Audio and video are an icon rather than a word. The pair shows up on
+                            every card in the grid, so spelling it out was repeating the same two
+                            words down the whole column for a distinction the icon makes at a
+                            glance. CHAT keeps its text because it is the rarer signal, LIVE
+                            because it is meant to be loud.
+
+                            role="img" rather than a bare aria-label, which a screen reader is free
+                            to ignore on a plain container. It does not reach the card's own
+                            accessible name, which the ariaLabel prop above sets explicitly. */}
+                        <Tooltip label={mediaTypeLabel} withArrow>
+                            <Badge
+                                variant="outline"
+                                role="img"
+                                aria-label={mediaTypeLabel}
+                                style={
+                                    isAudio
+                                        ? MEDIA_TYPE_BADGE_STYLE_AUDIO
+                                        : MEDIA_TYPE_BADGE_STYLE_VIDEO
+                                }
+                                styles={{ label: MEDIA_TYPE_BADGE_LABEL_STYLE }}
+                            >
+                                {isAudio ? (
+                                    <Headphones size={12} />
+                                ) : (
+                                    <Video size={12} />
+                                )}
+                            </Badge>
+                        </Tooltip>
                     </Group>
                 </Group>
             </Stack>

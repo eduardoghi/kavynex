@@ -259,7 +259,7 @@ describe("MediaCard", () => {
         ).toBeInTheDocument();
     });
 
-    it("shows audio badge near metadata for audio media", () => {
+    it("names the audio badge for assistive tech instead of spelling the type out", () => {
         renderWithMantine(
             <MediaCard
                 media={createMedia({
@@ -273,10 +273,13 @@ describe("MediaCard", () => {
             />
         );
 
-        expect(screen.getByText("Audio")).toBeInTheDocument();
+        expect(screen.getByRole("img", { name: "Audio" })).toBeInTheDocument();
+        // The icon replaced the word, so the word being gone is the change itself. Without this
+        // the test still passes on a badge that renders both.
+        expect(screen.queryByText("Audio")).not.toBeInTheDocument();
     });
 
-    it("shows video badge near metadata for video media", () => {
+    it("names the video badge for assistive tech instead of spelling the type out", () => {
         renderWithMantine(
             <MediaCard
                 media={createMedia({
@@ -290,7 +293,27 @@ describe("MediaCard", () => {
             />
         );
 
-        expect(screen.getByText("Video")).toBeInTheDocument();
+        expect(screen.getByRole("img", { name: "Video" })).toBeInTheDocument();
+        expect(screen.queryByText("Video")).not.toBeInTheDocument();
+    });
+
+    it("spells the media type out on hover, the only way to read it off the icon", async () => {
+        renderWithMantine(
+            <MediaCard
+                media={createMedia({
+                    title: "Audio A",
+                    media_type: "audio",
+                })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        fireEvent.mouseEnter(screen.getByRole("img", { name: "Audio" }));
+
+        expect(await screen.findByRole("tooltip")).toHaveTextContent("Audio");
     });
 
     it("disables the watch/unwatch menu item while that card's toggle is in flight", async () => {
