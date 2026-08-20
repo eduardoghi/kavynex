@@ -8,7 +8,6 @@ import {
     formatCreatedAt,
     formatPublishedDate,
     isMediaWatched,
-    shortPath,
 } from "../../utils/media-utils";
 import { useMediaProgressPersistence } from "../../hooks/media/use-media-progress-persistence";
 import { useMediaComments } from "../../hooks/media/use-media-comments";
@@ -154,7 +153,6 @@ export function MediaPlayerView({
     const canPlay = Boolean(media && mediaSrc);
     const publishedLabel = formatPublishedDate(media?.published_at);
     const kavynexCreatedLabel = formatCreatedAt(media?.created_at);
-    const filePathLabel = shortPath(media?.file_path ?? "");
     const hasComments = Boolean(media?.has_comments);
     const isLive = Boolean(media?.is_live);
     // Stricter than the grid card's plain `has_live_chat`, and deliberately so: this same value
@@ -254,9 +252,6 @@ export function MediaPlayerView({
             thumbnailSrc={thumbnailSrc}
             mediaSrc={mediaSrc}
             shellBorder={shellBorder}
-            publishedLabel={publishedLabel}
-            createdLabel={kavynexCreatedLabel}
-            filePathLabel={filePathLabel}
             progressSeconds={isMediaWatched(media) ? 0 : (media?.progress_seconds ?? 0)}
             onPlayerElementChange={setAudioElement}
             onPlaybackError={handlePlaybackError}

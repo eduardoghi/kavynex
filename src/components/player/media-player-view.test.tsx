@@ -161,7 +161,9 @@ describe("MediaPlayerView", () => {
             />
         );
 
-        expect(screen.getAllByText("Audio Test")).toHaveLength(2);
+        // Once, not twice. The header printed the title and the audio surface printed it again
+        // right below, so this counted the duplication rather than guarding against it.
+        expect(screen.getAllByText("Audio Test")).toHaveLength(1);
         expect(screen.getByRole("button", { name: /mark as watched/i })).toBeInTheDocument();
     });
 

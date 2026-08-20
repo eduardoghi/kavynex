@@ -1,5 +1,16 @@
-import type { Ref } from "react";
-import { ActionIcon, Badge, Box, Button, Group, Kbd, Popover, Stack, Text } from "@mantine/core";
+import type { CSSProperties, Ref } from "react";
+import {
+    ActionIcon,
+    Badge,
+    Button,
+    Group,
+    Kbd,
+    Loader,
+    Menu,
+    Popover,
+    Stack,
+    Text,
+} from "@mantine/core";
 import {
     ArrowLeft,
     CheckCircle2,
@@ -8,6 +19,7 @@ import {
     FolderOpen,
     Keyboard,
     MessageSquareMore,
+    MoreHorizontal,
     Radio,
     RotateCcw,
     X,
@@ -22,14 +34,14 @@ type PlayerMediaHeaderProps = {
     canOpenInYoutube: boolean;
     isWatched: boolean;
     isAudio?: boolean;
-    // Required rather than defaulting to false: as an optional prop it silently defaulted its badge
+    // Required rather than defaulting to false. As an optional prop it silently defaulted its badge
     // out of existence when the only caller forgot to pass it, and nothing failed. The compiler is
     // the only thing that catches that.
     isLive: boolean;
     isRefreshingComments?: boolean;
     // True while this media's own watched/unwatched toggle is in flight. Mirrors
-    // isRefreshingComments so the buttons below show the same loading feedback pattern as the
-    // Refresh comments button.
+    // isRefreshingComments so the button below shows the same loading feedback pattern as the
+    // Refresh comments item.
     isUpdatingWatchedStatus?: boolean;
     onOpenInYoutube: () => void | Promise<void>;
     onOpenFileLocation?: () => void | Promise<void>;
@@ -79,6 +91,15 @@ export function PlayerMediaHeader({
     onBack,
     backButtonRef,
 }: PlayerMediaHeaderProps): JSX.Element {
+    // Back, Keyboard shortcuts and the overflow menu are the same icon-button shell. It reads off
+    // shellBorder, so it belongs here rather than in a module constant.
+    const iconButtonStyle: CSSProperties = {
+        background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
+        border: `1px solid ${shellBorder}`,
+    };
+
+    const hasOverflowActions = Boolean(onOpenFileLocation || onRefreshComments);
+
     return (
         <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
             <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
@@ -88,16 +109,12 @@ export function PlayerMediaHeader({
                     size="lg"
                     aria-label="Back to library"
                     onClick={onBack}
-                    style={{
-                        background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
-                        border: `1px solid ${shellBorder}`,
-                        flex: "0 0 auto",
-                    }}
+                    style={{ ...iconButtonStyle, flex: "0 0 auto" }}
                 >
                     <ArrowLeft size={18} />
                 </ActionIcon>
 
-                <Stack gap={6} style={{ minWidth: 0, flex: 1 }}>
+                <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
                     <Group gap="xs" wrap="wrap">
                         <Text fw={900} size="lg" lineClamp={1}>
                             {title}
@@ -114,39 +131,39 @@ export function PlayerMediaHeader({
                         )}
 
                         {isLive && (
-                            <Badge
-                                variant="light"
-                                color="red"
-                                leftSection={<Radio size={12} />}
-                            >
+                            <Badge variant="light" color="red" leftSection={<Radio size={12} />}>
                                 LIVE
                             </Badge>
                         )}
                     </Group>
 
-                    <Box>
+                    {/* Both dates on one line, reading as a single metadata strip under the title
+                        rather than two stacked sentences competing with it. The separator is hidden
+                        from assistive tech, which would otherwise announce the dot. */}
+                    <Group gap={8} wrap="wrap">
                         <Text size="sm" c="dimmed" lineClamp={1}>
                             Published: {publishedLabel || UI_TEXT.library.noPublicationDate}
+                        </Text>
+
+                        <Text size="sm" c="dimmed" aria-hidden>
+                            ·
                         </Text>
 
                         <Text size="sm" c="dimmed" lineClamp={1}>
                             Added to Kavynex: {createdLabel || "Unknown date"}
                         </Text>
-                    </Box>
+                    </Group>
                 </Stack>
             </Group>
 
-            <Group gap="xs" wrap="wrap" justify="flex-end">
+            <Group gap="xs" wrap="wrap" justify="flex-end" align="center">
                 <Popover position="bottom-end" withArrow shadow="md" width={260}>
                     <Popover.Target>
                         <ActionIcon
                             variant="subtle"
                             size="lg"
                             aria-label="Keyboard shortcuts"
-                            style={{
-                                background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
-                                border: `1px solid ${shellBorder}`,
-                            }}
+                            style={iconButtonStyle}
                         >
                             <Keyboard size={16} />
                         </ActionIcon>
@@ -179,43 +196,83 @@ export function PlayerMediaHeader({
                     </Popover.Dropdown>
                 </Popover>
 
-                {onOpenFileLocation && (
-                    <Button
-                        variant="light"
-                        color="gray"
-                        leftSection={<FolderOpen size={16} />}
-                        onClick={() => void onOpenFileLocation()}
-                    >
-                        Open file location
-                    </Button>
+                {/* Open file location and Refresh comments sit behind the overflow. Neither is
+                    reached often enough to spend a full button on, and as buttons they gave the
+                    header five controls of identical weight with nothing saying which one the page
+                    is actually for. */}
+                {hasOverflowActions && (
+                    <Menu position="bottom-end" withArrow shadow="md" width={230}>
+                        <Menu.Target>
+                            <ActionIcon
+                                variant="subtle"
+                                size="lg"
+                                aria-label="More actions"
+                                style={iconButtonStyle}
+                            >
+                                <MoreHorizontal size={16} />
+                            </ActionIcon>
+                        </Menu.Target>
+
+                        <Menu.Dropdown>
+                            {onOpenFileLocation && (
+                                <Menu.Item
+                                    leftSection={<FolderOpen size={16} />}
+                                    onClick={() => void onOpenFileLocation()}
+                                >
+                                    Open file location
+                                </Menu.Item>
+                            )}
+
+                            {onRefreshComments && (
+                                <Menu.Item
+                                    leftSection={
+                                        isRefreshingComments ? (
+                                            <Loader size={14} />
+                                        ) : (
+                                            <MessageSquareMore size={16} />
+                                        )
+                                    }
+                                    onClick={() => void onRefreshComments()}
+                                    disabled={isRefreshingComments}
+                                >
+                                    Refresh comments
+                                </Menu.Item>
+                            )}
+                        </Menu.Dropdown>
+                    </Menu>
                 )}
 
-                {onRefreshComments && (
-                    <Button
-                        variant="light"
-                        color="violet"
-                        leftSection={<MessageSquareMore size={16} />}
-                        onClick={() => void onRefreshComments()}
-                        loading={isRefreshingComments}
-                    >
-                        Refresh comments
-                    </Button>
-                )}
-
-                {/* A comment backup can run for minutes; while one is in flight, offer an explicit
+                {/* A comment backup can run for minutes, so while one is in flight offer an explicit
                     Cancel that stops the yt-dlp process on the backend instead of only waiting it
-                    out. Shown alongside the (loading) Refresh button, not in place of it. */}
+                    out. It stays outside the overflow because burying the stop for a running
+                    operation behind a menu is the one place the extra click costs something, and it
+                    exists only while that operation is running. */}
                 {onCancelRefreshComments && isRefreshingComments && (
                     <Button
                         variant="light"
                         color="red"
-                        leftSection={<X size={16} />}
+                        size="compact-sm"
+                        leftSection={<X size={14} />}
                         onClick={() => void onCancelRefreshComments()}
                     >
                         Cancel
                     </Button>
                 )}
 
+                {canOpenInYoutube && (
+                    <Button
+                        variant="subtle"
+                        size="compact-sm"
+                        leftSection={<ExternalLink size={14} />}
+                        onClick={() => void onOpenInYoutube()}
+                    >
+                        Open source on YouTube
+                    </Button>
+                )}
+
+                {/* The primary action, and the only filled control on the page. Marking a media
+                    watched is what the user came here to finish, so it holds the rightmost slot at
+                    full weight. Undoing it is not the same kind of action and stays light. */}
                 {isWatched ? (
                     <Button
                         variant="light"
@@ -228,23 +285,13 @@ export function PlayerMediaHeader({
                     </Button>
                 ) : (
                     <Button
-                        variant="light"
+                        variant="filled"
                         color="green"
                         leftSection={<Eye size={16} />}
                         onClick={() => void onMarkWatched()}
                         loading={isUpdatingWatchedStatus}
                     >
                         Mark as watched
-                    </Button>
-                )}
-
-                {canOpenInYoutube && (
-                    <Button
-                        variant="light"
-                        leftSection={<ExternalLink size={16} />}
-                        onClick={() => void onOpenInYoutube()}
-                    >
-                        Open source on YouTube
                     </Button>
                 )}
             </Group>

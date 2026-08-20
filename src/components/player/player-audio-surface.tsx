@@ -1,15 +1,14 @@
-import { Box, Group, Stack, Text, rem } from "@mantine/core";
+import { Box, Group, rem } from "@mantine/core";
 import { Music } from "lucide-react";
 import { useMediaPlaybackHandlers } from "../../hooks/media/use-media-playback-handlers";
 
 type PlayerAudioSurfaceProps = {
+    // Not rendered. It names the cover image and the audio element for assistive tech, which is
+    // the only place the title still belongs here now that the header owns it on screen.
     title: string;
     thumbnailSrc: string;
     mediaSrc: string;
     shellBorder: string;
-    publishedLabel: string;
-    createdLabel: string;
-    filePathLabel: string;
     progressSeconds: number;
     onPlayerElementChange: (element: HTMLAudioElement | null) => void;
     onPlaybackError?: (error: MediaError | null) => void;
@@ -21,9 +20,6 @@ export function PlayerAudioSurface({
     thumbnailSrc,
     mediaSrc,
     shellBorder,
-    publishedLabel,
-    createdLabel,
-    filePathLabel,
     progressSeconds,
     onPlayerElementChange,
     onPlaybackError,
@@ -37,21 +33,25 @@ export function PlayerAudioSurface({
         });
 
     return (
+        // The minHeight is a floor, not the old fixed 560 that made audio pretend to be a video.
+        // A 320px cover plus the padding already reaches that floor on its own, so nothing
+        // binds on it today. It stays as the guard for the height this block was sized to hold,
+        // which is what would keep it from collapsing back to a strip if the cover shrinks.
         <Box
             style={{
                 borderRadius: rem(24),
                 border: `1px solid ${shellBorder}`,
                 background:
                     "light-dark(linear-gradient(180deg, #ffffff 0%, #f6f5f9 100%), linear-gradient(180deg, #101114 0%, #0b0c0f 100%))",
-                minHeight: rem(560),
-                padding: rem(40),
+                minHeight: rem(232),
+                padding: rem(26),
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
             }}
         >
             <Group
-                gap={rem(32)}
+                gap={rem(28)}
                 wrap="nowrap"
                 align="center"
                 style={{
@@ -61,9 +61,9 @@ export function PlayerAudioSurface({
             >
                 <Box
                     style={{
-                        width: rem(300),
+                        width: rem(320),
                         aspectRatio: "16 / 9",
-                        borderRadius: rem(20),
+                        borderRadius: rem(18),
                         overflow: "hidden",
                         background: thumbnailSrc
                             ? "light-dark(#e9e8ee, #111)"
@@ -86,53 +86,35 @@ export function PlayerAudioSurface({
                             }}
                         />
                     ) : (
-                        <Music size={56} />
+                        <Music size={44} />
                     )}
                 </Box>
 
-                <Stack gap="lg" style={{ flex: 1, minWidth: 0 }}>
-                    <Stack gap="xs">
-                        <Text fw={900} size="2rem" lh={1.1} lineClamp={2}>
-                            {title}
-                        </Text>
-
-                        <Text c="dimmed" size="sm" lineClamp={1}>
-                            Published: {publishedLabel || "No publication date"}
-                        </Text>
-
-                        <Text c="dimmed" size="sm" lineClamp={1}>
-                            Added to Kavynex: {createdLabel || "Unknown date"}
-                        </Text>
-
-                        <Text c="dimmed" size="sm" lineClamp={1}>
-                            {filePathLabel}
-                        </Text>
-                    </Stack>
-
-                    <Box
+                <Box
+                    style={{
+                        flex: 1,
+                        minWidth: 0,
+                        borderRadius: rem(16),
+                        border: `1px solid ${shellBorder}`,
+                        background: "light-dark(rgba(0,0,0,0.03), rgba(255,255,255,0.03))",
+                        padding: rem(14),
+                    }}
+                >
+                    <audio
+                        aria-label={title ? `Audio player: ${title}` : "Audio player"}
+                        controls
+                        autoPlay
+                        src={mediaSrc}
+                        ref={onPlayerElementChange}
+                        onLoadedMetadata={handleLoadedMetadata}
+                        onError={handleError}
+                        onCanPlay={handleCanPlay}
                         style={{
-                            borderRadius: rem(16),
-                            border: `1px solid ${shellBorder}`,
-                            background: "light-dark(rgba(0,0,0,0.03), rgba(255,255,255,0.03))",
-                            padding: rem(16),
+                            width: "100%",
+                            display: "block",
                         }}
-                    >
-                        <audio
-                            aria-label={title ? `Audio player: ${title}` : "Audio player"}
-                            controls
-                            autoPlay
-                            src={mediaSrc}
-                            ref={onPlayerElementChange}
-                            onLoadedMetadata={handleLoadedMetadata}
-                            onError={handleError}
-                            onCanPlay={handleCanPlay}
-                            style={{
-                                width: "100%",
-                                display: "block",
-                            }}
-                        />
-                    </Box>
-                </Stack>
+                    />
+                </Box>
             </Group>
         </Box>
     );

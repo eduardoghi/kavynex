@@ -169,12 +169,31 @@ export function CommentsPanel({
                         </Box>
 
                         <Box style={{ minWidth: 0, flex: 1 }}>
-                            <Text fw={900}>{UI_TEXT.comments.title}</Text>
-                            <Text size="sm" c="dimmed">
-                                {hasComments
-                                    ? `${formatCount(commentsCount ?? comments.length, "comment")} ${UI_TEXT.comments.savedWithMedia}`
-                                    : UI_TEXT.comments.none}
-                            </Text>
+                            {/* Title and count on one line. The count used to sit under the
+                                title as its own sentence, which spent two rows and a full stack
+                                of vertical space restating a number the heading already implies
+                                is a count of saved comments. */}
+                            <Group gap={8} wrap="wrap" align="baseline">
+                                <Text fw={900}>{UI_TEXT.comments.title}</Text>
+
+                                {hasComments ? (
+                                    <>
+                                        <Text c="dimmed" aria-hidden>
+                                            ·
+                                        </Text>
+
+                                        <Text c="dimmed" fw={700}>
+                                            {(
+                                                commentsCount ?? comments.length
+                                            ).toLocaleString()}
+                                        </Text>
+                                    </>
+                                ) : (
+                                    <Text size="sm" c="dimmed">
+                                        {UI_TEXT.comments.none}
+                                    </Text>
+                                )}
+                            </Group>
                             {isCommentLoadTruncated && (
                                 <Text size="xs" c="dimmed" role="status">
                                     {UI_TEXT.comments.truncatedNoticePrefix}{" "}

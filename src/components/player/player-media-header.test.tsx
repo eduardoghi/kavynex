@@ -206,9 +206,13 @@ describe("PlayerMediaHeader accessibility", () => {
         expect(screen.getByRole("button", { name: "Back to library" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Keyboard shortcuts" })).toBeInTheDocument();
 
+        expect(screen.getByRole("button", { name: "More actions" })).toBeInTheDocument();
+
+        // Open file location and Refresh comments moved behind that trigger. Their accessible
+        // names are pinned by the two tests that click them, which is the only way to check them
+        // here anyway, since the dropdown does not stay queryable across two assertions.
+
         // Text controls: their label is their accessible name.
-        expect(screen.getByRole("button", { name: "Open file location" })).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Refresh comments" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Mark as watched" })).toBeInTheDocument();
         expect(
             screen.getByRole("button", { name: "Open source on YouTube" })
@@ -256,5 +260,89 @@ describe("PlayerMediaHeader accessibility", () => {
         );
 
         expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    });
+
+    // Open file location and Refresh comments stopped being buttons in the header. Moving a
+    // control into a menu is the kind of change that quietly drops its onClick, so both are
+    // driven through the menu rather than only checked for being rendered. One render each,
+    // because reopening the menu after an item click is not stable in jsdom.
+    it("still runs Open file location from inside the overflow menu", async () => {
+        const onOpenFileLocation = vi.fn();
+
+        renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                onOpenInYoutube={vi.fn()}
+                onOpenFileLocation={onOpenFileLocation}
+                onRefreshComments={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+        fireEvent.click(
+            await screen.findByRole("menuitem", { name: "Open file location" })
+        );
+
+        expect(onOpenFileLocation).toHaveBeenCalledTimes(1);
+    });
+
+    it("still runs Refresh comments from inside the overflow menu", async () => {
+        const onRefreshComments = vi.fn();
+
+        renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                onOpenInYoutube={vi.fn()}
+                onOpenFileLocation={vi.fn()}
+                onRefreshComments={onRefreshComments}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+        fireEvent.click(
+            await screen.findByRole("menuitem", { name: "Refresh comments" })
+        );
+
+        expect(onRefreshComments).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops the overflow trigger when neither of its actions was given", () => {
+        // Both items are optional props, so a caller that passes neither would otherwise get a
+        // menu button that opens an empty dropdown.
+        renderWithMantine(<PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel=""
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+        />);
+
+        expect(
+            screen.queryByRole("button", { name: "More actions" })
+        ).not.toBeInTheDocument();
     });
 });
