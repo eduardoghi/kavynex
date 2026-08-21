@@ -336,11 +336,11 @@ export function MediaPlayerView({
 
                 {hasLiveChat ? (
                     <Box className={styles.liveLayout}>
-                        <Box style={{ minWidth: 0 }}>
+                        <Box className={styles.liveLayoutPlayer}>
                             {mediaSurface}
                         </Box>
 
-                        <Box style={{ minWidth: 0 }}>
+                        <Box className={styles.liveLayoutPanel}>
                             {/* The panel renders its own loading state once mounted, and this
                                 fallback only ever shows for the frame or two the chunk takes on
                                 the first live-chat media of a session. */}

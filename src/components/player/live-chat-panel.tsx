@@ -1,16 +1,16 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import {
-    Badge,
     Box,
     Divider,
     Group,
     Paper,
     Stack,
     Text,
+    Tooltip,
     VisuallyHidden,
     rem,
 } from "@mantine/core";
-import { MessageCircle } from "lucide-react";
+import { Clock } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AsyncStatusRegion } from "../common/async-status-region";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
@@ -262,8 +262,10 @@ export function LiveChatPanel({
                 borderColor: shellBorder,
                 background:
                     "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
-                minHeight: rem(520),
-                maxHeight: rem(760),
+                // No height of its own. The cell around it sets one, from the player
+                // beside it when the two are side by side and from its own bounds when
+                // they stack (see liveLayoutPanel). overflow plus the column below is
+                // what keeps the header and the divider put while the list scrolls.
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
@@ -290,38 +292,50 @@ export function LiveChatPanel({
                 </div>
             </VisuallyHidden>
 
-            <Stack gap="lg" style={{ minHeight: 0, flex: 1 }}>
-                <Group justify="space-between" align="center" wrap="wrap">
-                    <Group gap="sm" wrap="nowrap">
-                        <Box
-                            style={{
-                                width: rem(40),
-                                height: rem(40),
-                                borderRadius: rem(14),
-                                display: "grid",
-                                placeItems: "center",
-                                background: "rgba(239,68,68,0.12)",
-                                border: `1px solid ${shellBorder}`,
-                                flex: "0 0 auto",
-                            }}
-                        >
-                            <MessageCircle size={18} />
-                        </Box>
+            <Stack gap="md" style={{ minHeight: 0, flex: 1 }}>
+                {/* One line. The title is what separates this panel from Saved comments
+                    below it, so it stays, and everything that was propping it up does not.
+                    The 40px icon tile and the subtitle under the heading were spending most
+                    of a chat column's width and a chunk of its height on saying twice what
+                    the heading says once. */}
+                <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
+                    <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                        <Text fw={900} lineClamp={1}>
+                            Live chat replay
+                        </Text>
 
-                        <Box style={{ minWidth: 0, flex: 1 }}>
-                            <Text fw={900}>Live chat replay</Text>
-                            <Text size="sm" c="dimmed">
-                                Synced with playback time
-                            </Text>
-                        </Box>
+                        {/* What the subtitle used to spell out. The list emptying and
+                            refilling as the video plays is surprising until you know it
+                            tracks playback, so the explanation stays, just not as a
+                            permanent second line.
+
+                            lucide marks its glyphs aria-hidden, so the label needs the
+                            role and the explicit override to reach a screen reader at
+                            all. */}
+                        <Tooltip label="Synced with playback time" withArrow>
+                            <Clock
+                                size={13}
+                                role="img"
+                                aria-hidden={false}
+                                aria-label="Synced with playback time"
+                                style={{
+                                    opacity: 0.55,
+                                    flexShrink: 0,
+                                    marginLeft: rem(6),
+                                }}
+                            />
+                        </Tooltip>
                     </Group>
 
-                    <Badge
-                        variant="light"
-                        color={visibleLiveChatMessages.length > 0 ? "red" : "gray"}
-                    >
-                        {visibleLiveChatMessages.length} visible
-                    </Badge>
+                    {/* Just the number. As a badge reading "44 visible" it took a chip and
+                        a word to carry one figure nobody reads twice. The hidden text is
+                        what keeps it meaning something out of context. */}
+                    <Tooltip label="Messages visible at the current playback time" withArrow>
+                        <Text size="sm" fw={700} c="dimmed" style={{ flexShrink: 0 }}>
+                            {visibleLiveChatMessages.length}
+                            <VisuallyHidden> messages visible</VisuallyHidden>
+                        </Text>
+                    </Tooltip>
                 </Group>
 
                 <Divider color={shellBorder} />

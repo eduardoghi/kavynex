@@ -5,8 +5,55 @@
     grid-template-columns: minmax(0, 1fr);
 }
 
+.liveLayoutPlayer {
+    min-width: 0;
+}
+
+/* Stacked, the cell is a flex box the panel stretches into, and these are the bounds
+   the panel used to carry itself. They stay here because they are wrong side by side,
+   where the height has to come from the player instead. */
+.liveLayoutPanel {
+    display: flex;
+    min-width: 0;
+    min-height: 520px;
+    max-height: 760px;
+}
+
+.liveLayoutPanel > * {
+    flex: 1;
+    min-width: 0;
+}
+
 @media (min-width: 1200px) {
     .liveLayout {
         grid-template-columns: minmax(0, 1.75fr) minmax(360px, 0.82fr);
+        /* Both cells run the full row height, which the panel needs to have something
+           to fill. */
+        align-items: stretch;
+    }
+
+    /* Taking the panel out of flow is what stops it sizing the row. Its own content
+       height was pushing the row well past the video and leaving a hole under it. Out
+       of flow it sizes nothing, so the row comes from the player cell alone and the
+       panel fills whatever that cell works out to. */
+    .liveLayoutPanel {
+        position: relative;
+        min-height: 0;
+        max-height: none;
+    }
+
+    .liveLayoutPanel > * {
+        position: absolute;
+        inset: 0;
+    }
+
+    /* Matching the video exactly read as tidy and used badly, since a pinned message or
+       a super chat eats most of a chat that short. The row gets a slice of the player
+       column below the video, which the panel then fills, so the chat runs about 17%
+       past the video at any column width. A percentage of the column and not a pixel
+       count, so it tracks the layout rather than one screen. The video stays at the top
+       of its cell and the slice is the empty strip under it. */
+    .liveLayoutPlayer {
+        padding-bottom: 10%;
     }
 }

@@ -75,7 +75,7 @@ export function RegularChatMessage({
                     <Group gap={5} wrap="nowrap" align="center">
                         {authorChannelId ? (
                             <Anchor
-                                fw={600}
+                                fw={700}
                                 size="sm"
                                 role="button"
                                 tabIndex={0}
@@ -89,7 +89,7 @@ export function RegularChatMessage({
                                 {nameContent}
                             </Anchor>
                         ) : (
-                            <Text component="span" fw={600} size="sm" style={nameStyle}>
+                            <Text component="span" fw={700} size="sm" style={nameStyle}>
                                 {nameContent}
                             </Text>
                         )}
@@ -103,8 +103,10 @@ export function RegularChatMessage({
                         )}
                     </Group>
 
+                    {/* Same 0.7 the super chat timestamp already uses. It sits on the
+                        author line and was reading as a peer of the name. */}
                     {message.timestamp_text && (
-                        <Text size="xs" c="dimmed">
+                        <Text size="xs" c="dimmed" style={{ opacity: 0.7 }}>
                             {message.timestamp_text}
                         </Text>
                     )}
@@ -115,7 +117,7 @@ export function RegularChatMessage({
                     style={{
                         whiteSpace: "pre-wrap",
                         wordBreak: "break-word",
-                        lineHeight: 1.45,
+                        lineHeight: 1.5,
                     }}
                 >
                     {renderMessageContent(message)}

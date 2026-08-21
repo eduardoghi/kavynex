@@ -231,4 +231,33 @@ describe("LiveChatPanel", () => {
             screen.getByText("No live chat messages were loaded.")
         ).toBeInTheDocument();
     });
+
+    it("carries the header in one line, with the count and the sync note reachable", () => {
+        // The header lost its icon tile and its subtitle. What has to survive that is the
+        // title, which is the only thing telling this panel apart from Saved comments, the
+        // count, and the explanation the subtitle used to carry. The count reads as a bare
+        // number on screen, so the accessible name is the part worth pinning. lucide sets
+        // aria-hidden on its glyphs, which would silently swallow the sync label.
+        const message = makeChatMessage();
+
+        renderWithMantine(
+            <LiveChatPanel
+                liveChatMessages={[message]}
+                visibleLiveChatMessages={[message]}
+                activePin={null}
+                isLoadingLiveChat={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        expect(screen.getByText("Live chat replay")).toBeInTheDocument();
+        expect(screen.getByLabelText("Synced with playback time")).toBeInTheDocument();
+        // getByText lands on the hidden span itself, so the number lives on its parent.
+        expect(screen.getByText(/messages visible/).parentElement).toHaveTextContent(
+            "1 messages visible"
+        );
+
+        // Gone with the tile and the subtitle.
+        expect(screen.queryByText("1 visible")).not.toBeInTheDocument();
+    });
 });
