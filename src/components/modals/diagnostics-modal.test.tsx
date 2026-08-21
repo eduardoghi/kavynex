@@ -138,7 +138,11 @@ describe("DiagnosticsModal", () => {
         expect(screen.getByText("Attention needed")).toBeInTheDocument();
         expect(screen.getByText("Some issues were detected.")).toBeInTheDocument();
         expect(screen.getByText("/library")).toBeInTheDocument();
-        expect(screen.getByText("2 KB")).toBeInTheDocument();
+        // The four library figures share one line now. Asserting the whole line also pins the
+        // singular, since one audio file must not read as "1 audios".
+        expect(
+            screen.getByText("2 KB · 5 videos · 1 audio · 4 thumbnails")
+        ).toBeInTheDocument();
         expect(screen.getByText("0.1.0")).toBeInTheDocument();
         expect(screen.getByText("windows · x86_64")).toBeInTheDocument();
         expect(screen.getByText("Missing media file")).toBeInTheDocument();
@@ -200,7 +204,11 @@ describe("DiagnosticsModal", () => {
             />
         );
 
-        expect(screen.getAllByText("No issues detected")).toHaveLength(2);
+        // The Issues section does not render at all without issues, so neither does the
+        // card that used to say the environment looks healthy. The status line at the top
+        // is what reports a clean run now.
+        expect(screen.queryByText("No issues detected")).not.toBeInTheDocument();
+        expect(screen.getByText("Everything looks good")).toBeInTheDocument();
     });
 
     it("shows empty idle state when not loading and there is no summary", () => {

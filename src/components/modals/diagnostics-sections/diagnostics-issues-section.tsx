@@ -1,5 +1,5 @@
 import { Anchor, Box, Divider, Group, Paper, Stack, Text, ThemeIcon, Title, Badge } from "@mantine/core";
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import type { DiagnosticsIssue, DiagnosticsMediaTarget } from "../../../types/diagnostics";
 
 type DiagnosticsIssuesSectionProps = {
@@ -68,7 +68,14 @@ function IssueSeverityIcon({
 export function DiagnosticsIssuesSection({
     issues,
     onOpenMedia,
-}: DiagnosticsIssuesSectionProps): JSX.Element {
+}: DiagnosticsIssuesSectionProps): JSX.Element | null {
+    // Nothing to list, nothing to show. The heading plus a card saying the environment
+    // looks healthy repeated the green status at the top of the dialog, and it did it in
+    // the largest block on the screen.
+    if (issues.length === 0) {
+        return null;
+    }
+
     return (
         <Paper
             withBorder
@@ -82,27 +89,6 @@ export function DiagnosticsIssuesSection({
             <Stack gap="sm">
                 <Title order={4}>Issues</Title>
 
-                {issues.length === 0 && (
-                    <Paper
-                        withBorder
-                        radius="lg"
-                        p="md"
-                        style={{ background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))" }}
-                    >
-                        <Group gap="sm">
-                            <ThemeIcon color="green" variant="light" radius="xl">
-                                <CheckCircle2 size={16} />
-                            </ThemeIcon>
-
-                            <Box>
-                                <Text fw={700}>No issues detected</Text>
-                                <Text size="sm" c="dimmed">
-                                    The current environment looks healthy.
-                                </Text>
-                            </Box>
-                        </Group>
-                    </Paper>
-                )}
 
                 {issues.map((issue, index) => (
                     <Box key={issue.code}>

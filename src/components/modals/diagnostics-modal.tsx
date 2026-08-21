@@ -2,6 +2,7 @@ import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mant
 import { FolderOpen, RefreshCcw } from "lucide-react";
 import type { DiagnosticsMediaTarget, DiagnosticsSummary } from "../../types/diagnostics";
 import { AppButton } from "../ui/app-button";
+import { MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 import { DiagnosticsIssuesSection } from "./diagnostics-sections/diagnostics-issues-section";
 import { DiagnosticsSummarySections } from "./diagnostics-sections/diagnostics-summary-sections";
 
@@ -45,6 +46,7 @@ export function DiagnosticsModal({
                     display: "flex",
                     flexDirection: "column",
                 },
+                title: MODAL_TITLE_STYLE,
                 header: {
                     paddingBottom: 12,
                 },
@@ -88,7 +90,7 @@ export function DiagnosticsModal({
 
                         <AppButton
                             type="button"
-                            appVariant="primary"
+                            appVariant="secondary"
                             leftSection={<RefreshCcw size={16} />}
                             onClick={onReload}
                             loading={loading}
