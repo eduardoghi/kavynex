@@ -71,6 +71,10 @@ describe("PlayerMediaHeader", () => {
 
         fireEvent.click(screen.getByRole("button", { name: /open source on youtube/i }));
         expect(onOpenInYoutube).toHaveBeenCalledTimes(1);
+
+        // Icon only now. The name above comes from the aria-label, and the query would pass just
+        // as well on a button that still printed its label, so the absence needs saying.
+        expect(screen.queryByText("Open source on YouTube")).not.toBeInTheDocument();
     });
 
     it("shows loading feedback on the watched/unwatched buttons while a toggle is in flight", () => {

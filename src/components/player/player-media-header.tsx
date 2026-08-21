@@ -10,6 +10,7 @@ import {
     Popover,
     Stack,
     Text,
+    Tooltip,
 } from "@mantine/core";
 import {
     ArrowLeft,
@@ -71,6 +72,17 @@ const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     { keys: ["F"], label: "Fullscreen", videoOnly: true },
 ];
 
+// Every control in the header is this tall. Mantine's named ActionIcon sizes stop at 34px
+// while a default Button is 36, so the icon buttons take the number instead of "lg". That is
+// what stops the row stepping up and down by two pixels. Radius is left to the theme, which
+// already puts xl on both Button and ActionIcon.
+const HEADER_CONTROL_HEIGHT = 36;
+
+// Subtle controls hover into the theme violet, loud enough next to Mark as watched to read as
+// a second primary. A neutral wash at low opacity keeps the affordance without the shout. Only
+// the hover colour is overridden, so no padding or geometry moves between states.
+const NEUTRAL_CONTROL_HOVER = "light-dark(rgba(0,0,0,0.055), rgba(255,255,255,0.06))";
+
 export function PlayerMediaHeader({
     title,
     publishedLabel,
@@ -93,10 +105,11 @@ export function PlayerMediaHeader({
 }: PlayerMediaHeaderProps): JSX.Element {
     // Back, Keyboard shortcuts and the overflow menu are the same icon-button shell. It reads off
     // shellBorder, so it belongs here rather than in a module constant.
-    const iconButtonStyle: CSSProperties = {
+    const iconButtonStyle = {
         background: "light-dark(rgba(0,0,0,0.04), rgba(255,255,255,0.04))",
         border: `1px solid ${shellBorder}`,
-    };
+        "--ai-hover": NEUTRAL_CONTROL_HOVER,
+    } as CSSProperties;
 
     const hasOverflowActions = Boolean(onOpenFileLocation || onRefreshComments);
 
@@ -106,7 +119,7 @@ export function PlayerMediaHeader({
                 <ActionIcon
                     ref={backButtonRef}
                     variant="subtle"
-                    size="lg"
+                    size={HEADER_CONTROL_HEIGHT}
                     aria-label="Back to library"
                     onClick={onBack}
                     style={{ ...iconButtonStyle, flex: "0 0 auto" }}
@@ -157,11 +170,30 @@ export function PlayerMediaHeader({
             </Group>
 
             <Group gap="xs" wrap="wrap" justify="flex-end" align="center">
+                {/* Icon only. The lucide version pinned here ships no YouTube glyph, and a
+                    brand icon pack is not worth pulling in for one button. The external-link
+                    arrow is the honest symbol anyway, since the action opens a page in the
+                    browser rather than playing anything. The tooltip and the aria-label carry
+                    the wording the visible label used to. */}
+                {canOpenInYoutube && (
+                    <Tooltip label="Open source on YouTube" withArrow>
+                        <ActionIcon
+                            variant="subtle"
+                            size={HEADER_CONTROL_HEIGHT}
+                            aria-label="Open source on YouTube"
+                            onClick={() => void onOpenInYoutube()}
+                            style={iconButtonStyle}
+                        >
+                            <ExternalLink size={16} />
+                        </ActionIcon>
+                    </Tooltip>
+                )}
+
                 <Popover position="bottom-end" withArrow shadow="md" width={260}>
                     <Popover.Target>
                         <ActionIcon
                             variant="subtle"
-                            size="lg"
+                            size={HEADER_CONTROL_HEIGHT}
                             aria-label="Keyboard shortcuts"
                             style={iconButtonStyle}
                         >
@@ -196,6 +228,7 @@ export function PlayerMediaHeader({
                     </Popover.Dropdown>
                 </Popover>
 
+
                 {/* Open file location and Refresh comments sit behind the overflow. Neither is
                     reached often enough to spend a full button on, and as buttons they gave the
                     header five controls of identical weight with nothing saying which one the page
@@ -205,7 +238,7 @@ export function PlayerMediaHeader({
                         <Menu.Target>
                             <ActionIcon
                                 variant="subtle"
-                                size="lg"
+                                size={HEADER_CONTROL_HEIGHT}
                                 aria-label="More actions"
                                 style={iconButtonStyle}
                             >
@@ -251,22 +284,10 @@ export function PlayerMediaHeader({
                     <Button
                         variant="light"
                         color="red"
-                        size="compact-sm"
-                        leftSection={<X size={14} />}
+                        leftSection={<X size={16} />}
                         onClick={() => void onCancelRefreshComments()}
                     >
                         Cancel
-                    </Button>
-                )}
-
-                {canOpenInYoutube && (
-                    <Button
-                        variant="subtle"
-                        size="compact-sm"
-                        leftSection={<ExternalLink size={14} />}
-                        onClick={() => void onOpenInYoutube()}
-                    >
-                        Open source on YouTube
                     </Button>
                 )}
 
