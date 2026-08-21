@@ -27,7 +27,7 @@ describe("AppUpdateSection", () => {
 
         renderWithMantine(<AppUpdateSection {...baseProps({ checkForUpdate })} />);
 
-        fireEvent.click(screen.getByRole("button", { name: /check update/i }));
+        fireEvent.click(screen.getByRole("button", { name: /check now/i }));
 
         expect(checkForUpdate).toHaveBeenCalledTimes(1);
     });
@@ -35,7 +35,7 @@ describe("AppUpdateSection", () => {
     it("disables the check button while a check is already running", () => {
         renderWithMantine(<AppUpdateSection {...baseProps({ appUpdateStatus: "checking" })} />);
 
-        expect(screen.getByRole("button", { name: /check update/i })).toBeDisabled();
+        expect(screen.getByRole("button", { name: /check now/i })).toBeDisabled();
     });
 
     it("reports when the app is already up to date", () => {

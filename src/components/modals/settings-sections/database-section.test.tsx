@@ -77,7 +77,7 @@ describe("DatabaseSection", () => {
             />
         );
 
-        expect(screen.getByText(/no automatic backup has been taken yet/i)).toBeInTheDocument();
+        expect(screen.getByText(/no automatic backup yet/i)).toBeInTheDocument();
         expect(screen.getByText("40.00 KB")).toBeInTheDocument();
         expect(screen.queryByText(/last automatic backup/i)).not.toBeInTheDocument();
     });
@@ -201,7 +201,8 @@ describe("DatabaseSection", () => {
             />
         );
 
-        expect(screen.getByDisplayValue("/mnt/backups")).toBeInTheDocument();
+        // Rendered as status text now, not as a read-only input.
+        expect(screen.getByText("/mnt/backups")).toBeInTheDocument();
         // With a folder configured, the button flips to "Change backup folder" and a turn-off appears.
         expect(
             screen.getByRole("button", { name: /change backup folder/i })

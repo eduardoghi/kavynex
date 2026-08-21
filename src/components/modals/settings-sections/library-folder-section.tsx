@@ -153,8 +153,11 @@ export function LibraryFolderSection({
             )}
 
             <Group gap="sm">
+                {/* Secondary, like Open folder and Diagnostics beside it. As the one
+                    filled button in the modal it read as the thing Settings is for,
+                    which it is not. Most people set the folder once. */}
                 <AppButton
-                    appVariant="primary"
+                    appVariant="secondary"
                     leftSection={<Search size={16} />}
                     onClick={onChooseLibraryPath}
                     disabled={disableLibraryPathChange}
