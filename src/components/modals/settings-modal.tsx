@@ -1,6 +1,6 @@
-import type { CSSProperties } from "react";
-import { Divider, Modal, ScrollArea, Stack, rem } from "@mantine/core";
+import { Divider, Modal, ScrollArea, Stack } from "@mantine/core";
 import { useSettingsController } from "../../hooks/settings/use-settings-controller";
+import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 import { useModalLock } from "../../hooks/use-modal-lock";
 import type { ImportMode } from "../../types/settings";
 import { AppUpdateSection } from "./settings-sections/app-update-section";
@@ -29,14 +29,6 @@ type SettingsModalProps = {
     isSavingExternalBackupDir: boolean;
     onChooseExternalBackupDir: () => void;
     onClearExternalBackupDir: () => void;
-};
-
-// Neutral at rest. On the theme colour the close button was the one violet thing in the header,
-// competing with the title for a control that only dismisses the screen. Only the resting colour
-// is set, so Mantine's own hover tint and the keyboard focus ring still do their job, and size
-// and position are untouched.
-const CLOSE_BUTTON_STYLE: CSSProperties = {
-    color: "light-dark(rgba(0,0,0,0.62), rgba(255,255,255,0.66))",
 };
 
 export function SettingsModal({
@@ -100,23 +92,13 @@ export function SettingsModal({
                     minHeight: 0,
                     overflow: "hidden",
                 },
-                // The screen's own name was rendering at about the size of the section
-                // headings under it, so nothing said which was the page and which were
-                // its parts. Same family as those headings, a step up in size and
-                // weight.
-                title: {
-                    fontFamily: "var(--mantine-font-family-headings)",
-                    fontSize: rem(22),
-                    fontWeight: 800,
-                },
+                title: MODAL_TITLE_STYLE,
             }}
-            // Neutral at rest. On the theme colour it was the one violet thing in the
-            // header, competing with the title for a control that only dismisses the
-            // screen. Size, position and the keyboard focus ring are untouched. The
-            // label is new, since Mantine ships this button with no accessible name.
+            // The label is set here because Mantine ships this button with no accessible
+            // name at all.
             closeButtonProps={{
                 "aria-label": "Close settings",
-                style: CLOSE_BUTTON_STYLE,
+                style: MODAL_CLOSE_BUTTON_STYLE,
             }}
         >
             <ScrollArea h="100%" offsetScrollbars scrollbarSize={10} type="scroll">

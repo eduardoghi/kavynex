@@ -186,4 +186,77 @@ describe("CreateChannelModal", () => {
 
         expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
     });
+
+    it("names the picked avatar by its file name, not its path", () => {
+        // The row shows the name and keeps the path on hover. Asserting the path is absent is
+        // the half that matters, since a component that printed both would still pass a check
+        // for the name alone.
+        renderWithMantine(
+            <CreateChannelModal
+                opened
+                onClose={vi.fn()}
+                channelName=""
+                youtubeHandle=""
+                avatarMode="manual"
+                avatarPath="C:\\Users\\Ademe\\Pictures\\avatar.png"
+                loading={false}
+                onChangeChannelName={vi.fn()}
+                onChangeYoutubeHandle={vi.fn()}
+                onChangeAvatarMode={vi.fn()}
+                onPickAvatar={vi.fn()}
+                onClearAvatar={vi.fn()}
+                onCreate={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("avatar.png")).toBeInTheDocument();
+        expect(
+            screen.queryByText("C:\\Users\\Ademe\\Pictures\\avatar.png")
+        ).not.toBeInTheDocument();
+    });
+
+    it("offers Clear only once a file has been picked", () => {
+        const { unmount } = renderWithMantine(
+            <CreateChannelModal
+                opened
+                onClose={vi.fn()}
+                channelName=""
+                youtubeHandle=""
+                avatarMode="manual"
+                avatarPath=""
+                loading={false}
+                onChangeChannelName={vi.fn()}
+                onChangeYoutubeHandle={vi.fn()}
+                onChangeAvatarMode={vi.fn()}
+                onPickAvatar={vi.fn()}
+                onClearAvatar={vi.fn()}
+                onCreate={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("No file selected")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /clear/i })).not.toBeInTheDocument();
+
+        unmount();
+
+        renderWithMantine(
+            <CreateChannelModal
+                opened
+                onClose={vi.fn()}
+                channelName=""
+                youtubeHandle=""
+                avatarMode="manual"
+                avatarPath="/home/ademe/avatar.png"
+                loading={false}
+                onChangeChannelName={vi.fn()}
+                onChangeYoutubeHandle={vi.fn()}
+                onChangeAvatarMode={vi.fn()}
+                onPickAvatar={vi.fn()}
+                onClearAvatar={vi.fn()}
+                onCreate={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument();
+    });
 });

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import {
     Button,
     Group,
@@ -6,10 +7,30 @@ import {
     Stack,
     Text,
     TextInput,
+    Tooltip,
+    rem,
 } from "@mantine/core";
+import { X } from "lucide-react";
 import type { ChannelAvatarMode } from "../../types/media";
 import { useModalLock } from "../../hooks/use-modal-lock";
 import { toUnionValue } from "../../utils/guards";
+import { fileNameFromPath } from "../../utils/media-utils";
+import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
+
+const CLEAR_BUTTON_STYLES = {
+    // Clear sits next to Choose file and is the lesser of the two, so it stays neutral
+    // until it is pointed at. Only the hover background is overridden, which leaves padding
+    // and height matching Choose file and keeps the control from moving under the pointer.
+    // The red is low enough to read as a warm hint rather than as a destructive button.
+    root: {
+        "--button-hover": "light-dark(rgba(239,68,68,0.10), rgba(239,68,68,0.16))",
+    },
+    // Mantine's default section margin left the glyph far enough from the word to read as a
+    // second control. Same tightening the reply toggle in comment-item uses.
+    section: {
+        marginRight: rem(4),
+    },
+} as Record<string, CSSProperties>;
 
 type CreateChannelModalProps = {
     opened: boolean;
@@ -71,10 +92,13 @@ export function CreateChannelModal({
     return (
         <Modal
             opened={opened}
-            title={<Text fw={900}>{title}</Text>}
+            title={title}
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
+            styles={{ title: MODAL_TITLE_STYLE }}
+            // Mantine ships the close button with no accessible name.
+            closeButtonProps={{ "aria-label": "Close", style: MODAL_CLOSE_BUTTON_STYLE }}
             {...modalLock}
         >
             <form
@@ -94,12 +118,16 @@ export function CreateChannelModal({
                         autoFocus
                     />
 
+                    {/* The description names one shape where the parser takes handles,
+                        channel/, c/ and user/ paths and full URLs. Listing all of them made
+                        the field look like it wanted a particular one. Nothing about what it
+                        accepts changed. */}
                     <TextInput
                         label="YouTube handle"
                         placeholder="@Hardwareunboxed"
                         value={youtubeHandle}
                         onChange={(event) => onChangeYoutubeHandle(event.currentTarget.value)}
-                        description="Use formats like @channelname, channel/..., c/... or user/..."
+                        description="Enter a YouTube handle or channel URL."
                         required
                         disabled={loading}
                     />
@@ -123,55 +151,103 @@ export function CreateChannelModal({
                                 }
                                 data={[
                                     { label: "No avatar", value: "none" },
-                                    { label: "Manual file", value: "manual" },
-                                    { label: "From YouTube", value: "youtube" },
+                                    { label: "Upload file", value: "manual" },
+                                    { label: "YouTube avatar", value: "youtube" },
                                 ]}
                                 disabled={loading}
                             />
 
+                            {/* Both branches carry the same mt rather than the Stack
+                                carrying a bigger gap, since the gap would also push the
+                                Channel avatar label away from the control. */}
                             {avatarMode === "manual" && (
-                                <>
-                                    <TextInput
-                                        label="Avatar file"
-                                        value={avatarPath}
-                                        placeholder="Select an image file"
-                                        readOnly
-                                        disabled={loading}
-                                    />
+                                // A read-only TextInput read as a field you could type a
+                                // path into, and it spent a full input's height on a value
+                                // only the picker can set. Status text and the picker share
+                                // a row instead. Clear is rendered only when there is
+                                // something to clear, where it used to sit there disabled.
+                                <Stack gap={4} mt={4}>
+                                    <Text fw={700} size="sm">
+                                        Avatar file
+                                    </Text>
 
-                                    <Group>
-                                        <Button
-                                            type="button"
-                                            variant="light"
-                                            onClick={onPickAvatar}
-                                            disabled={loading}
+                                    <Group
+                                        justify="space-between"
+                                        wrap="nowrap"
+                                        align="center"
+                                        gap="sm"
+                                    >
+                                        {/* The name, not the path. A full path wrapped over
+                                            three lines for a value the user already knows,
+                                            and the whole thing is still readable on hover
+                                            for the case where two files share a name. */}
+                                        <Tooltip
+                                            label={avatarPath}
+                                            disabled={!avatarPath.trim()}
+                                            withArrow
+                                            multiline
+                                            w={320}
                                         >
-                                            Choose file
-                                        </Button>
+                                            <Text
+                                                size="sm"
+                                                truncate
+                                                c={
+                                                    avatarPath.trim()
+                                                        ? undefined
+                                                        : "dimmed"
+                                                }
+                                                style={{ minWidth: 0 }}
+                                            >
+                                                {fileNameFromPath(avatarPath) ||
+                                                    "No file selected"}
+                                            </Text>
+                                        </Tooltip>
 
-                                        <Button
-                                            type="button"
-                                            variant="subtle"
-                                            onClick={onClearAvatar}
-                                            disabled={loading || !avatarPath.trim()}
+                                        <Group
+                                            gap="xs"
+                                            wrap="nowrap"
+                                            style={{ flexShrink: 0 }}
                                         >
-                                            Clear
-                                        </Button>
+                                            <Button
+                                                type="button"
+                                                variant="light"
+                                                onClick={onPickAvatar}
+                                                disabled={loading}
+                                            >
+                                                Choose file
+                                            </Button>
+
+                                            {!!avatarPath.trim() && (
+                                                <Button
+                                                    type="button"
+                                                    variant="subtle"
+                                                    color="gray"
+                                                    leftSection={<X size={14} />}
+                                                    onClick={onClearAvatar}
+                                                    disabled={loading}
+                                                    styles={CLEAR_BUTTON_STYLES}
+                                                >
+                                                    Clear
+                                                </Button>
+                                            )}
+                                        </Group>
                                     </Group>
-                                </>
+                                </Stack>
                             )}
 
                             {avatarMode === "youtube" && (
-                                <Text size="sm" c="dimmed">
-                                    The app will try to download the channel avatar from the registered
-                                    YouTube handle using yt-dlp.
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Downloads the channel avatar from YouTube using yt-dlp.
                                 </Text>
                             )}
                         </Stack>
                     )}
 
                     <Group justify="flex-end">
-                        <Button type="button" variant="subtle" onClick={onClose} disabled={loading}>
+                        {/* Bordered rather than subtle. Beside a gradient Create it was
+                            reading as loose text instead of the other half of the
+                            decision. */}
+                        <Button type="button" variant="default" onClick={onClose} disabled={loading}>
                             Cancel
                         </Button>
 
