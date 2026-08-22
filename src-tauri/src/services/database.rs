@@ -5,7 +5,7 @@ use serde::Serialize;
 use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
 };
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::{AppError, AppErrorCode, AppResult};
@@ -251,7 +251,7 @@ pub(crate) fn is_foreign_key_violation(error: &sqlx::Error) -> bool {
     }
 }
 
-pub fn database_path(app: &AppHandle) -> AppResult<PathBuf> {
+pub fn database_path<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     let config_dir = app
         .path()
         .app_config_dir()
@@ -374,7 +374,7 @@ pub async fn shared_pool<R: tauri::Runtime>(app: &AppHandle<R>) -> AppResult<Sql
 
 /// Whether the shared pool has already been opened. Used to guard the restore-from-backup
 /// flow, which must only run while the database is closed (i.e. after a failed open).
-pub fn is_pool_initialized(app: &AppHandle) -> bool {
+pub fn is_pool_initialized<R: Runtime>(app: &AppHandle<R>) -> bool {
     app.try_state::<Db>()
         .map(|db| db.is_initialized())
         .unwrap_or(false)

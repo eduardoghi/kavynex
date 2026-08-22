@@ -1,4 +1,4 @@
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Runtime, State};
 
 use crate::services::channel_repository as repo;
 use crate::services::channel_repository::ChannelRow;
@@ -12,8 +12,8 @@ use crate::AppResult;
 /// Deletes a channel row (its media and comments cascade) and the now-unreferenced files
 /// of its media (media files, thumbnails, avatar, live chat) in a single atomic operation.
 #[tauri::command]
-pub async fn delete_channel_with_artifacts(
-    app: AppHandle,
+pub async fn delete_channel_with_artifacts<R: Runtime>(
+    app: AppHandle<R>,
     channel_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
     library::cleanup::delete_channel_with_artifacts(&app, channel_id).await
@@ -94,8 +94,8 @@ pub async fn update_channel_name_and_handle(
 /// video thumbnail or another channel avatar) still references it, in a single atomic
 /// operation. Files it could not remove are reported back so an orphan stays visible.
 #[tauri::command]
-pub async fn replace_channel_avatar(
-    app: AppHandle,
+pub async fn replace_channel_avatar<R: Runtime>(
+    app: AppHandle<R>,
     channel_id: i64,
     avatar_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {

@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use sqlx::SqlitePool;
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::services::database::{get_app_settings_from_pool, shared_pool};
 use crate::services::logger;
@@ -86,7 +86,10 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
 /// relies on the same invariant from the other side: the settings still hold the old
 /// path while the migration runs, and the new path is only persisted after the
 /// migration succeeds.
-pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) -> AppResult<()> {
+pub async fn ensure_configured_library_path<R: Runtime>(
+    app: &AppHandle<R>,
+    requested: &str,
+) -> AppResult<()> {
     let pool = shared_pool(app).await?;
     ensure_configured_library_path_in_pool(&pool, requested).await
 }
@@ -95,11 +98,11 @@ pub async fn ensure_configured_library_path(app: &AppHandle, requested: &str) ->
 ///
 /// This is the real implementation; the `AppHandle` version above only resolves the shared pool
 /// and delegates. The split exists so a command can run the guard while taking `State<'_, Db>`
-/// instead of `AppHandle`: an `AppHandle` parameter resolves to the concrete `AppHandle<Wry>`, so
-/// a command taking one cannot be registered with `tauri::generate_handler!` under the mock
-/// runtime and therefore cannot be driven through a real IPC round trip in a test (see the note
-/// in `commands/media.rs`). A guard that could only be applied by giving up the command's test
-/// coverage is a guard that does not get applied.
+/// instead of an `AppHandle` at all (the pool-only commands do). It also predates the day the
+/// `AppHandle` version became generic over `R: Runtime`: a bare `AppHandle` parameter resolved to
+/// the concrete `AppHandle<Wry>`, which no mock-runtime test could produce, so a command taking one
+/// could not be driven through a real IPC round trip. Both shapes are registerable now, and a
+/// command picks whichever matches what else it needs from the app.
 pub async fn ensure_configured_library_path_in_pool(
     pool: &SqlitePool,
     requested: &str,
@@ -161,8 +164,8 @@ pub async fn ensure_configured_library_path_in_pool(
 /// that would turn a "delete a file inside the library" command into an arbitrary-file
 /// primitive. `f` receives the same (verified) path so it does not need to capture a second
 /// copy of it.
-pub async fn verify_library_path_then_blocking<F, T>(
-    app: &AppHandle,
+pub async fn verify_library_path_then_blocking<F, T, R: Runtime>(
+    app: &AppHandle<R>,
     library_path: String,
     f: F,
 ) -> AppResult<T>

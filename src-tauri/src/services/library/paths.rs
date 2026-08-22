@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -172,7 +172,7 @@ pub fn library_path_is_inside_dir(library_path: &str, protected_dir: &Path) -> b
     canonical_candidate.starts_with(&canonical_protected)
 }
 
-pub fn resolve_default_library_directory_sync(app: &AppHandle) -> AppResult<String> {
+pub fn resolve_default_library_directory_sync<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
     let video_dir = app.path().video_dir().map_err(|e| {
         AppError::from_code(
             AppErrorCode::VideoDirectoryResolveFailed,

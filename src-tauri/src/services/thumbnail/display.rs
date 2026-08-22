@@ -38,7 +38,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 use tokio::sync::{Semaphore, SemaphorePermit};
 
 use crate::constants::{
@@ -607,8 +607,8 @@ fn resolve_one(
 ///
 /// `library_path` is the caller's, and is verified by the command layer
 /// (`verify_library_path_then_blocking`) before this runs, exactly like every other library read.
-pub fn resolve_display_thumbnails_sync(
-    app: &AppHandle,
+pub fn resolve_display_thumbnails_sync<R: Runtime>(
+    app: &AppHandle<R>,
     library_path: &str,
     relative_paths: &[String],
 ) -> AppResult<Vec<DisplayThumbnail>> {

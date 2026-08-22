@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::services::{file_manager, logger};
 use crate::utils::task::run_blocking;
@@ -60,7 +60,7 @@ pub fn log_frontend_error(scope: String, message: String) {
 /// The spawn and the directory resolution are blocking filesystem work, so they run off the async
 /// runtime's worker threads like every other filesystem command.
 #[tauri::command]
-pub async fn open_log_directory(app: AppHandle) -> AppResult<()> {
+pub async fn open_log_directory<R: Runtime>(app: AppHandle<R>) -> AppResult<()> {
     run_blocking(move || file_manager::reveal_app_log_dir(&app)).await
 }
 

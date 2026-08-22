@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::constants::{
     MANAGED_LIBRARY_DIRS, TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY, TEMP_DIR_YT_DLP,
@@ -186,7 +186,7 @@ fn cleanup_display_cache(dir: &Path, max_bytes: u64) -> AppResult<CleanupSummary
     Ok(summary)
 }
 
-pub fn cleanup_stale_temp_files_sync(app: &AppHandle) -> AppResult<CleanupSummary> {
+pub fn cleanup_stale_temp_files_sync<R: Runtime>(app: &AppHandle<R>) -> AppResult<CleanupSummary> {
     let cache_dir = app.path().app_cache_dir().map_err(|e| {
         AppError::from_code(
             AppErrorCode::CacheDirectoryResolveFailed,

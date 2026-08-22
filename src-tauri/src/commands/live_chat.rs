@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::constants::LIBRARY_DIR_LIVE_CHAT;
 use crate::services::library::guard::configured_library_dir;
@@ -62,8 +62,8 @@ where
 /// lines at a time (transparently gunzipped), so a long replay is never materialized as one giant
 /// string on either side of the IPC boundary. A terminal `Done` event follows the last batch.
 #[tauri::command]
-pub async fn stream_live_chat_file(
-    app: AppHandle,
+pub async fn stream_live_chat_file<R: Runtime>(
+    app: AppHandle<R>,
     relative_path: String,
     on_batch: Channel<LiveChatStreamEvent>,
 ) -> AppResult<()> {
@@ -113,7 +113,7 @@ pub async fn stream_live_chat_file(
 
 /// Lists stored live chat files as library-relative paths, for diagnostics.
 #[tauri::command]
-pub async fn list_live_chat_files(app: AppHandle) -> AppResult<Vec<String>> {
+pub async fn list_live_chat_files<R: Runtime>(app: AppHandle<R>) -> AppResult<Vec<String>> {
     let library_dir = configured_library_dir(&app).await?;
     run_blocking(move || list_live_chat_relative_paths(&library_dir)).await
 }
@@ -122,7 +122,7 @@ pub async fn list_live_chat_files(app: AppHandle) -> AppResult<Vec<String>> {
 /// compresses legacy uncompressed files. Idempotent, so it is safe to call on every startup
 /// once the library path is known.
 #[tauri::command]
-pub async fn migrate_live_chat_to_library(app: AppHandle) -> AppResult<()> {
+pub async fn migrate_live_chat_to_library<R: Runtime>(app: AppHandle<R>) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
 
     let app_data_dir = app.path().app_data_dir().map_err(|e| {

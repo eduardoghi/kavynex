@@ -25,7 +25,7 @@
 
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -215,7 +215,7 @@ fn prepare_dir_for_reveal(dir: &Path) -> AppResult<PathBuf> {
 /// none: the UNC rule exists to stop a *caller-supplied* path pointing at an attacker's host, and
 /// this path comes from the OS. A Windows profile redirected onto a corporate share is a supported
 /// configuration where refusing would break the feature for the user whose own share it is.
-pub fn reveal_app_log_dir(app: &AppHandle) -> AppResult<()> {
+pub fn reveal_app_log_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<()> {
     let log_dir = app.path().app_log_dir().map_err(|error| {
         AppError::from_code(
             AppErrorCode::LogDirectoryOpenFailed,

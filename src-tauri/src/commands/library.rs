@@ -1,5 +1,5 @@
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, Runtime, State};
 
 use crate::services::channel_repository;
 use crate::services::database::Db;
@@ -23,7 +23,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// closes the window where any file that later lands in it would still be readable through
 /// `convertFileSrc` for the rest of the session. Best effort: a failure only leaves the stale
 /// grant in place (the pre-existing behavior) and must not fail the migration itself.
-fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
+fn revoke_directory_from_asset_scope<R: Runtime>(app: &AppHandle<R>, dir: &str) {
     // A forbid is permanent for the rest of the session (Tauri's scope checks the forbidden
     // patterns first and offers no way to withdraw one), so record what is being given up before
     // doing it. Migrating back to this library later would otherwise re-grant it to no effect and
@@ -54,7 +54,7 @@ fn revoke_directory_from_asset_scope(app: &AppHandle, dir: &str) {
 }
 
 #[tauri::command]
-pub async fn resolve_default_library_directory(app: AppHandle) -> AppResult<String> {
+pub async fn resolve_default_library_directory<R: Runtime>(app: AppHandle<R>) -> AppResult<String> {
     run_blocking(move || library::paths::resolve_default_library_directory_sync(&app)).await
 }
 
@@ -74,8 +74,8 @@ pub async fn is_directory_empty(path: String) -> AppResult<bool> {
 }
 
 #[tauri::command]
-pub async fn migrate_library_directory(
-    app: AppHandle,
+pub async fn migrate_library_directory<R: Runtime>(
+    app: AppHandle<R>,
     old_library_path: String,
     new_library_path: String,
 ) -> AppResult<library::migration::MigrateLibraryDirectoryResult> {

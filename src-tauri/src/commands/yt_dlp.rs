@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::models::yt_dlp::{ExternalToolsStatus, YtDlpComment, YtDlpFormatsResult};
 use crate::services::binaries::resolve_external_tools_status_async;
@@ -6,8 +6,8 @@ use crate::services::yt_dlp;
 use crate::AppResult;
 
 #[tauri::command]
-pub async fn list_yt_dlp_formats(
-    app: AppHandle,
+pub async fn list_yt_dlp_formats<R: Runtime>(
+    app: AppHandle<R>,
     url: String,
     cookies_browser: Option<String>,
     cookies_path: Option<String>,
@@ -24,8 +24,8 @@ pub async fn list_yt_dlp_formats(
 }
 
 #[tauri::command]
-pub async fn fetch_youtube_comments(
-    app: AppHandle,
+pub async fn fetch_youtube_comments<R: Runtime>(
+    app: AppHandle<R>,
     video_id: String,
     cookies_browser: Option<String>,
     cookies_path: Option<String>,
@@ -47,27 +47,17 @@ pub async fn cancel_media_download(run_id: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn check_external_tools(app: AppHandle) -> AppResult<ExternalToolsStatus> {
+pub async fn check_external_tools<R: Runtime>(app: AppHandle<R>) -> AppResult<ExternalToolsStatus> {
     resolve_external_tools_status_async(&app).await
 }
 
-// `list_yt_dlp_formats`, `fetch_youtube_comments`, `download_media_from_url` and
-// `check_external_tools` all take an `app: AppHandle` parameter. `AppHandle` resolves
-// (via its default generic parameter) to the concrete type `AppHandle<tauri::Wry>` (the
-// real runtime), while `tauri::test::mock_builder()` builds an
-// `App<tauri::test::MockRuntime>`, a different concrete runtime. Registering any of
-// those commands with `tauri::generate_handler!` for a mock app therefore fails to
-// *compile*: there is no `CommandArg<'_, MockRuntime>` impl for `AppHandle<Wry>`. (This
-// mirrors `commands/media.rs`: see the comment above its test module.) That leaves
-// `cancel_media_download(run_id: String)` as the only command in this file that can be
-// driven through a real IPC round trip with this harness, exercised below.
-//
-// The URL/video-id validation those other commands perform before ever spawning yt-dlp
-// (host allow-list, empty/malformed id) is already covered directly at the service layer
-// in `services/yt_dlp/url.rs` (`is_allowed_youtube_url` tests). None of the yt-dlp
-// commands can be meaningfully tested beyond that without either a real `AppHandle<Wry>`
-// (which needs a real webview runtime, unavailable headlessly here) or spawning the
-// actual yt-dlp/ffmpeg binaries, which is out of scope for a deterministic, offline test.
+// `list_yt_dlp_formats`, `fetch_youtube_comments` and `check_external_tools` are generic over
+// `R: Runtime` like every other command now, so the mock-runtime harness *can* register them. What
+// keeps them out of an IPC test is what they do, not their signature: each resolves and spawns the
+// real yt-dlp (and ffmpeg) binary, which a deterministic, offline test must not depend on. The
+// URL/video-id validation they perform before ever spawning (host allow-list, empty or malformed id)
+// is covered directly at the service layer in `services/yt_dlp/url.rs` and `metadata.rs`.
+// `cancel_media_download(run_id: String)` touches no binary and is exercised over IPC below.
 #[cfg(test)]
 mod tests {
     use super::*;

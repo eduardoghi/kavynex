@@ -200,7 +200,9 @@ fn write_probe_asset<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
 /// the price of the binary being able to self-check without a second build, and it is also itself a
 /// probe, if IPC into this crate's own commands were broken, this call is what would fail.
 #[tauri::command]
-pub async fn begin_webview_check(app: AppHandle) -> AppResult<Option<WebviewCheckPlan>> {
+pub async fn begin_webview_check<R: Runtime>(
+    app: AppHandle<R>,
+) -> AppResult<Option<WebviewCheckPlan>> {
     if !is_webview_check_run(std::env::args()) {
         return Ok(None);
     }
@@ -228,7 +230,10 @@ pub async fn begin_webview_check(app: AppHandle) -> AppResult<Option<WebviewChec
 /// would mean a command whose failure mode is "kill the app" is one compromised-renderer call away
 /// from being reachable.
 #[tauri::command]
-pub async fn report_webview_check(app: AppHandle, report: WebviewCheckReport) -> AppResult<()> {
+pub async fn report_webview_check<R: Runtime>(
+    app: AppHandle<R>,
+    report: WebviewCheckReport,
+) -> AppResult<()> {
     if !is_webview_check_run(std::env::args()) {
         logger::warn(
             "webview_check",

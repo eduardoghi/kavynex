@@ -2,14 +2,14 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::services::library::guard::ensure_configured_library_path;
 use crate::services::logger;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
-fn allow_directory_in_asset_scope(app: &AppHandle, dir: &Path) -> AppResult<()> {
+fn allow_directory_in_asset_scope<R: Runtime>(app: &AppHandle<R>, dir: &Path) -> AppResult<()> {
     app.asset_protocol_scope()
         .allow_directory(dir, true)
         .map_err(|error| {
@@ -87,7 +87,7 @@ pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
 /// the same reason (see [`grant_path_with_canonical`]). The directories are created on demand by
 /// their writers anyway, but doing it here is what makes the canonical grant possible on a first
 /// run.
-pub fn register_cache_asset_scope(app: &AppHandle, cache_root: &Path) {
+pub fn register_cache_asset_scope<R: Runtime>(app: &AppHandle<R>, cache_root: &Path) {
     for managed_dir in prepare_cache_scope_dirs(cache_root) {
         let granted = grant_path_with_canonical(&managed_dir, "cache subdirectory", |dir| {
             allow_directory_in_asset_scope(app, dir)
@@ -209,7 +209,10 @@ pub(crate) fn record_forbidden_library_dirs(library_root: &Path) {
 /// canonicalized form are authorized so the extended-length (`\\?\`) and stripped
 /// variants used by the frontend both match.
 #[tauri::command]
-pub async fn register_library_asset_scope(app: AppHandle, library_path: String) -> AppResult<()> {
+pub async fn register_library_asset_scope<R: Runtime>(
+    app: AppHandle<R>,
+    library_path: String,
+) -> AppResult<()> {
     let trimmed = library_path.trim().to_string();
 
     // Re-derive the expected library directory from the persisted settings and reject any

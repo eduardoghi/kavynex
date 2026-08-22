@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, Runtime, State};
 
 use crate::services::database::{database_path, Db};
 use crate::services::db_backup::{self, DatabaseBackupStatus, DatabaseIntegrityReport};
@@ -214,7 +214,9 @@ pub async fn ensure_database_ready(db: State<'_, Db>) -> AppResult<()> {
 /// Reports whether a database backup exists that could be restored, and when it was taken.
 /// Used to offer recovery when `ensure_database_ready` fails.
 #[tauri::command]
-pub async fn get_database_backup_status(app: AppHandle) -> AppResult<DatabaseBackupStatus> {
+pub async fn get_database_backup_status<R: Runtime>(
+    app: AppHandle<R>,
+) -> AppResult<DatabaseBackupStatus> {
     // database_path (create_dir_all) and database_backup_status (read_dir + stat of each backup
     // generation) are blocking filesystem calls, so run them off the async runtime's worker
     // threads, consistent with the other filesystem commands.
@@ -229,7 +231,7 @@ pub async fn get_database_backup_status(app: AppHandle) -> AppResult<DatabaseBac
 /// aside. Only valid while the database is closed (after a failed open), so it refuses to
 /// run once the pool is already initialized.
 #[tauri::command]
-pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
+pub async fn restore_database_from_backup<R: Runtime>(app: AppHandle<R>) -> AppResult<()> {
     let db = app.try_state::<Db>().ok_or_else(|| {
         AppError::from_code(AppErrorCode::AppError, "the database is not initialized")
     })?;
@@ -250,7 +252,10 @@ pub async fn restore_database_from_backup(app: AppHandle) -> AppResult<()> {
 /// be kept off-machine or moved to another install (unlike the internal corruption-recovery
 /// backup, which lives next to the live database).
 #[tauri::command]
-pub async fn export_database(app: AppHandle, destination_path: String) -> AppResult<()> {
+pub async fn export_database<R: Runtime>(
+    app: AppHandle<R>,
+    destination_path: String,
+) -> AppResult<()> {
     // The AppHandle-bound half: resolve the app config directory the containment guard needs. The
     // validation ordering and the single-path invariant then live in the pure
     // prepare_export_destination (unit-tested), which returns the exact path the write uses.
@@ -270,7 +275,7 @@ pub async fn export_database(app: AppHandle, destination_path: String) -> AppRes
 /// Validates and stages a user-provided database file for import. The swap is applied on the
 /// next startup, so the caller should relaunch the app after this succeeds.
 #[tauri::command]
-pub async fn import_database(app: AppHandle, source_path: String) -> AppResult<()> {
+pub async fn import_database<R: Runtime>(app: AppHandle<R>, source_path: String) -> AppResult<()> {
     // Gate the caller-supplied source before anything stats or opens it (see
     // prepare_import_source), and read from exactly the path it returns.
     let source = prepare_import_source(&source_path)?;
@@ -283,7 +288,7 @@ pub async fn import_database(app: AppHandle, source_path: String) -> AppResult<(
 /// the database from before that import exists). Lets the frontend offer a recovery path when
 /// the wrong or an incompatible database was imported.
 #[tauri::command]
-pub async fn get_database_import_undo_status(app: AppHandle) -> AppResult<bool> {
+pub async fn get_database_import_undo_status<R: Runtime>(app: AppHandle<R>) -> AppResult<bool> {
     // database_path (create_dir_all) and database_import_undo_available (a stat) are blocking
     // filesystem calls, so run them off the async runtime's worker threads.
     run_blocking(move || {
@@ -297,7 +302,7 @@ pub async fn get_database_import_undo_status(app: AppHandle) -> AppResult<bool> 
 /// import. That swap is applied on the next startup (reusing the import path so the live pool
 /// is never swapped underneath), so the caller should relaunch the app after this succeeds.
 #[tauri::command]
-pub async fn undo_database_import(app: AppHandle) -> AppResult<()> {
+pub async fn undo_database_import<R: Runtime>(app: AppHandle<R>) -> AppResult<()> {
     let path = database_path(&app)?;
     db_backup::stage_database_import_undo(&path).await
 }

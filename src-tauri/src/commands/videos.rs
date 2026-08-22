@@ -1,4 +1,4 @@
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Runtime, State};
 
 use crate::services::database::Db;
 use crate::services::library;
@@ -13,8 +13,8 @@ use crate::AppResult;
 /// Deletes a media row and its now-unreferenced files (media file, thumbnail, live chat)
 /// in a single atomic operation.
 #[tauri::command]
-pub async fn delete_media_with_artifacts(
-    app: AppHandle,
+pub async fn delete_media_with_artifacts<R: Runtime>(
+    app: AppHandle<R>,
     media_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
     library::cleanup::delete_media_with_artifacts(&app, media_id).await

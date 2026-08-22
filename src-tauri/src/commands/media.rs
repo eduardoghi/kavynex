@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::services::library::guard::ensure_configured_library_path;
 use crate::services::media_creation::{self, CreateMediaRequest, CreatedMedia};
@@ -17,7 +17,10 @@ use crate::AppResult;
 /// The library path is checked against the persisted settings here, before any file is written, like
 /// every other command that writes into the library.
 #[tauri::command]
-pub async fn create_media(app: AppHandle, request: CreateMediaRequest) -> AppResult<CreatedMedia> {
+pub async fn create_media<R: Runtime>(
+    app: AppHandle<R>,
+    request: CreateMediaRequest,
+) -> AppResult<CreatedMedia> {
     ensure_configured_library_path(&app, &request.library_path).await?;
 
     media_creation::create_media_async(&app, request).await
@@ -36,47 +39,213 @@ pub async fn create_media(app: AppHandle, request: CreateMediaRequest) -> AppRes
 //
 // See `docs/decisions/2026-07-30-ipc-exposes-operations-not-steps.md`.
 
-// No command in this file can be driven through a true IPC round trip with the
-// harness `commands/library.rs` uses (`tauri::test::mock_builder` + `get_ipc_response`).
-// Each takes an `app: AppHandle` parameter, and `AppHandle` resolves (via its default
-// generic parameter) to the concrete type `AppHandle<tauri::Wry>`. The real runtime.
-// `mock_builder()` builds an `App<tauri::test::MockRuntime>`, a different concrete
-// runtime, so registering any of them with `tauri::generate_handler!` for that app
-// fails to *compile*: there is no `CommandArg<'_, MockRuntime>` impl for
-// `AppHandle<Wry>`. (This is exactly why `library.rs`'s existing IPC tests only cover
-// `ensure_directory_exists` and `check_library_integrity` (the only two commands in
-// that file with no `AppHandle` parameter.) The same mismatch means the underlying
-// async service functions (`library::media`/`library::cleanup`/`media_creation`) cannot be
-// called directly with a mock `AppHandle` either, since their signatures take the same
-// concrete type.
+// `create_media` is driven through a real IPC round trip below, under the mock runtime, and that
+// was not possible until every function on its path was generic over `R: Runtime`. The bare
+// `AppHandle` alias is `AppHandle<tauri::Wry>`, and `tauri::test::mock_builder` produces an
+// `App<MockRuntime>`, so a command naming the alias could not even be registered with
+// `tauri::generate_handler!` for a mock app (no `CommandArg<'_, MockRuntime>` impl for it). The
+// services were generalized first; the commands followed, which is what the IPC test here rests on.
 //
-// The runtime mismatch above is the whole of it: the database is no longer the obstacle.
-// The pool lives in managed state (`services::database::Db`, registered by `lib.rs`'s
-// setup and resolved through `try_state`), and `Db::from_pool` exists precisely so a test
-// can manage a `Db` backed by an in-memory schema onto a mock app), which is how the
-// pool-only commands (`settings.rs`, `channels.rs`, `videos.rs`, `database.rs`) are driven
-// through the real IPC boundary today. What keeps *these* commands out is only their
-// `AppHandle` parameter, not where their settings come from.
-//
-// `create_media`'s own shape follows from that: the decisions it makes that a test can pin
-// are pure and live in `services::media_creation` (request normalization, thumbnail-source
-// classification, the managed-path re-check), tested there; what is left in the command is
-// the library-path guard plus the orchestration, and neither can run without a live handle.
-//
-// What *is* tested below is `library::media::import_media_file_sync` (a plain sync
-// function taking only `&str`/`ImportMode` arguments (no `AppHandle`)), which is exactly
-// what `import_media_file` runs inside `run_blocking` once its guard passes, and what a
-// local `create_media` runs to place the file. This locks down that behavior:
-// content-addressed destination naming, copy vs. move, and reuse of an already-imported
-// file by content hash.
+// The local-import end of the creation is the half that can run offline: a real temp library, a
+// real source file, a picked thumbnail (so nothing reaches FFmpeg), and the row lands in an in-memory
+// database. The yt-dlp end still cannot, for the reason `commands/yt_dlp.rs` gives: it spawns the
+// binary. What the sync test below pins on top is `library::media::import_media_file_sync` on its
+// own (content-addressed naming, copy vs move, reuse by hash), which is the step the command runs
+// once its guard passes.
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::commands::test_ipc::{invoke, memory_db};
     use crate::models::yt_dlp::ImportMode;
+    use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
     use crate::services::library;
     use crate::utils::hash::file_hash;
     use crate::AppErrorCode;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
+
+    /// A [`Db`] whose settings name `library_dir` as the configured library and which holds one
+    /// channel, returned with that channel's id. The guard on `create_media` compares the request's
+    /// `library_path` against this row, so without it the command refuses before any file moves.
+    fn memory_db_with_library_and_channel(library_dir: &Path) -> (Db, i64) {
+        let db = memory_db();
+        let library_path = library_dir.to_string_lossy().to_string();
+
+        let channel_id = tauri::async_runtime::block_on(async {
+            let pool = db.pool().await.expect("open the in-memory pool");
+
+            set_app_settings_in_pool(
+                &pool,
+                &StoredAppSettings {
+                    library_path: Some(library_path),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("persist the configured library path");
+
+            crate::services::channel_repository::insert_channel(&pool, "Channel", "@channel", None)
+                .await
+                .expect("insert the channel")
+        });
+
+        (db, channel_id)
+    }
+
+    fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![create_media])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        app.manage(db);
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    /// The request as the renderer sends it (camelCase over IPC), for a local import with a picked
+    /// thumbnail. Every field `CreateMediaRequest` has is spelled out, so a rename on the Rust side
+    /// breaks here rather than silently at runtime.
+    fn local_request(
+        channel_id: i64,
+        source: &Path,
+        thumbnail: Option<&Path>,
+        library: &Path,
+        import_mode: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "request": {
+                "channelId": channel_id,
+                "title": "Imported clip",
+                "sourceMode": "local",
+                "sourceValue": source.to_string_lossy(),
+                "thumbnailSourcePath": thumbnail.map(|path| path.to_string_lossy().to_string()),
+                "mediaType": "video",
+                "importMode": import_mode,
+                "libraryPath": library.to_string_lossy(),
+                "publishedAt": null,
+                "ytDlpRunId": "ipc-create-media-test",
+                "ytDlpFormatId": "",
+                "ytDlpYoutubeVideoId": null,
+                "downloadLiveChat": false,
+                "cookiesBrowser": null,
+                "cookiesPath": null
+            }
+        })
+    }
+
+    #[test]
+    fn create_media_command_imports_a_local_file_and_registers_the_row_over_ipc() {
+        // The whole operation the command exposes, end to end: the guard accepts the configured
+        // library, the file is copied under its content-addressed name, the picked thumbnail is
+        // persisted beside it, and the response carries the stored paths the renderer reads back.
+        let root = unique_test_dir("ipc-create");
+        let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
+        let library = library.canonicalize().unwrap();
+        let source = write_temp_file(&root.join("source"), "clip.mp4", b"ipc-import-bytes");
+        let cover = write_temp_file(&root.join("source"), "cover.jpg", b"\xff\xd8\xff");
+
+        let (db, channel_id) = memory_db_with_library_and_channel(&library);
+        let webview = test_webview(db);
+
+        let response = invoke(
+            &webview,
+            "create_media",
+            local_request(channel_id, &source, Some(&cover), &library, "copy"),
+        )
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
+
+        let file_path = response["filePath"].as_str().expect("filePath is a string");
+        assert_eq!(
+            file_path,
+            format!("video/media_{}.mp4", file_hash(&source).unwrap()),
+            "the import is content-addressed under the managed video directory"
+        );
+        assert!(library.join(file_path).is_file());
+        assert!(source.exists(), "copy mode leaves the source where it was");
+
+        let thumbnail_path = response["thumbnailPath"]
+            .as_str()
+            .expect("the picked thumbnail is persisted");
+        assert!(thumbnail_path.starts_with("thumbnails/thumb_"));
+        assert!(library.join(thumbnail_path).is_file());
+
+        assert_eq!(response["mediaType"], "video");
+        assert!(response["id"].is_number());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn create_media_command_rejects_a_library_that_is_not_the_configured_one_over_ipc() {
+        // The guard runs before any file is written. The library the request names exists and is
+        // writable, and it must still be refused because it is not the one the settings hold.
+        let root = unique_test_dir("ipc-create-guard");
+        let configured = root.join("configured");
+        let elsewhere = root.join("elsewhere");
+        fs::create_dir_all(&configured).unwrap();
+        fs::create_dir_all(&elsewhere).unwrap();
+        let source = write_temp_file(&root.join("source"), "clip.mp4", b"never-imported");
+
+        let (db, channel_id) =
+            memory_db_with_library_and_channel(&configured.canonicalize().unwrap());
+        let webview = test_webview(db);
+
+        let error = invoke(
+            &webview,
+            "create_media",
+            local_request(channel_id, &source, None, &elsewhere, "copy"),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+        assert!(
+            !elsewhere.join("video").exists(),
+            "nothing may be written into a library the guard refused"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn create_media_command_refuses_a_network_thumbnail_source_over_ipc() {
+        // The local thumbnail branch is where the UNC refusal was missing, and this is the command
+        // that carries the value in. The media file is a real local file, so only the thumbnail can
+        // be what refuses the creation, and the refusal has to leave the library untouched: no
+        // media copied, no row, nothing for the crash-marker sweep to reconcile.
+        let root = unique_test_dir("ipc-create-unc");
+        let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
+        let library = library.canonicalize().unwrap();
+        let source = write_temp_file(&root.join("source"), "clip.mp4", b"never-imported");
+
+        let (db, channel_id) = memory_db_with_library_and_channel(&library);
+        let webview = test_webview(db);
+
+        let error = invoke(
+            &webview,
+            "create_media",
+            local_request(
+                channel_id,
+                &source,
+                Some(Path::new(r"\\evil\share\cover.jpg")),
+                &library,
+                "copy",
+            ),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidSourceThumbnail.as_str());
+
+        let _ = fs::remove_dir_all(&root);
+    }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

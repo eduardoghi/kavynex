@@ -579,8 +579,8 @@ async fn execute_plan_locked<R: Runtime>(
 /// Deletes a media row and removes its now-unreferenced files from disk. The row deletion
 /// and the "is this file still referenced" decision happen in one transaction; file
 /// removal is best-effort and reported back.
-pub async fn delete_media_with_artifacts(
-    app: &AppHandle,
+pub async fn delete_media_with_artifacts<R: Runtime>(
+    app: &AppHandle<R>,
     media_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
@@ -593,8 +593,8 @@ pub async fn delete_media_with_artifacts(
 
 /// Deletes a channel row (cascading its media and comments) and removes the
 /// now-unreferenced files from disk.
-pub async fn delete_channel_with_artifacts(
-    app: &AppHandle,
+pub async fn delete_channel_with_artifacts<R: Runtime>(
+    app: &AppHandle<R>,
     channel_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
@@ -788,8 +788,8 @@ pub async fn replace_channel_avatar_and_plan_cleanup(
 /// Updates a channel's avatar and removes the previous avatar file when it is no longer
 /// referenced. The row write and the "is the old file still used" decision commit
 /// atomically; the unlink runs after the commit and is reported back.
-pub async fn replace_channel_avatar(
-    app: &AppHandle,
+pub async fn replace_channel_avatar<R: Runtime>(
+    app: &AppHandle<R>,
     channel_id: i64,
     avatar_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
