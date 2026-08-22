@@ -165,6 +165,14 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // to its own clause anyway, not these. Re-measure before assuming any of this still holds. The
     // method is EXPLAIN QUERY PLAN over the real statements on a schema with no ANALYZE, which is
     // the planner production runs.
+    //
+    // What should send someone back to that measurement, because "a handful of rows at a time" is a
+    // premise the trade rests on rather than a property of the schema: a batched write path (a
+    // per-channel download queue, a folder import), or the first `apply_table_rebuilds` on this
+    // table. The rebuild recreates the indexes of every table it dropped by walking this list
+    // (rebuild.rs), so it would build all seven of the dead ones on `videos` over the whole library,
+    // inside a migration the user waits through at startup. That is where the cost stops being a
+    // rounding error on an insert and becomes something they can feel.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)"),
