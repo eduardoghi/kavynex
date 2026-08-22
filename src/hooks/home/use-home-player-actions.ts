@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { openFileLocation } from "../../services";
+import { openFileLocation } from "../../services/library-service";
 import { resolveErrorMessage } from "../../utils/error-message";
 import { isMediaWatched } from "../../utils/media-utils";
 import type { MediaRow } from "../../types/media";

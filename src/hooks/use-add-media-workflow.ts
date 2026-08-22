@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ImportMode } from "../types/settings";
-import { cancelMediaDownload, createMedia } from "../services";
+import { createMedia } from "../services/media-service";
+import { cancelMediaDownload } from "../services/media-download-service";
 import { useAddMediaForm } from "./use-add-media-form";
 import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents, type YtDlpLogLine } from "./use-yt-dlp-events";

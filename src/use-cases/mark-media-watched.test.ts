@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../services", () => ({
+vi.mock("../services/media-service", () => ({
     setMediaWatched: vi.fn(),
 }));
 
-import { setMediaWatched } from "../services";
+import { setMediaWatched } from "../services/media-service";
 import { executeMarkMediaWatched } from "./mark-media-watched";
 
 const setMediaWatchedMock = vi.mocked(setMediaWatched);

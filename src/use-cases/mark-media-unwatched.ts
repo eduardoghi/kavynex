@@ -1,5 +1,5 @@
 import type { MediaRow } from "../types/media";
-import { setMediaUnwatched } from "../services";
+import { setMediaUnwatched } from "../services/media-service";
 
 type ExecuteMarkMediaUnwatchedOptions = {
     mediaId: number;

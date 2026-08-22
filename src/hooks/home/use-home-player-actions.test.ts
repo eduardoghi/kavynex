@@ -1,10 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { MediaRow } from "../../types/media";
-import { openFileLocation } from "../../services";
+import { openFileLocation } from "../../services/library-service";
 import { useHomePlayerActions } from "./use-home-player-actions";
 
-vi.mock("../../services", () => ({
+vi.mock("../../services/library-service", () => ({
     openFileLocation: vi.fn(),
 }));
 

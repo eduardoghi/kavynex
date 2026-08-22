@@ -1,4 +1,4 @@
-import { createChannel } from "../services";
+import { createChannel } from "../services/channel-service";
 
 export type ExecuteCreateChannelInput = {
     name: string;

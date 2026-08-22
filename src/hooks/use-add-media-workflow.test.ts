@@ -4,9 +4,12 @@ import type { useAddMediaForm } from "./use-add-media-form";
 import { useAddMediaWorkflow } from "./use-add-media-workflow";
 import type { YtDlpLogLine } from "./use-yt-dlp-events";
 
-vi.mock("../services", () => ({
-    cancelMediaDownload: vi.fn(),
+vi.mock("../services/media-service", () => ({
     createMedia: vi.fn(),
+}));
+
+vi.mock("../services/media-download-service", () => ({
+    cancelMediaDownload: vi.fn(),
 }));
 
 vi.mock("../utils/error-message", () => ({
@@ -127,7 +130,8 @@ vi.mock("./use-yt-dlp-events", () => ({
     useYtDlpEvents: () => mockYtDlpEvents,
 }));
 
-import { createMedia, cancelMediaDownload } from "../services";
+import { createMedia } from "../services/media-service";
+import { cancelMediaDownload } from "../services/media-download-service";
 import { logError } from "../utils/app-logger";
 
 describe("useAddMediaWorkflow", () => {

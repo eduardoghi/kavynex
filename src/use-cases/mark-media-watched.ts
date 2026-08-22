@@ -1,5 +1,5 @@
 import type { MediaRow } from "../types/media";
-import { setMediaWatched } from "../services";
+import { setMediaWatched } from "../services/media-service";
 
 type ExecuteMarkMediaWatchedOptions = {
     mediaId: number;

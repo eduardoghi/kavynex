@@ -10,7 +10,7 @@ import {
 } from "../../utils/media-library-filters";
 import { useChannelMediaList } from "./use-channel-media-list";
 
-vi.mock("../../services", () => ({
+vi.mock("../../services/media-service", () => ({
     listChannelMediaPage: vi.fn(),
 }));
 
@@ -22,7 +22,7 @@ vi.mock("../../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-import { listChannelMediaPage } from "../../services";
+import { listChannelMediaPage } from "../../services/media-service";
 import { logError } from "../../utils/app-logger";
 
 // The page size both sides are calibrated against. Resolved from the repo root (vitest's cwd), not

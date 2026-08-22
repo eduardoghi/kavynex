@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../services", () => ({
+vi.mock("../services/channel-service", () => ({
     createChannel: vi.fn(),
 }));
 
-import { createChannel } from "../services";
+import { createChannel } from "../services/channel-service";
 import { executeCreateChannel } from "./create-channel";
 
 const createChannelMock = vi.mocked(createChannel);

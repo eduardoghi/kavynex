@@ -4,7 +4,7 @@ import type { MediaRow } from "../../types/media";
 import type { MediaPage } from "../../types/generated/MediaPage";
 import { useMediaLibrary } from "./use-media-library";
 import { saveMediaProgress as persistMediaProgress } from "../../services/media-service";
-import { listChannelMediaPage } from "../../services";
+import { listChannelMediaPage } from "../../services/media-service";
 import { DEFAULT_MEDIA_QUERY_FILTERS } from "../../utils/media-library-filters";
 
 // useChannelMediaList and useMediaPlayer are exercised for real (not mocked) below, so the
@@ -18,8 +18,10 @@ vi.mock("../../services/media-service", () => ({
     saveMediaProgress: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../services", () => ({
+vi.mock("../../services/media-service", () => ({
     listChannelMediaPage: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    saveMediaProgress: vi.fn().mockResolvedValue(undefined),
+    listMediaComments: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../../services/library-service", () => ({

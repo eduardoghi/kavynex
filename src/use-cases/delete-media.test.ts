@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaRow } from "../types/media";
 
-vi.mock("../services", () => ({
+vi.mock("../services/media-service", () => ({
     deleteMediaWithFileCleanup: vi.fn(),
 }));
 
-import { deleteMediaWithFileCleanup } from "../services";
+import { deleteMediaWithFileCleanup } from "../services/media-service";
 import { executeDeleteMedia } from "./delete-media";
 
 const deleteMediaWithFileCleanupMock = vi.mocked(deleteMediaWithFileCleanup);

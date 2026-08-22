@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaRow } from "../../types/media";
-import { listChannelMediaPage } from "../../services";
+import { listChannelMediaPage } from "../../services/media-service";
 import {
     isUnfilteredMediaQuery,
     type MediaQueryFilters,

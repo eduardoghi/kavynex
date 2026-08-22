@@ -1,5 +1,5 @@
 import type { MediaRow } from "../types/media";
-import { deleteMediaWithFileCleanup } from "../services";
+import { deleteMediaWithFileCleanup } from "../services/media-service";
 
 type ExecuteDeleteMediaOptions = {
     media: MediaRow;
