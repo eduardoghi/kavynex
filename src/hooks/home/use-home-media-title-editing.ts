@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useMemoObject } from "../use-memo-object";
 import type { MediaRow } from "../../types/media";
 
 type UseHomeMediaTitleEditingOptions = {
@@ -46,11 +47,14 @@ export function useHomeMediaTitleEditing({
         [editMediaTitle]
     );
 
-    return {
+    // Reference-stable, per CONTRIBUTING.md's hook conventions: the identity only changes when a
+    // field does, so a consumer that depends on the whole controller is not invalidated on every
+    // render of the page that calls this.
+    return useMemoObject({
         editTitleMedia,
         isSavingTitle,
         handleEditTitle,
         closeEditTitle,
         handleSaveMediaTitle,
-    };
+    });
 }

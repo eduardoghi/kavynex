@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useMemoObject } from "../use-memo-object";
 import type { DiagnosticsMediaTarget } from "../../types/diagnostics";
 
 type UseHomeDiagnosticsFocusOptions = {
@@ -39,5 +40,6 @@ export function useHomeDiagnosticsFocus({
         setFocusMediaId(null);
     }, []);
 
-    return { focusMediaId, handleOpenDiagnosticsMedia, handleFocusMediaHandled };
+    // Reference-stable, per CONTRIBUTING.md's hook conventions (see use-home-media-title-editing).
+    return useMemoObject({ focusMediaId, handleOpenDiagnosticsMedia, handleFocusMediaHandled });
 }
