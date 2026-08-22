@@ -769,32 +769,6 @@ fn file_modified_sort_key(path: &Path) -> SystemTime {
         .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
-fn alternative_destination_path(path: &Path) -> AppResult<PathBuf> {
-    let parent = path.parent().ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::InvalidDestinationPath,
-            "destination path has no parent directory",
-        )
-    })?;
-
-    let stem = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("file");
-
-    let extension = path.extension().and_then(|value| value.to_str());
-
-    let suffix = unique_temp_suffix();
-
-    let file_name = match extension {
-        Some(ext) if !ext.trim().is_empty() => format!("{stem}.migrated-{suffix}.{ext}"),
-        _ => format!("{stem}.migrated-{suffix}"),
-    };
-
-    Ok(parent.join(file_name))
-}
-
 pub fn find_latest_matching_file(dir: &Path, prefix: &str) -> AppResult<PathBuf> {
     if !dir.exists() || !dir.is_dir() {
         return Err(AppError::from_code(
@@ -1029,98 +1003,6 @@ pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> App
         }
 
         copy_file_atomic(&source_path, &destination_path)?;
-    }
-
-    Ok(())
-}
-
-pub fn migrate_directory_contents(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
-    if !source_dir.exists() {
-        return Ok(());
-    }
-
-    if !source_dir.is_dir() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidSourceDirectory,
-            "source directory path is not a directory",
-        ));
-    }
-
-    fs::create_dir_all(destination_dir).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::CreateDirectoryFailed,
-            "failed to create directory",
-            destination_dir,
-            &e,
-        )
-    })?;
-
-    for entry in fs::read_dir(source_dir).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::ReadDirFailed,
-            "failed to read directory",
-            source_dir,
-            &e,
-        )
-    })? {
-        let entry = entry.map_err(|e| {
-            AppError::fs_error(
-                AppErrorCode::ReadDirEntryFailed,
-                "failed to read directory entry",
-                source_dir,
-                &e,
-            )
-        })?;
-
-        // Skip symlinks before any is_dir()/is_file() check (both follow the link): a symlinked
-        // directory would let the recursion escape the tree or loop forever, and it must never be
-        // removed as if it were a real subdirectory of the library being migrated.
-        if dir_entry_is_symlink(&entry) {
-            continue;
-        }
-
-        let source_path = entry.path();
-        let destination_path = destination_dir.join(entry.file_name());
-
-        if source_path.is_dir() {
-            migrate_directory_contents(&source_path, &destination_path)?;
-
-            if let Err(error) = fs::remove_dir(&source_path) {
-                if error.kind() != ErrorKind::NotFound {
-                    eprintln!(
-                        "skipping non-empty or locked source directory removal during migration: {} ({})",
-                        source_path.to_string_lossy(),
-                        error
-                    );
-                }
-            }
-
-            continue;
-        }
-
-        if !source_path.is_file() {
-            continue;
-        }
-
-        if destination_path.exists() {
-            if !destination_path.is_file() {
-                return Err(AppError::from_code(
-                    AppErrorCode::InvalidDestinationFile,
-                    "destination path exists but is not a file",
-                ));
-            }
-
-            if file_paths_have_same_content(&source_path, &destination_path)? {
-                let _ = fs::remove_file(&source_path);
-                continue;
-            }
-
-            let renamed_destination = alternative_destination_path(&destination_path)?;
-            move_or_copy_file(&source_path, &renamed_destination)?;
-            continue;
-        }
-
-        move_or_copy_file(&source_path, &destination_path)?;
     }
 
     Ok(())

@@ -152,12 +152,10 @@ exclude_re = [
     'error.kind\(\) == ErrorKind::NotFound.* in replace_file_safely',
     'replace == with != in replace_file_safely',
     # Equivalent: gates only an eprintln diagnostic during migration.
-    'replace != with == in migrate_directory_contents',
     # cfg-split: the symlink-cycle test is cfg(unix). The `-> true` counterpart stays in scope.
     'replace dir_entry_is_symlink -> bool with false',
     # Equivalent: differs from `true` only for an empty extension, which Path::extension never
     # yields. The `with false` / `delete !` variants are killed by the migration extension test.
-    'replace match guard !ext.trim\(\).is_empty\(\) with true in alternative_destination_path',
     # Boundary: the WAL-checkpoint "still in use" branch needs a second connection holding a lock on
     # the source during the import. The valid path is exercised by the import tests.
     'replace && with \|\| in stage_database_import',
