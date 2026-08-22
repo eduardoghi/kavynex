@@ -738,6 +738,72 @@ mod tests {
         assert!(!needs_migration(SCHEMA_VERSION, SCHEMA_VERSION));
     }
 
+    /// The column names `seed_database_at_version` actually put on `videos` for that version.
+    async fn seeded_videos_columns(pool: &SqlitePool) -> Vec<String> {
+        sqlx::query_scalar::<_, String>("SELECT name FROM pragma_table_info('videos')")
+            .fetch_all(pool)
+            .await
+            .expect("read the seeded videos columns")
+    }
+
+    #[tokio::test]
+    async fn the_migration_fixture_still_models_a_database_missing_each_additive_column() {
+        // This does not test the migrations. It tests the *fixture* the migration matrix below runs
+        // on, and it exists because that fixture is the one thing in this file that can stop
+        // covering something without anything turning red.
+        //
+        // The failure it guards is specific and has already shipped once in its other half: an index
+        // in INDEX_DDLS names a column that only a later migration adds, and the index-only
+        // migrations (v8/v9/v12) re-run the whole list, so they reach it on a database that does not
+        // have the column yet. `ensure_videos_additive_columns` is what makes that work, and it is
+        // called first in every one of those paths for exactly this reason.
+        //
+        // That direction is already caught loudly: breaking it (a column added to VIDEOS_TABLE_DDL
+        // and indexed, but left out of VIDEOS_ADDITIVE_COLUMNS) fails seven tests here with
+        // "no such column", the matrix below among them. Verified by doing it.
+        //
+        // What nothing caught is the fixture drifting the other way. `seed_database_at_version`
+        // hand-builds each era's `videos` table, and a new additive column added to that string
+        // unconditionally (rather than behind a version guard) makes every seeded database carry it.
+        // The matrix still passes, every migration still runs, and the guarded-ALTER path they all
+        // depend on is never exercised against a table missing the column again. The suite gets
+        // quieter while covering less, which is the shape of regression that survives.
+        //
+        // So the property asserted is coverage, not correctness: for each additive column there has
+        // to be at least one seeded version whose `videos` table does not have it.
+        //
+        // The range starts at 0 rather than at the baseline, and that is the point rather than a
+        // convenience. Three of the five columns (`is_live`, `has_live_chat`,
+        // `live_chat_file_path`) arrive *with* `apply_baseline_schema`, so a v7 database legitimately
+        // carries them and the only era that can be missing them is below the baseline. That path
+        // exercises the same guarded ALTER: the baseline calls `ensure_videos_additive_columns`
+        // before its own INDEX_DDLS loop, for the same reason v8/v9/v12 do.
+        for (column, _) in VIDEOS_ADDITIVE_COLUMNS {
+            let mut missing_at = Vec::new();
+
+            for version in 0..=SCHEMA_VERSION {
+                let pool = memory_pool().await;
+                seed_database_at_version(&pool, version).await;
+
+                if !seeded_videos_columns(&pool)
+                    .await
+                    .iter()
+                    .any(|name| name == column)
+                {
+                    missing_at.push(version);
+                }
+            }
+
+            assert!(
+                !missing_at.is_empty(),
+                "every seeded version already carries `{column}`, so no migration is ever exercised \
+                 against a videos table missing it. Either the column's guard in \
+                 seed_database_at_version was dropped, or it was added to the base column list \
+                 instead of behind its version"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn every_historical_version_migrates_to_the_current_schema() {
         // The gap this closes: the individual migration tests below each start from one chosen
