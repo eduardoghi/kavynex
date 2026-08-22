@@ -93,12 +93,22 @@ pub async fn update_media_duration(
     repo::update_media_duration(&pool, media_id, duration_seconds).await
 }
 
+/// Records where playback stopped, so the player can resume there.
+///
+/// A negative value is clamped to zero rather than refused. It arrives over IPC, and a position is
+/// only ever a count of seconds from the start, so anything below that means "the start". Clamping
+/// matches the repository's own shape for this command (idempotent, a no-op when the media is
+/// watched or gone, never an error for a position that simply does not apply), and keeps the
+/// column from holding a value the player would then have to clamp itself on resume.
+/// `update_media_duration` above normalizes its value for the same reason.
 #[tauri::command]
 pub async fn update_media_progress(
     db: State<'_, Db>,
     media_id: i64,
     progress_seconds: i64,
 ) -> AppResult<()> {
+    let progress_seconds = progress_seconds.max(0);
+
     let pool = db.pool().await?;
     repo::update_media_progress(&pool, media_id, progress_seconds).await
 }
@@ -338,6 +348,35 @@ mod tests {
         assert_eq!(
             first_media_item(&webview, channel_id)["progress_seconds"],
             87
+        );
+    }
+
+    #[test]
+    fn update_media_progress_clamps_a_negative_position_to_zero_over_ipc() {
+        // The renderer sends Math.floor(currentTime), which is never negative, but this value
+        // crosses the trust boundary and the sibling duration command already normalizes its own.
+        // The column must not hold a position the player would have to clamp on resume.
+        let webview = test_webview(memory_db());
+        let channel_id = seed_channel(&webview);
+        let media_id = insert_media_row(&webview, channel_id, "video/media_x.mp4");
+
+        invoke(
+            &webview,
+            "update_media_progress",
+            serde_json::json!({ "mediaId": media_id, "progressSeconds": 87 }),
+        )
+        .unwrap();
+
+        invoke(
+            &webview,
+            "update_media_progress",
+            serde_json::json!({ "mediaId": media_id, "progressSeconds": -30 }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            first_media_item(&webview, channel_id)["progress_seconds"],
+            0
         );
     }
 
