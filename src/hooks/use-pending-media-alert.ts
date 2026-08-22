@@ -14,11 +14,19 @@ type UsePendingMediaAlertOptions = {
 // The user-facing message for artifacts the startup sweep stopped retrying. Written for someone who
 // has never heard of a "pending media marker": what it means to them is disk space in use with
 // nothing pointing at it, and one place to go about it.
+//
+// It names the file manager rather than stopping at Diagnostics, because Diagnostics reports and
+// never deletes. This used to end with "open Diagnostics to review the unreferenced files and
+// remove them", which sent the user to a screen that has no such action and left the real last step
+// unwritten. What the screen does offer is the path itself, as a link that shows the file where it
+// lives (see the reveal action in use-diagnostics), so the two halves of the instruction are now
+// both true and both reachable.
 function abandonedMessage(abandoned: number): string {
     return (
         `${formatCount(abandoned, "unfinished media import")} left files in your library that no ` +
         "entry points at, and the app has stopped retrying them automatically. Nothing was lost. " +
-        "Open Diagnostics to review the unreferenced files and remove them if you no longer want them."
+        "Open Diagnostics to see which files they are, then click one to show it in your file " +
+        "manager and delete it there if you no longer want it."
     );
 }
 
