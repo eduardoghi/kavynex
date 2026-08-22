@@ -356,7 +356,8 @@ startup-deferred import in `import.rs`, the user-triggered export and the extern
 the machinery more than one of them needs (the scratch connection pool, the `quick_check` helper,
 the sibling-path builder, the generation rotation), plus `managed_database_paths`, which is the map
 of every file the module owns and therefore belongs to none of the five. The tests for all of them
-are in `mod.rs` too, because most of them exercise more than one machine in the same scenario.
+are `mod.rs`'s own `mod tests` too (kept in `tests.rs` beside it), because most of them exercise more
+than one machine in the same scenario.
 
 ### Automatic backup (`backup_database`)
 
@@ -536,6 +537,6 @@ live connection pool is a singleton that cannot be reopened mid-session:
 - `src-tauri/src/services/db_backup/`: the automatic snapshot (`snapshot.rs`), the restore
   (`restore.rs`), the startup-deferred import (`import.rs`), the throttled integrity check
   (`integrity.rs`), export and the external mirror (`external.rs`), and the machinery they share
-  plus every test (`mod.rs`).
+  plus every test (`tests.rs`, the `mod tests` of `mod.rs`).
 - `src-tauri/src/commands/database.rs`: the Tauri commands exposing these operations.
 - `src/services/database-service.ts`: the frontend service calling those commands.
