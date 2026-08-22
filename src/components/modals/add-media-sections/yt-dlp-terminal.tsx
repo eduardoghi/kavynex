@@ -10,6 +10,11 @@ type YtDlpTerminalProps = {
     visible: boolean;
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
+    // The whole import, not just the yt-dlp process. yt-dlp exits well before the import
+    // does, and registering the media, fetching comments and fetching live chat all run
+    // after it. Reporting only the process meant the panel went green on READY while the
+    // log underneath was still printing "Fetching YouTube comments...".
+    isImporting?: boolean;
     ytDlpProgress: YtDlpProgress | null;
 };
 
@@ -48,6 +53,7 @@ export function YtDlpTerminal({
     visible,
     ytDlpLogs,
     isYtDlpRunning,
+    isImporting = false,
     ytDlpProgress,
 }: YtDlpTerminalProps): JSX.Element | null {
     const terminalViewportRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +110,13 @@ export function YtDlpTerminal({
     // delta while the scrollback stays a normal, browsable region.
     const latestLine = ytDlpLogs[ytDlpLogs.length - 1]?.text ?? "";
 
+    // Nothing has run and nothing was captured. The scrollback is a 220px minimum black
+    // box holding one sentence at that point, which is most of the modal before the user
+    // has done anything. It collapses to the heading and that sentence, and comes back at
+    // full height the moment a run starts or a line arrives.
+    const isRunning = isYtDlpRunning || isImporting;
+    const isIdle = !isRunning && ytDlpLogs.length === 0;
+
     return (
         <Box>
             <VisuallyHidden role="log" aria-live="polite" aria-label="yt-dlp latest output">
@@ -117,83 +130,87 @@ export function YtDlpTerminal({
 
                 <Badge
                     variant="light"
-                    color={
-                        isYtDlpRunning ? "yellow" : ytDlpLogs.length > 0 ? "green" : "gray"
-                    }
+                    color={isRunning ? "yellow" : ytDlpLogs.length > 0 ? "green" : "gray"}
                 >
-                    {isYtDlpRunning ? "running" : ytDlpLogs.length > 0 ? "ready" : "idle"}
+                    {isRunning ? "running" : ytDlpLogs.length > 0 ? "ready" : "idle"}
                 </Badge>
             </Group>
 
-            <Box
-                style={{
-                    borderRadius: rem(14),
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "#05070C",
-                    overflow: "hidden",
-                }}
-            >
+            {isIdle ? (
+                <Text size="sm" c="dimmed">
+                    The yt-dlp execution log will appear here.
+                </Text>
+            ) : (
                 <Box
-                    ref={terminalViewportRef}
-                    aria-label="yt-dlp output"
                     style={{
-                        height: TERMINAL_HEIGHT,
-                        overflowY: "auto",
-                        overflowX: "hidden",
-                        padding: rem(14),
-                        fontFamily:
-                            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
-                        fontSize: rem(13),
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
-                        lineHeight: 1.6,
+                        borderRadius: rem(14),
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "#05070C",
+                        overflow: "hidden",
                     }}
                 >
-                    {ytDlpLogs.length > 0 ? (
-                        <Box
-                            style={{
-                                height: `${totalSize}px`,
-                                width: "100%",
-                                position: "relative",
-                            }}
-                        >
-                            {virtualRows.map((virtualRow) => {
-                                const line = ytDlpLogs[virtualRow.index];
+                    <Box
+                        ref={terminalViewportRef}
+                        aria-label="yt-dlp output"
+                        style={{
+                            height: TERMINAL_HEIGHT,
+                            overflowY: "auto",
+                            overflowX: "hidden",
+                            padding: rem(14),
+                            fontFamily:
+                                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+                            fontSize: rem(13),
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            lineHeight: 1.6,
+                        }}
+                    >
+                        {ytDlpLogs.length > 0 ? (
+                            <Box
+                                style={{
+                                    height: `${totalSize}px`,
+                                    width: "100%",
+                                    position: "relative",
+                                }}
+                            >
+                                {virtualRows.map((virtualRow) => {
+                                    const line = ytDlpLogs[virtualRow.index];
 
-                                // The virtualizer only yields in-range indices, so this is never
-                                // null in practice; the guard satisfies the checked-index type.
-                                if (!line) {
-                                    return null;
-                                }
+                                    // The virtualizer only yields in-range indices, so this is never
+                                    // null in practice; the guard satisfies the checked-index type.
+                                    if (!line) {
+                                        return null;
+                                    }
 
-                                return (
-                                    <Text
-                                        key={virtualRow.key}
-                                        ref={virtualizer.measureElement}
-                                        data-index={virtualRow.index}
-                                        component="div"
-                                        c={LINE_COLOR[line.level]}
-                                        style={{
-                                            fontFamily: "inherit",
-                                            position: "absolute",
-                                            top: 0,
-                                            left: 0,
-                                            width: "100%",
-                                            transform: `translateY(${virtualRow.start}px)`,
-                                        }}
-                                    >
-                                        {line.text || " "}
-                                    </Text>
-                                );
-                            })}
-                        </Box>
-                    ) : (
-                        <Text c="dimmed" style={{ fontFamily: "inherit" }}>
-                            The yt-dlp execution log will appear here.
-                        </Text>
-                    )}
+                                    return (
+                                        <Text
+                                            key={virtualRow.key}
+                                            ref={virtualizer.measureElement}
+                                            data-index={virtualRow.index}
+                                            component="div"
+                                            c={LINE_COLOR[line.level]}
+                                            style={{
+                                                fontFamily: "inherit",
+                                                position: "absolute",
+                                                top: 0,
+                                                left: 0,
+                                                width: "100%",
+                                                transform: `translateY(${virtualRow.start}px)`,
+                                            }}
+                                        >
+                                            {line.text || " "}
+                                        </Text>
+                                    );
+                                })}
+                            </Box>
+                        ) : (
+                            <Text c="dimmed" style={{ fontFamily: "inherit" }}>
+                                The yt-dlp execution log will appear here.
+                            </Text>
+                        )}
+                    </Box>
                 </Box>
-            </Box>
+            )}
         </Box>
     );
 }

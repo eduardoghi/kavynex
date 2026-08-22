@@ -202,11 +202,13 @@ describe("AddMediaModal", () => {
             onAdd,
         });
 
-        const button = screen.getByRole("button", { name: /add media/i });
+        // The footer swaps to a progress line while an import runs, so there is no Add
+        // media button left to press. What still has to hold is the submit guard, since
+        // Enter in any input submits the form regardless of what the footer shows.
+        expect(screen.queryByRole("button", { name: /add media/i })).not.toBeInTheDocument();
+        expect(screen.getByText("Importing...")).toBeInTheDocument();
 
-        expect(button).toBeDisabled();
-
-        const form = button.closest("form");
+        const form = document.querySelector("form");
 
         expect(form).not.toBeNull();
 

@@ -1,7 +1,13 @@
-import { Badge, Box, Group, Paper, Text, rem } from "@mantine/core";
+import { Badge, Box, Group, Paper, Text, Tooltip, rem } from "@mantine/core";
 import { Image as ImageIcon } from "lucide-react";
 import type { MediaType } from "../../../types/media";
-import { fileSrcFromPath } from "../../../utils/media-utils";
+import { fileNameFromPath, fileSrcFromPath } from "../../../utils/media-utils";
+import {
+    FILE_PICKER_BACKGROUND,
+    FILE_PICKER_BORDER_COLOR,
+    FILE_PICKER_PREVIEW_STYLE,
+    FILE_PICKER_RADIUS,
+} from "./file-picker-styles";
 
 type ThumbnailSectionProps = {
     thumbPath: string;
@@ -32,12 +38,10 @@ export function ThumbnailSection({
     let badgeColor = "light-dark(rgba(0,0,0,0.58), rgba(255,255,255,0.62))";
     let shouldShowBadge = !hasThumbnail;
 
+    // No badge while the area is unavailable. The heading already says to pick a media
+    // file first and the body says why, so "blocked" was a third way of saying it.
     if (!canSelectThumb) {
-        badgeLabel = "blocked";
-        badgeBackground = "light-dark(rgba(0,0,0,0.045), rgba(255,255,255,0.045))";
-        badgeBorder = "light-dark(rgba(0,0,0,0.10), rgba(255,255,255,0.10))";
-        badgeColor = "light-dark(rgba(0,0,0,0.62), rgba(255,255,255,0.7))";
-        shouldShowBadge = true;
+        shouldShowBadge = false;
     } else if (isGeneratingThumb) {
         badgeLabel = "loading";
         badgeBackground = "rgba(234,179,8,0.13)";
@@ -49,7 +53,7 @@ export function ThumbnailSection({
     return (
         <Paper
             withBorder
-            radius="xl"
+            radius={FILE_PICKER_RADIUS}
             p="md"
             role="button"
             tabIndex={!isBusy && canSelectThumb ? 0 : -1}
@@ -65,12 +69,13 @@ export function ThumbnailSection({
                 }
             }}
             style={{
-                borderStyle: "dashed",
+                // Dashed only while it is still an area to drop a file into. With one
+                // chosen it is a field showing what was chosen, like the media picker
+                // above it.
+                borderStyle: hasThumbnail ? "solid" : "dashed",
                 borderWidth: 1,
-                borderColor: hasThumbnail
-                    ? "rgba(139,92,246,0.24)"
-                    : "light-dark(rgba(0,0,0,0.16), rgba(255,255,255,0.16))",
-                background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
+                borderColor: FILE_PICKER_BORDER_COLOR,
+                background: FILE_PICKER_BACKGROUND,
                 cursor: !canSelectThumb ? "not-allowed" : isBusy ? "progress" : "pointer",
                 userSelect: "none",
                 opacity: !canSelectThumb ? 0.55 : isAudio ? 0.92 : 1,
@@ -81,23 +86,7 @@ export function ThumbnailSection({
             }}
         >
             <Group wrap="nowrap" gap="sm" align="center">
-                <Box
-                    style={{
-                        width: rem(46),
-                        height: rem(46),
-                        display: "grid",
-                        placeItems: "center",
-                        borderRadius: rem(14),
-                        border: hasThumbnail
-                            ? "1px solid rgba(139,92,246,0.18)"
-                            : "1px solid light-dark(rgba(0,0,0,0.12), rgba(255,255,255,0.12))",
-                        background: hasThumbnail
-                            ? "rgba(124,92,255,0.06)"
-                            : "light-dark(rgba(0,0,0,0.03), rgba(255,255,255,0.03))",
-                        flex: "0 0 auto",
-                        overflow: "hidden",
-                    }}
-                >
+                <Box style={FILE_PICKER_PREVIEW_STYLE}>
                     {newThumbSrc ? (
                         <img
                             src={newThumbSrc}
@@ -114,13 +103,24 @@ export function ThumbnailSection({
                 </Box>
 
                 <Box style={{ flex: 1, minWidth: 0 }}>
-                    <Text fw={900} lineClamp={1}>
-                        {!canSelectThumb
-                            ? "Select a media file first"
-                            : hasThumbnail
-                              ? "Thumbnail selected"
-                              : "Click to choose an image for thumbnail (optional)"}
-                    </Text>
+                    {/* One line with an ellipsis, and the whole path on hover, the same
+                        treatment the media picker above uses. The badge beside this already
+                        says optional, so the heading does not need to. */}
+                    <Tooltip
+                        label={thumbPath}
+                        disabled={!hasThumbnail}
+                        withArrow
+                        multiline
+                        w={420}
+                    >
+                        <Text fw={900} truncate>
+                            {!canSelectThumb
+                                ? "Select a media file first"
+                                : hasThumbnail
+                                  ? fileNameFromPath(thumbPath)
+                                  : "Choose thumbnail"}
+                        </Text>
+                    </Tooltip>
 
                     <Text size="sm" c="dimmed" lineClamp={3}>
                         {!canSelectThumb
@@ -130,7 +130,7 @@ export function ThumbnailSection({
                               : isGeneratingThumb
                                 ? "Generating automatic thumbnail..."
                                 : isUrlMode
-                                  ? "Optional. If you don’t choose one, the app will try to download the original thumbnail with yt-dlp, even for audio-only formats"
+                                  ? "If you don’t choose one, the app will try to download the original thumbnail with yt-dlp, including for audio-only formats."
                                   : mediaType === "video"
                                     ? "Automatic thumbnail is generated for videos, but you can replace it"
                                     : "For audio, if you don’t choose an image, it will show an audio icon"}

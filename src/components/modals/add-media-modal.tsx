@@ -3,7 +3,6 @@ import {
     ScrollArea,
     SegmentedControl,
     Stack,
-    Text,
     TextInput,
 } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
@@ -24,6 +23,7 @@ import {
 import { toUnionValue } from "../../utils/guards";
 import { useExternalToolsAvailability } from "../../hooks/use-external-tools-availability";
 import { useModalLock } from "../../hooks/use-modal-lock";
+import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 
 type AddMediaModalProps = {
     opened: boolean;
@@ -109,6 +109,12 @@ export function AddMediaModal({
     onCancelYtDlpDownload,
 }: AddMediaModalProps): JSX.Element {
     const isUrlMode = sourceMode === "yt-dlp";
+
+    // The terminal is the only part of this form that wants a tall dialog, and only once
+    // it has something in it. Before that, URL mode is a form like any other and the fixed
+    // height left a large empty block under the footer.
+    const needsTerminalRoom =
+        isUrlMode && (isYtDlpRunning || ytDlpLogs.length > 0);
     const canSelectThumb = isUrlMode ? true : mediaPath.trim() !== "";
     const isBusy = loading || isGeneratingThumb || isLoadingYtDlpFormats || isCancellingYtDlp;
     const isModalLocked =
@@ -156,7 +162,7 @@ export function AddMediaModal({
         <Modal
             opened={opened}
             {...modalLock}
-            title={<Text fw={900}>Import media</Text>}
+            title="Import media"
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
@@ -175,16 +181,29 @@ export function AddMediaModal({
             // scrolls, putting the scrollbar at the window edge and running a tall form past the
             // screen. offsetScrollbars keeps the bar clear of the rounded corners.
             styles={{
+                title: MODAL_TITLE_STYLE,
                 content: {
-                    height: "min(90vh, 980px)",
+                    // A ceiling rather than a height until the terminal has output, so the
+                    // modal ends where the form does. Once logs arrive it takes the fixed
+                    // height and scrolls inside, which is what the terminal wants.
+                    ...(needsTerminalRoom
+                        ? { height: "min(90vh, 980px)" }
+                        : { maxHeight: "min(90vh, 980px)" }),
                     display: "flex",
                     flexDirection: "column",
                 },
                 body: {
                     flex: 1,
                     minHeight: 0,
-                    overflow: "hidden",
+                    // The ScrollArea owns the scrolling when it has a height to scroll
+                    // within. In local mode it has none, so the body takes over for the
+                    // rare case where a missing-tool alert pushes the form past the ceiling.
+                    overflow: needsTerminalRoom ? "hidden" : "auto",
                 },
+            }}
+            closeButtonProps={{
+                "aria-label": "Close import media",
+                style: MODAL_CLOSE_BUTTON_STYLE,
             }}
         >
             <form
@@ -194,7 +213,12 @@ export function AddMediaModal({
                 }}
                 style={{ display: "contents" }}
             >
-                <ScrollArea h="100%" offsetScrollbars scrollbarSize={10} type="always">
+                <ScrollArea
+                    h={needsTerminalRoom ? "100%" : undefined}
+                    offsetScrollbars
+                    scrollbarSize={10}
+                    type="always"
+                >
                     <Stack gap="md" pr="xs">
                         <ExternalToolsWarning missingTools={missingTools} />
 
@@ -271,14 +295,9 @@ export function AddMediaModal({
                             />
                         )}
 
-                        <YtDlpTerminal
-                            opened={opened}
-                            visible={isUrlMode}
-                            ytDlpLogs={ytDlpLogs}
-                            isYtDlpRunning={isYtDlpRunning}
-                            ytDlpProgress={ytDlpProgress}
-                        />
-
+                        {/* Above the terminal. Picking a thumbnail is part of setting the
+                            import up, and it was sitting after the log of the run it
+                            configures. */}
                         <ThumbnailSection
                             thumbPath={thumbPath}
                             mediaType={mediaType}
@@ -287,6 +306,15 @@ export function AddMediaModal({
                             canSelectThumb={canSelectThumb}
                             isUrlMode={isUrlMode}
                             onPickThumb={onPickThumb}
+                        />
+
+                        <YtDlpTerminal
+                            opened={opened}
+                            visible={isUrlMode}
+                            ytDlpLogs={ytDlpLogs}
+                            isYtDlpRunning={isYtDlpRunning}
+                            isImporting={loading}
+                            ytDlpProgress={ytDlpProgress}
                         />
 
                         <AddMediaModalActions

@@ -29,7 +29,9 @@ describe("ThumbnailSection", () => {
         );
 
         expect(screen.getByText("Select a media file first")).toBeInTheDocument();
-        expect(screen.getByText("blocked")).toBeInTheDocument();
+        // The heading says to pick a media file first and the body says why, so the badge
+        // was a third way of saying it. The state itself is unchanged.
+        expect(screen.queryByText("blocked")).not.toBeInTheDocument();
     });
 
     it("shows selected state when thumbnail exists", () => {
@@ -45,7 +47,9 @@ describe("ThumbnailSection", () => {
             />
         );
 
-        expect(screen.getByText("Thumbnail selected")).toBeInTheDocument();
+        // The real file name, like the media picker above it. "Thumbnail selected" said only
+        // that something was picked, which the preview beside it already shows.
+        expect(screen.getByText("thumb.jpg")).toBeInTheDocument();
         expect(screen.getByText("Click to change thumbnail")).toBeInTheDocument();
         expect(screen.getByAltText("Thumbnail preview")).toHaveAttribute(
             "src",
@@ -106,7 +110,7 @@ describe("ThumbnailSection", () => {
             />
         );
 
-        fireEvent.click(screen.getByText("Click to choose an image for thumbnail (optional)"));
+        fireEvent.click(screen.getByText("Choose thumbnail"));
 
         expect(onPickThumb).toHaveBeenCalled();
     });

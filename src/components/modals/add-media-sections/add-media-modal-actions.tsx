@@ -1,4 +1,4 @@
-import { Group } from "@mantine/core";
+import { Group, Loader, Text } from "@mantine/core";
 import { Video } from "lucide-react";
 import { AppButton } from "../../ui/app-button";
 
@@ -35,23 +35,51 @@ export function AddMediaModalActions({
     // "Cancel download" in front of a file copy would describe the wrong thing.
     const cancellable = isUrlMode ? isYtDlpRunning : isImportingLocalFile;
 
+    // The whole import, not just the yt-dlp process. `loading` stays true through
+    // registering the media and fetching comments and live chat, which is exactly the
+    // window where the footer must not be offering to start another one.
+    const isImporting = loading || isYtDlpRunning;
+
+    if (isImporting) {
+        return (
+            <Group justify="space-between" gap="sm" wrap="nowrap">
+                {/* Progress, not a control. Add media used to sit here as a filled violet
+                    rectangle holding a spinner and nothing else, next to a disabled
+                    Cancel and a Cancel import, three controls for one state. */}
+                <Group gap="xs" wrap="nowrap" role="status" aria-live="polite">
+                    <Loader size="xs" />
+
+                    <Text size="sm" c="dimmed">
+                        {isYtDlpRunning ? "Downloading..." : "Importing..."}
+                    </Text>
+                </Group>
+
+                {cancellable && (
+                    <AppButton
+                        type="button"
+                        appVariant="danger"
+                        onClick={() => void onCancelYtDlpDownload?.()}
+                        disabled={isCancellingYtDlp}
+                    >
+                        {isCancellingYtDlp
+                            ? "Cancelling..."
+                            : isUrlMode
+                              ? "Cancel download"
+                              : "Cancel import"}
+                    </AppButton>
+                )}
+            </Group>
+        );
+    }
+
     return (
         <Group justify="flex-end" gap="sm">
-            {cancellable && (
-                <AppButton
-                    type="button"
-                    appVariant="danger"
-                    onClick={() => void onCancelYtDlpDownload?.()}
-                    loading={isCancellingYtDlp}
-                    disabled={isCancellingYtDlp}
-                >
-                    {isUrlMode ? "Cancel download" : "Cancel import"}
-                </AppButton>
-            )}
-
+            {/* Bordered rather than ghost, matching the other modals. Beside a filled Add
+                media it was reading as loose text instead of the other half of the
+                decision. */}
             <AppButton
                 type="button"
-                appVariant="ghost"
+                appVariant="secondary"
                 onClick={onClose}
                 disabled={isModalLocked}
             >
@@ -62,8 +90,7 @@ export function AddMediaModalActions({
                 type="submit"
                 appVariant="primary"
                 leftSection={<Video size={18} />}
-                disabled={!canSubmit || isBusy || isYtDlpRunning}
-                loading={loading}
+                disabled={!canSubmit || isBusy}
             >
                 Add media
             </AppButton>

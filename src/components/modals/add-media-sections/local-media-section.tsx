@@ -1,7 +1,15 @@
-import { Badge, Box, Group, Text, rem } from "@mantine/core";
-import { Upload } from "lucide-react";
+import { Box, Group, Text, Tooltip } from "@mantine/core";
+import { Headphones, Upload, Video } from "lucide-react";
 import type { MediaType } from "../../../types/media";
+import { MEDIA_TYPE_ACCENT_COLOR } from "../../../constants/media-type-accent";
 import { fileNameFromPath } from "../../../utils/media-utils";
+import {
+    FILE_PICKER_BACKGROUND,
+    FILE_PICKER_BORDER_COLOR,
+    FILE_PICKER_PADDING,
+    FILE_PICKER_PREVIEW_STYLE,
+    FILE_PICKER_RADIUS,
+} from "./file-picker-styles";
 
 type LocalMediaSectionProps = {
     mediaPath: string;
@@ -18,6 +26,7 @@ export function LocalMediaSection({
 }: LocalMediaSectionProps): JSX.Element {
     const hasMedia = mediaPath.trim() !== "";
     const isAudio = mediaType === "audio";
+    const typeLabel = isAudio ? "Audio" : "Video";
 
     return (
         <Box
@@ -35,12 +44,10 @@ export function LocalMediaSection({
                 }
             }}
             style={{
-                borderRadius: rem(14),
-                border: hasMedia
-                    ? "1px solid rgba(139,92,246,0.18)"
-                    : "1px solid light-dark(rgba(0,0,0,0.18), rgba(255,255,255,0.18))",
-                background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
-                padding: rem(16),
+                borderRadius: FILE_PICKER_RADIUS,
+                border: `1px solid ${FILE_PICKER_BORDER_COLOR}`,
+                background: FILE_PICKER_BACKGROUND,
+                padding: FILE_PICKER_PADDING,
                 cursor: isLocked ? "progress" : "pointer",
                 userSelect: "none",
                 opacity: isLocked ? 0.7 : 1,
@@ -50,62 +57,55 @@ export function LocalMediaSection({
             }}
         >
             <Group wrap="nowrap" gap="sm" align="center">
-                <Box
-                    style={{
-                        width: rem(42),
-                        height: rem(42),
-                        display: "grid",
-                        placeItems: "center",
-                        borderRadius: rem(12),
-                        border: hasMedia
-                            ? "1px solid rgba(139,92,246,0.18)"
-                            : "1px solid light-dark(rgba(0,0,0,0.12), rgba(255,255,255,0.12))",
-                        background: hasMedia
-                            ? "rgba(124,92,255,0.06)"
-                            : "light-dark(rgba(0,0,0,0.06), rgba(0,0,0,0.25))",
-                        flex: "0 0 auto",
-                    }}
-                >
-                    <Upload size={20} />
-                </Box>
+                {/* The leading square says which kind of file is loaded, using the glyph
+                    and colour the library cards use. It held an upload arrow while a second
+                    icon reported the type from the far end of the row, which is two marks
+                    for one fact. Empty, it is still the upload arrow and still decorative,
+                    since the line beside it says what to do. */}
+                <Tooltip label={typeLabel} disabled={!hasMedia} withArrow>
+                    <Box
+                        role={hasMedia ? "img" : undefined}
+                        aria-label={hasMedia ? typeLabel : undefined}
+                        style={{
+                            ...FILE_PICKER_PREVIEW_STYLE,
+                            ...(hasMedia
+                                ? {
+                                      color: isAudio
+                                          ? MEDIA_TYPE_ACCENT_COLOR.audio
+                                          : MEDIA_TYPE_ACCENT_COLOR.video,
+                                  }
+                                : null),
+                        }}
+                    >
+                        {hasMedia ? (
+                            isAudio ? (
+                                <Headphones size={20} />
+                            ) : (
+                                <Video size={20} />
+                            )
+                        ) : (
+                            <Upload size={20} />
+                        )}
+                    </Box>
+                </Tooltip>
 
                 <Box style={{ flex: 1, minWidth: 0 }}>
-                    <Text fw={900} lineClamp={1}>
-                        {hasMedia
-                            ? fileNameFromPath(mediaPath)
-                            : "Choose a video/audio file to import"}
-                    </Text>
+                    {/* One line with an ellipsis, and the whole path on hover. A long file
+                        name used to run the row wide enough to drag the rest of it out of
+                        alignment. */}
+                    <Tooltip label={mediaPath} disabled={!hasMedia} withArrow multiline w={420}>
+                        <Text fw={900} truncate>
+                            {hasMedia
+                                ? fileNameFromPath(mediaPath)
+                                : "Choose a video/audio file to import"}
+                        </Text>
+                    </Tooltip>
 
                     <Text size="sm" c="dimmed" lineClamp={2}>
                         {hasMedia ? "Click to change file" : "Click to choose a file"}
                     </Text>
                 </Box>
 
-                <Badge
-                    variant="outline"
-                    style={{
-                        flexShrink: 0,
-                        paddingInline: rem(8),
-                        background: hasMedia
-                            ? isAudio
-                                ? "rgba(249,115,22,0.13)"
-                                : "rgba(59,130,246,0.13)"
-                            : "light-dark(rgba(0,0,0,0.05), rgba(255,255,255,0.055))",
-                        borderColor: hasMedia
-                            ? isAudio
-                                ? "rgba(249,115,22,0.34)"
-                                : "rgba(59,130,246,0.34)"
-                            : "light-dark(rgba(0,0,0,0.14), rgba(255,255,255,0.14))",
-                        color: hasMedia
-                            ? isAudio
-                                ? "rgb(253,186,116)"
-                                : "rgb(147,197,253)"
-                            : "light-dark(rgba(0,0,0,0.58), rgba(255,255,255,0.62))",
-                        fontWeight: 800,
-                    }}
-                >
-                    {hasMedia ? (isAudio ? "audio" : "video") : "empty"}
-                </Badge>
             </Group>
         </Box>
     );

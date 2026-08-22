@@ -1,6 +1,5 @@
 import {
     ActionIcon,
-    Badge,
     Box,
     Checkbox,
     Group,
@@ -8,19 +7,11 @@ import {
     Stack,
     Text,
     TextInput,
-    rem,
 } from "@mantine/core";
 import { FileText, Link as LinkIcon, ListVideo, X } from "lucide-react";
-import type { ReactNode } from "react";
 import type { YtDlpFormatOption } from "../../../types/media";
 import { COOKIES_BROWSER_SELECT_OPTIONS } from "../../../constants/cookies-browsers";
 import { formatBytes } from "../../../utils/media-utils";
-import {
-    type BadgeTone,
-    buildFormatBadgeLabel,
-    buildFormatBadgeTone,
-    getBadgeStyle,
-} from "../../../utils/yt-dlp-format-badge";
 import { AppButton } from "../../ui/app-button";
 
 type YtDlpSectionProps = {
@@ -43,31 +34,6 @@ type YtDlpSectionProps = {
     onLoadYtDlpFormats: () => void | Promise<void>;
 };
 
-function StatusBadge({
-    children,
-    tone,
-}: {
-    children: ReactNode;
-    tone: BadgeTone;
-}): JSX.Element {
-    const badgeStyle = getBadgeStyle(tone);
-
-    return (
-        <Badge
-            variant="outline"
-            style={{
-                flexShrink: 0,
-                paddingInline: rem(8),
-                background: badgeStyle.background,
-                borderColor: badgeStyle.borderColor,
-                color: badgeStyle.color,
-                fontWeight: 800,
-            }}
-        >
-            {children}
-        </Badge>
-    );
-}
 
 export function YtDlpSection({
     mediaUrl,
@@ -112,7 +78,7 @@ export function YtDlpSection({
             />
 
             <Select
-                label="Authentication"
+                label="YouTube authentication"
                 placeholder="Optional"
                 value={cookiesBrowser || null}
                 onChange={(value) => onChangeCookiesBrowser(value ?? "")}
@@ -163,9 +129,16 @@ export function YtDlpSection({
                     </Text>
                 </Box>
 
+                {/* Filled only while it is the next thing to do. Once formats are loaded
+                    the next step is Add media, and two filled buttons on one screen say
+                    nothing about which. */}
                 <AppButton
                     type="button"
-                    appVariant="secondary"
+                    appVariant={
+                        canLoadFormats && ytDlpFormats.length === 0
+                            ? "primary"
+                            : "secondary"
+                    }
                     leftSection={<ListVideo size={16} />}
                     onClick={() => void onLoadYtDlpFormats()}
                     loading={isLoadingYtDlpFormats}
@@ -193,6 +166,15 @@ export function YtDlpSection({
                 disabled={isLocked || ytDlpFormats.length === 0}
             />
 
+            {/* The option text above already carries the stream, resolution, container,
+                codec, bitrate, protocol and size, so the id is the one thing worth adding
+                under it. A panel at the foot of the section used to repeat all of them. */}
+            {selectedFormat && (
+                <Text size="xs" c="dimmed">
+                    Format ID: {selectedFormat.format_id}
+                </Text>
+            )}
+
             <Checkbox
                 label="Save YouTube comments"
                 description="When enabled, the app fetches and stores comments during import."
@@ -208,61 +190,6 @@ export function YtDlpSection({
                 onChange={(event) => onChangeDownloadLiveChat(event.currentTarget.checked)}
                 disabled={isLocked}
             />
-
-            <Group gap="xs" wrap="wrap">
-                <StatusBadge tone={ytDlpFormats.length > 0 ? "violet" : "neutral"}>
-                    {ytDlpFormats.length} FORMAT(S)
-                </StatusBadge>
-
-                <StatusBadge tone={buildFormatBadgeTone(selectedFormat)}>
-                    {buildFormatBadgeLabel(selectedFormat)}
-                </StatusBadge>
-
-                <StatusBadge tone={selectedFormat ? "green" : "neutral"}>
-                    {selectedFormat
-                        ? formatBytes(selectedFormat.filesize_bytes).toUpperCase()
-                        : "SIZE UNKNOWN"}
-                </StatusBadge>
-
-                <StatusBadge tone={downloadComments ? "violet" : "neutral"}>
-                    {downloadComments ? "COMMENTS ON" : "COMMENTS OFF"}
-                </StatusBadge>
-
-                <StatusBadge tone={downloadLiveChat ? "red" : "neutral"}>
-                    {downloadLiveChat ? "LIVE CHAT ON" : "LIVE CHAT OFF"}
-                </StatusBadge>
-
-                <StatusBadge tone={cookiesBrowser ? "blue" : "neutral"}>
-                    {cookiesBrowser
-                        ? cookiesBrowser === "manual"
-                            ? "COOKIES: MANUAL"
-                            : `COOKIES: ${cookiesBrowser.toUpperCase()}`
-                        : "NO COOKIES"}
-                </StatusBadge>
-            </Group>
-
-            {selectedFormat && (
-                <Box
-                    style={{
-                        borderRadius: rem(14),
-                        border: "1px solid light-dark(rgba(0,0,0,0.12), rgba(255,255,255,0.12))",
-                        background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
-                        padding: rem(12),
-                    }}
-                >
-                    <Stack gap={4}>
-                        <Text fw={800}>Selected format</Text>
-
-                        <Text size="sm">{selectedFormat.display_name}</Text>
-
-                        <Text size="sm" c="dimmed">
-                            Format id: {selectedFormat.format_id} · Extension:{" "}
-                            {selectedFormat.ext.toUpperCase()} · Estimated size:{" "}
-                            {formatBytes(selectedFormat.filesize_bytes)}
-                        </Text>
-                    </Stack>
-                </Box>
-            )}
         </Stack>
     );
 }

@@ -4,6 +4,7 @@ import { Headphones, MessageCircle, Video } from "lucide-react";
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import { MediaCardActionsMenu } from "./media-card-actions-menu";
 import { MediaCardThumbnail } from "./media-card-thumbnail";
+import { MEDIA_TYPE_ACCENT_COLOR } from "../../constants/media-type-accent";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
 import { formatDuration, formatPublishedDate, isMediaWatched } from "../../utils/media-utils";
@@ -99,7 +100,7 @@ const MEDIA_TYPE_BADGE_STYLE_AUDIO: CSSProperties = {
     flexShrink: 0,
     background: "rgba(249,115,22,0.13)",
     borderColor: "rgba(249,115,22,0.34)",
-    color: "light-dark(#C2410C, rgb(253,186,116))",
+    color: MEDIA_TYPE_ACCENT_COLOR.audio,
     fontWeight: 800,
 };
 
@@ -107,7 +108,7 @@ const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
     flexShrink: 0,
     background: "rgba(59,130,246,0.13)",
     borderColor: "rgba(59,130,246,0.34)",
-    color: "light-dark(#1D4ED8, rgb(147,197,253))",
+    color: MEDIA_TYPE_ACCENT_COLOR.video,
     fontWeight: 800,
 };
 

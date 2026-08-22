@@ -56,10 +56,11 @@ describe("YtDlpSection", () => {
 
         expect(screen.getByLabelText("Media URL")).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Load formats" })).toBeDisabled();
-        expect(screen.getByText("0 FORMAT(S)")).toBeInTheDocument();
-        expect(screen.getByText("COMMENTS ON")).toBeInTheDocument();
-        expect(screen.getByText("LIVE CHAT ON")).toBeInTheDocument();
-        expect(screen.getByText("NO COOKIES")).toBeInTheDocument();
+        // The status badges are gone. Two of them reported the state of a checkbox two
+        // lines above, and the rest repeated the selects beside them.
+        expect(screen.queryByText("0 FORMAT(S)")).not.toBeInTheDocument();
+        expect(screen.queryByText("COMMENTS ON")).not.toBeInTheDocument();
+        expect(screen.queryByText("NO COOKIES")).not.toBeInTheDocument();
     });
 
     it("calls media url change handler", () => {
@@ -161,13 +162,11 @@ describe("YtDlpSection", () => {
             selectedYtDlpFormatId: "best",
         });
 
-        expect(screen.getByText("1 FORMAT(S)")).toBeInTheDocument();
-        expect(screen.getAllByText("VIDEO + AUDIO").length).toBeGreaterThan(0);
-        expect(screen.getByText("Selected format")).toBeInTheDocument();
+        // The option text carries the stream, resolution, container, codec, bitrate and
+        // size, so the only thing worth printing under the select is the id.
+        expect(screen.getByText("Format ID: best")).toBeInTheDocument();
+        expect(screen.queryByText("Selected format")).not.toBeInTheDocument();
 
-        expect(
-            screen.getByText((content) => content.includes("Format id: best"))
-        ).toBeInTheDocument();
     });
 
     it("shows manual cookies file controls", () => {

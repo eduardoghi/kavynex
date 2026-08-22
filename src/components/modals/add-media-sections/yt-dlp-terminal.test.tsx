@@ -166,4 +166,38 @@ describe("YtDlpTerminal", () => {
         // The earlier line is not announced again, but stays rendered in the browsable scrollback.
         expect(screen.getByText("Downloading...")).toBeInTheDocument();
     });
+
+    it("stays running while the import continues past yt-dlp", () => {
+        // yt-dlp exits well before the import does. Registering the media, fetching comments
+        // and fetching live chat all run after it, and the panel used to go green on ready
+        // while the log under it was still printing those steps.
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("Fetching YouTube comments...")}
+                isYtDlpRunning={false}
+                isImporting
+                ytDlpProgress={null}
+            />
+        );
+
+        expect(screen.getByText("running")).toBeInTheDocument();
+        expect(screen.queryByText("ready")).not.toBeInTheDocument();
+    });
+
+    it("reports ready once nothing is running any more", () => {
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("Media registered successfully.")}
+                isYtDlpRunning={false}
+                isImporting={false}
+                ytDlpProgress={null}
+            />
+        );
+
+        expect(screen.getByText("ready")).toBeInTheDocument();
+    });
 });
