@@ -1,6 +1,7 @@
 import { memo, type CSSProperties } from "react";
 import { Badge, Box, Group, Stack, Text, Tooltip, rem } from "@mantine/core";
-import { Headphones, MessageCircle, Video } from "lucide-react";
+import { Headphones, MessageCircle, Radio, Video } from "lucide-react";
+import { LIVE_BADGE_STYLE } from "../../constants/live-badge";
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import { MediaCardActionsMenu } from "./media-card-actions-menu";
 import { MediaCardThumbnail } from "./media-card-thumbnail";
@@ -77,13 +78,6 @@ const PUBLISHED_TEXT_STYLE: CSSProperties = {
     flex: 1,
 };
 
-const CHAT_BADGE_STYLE: CSSProperties = {
-    flexShrink: 0,
-    background: "rgba(239,68,68,0.14)",
-    borderColor: "rgba(239,68,68,0.34)",
-    color: "light-dark(#DC2626, rgb(252,165,165))",
-    fontWeight: 800,
-};
 
 const COMMENTS_BADGE_STYLE: CSSProperties = {
     flexShrink: 0,
@@ -166,6 +160,8 @@ function MediaCardComponent({
     onEditTitle,
 }: MediaCardProps): JSX.Element {
     const isAudio = media.media_type === "audio";
+    const isLive = Boolean(media.is_live);
+    const hasLiveChat = Boolean(media.has_live_chat);
     // Names the media type once. The tooltip and the aria-label have to say the same thing,
     // since the icon is the only other way to tell them apart.
     const mediaTypeLabel = isAudio
@@ -228,7 +224,6 @@ function MediaCardComponent({
                 isAudio={isAudio}
                 isActive={isActive}
                 isWatched={isWatched}
-                isLive={Boolean(media.is_live)}
                 durationLabel={formatDuration(media.duration_seconds)}
                 shellBorder={shellBorder}
             />
@@ -278,9 +273,41 @@ function MediaCardComponent({
                     </Text>
 
                     <Group gap={6} wrap="nowrap">
-                        {Boolean(media.has_live_chat) && (
-                            <Badge variant="outline" style={CHAT_BADGE_STYLE}>
-                                CHAT
+                        {/* One badge for both facts. LIVE says the media came from a
+                            livestream, and the chat glyph inside it says that stream's
+                            replay was saved, which is a property of the live rather than
+                            a peer of it. It used to be a CHAT badge here and a LIVE
+                            badge over the thumbnail. */}
+                        {isLive && (
+                            <Badge
+                                variant="filled"
+                                style={LIVE_BADGE_STYLE}
+                                leftSection={<Radio size={12} />}
+                                rightSection={
+                                    hasLiveChat ? (
+                                        <Tooltip label="Live chat replay saved" withArrow>
+                                            {/* A property of the live, not a peer of it. Dimmed
+                                                and set off from the word so it reads as a note on
+                                                the badge rather than a control at the end of it.
+                                                No container of its own, which is what was making
+                                                it look like a toggle. */}
+                                            <Box
+                                                component="span"
+                                                role="img"
+                                                aria-label="Live chat replay saved"
+                                                style={{
+                                                    display: "flex",
+                                                    opacity: 0.75,
+                                                    marginInlineStart: rem(3),
+                                                }}
+                                            >
+                                                <MessageCircle size={11} />
+                                            </Box>
+                                        </Tooltip>
+                                    ) : undefined
+                                }
+                            >
+                                LIVE
                             </Badge>
                         )}
 
@@ -297,7 +324,7 @@ function MediaCardComponent({
                         {/* Audio and video are an icon rather than a word. The pair shows up on
                             every card in the grid, so spelling it out was repeating the same two
                             words down the whole column for a distinction the icon makes at a
-                            glance. CHAT keeps its text because it is the rarer signal, LIVE
+                            glance. LIVE keeps its text because it is the rarer signal and
                             because it is meant to be loud.
 
                             role="img" rather than a bare aria-label, which a screen reader is free

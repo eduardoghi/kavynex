@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import { Badge, Box, Group, rem } from "@mantine/core";
-import { Music, Play, Radio } from "lucide-react";
+import { Music, Play } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { fileSrcFromAbsolutePath, fileSrcFromStoredPath } from "../../utils/media-utils";
 
@@ -81,7 +81,7 @@ type MediaCardThumbnailProps = {
     isAudio: boolean;
     isActive: boolean;
     isWatched: boolean;
-    isLive: boolean;
+
     // Already formatted by the caller. Empty means the media has no known duration.
     durationLabel: string;
     shellBorder: string;
@@ -95,7 +95,7 @@ export function MediaCardThumbnail({
     isAudio,
     isActive,
     isWatched,
-    isLive,
+
     durationLabel,
     shellBorder,
 }: MediaCardThumbnailProps): JSX.Element {
@@ -180,11 +180,9 @@ export function MediaCardThumbnail({
                     luminance shift rather than a hue). It is accepted for the cleaner grid. What is
                     not given up is the screen-reader signal: the card's accessible name carries the
                     state instead, so it is announced without occupying a pixel. */}
-                {isLive && (
-                    <Badge variant="filled" color="red" leftSection={<Radio size={12} />}>
-                        LIVE
-                    </Badge>
-                )}
+                {/* LIVE used to sit here too. It is one badge in the metadata row now,
+                    which also absorbed the separate CHAT badge, so a live with a saved
+                    replay is one mark instead of two in two places. */}
             </Group>
 
             {durationLabel && (

@@ -391,4 +391,71 @@ describe("MediaCard", () => {
 
         expect(onRequestDelete).toHaveBeenCalledWith(media);
     });
+
+    it("marks an archived live with one badge in the metadata row", () => {
+        // LIVE used to be an overlay on the thumbnail and CHAT a second badge below it, so a
+        // live with a saved replay carried two marks in two places for one origin.
+        renderWithMantine(
+            <MediaCard
+                media={createMedia({
+                    title: "Live A",
+                    is_live: 1,
+                    has_live_chat: 0,
+                })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("LIVE")).toBeInTheDocument();
+        expect(screen.queryByText("CHAT")).not.toBeInTheDocument();
+
+        // No replay, no glyph. Without this the chat mark could render unconditionally and the
+        // badge would claim a replay that was never saved.
+        expect(
+            screen.queryByRole("img", { name: "Live chat replay saved" })
+        ).not.toBeInTheDocument();
+    });
+
+    it("carries the saved replay inside the live badge", () => {
+        renderWithMantine(
+            <MediaCard
+                media={createMedia({
+                    title: "Live A",
+                    is_live: 1,
+                    has_live_chat: 1,
+                })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("LIVE")).toBeInTheDocument();
+        expect(
+            screen.getByRole("img", { name: "Live chat replay saved" })
+        ).toBeInTheDocument();
+        expect(screen.queryByText("CHAT")).not.toBeInTheDocument();
+    });
+
+    it("shows no live badge on an ordinary media", () => {
+        renderWithMantine(
+            <MediaCard
+                media={createMedia({
+                    title: "Live A",
+                    is_live: 0,
+                    has_live_chat: 0,
+                })}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
+    });
 });

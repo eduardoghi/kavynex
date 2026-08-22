@@ -25,6 +25,7 @@ import {
     RotateCcw,
     X,
 } from "lucide-react";
+import { LIVE_BADGE_STYLE } from "../../constants/live-badge";
 import { UI_TEXT } from "../../constants/ui-text";
 
 type PlayerMediaHeaderProps = {
@@ -144,7 +145,11 @@ export function PlayerMediaHeader({
                         )}
 
                         {isLive && (
-                            <Badge variant="light" color="red" leftSection={<Radio size={12} />}>
+                            <Badge
+                                variant="filled"
+                                style={LIVE_BADGE_STYLE}
+                                leftSection={<Radio size={12} />}
+                            >
                                 LIVE
                             </Badge>
                         )}
