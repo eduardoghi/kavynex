@@ -15,6 +15,20 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// The two must stay in sync), a db_schema test pins the DDL value against this constant.
 pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 
+/// Upper bound on how many comments one media may be handed in a single replace.
+///
+/// The body of each comment is capped above; this caps the count, which was the one input from the
+/// renderer left without a ceiling. The vector arrives over IPC and is written in one transaction
+/// that holds the SQLite write lock until it commits, so a renderer sending millions of rows would
+/// hold every other command (they wait up to the busy timeout and then fail) and grow the database
+/// by hundreds of megabytes, with nothing refusing it. Refused rather than truncated, unlike the
+/// body: a body cut at a character boundary loses the tail of one comment, while silently dropping
+/// comments from a backup is the kind of loss the user only finds when they go looking for one.
+/// The limit sits far above what a real fetch delivers (yt-dlp's comment run is itself bounded by
+/// its timeout and by `MAX_YT_DLP_JSON_BYTES`), so it only ever trips on a caller that is not the
+/// app's own flow.
+pub(crate) const MAX_COMMENTS_PER_MEDIA: usize = 100_000;
+
 /// The states this code *writes* to `videos.comments_state`.
 ///
 /// The column has a third value, `unknown`, and it is deliberately not here: it is the column's
@@ -210,6 +224,19 @@ pub async fn replace_media_comments(
         return Err(AppError::from_code(
             AppErrorCode::InvalidInput,
             "media id must be a positive number",
+        ));
+    }
+
+    // Checked before the transaction opens, on the raw count rather than after dedup: the cost
+    // being bounded is what the caller handed over, and a vector this large has already been
+    // materialized by the time it gets here.
+    if comments.len() > MAX_COMMENTS_PER_MEDIA {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidInput,
+            format!(
+                "too many comments for one media ({} given, at most {MAX_COMMENTS_PER_MEDIA})",
+                comments.len()
+            ),
         ));
     }
 
@@ -478,6 +505,60 @@ mod tests {
         assert_eq!(deduped[1].text, "other");
         assert_eq!(deduped[2].text, "reply without id 1");
         assert_eq!(deduped[3].text, "reply without id 2");
+    }
+
+    #[tokio::test]
+    async fn replace_media_comments_refuses_a_payload_past_the_count_ceiling() {
+        // One over the ceiling is refused before anything is written, and the refusal leaves the
+        // stored comments alone: this is a replace, so an accepted oversized payload would first
+        // delete the backup it then failed to rewrite.
+        let pool = create_test_pool().await;
+
+        replace_media_comments(&pool, 1, vec![sample_comment("kept")])
+            .await
+            .expect("seed one stored comment");
+
+        let oversized: Vec<YtDlpComment> = (0..=MAX_COMMENTS_PER_MEDIA)
+            .map(|index| comment_with_id("flood", Some(&index.to_string())))
+            .collect();
+
+        let error = replace_media_comments(&pool, 1, oversized)
+            .await
+            .expect_err("a payload past the ceiling must be refused");
+
+        assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+        assert!(
+            error.message.contains("too many comments"),
+            "the refusal should name the reason: {}",
+            error.message
+        );
+
+        let (stored,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE video_id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            stored, 1,
+            "the existing backup must survive a refused replace"
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_media_comments_accepts_a_payload_at_the_count_ceiling() {
+        // The boundary itself is allowed, so the ceiling is a refusal of abuse and not a silent
+        // cap on a large but legitimate fetch. Distinct ids, or dedup would shrink the count.
+        let pool = create_test_pool().await;
+
+        let at_ceiling: Vec<YtDlpComment> = (0..MAX_COMMENTS_PER_MEDIA)
+            .map(|index| comment_with_id("ok", Some(&index.to_string())))
+            .collect();
+
+        let inserted = replace_media_comments(&pool, 1, at_ceiling)
+            .await
+            .expect("a payload at the ceiling is accepted");
+
+        assert_eq!(inserted as usize, MAX_COMMENTS_PER_MEDIA);
     }
 
     #[tokio::test]
