@@ -2,6 +2,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PlayerMediaHeader } from "./player-media-header";
 import { renderWithMantine } from "../../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
 describe("PlayerMediaHeader", () => {
     it("renders title and metadata", () => {
@@ -182,9 +183,19 @@ describe("PlayerMediaHeader", () => {
 });
 
 // The player header is the densest cluster of icon-only controls in the app, so its controls are
-// the ones most dependent on an accessible name (they have no visible text to fall back on). The
-// project cannot run an automated axe pass (axe-core is MPL-2.0, outside the license allow-list in
-// scripts/check-js-licenses.js), so these role-by-name assertions stand in for that on this screen.
+// the ones most dependent on an accessible name: they have no visible text to fall back on.
+//
+// Both kinds of check run here and neither replaces the other. The axe pass catches the class (a
+// control that ends up with no accessible name at all, whichever way it happened), while the
+// role-by-name assertions pin *which* name each control carries, which is what a rename or a
+// copy-paste between two icon buttons changes without axe having anything to say about it.
+//
+// This block used to claim the project could not run axe at all, because axe-core is MPL-2.0 and
+// that license is not in the allow-list in scripts/check-js-licenses.js. Both halves are true and
+// the conclusion was not: that gate reads `pnpm licenses list --prod`, and axe-core is a dev
+// dependency, so it is never in the tree the gate inspects. It was already installed and already
+// running on five other screens. Written down because the note read as a constraint, and the screen
+// it kept out of the pass is the one this file opens by calling the densest in the app.
 describe("PlayerMediaHeader accessibility", () => {
     it("exposes an accessible name for every interactive control", () => {
         renderWithMantine(
@@ -348,5 +359,38 @@ describe("PlayerMediaHeader accessibility", () => {
         expect(
             screen.queryByRole("button", { name: "More actions" })
         ).not.toBeInTheDocument();
+    });
+
+    it("passes an axe sweep with every control rendered", async () => {
+        // Rendered in its fullest state on purpose: `canOpenInYoutube` and the two overflow actions
+        // are what put the most controls on screen, and a sweep over the sparse state would skip
+        // exactly the buttons this file exists to watch.
+        //
+        // What it cannot answer is what `src/test/axe.ts` already records: colour contrast needs
+        // computed styles and focus order needs a real layout, and jsdom has neither. So this is a
+        // check on structure and naming, not a claim that the header is accessible.
+        const { container } = renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel="31 de mar. de 2026"
+                createdLabel="31 de mar. de 2026, 10:00"
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube
+                isWatched={false}
+                isLive={false}
+                isRefreshingComments={false}
+                onOpenInYoutube={vi.fn()}
+                onOpenFileLocation={vi.fn()}
+                onRefreshComments={vi.fn()}
+                onCancelRefreshComments={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        const violations = await findAccessibilityViolations(container);
+
+        expect(describeViolations(violations)).toBe("");
     });
 });
