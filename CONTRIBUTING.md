@@ -128,6 +128,21 @@ A fifth needs a real release to check against, so it runs in `release.yml`'s `ch
 
 `pnpm tauri build` builds release installers for your current platform.
 
+## Reading `git blame` past move-only commits
+
+`.git-blame-ignore-revs` lists commits that only moved or reformatted code (the first entry moved
+the eight largest inline Rust test modules into `tests.rs` files beside their parents). Without it,
+`git blame` on one of those files attributes every line to the move rather than to the commit that
+wrote the test and explains why. Point git at the file once per clone:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+GitHub's blame view reads the file on its own. When a commit of that kind lands (a mass reformat, a
+rename of a large file, a test module moved out), add its hash there in the same commit or the one
+right after, while it is still obvious which one it was.
+
 ## Regenerating the TypeScript bindings
 
 Rust types shared with the frontend derive `ts_rs::TS` and export to
