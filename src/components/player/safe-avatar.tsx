@@ -42,13 +42,16 @@ export function SafeAvatar({
             radius="xl"
             size={size}
             src={finalSrc}
+            // Decorative: the author name is always shown next to the avatar, so an empty alt
+            // keeps screen readers from announcing the image URL/filename as content. It has to
+            // be Avatar's own `alt` prop: Mantine spreads `imageProps` first and then sets `alt`
+            // from this prop, so an `alt` inside `imageProps` is overwritten (by undefined, which
+            // React drops), which is how the empty alt silently never reached the DOM before.
+            alt=""
             color="gray"
             imageProps={{
                 referrerPolicy: "no-referrer",
                 onError: () => setFailedSrc(src),
-                // Decorative: the author name is always shown next to the avatar, so an empty
-                // alt keeps screen readers from announcing the image URL/filename as content.
-                alt: "",
             }}
             styles={{
                 root: {
