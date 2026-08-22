@@ -83,6 +83,18 @@ Repository consistency (plain Node, no install needed. CI runs all five on every
   in unexamined; adding or removing a guard stops here too, so that document's table of enforcement
   sites cannot drift from the code the way it once did. Run it with `--print` to regenerate both
   inventories once the document is right.
+
+  What it does not check is that the class a path is declared under is the one the code applies to
+  it, which needs the call chain. So the rule that goes with the inventory is: **a command that
+  takes a path from the caller (or a path parameter added to one that exists) comes with a test
+  that sends a UNC spelling through it and asserts the refusal.** `\\host\share\x`, `//host/share/x`
+  and `\\?\UNC\host\share\x` at least, the error code pinned, and the assertion that nothing was
+  touched before the refusal (the library directory not created, say). The IPC harness in
+  `commands/test_ipc.rs` drives the real command; `commands/database.rs`, `commands/thumbnail.rs`
+  and `commands/media.rs` have the shape to copy. The reason this is a rule and not a habit is
+  `persist_thumbnail_file`: it sat in the inventory, correctly classified, with the document naming
+  a guard it did not have, through two audits. The test is the only one of the three that would
+  have gone red.
 - `node scripts/verify-capability-surface.js`: fails when the Tauri APIs the two seam files import
   and the permissions `src-tauri/capabilities/` grants drift apart in either direction, so a new
   binding cannot ship without its permission being decided and a grant cannot outlive the call that
