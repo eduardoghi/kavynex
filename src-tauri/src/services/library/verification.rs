@@ -195,6 +195,15 @@ pub(crate) fn verify_stored_file(
         return ContentVerification::Unverifiable;
     };
 
+    // The confinement above is lexical, and every directory walk in this family refuses a symlink
+    // rather than following it. A row naming one planted under `video/` would otherwise have its
+    // target hashed and reported on (Verified, even, if the target happened to match) as though it
+    // were the library's file. Unverifiable, like a path that fails confinement: this is not a
+    // corrupt artifact, it is not an artifact of this app at all.
+    if crate::services::filesystem::path_is_symlink(&absolute) {
+        return ContentVerification::Unverifiable;
+    }
+
     match file_hash_cancellable(&absolute, cancel) {
         // A cancelled hash reports an error, and it must not be read as corruption. The caller
         // checks the flag itself before recording anything, so this only has to avoid the Corrupt
@@ -402,6 +411,35 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_symlink_under_a_managed_directory_is_unverifiable_not_read() {
+        use std::os::unix::fs::symlink;
+
+        // The target matches the digest in the link's name, so following the link would report
+        // Verified, which is exactly the answer a planted link must not get: it would vouch for
+        // bytes that live outside the library as if they were the artifact the row names.
+        let content = b"media bytes";
+        let library = unique_dir("symlink");
+        let outside = unique_dir("symlink-outside");
+        fs::create_dir_all(library.join(LIBRARY_DIR_VIDEO)).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+
+        let target = outside.join("real.mp4");
+        fs::write(&target, content).unwrap();
+
+        let relative = format!("{LIBRARY_DIR_VIDEO}/media_{}.mp4", hash_of(content));
+        symlink(&target, library.join(&relative)).unwrap();
+
+        assert_eq!(
+            verify_stored_file(&library, &relative, ManagedSubtree::Media, None),
+            ContentVerification::Unverifiable
+        );
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
     }
 
     #[test]

@@ -957,6 +957,21 @@ pub(crate) fn dir_entry_is_symlink(entry: &fs::DirEntry) -> bool {
         .unwrap_or(false)
 }
 
+/// True when `path` itself is a symlink, asked of the link rather than of its target
+/// (`symlink_metadata`, not `metadata`).
+///
+/// The sibling of [`dir_entry_is_symlink`] for the paths that arrive one at a time, off a row,
+/// rather than from a directory walk: `absolute_path_from_relative` resolves those lexically, so a
+/// symlink planted under a managed directory would otherwise have its *target* read, hashed or
+/// handed to FFmpeg as if it were the library's own file. Every walker in this family already
+/// refuses to follow one; this lets the single-path readers apply the same rule. A path that cannot
+/// be stat'd is reported as not a symlink, and the caller's own existence check says what it is.
+pub(crate) fn path_is_symlink(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
 pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
     if !source_dir.exists() {
         return Ok(());

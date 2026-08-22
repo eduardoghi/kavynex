@@ -553,6 +553,15 @@ fn resolve_one(
         return DisplayThumbnail::Unavailable;
     }
 
+    // The resolution above is lexical. A symlink planted under `thumbnails/` would otherwise have
+    // its target handed to FFmpeg, and the derivative written into `thumb-display/`, which is one
+    // of the two cache directories the webview is authorized to read. Every directory walk in the
+    // library family refuses to follow a symlink; this single-path reader applies the same rule.
+    // Permanent, like the other refusals here: it is a property of what sits at the stored path.
+    if crate::services::filesystem::path_is_symlink(&source_path) {
+        return DisplayThumbnail::Unavailable;
+    }
+
     // Checked before the budget rather than after it. Without FFmpeg no entry in this call can
     // produce anything, so spending a slot to discover that once per entry burns the whole budget
     // on nothing and starves the entries behind it, which mattered less when every miss was
@@ -1187,6 +1196,63 @@ mod tests {
         assert_eq!(
             generations_left, 5,
             "a call that is out of time must not spend a slot to find that out"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_symlinked_source_is_unavailable_and_never_reaches_ffmpeg() {
+        use std::os::unix::fs::symlink;
+
+        // Told apart from "no FFmpeg" by the budget: a regular file with the same inputs reaches the
+        // slot check and answers BudgetSpent when no slot is left, so Unavailable here means the
+        // refusal happened before the FFmpeg step, not that the step failed.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-display-symlink-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(dir.join(LIBRARY_DIR_THUMBNAILS)).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+
+        let target = outside.join("real.jpg");
+        std::fs::write(&target, b"\xff\xd8\xff").unwrap();
+
+        let hash = "c".repeat(64);
+        let linked = format!("thumbnails/thumb_{hash}.jpg");
+        symlink(&target, dir.join(&linked)).unwrap();
+
+        let regular = format!("thumbnails/thumb_{}.jpg", "d".repeat(64));
+        std::fs::write(dir.join(&regular), b"\xff\xd8\xff").unwrap();
+
+        let started_at = std::time::Instant::now();
+        let mut no_slots = 0usize;
+
+        assert_eq!(
+            resolve_one(
+                &dir.to_string_lossy(),
+                &regular,
+                &dir,
+                Some("ffmpeg"),
+                &mut no_slots,
+                started_at
+            ),
+            DisplayThumbnail::BudgetSpent,
+            "the control: a regular file with no slot left reaches the budget check"
+        );
+        assert_eq!(
+            resolve_one(
+                &dir.to_string_lossy(),
+                &linked,
+                &dir,
+                Some("ffmpeg"),
+                &mut no_slots,
+                started_at
+            ),
+            DisplayThumbnail::Unavailable,
+            "a symlink is refused before the budget, so it cannot be what FFmpeg reads"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
