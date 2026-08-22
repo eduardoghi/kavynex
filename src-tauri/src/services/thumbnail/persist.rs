@@ -8,11 +8,26 @@ use crate::utils::format::{allowed_thumbnail_extensions_label, is_allowed_thumbn
 use crate::utils::hash::file_hash;
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir, ensure_path_parent_inside_dir,
-    extension_from_path, relative_path_from_base, ManagedSubtree,
+    extension_from_path, is_network_path, relative_path_from_base, ManagedSubtree,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
 pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppResult<String> {
+    // Refuse a UNC / network source before the `exists()` below touches it. Two of this
+    // function's callers hand it a path that arrived raw over IPC (the `persist_thumbnail_file`
+    // command and the local branch of `create_media`'s thumbnail source), and on Windows merely
+    // stat'ing `\\host\share\x.jpg` authenticates to `host` over SMB and leaks the user's NTLM
+    // hash. The same cross-cutting rule as `thumbnail::picked::validate_picked_thumbnail_path`,
+    // which only the staged-preview path runs; this was the one persist entry point without it.
+    // The third caller (the download) passes a file it just wrote into the app cache, so the
+    // check is free there.
+    if is_network_path(&source.to_string_lossy()) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidSourceThumbnail,
+            "source thumbnail must not be a network location",
+        ));
+    }
+
     // Serialize this library write against a concurrent migration (see library::lock). Covers
     // both the manual-thumbnail persist and the downloaded-thumbnail/avatar persist, which are
     // this function's only callers.
@@ -84,6 +99,17 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
 
 pub fn persist_thumbnail_file_sync(path: &str, library_path: &str) -> AppResult<String> {
     let source = PathBuf::from(path.trim());
+
+    // Refused here as well as in `persist_thumbnail_from_source`, ahead of `ensure_library_dir`:
+    // the source is the value that arrived over IPC, and nothing should run on its account (not
+    // even creating the library directory) before it is known to be one this app will read.
+    if is_network_path(&source.to_string_lossy()) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidSourceThumbnail,
+            "source thumbnail must not be a network location",
+        ));
+    }
+
     let library_dir = ensure_library_dir(library_path)?;
     persist_thumbnail_from_source(&source, &library_dir)
 }
@@ -130,6 +156,53 @@ mod tests {
             "kavynex-thumbnail-persist-test-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    #[test]
+    fn persist_thumbnail_from_source_refuses_a_network_source_before_touching_it() {
+        // Every spelling Windows resolves to a share, each carrying a valid image extension so only
+        // the network check can be what refuses it. The library is deliberately a path that does
+        // not exist: the refusal has to come before anything (the stat of the source, the creation
+        // of the library) runs, and a library that was created would show it did not.
+        let library = unique_test_dir();
+
+        for value in [
+            r"\\evil\share\cover.jpg",
+            "//evil/share/cover.jpg",
+            r"/\evil\share\cover.jpg",
+            r"\/evil\share\cover.jpg",
+            r"\\?\UNC\evil\share\cover.jpg",
+        ] {
+            let error = persist_thumbnail_from_source(Path::new(value), &library)
+                .expect_err(&format!("{value} should be refused as a network path"));
+
+            assert_eq!(error.code, AppErrorCode::InvalidSourceThumbnail.as_str());
+            assert!(
+                error.message.contains("network location"),
+                "the refusal should name the reason: {}",
+                error.message
+            );
+        }
+
+        assert!(
+            !library.exists(),
+            "nothing may run before the network refusal, not even creating the library"
+        );
+    }
+
+    #[test]
+    fn persist_thumbnail_file_sync_refuses_a_network_source() {
+        // The string-taking entry the `persist_thumbnail_file` command and the local thumbnail
+        // branch of a media creation call, pinned separately so a later split of the two cannot
+        // leave one of them behind.
+        let library = unique_test_dir();
+
+        let error =
+            persist_thumbnail_file_sync(r"\\evil\share\cover.png", &library.to_string_lossy())
+                .expect_err("a UNC source must be refused");
+
+        assert_eq!(error.code, AppErrorCode::InvalidSourceThumbnail.as_str());
+        assert!(!library.exists());
     }
 
     #[test]

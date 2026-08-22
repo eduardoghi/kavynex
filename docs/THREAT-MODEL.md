@@ -114,6 +114,8 @@ past a literal prefix match), and the functions applying it are:
 | `thumbnail::temp::validate_source_media_path` | the FFmpeg preview source |
 | `thumbnail::temp::validate_temporary_thumbnail_delete_path` | the preview being discarded |
 | `thumbnail::picked::validate_picked_thumbnail_path` | the image staged for a manual thumbnail |
+| `thumbnail::persist::persist_thumbnail_file_sync` | the source of a persisted thumbnail or avatar as it arrives over IPC (`persist_thumbnail_file`, and `create_media`'s local thumbnail branch), refused before the library directory is even created |
+| `thumbnail::persist::persist_thumbnail_from_source` | the same source one level down, so the download path and any later caller inherit the refusal |
 | `library::media::import_media_file_cancellable_sync` | the import source |
 | `library::guard::paths_refer_to_same_location` | a network path aimed at a local library |
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
@@ -390,7 +392,7 @@ is the app's largest path surface.
 |---|---|
 | `library_path` | Checked against the persisted setting by the command layer (`ensure_configured_library_path`) before any file is written, like every other library write. |
 | `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::import_media_file_cancellable_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
-| `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch refuses a network location and gates the extension (`services/thumbnail/picked.rs`); the remote branch goes through the image-CDN allow-list and the SSRF guard. |
+| `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch goes through `persist_thumbnail_file_sync`, which refuses a network location before its first `stat` (`services/thumbnail/persist.rs::persist_thumbnail_from_source`) and gates the extension; the remote branch goes through the image-CDN allow-list and the SSRF guard. This row used to credit `picked.rs` with the refusal, and `picked.rs` only ever guarded the staged preview (`stage_manual_thumbnail`), not this branch, so a UNC spelling reached the stat here. Fixed, and the table is what should have caught it: the script that holds it against the code checks that a listed site exists, not that a given parameter flows through it. |
 | `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). The header check is not cosmetic: yt-dlp rewrites the file it is given, so the extension alone left "an arbitrary text file is not destroyed" resting on yt-dlp's parser refusing it first. |
 
 Every path the creation *produces* is re-checked as a managed library-relative path before it can

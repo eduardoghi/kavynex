@@ -1015,6 +1015,36 @@ mod tests {
     }
 
     #[test]
+    fn a_network_path_is_classified_local_and_then_refused_by_the_persist_it_reaches() {
+        // `is_absolute_file_path` reads `\\host\share` as a path (it starts with a separator),
+        // so the UNC spelling reaches `ThumbnailSource::Local` rather than `Absent`. That is the
+        // branch that calls `persist_thumbnail_file_sync`, which is where the refusal lives;
+        // pinning both halves here is what keeps a change to the classifier from routing a share
+        // around it. The library is a path that does not exist so the assertion can also show
+        // nothing was created before the refusal.
+        let library = std::env::temp_dir().join(format!(
+            "kavynex-media-creation-unc-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+
+        for value in [r"\\evil\share\cover.jpg", "//evil/share/cover.jpg"] {
+            let ThumbnailSource::Local(path) = classify_thumbnail_source(Some(value)) else {
+                panic!("{value} should be classified as a local path");
+            };
+
+            let error = crate::services::thumbnail::persist_thumbnail_file_sync(
+                &path,
+                &library.to_string_lossy(),
+            )
+            .expect_err("a UNC thumbnail source must be refused");
+
+            assert_eq!(error.code, AppErrorCode::InvalidSourceThumbnail.as_str());
+        }
+
+        assert!(!library.exists());
+    }
+
+    #[test]
     fn a_value_that_names_nothing_the_app_wrote_is_absent() {
         // A bare relative name is not a managed path and not something this app can resolve, so it
         // reads as "no thumbnail supplied" and the normal derivation runs instead.
