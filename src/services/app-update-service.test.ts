@@ -273,6 +273,32 @@ describe("installAppUpdate", () => {
         expect(relaunchMock).toHaveBeenCalledTimes(1);
     });
 
+    it("relaunches only after the download and install has resolved", async () => {
+        // The order, asserted as the order rather than inferred from a failure path. Inverting the
+        // two statements in `installAppUpdate` is already caught here, but only by the failure test
+        // below, which notices a relaunch that happened before a rejecting download. That is an
+        // incidental catch: it holds because that test exists, not because anything states the rule,
+        // and a version of it written against a *resolving* download would let the inversion pass.
+        //
+        // The rule is worth naming on its own because getting it wrong is silent and total.
+        // `relaunch()` replaces the process, so a relaunch that runs first means the installer never
+        // runs at all: the app restarts into the version the user already had, the progress bar was
+        // real, no error is raised anywhere, and the update simply never happens. The user's only
+        // evidence is the update notice still being there afterwards.
+        const calls: string[] = [];
+        relaunchMock.mockImplementation(async () => {
+            calls.push("relaunch");
+        });
+
+        const update = createUpdate(() => {
+            calls.push("downloadAndInstall");
+        });
+
+        await installAppUpdate(update);
+
+        expect(calls).toEqual(["downloadAndInstall", "relaunch"]);
+    });
+
     it("does not relaunch when the download or install fails", async () => {
         // Relaunching after a failed install would restart the app into whichever half-written
         // state the installer left behind, and the caller would see a restart instead of an error.
