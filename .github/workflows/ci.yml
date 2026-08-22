@@ -196,6 +196,19 @@ jobs:
             - name: Run tests
               run: pnpm test:coverage
 
+            # The one-file summary vitest's json-summary reporter writes. Uploaded on failure too,
+            # since a threshold failure is exactly when the numbers are wanted. The HTML report is
+            # deliberately not uploaded: it is several hundred files for a question the summary
+            # answers in one.
+            - name: Upload the coverage summary
+              if: always()
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: frontend-coverage-summary
+                  path: coverage/coverage-summary.json
+                  retention-days: 30
+                  if-no-files-found: ignore
+
             - name: Build frontend
               run: pnpm build
 

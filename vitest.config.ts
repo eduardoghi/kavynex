@@ -14,7 +14,10 @@ export default defineConfig({
         restoreMocks: true,
         coverage: {
             provider: "v8",
-            reporter: ["text", "html"],
+            // json-summary writes coverage/coverage-summary.json, a few hundred bytes CI publishes
+            // as an artifact, so "is the suite near a floor?" is a download rather than a
+            // re-run of the suite or a read through the HTML report.
+            reporter: ["text", "html", "json-summary"],
             reportsDirectory: resolve(rootDir, "coverage"),
             // Enforced only when coverage runs (pnpm test:coverage / CI), so the plain
             // `pnpm test` loop stays fast. These floors sit well below the current numbers
