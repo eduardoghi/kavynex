@@ -1,3 +1,15 @@
+/* The live layout's grid, and the only CSS module in the app. Worth saying why, because a lone
+   `.module.css` in a codebase that styles with Mantine props reads either as a justified exception
+   or as the start of a second way to do things, and nothing here said which.
+
+   It is the first. Three of the rules below cannot be written as an inline `style` object at all:
+   the `@media (min-width: 1200px)` block, the `.liveLayoutPanel > *` child selector, and the pair
+   of them together, which is what takes the panel out of flow at the wide layout and only there.
+   An inline style is one element's declarations. It carries no breakpoint and reaches no child.
+
+   So the test for the next one is that same limit rather than taste: a module when the styling
+   needs a breakpoint, a selector that is not "this element", or a pseudo-class, and Mantine props
+   otherwise. One written for what props already do is the drift this note exists to prevent. */
 .liveLayout {
     display: grid;
     gap: 16px;
