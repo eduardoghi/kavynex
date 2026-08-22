@@ -83,7 +83,7 @@ function parseRendererMessage(renderer: Record<string, unknown>): string {
 // Live chat image URLs (custom emoji / sticker thumbnails) may be protocol-relative
 // ("//host/.."). Upgrade those to https and reject anything that is not an http(s) URL, so a
 // tampered replay file cannot smuggle a data:/javascript:/file: value into an <img> src and
-// bypass the "load remote images" privacy toggle. Mirrors resolveAvatarSrc for avatars.
+// bypass the "load remote images" privacy toggle. Author photos go through it too, below.
 function normalizeRemoteImageUrl(url: string): string | null {
     const normalized = url.startsWith("//") ? `https:${url}` : url;
 
@@ -176,16 +176,21 @@ function parseAuthorName(renderer: Record<string, unknown>): string {
     return "Unknown author";
 }
 
+// Same scheme rule as the emoji and sticker images above. The two avatar renderers run the value
+// through resolveAvatarSrc as well, but that is the consumer's guard, and a value this parser
+// hands out should already be safe to put in a src. It also upgrades "//host/.." here, which
+// resolveAvatarSrc alone would drop to the initials fallback.
 function parseAuthorThumbnail(renderer: Record<string, unknown>): string | null {
     const authorPhoto = renderer.authorPhoto as Record<string, unknown> | undefined;
     const thumbnails = Array.isArray(authorPhoto?.thumbnails) ? authorPhoto.thumbnails : [];
     const candidate = thumbnails[thumbnails.length - 1] as Record<string, unknown> | undefined;
+    const url = typeof candidate?.url === "string" ? candidate.url.trim() : "";
 
-    if (typeof candidate?.url === "string" && candidate.url.trim()) {
-        return candidate.url.trim();
+    if (!url) {
+        return null;
     }
 
-    return null;
+    return normalizeRemoteImageUrl(url);
 }
 
 function parseAuthorChannelId(renderer: Record<string, unknown>): string | null {

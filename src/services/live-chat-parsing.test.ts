@@ -129,4 +129,28 @@ describe("parseLiveChatLine", () => {
 
         expect(messages[0]?.message_text).toBe("hello world");
     });
+
+    it("normalizes the author photo url the same way as emoji and sticker images", () => {
+        // The author photo is the third image url the parser reads from a replay file, and it ends
+        // up in an <img src> like the other two. A protocol-relative url is upgraded to https; a
+        // non-http(s) scheme, the shape a tampered file would use to sidestep the remote image
+        // toggle, is dropped. The avatar renderers guard this again, but that guard does not
+        // upgrade "//host", and a value the parser emits should not depend on it.
+        const thumbnail = (url: string) =>
+            parseLiveChatLine(
+                textMessageLine({
+                    id: "msg4",
+                    message: { runs: [{ text: "hi" }] },
+                    authorName: { simpleText: "@carol" },
+                    authorPhoto: { thumbnails: [{ url: "//yt3.ggpht.com/small=s32" }, { url }] },
+                })
+            )[0]?.author_thumbnail;
+
+        expect(thumbnail(" https://yt3.ggpht.com/a=s64 ")).toBe("https://yt3.ggpht.com/a=s64");
+        expect(thumbnail("//yt3.ggpht.com/a=s64")).toBe("https://yt3.ggpht.com/a=s64");
+        expect(thumbnail("javascript:alert(1)")).toBeNull();
+        expect(thumbnail("data:image/png;base64,AAAA")).toBeNull();
+        expect(thumbnail("file:///C:/Users/x/avatar.png")).toBeNull();
+        expect(thumbnail("")).toBeNull();
+    });
 });
