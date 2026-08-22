@@ -392,7 +392,12 @@ describe("useSettingsController", () => {
         rerender({ opened: false });
         expect(result.current.pendingImportPath).toBeNull();
 
-        rerender({ opened: true });
+        // Reopening kicks off the summary load again, which settles after the assertion below.
+        // Awaiting it inside act keeps that state update inside the test rather than leaving it to
+        // land after the test ends, which React reports as an update outside act.
+        await act(async () => {
+            rerender({ opened: true });
+        });
         expect(result.current.pendingImportPath).toBeNull();
     });
 
