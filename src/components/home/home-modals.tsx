@@ -114,6 +114,8 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 onCreate={() => void channels.createChannel()}
             />
 
+            {/* Just the screen's name. The channel it edits is the value in the Name field
+                inside, so the title was repeating it. */}
             <CreateChannelModal
                 opened={channels.editChannelOpen}
                 onClose={() => channels.setEditChannelOpen(false)}
@@ -122,8 +124,9 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 avatarMode="none"
                 avatarPath=""
                 loading={channels.isEditingChannel}
-                title={`Edit channel${channels.editingChannel ? ` · ${channels.editingChannel.name}` : ""}`}
+                title="Edit channel"
                 submitLabel="Save"
+                submitLoadingLabel="Saving..."
                 allowAvatarEditing={false}
                 onChangeChannelName={channels.setEditChannelName}
                 onChangeYoutubeHandle={channels.setEditYoutubeHandle}

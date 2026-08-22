@@ -184,7 +184,12 @@ describe("CreateChannelModal", () => {
             />
         );
 
-        expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+        // The label says what is happening rather than going blank behind a spinner, which is
+        // what Mantine`s loading prop does to it.
+        const submit = screen.getByRole("button", { name: "Saving..." });
+
+        expect(submit).toBeDisabled();
+        expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
     });
 
     it("names the picked avatar by its file name, not its path", () => {

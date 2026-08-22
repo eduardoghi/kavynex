@@ -14,6 +14,7 @@ import { X } from "lucide-react";
 import type { ChannelAvatarMode } from "../../types/media";
 import { useModalLock } from "../../hooks/use-modal-lock";
 import { toUnionValue } from "../../utils/guards";
+import { AppButton } from "../ui/app-button";
 import { fileNameFromPath } from "../../utils/media-utils";
 import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 
@@ -41,6 +42,10 @@ type CreateChannelModalProps = {
     avatarPath: string;
     loading?: boolean;
     submitLabel?: string;
+    // What the submit button says while the request is in flight. Mantine's `loading`
+    // hides the label and leaves a filled rectangle holding a spinner, so the state is
+    // spelled out instead.
+    submitLoadingLabel?: string;
     title?: string;
     allowAvatarEditing?: boolean;
     onChangeChannelName: (value: string) => void;
@@ -63,6 +68,7 @@ export function CreateChannelModal({
     avatarPath,
     loading = false,
     submitLabel = "Create",
+    submitLoadingLabel = "Saving...",
     title = "New channel",
     allowAvatarEditing = true,
     onChangeChannelName,
@@ -244,22 +250,27 @@ export function CreateChannelModal({
                     )}
 
                     <Group justify="flex-end">
-                        {/* Bordered rather than subtle. Beside a gradient Create it was
-                            reading as loose text instead of the other half of the
-                            decision. */}
-                        <Button type="button" variant="default" onClick={onClose} disabled={loading}>
-                            Cancel
-                        </Button>
-
-                        <Button
-                            type="submit"
-                            variant="gradient"
-                            gradient={{ from: "violet", to: "cyan" }}
-                            disabled={!canSubmit}
-                            loading={loading}
+                        {/* Bordered rather than subtle, and the same AppButton family as the
+                            submit beside it, so the pair reads as two halves of one decision
+                            instead of a control next to some text. */}
+                        <AppButton
+                            type="button"
+                            appVariant="secondary"
+                            onClick={onClose}
+                            disabled={loading}
                         >
-                            {submitLabel}
-                        </Button>
+                            Cancel
+                        </AppButton>
+
+                        {/* The app's primary, like every other CTA. It was the one
+                            violet-to-cyan gradient left in the interface. */}
+                        <AppButton
+                            type="submit"
+                            appVariant="primary"
+                            disabled={!canSubmit}
+                        >
+                            {loading ? submitLoadingLabel : submitLabel}
+                        </AppButton>
                     </Group>
                 </Stack>
             </form>
