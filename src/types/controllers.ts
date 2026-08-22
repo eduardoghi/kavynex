@@ -193,6 +193,16 @@ export type DiagnosticsController = {
     // sharing `isLoadingDiagnostics`, which the Refresh button owns.
     openLogDirectory: () => Promise<void>;
     isOpeningLogDirectory: boolean;
+    // Reveals one of the report's example files in the OS file manager, by its library-relative
+    // path. Offered only for the issues whose examples name a file that is on disk (see
+    // `examplesAreOnDisk`), and it is the step the report deliberately stops short of: Diagnostics
+    // reports and never deletes, so the file manager is where the user finishes, and a
+    // content-addressed name is not something to find by hand.
+    //
+    // No in-flight flag beside it, unlike `openLogDirectory`: nothing renders a busy state for a
+    // link in a list, so the flag it does use internally exists only to stop a double click from
+    // opening two windows.
+    revealLibraryPath: (path: string) => Promise<void>;
 };
 
 export type ErrorModalController = {

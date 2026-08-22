@@ -474,6 +474,74 @@ describe("buildDiagnosticsIssues", () => {
         ]);
     });
 
+    it("marks only the issues whose example paths name a file that is on disk", () => {
+        // The whole partition in one assertion, because what matters is the split rather than any
+        // single member of it. The flag is what lets the UI offer "reveal in the file manager", and
+        // both directions of getting it wrong are bad in the same way: a missing file offered for
+        // reveal is a link that fails every click, and an invalid reference points outside the
+        // library, which the backend guard refuses by design.
+        //
+        // Driven through buildDiagnosticsIssues rather than asserted against the code set directly,
+        // so a code renamed in one place and not the other shows up here.
+        const input = baseDiagnostics();
+
+        input.libraryIntegrity.corrupt_media_files = 1;
+        input.libraryIntegrity.corrupt_media_examples = ["video/corrupt.mp4"];
+        input.libraryIntegrity.corrupt_thumbnail_files = 1;
+        input.libraryIntegrity.corrupt_thumbnail_examples = ["thumbnails/corrupt.jpg"];
+        input.libraryIntegrity.orphan_media_files = 1;
+        input.libraryIntegrity.orphan_media_examples = ["video/orphan.mp4"];
+        input.libraryIntegrity.orphan_thumbnail_files = 1;
+        input.libraryIntegrity.orphan_thumbnail_examples = ["thumbnails/orphan.jpg"];
+        input.libraryIntegrity.missing_media_files = 1;
+        input.libraryIntegrity.missing_media_examples = ["video/gone.mp4"];
+        input.libraryIntegrity.missing_thumbnail_files = 1;
+        input.libraryIntegrity.missing_thumbnail_examples = ["thumbnails/gone.jpg"];
+        input.libraryIntegrity.invalid_media_files = 1;
+        input.libraryIntegrity.invalid_media_examples = ["C:/elsewhere/out.mp4"];
+        input.liveChatIntegrity.corrupt_live_chat_files = 1;
+        input.liveChatIntegrity.corrupt_live_chat_examples = ["live_chat/corrupt.json.gz"];
+        input.liveChatIntegrity.orphan_live_chat_files = 1;
+        input.liveChatIntegrity.orphan_live_chat_examples = ["live_chat/orphan.json.gz"];
+        input.liveChatIntegrity.missing_live_chat_files = 1;
+        input.liveChatIntegrity.missing_live_chat_examples = ["live_chat/gone.json.gz"];
+
+        const onDiskByCode = new Map(
+            buildDiagnosticsIssues(input).map((issue) => [
+                issue.code,
+                issue.examplesAreOnDisk === true,
+            ])
+        );
+
+        for (const code of [
+            "CORRUPT_MEDIA_FILES_ON_DISK",
+            "CORRUPT_THUMBNAIL_FILES_ON_DISK",
+            "CORRUPT_LIVE_CHAT_FILES",
+            "ORPHAN_MEDIA_FILES",
+            "ORPHAN_THUMBNAIL_FILES",
+            "ORPHAN_LIVE_CHAT_FILES",
+        ]) {
+            expect(onDiskByCode.get(code), `${code} names files that are in the library`).toBe(
+                true
+            );
+        }
+
+        for (const code of [
+            "MISSING_MEDIA_FILES_ON_DISK",
+            "MISSING_THUMBNAIL_FILES_ON_DISK",
+            "MISSING_LIVE_CHAT_FILES",
+            "INVALID_PATH_REFERENCES",
+        ]) {
+            expect(
+                onDiskByCode.get(code),
+                `${code} names something that is not there to reveal`
+            ).toBe(false);
+        }
+
+        // Every code above has to have been produced, or the loops assert nothing.
+        expect(onDiskByCode.size).toBeGreaterThanOrEqual(10);
+    });
+
     it("resolves a MISSING_MEDIA example path to its media so it can be opened in the library", () => {
         const input = baseDiagnostics();
         input.libraryIntegrity.missing_media_files = 1;

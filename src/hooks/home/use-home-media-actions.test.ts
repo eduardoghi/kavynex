@@ -14,6 +14,7 @@ describe("useHomeMediaActions", () => {
             reloadDiagnostics: vi.fn().mockResolvedValue(undefined),
             openLogDirectory: vi.fn().mockResolvedValue(undefined),
             isOpeningLogDirectory: false,
+            revealLibraryPath: vi.fn().mockResolvedValue(undefined),
             ...overrides,
         };
     }

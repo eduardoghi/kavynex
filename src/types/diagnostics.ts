@@ -80,6 +80,16 @@ export type DiagnosticsIssue = {
     // invalid), so the user can see and act on them manually. Capped by the backend/service
     // that produced them; omitted when there are none to show.
     examples?: DiagnosticsIssueExample[];
+    // True when those example paths name files that are really in the library, which is what lets
+    // the UI offer to reveal one in the file manager. Absent for the missing and invalid issues,
+    // whose paths come from database rows rather than from a directory walk: a missing file is not
+    // there to reveal, and an invalid reference points outside the library, which the backend guard
+    // refuses by design. Offering the action for either would be a link that always fails.
+    //
+    // Decided per issue in `diagnostics-rules.ts` rather than inferred in the component from the
+    // absence of a `media` target on the example. Those two look interchangeable and are not:
+    // MISSING_THUMBNAIL_FILES_ON_DISK carries no target *and* names a file that is gone.
+    examplesAreOnDisk?: boolean;
 };
 
 export type DiagnosticsOverviewStatus = "healthy" | "warning" | "error";

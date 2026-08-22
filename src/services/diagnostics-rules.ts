@@ -26,11 +26,38 @@ export function sortDiagnosticsIssues(issues: DiagnosticsIssue[]): DiagnosticsIs
     return [...issues].sort(compareIssueSeverity);
 }
 
+// The issues whose example paths name a file that is really sitting in the library, which is what
+// makes "reveal this in the file manager" a working action rather than a guaranteed failure. Both
+// families qualify by definition, because both are produced by walking the library directory: an
+// orphan is a file with no row behind it, and a corrupt one is a file whose bytes disagree with the
+// hash its own name declares.
+//
+// The rest are deliberately absent, and the reason differs. The MISSING_* issues name a path taken
+// from a database row whose file is gone, so there is nothing to show. INVALID_PATH_REFERENCES is
+// stronger still: those paths are absolute or point outside the library, which
+// `resolve_path_inside_library` refuses on the backend by design, so a reveal would not merely fail,
+// it would be asking the app to do the one thing that guard exists to prevent.
+//
+// Declared here rather than inferred in the component from an example having no `media` target. The
+// two look interchangeable and are not: MISSING_THUMBNAIL_FILES_ON_DISK passes no resolver, so its
+// examples carry no target while naming a file that is not there.
+const ISSUE_CODES_WITH_FILES_ON_DISK: ReadonlySet<string> = new Set([
+    "CORRUPT_MEDIA_FILES_ON_DISK",
+    "CORRUPT_THUMBNAIL_FILES_ON_DISK",
+    "CORRUPT_LIVE_CHAT_FILES",
+    "ORPHAN_MEDIA_FILES",
+    "ORPHAN_THUMBNAIL_FILES",
+    "ORPHAN_LIVE_CHAT_FILES",
+]);
+
 // Attaches concrete example paths to an issue so the user can see and act on the specific files
 // manually (the diagnostics only report. They never delete). Blank entries are dropped and the
 // `examples` key is omitted entirely when nothing remains, so an issue with no examples stays a
 // plain { code, severity, title, description } object. `resolveMedia`, when given, turns a path
 // into a jump-to-the-media target (used for missing media, whose row still exists).
+//
+// `examplesAreOnDisk` is set from the issue's own code (see ISSUE_CODES_WITH_FILES_ON_DISK) and
+// only when true, keeping an issue that cannot offer the action the same plain object it was.
 function withExamples(
     issue: DiagnosticsIssue,
     paths: string[],
@@ -45,7 +72,13 @@ function withExamples(
             return media ? { path, media } : { path };
         });
 
-    return examples.length > 0 ? { ...issue, examples } : issue;
+    if (examples.length === 0) {
+        return issue;
+    }
+
+    return ISSUE_CODES_WITH_FILES_ON_DISK.has(issue.code)
+        ? { ...issue, examples, examplesAreOnDisk: true }
+        : { ...issue, examples };
 }
 
 export function buildDiagnosticsIssues(

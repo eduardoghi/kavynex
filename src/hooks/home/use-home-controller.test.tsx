@@ -274,6 +274,7 @@ const mockDiagnosticsState = {
     reloadDiagnostics: vi.fn(),
     openLogDirectory: vi.fn(),
     isOpeningLogDirectory: false,
+    revealLibraryPath: vi.fn(),
 };
 
 const mockUiGuards = {

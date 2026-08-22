@@ -206,6 +206,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         loading={diagnostics.isLoadingDiagnostics}
                         summary={diagnostics.diagnosticsSummary}
                         onOpenMedia={onOpenDiagnosticsMedia}
+                        onRevealPath={(path) => void diagnostics.revealLibraryPath(path)}
                         onOpenLogFolder={() => void diagnostics.openLogDirectory()}
                         openingLogFolder={diagnostics.isOpeningLogDirectory}
                     />

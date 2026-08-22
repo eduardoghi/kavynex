@@ -8,6 +8,7 @@ vi.mock("../services/diagnostics-service", () => ({
 
 vi.mock("../services/library-service", () => ({
     openLogDirectory: vi.fn(),
+    openFileLocation: vi.fn(),
 }));
 
 vi.mock("../utils/app-error", () => ({
@@ -23,11 +24,12 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
-import { openLogDirectory } from "../services/library-service";
+import { openFileLocation, openLogDirectory } from "../services/library-service";
 import { useDiagnostics } from "./use-diagnostics";
 
 const getDiagnosticsSummaryMock = vi.mocked(getDiagnosticsSummary);
 const openLogDirectoryMock = vi.mocked(openLogDirectory);
+const openFileLocationMock = vi.mocked(openFileLocation);
 
 function createSummary(label: string): DiagnosticsSummary {
     return {
@@ -656,6 +658,83 @@ describe("useDiagnostics", () => {
             });
 
             expect(openLogDirectoryMock).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("revealLibraryPath", () => {
+        it("pairs the example path with the configured library path", async () => {
+            // The pairing is the assertion. The path comes from the report and is library-relative,
+            // so the backend resolves it against the library it is given and refuses anything that
+            // lands outside. Sending the wrong library path here does not become a security
+            // problem, it becomes a refusal the user reads as the feature being broken.
+            const onError = vi.fn();
+            openFileLocationMock.mockResolvedValueOnce(undefined);
+
+            const { result } = renderHook(() =>
+                useDiagnostics({
+                    libraryPath: "/library",
+                    importMode: "copy",
+                    onError,
+                })
+            );
+
+            await act(async () => {
+                await result.current.revealLibraryPath("video/orphan.mp4");
+            });
+
+            expect(openFileLocationMock).toHaveBeenCalledWith("video/orphan.mp4", "/library");
+        });
+
+        it("surfaces a failure instead of a click that appears to do nothing", async () => {
+            // A reveal that fails leaves the screen exactly as it was, so without this the user
+            // clicks a link and no window opens and nothing explains why.
+            const onError = vi.fn();
+            openFileLocationMock.mockRejectedValueOnce(new Error("file is gone"));
+
+            const { result } = renderHook(() =>
+                useDiagnostics({
+                    libraryPath: "/library",
+                    importMode: "copy",
+                    onError,
+                })
+            );
+
+            await act(async () => {
+                await result.current.revealLibraryPath("video/orphan.mp4");
+            });
+
+            expect(onError).toHaveBeenCalledWith("Failed to open the file location.");
+        });
+
+        it("drops a second click while the first is still in flight", async () => {
+            // Same guard as the log folder above, and it has its own flag rather than sharing that
+            // one: opening the log folder must not block revealing a file.
+            const onError = vi.fn();
+
+            let release: () => void = () => {};
+            openFileLocationMock.mockImplementationOnce(
+                () =>
+                    new Promise<void>((resolve) => {
+                        release = resolve;
+                    })
+            );
+
+            const { result } = renderHook(() =>
+                useDiagnostics({
+                    libraryPath: "/library",
+                    importMode: "copy",
+                    onError,
+                })
+            );
+
+            await act(async () => {
+                const first = result.current.revealLibraryPath("video/a.mp4");
+                const second = result.current.revealLibraryPath("video/b.mp4");
+                release();
+                await Promise.all([first, second]);
+            });
+
+            expect(openFileLocationMock).toHaveBeenCalledTimes(1);
         });
     });
 });

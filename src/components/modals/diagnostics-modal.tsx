@@ -13,6 +13,10 @@ type DiagnosticsModalProps = {
     loading: boolean;
     summary: DiagnosticsSummary | null;
     onOpenMedia?: (target: DiagnosticsMediaTarget) => void;
+    // Reveals one of an issue's example files in the OS file manager, by its library-relative path.
+    // Only reaches the issues whose examples name a file that is on disk; the section decides that
+    // from the issue itself. Optional for the same reason as the two below.
+    onRevealPath?: (path: string) => void;
     // Reveals the app's log directory in the OS file manager. Optional so the modal still renders
     // bare in isolation tests; the app always supplies it.
     onOpenLogFolder?: () => void;
@@ -26,6 +30,7 @@ export function DiagnosticsModal({
     loading,
     summary,
     onOpenMedia,
+    onRevealPath,
     onOpenLogFolder,
     openingLogFolder = false,
 }: DiagnosticsModalProps): JSX.Element {
@@ -146,6 +151,7 @@ export function DiagnosticsModal({
                                     <DiagnosticsIssuesSection
                                         issues={summary.issues}
                                         onOpenMedia={onOpenMedia}
+                                        onRevealPath={onRevealPath}
                                     />
                                 </>
                             )}

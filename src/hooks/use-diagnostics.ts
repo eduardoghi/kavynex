@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiagnosticsController } from "../types/controllers";
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
-import { openLogDirectory as openLogDirectoryInSystem } from "../services/library-service";
+import {
+    openFileLocation,
+    openLogDirectory as openLogDirectoryInSystem,
+} from "../services/library-service";
 import type { DiagnosticsSummary } from "../types/diagnostics";
 import type { ImportMode } from "../types/settings";
 import { resolveErrorMessage } from "../utils/error-message";
@@ -30,6 +33,12 @@ export function useDiagnostics({
     // opening the log folder loads no diagnostics, and reusing that flag would put the Refresh
     // button into a loading state for an action that has nothing to do with it.
     const logDirectoryFlag = useAsyncFlag();
+    // Separate from the flag above rather than shared, because the two are different actions and
+    // sharing would let the log folder still opening block a file from being revealed. Nothing
+    // renders a busy state for this one (its target is a link in a list, not a button), so the
+    // flag's whole job here is the re-entry guard inside `runWithFlag`: a double click would
+    // otherwise spawn two file-manager windows onto the same file.
+    const revealPathFlag = useAsyncFlag();
     const hasLoadedSinceOpenRef = useRef(false);
     const previousLibraryPathRef = useRef(libraryPath);
     const previousImportModeRef = useRef(importMode);
@@ -106,6 +115,30 @@ export function useDiagnostics({
         });
     }, [logDirectoryFlag, onError]);
 
+    // Reveals one of the report's example files in the OS file manager, given its library-relative
+    // path. Only offered for the issues whose paths name a file that is on disk (see
+    // ISSUE_CODES_WITH_FILES_ON_DISK in diagnostics-rules.ts); the containment is still enforced on
+    // the backend, which resolves the path against the configured library and refuses anything
+    // outside it, so this hook passing a path it was handed is not what makes it safe.
+    //
+    // This is what the Diagnostics report is for once it has told the user which files are
+    // unreferenced. The report never deletes, by design, so the next step is always the file
+    // manager, and finding a content-addressed name like `video/9f2c...mp4` by hand is not a step
+    // anyone should be asked to take.
+    const revealLibraryPath = useCallback(
+        async (path: string): Promise<void> => {
+            await revealPathFlag.runWithFlag(async () => {
+                try {
+                    await openFileLocation(path, libraryPath);
+                } catch (error) {
+                    logError("diagnostics", "Failed to reveal a library file.", error, { path });
+                    onError(resolveErrorMessage(error, "Failed to open the file location."));
+                }
+            });
+        },
+        [libraryPath, onError, revealPathFlag]
+    );
+
     useEffect(() => {
         if (!diagnosticsOpen) {
             return;
@@ -140,5 +173,6 @@ export function useDiagnostics({
         reloadDiagnostics,
         openLogDirectory,
         isOpeningLogDirectory: logDirectoryFlag.isRunning,
+        revealLibraryPath,
     });
 }
