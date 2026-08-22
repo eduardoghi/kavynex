@@ -25,6 +25,15 @@ updates:
       # survives a squash-merge without violating the commit convention.
       commit-message:
           prefix: "build"
+      # TypeScript 7 is the native (Go) compiler, and it does not yet expose a stable JavaScript
+      # API, which is what `typescript-eslint`, Stryker's typescript-checker and the Vite plugin
+      # import `typescript` for. Until it does, every one of those stays on 6.x and a 7.x bump here
+      # is a PR that cannot merge, arriving every week. The major is ignored rather than left to be
+      # closed by hand each time; minor and patch on 6.x still flow through the group below. Drop
+      # this entry once the tooling declares support for 7 (the ecosystem will say so loudly).
+      ignore:
+          - dependency-name: "typescript"
+            update-types: ["version-update:semver-major"]
       groups:
           npm-minor-and-patch:
               patterns:
