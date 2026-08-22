@@ -144,11 +144,19 @@ section existed mostly to tell a reader that the absence of a workflow did not m
 static analysis.
 
 The move to a workflow changed where the configuration lives, not what is analysed. The languages,
-the query suite and the schedule are the ones default setup was running, read back from the API
+the query suite and the schedule were the ones default setup was running, read back from the API
 before the switch. What it buys is the property every other gate in this repository already had:
 the analysis is pinned (the action by SHA, the runner by OS major), it is reviewable in a diff, and
 it travels with a fork. A language quietly dropped or a suite quietly narrowed now shows up as a
 change to a file rather than as nothing at all.
+
+The suite was then widened, as its own change, from `default` to `security-extended`. The extended
+suite carries more variants of the classes this app's threat model is about (caller-supplied paths
+reaching the filesystem, URLs reaching the network, argument vectors reaching a spawned process) at
+a lower precision, so it names things the code already guards in ways the analyzer cannot follow.
+Those are dismissed with a reason in the code-scanning view rather than silenced in the workflow,
+which keeps the next real finding from arriving pre-suppressed. `security-and-quality` is not used:
+its extra queries are about code quality, which clippy and ESLint already gate.
 
 One property is unchanged and still worth knowing: CodeQL analyses **what has been pushed**, which
 is not always what has been written. A run green against `origin/main` says nothing about commits

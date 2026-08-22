@@ -97,15 +97,23 @@ jobs:
               with:
                   languages: ${{ matrix.language }}
                   build-mode: ${{ matrix.build-mode }}
-                  # `queries:` is deliberately absent, which selects the same `default` suite the
-                  # API reported for default setup. Naming a suite here would be the one place this
-                  # migration changed what is analyzed rather than only where the configuration
-                  # lives, and the two are worth keeping separate: a red run after the switch should
-                  # mean the switch broke something, never that a wider suite found something the
-                  # old configuration was never asked to look for.
+                  # The `security-extended` suite rather than the `default` one the migration from
+                  # default setup kept. That migration left `queries:` absent on purpose, so a red
+                  # run after it could only mean the move broke something and never that a wider
+                  # suite found something the old setup was not asked about; with the move settled,
+                  # widening is the separate, reviewable change it was meant to be.
                   #
-                  # Widening to `security-extended` or `security-and-quality` is a reviewable
-                  # one-line change from here, which is the whole point of the file existing.
+                  # Why wider: the app's whole threat model is caller-supplied paths reaching the
+                  # filesystem, caller-supplied URLs reaching the network, and argument vectors
+                  # reaching external processes (docs/THREAT-MODEL.md). Those are exactly the
+                  # classes the extended suite carries more variants of, at a lower precision than
+                  # `default`, so it will name things the code already guards in ways the analyzer
+                  # cannot follow (a `is_network_path` check before a stat, say). Each of those is
+                  # read and dismissed in Security > Code scanning with a reason, which is cheaper
+                  # than the one real variant the narrower suite would have stayed silent about.
+                  # `security-and-quality` is deliberately not chosen: its extra queries are code
+                  # quality, which clippy and ESLint already cover at the gate, not security.
+                  queries: security-extended
 
             - name: Perform CodeQL analysis
               uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
