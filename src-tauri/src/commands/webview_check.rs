@@ -27,9 +27,12 @@
 //! **What it does not cover, stated plainly:** the plugin grants that cannot be exercised without a
 //! human or a side effect. `dialog:allow-open`/`allow-save` (would open a file picker),
 //! `opener:allow-open-url` (would launch a browser), `updater:default` (would reach the network)
-//! and `process:allow-restart` (would restart the app). Those four stay manual. What is covered is
-//! the renderer booting, the two `core:*` grants, IPC into this crate's own commands, and the
-//! asset protocol end to end.
+//! and `process:allow-restart` (would restart the app). Those four are checked by hand instead, once
+//! per release, against the installed artifact: `docs/RELEASING.md` step 6 names the click that
+//! exercises each one. Worth reading before assuming a grant here is unverified, because two of them
+//! are cheaper to confirm than they look (`process:allow-restart` is reached by the database import,
+//! not only by an update). What is covered here is the renderer booting, the two `core:*` grants,
+//! IPC into this crate's own commands, and the asset protocol end to end.
 
 use std::path::{Path, PathBuf};
 

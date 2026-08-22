@@ -545,8 +545,10 @@ jobs:
             # exits 0 or 1. A renderer that never loads reports nothing, which a watchdog turns into
             # a non-zero exit with a message rather than a hang.
             #
-            # What it deliberately does not cover, since neither can run without a side effect: the
-            # dialog/opener/updater/process plugin grants. Those stay a manual pass.
+            # What it deliberately does not cover, since none of them can run without a side effect:
+            # the dialog/opener/updater/process plugin grants. Those are checked by hand against the
+            # installed artifact, from the checklist in docs/RELEASING.md step 6, which names the
+            # click that exercises each one and what the updater preset does not prove.
             #
             # It cannot live in ci.yml. That workflow never builds a bundle, and the CSP and the
             # embedded frontend only exist in one. Placed beside the smoke test for the same reason

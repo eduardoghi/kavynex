@@ -12,8 +12,8 @@
 // ACL. `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
 // `--smoke-test` exits inside `setup()`. `--webview-check` (release.yml) closes the runtime half for
 // the three grants it can exercise without a side effect. The four plugin grants cannot be probed
-// that way (a file picker, a browser launch, a network call, a restart) and were left to a manual
-// pass that was never written down.
+// that way (a file picker, a browser launch, a network call, a restart), so they are checked by hand
+// against the installed artifact, once per release, from the checklist in `docs/RELEASING.md` step 6.
 //
 // This closes the *declaration* half instead, which is where that drift actually happens, and it
 // runs on every push rather than only on a release.

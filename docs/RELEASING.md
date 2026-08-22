@@ -45,8 +45,9 @@ actually act on what it says.
    the page from the Vite origin, with no CSP header). Both are skipped on the x86_64 macOS leg
    alone, which is a cross-compile on an arm64 runner and cannot execute its own output. A failure
    in either turns the run red with assets already on the draft, which is the intended outcome:
-   the draft is published by hand, and a red run must not be published. See `RELEASE-SECURITY.md` for what
-   the webview check covers and what it deliberately leaves to a manual pass.
+   the draft is published by hand, and a red run must not be published. What the webview check
+   deliberately does not reach is the four plugin grants, because exercising any of them has a side
+   effect a CI runner cannot take; step 6 below is the checklist that covers them by hand.
 4. The workflow creates a **draft** GitHub release tagged `v<version>` whose body is a single
    line pointing at the release page, and uploads the built installers plus signed updater
    artifacts. That body is deliberately short rather than a commit log: `tauri-action` copies
@@ -73,10 +74,67 @@ actually act on what it says.
    in the workflow body: editing a draft does not regenerate `latest.json`, so the text
    reaches the release page without reaching the in-app update notice, which renders that
    body unscrolled.
-6. Review the draft release and publish it manually when ready.
+6. Work through the plugin-grant checklist below against the installed artifact.
+7. Review the draft release and publish it manually when ready.
 
 Installers are intentionally not code-signed (see `RELEASE-SECURITY.md`); do not add code-signing
 steps to the release workflow.
+
+### The plugin-grant checklist
+
+Everything in `src-tauri/capabilities/` is evaluated by the ACL at runtime and nowhere else. A
+permission that is missing, misspelled, or scoped too narrowly compiles, passes `cargo test`, passes
+`pnpm build`, and fails on the first click a user makes. Two checks already cover part of that:
+`scripts/verify-capability-surface.js` (every push) proves the granted list and the two seam files in
+`src/lib/` cannot drift apart, and `--webview-check` (every release leg) proves the three `core:*`
+grants and the asset protocol work in the packaged build.
+
+Neither reaches the plugin grants, and the reason is that exercising one has a side effect no
+unattended run may take: a file picker, a browser launch, a network call, a process restart. So they
+are checked by hand, here, once per release. This list is what "review the draft" in step 7 means for
+them.
+
+Run it against the **installed artifact from the draft**, not `pnpm tauri dev`. The ACL itself is the
+same in dev (the capabilities are compiled into the binary either way), so a missing grant is
+catchable earlier than this. The artifact is what this step uses anyway because it is the build being
+published, and because the updater half of the list does not behave realistically anywhere else.
+
+- [ ] **`dialog:allow-open`**: Settings > Library folder > **Choose folder** opens the OS folder
+      picker. Several other paths reach the same permission (the **Choose a video/audio file to
+      import** row in Add media's local mode, **Choose file** beside the cookies path in its yt-dlp
+      mode, the channel avatar and media thumbnail pickers, Settings > Database > **Import database**
+      and **Choose backup folder**), so any one of them is enough. This one is the cheapest, since
+      cancelling the picker changes nothing.
+- [ ] **`dialog:allow-save`**: Settings > Database > **Export database** opens the OS save dialog.
+      Unlike the one above there is no alternative path: `saveFileDialog` has exactly this one
+      caller, so nothing else exercises this grant.
+- [ ] **`opener:allow-open-url`**: in the player, **Open source on YouTube** launches the browser on
+      a media that has a YouTube source. Also the only caller of `openUrl`. This grant carries a URL
+      allow-list (`youtube.com`, `youtu.be`), so the check proves the scope still matches the URLs
+      the app builds, not merely that the permission is present.
+- [ ] **`process:allow-restart`**: Settings > Database > **Import database**, pick a database, then
+      **Replace and restart**. The app relaunches once the swap is staged. `relaunch` has three
+      callers and the updater is only one of them, so this grant does **not** have to wait for a real
+      update to be verified. **Use a throwaway install or export your database first.** The import
+      keeps a safety copy and **Undo last import** reverts it, but do not let that be the only copy.
+- [ ] **`updater:default`, the check half**: Settings > Application update > **Check for updates**
+      returns an answer. "Kavynex is already up to date" counts. What matters is that it answers
+      rather than failing, since an ACL refusal surfaces as an error.
+
+`updater:default` is a preset, and it is worth knowing what the item above does and does not prove.
+The set grants four permissions (`allow-check`, `allow-download`, `allow-install`,
+`allow-download-and-install`). Clicking **Check for updates** exercises the first. The app never calls
+the standalone download or install commands at all, so those two are granted and unused. The fourth
+is the one that installs an update, and it cannot be exercised before publishing, because it needs a
+published release newer than the version running.
+
+So it is verified backwards, on the next cycle: install the previous release, let it offer this one,
+and take the update. That single action covers `allow-download-and-install` **and** the
+`process:allow-restart` in the updater's own path, which is the one the item above does not reach.
+Doing it once per release means each version's updater path is confirmed by the release that follows
+it, and a break is found one version late rather than never. If the update does not install, say so
+in the next release's notes: users on that version have to reinstall by hand, and nothing in the app
+can tell them.
 
 ### What the release builds
 
