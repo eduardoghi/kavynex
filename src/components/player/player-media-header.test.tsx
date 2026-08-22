@@ -14,7 +14,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}                onOpenInYoutube={vi.fn()}
+                isLive={false}
+                onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
                 onBack={vi.fn()}
@@ -38,7 +39,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}                onOpenInYoutube={vi.fn()}
+                isLive={false}
+                onOpenInYoutube={vi.fn()}
                 onMarkWatched={onMarkWatched}
                 onMarkUnwatched={vi.fn()}
                 onBack={onBack}
@@ -63,7 +65,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube
                 isWatched
-                isLive={false}                onOpenInYoutube={onOpenInYoutube}
+                isLive={false}
+                onOpenInYoutube={onOpenInYoutube}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
                 onBack={vi.fn()}
@@ -90,7 +93,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}                isUpdatingWatchedStatus
+                isLive={false}
+                isUpdatingWatchedStatus
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -110,7 +114,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched
-                isLive={false}                isUpdatingWatchedStatus
+                isLive={false}
+                isUpdatingWatchedStatus
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -128,7 +133,8 @@ describe("PlayerMediaHeader", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched
-                isLive={false}                isUpdatingWatchedStatus={false}
+                isLive={false}
+                isUpdatingWatchedStatus={false}
                 onOpenInYoutube={vi.fn()}
                 onMarkWatched={vi.fn()}
                 onMarkUnwatched={vi.fn()}
@@ -206,7 +212,8 @@ describe("PlayerMediaHeader accessibility", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube
                 isWatched={false}
-                isLive={false}                isRefreshingComments={false}
+                isLive={false}
+                isRefreshingComments={false}
                 onOpenInYoutube={vi.fn()}
                 onOpenFileLocation={vi.fn()}
                 onRefreshComments={vi.fn()}
@@ -243,7 +250,8 @@ describe("PlayerMediaHeader accessibility", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}                isRefreshingComments={false}
+                isLive={false}
+                isRefreshingComments={false}
                 onOpenInYoutube={vi.fn()}
                 onRefreshComments={vi.fn()}
                 onCancelRefreshComments={vi.fn()}
@@ -264,7 +272,8 @@ describe("PlayerMediaHeader accessibility", () => {
                 shellBorder="rgba(255,255,255,0.1)"
                 canOpenInYoutube={false}
                 isWatched={false}
-                isLive={false}                isRefreshingComments
+                isLive={false}
+                isRefreshingComments
                 onOpenInYoutube={vi.fn()}
                 onRefreshComments={vi.fn()}
                 onCancelRefreshComments={vi.fn()}
