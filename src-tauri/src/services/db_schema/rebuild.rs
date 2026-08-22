@@ -2,7 +2,7 @@
 //! cannot express: a new or changed `CHECK`, a new `UNIQUE`, a changed column type, a dropped
 //! column. Split out of `mod.rs` because it is the one migration mechanism with machinery of its
 //! own (a pooled connection whose foreign-key state must never leak back), and because it is
-//! deliberately unused as of `SCHEMA_VERSION 14`. Kept ready and tested so the first real rebuild
+//! deliberately unused so far. Kept ready and tested so the first real rebuild
 //! is a data change rather than new untested plumbing.
 //!
 //! Tests live in the parent's `mod tests`.

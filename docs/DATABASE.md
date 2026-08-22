@@ -205,7 +205,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `14`), in `db_schema/mod.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `15`), in `db_schema/mod.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -302,7 +302,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
   any dangling reference the rebuild introduced. This path is implemented and tested but
-  unused as of `SCHEMA_VERSION 14` (no migration has needed it yet), kept ready so the
+  unused so far (no migration has needed it yet), kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
   transaction that also stamps the new `user_version`, so a crash mid-migration leaves the

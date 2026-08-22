@@ -40,7 +40,7 @@ use migrations::{
 };
 
 // SQLite's table-rebuild procedure, for a change `ALTER TABLE ADD COLUMN` or a trigger cannot
-// express. Unused as of SCHEMA_VERSION 14 and kept ready; see the module for why.
+// express. Unused so far and kept ready; see the module for why.
 mod rebuild;
 #[cfg(test)]
 use rebuild::RebuildConnection;
@@ -196,6 +196,30 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .expect("create sqlite memory pool")
+    }
+
+    #[test]
+    fn the_database_doc_names_the_current_schema_version() {
+        // docs/DATABASE.md states the version in prose ("`SCHEMA_VERSION` (currently `N`)"), and
+        // prose kept in step by discipline alone drifted once: it said 14 for the whole life of v15.
+        // Pinning the literal here makes the bump a one-line doc edit that CI refuses to forget.
+        let doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/DATABASE.md"));
+        let marker = "`SCHEMA_VERSION` (currently `";
+
+        let start = doc
+            .find(marker)
+            .expect("DATABASE.md should state the current SCHEMA_VERSION in prose")
+            + marker.len();
+        let end = doc[start..]
+            .find('`')
+            .expect("the version literal should be closed by a backtick")
+            + start;
+
+        assert_eq!(
+            &doc[start..end],
+            SCHEMA_VERSION.to_string(),
+            "docs/DATABASE.md names a different SCHEMA_VERSION than the code; update the prose"
+        );
     }
 
     #[tokio::test]
