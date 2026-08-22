@@ -5,7 +5,12 @@
 //! and briefly show a console window. Passing `CREATE_NO_WINDOW` suppresses it. Both
 //! `hide_console*` helpers are no-ops on non-Windows platforms.
 
+// Only the platforms that still kill through a spawned child (`taskkill` on Windows, `kill` on the
+// fallback) need these. Unix signals the group through the syscall and has no killer child to wait
+// on, so on that target the imports and the bounded wait below would be dead code.
+#[cfg(not(unix))]
 use std::process::Stdio;
+#[cfg(not(unix))]
 use std::time::{Duration, Instant};
 
 use crate::{AppError, AppErrorCode};
@@ -17,21 +22,25 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// aborts a bounded wait promptly, long enough not to busy-spin.
 const CANCEL_POLL_INTERVAL_MS: u64 = 200;
 
-/// How long the process-tree kill waits for the killer itself (`taskkill`/`kill`) before giving
-/// up. The killer is normally near-instant, but it can wedge (an AV/EDR hook, a target stuck in
-/// an uninterruptible wait), and both call sites must never block on it: the download-cancel path
-/// runs inside the async wait loop, and the app-exit sweep runs synchronously on the event-loop
-/// thread, where a hung killer would stop the app from closing at all.
+/// How long the process-tree kill waits for the killer itself (`taskkill`, or `kill` on the
+/// fallback target) before giving up. The killer is normally near-instant, but it can wedge (an
+/// AV/EDR hook, a target stuck in an uninterruptible wait), and both call sites must never block
+/// on it: the download-cancel path runs inside the async wait loop, and the app-exit sweep runs
+/// synchronously on the event-loop thread, where a hung killer would stop the app from closing at
+/// all.
+#[cfg(not(unix))]
 const KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How often the blocking bounded wait polls the killer child. Short enough that the deadline
 /// fires promptly, long enough not to busy-spin the calling thread.
+#[cfg(not(unix))]
 const KILL_WAIT_POLL: Duration = Duration::from_millis(50);
 
 /// Waits for a spawned killer child to exit, but gives up after [`KILL_WAIT_TIMEOUT`]. Returning
 /// early leaves the killer running detached, which is acceptable: the signal it carries has
 /// already been delivered to the target tree, and the caller must not block on the killer's own
 /// bookkeeping.
+#[cfg(not(unix))]
 fn wait_child_bounded_blocking(mut child: std::process::Child) {
     let deadline = Instant::now() + KILL_WAIT_TIMEOUT;
 
@@ -107,25 +116,57 @@ pub async fn kill_process_tree(pid: u32) {
         .stderr(Stdio::null());
     hide_console_async(&mut command);
 
-    if let Ok(mut child) = command.spawn() {
-        // Bound the wait on the killer itself so a hung taskkill cannot stall the caller.
-        let _ = tokio::time::timeout(KILL_WAIT_TIMEOUT, child.wait()).await;
+    match command.spawn() {
+        Ok(mut child) => {
+            // Bound the wait on the killer itself so a hung taskkill cannot stall the caller.
+            let _ = tokio::time::timeout(KILL_WAIT_TIMEOUT, child.wait()).await;
+        }
+        // Not swallowed: a cancel that could not reach the tree leaves yt-dlp/ffmpeg running while
+        // the UI reports the run as stopped, and the log is the only place that would say so.
+        Err(error) => crate::services::logger::warn(
+            "process",
+            format!("failed to start taskkill for process tree {pid}: {error}"),
+        ),
+    }
+}
+
+/// Signals the whole process group `pid` leads, via the `kill(2)` syscall rather than the `kill`
+/// binary.
+///
+/// This used to spawn `/usr/bin/kill -9 -<pid>`, which meant the one operation whose job is to
+/// stop an orphaned yt-dlp/ffmpeg depended on resolving an executable through the process's
+/// `PATH`, and a failed spawn was swallowed. On a minimal PATH (an AppImage in a sandbox, a GUI
+/// launch that inherited launchd's default) the cancel looked successful in the UI while the tree
+/// kept running. The syscall has no such dependency, returns synchronously, and reports the one
+/// outcome worth knowing about.
+///
+/// `ESRCH` is not reported: the group is already gone, which is the state the caller wanted.
+#[cfg(unix)]
+fn kill_process_group(pid: u32) {
+    // The negated pid addresses the process group `configure_process_group` put the child in, so
+    // the ffmpeg grandchild yt-dlp spawns for a merge goes with it.
+    let group = -(pid as libc::pid_t);
+
+    // SAFETY: kill(2) takes a pid and a signal number and has no memory-safety preconditions. A
+    // stale pid at worst signals nothing (ESRCH) or, in theory, a recycled group, which the spawn
+    // of a separate `kill` process was equally exposed to.
+    let result = unsafe { libc::kill(group, libc::SIGKILL) };
+
+    if result != 0 {
+        let error = std::io::Error::last_os_error();
+
+        if error.raw_os_error() != Some(libc::ESRCH) {
+            crate::services::logger::warn(
+                "process",
+                format!("failed to kill process group {pid}: {error}"),
+            );
+        }
     }
 }
 
 #[cfg(unix)]
 pub async fn kill_process_tree(pid: u32) {
-    let process_group = format!("-{pid}");
-
-    if let Ok(mut child) = tokio::process::Command::new("kill")
-        .args(["-9", process_group.as_str()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        // Bound the wait on the killer itself so a hung kill cannot stall the caller.
-        let _ = tokio::time::timeout(KILL_WAIT_TIMEOUT, child.wait()).await;
-    }
+    kill_process_group(pid);
 }
 
 #[cfg(not(any(target_os = "windows", unix)))]
@@ -154,25 +195,20 @@ pub fn kill_process_tree_blocking(pid: u32) {
 
     // Spawn and wait with a bound rather than `status()`: the app-exit sweep calls this on the
     // event-loop thread, where a hung taskkill would block shutdown indefinitely.
-    if let Ok(child) = command.spawn() {
-        wait_child_bounded_blocking(child);
+    match command.spawn() {
+        Ok(child) => wait_child_bounded_blocking(child),
+        Err(error) => crate::services::logger::warn(
+            "process",
+            format!("failed to start taskkill for process tree {pid}: {error}"),
+        ),
     }
 }
 
+/// Synchronous counterpart for the app-exit path. The syscall is already synchronous and cannot
+/// hang, so unlike the Windows variant there is no killer child to bound a wait on.
 #[cfg(unix)]
 pub fn kill_process_tree_blocking(pid: u32) {
-    let process_group = format!("-{pid}");
-
-    // Spawn and wait with a bound rather than `status()`, for the same reason as the Windows
-    // variant above: a hung kill must not block the app-exit sweep.
-    if let Ok(child) = std::process::Command::new("kill")
-        .args(["-9", process_group.as_str()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        wait_child_bounded_blocking(child);
-    }
+    kill_process_group(pid);
 }
 
 #[cfg(not(any(target_os = "windows", unix)))]
@@ -238,6 +274,70 @@ mod tests {
     fn exit_status(code: u32) -> std::process::ExitStatus {
         use std::os::windows::process::ExitStatusExt;
         std::process::ExitStatus::from_raw(code)
+    }
+
+    /// Spawns a long sleeper in its own process group, the way every real yt-dlp/ffmpeg child is
+    /// spawned, so the group kill has a real target. Returns the child handle to assert on.
+    #[cfg(unix)]
+    fn spawn_sleeper_in_own_group() -> std::process::Child {
+        let mut command = std::process::Command::new("sleep");
+        command
+            .arg("30")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        configure_process_group_blocking(&mut command);
+        command.spawn().expect("spawn a sleeper")
+    }
+
+    #[cfg(unix)]
+    fn was_killed_by_sigkill(status: std::process::ExitStatus) -> bool {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal() == Some(libc::SIGKILL)
+    }
+
+    // Spawns a real child. The whole point of the syscall version is that it no longer depends on a
+    // `kill` binary being on PATH, so the assertion is on the child's exit status, not on a spawn.
+    #[cfg(unix)]
+    #[test]
+    fn kill_process_tree_blocking_terminates_the_group_with_sigkill() {
+        let mut child = spawn_sleeper_in_own_group();
+
+        kill_process_tree_blocking(child.id());
+
+        let status = child.wait().expect("wait for the killed sleeper");
+        assert!(
+            was_killed_by_sigkill(status),
+            "the sleeper should have died from SIGKILL, got {status:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_process_tree_terminates_the_group_with_sigkill() {
+        let mut child = spawn_sleeper_in_own_group();
+
+        kill_process_tree(child.id()).await;
+
+        let status = child.wait().expect("wait for the killed sleeper");
+        assert!(
+            was_killed_by_sigkill(status),
+            "the sleeper should have died from SIGKILL, got {status:?}"
+        );
+    }
+
+    // A group that is already gone is the outcome the caller wanted, so it is neither an error nor
+    // a panic. Killing the same group twice is what the app-exit sweep does for the main download
+    // child (once via the download registry, once via the process registry).
+    #[cfg(unix)]
+    #[test]
+    fn killing_an_already_exited_group_is_a_no_op() {
+        let mut child = spawn_sleeper_in_own_group();
+        let pid = child.id();
+
+        kill_process_tree_blocking(pid);
+        let _ = child.wait();
+
+        kill_process_tree_blocking(pid);
     }
 
     #[test]
