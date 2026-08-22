@@ -302,8 +302,8 @@ an arbitrary set of paths.
 #### The second file-manager command takes no path, which is why it needs no guard
 
 `open_log_directory` (`commands/logging.rs`) reveals the app's log directory in the same file
-manager, so the README's "attach the relevant lines when reporting a bug" does not start with the
-user hunting for a per-OS path. It is in this document because it spawns the same thing
+manager, so `TROUBLESHOOTING.md`'s "attach the relevant lines when reporting a bug" does not start
+with the user hunting for a per-OS path. It is in this document because it spawns the same thing
 `open_path_in_system` does while satisfying none of the rules above, and the reason is that it has
 nothing to satisfy them with. **It accepts no arguments.** The directory comes from
 `app.path().app_log_dir()`, so there is no value a compromised renderer can supply and therefore
@@ -853,7 +853,7 @@ be a single recursive `allow_directory` on the root, justified by the root holdi
 app-generated temp files. That justification was wrong on Windows, where `app_cache_dir()` resolves
 to `%LOCALAPPDATA%\com.kavynex.app` and is therefore also the parent of the log directory
 (`app_log_dir()` = `<cache root>\logs`) and of `EBWebView/`, the WebView2 user-data folder. So the
-grant reached a log file the README asks users to attach to bug reports, and the browser profile of
+grant reached a log file `SUPPORT.md` asks users to attach to bug reports, and the browser profile of
 the app's own webview, neither of which has anything to do with rendering a thumbnail.
 
 The residual exposure while that grant was in place was small (`connect-src` does not include
@@ -911,7 +911,7 @@ being harmless. A future change that introduces raw-HTML rendering would have to
 
 ### Where the remote-images privacy setting is enforced (and where it is not)
 
-The README states that with **Settings > Privacy > "Load comment and live chat images from
+`PRIVACY.md` states that with **Settings > Privacy > "Load comment and live chat images from
 Google"** off (which is the default), viewing saved media makes no network requests at all. That
 is accurate, and it is worth being precise about which layer delivers it, because it is not the
 CSP.
