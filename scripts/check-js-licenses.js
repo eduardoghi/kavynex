@@ -16,9 +16,10 @@
 
 import { execFileSync } from "node:child_process";
 
-// Every license currently present in the production tree (measured: 94 packages, all permissive).
-// A new entry is a deliberate decision, not a formality. Check the license actually permits
-// redistribution inside an MIT app before adding it.
+// The licenses the production tree is allowed to carry. All permissive, and the script prints the
+// package count and the distinct licenses it found on every run, so the current state lives in
+// that output rather than here. A new entry is a deliberate decision, not a formality. Check the
+// license actually permits redistribution inside an MIT app before adding it.
 const ALLOWED = new Set([
     "MIT",
     "MIT-0",
