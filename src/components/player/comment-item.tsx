@@ -14,7 +14,7 @@ const REPLIES_LOAD_MORE_STEP = 10;
 
 const REPLY_TOGGLE_BUTTON_STYLES = {
     root: {
-        color: "var(--mantine-color-blue-4)",
+        color: "var(--kx-color-link)",
         fontWeight: 700,
     },
     section: {
@@ -24,7 +24,7 @@ const REPLY_TOGGLE_BUTTON_STYLES = {
 
 const LOAD_MORE_REPLIES_BUTTON_STYLES = {
     root: {
-        color: "var(--mantine-color-blue-4)",
+        color: "var(--kx-color-link)",
         fontWeight: 700,
         alignSelf: "flex-start",
     },

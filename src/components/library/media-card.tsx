@@ -128,7 +128,7 @@ const MEDIA_TYPE_BADGE_LABEL_STYLE: CSSProperties = {
 // Both geometries are kept by emitting both shadows and letting each one be transparent in the theme
 // it does not belong to, which preserves the original per-theme look exactly.
 const INACTIVE_CARD_SHADOW =
-    "0 6px 18px light-dark(rgba(26,24,37,0.10), transparent)," +
+    "0 4px 12px light-dark(rgba(26,24,37,0.06), transparent)," +
     " 0 12px 32px light-dark(transparent, rgba(0,0,0,0.12))";
 
 // The static base of the root card. Only the four properties that react to isActive/isWatched
@@ -191,11 +191,16 @@ function MediaCardComponent({
             p="sm"
             style={{
                 ...ROOT_CARD_BASE_STYLE,
-                // The watched tint carries a real cost when it is too faint, and it was: in dark
-                // mode it painted 7% green over a card whose unwatched state is already 2.8% white,
-                // so at grid scale the two read as the same card and the badge was doing the whole
-                // job alone. The values below keep the intended ranking (active outranks watched
-                // outranks neither), while making the middle rung visible rather than nominal.
+                // The watched tint carries a real cost when it is too faint. In dark mode it
+                // painted 7% green over a card whose unwatched state is already 2.8% white, so at
+                // grid scale the two read as the same card and the badge was doing the whole job
+                // alone. That is why the dark values sit where they do.
+                //
+                // Light needed the opposite correction. The same alphas over a white card gave a
+                // solid mint panel, and a grid of watched media turned into blocks of green
+                // competing with the thumbnails and titles on top of them. The fill is a hint
+                // there now and the green border, which is a thin line rather than an area, is
+                // what states the run of them.
                 //
                 // Active still wins on more than alpha: it also gets the ring, the drop glow and the
                 // lift below, none of which watched has. That is what lets watched sit this close in
@@ -203,13 +208,16 @@ function MediaCardComponent({
                 background: isActive
                     ? "light-dark(linear-gradient(180deg, rgba(124,92,255,0.12), rgba(124,92,255,0.04)), linear-gradient(180deg, rgba(124,92,255,0.18), rgba(124,92,255,0.05)))"
                     : isWatched
-                    ? "light-dark(linear-gradient(180deg, rgba(34,197,94,0.18), rgba(34,197,94,0.07)), linear-gradient(180deg, rgba(34,197,94,0.16), rgba(34,197,94,0.06)))"
+                    ? "light-dark(linear-gradient(180deg, rgba(34,197,94,0.10), rgba(34,197,94,0.035)), linear-gradient(180deg, rgba(34,197,94,0.16), rgba(34,197,94,0.06)))"
                     : "light-dark(#ffffff, rgba(255,255,255,0.028))",
                 borderColor: isActive
                     ? "rgba(124,92,255,0.68)"
                     : isWatched
-                    ? "rgba(34,197,94,0.55)"
-                    : shellBorder,
+                      // Green-600 in light rather than the same green-500 the dark scheme
+                      // uses. The lighter one washes out against a white card, which left
+                      // watched reading as a slightly tinted card and nothing more.
+                      ? "light-dark(rgba(22,163,74,0.72), rgba(34,197,94,0.55))"
+                      : shellBorder,
                 boxShadow: isActive
                     ? "0 0 0 1px rgba(124,92,255,0.24), 0 18px 42px rgba(80,50,180,0.22)"
                     : INACTIVE_CARD_SHADOW,

@@ -55,7 +55,7 @@ export function CommentContent({
                         <Anchor
                             fw={800}
                             size="sm"
-                            c="blue.4"
+                            c="var(--kx-color-link)"
                             role="button"
                             tabIndex={0}
                             title="Open channel on YouTube"
