@@ -104,6 +104,55 @@ describe("readMediaDurationInSeconds", () => {
         }
     });
 
+    it("gives up with null when the element never reports, instead of staying pending", async () => {
+        // The case that used to hang createMedia: no `loadedmetadata`, no `error`, nothing. The
+        // probe has to settle on its own, and clean the element up as it does on any other exit.
+        vi.useFakeTimers();
+
+        try {
+            const promise = readMediaDurationInSeconds("video/a.mp4", "/lib", "video", 1_000);
+            const media = lastCreated();
+
+            let settled = false;
+            void promise.then(() => {
+                settled = true;
+            });
+
+            await vi.advanceTimersByTimeAsync(999);
+            expect(settled).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(promise).resolves.toBeNull();
+            expect(media.removeAttribute).toHaveBeenCalledWith("src");
+            expect(media.load).toHaveBeenCalled();
+
+            // A late event after the timeout must not resolve again or touch the element twice.
+            media.duration = 30;
+            media.onloadedmetadata?.();
+            expect(media.load).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("clears the timeout once the element reports, so nothing fires after a real answer", async () => {
+        vi.useFakeTimers();
+
+        try {
+            const promise = readMediaDurationInSeconds("video/a.mp4", "/lib", "video", 1_000);
+            const media = lastCreated();
+
+            media.duration = 42;
+            media.onloadedmetadata?.();
+            await expect(promise).resolves.toBe(42);
+
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(media.load).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("resolves null when the element errors", async () => {
         const promise = readMediaDurationInSeconds("video/a.mp4", "/lib", "video");
         const media = lastCreated();
