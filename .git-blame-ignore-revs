@@ -1,10 +1,8 @@
-# Commits that only moved or reformatted code, for `git blame` to look through rather than stop at.
-# Each one is a change nobody will want `blame` to land on, since the line it attributes was not
-# written there, only carried there. Activate once per clone with:
+# Commits that only reformatted code in place, for `git blame` to look through rather than stop at.
+# Activate once per clone with:
 #
 #     git config blame.ignoreRevsFile .git-blame-ignore-revs
 #
-# GitHub's blame view reads this file on its own. See CONTRIBUTING.md.
-
-# refactor: move the eight largest inline test modules into tests.rs files
-da2fb821d3397fa54e8c7d83fb650d151d6ac9c0
+# GitHub's blame view reads this file on its own. This does not reach lines that changed file (a
+# module moved out to its own file): for those use `git blame -w -C -C -C`, see CONTRIBUTING.md,
+# which is why the tests.rs move (da2fb821) is not listed here.

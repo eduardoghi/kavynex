@@ -130,18 +130,30 @@ A fifth needs a real release to check against, so it runs in `release.yml`'s `ch
 
 ## Reading `git blame` past move-only commits
 
-`.git-blame-ignore-revs` lists commits that only moved or reformatted code (the first entry moved
-the eight largest inline Rust test modules into `tests.rs` files beside their parents). Without it,
-`git blame` on one of those files attributes every line to the move rather than to the commit that
-wrote the test and explains why. Point git at the file once per clone:
+Two tools, for two kinds of commit, and neither is a substitute for the other:
 
-```bash
-git config blame.ignoreRevsFile .git-blame-ignore-revs
-```
+- **Lines that moved to another file** (the eight inline Rust test modules moved into `tests.rs`
+  files beside their parents, commit `da2fb821`). `blame` stops at the move, since to git those are
+  new lines in a new file. Copy detection is what follows them back, and it has to ignore whitespace
+  because the move dedented them:
 
-GitHub's blame view reads the file on its own. When a commit of that kind lands (a mass reformat, a
-rename of a large file, a test module moved out), add its hash there in the same commit or the one
-right after, while it is still obvious which one it was.
+  ```bash
+  git blame -w -C -C -C -- src-tauri/src/services/db_schema/tests.rs
+  ```
+
+  Verified against that commit: with `-w -C -C -C` every line lands on the commit that wrote the
+  test; without them, on the move.
+
+- **Lines reformatted in place** (a mass `cargo fmt`, a renamed identifier across a file). For
+  those, `.git-blame-ignore-revs` is the right tool: list the hash there and, once per clone,
+
+  ```bash
+  git config blame.ignoreRevsFile .git-blame-ignore-revs
+  ```
+
+  and `blame` attributes each line to the commit before the listed one. GitHub's blame view reads
+  the file on its own. It does nothing for lines that changed file, which is why the move above is
+  documented here rather than relying on being listed there.
 
 ## Regenerating the TypeScript bindings
 
