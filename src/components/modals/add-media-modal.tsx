@@ -39,6 +39,7 @@ type AddMediaModalProps = {
     downloadComments: boolean;
     downloadLiveChat: boolean;
     cookiesBrowser: string;
+    cookiesBrowserProfile: string;
     cookiesPath: string;
 
     isGeneratingThumb: boolean;
@@ -59,6 +60,7 @@ type AddMediaModalProps = {
     onChangeDownloadComments: (value: boolean) => void;
     onChangeDownloadLiveChat: (value: boolean) => void;
     onChangeCookiesBrowser: (value: string) => void;
+    onChangeCookiesBrowserProfile: (value: string) => void;
     onPickCookiesFile: () => void | Promise<void>;
     onClearCookiesPath: () => void;
     onChangeSelectedYtDlpFormatId: (value: string) => void;
@@ -82,6 +84,7 @@ export function AddMediaModal({
     downloadComments,
     downloadLiveChat,
     cookiesBrowser,
+    cookiesBrowserProfile,
     cookiesPath,
     isGeneratingThumb,
     loading = false,
@@ -99,6 +102,7 @@ export function AddMediaModal({
     onChangeDownloadComments,
     onChangeDownloadLiveChat,
     onChangeCookiesBrowser,
+    onChangeCookiesBrowserProfile,
     onPickCookiesFile,
     onClearCookiesPath,
     onChangeSelectedYtDlpFormatId,
@@ -270,6 +274,7 @@ export function AddMediaModal({
                             <YtDlpSection
                                 mediaUrl={mediaUrl}
                                 cookiesBrowser={cookiesBrowser}
+                                cookiesBrowserProfile={cookiesBrowserProfile}
                                 cookiesPath={cookiesPath}
                                 isLocked={isModalLocked}
                                 isLoadingYtDlpFormats={isLoadingYtDlpFormats}
@@ -279,6 +284,7 @@ export function AddMediaModal({
                                 downloadLiveChat={downloadLiveChat}
                                 onChangeMediaUrl={onChangeMediaUrl}
                                 onChangeCookiesBrowser={onChangeCookiesBrowser}
+                                onChangeCookiesBrowserProfile={onChangeCookiesBrowserProfile}
                                 onPickCookiesFile={onPickCookiesFile}
                                 onClearCookiesPath={onClearCookiesPath}
                                 onChangeSelectedYtDlpFormatId={onChangeSelectedYtDlpFormatId}

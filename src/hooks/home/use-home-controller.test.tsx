@@ -196,6 +196,7 @@ const mockMediaLibrary = {
         downloadComments: true,
         downloadLiveChat: true,
         cookiesBrowser: "",
+        cookiesBrowserProfile: "",
         cookiesPath: "",
         isGeneratingThumb: false,
 
@@ -211,6 +212,7 @@ const mockMediaLibrary = {
         setDownloadComments: vi.fn(),
         setDownloadLiveChat: vi.fn(),
         setCookiesBrowser: vi.fn(),
+        setCookiesBrowserProfile: vi.fn(),
         setCookiesPath: vi.fn(),
         pickCookiesFileViaDialog: vi.fn(),
         clearCookiesPath: vi.fn(),

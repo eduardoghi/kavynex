@@ -322,6 +322,31 @@ describe("validateCreateMediaInput", () => {
 
         expect(result.cookiesBrowser).toBeNull();
     });
+
+    it("keeps a browser selector with a profile, in the spelling yt-dlp reads", () => {
+        // The profile is appended by the form; this is the last frontend gate before the
+        // round trip, and it must not flatten the selector back to the bare browser.
+        const result = validateCreateMediaInput({
+            channelId: 10,
+            title: "Video A",
+            sourceMode: "yt-dlp",
+            sourceValue: "https://youtube.com/watch?v=123",
+            thumbnailSourcePath: null,
+            mediaType: "video",
+            importMode: "copy",
+            libraryPath: "/library",
+            publishedAt: null,
+            ytDlpRunId: "run-1",
+            ytDlpFormatId: "137",
+            ytDlpYoutubeVideoId: null,
+            downloadComments: false,
+            downloadLiveChat: false,
+            cookiesBrowser: " Firefox : default-release :: Work ",
+            cookiesPath: null,
+        });
+
+        expect(result.cookiesBrowser).toBe("firefox:default-release::Work");
+    });
 });
 
 describe("validateMediaId", () => {

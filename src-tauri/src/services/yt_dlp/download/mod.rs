@@ -20,7 +20,9 @@ use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
 use crate::services::thumbnail::download::download_thumbnail_for_media_async;
-use crate::services::yt_dlp::cookies::{normalize_cookies_browser, normalize_cookies_path};
+use crate::services::yt_dlp::cookies::{
+    normalize_cookies_browser, normalize_cookies_path, redact_cookies_browser_selector,
+};
 use crate::services::yt_dlp::events::{
     emit_download_cancelled, emit_download_error, emit_download_finished, emit_download_log,
     emit_download_log_infallible,
@@ -401,7 +403,12 @@ pub async fn download_media_from_url_async<R: Runtime>(
             normalized_format_id,
             download_live_chat,
             skip_auto_thumbnail_download,
-            normalized_cookies_browser.clone().unwrap_or_default(),
+            // The browser name is kept, a profile or container after it is not: a profile is often
+            // a path under the user's home directory, and this log may be pasted into a bug report.
+            normalized_cookies_browser
+                .as_deref()
+                .map(redact_cookies_browser_selector)
+                .unwrap_or_default(),
             // Avoid writing the cookies file path to the log (it can end up in a public bug
             // report); record only whether one was provided.
             if normalized_cookies_path.is_some() {
@@ -439,10 +446,15 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 "system",
             )?;
         } else if let Some(browser) = normalized_cookies_browser.as_ref() {
+            // Same rule as the file log: the UI terminal may be pasted into a bug report, so the
+            // profile (often a path) is not shown, only that one was set.
             emit_download_log(
                 app,
                 &normalized_run_id,
-                format!("Cookies from browser: {}", browser),
+                format!(
+                    "Cookies from browser: {}",
+                    redact_cookies_browser_selector(browser)
+                ),
                 "system",
             )?;
         }
@@ -1598,6 +1610,24 @@ mod tests {
         // since this line is shown in the UI terminal and may be pasted into a public bug report.
         assert!(!logged.contains("https://youtube.com/watch?v=x"));
         assert!(logged.contains("-- youtube.com?v=x"));
+    }
+
+    #[test]
+    fn redacted_args_for_log_hides_the_browser_profile_but_keeps_the_browser() {
+        // A profile is often a path under the user's home directory, so it is the same kind of
+        // value the `--cookies` redaction exists for, and this line reaches the UI terminal.
+        let args = vec![
+            "--cookies-from-browser".to_string(),
+            "firefox:/home/alice/.mozilla/firefox/abc.default::Work".to_string(),
+            "--".to_string(),
+            "https://youtube.com/watch?v=x".to_string(),
+        ];
+
+        let logged = redacted_args_for_log(&args);
+
+        assert!(!logged.contains("alice"));
+        assert!(!logged.contains("Work"));
+        assert!(logged.contains("--cookies-from-browser firefox:<redacted>::<redacted>"));
     }
 
     #[test]

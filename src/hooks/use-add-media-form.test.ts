@@ -407,6 +407,98 @@ describe("useAddMediaForm", () => {
         expect(mockResetYtDlpFormats).toHaveBeenCalled();
     });
 
+    it("hands the format loader the browser with the profile appended", () => {
+        // The combo keeps the bare browser (it renders that value) and the profile lives in its
+        // own field; what the loader and the download receive is the composed selector yt-dlp
+        // reads, so a typed profile has to show up here or the probe runs on the default profile.
+        const { result } = renderHook(() => useAddMediaForm());
+
+        act(() => {
+            result.current.setCookiesBrowser("firefox");
+            result.current.setCookiesBrowserProfile("  default-release ");
+        });
+
+        expect(result.current.cookiesBrowser).toBe("firefox");
+        expect(result.current.cookiesBrowserProfile).toBe("  default-release ");
+        expect(latestYtDlpFormatLoaderOptions().getCookiesBrowser?.()).toBe(
+            "firefox:default-release"
+        );
+        // A keyring typed with its leading `+` joins the browser without a second separator.
+        act(() => {
+            result.current.setCookiesBrowser("chromium");
+            result.current.setCookiesBrowserProfile("+gnomekeyring:Default");
+        });
+        expect(latestYtDlpFormatLoaderOptions().getCookiesBrowser?.()).toBe(
+            "chromium+gnomekeyring:Default"
+        );
+        // Typing a profile invalidates the formats loaded for the previous cookies.
+        expect(mockResetYtDlpFormats).toHaveBeenCalled();
+    });
+
+    it("drops the profile when the browser is cleared or switched to manual, keeps it across browsers", () => {
+        const { result } = renderHook(() => useAddMediaForm());
+
+        act(() => {
+            result.current.setCookiesBrowser("firefox");
+            result.current.setCookiesBrowserProfile("Work");
+        });
+
+        // Switching browsers keeps the profile: a user comparing two browsers with a profile of
+        // the same name should not have to retype it.
+        act(() => {
+            result.current.setCookiesBrowser("edge");
+        });
+        expect(result.current.cookiesBrowserProfile).toBe("Work");
+
+        // Clearing the combo drops it, so it cannot ride along silently with the next choice.
+        act(() => {
+            result.current.setCookiesBrowser("");
+        });
+        expect(result.current.cookiesBrowserProfile).toBe("");
+
+        // The manual cookies file has no browser to attach a profile to.
+        act(() => {
+            result.current.setCookiesBrowser("firefox");
+            result.current.setCookiesBrowserProfile("Work");
+            result.current.setCookiesBrowser("manual");
+        });
+        expect(result.current.cookiesBrowserProfile).toBe("");
+        expect(latestYtDlpFormatLoaderOptions().getCookiesBrowser?.()).toBe("");
+    });
+
+    it("refuses to load formats when the profile does not form a usable selector", async () => {
+        // The service layer would drop an invalid selector and probe without cookies, and the
+        // formats that came back would not be the ones the chosen profile can see. Refusing here
+        // is what tells the user instead of silently downgrading the request.
+        const onError = vi.fn();
+        const { result } = renderHook(() => useAddMediaForm({ onError }));
+
+        act(() => {
+            result.current.setMediaUrl("https://youtube.com/watch?v=abc");
+            result.current.setCookiesBrowser("firefox");
+            result.current.setCookiesBrowserProfile("-not-a-profile");
+        });
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats();
+        });
+
+        expect(mockLoadYtDlpFormats).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledWith("Failed to load yt-dlp formats.");
+        expect(logError).toHaveBeenCalledWith(
+            "add-media-form",
+            "Failed to load yt-dlp formats.",
+            expect.any(Error),
+            // The profile is deliberately absent from the details: it is often a path under
+            // the user's home directory, and this context reaches the file log.
+            {
+                mediaUrl: "https://youtube.com/watch?v=abc",
+                cookiesBrowser: "firefox",
+                cookiesPath: "",
+            }
+        );
+    });
+
     it("keeps the cookies path when switching to manual mode but clears it otherwise", () => {
         const { result } = renderHook(() => useAddMediaForm());
 

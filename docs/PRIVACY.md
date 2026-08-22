@@ -32,7 +32,10 @@ activity Kavynex initiates is:
 The optional "cookies from browser" option (used to back up member-only or otherwise
 authenticated content) reads cookies directly from your local browser profile and hands
 them to yt-dlp for that request only; Kavynex does not transmit, store, or display those
-cookie values. See `DATABASE.md` and `THREAT-MODEL.md` for more detail on what is stored
+cookie values. If you name a browser profile next to the browser (needed only when the browser has
+more than one), that name or path is handed to yt-dlp and nowhere else: the log and the in-app
+terminal show the browser and mark the profile as redacted, since a profile path sits under your
+home directory. See `DATABASE.md` and `THREAT-MODEL.md` for more detail on what is stored
 locally and how it is protected.
 
 If you point Kavynex at a cookies *file* instead of a browser, be aware of one thing that is

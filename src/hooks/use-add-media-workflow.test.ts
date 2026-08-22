@@ -62,6 +62,7 @@ function createMockAddMediaForm(): MockAddMediaForm {
         downloadComments: true,
         downloadLiveChat: true,
         cookiesBrowser: "",
+        cookiesBrowserProfile: "",
         cookiesPath: "",
         isGeneratingThumb: false,
         ytDlpFormats: [],
@@ -76,6 +77,7 @@ function createMockAddMediaForm(): MockAddMediaForm {
         setDownloadComments: vi.fn(),
         setDownloadLiveChat: vi.fn(),
         setCookiesBrowser: vi.fn(),
+        setCookiesBrowserProfile: vi.fn(),
         setCookiesPath: vi.fn(),
         pickCookiesFileViaDialog: vi.fn(),
         clearCookiesPath: vi.fn(),
@@ -773,6 +775,48 @@ describe("useAddMediaWorkflow", () => {
         expect(mockAppendManualLog).toHaveBeenCalledWith("Comments: disabled");
         expect(mockAppendManualLog).toHaveBeenCalledWith("Live chat: enabled");
         expect(mockAppendManualLog).toHaveBeenCalledWith("Cookies from browser: edge");
+    });
+
+    it("sends the composed browser selector and logs it with the profile redacted", async () => {
+        // The download receives `browser:profile` (what yt-dlp reads), while the terminal line a
+        // user may paste into a bug report names only the browser: the profile is often a path
+        // under their home directory.
+        mockAddMediaForm.sourceMode = "yt-dlp";
+        mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
+        mockAddMediaForm.mediaPath = "";
+        mockAddMediaForm.selectedYtDlpFormatId = "251";
+        mockAddMediaForm.title = "Remote media";
+        mockAddMediaForm.cookiesBrowser = "firefox";
+        mockAddMediaForm.cookiesBrowserProfile = "/home/alice/.mozilla/firefox/abc.default";
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(createMedia).toHaveBeenCalledWith(
+            expect.objectContaining({
+                cookiesBrowser: "firefox:/home/alice/.mozilla/firefox/abc.default",
+                cookiesPath: null,
+            }),
+            expect.anything()
+        );
+        expect(mockAppendManualLog).toHaveBeenCalledWith(
+            "Cookies from browser: firefox:<redacted>"
+        );
+        expect(mockAppendManualLog).not.toHaveBeenCalledWith(
+            expect.stringContaining("alice")
+        );
     });
 
     it("forwards the resolved youtube video id for yt-dlp source mode", async () => {

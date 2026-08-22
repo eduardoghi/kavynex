@@ -1206,6 +1206,25 @@ describe("useYtDlpFormatLoader: command building", () => {
         );
     });
 
+    it("redacts a browser profile in the terminal preview but passes the selector through", async () => {
+        const { result, onTerminalStart } = renderLoader({
+            getCookiesBrowser: () => "firefox:/home/alice/.mozilla/firefox/abc.default",
+        });
+
+        await loadFormats(result, []);
+
+        expect(onTerminalStart).toHaveBeenCalledWith(
+            "format-loader",
+            "yt-dlp -v --ignore-config --no-playlist --dump-single-json --no-warnings --cookies-from-browser firefox:<redacted> https://youtube.com/watch?v=abc"
+        );
+        expect(listYtDlpFormats).toHaveBeenCalledWith(
+            "https://youtube.com/watch?v=abc",
+            "firefox:/home/alice/.mozilla/firefox/abc.default",
+            null,
+            "format-loader"
+        );
+    });
+
     it("omits cookie flags entirely when neither is provided", async () => {
         const { result, onTerminalStart } = renderLoader();
 

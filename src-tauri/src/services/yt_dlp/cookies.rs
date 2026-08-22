@@ -112,13 +112,188 @@ pub fn append_auth_args(
     }
 }
 
-pub fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
-    let normalized = value?.trim().to_lowercase();
+/// The browsers yt-dlp's `--cookies-from-browser` can read, spelled the way yt-dlp spells them.
+const SUPPORTED_BROWSERS: [&str; 9] = [
+    "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale",
+];
 
-    match normalized.as_str() {
-        "brave" | "chrome" | "chromium" | "edge" | "firefox" | "opera" | "safari" | "vivaldi"
-        | "whale" => Some(normalized),
-        _ => None,
+/// The keyrings yt-dlp accepts after `+` on a Chromium-based browser (Linux only, for the cookie
+/// decryption backend). yt-dlp compares them case-insensitively, so the lowercase spelling is the
+/// one stored.
+const SUPPORTED_KEYRINGS: [&str; 5] = [
+    "basictext",
+    "gnomekeyring",
+    "kwallet",
+    "kwallet5",
+    "kwallet6",
+];
+
+/// Upper bound on the whole selector. A profile can be a path, so it is generous, but a value
+/// arriving over IPC still gets a ceiling before anything is split or handed to an argv.
+const MAX_COOKIES_BROWSER_SELECTOR_CHARS: usize = 512;
+
+/// A parsed `--cookies-from-browser` value, `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`.
+///
+/// Only the browser used to be accepted, as a bare name, which left anyone with more than one
+/// Firefox profile (or a Chromium whose keyring yt-dlp does not guess right) unable to use the
+/// option at all: yt-dlp would read the default profile, find no session, and the download failed
+/// with nothing saying why. The grammar here is yt-dlp's own (`--cookies-from-browser` in its
+/// README), validated part by part so the value that reaches the argv is still one this side chose
+/// to allow. The browser and the keyring are allow-listed; the profile and the container are free
+/// text (a profile is often a path) bounded to what an argument may safely carry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CookiesBrowserSelector {
+    browser: String,
+    keyring: Option<String>,
+    profile: Option<String>,
+    container: Option<String>,
+}
+
+impl CookiesBrowserSelector {
+    /// The value handed to yt-dlp: browser and keyring lowercased, whitespace around the separators
+    /// dropped, profile and container exactly as typed (profile names are case-sensitive on Linux).
+    pub(crate) fn to_argument(&self) -> String {
+        let mut value = self.browser.clone();
+
+        if let Some(keyring) = &self.keyring {
+            value.push('+');
+            value.push_str(keyring);
+        }
+
+        if let Some(profile) = &self.profile {
+            value.push(':');
+            value.push_str(profile);
+        }
+
+        if let Some(container) = &self.container {
+            value.push_str("::");
+            value.push_str(container);
+        }
+
+        value
+    }
+
+    /// The form a log line or the in-app terminal may show. The browser and the keyring say which
+    /// tool was used and reveal nothing; the profile can be a path under the user's home directory
+    /// (so it carries the OS username) and the container a name the user chose, so both are
+    /// replaced. The separators are kept so the line still says *that* a profile was set.
+    pub(crate) fn to_redacted(&self) -> String {
+        let mut value = self.browser.clone();
+
+        if let Some(keyring) = &self.keyring {
+            value.push('+');
+            value.push_str(keyring);
+        }
+
+        if self.profile.is_some() {
+            value.push_str(":<redacted>");
+        }
+
+        if self.container.is_some() {
+            value.push_str("::<redacted>");
+        }
+
+        value
+    }
+}
+
+/// True for a profile or container value that may travel as part of one argv element: non-empty,
+/// not something yt-dlp's option parser could read as a flag, and free of control characters (a
+/// newline would also forge a line in the file log, where the redacted form is written).
+fn is_safe_selector_component(value: &str) -> bool {
+    !value.is_empty() && !value.starts_with('-') && !value.chars().any(char::is_control)
+}
+
+/// Parses `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, or `None` for anything that is not a
+/// selector this app will hand to yt-dlp.
+///
+/// The split order mirrors yt-dlp's own regex: the container comes after the first `::`, the
+/// profile after the first `:` before it (a Windows path in the profile keeps its drive colon,
+/// since only the first one separates), and the keyring after a `+` in the browser part.
+/// Whitespace around each separator is dropped, as yt-dlp does.
+pub(crate) fn parse_cookies_browser_selector(value: &str) -> Option<CookiesBrowserSelector> {
+    let trimmed = value.trim();
+
+    if trimmed.is_empty()
+        || trimmed.chars().count() > MAX_COOKIES_BROWSER_SELECTOR_CHARS
+        || trimmed.chars().any(char::is_control)
+    {
+        return None;
+    }
+
+    let (head, container) = match trimmed.split_once("::") {
+        Some((head, container)) => (head, Some(container.trim())),
+        None => (trimmed, None),
+    };
+
+    let (browser_and_keyring, profile) = match head.split_once(':') {
+        Some((browser_and_keyring, profile)) => (browser_and_keyring, Some(profile.trim())),
+        None => (head, None),
+    };
+
+    let (browser, keyring) = match browser_and_keyring.split_once('+') {
+        Some((browser, keyring)) => (browser, Some(keyring.trim())),
+        None => (browser_and_keyring, None),
+    };
+
+    let browser = browser.trim().to_lowercase();
+
+    if !SUPPORTED_BROWSERS.contains(&browser.as_str()) {
+        return None;
+    }
+
+    let keyring = match keyring {
+        Some(keyring) => {
+            let keyring = keyring.to_lowercase();
+
+            if !SUPPORTED_KEYRINGS.contains(&keyring.as_str()) {
+                return None;
+            }
+
+            Some(keyring)
+        }
+        None => None,
+    };
+
+    if let Some(profile) = profile {
+        if !is_safe_selector_component(profile) {
+            return None;
+        }
+    }
+
+    if let Some(container) = container {
+        // A container that itself starts with `:` is the `firefox:::x` shape: yt-dlp parses it, as
+        // a container literally named `:x`, but nothing a user means is spelled that way, and
+        // accepting it would make the selector's meaning depend on how many colons were typed.
+        if !is_safe_selector_component(container) || container.starts_with(':') {
+            return None;
+        }
+    }
+
+    Some(CookiesBrowserSelector {
+        browser,
+        keyring,
+        profile: profile.map(str::to_string),
+        container: container.map(str::to_string),
+    })
+}
+
+/// Normalizes a caller-supplied `--cookies-from-browser` value to the form handed to yt-dlp, or
+/// `None` when it is not one this app allows (see [`parse_cookies_browser_selector`]). An invalid
+/// value is dropped rather than raised, matching [`normalize_cookies_path`]: the run proceeds
+/// without cookies, and the frontend validates the same grammar before the round trip so a user
+/// typing an unusable profile is told there rather than here.
+pub fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
+    parse_cookies_browser_selector(value?).map(|selector| selector.to_argument())
+}
+
+/// The form of a `--cookies-from-browser` value that may be written to a log or shown in the
+/// in-app terminal: the browser and keyring kept, the profile and container replaced. A value
+/// that does not parse is fully replaced, since nothing about it is known to be safe to show.
+pub fn redact_cookies_browser_selector(value: &str) -> String {
+    match parse_cookies_browser_selector(value) {
+        Some(selector) => selector.to_redacted(),
+        None => "<redacted>".to_string(),
     }
 }
 
@@ -155,9 +330,7 @@ mod tests {
             Some("chrome")
         );
 
-        for browser in [
-            "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale",
-        ] {
+        for browser in SUPPORTED_BROWSERS {
             assert_eq!(
                 normalize_cookies_browser(Some(browser)).as_deref(),
                 Some(browser)
@@ -171,6 +344,141 @@ mod tests {
         assert_eq!(normalize_cookies_browser(Some("")), None);
         assert_eq!(normalize_cookies_browser(Some("   ")), None);
         assert_eq!(normalize_cookies_browser(None), None);
+    }
+
+    #[test]
+    fn normalize_cookies_browser_matches_the_shared_fixture() {
+        // The frontend composes the selector from the browser combo and the profile field and
+        // validates it with its own copy of this grammar (src/constants/cookies-browsers.ts), so
+        // both sides assert the same cases: a value the frontend lets through must be one the
+        // backend hands to yt-dlp, and in the exact same spelling, or the user is silently
+        // downloading without cookies after being told the profile was accepted.
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/cookies-browser-selector-cases.json"
+        ));
+        let cases: serde_json::Value =
+            serde_json::from_str(raw).expect("the shared fixture must be valid JSON");
+
+        for case in cases["valid"].as_array().expect("valid must be an array") {
+            let input = case["input"].as_str().expect("input must be a string");
+            let normalized = case["normalized"]
+                .as_str()
+                .expect("normalized must be a string");
+
+            assert_eq!(
+                normalize_cookies_browser(Some(input)).as_deref(),
+                Some(normalized),
+                "the shared fixture marks {input:?} valid with normalized form {normalized:?}"
+            );
+        }
+
+        for value in cases["invalid"]
+            .as_array()
+            .expect("invalid must be an array")
+        {
+            let value = value.as_str().expect("each case must be a string");
+
+            assert_eq!(
+                normalize_cookies_browser(Some(value)),
+                None,
+                "the shared fixture marks {value:?} invalid but Rust accepts it"
+            );
+        }
+    }
+
+    #[test]
+    fn the_selector_parts_land_where_yt_dlp_reads_them() {
+        // Each part pinned individually, not only through the round-tripped string, so a swapped
+        // split (profile and container traded, say) cannot hide behind an argument that happens to
+        // read back the same.
+        let selector =
+            parse_cookies_browser_selector(" Chromium + KWallet5 : Work Profile :: Work ")
+                .expect("a full selector must parse");
+
+        assert_eq!(selector.browser, "chromium");
+        assert_eq!(selector.keyring.as_deref(), Some("kwallet5"));
+        assert_eq!(selector.profile.as_deref(), Some("Work Profile"));
+        assert_eq!(selector.container.as_deref(), Some("Work"));
+        assert_eq!(
+            selector.to_argument(),
+            "chromium+kwallet5:Work Profile::Work"
+        );
+
+        // The first colon separates; the drive colon of a Windows path stays inside the profile.
+        let windows = parse_cookies_browser_selector(
+            r"chrome:C:\Users\me\AppData\Local\Google\Chrome\User Data\Default",
+        )
+        .expect("a Windows profile path must parse");
+        assert_eq!(
+            windows.profile.as_deref(),
+            Some(r"C:\Users\me\AppData\Local\Google\Chrome\User Data\Default")
+        );
+        assert_eq!(windows.container, None);
+    }
+
+    #[test]
+    fn normalize_cookies_browser_bounds_the_selector_length() {
+        let long_profile = "a".repeat(MAX_COOKIES_BROWSER_SELECTOR_CHARS);
+
+        assert_eq!(
+            normalize_cookies_browser(Some(&format!("firefox:{long_profile}"))),
+            None,
+            "a selector past the ceiling must be refused"
+        );
+
+        let fitting_profile = "a".repeat(MAX_COOKIES_BROWSER_SELECTOR_CHARS - "firefox:".len());
+
+        assert!(
+            normalize_cookies_browser(Some(&format!("firefox:{fitting_profile}"))).is_some(),
+            "a selector exactly at the ceiling is still accepted"
+        );
+    }
+
+    #[test]
+    fn redact_cookies_browser_selector_keeps_the_tool_and_hides_the_profile() {
+        // A bare browser (the common case) reads back unchanged: it names a tool and nothing about
+        // the user. A profile is a path or a name the user chose, so it goes, with the separator
+        // kept so the line still says a profile was set. The keyring is a backend name and stays.
+        assert_eq!(redact_cookies_browser_selector("firefox"), "firefox");
+        assert_eq!(
+            redact_cookies_browser_selector("firefox:/home/alice/.mozilla/firefox/abc.default"),
+            "firefox:<redacted>"
+        );
+        assert_eq!(
+            redact_cookies_browser_selector("firefox::Personal"),
+            "firefox::<redacted>"
+        );
+        assert_eq!(
+            redact_cookies_browser_selector("chromium+gnomekeyring:Default::Work"),
+            "chromium+gnomekeyring:<redacted>::<redacted>"
+        );
+
+        // A value that does not parse has nothing known to be safe, so all of it goes.
+        assert_eq!(redact_cookies_browser_selector("netscape:x"), "<redacted>");
+        assert_eq!(redact_cookies_browser_selector(""), "<redacted>");
+    }
+
+    #[test]
+    fn append_auth_args_passes_a_full_selector_through_normalized() {
+        // The whole point of the grammar: the profile the user typed has to reach yt-dlp, in the
+        // spelling yt-dlp reads, as the single argument after the flag.
+        let mut args: Vec<String> = Vec::new();
+        append_auth_args(&mut args, Some(" Firefox : default-release :: Work "), None);
+
+        assert_eq!(
+            args,
+            vec![
+                "--cookies-from-browser".to_string(),
+                "firefox:default-release::Work".to_string()
+            ]
+        );
+
+        // And a selector the grammar refuses adds nothing, rather than a bare browser it was not
+        // asked for: reading the wrong profile is the failure this exists to prevent.
+        let mut refused: Vec<String> = Vec::new();
+        append_auth_args(&mut refused, Some("firefox:-x"), None);
+        assert!(refused.is_empty());
     }
 
     #[test]

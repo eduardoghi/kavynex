@@ -14,7 +14,9 @@ use crate::models::yt_dlp::{
     YtDlpComment, YtDlpCommentMetadata, YtDlpFormatOption, YtDlpFormatsResult, YtDlpMetadata,
 };
 use crate::services::binaries::resolve_yt_dlp_binary_async;
-use crate::services::yt_dlp::cookies::append_auth_args;
+use crate::services::yt_dlp::cookies::{
+    append_auth_args, normalize_cookies_browser, redact_cookies_browser_selector,
+};
 use crate::services::yt_dlp::registry::{register_download_run, DownloadRunReleaseGuard};
 use crate::services::yt_dlp::url::{is_allowed_youtube_url, youtube_ref_for_log};
 use crate::utils::bounded_semaphore::BoundedSemaphore;
@@ -290,15 +292,33 @@ pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&st
 }
 
 /// Sanitizes a yt-dlp `-v` log line before it reaches the frontend/file log: redacts the cookies
-/// file path (see [`redact_cookies_path_from_line`]) and reduces the full pasted URL to the same
-/// privacy-preserving reference the download flow logs (`youtube_ref_for_log`), so playlist and
-/// tracking parameters do not survive into a log a user might paste into a public issue.
+/// file path (see [`redact_cookies_path_from_line`]), hides the profile and container of a
+/// `--cookies-from-browser` selector (a profile is often a path under the user's home directory,
+/// and the `[debug] Command-line config` echo prints the whole argv verbatim), and reduces the full
+/// pasted URL to the same privacy-preserving reference the download flow logs
+/// (`youtube_ref_for_log`), so playlist and tracking parameters do not survive into a log a user
+/// might paste into a public issue.
 pub(crate) fn redact_sensitive_from_line(
     line: &str,
     cookies_path: Option<&str>,
+    cookies_browser: Option<&str>,
     url: &str,
 ) -> String {
-    let redacted = redact_cookies_path_from_line(line, cookies_path);
+    let mut redacted = redact_cookies_path_from_line(line, cookies_path);
+
+    if let Some(selector) = cookies_browser
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let safe = redact_cookies_browser_selector(selector);
+
+        // A bare browser name redacts to itself; replacing it with itself would be a no-op, and a
+        // selector with a profile is the only case where the argv echo carries something to hide.
+        if safe != selector {
+            redacted = redacted.replace(selector, &safe);
+        }
+    }
+
     let url = url.trim();
 
     if url.is_empty() {
@@ -339,6 +359,16 @@ fn replace_ascii_case_insensitive(haystack: &str, needle: &str, replacement: &st
 fn cookies_path_from_args(args: &[String]) -> Option<&str> {
     args.iter()
         .position(|arg| arg == "--cookies")
+        .and_then(|index| args.get(index + 1))
+        .map(String::as_str)
+}
+
+/// Extracts the value passed to `--cookies-from-browser` in an argv, for the same reason as
+/// [`cookies_path_from_args`]: a profile in it can be a path under the user's home directory, and
+/// yt-dlp's verbose echo prints it back.
+fn cookies_browser_from_args(args: &[String]) -> Option<&str> {
+    args.iter()
+        .position(|arg| arg == "--cookies-from-browser")
         .and_then(|index| args.get(index + 1))
         .map(String::as_str)
 }
@@ -554,7 +584,12 @@ async fn run_yt_dlp_and_capture_json(
         // success path's terminal_logs redaction: the `--` separator means the URL is always the
         // last argument.
         let url = args.last().map(String::as_str).unwrap_or_default();
-        let detail = redact_sensitive_from_line(&detail, cookies_path_from_args(args), url);
+        let detail = redact_sensitive_from_line(
+            &detail,
+            cookies_path_from_args(args),
+            cookies_browser_from_args(args),
+            url,
+        );
 
         return Err(AppError::from_code_with_details(
             failed_code,
@@ -881,8 +916,17 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
     // parameters would otherwise reach a log the user might paste into a public issue. Reduce it to
     // the same privacy-preserving reference the download flow logs (`youtube_ref_for_log`), matching
     // that flow's `redacted_args_for_log`.
+    // The browser selector is redacted as it was *normalized* (the argv carries that form), so
+    // the replacement matches the echoed value rather than whatever spacing the caller typed.
+    let normalized_cookies_browser = normalize_cookies_browser(cookies_browser);
+
     for line in stdout_logs.iter_mut().chain(stderr_logs.iter_mut()) {
-        *line = redact_sensitive_from_line(line, cookies_path, &normalized_url);
+        *line = redact_sensitive_from_line(
+            line,
+            cookies_path,
+            normalized_cookies_browser.as_deref(),
+            &normalized_url,
+        );
     }
 
     let metadata: YtDlpMetadata = serde_json::from_str(&json_payload).map_err(|e| {
@@ -1036,10 +1080,10 @@ pub fn normalize_download_metadata(
 #[cfg(test)]
 mod tests {
     use super::{
-        comments_extraction_looks_incomplete, cookies_path_from_args, is_valid_youtube_video_id,
-        read_capped_json_stdout, redact_cookies_path_from_line, redact_sensitive_from_line,
-        resolve_youtube_video_id, run_yt_dlp_and_capture_json, sanitize_filename_component,
-        sanitize_identifier_component,
+        comments_extraction_looks_incomplete, cookies_browser_from_args, cookies_path_from_args,
+        is_valid_youtube_video_id, read_capped_json_stdout, redact_cookies_path_from_line,
+        redact_sensitive_from_line, resolve_youtube_video_id, run_yt_dlp_and_capture_json,
+        sanitize_filename_component, sanitize_identifier_component,
     };
     use crate::AppErrorCode;
 
@@ -1299,6 +1343,7 @@ mod tests {
         let redacted = redact_sensitive_from_line(
             line,
             Some(r"C:\Users\Alice\cookies.txt"),
+            None,
             "https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s",
         );
 
@@ -1314,6 +1359,52 @@ mod tests {
             !redacted.contains(r"C:\Users\Alice\cookies.txt"),
             "cookies path must still be redacted: {redacted}"
         );
+    }
+
+    #[test]
+    fn redact_sensitive_hides_a_browser_profile_in_the_argv_echo() {
+        // `-v` echoes the argv, so a profile path given through `--cookies-from-browser` lands in
+        // the terminal_logs and in a failure detail exactly like the cookies file path does. The
+        // browser name stays (it names a tool, not the user); the profile goes.
+        let line = "[debug] Command-line config: ['--cookies-from-browser', 'firefox:/home/alice/.mozilla/firefox/abc.default', '--', 'https://youtu.be/abc']";
+
+        let redacted = redact_sensitive_from_line(
+            line,
+            None,
+            Some("firefox:/home/alice/.mozilla/firefox/abc.default"),
+            "https://youtu.be/abc",
+        );
+
+        assert!(
+            !redacted.contains("alice"),
+            "the profile path must not survive: {redacted}"
+        );
+        assert!(
+            redacted.contains("'firefox:<redacted>'"),
+            "the browser name stays and the profile is marked redacted: {redacted}"
+        );
+
+        // A bare browser is left exactly as it was, so a line that only names the tool is
+        // untouched rather than rewritten with a placeholder.
+        let bare = "[debug] Command-line config: ['--cookies-from-browser', 'firefox']";
+        assert_eq!(
+            redact_sensitive_from_line(bare, None, Some("firefox"), ""),
+            bare
+        );
+    }
+
+    #[test]
+    fn cookies_browser_from_args_finds_the_value_after_the_flag() {
+        let args = vec![
+            "--cookies-from-browser".to_string(),
+            "firefox:Work".to_string(),
+            "--".to_string(),
+            "https://youtu.be/x".to_string(),
+        ];
+        assert_eq!(cookies_browser_from_args(&args), Some("firefox:Work"));
+
+        let none = vec!["--cookies".to_string(), "c.txt".to_string()];
+        assert_eq!(cookies_browser_from_args(&none), None);
     }
 
     #[test]

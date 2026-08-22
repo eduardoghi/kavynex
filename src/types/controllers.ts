@@ -26,6 +26,7 @@ export type AddMediaFormController = {
     downloadComments: boolean;
     downloadLiveChat: boolean;
     cookiesBrowser: string;
+    cookiesBrowserProfile: string;
     cookiesPath: string;
     isGeneratingThumb: boolean;
     ytDlpFormats: YtDlpFormatOption[];
@@ -39,6 +40,7 @@ export type AddMediaFormController = {
     setDownloadComments: (value: boolean) => void;
     setDownloadLiveChat: (value: boolean) => void;
     setCookiesBrowser: (value: string) => void;
+    setCookiesBrowserProfile: (value: string) => void;
     setCookiesPath: (value: string) => void;
     pickCookiesFileViaDialog: () => Promise<void>;
     clearCookiesPath: () => void;

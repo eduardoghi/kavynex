@@ -206,6 +206,27 @@ To genuinely replace a file rather than reuse it (an interrupted download left i
 delete the media in Kavynex first. That removes the file too, unless another entry still points at
 it, and the next add downloads fresh. `DIRECTORIES.md` has the naming rules behind all of this.
 
+## "Cookies from browser" is set, but the download still fails on a members-only or age-restricted video
+
+The browser you chose probably has more than one profile, and yt-dlp read the default one, which
+is not the one logged into YouTube. Firefox does this to anyone who ever created a second profile,
+and Chrome does it when the account you use for YouTube lives in "Profile 2" rather than the first
+one.
+
+Fill in the **Browser profile** field that appears under the browser selector. It takes the
+profile's name (`default-release`, `Profile 2`) or its full path, and the **Load formats** button
+is the quick way to check it: with the right profile the formats that need a login appear. Two
+rarer shapes use the same field: a Firefox container is `profile::Container` (or `::Container`
+alone for the default profile), and on Linux a Chromium-based browser whose cookies yt-dlp cannot
+decrypt takes a keyring first, `+gnomekeyring:Default` or `+kwallet5`. That is yt-dlp's own
+`BROWSER[+KEYRING][:PROFILE][::CONTAINER]` grammar with the browser already filled in for you.
+
+A profile that cannot be used as typed (it is empty after trimming, starts with a dash, or carries
+a control character) is refused before anything runs, so the download never silently proceeds
+without cookies. The profile's name or path is never written to the log or shown in the terminal;
+both say `firefox:<redacted>`, which is deliberate, since a profile path sits under your home
+directory.
+
 ## Kavynex reports a corrupted database
 
 This is handled automatically and nothing is silently lost. On the next launch Kavynex restores

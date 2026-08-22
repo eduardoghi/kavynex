@@ -9,7 +9,14 @@ import { stageManualThumbnail } from "../services/thumbnail-service";
 import { useAddMediaFormState } from "./use-add-media-form-state";
 import { useTempThumbnail } from "./use-temp-thumbnail";
 import { useYtDlpFormatLoader } from "./use-yt-dlp-format-loader";
-import { COOKIES_BROWSER_VALUES } from "../constants/cookies-browsers";
+import {
+    COOKIES_BROWSER_VALUES,
+    composeCookiesBrowserSelector,
+} from "../constants/cookies-browsers";
+import {
+    hasInvalidCookiesBrowserSelector,
+    INVALID_COOKIES_BROWSER_PROFILE_MESSAGE,
+} from "../use-cases/add-media";
 import { useMemoObject } from "./use-memo-object";
 
 type UseAddMediaFormOptions = {
@@ -33,6 +40,7 @@ type UseAddMediaFormReturn = {
     downloadComments: boolean;
     downloadLiveChat: boolean;
     cookiesBrowser: string;
+    cookiesBrowserProfile: string;
     cookiesPath: string;
     isGeneratingThumb: boolean;
 
@@ -49,6 +57,7 @@ type UseAddMediaFormReturn = {
     setDownloadComments: (value: boolean) => void;
     setDownloadLiveChat: (value: boolean) => void;
     setCookiesBrowser: (value: string) => void;
+    setCookiesBrowserProfile: (value: string) => void;
     setCookiesPath: (value: string) => void;
     pickCookiesFileViaDialog: () => Promise<void>;
     clearCookiesPath: () => void;
@@ -92,6 +101,10 @@ export function useAddMediaForm({
     const [downloadComments, setDownloadComments] = useState(true);
     const [downloadLiveChat, setDownloadLiveChat] = useState(true);
     const [cookiesBrowser, setCookiesBrowserState] = useState("");
+    // The optional profile (or `+keyring:profile`) appended to the browser when the selector is
+    // composed. Kept apart from cookiesBrowser because the combo renders that value and a
+    // composed `firefox:Work` would no longer match an option.
+    const [cookiesBrowserProfile, setCookiesBrowserProfileState] = useState("");
     const [cookiesPath, setCookiesPathState] = useState("");
 
     const {
@@ -108,7 +121,8 @@ export function useAddMediaForm({
     const ytDlpState = useYtDlpFormatLoader({
         getUrl: () => formState.state.mediaUrl,
         getCurrentTitle: () => formState.state.title,
-        getCookiesBrowser: () => (cookiesBrowser === "manual" ? "" : cookiesBrowser),
+        getCookiesBrowser: () =>
+            composeCookiesBrowserSelector(cookiesBrowser, cookiesBrowserProfile),
         getCookiesPath: () => (cookiesBrowser === "manual" ? cookiesPath : ""),
         onSuggestedTitle: (value) => formState.setTitleState(value),
         onMediaTypeResolved: (value) => formState.setMediaTypeState(value),
@@ -271,6 +285,7 @@ export function useAddMediaForm({
             setDownloadComments(true);
             setDownloadLiveChat(true);
             setCookiesBrowserState("");
+            setCookiesBrowserProfileState("");
             setCookiesPathState("");
             await resetThumbState();
         },
@@ -320,6 +335,25 @@ export function useAddMediaForm({
                 setCookiesPathState("");
             }
 
+            // A profile belongs to the browser it was typed for. Clearing the combo or switching
+            // to the cookies file drops it, so a stale value cannot silently ride along with the
+            // next browser the user picks.
+            if (normalized === "" || normalized === "manual") {
+                setCookiesBrowserProfileState("");
+            }
+
+            resetYtDlpSelectionState();
+        },
+        [resetYtDlpSelectionState]
+    );
+
+    const setCookiesBrowserProfile = useCallback(
+        (value: string): void => {
+            // Stored as typed (trimmed only when composed) so the field does not fight the cursor
+            // over a trailing space while the user is still writing. The loaded formats go stale
+            // for the same reason a browser change invalidates them: the cookies decide what
+            // YouTube answers.
+            setCookiesBrowserProfileState(value);
             resetYtDlpSelectionState();
         },
         [resetYtDlpSelectionState]
@@ -335,15 +369,31 @@ export function useAddMediaForm({
 
     const loadYtDlpFormats = useCallback(async (): Promise<void> => {
         try {
+            // The same refusal the submit applies: the service layer would drop an invalid
+            // selector and probe without cookies, and the formats that came back would not be the
+            // ones the chosen profile can see.
+            if (hasInvalidCookiesBrowserSelector(cookiesBrowser, cookiesBrowserProfile)) {
+                throw new ClientError(INVALID_COOKIES_BROWSER_PROFILE_MESSAGE);
+            }
+
             await loadYtDlpFormatsFromLoader();
         } catch (error) {
+            // The profile is deliberately not in the details: it is often a path under the
+            // user's home directory, and this context reaches the file log.
             reportError("add-media-form", "Failed to load yt-dlp formats.", error, {
                 mediaUrl: mediaUrl.trim(),
                 cookiesBrowser,
                 cookiesPath,
             });
         }
-    }, [cookiesBrowser, cookiesPath, mediaUrl, reportError, loadYtDlpFormatsFromLoader]);
+    }, [
+        cookiesBrowser,
+        cookiesBrowserProfile,
+        cookiesPath,
+        mediaUrl,
+        reportError,
+        loadYtDlpFormatsFromLoader,
+    ]);
 
     const pickMediaViaDialog = useCallback(async (): Promise<void> => {
         try {
@@ -379,6 +429,7 @@ export function useAddMediaForm({
         setDownloadComments(true);
         setDownloadLiveChat(true);
         setCookiesBrowserState("");
+        setCookiesBrowserProfileState("");
         setCookiesPathState("");
         await resetThumbState();
     }, [resetFormState, resetThumbState, resetYtDlpSelectionState]);
@@ -409,6 +460,7 @@ export function useAddMediaForm({
         downloadComments,
         downloadLiveChat,
         cookiesBrowser,
+        cookiesBrowserProfile,
         cookiesPath,
         isGeneratingThumb,
 
@@ -425,6 +477,7 @@ export function useAddMediaForm({
         setDownloadComments,
         setDownloadLiveChat,
         setCookiesBrowser,
+        setCookiesBrowserProfile,
         setCookiesPath,
         pickCookiesFileViaDialog,
         clearCookiesPath,

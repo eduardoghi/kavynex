@@ -4,6 +4,7 @@ import type { MediaType, YtDlpFormatOption } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
 import { useRequestGuard } from "./use-request-guard";
+import { redactCookiesBrowserSelector } from "../constants/cookies-browsers";
 import {
     buildMergedFormats,
     inferPreferredFormatId,
@@ -138,7 +139,13 @@ export function useYtDlpFormatLoader({
             // still passed to listYtDlpFormats below.
             commandParts.push("--cookies", "<redacted>");
         } else if (cookiesBrowser) {
-            commandParts.push("--cookies-from-browser", cookiesBrowser);
+            // The browser name stays; a profile after it is often a path under the user's home
+            // directory, so it is redacted like the cookies path above. The real selector is still
+            // passed to listYtDlpFormats below.
+            commandParts.push(
+                "--cookies-from-browser",
+                redactCookiesBrowserSelector(cookiesBrowser)
+            );
         }
 
         commandParts.push(url);

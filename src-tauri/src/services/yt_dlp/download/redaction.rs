@@ -9,6 +9,7 @@
 //! Kept apart from the async orchestration in the parent module so this (the part with a privacy
 //! consequence and no I/O at all) can be mutation-tested. Tests live in the parent's `mod tests`.
 
+use crate::services::yt_dlp::cookies::redact_cookies_browser_selector;
 use crate::services::yt_dlp::url::youtube_ref_for_log;
 
 /// How the value following a flag must be redacted when building the log line.
@@ -23,6 +24,11 @@ enum PendingRedaction {
     /// into a public bug report, so it gets the same reduction the file log already applies via
     /// `youtube_ref_for_log`.
     YoutubeUrl,
+    /// Keep the browser and keyring, drop the profile and container (used for
+    /// `--cookies-from-browser`). A bare browser name reads back unchanged; a profile is a path
+    /// under the user's home directory or a name they chose, and either would otherwise sit in a
+    /// line the UI shows and a bug report carries.
+    BrowserSelector,
 }
 
 /// Redacts a `--paths` value, keeping its `SCOPE:` prefix but dropping the directory. The
@@ -48,6 +54,8 @@ fn redaction_for_flag(flag: &str) -> PendingRedaction {
         // exactly the `C:\Users\<name>\AppData\...` layout the `--paths` redaction exists to hide.
         "--cookies" | "--ffmpeg-location" => PendingRedaction::FullValue,
         "--paths" => PendingRedaction::PathsValue,
+        // The browser name is not sensitive and stays; a profile or container after it is.
+        "--cookies-from-browser" => PendingRedaction::BrowserSelector,
         // The URL is the only argument after the `--` separator (see build_download_command_args);
         // reduce it so the raw pasted URL, with any playlist/tracking params, never reaches the UI
         // terminal.
@@ -61,8 +69,9 @@ fn redaction_for_flag(flag: &str) -> PendingRedaction {
 /// ffmpeg directory (which can sit under the app cache), and each `--paths` value carries the
 /// temp directory under the user's app cache; all would expose the username/profile layout in a
 /// log line that is shown in the app and may be pasted into a public bug report.
-/// `--cookies-from-browser` (a browser name, not a path) is left intact. Which flags are treated
-/// as sensitive lives in `redaction_for_flag`, so this loop never has to be touched to cover a new one.
+/// `--cookies-from-browser` keeps its browser name (not a path) and loses any profile or container
+/// after it. Which flags are treated as sensitive lives in `redaction_for_flag`, so this loop never
+/// has to be touched to cover a new one.
 pub(super) fn redacted_args_for_log(args: &[String]) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(args.len());
     let mut pending = PendingRedaction::None;
@@ -81,6 +90,11 @@ pub(super) fn redacted_args_for_log(args: &[String]) -> String {
             }
             PendingRedaction::YoutubeUrl => {
                 parts.push(youtube_ref_for_log(arg));
+                pending = PendingRedaction::None;
+                continue;
+            }
+            PendingRedaction::BrowserSelector => {
+                parts.push(redact_cookies_browser_selector(arg));
                 pending = PendingRedaction::None;
                 continue;
             }

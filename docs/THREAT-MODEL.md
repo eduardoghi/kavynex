@@ -620,6 +620,27 @@ start of the first line, so both forms are accepted, with anything appended afte
 line. `#Netscape` without the space, a lowercased spelling, a leading blank line and a header
 preceded by another comment are all refused here, and all four are refused by yt-dlp too.
 
+**The `--cookies-from-browser` value is a selector, not only a browser name**, and it is validated
+as one (`services/yt_dlp/cookies.rs::parse_cookies_browser_selector`). yt-dlp's grammar is
+`BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, and each part is gated separately: the browser and the
+keyring must be on their allow-lists (`SUPPORTED_BROWSERS`, `SUPPORTED_KEYRINGS`), the profile and
+the container are free text (a profile is often a path) but may not be empty, start with `-`, or
+carry a control character, and the whole value is capped at 512 characters. Whitespace around the
+separators is dropped and the browser and keyring are lowercased, as yt-dlp does; the profile and
+container are passed as typed, since profile names are case-sensitive on Linux. A value that fails
+any of this is dropped like an invalid cookies path, and the frontend validates the same grammar
+before the round trip (pinned from both sides by `shared/cookies-browser-selector-cases.json`) so a
+profile a user mistypes is refused on screen rather than silently downgrading the run to no cookies.
+
+The profile is also the reason this value joined the redaction rules rather than being echoed as
+before. A bare browser name reveals nothing, but a profile can be a path under the user's home
+directory, and it reaches three places a bug report is pasted from: the `yt-dlp args:` line in the
+in-app terminal (`download/redaction.rs`), the `Cookies from browser:` line and the file log
+(`download/mod.rs`), and yt-dlp's own `[debug] Command-line config` echo in `terminal_logs` and in
+a failure detail (`metadata.rs::redact_sensitive_from_line`). All of them show
+`browser[+keyring]:<redacted>` through `redact_cookies_browser_selector`; the browser and keyring
+stay because they name a tool, not the user.
+
 ## Outbound image fetches (thumbnails and channel avatars)
 
 Downloading a thumbnail is the one place the backend makes an HTTP request of its own rather than

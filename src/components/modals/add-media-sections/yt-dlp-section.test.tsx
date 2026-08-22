@@ -12,6 +12,7 @@ function renderYtDlpSection(
         <YtDlpSection
             mediaUrl=""
             cookiesBrowser=""
+            cookiesBrowserProfile=""
             cookiesPath=""
             isLocked={false}
             isLoadingYtDlpFormats={false}
@@ -21,6 +22,7 @@ function renderYtDlpSection(
             downloadLiveChat={true}
             onChangeMediaUrl={vi.fn()}
             onChangeCookiesBrowser={vi.fn()}
+            onChangeCookiesBrowserProfile={vi.fn()}
             onPickCookiesFile={vi.fn()}
             onClearCookiesPath={vi.fn()}
             onChangeSelectedYtDlpFormatId={vi.fn()}
@@ -175,6 +177,7 @@ describe("YtDlpSection", () => {
 
         renderYtDlpSection({
             cookiesBrowser: "manual",
+            cookiesBrowserProfile: "",
             cookiesPath: "/tmp/cookies.txt",
             onPickCookiesFile,
             onClearCookiesPath,
@@ -189,6 +192,29 @@ describe("YtDlpSection", () => {
 
         expect(onPickCookiesFile).toHaveBeenCalledTimes(1);
         expect(onClearCookiesPath).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the browser profile field only once a browser is chosen", () => {
+        // Not for the empty selection (nothing to attach a profile to) and not for the manual
+        // cookies file (which has its own controls).
+        renderYtDlpSection();
+        expect(screen.queryByLabelText("Browser profile")).not.toBeInTheDocument();
+
+        renderYtDlpSection({ cookiesBrowser: "manual", cookiesPath: "/tmp/cookies.txt" });
+        expect(screen.queryByLabelText("Browser profile")).not.toBeInTheDocument();
+
+        const onChangeCookiesBrowserProfile = vi.fn();
+        renderYtDlpSection({
+            cookiesBrowser: "firefox",
+            cookiesBrowserProfile: "Work",
+            onChangeCookiesBrowserProfile,
+        });
+
+        const field = screen.getByLabelText("Browser profile");
+        expect(field).toHaveValue("Work");
+
+        fireEvent.change(field, { target: { value: "default-release" } });
+        expect(onChangeCookiesBrowserProfile).toHaveBeenCalledWith("default-release");
     });
 
     it("calls comments and live chat change handlers", () => {

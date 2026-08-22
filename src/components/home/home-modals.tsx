@@ -266,6 +266,7 @@ export function HomeModals({
                 downloadComments={addMediaForm.downloadComments}
                 downloadLiveChat={addMediaForm.downloadLiveChat}
                 cookiesBrowser={addMediaForm.cookiesBrowser}
+                cookiesBrowserProfile={addMediaForm.cookiesBrowserProfile}
                 cookiesPath={addMediaForm.cookiesPath}
                 isGeneratingThumb={addMediaForm.isGeneratingThumb}
                 loading={media.isAddingMedia}
@@ -283,6 +284,7 @@ export function HomeModals({
                 onChangeDownloadComments={addMediaForm.setDownloadComments}
                 onChangeDownloadLiveChat={addMediaForm.setDownloadLiveChat}
                 onChangeCookiesBrowser={addMediaForm.setCookiesBrowser}
+                onChangeCookiesBrowserProfile={addMediaForm.setCookiesBrowserProfile}
                 onPickCookiesFile={() => void addMediaForm.pickCookiesFileViaDialog()}
                 onClearCookiesPath={addMediaForm.clearCookiesPath}
                 onChangeSelectedYtDlpFormatId={addMediaForm.setSelectedYtDlpFormatId}

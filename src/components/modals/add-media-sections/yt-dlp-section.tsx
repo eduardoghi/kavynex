@@ -17,6 +17,7 @@ import { AppButton } from "../../ui/app-button";
 type YtDlpSectionProps = {
     mediaUrl: string;
     cookiesBrowser: string;
+    cookiesBrowserProfile: string;
     cookiesPath: string;
     isLocked: boolean;
     isLoadingYtDlpFormats: boolean;
@@ -26,6 +27,7 @@ type YtDlpSectionProps = {
     downloadLiveChat: boolean;
     onChangeMediaUrl: (value: string) => void;
     onChangeCookiesBrowser: (value: string) => void;
+    onChangeCookiesBrowserProfile: (value: string) => void;
     onPickCookiesFile: () => void | Promise<void>;
     onClearCookiesPath: () => void;
     onChangeSelectedYtDlpFormatId: (value: string) => void;
@@ -38,6 +40,7 @@ type YtDlpSectionProps = {
 export function YtDlpSection({
     mediaUrl,
     cookiesBrowser,
+    cookiesBrowserProfile,
     cookiesPath,
     isLocked,
     isLoadingYtDlpFormats,
@@ -47,6 +50,7 @@ export function YtDlpSection({
     downloadLiveChat,
     onChangeMediaUrl,
     onChangeCookiesBrowser,
+    onChangeCookiesBrowserProfile,
     onPickCookiesFile,
     onClearCookiesPath,
     onChangeSelectedYtDlpFormatId,
@@ -59,6 +63,7 @@ export function YtDlpSection({
 
     const canLoadFormats = mediaUrl.trim() !== "" && !isLocked && !isLoadingYtDlpFormats;
     const isManualCookies = cookiesBrowser === "manual";
+    const isBrowserCookies = cookiesBrowser !== "" && !isManualCookies;
 
     return (
         <Stack gap="sm">
@@ -87,6 +92,21 @@ export function YtDlpSection({
                 disabled={isLocked}
                 description="Use this only when YouTube asks for authentication."
             />
+
+            {/* Only needed when the browser has more than one profile, so it appears only once a
+                browser is chosen and stays optional. A single field carries yt-dlp's whole
+                BROWSER[+KEYRING][:PROFILE][::CONTAINER] grammar (the browser is prepended), since a
+                second control for the keyring would serve the rarest case of the three. */}
+            {isBrowserCookies && (
+                <TextInput
+                    label="Browser profile"
+                    placeholder="Optional. Profile name or path, for example default-release"
+                    value={cookiesBrowserProfile}
+                    onChange={(event) => onChangeCookiesBrowserProfile(event.currentTarget.value)}
+                    disabled={isLocked}
+                    description="Leave empty to use the browser's default profile. Add ::Name for a Firefox container, or start with +keyring (for example +gnomekeyring:Default) on Linux."
+                />
+            )}
 
             {isManualCookies && (
                 <Group align="end" wrap="nowrap">

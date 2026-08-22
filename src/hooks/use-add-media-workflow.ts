@@ -12,6 +12,7 @@ import {
     YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
 } from "../constants/error-codes";
 import { logError } from "../utils/app-logger";
+import { redactCookiesBrowserSelector } from "../constants/cookies-browsers";
 import { useMemoObject } from "./use-memo-object";
 import {
     buildCreateMediaInput,
@@ -155,7 +156,8 @@ export function useAddMediaWorkflow({
             try {
                 const { cookiesBrowser, cookiesPath } = resolveCookiesSource(
                     form.cookiesBrowser,
-                    form.cookiesPath
+                    form.cookiesPath,
+                    form.cookiesBrowserProfile
                 );
 
                 // Generated for both modes. A local import registers it in the same backend
@@ -201,7 +203,12 @@ export function useAddMediaWorkflow({
                     if (cookiesPath) {
                         appendManualLog("Cookies: manual .txt file");
                     } else if (cookiesBrowser) {
-                        appendManualLog(`Cookies from browser: ${cookiesBrowser}`);
+                        // The profile is often a path under the user's home directory and the
+                        // terminal is pasted into bug reports, so the line names the browser and
+                        // only marks that a profile was set.
+                        appendManualLog(
+                            `Cookies from browser: ${redactCookiesBrowserSelector(cookiesBrowser)}`
+                        );
                     }
                 }
 
