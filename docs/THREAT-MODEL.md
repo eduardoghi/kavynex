@@ -288,7 +288,7 @@ document rather than only in the architecture guide.
 
 **It removed this command's unbounded input.** Those three vectors arrived from IPC with no
 ceiling. The only caller-supplied value in the backend without one, against a codebase that caps
-the run id, the comment body, the thumbnail download, the live-chat decompression and the reported
+the run id, the comment body and count, the thumbnail download, the live-chat decompression and the reported
 failure lines. A renderer that sent millions of strings would have had them materialized before any
 validation ran. There is now nothing to bound, which is a better answer than a limit.
 
