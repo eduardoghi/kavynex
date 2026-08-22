@@ -135,45 +135,102 @@ function deriveLiveChatIntegrity(report: LibraryIntegrityReport): LiveChatIntegr
     };
 }
 
-// Labels for each check, in the exact order of the Promise.allSettled array below. A rejected
-// check is reported to the user by index, so this must stay in sync with that array.
-const DIAGNOSTIC_CHECKS = [
-    { code: "APP_VERSION", label: "app version" },
-    { code: "RUNTIME_INFO", label: "runtime information" },
-    { code: "EXTERNAL_TOOLS", label: "external tools" },
-    { code: "LIBRARY_SUMMARY", label: "library summary" },
-    { code: "LIVE_CHAT_STORAGE", label: "live chat storage" },
-    { code: "MEDIA_STATS", label: "media statistics" },
-    { code: "LIBRARY_INTEGRITY", label: "library integrity" },
-] as const;
+// One entry per check: the code and label a failure is reported under, and how the check runs.
+// These used to be three lists kept in step by position (the labels here, the calls passed to
+// `Promise.allSettled`, and the destructuring of its results), which is the shape where a check
+// added to one list and not the others turns into the wrong label on a failure and the wrong
+// value in a field, with nothing failing. Everything now derives from this one table: the runs
+// are read off it, the results come back keyed by the same names, and the failure report reads
+// the label of the entry whose run rejected. The library path is bound here, once, because two
+// of the checks take it and a runner that takes no argument is what lets `settleAll` stay typed.
+function diagnosticChecks(libraryPath: string) {
+    return {
+        appVersion: { code: "APP_VERSION", label: "app version", run: () => getVersion() },
+        runtimeInfo: {
+            code: "RUNTIME_INFO",
+            label: "runtime information",
+            run: () => getRuntimeDiagnosticsInfo(),
+        },
+        externalTools: {
+            code: "EXTERNAL_TOOLS",
+            label: "external tools",
+            run: () => getExternalToolsStatus(),
+        },
+        librarySummary: {
+            code: "LIBRARY_SUMMARY",
+            label: "library summary",
+            run: () => getLibrarySummary(libraryPath),
+        },
+        liveChatStorage: {
+            code: "LIVE_CHAT_STORAGE",
+            label: "live chat storage",
+            run: () => getLiveChatStorageSummary(),
+        },
+        mediaStats: {
+            code: "MEDIA_STATS",
+            label: "media statistics",
+            run: () => getMediaRepositoryStats(),
+        },
+        libraryIntegrity: {
+            code: "LIBRARY_INTEGRITY",
+            label: "library integrity",
+            run: () => getLibraryIntegrity(libraryPath),
+        },
+    } as const;
+}
+
+type DiagnosticChecks = ReturnType<typeof diagnosticChecks>;
+type DiagnosticCheckKey = keyof DiagnosticChecks;
+
+// The settled result of every check, under the same key as its entry in the table, and typed as
+// what that entry's `run` resolves to. The whole point of keying rather than destructuring a
+// positional array: a result cannot land in the wrong field because there is no position.
+type SettledChecks = {
+    [K in DiagnosticCheckKey]: PromiseSettledResult<Awaited<ReturnType<DiagnosticChecks[K]["run"]>>>;
+};
+
+// `Promise.allSettled` over the table's runners, re-keyed. Every check runs regardless of how the
+// others end (a rejected check is a warning issue below, never a failed report), which is what
+// allSettled is for. The assertion is the price of allSettled returning
+// `PromiseSettledResult<unknown>[]` for a heterogeneous input: each result is put back under the
+// key whose runner produced it, at the same index it came out, so it states that one-to-one
+// mapping rather than guessing at a type.
+async function settleAll(checks: DiagnosticChecks): Promise<SettledChecks> {
+    const keys = Object.keys(checks) as DiagnosticCheckKey[];
+    const settled = await Promise.allSettled(keys.map((key) => checks[key].run()));
+
+    return Object.fromEntries(keys.map((key, index) => [key, settled[index]])) as SettledChecks;
+}
 
 // A rejected sub-check is replaced by its zeroed default so the rest of the report can still
 // render. On its own that would make the failed dimension read as "healthy" (0 missing, 0
 // orphan, ...). Turn each failure into a warning issue (and log the underlying reason), so the
 // overview stops showing a false all-clear and the user is told the report is incomplete.
 function collectCheckFailureIssues(
-    settled: readonly PromiseSettledResult<unknown>[]
+    checks: DiagnosticChecks,
+    settled: SettledChecks
 ): DiagnosticsIssue[] {
     const issues: DiagnosticsIssue[] = [];
 
-    settled.forEach((result, index) => {
+    for (const key of Object.keys(checks) as DiagnosticCheckKey[]) {
+        const result = settled[key];
+
         if (result.status !== "rejected") {
-            return;
+            continue;
         }
 
-        const check = DIAGNOSTIC_CHECKS[index];
-        const label = check?.label ?? "diagnostic";
+        const { code, label } = checks[key];
 
         logError("diagnostics", `The ${label} diagnostics check failed to run.`, result.reason);
 
         issues.push({
-            code: `DIAGNOSTIC_CHECK_FAILED:${check?.code ?? index}`,
+            code: `DIAGNOSTIC_CHECK_FAILED:${code}`,
             severity: "warning",
             title: `Could not run the ${label} check`,
             description:
                 "This check did not complete, so the values shown for it may be incomplete or missing. Check the logs and try again.",
         });
-    });
+    }
 
     return issues;
 }
@@ -183,47 +240,32 @@ export async function getDiagnosticsSummary(
 ): Promise<DiagnosticsSummary> {
     const normalizedLibraryPath = input.libraryPath.trim();
 
-    const settled = await Promise.allSettled([
-        getVersion(),
-        getRuntimeDiagnosticsInfo(),
-        getExternalToolsStatus(),
-        getLibrarySummary(normalizedLibraryPath),
-        getLiveChatStorageSummary(),
-        getMediaRepositoryStats(),
-        getLibraryIntegrity(normalizedLibraryPath),
-    ]);
+    const checks = diagnosticChecks(normalizedLibraryPath);
+    const settled = await settleAll(checks);
 
-    const [
-        appVersion,
-        runtimeInfo,
-        externalTools,
-        librarySummary,
-        liveChatStorage,
-        mediaRepositoryStats,
-        libraryIntegrity,
-    ] = settled;
-
-    const libraryIntegrityResult = settledValue(libraryIntegrity, {
+    const libraryIntegrityResult = settledValue(settled.libraryIntegrity, {
         report: defaultLibraryIntegrity(),
         mediaByPath: {},
     });
 
+    const runtimeInfo = settledValue(settled.runtimeInfo, defaultRuntimeInfo());
+
     const diagnostics: AppDiagnostics = {
-        appVersion: settledValue(appVersion, null),
-        platform: settledValue(runtimeInfo, defaultRuntimeInfo()).platform,
-        arch: settledValue(runtimeInfo, defaultRuntimeInfo()).arch,
+        appVersion: settledValue(settled.appVersion, null),
+        platform: runtimeInfo.platform,
+        arch: runtimeInfo.arch,
         libraryPath: normalizedLibraryPath,
         importMode: input.importMode,
-        externalTools: settledValue(externalTools, defaultExternalToolsStatus()),
-        librarySummary: settledValue(librarySummary, defaultLibrarySummary()),
-        liveChatStorage: settledValue(liveChatStorage, defaultLiveChatStorageSummary()),
-        mediaRepositoryStats: settledValue(mediaRepositoryStats, defaultMediaRepositoryStats()),
+        externalTools: settledValue(settled.externalTools, defaultExternalToolsStatus()),
+        librarySummary: settledValue(settled.librarySummary, defaultLibrarySummary()),
+        liveChatStorage: settledValue(settled.liveChatStorage, defaultLiveChatStorageSummary()),
+        mediaRepositoryStats: settledValue(settled.mediaStats, defaultMediaRepositoryStats()),
         libraryIntegrity: libraryIntegrityResult.report,
         liveChatIntegrity: deriveLiveChatIntegrity(libraryIntegrityResult.report),
     };
 
     const issues = sortDiagnosticsIssues([
-        ...collectCheckFailureIssues(settled),
+        ...collectCheckFailureIssues(checks, settled),
         ...buildDiagnosticsIssues(diagnostics, libraryIntegrityResult.mediaByPath),
     ]);
     const overview = buildDiagnosticsOverview(issues);
