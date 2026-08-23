@@ -16,7 +16,7 @@ use tauri::{AppHandle, Runtime};
 
 use crate::services::database::{get_app_settings_from_pool, shared_pool};
 use crate::services::logger;
-use crate::utils::path::is_network_path;
+use crate::utils::path::{is_network_path, network_share_prefix};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -58,13 +58,27 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
     }
 
     // A network (UNC) `requested` path forces an SMB/NTLM handshake the moment it is canonicalized
-    // on Windows (see utils::path::is_network_path). Refuse it *before* the canonicalize below when
-    // the configured library is local. A caller-supplied UNC aimed at a local library is the
-    // NTLM-leak vector, and the guard's whole job is to hold against a hostile IPC path. A library
-    // the user deliberately put on a share (configured is itself a network path) keeps working, so
-    // this never regresses a legitimately network-hosted library.
-    if is_network_path(requested) && !is_network_path(configured) {
-        return false;
+    // on Windows (see utils::path::is_network_path). Refuse it *before* the canonicalize below
+    // unless it names the very share the configured library lives on. A caller-supplied UNC aimed
+    // at a local library is the NTLM-leak vector, and the guard's whole job is to hold against a
+    // hostile IPC path. When the library itself is on a share (a supported configuration), the
+    // same hostile caller could name another host, and refusing only "network against local"
+    // would let that reach canonicalize and authenticate to it before the canonical compare said
+    // no. So the host and share are compared textually first: the user's own share keeps working,
+    // and a different one is refused without any filesystem call.
+    if is_network_path(requested) {
+        if !is_network_path(configured) {
+            return false;
+        }
+
+        match (
+            network_share_prefix(requested),
+            network_share_prefix(configured),
+        ) {
+            (Some(requested_share), Some(configured_share))
+                if requested_share == configured_share => {}
+            _ => return false,
+        }
     }
 
     match (
@@ -389,6 +403,47 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn same_location_rejects_a_network_requested_path_on_another_share_than_the_network_library() {
+        // The configured library lives on a share. A hostile caller naming a different host (or a
+        // different share on the same host) must be refused before canonicalize, which on Windows
+        // would authenticate to that host. This is the case the "network against local" refusal
+        // alone did not cover: with both sides network, it fell straight through to canonicalize.
+        let configured = r"\\nas\videos";
+
+        for requested in [
+            r"\\evil\videos",
+            r"\\evil\share\videos",
+            r"\\nas\other",
+            "//evil/videos",
+            r"/\evil\videos",
+            r"\\?\UNC\evil\videos",
+            r"\\evil",
+        ] {
+            assert!(
+                !paths_refer_to_same_location(requested, configured),
+                "a network path on another share should not match: {requested}"
+            );
+        }
+    }
+
+    #[test]
+    fn same_location_lets_the_network_library_through_however_its_share_is_spelled() {
+        // The share-prefix compare is case-insensitive and separator-agnostic, so the user's own
+        // share is never refused over spelling. Asserted on the prefix rather than through
+        // `paths_refer_to_same_location`, because past the prefix check the other spellings go to
+        // canonicalize, which on Windows would try to reach a host named `nas` from the test.
+        let configured = r"\\nas\videos";
+
+        for requested in [r"\\NAS\Videos", "//nas/videos", r"\\?\UNC\nas\videos\"] {
+            assert_eq!(
+                network_share_prefix(requested),
+                network_share_prefix(configured),
+                "the prefix compare must accept the library's own share: {requested}"
+            );
+        }
     }
 
     #[test]

@@ -78,6 +78,36 @@ pub fn is_network_path(value: &str) -> bool {
     normalized.starts_with(r"\\")
 }
 
+/// The `\\host\share` prefix of a network path, lowercased and with separators normalized, or
+/// `None` when `value` is not a network path or names a host without a share.
+///
+/// Two network paths with different prefixes cannot name the same location, and telling them
+/// apart textually is what lets a caller refuse one *before* a `canonicalize` that would
+/// authenticate to the host it names. Lowercased because SMB host and share names are
+/// case-insensitive, so `\\NAS\Videos` and `\\nas\videos` are one share and must compare equal
+/// rather than be refused as different.
+pub fn network_share_prefix(value: &str) -> Option<String> {
+    if !is_network_path(value) {
+        return None;
+    }
+
+    let normalized = value.trim().replace('/', "\\");
+    let rest = match normalized.strip_prefix(r"\\?\") {
+        // `is_network_path` already established the verbatim form carries `UNC\` here.
+        Some(verbatim) => &verbatim[4..],
+        None => &normalized[2..],
+    };
+    let mut components = rest.split('\\').filter(|component| !component.is_empty());
+    let host = components.next()?;
+    let share = components.next()?;
+
+    Some(format!(
+        r"\\{}\{}",
+        host.to_lowercase(),
+        share.to_lowercase()
+    ))
+}
+
 pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
     let trimmed = value.trim();
 
@@ -490,6 +520,45 @@ mod tests {
             r"\\.\PhysicalDrive0",        // device namespace, local
         ] {
             assert!(!is_network_path(value), "should not flag: {value}");
+        }
+    }
+
+    #[test]
+    fn network_share_prefix_reads_the_share_regardless_of_case_separators_and_verbatim_form() {
+        for value in [
+            r"\\NAS\Videos",
+            r"\\nas\videos\2024\clip.mp4",
+            "//Nas/VIDEOS/",
+            r"/\nas\videos",
+            r"\\?\UNC\nas\videos\clip.mp4",
+            r"\\?\unc\NAS\VIDEOS",
+            "  \\\\nas\\videos  ",
+        ] {
+            assert_eq!(
+                network_share_prefix(value).as_deref(),
+                Some(r"\\nas\videos"),
+                "share prefix of {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn network_share_prefix_is_none_for_local_paths_and_a_host_without_a_share() {
+        for value in [
+            r"C:\Users\me\video.mp4",
+            "/home/me/video.mp4",
+            r"\\?\C:\Users\me\video.mp4",
+            r"\\.\PhysicalDrive0",
+            r"\\nas",
+            r"\\nas\",
+            "//nas//",
+            "",
+        ] {
+            assert_eq!(
+                network_share_prefix(value),
+                None,
+                "should have no share: {value}"
+            );
         }
     }
 

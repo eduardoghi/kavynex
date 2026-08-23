@@ -117,7 +117,8 @@ past a literal prefix match), and the functions applying it are:
 | `thumbnail::persist::persist_thumbnail_file_sync` | the source of a persisted thumbnail or avatar as it arrives over IPC (`persist_thumbnail_file`, and `create_media`'s local thumbnail branch), refused before the library directory is even created |
 | `thumbnail::persist::persist_thumbnail_from_source` | the same source one level down, so the download path and any later caller inherit the refusal |
 | `library::media::import_media_file_cancellable_sync` | the import source |
-| `library::guard::paths_refer_to_same_location` | a network path aimed at a local library |
+| `library::guard::paths_refer_to_same_location` | a network path aimed at a local library, or at another share than the one a network-hosted library lives on |
+| `utils::path::network_share_prefix` | not a refusal of its own: the host-and-share reading the guard compares before it will canonicalize a network path against a network-hosted library |
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
 | `commands/database.rs::prepare_import_source` | the database import source |
 | `commands/database.rs::prepare_export_destination` | the database export destination |
@@ -256,8 +257,12 @@ defense in depth is the point and neither costs anything:
 
 The guard also subsumes part of the cross-cutting UNC rule for the other two: a network
 `library_path` aimed at a local configured library is refused by
-`paths_refer_to_same_location` before anything is canonicalized. A genuinely network-hosted
-library still resolves, which is the supported configuration.
+`paths_refer_to_same_location` before anything is canonicalized. When the configured library is
+itself on a share, a network `library_path` is compared to it by host and share name first
+(`utils::path::network_share_prefix`, case-insensitive) and refused, still before any
+canonicalize, when they differ. A genuinely network-hosted library therefore still resolves,
+which is the supported configuration, without a hostile caller being able to point the guard at
+a second host.
 
 Each command has an IPC-level test pinning the refusal
 (`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`), so an unguarded

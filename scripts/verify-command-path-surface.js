@@ -549,6 +549,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
     "services/thumbnail/temp.rs::validate_source_media_path",
     "services/thumbnail/temp.rs::validate_temporary_thumbnail_delete_path",
     "services/yt_dlp/cookies.rs::normalize_cookies_path",
+    "utils/path.rs::network_share_prefix",
 ];
 
 // The classes of rule a caller-supplied path can be required to satisfy, from docs/THREAT-MODEL.md.
