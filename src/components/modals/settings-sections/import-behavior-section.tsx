@@ -24,8 +24,10 @@ export function ImportBehaviorSection({
             </Group>
 
             <Radio.Group
-                // Names the group for assistive tech; the visible <Title> above is not
-                // programmatically associated with it.
+                // Lands on Mantine's Input.Wrapper root, not on the inner fieldset that carries
+                // role="radiogroup", so this does not name the group for assistive tech the way it
+                // was once assumed to. Kept because it still labels the wrapping region; each Radio
+                // has its own label, which is what a screen reader announces.
                 aria-label="Import behavior"
                 value={importMode}
                 onChange={(value) =>

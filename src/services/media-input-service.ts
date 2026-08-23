@@ -1,5 +1,11 @@
 import type { ImportMode } from "../types/settings";
 import type { MediaSourceMode, MediaType } from "../types/media";
+import {
+    INVALID_FORMAT_ID_ERROR_CODE,
+    INVALID_LIBRARY_PATH_ERROR_CODE,
+    INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE,
+    INVALID_RUN_ID_ERROR_CODE,
+} from "../constants/error-codes";
 import { createAppError } from "../utils/app-error";
 import { assertValidEntityId } from "../utils/id-validation";
 import { validateChannelId } from "./channel-input-service";
@@ -51,24 +57,24 @@ export function validateCreateMediaInput(input: CreateMediaInput): CreateMediaIn
     validateChannelId(input.channelId);
 
     if (!normalizedTitle) {
-        throw createAppError("INVALID_MEDIA_CREATION_ARGUMENTS", "Media title is required.");
+        throw createAppError(INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE, "Media title is required.");
     }
 
     if (!normalizedSourceValue) {
-        throw createAppError("INVALID_MEDIA_CREATION_ARGUMENTS", "Media source is required.");
+        throw createAppError(INVALID_MEDIA_CREATION_ARGUMENTS_ERROR_CODE, "Media source is required.");
     }
 
     if (!normalizedLibraryPath) {
-        throw createAppError("INVALID_LIBRARY_PATH", "Library path is empty.");
+        throw createAppError(INVALID_LIBRARY_PATH_ERROR_CODE, "Library path is empty.");
     }
 
     if (input.sourceMode === "yt-dlp") {
         if (!normalizedYtDlpRunId) {
-            throw createAppError("INVALID_RUN_ID", "yt-dlp run id is required.");
+            throw createAppError(INVALID_RUN_ID_ERROR_CODE, "yt-dlp run id is required.");
         }
 
         if (!normalizedYtDlpFormatId) {
-            throw createAppError("INVALID_FORMAT_ID", "yt-dlp format id is required.");
+            throw createAppError(INVALID_FORMAT_ID_ERROR_CODE, "yt-dlp format id is required.");
         }
     }
 

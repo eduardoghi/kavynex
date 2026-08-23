@@ -44,8 +44,6 @@ export const UI_TEXT = {
         sortOptions: {
             publicationDate: "Publication date",
             addedDate: "Added date",
-            recent: "Newest first",
-            oldest: "Oldest first",
             title: "Title",
             duration: "Duration",
             comments: "Comments",

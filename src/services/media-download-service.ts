@@ -1,6 +1,10 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import type { YtDlpComment, YtDlpFormatsResult } from "../types/media";
+import {
+    INVALID_RUN_ID_ERROR_CODE,
+    INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE,
+} from "../constants/error-codes";
 import { createAppError } from "../utils/app-error";
 import { normalizeCookiesBrowser } from "../constants/cookies-browsers";
 
@@ -59,7 +63,7 @@ export async function cancelMediaDownload(runId: string): Promise<void> {
     const normalizedRunId = runId.trim();
 
     if (!normalizedRunId) {
-        throw createAppError("INVALID_RUN_ID", "run id is empty");
+        throw createAppError(INVALID_RUN_ID_ERROR_CODE, "run id is empty");
     }
 
     await invokeVoid(TAURI_COMMANDS.CANCEL_MEDIA_DOWNLOAD, {
@@ -76,7 +80,7 @@ export async function fetchYouTubeComments(
     const normalizedVideoId = youtubeVideoId.trim();
 
     if (!normalizedVideoId) {
-        throw createAppError("INVALID_YOUTUBE_VIDEO_ID", "youtube video id is empty");
+        throw createAppError(INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE, "youtube video id is empty");
     }
 
     return invokeCommand(TAURI_COMMANDS.FETCH_YOUTUBE_COMMENTS, {
