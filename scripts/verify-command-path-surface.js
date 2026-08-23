@@ -259,7 +259,13 @@ export function extractPathTakingCommands(source, structSources = []) {
 
         searchFrom = attributeAt + COMMAND_ATTRIBUTE.length;
 
-        const signatureMatch = /\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(source.slice(searchFrom));
+        // The optional `<R: Runtime>` between the name and the parameter list is what every command
+        // carries since they were made generic over the runtime (so the mock runtime can drive
+        // them in tests). Without allowing it here the match skipped past the command to the next
+        // non-generic `fn` in the file, which was a test helper, and the whole inventory drifted.
+        const signatureMatch = /\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^>]*>)?\s*\(/.exec(
+            source.slice(searchFrom)
+        );
 
         if (!signatureMatch) {
             continue;

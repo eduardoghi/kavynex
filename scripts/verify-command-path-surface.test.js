@@ -234,6 +234,22 @@ describe("extractPathTakingCommands", () => {
         ]);
     });
 
+    it("finds a command generic over the runtime", () => {
+        // Every command is `fn name<R: Runtime>(app: AppHandle<R>, ...)` so the mock runtime can
+        // drive it in tests. A match that required `(` right after the name skipped these and
+        // landed on the next plain `fn` in the file, which made the inventory list test helpers
+        // and report every real command as gone.
+        const source =
+            "#[tauri::command]\npub async fn persist_thumbnail_file<R: Runtime>(\n" +
+            "    app: AppHandle<R>,\n    path: String,\n    library_path: String,\n" +
+            ") -> AppResult<String> {\n}\n\n" +
+            "fn test_webview(path: &str) -> Webview {\n}\n";
+
+        expect(extractPathTakingCommands(source)).toEqual([
+            { command: "persist_thumbnail_file", parameters: ["path", "library_path"] },
+        ]);
+    });
+
     it("omits a command with no path parameter", () => {
         expect(extractPathTakingCommands(command("list_channels(app: AppHandle)"))).toEqual([]);
     });
