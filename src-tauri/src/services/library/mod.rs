@@ -20,8 +20,8 @@ pub mod verification;
 pub use media::{delete_media_file_sync, import_media_file_sync};
 pub use migration::migrate_library_directory_sync;
 pub use paths::{
-    ensure_directory_exists_sync, ensure_library_dir, resolve_default_library_directory_sync,
-    resolve_existing_directory_sync, resolve_existing_library_dir,
+    ensure_directory_exists_sync, ensure_library_dir, resolve_existing_directory_sync,
+    resolve_existing_library_dir,
 };
 pub use summary::LibrarySummaryInfo;
 

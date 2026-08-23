@@ -30,11 +30,9 @@ pub enum AppErrorCode {
     DataDirectoryResolveFailed,
     CacheDirectoryResolveFailed,
     CacheDirectoryCreateFailed,
-    VideoDirectoryResolveFailed,
 
     InvalidLibraryPath,
     CreateLibraryDirFailed,
-    CreateDefaultLibraryDirFailed,
     CreateNewLibraryDirFailed,
     CanonicalizeLibraryPathFailed,
     CanonicalizeDirectoryFailed,
@@ -205,11 +203,9 @@ impl AppErrorCode {
             Self::DataDirectoryResolveFailed => "DATA_DIRECTORY_RESOLVE_FAILED",
             Self::CacheDirectoryResolveFailed => "CACHE_DIRECTORY_RESOLVE_FAILED",
             Self::CacheDirectoryCreateFailed => "CACHE_DIRECTORY_CREATE_FAILED",
-            Self::VideoDirectoryResolveFailed => "VIDEO_DIRECTORY_RESOLVE_FAILED",
 
             Self::InvalidLibraryPath => "INVALID_LIBRARY_PATH",
             Self::CreateLibraryDirFailed => "CREATE_LIBRARY_DIR_FAILED",
-            Self::CreateDefaultLibraryDirFailed => "CREATE_DEFAULT_LIBRARY_DIR_FAILED",
             Self::CreateNewLibraryDirFailed => "CREATE_NEW_LIBRARY_DIR_FAILED",
             Self::CanonicalizeLibraryPathFailed => "CANONICALIZE_LIBRARY_PATH_FAILED",
             Self::CanonicalizeDirectoryFailed => "CANONICALIZE_DIRECTORY_FAILED",

@@ -113,13 +113,11 @@ const INTERNAL_BACKEND_CODES = new Set([
     "DATA_DIRECTORY_RESOLVE_FAILED",
     "CACHE_DIRECTORY_RESOLVE_FAILED",
     "CACHE_DIRECTORY_CREATE_FAILED",
-    "VIDEO_DIRECTORY_RESOLVE_FAILED",
 
     // Creating and canonicalizing directories. The user-facing refusals of the library folder
     // (INVALID_LIBRARY_PATH, INVALID_LIBRARY_MIGRATION, LIBRARY_MIGRATION_ALREADY_RUNNING) are
     // catalogued; these are the failures underneath them, where the path was already accepted.
     "CREATE_LIBRARY_DIR_FAILED",
-    "CREATE_DEFAULT_LIBRARY_DIR_FAILED",
     "CREATE_NEW_LIBRARY_DIR_FAILED",
     "CANONICALIZE_LIBRARY_PATH_FAILED",
     "CANONICALIZE_DIRECTORY_FAILED",

@@ -54,11 +54,6 @@ fn revoke_directory_from_asset_scope<R: Runtime>(app: &AppHandle<R>, dir: &str) 
 }
 
 #[tauri::command]
-pub async fn resolve_default_library_directory<R: Runtime>(app: AppHandle<R>) -> AppResult<String> {
-    run_blocking(move || library::paths::resolve_default_library_directory_sync(&app)).await
-}
-
-#[tauri::command]
 pub async fn ensure_directory_exists(path: String) -> AppResult<String> {
     run_blocking(move || library::paths::ensure_directory_exists_sync(&path)).await
 }

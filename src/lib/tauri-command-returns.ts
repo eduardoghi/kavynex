@@ -41,7 +41,6 @@ export type TauriCommandReturns = {
     begin_webview_check: WebviewCheckPlan | null;
     report_webview_check: void;
 
-    resolve_default_library_directory: string;
     ensure_directory_exists: string;
     resolve_existing_directory: string;
     migrate_library_directory: MigrateLibraryDirectoryResult;
@@ -72,7 +71,6 @@ export type TauriCommandReturns = {
     // forever about a path that can never be resolved. See the DisplayThumbnail doc comment.
     resolve_display_thumbnails: DisplayThumbnail[];
     delete_temporary_thumbnail: void;
-    delete_thumbnail_file: void;
 
     list_yt_dlp_formats: YtDlpFormatsResult;
     cancel_media_download: void;

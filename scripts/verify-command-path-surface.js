@@ -46,8 +46,9 @@ import { fileURLToPath } from "url";
 const COMMAND_ATTRIBUTE = "#[tauri::command]";
 
 // A parameter whose name says it carries a filesystem path. Matched on the parameter name only,
-// never the function name. `resolve_default_library_directory(app: AppHandle)` takes no path
-// despite what it is called, and a check that read the signature as one string would list it.
+// never the function name. A command named after a directory but taking none (this app once had
+// `resolve_default_library_directory(app: AppHandle)`) has no path surface, and a check that read
+// the signature as one string would list it.
 export function isPathParameter(name) {
     return (
         name === "path" ||
@@ -605,7 +606,6 @@ export const DECLARED_PATH_SURFACE = [
     { command: "check_library_integrity", parameters: ["library_path"], guard: "configured-library" },
     { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"], guard: { source_value: "user-picked", thumbnail_source_path: "user-picked", library_path: "configured-library", cookies_path: "user-picked" } },
     { command: "delete_temporary_thumbnail", parameters: ["path"], guard: "cache-confined" },
-    { command: "delete_thumbnail_file", parameters: ["thumbnail_path", "library_path"], guard: { thumbnail_path: "managed-relative", library_path: "configured-library" } },
     { command: "download_channel_avatar_from_handle", parameters: ["library_path"], guard: "configured-library" },
     { command: "ensure_directory_exists", parameters: ["path"], guard: "chosen-directory" },
     { command: "export_database", parameters: ["destination_path"], guard: "user-picked" },

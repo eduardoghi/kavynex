@@ -1,12 +1,10 @@
 use tauri::{AppHandle, Runtime};
 
-use crate::constants::LIBRARY_DIR_THUMBNAILS;
 use crate::services::library::guard::{
     ensure_configured_library_path, verify_library_path_then_blocking,
 };
 use crate::services::thumbnail;
 use crate::services::thumbnail::display::{self, DisplayThumbnail};
-use crate::utils::path::ensure_relative_path_in_managed_dir;
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
@@ -112,33 +110,11 @@ pub async fn delete_temporary_thumbnail<R: Runtime>(
     run_blocking(move || thumbnail::delete_temporary_thumbnail_sync(&app, &path)).await
 }
 
-#[tauri::command]
-pub async fn delete_thumbnail_file<R: Runtime>(
-    app: AppHandle<R>,
-    thumbnail_path: String,
-    library_path: String,
-) -> AppResult<()> {
-    // `verify_library_path_then_blocking` settles `library_path`, and nothing settled
-    // `thumbnail_path`. `delete_thumbnail_file_sync` confines it to the library *root*
-    // (`absolute_path_from_relative` plus `ensure_existing_path_inside_dir`), which stops a
-    // traversal but not a bare name: `contract.docx` resolves inside the library and is unlinked.
-    // The library folder is one the user picked and is not required to be empty, so that is their
-    // own file, and unlike the reference-counted cleanup this path has no database check in front
-    // of it at all. Requiring the managed directory is the same rule `resolve_display_thumbnails`
-    // already applies to the very same kind of value (`services/thumbnail/display.rs`), and the one
-    // `cleanup_unreferenced_media_artifacts` gained for the same reason.
-    ensure_relative_path_in_managed_dir(&thumbnail_path, LIBRARY_DIR_THUMBNAILS)?;
-
-    verify_library_path_then_blocking(&app, library_path, move |library_path| {
-        thumbnail::delete_thumbnail_file_sync(&thumbnail_path, &library_path)
-    })
-    .await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::commands::test_ipc::{invoke, memory_db};
+    use crate::constants::LIBRARY_DIR_THUMBNAILS;
     use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
     use crate::AppErrorCode;
     use std::fs;
@@ -243,42 +219,5 @@ mod tests {
         assert!(!library.join(LIBRARY_DIR_THUMBNAILS).exists());
 
         let _ = fs::remove_dir_all(&root);
-    }
-
-    // The remaining commands take an `AppHandle<R>` too and could be driven the same way; what is
-    // pinned below is the one decision `delete_thumbnail_file` makes before any of that: which paths
-    // it will act on at all.
-
-    #[test]
-    fn deleting_a_thumbnail_accepts_only_the_managed_thumbnails_directory() {
-        ensure_relative_path_in_managed_dir("thumbnails/thumb_abc.jpg", LIBRARY_DIR_THUMBNAILS)
-            .expect("the layout the app writes must be accepted");
-    }
-
-    #[test]
-    fn deleting_a_thumbnail_refuses_a_path_outside_the_managed_directory() {
-        // The reason the guard exists. Confinement to the library root, which is all the delete
-        // itself does, admits every one of these: they resolve inside the folder the user chose as
-        // their library and would be unlinked with no database check in front of them.
-        for path in [
-            "contract.docx",
-            "photos/wedding.jpg",
-            // A sibling managed directory is refused too: this command deletes thumbnails, and
-            // reaching a media file through it would be a different operation than the one asked
-            // for. The generic managed check would have allowed these four.
-            "video/media_abc.mp4",
-            "audio/media_abc.mp3",
-            "live_chat/media_abc.json.gz",
-            // Inherited from sanitize_relative_path_strict, asserted at this entry point anyway.
-            "../outside.jpg",
-            "thumbnails/../../outside.jpg",
-        ] {
-            let Err(error) = ensure_relative_path_in_managed_dir(path, LIBRARY_DIR_THUMBNAILS)
-            else {
-                panic!("a path outside thumbnails/ must be refused: {path}");
-            };
-
-            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str());
-        }
     }
 }

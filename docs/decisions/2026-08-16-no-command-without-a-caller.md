@@ -53,6 +53,25 @@ keep a command is a caller.
 state twice. If a "delete just the replay" action is ever wanted, it arrives with the button that
 invokes it.
 
+## A third and a fourth, a week later
+
+The gate did not catch everything at once. `delete_thumbnail_file` (unlink of a thumbnail, no
+reference count, confined to `thumbnails/`) had lost its last caller in `feb89e1` on 2026-07-06, when
+the avatar and thumbnail cleanup moved into `library::cleanup`'s transactional plan, and
+`resolve_default_library_directory` (create and return `<video_dir>/Kavynex Library`) had no caller
+in this history at all. Both were registered and shipped through v1.4.0.
+
+What hid them was `src/services/index.ts`. The barrel re-exported every service function, and the
+gate counted a file that names the wrapper as a caller of it, so a re-export line satisfied the
+check. The commit that dropped the barrel (`0d07bb6`) is what turned the gate red, and both were
+removed end to end in the commit after it: the Rust function, its `generate_handler!` line, the
+wrapper, the `TAURI_COMMANDS` constant, the return type, and the two error codes only the default
+directory path produced. `docs/DIRECTORIES.md` stopped describing a default library location, since
+the app never applied one.
+
+The lesson is about the gate, not the commands: a re-export is not a call, and an inventory check
+that cannot tell the two apart has a false negative for as long as a barrel exists.
+
 ## Where the rule lives now
 
 Two places, deliberately. `commands/media.rs` already carries the forward-stated rule this one

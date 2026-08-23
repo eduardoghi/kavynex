@@ -11,7 +11,6 @@ export const TAURI_COMMANDS = {
     BEGIN_WEBVIEW_CHECK: "begin_webview_check",
     REPORT_WEBVIEW_CHECK: "report_webview_check",
 
-    RESOLVE_DEFAULT_LIBRARY_DIRECTORY: "resolve_default_library_directory",
     ENSURE_DIRECTORY_EXISTS: "ensure_directory_exists",
     RESOLVE_EXISTING_DIRECTORY: "resolve_existing_directory",
     MIGRATE_LIBRARY_DIRECTORY: "migrate_library_directory",
@@ -36,7 +35,6 @@ export const TAURI_COMMANDS = {
     DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE: "download_channel_avatar_from_handle",
     RESOLVE_DISPLAY_THUMBNAILS: "resolve_display_thumbnails",
     DELETE_TEMP_THUMBNAIL: "delete_temporary_thumbnail",
-    DELETE_THUMBNAIL_FILE: "delete_thumbnail_file",
 
     LIST_YT_DLP_FORMATS: "list_yt_dlp_formats",
     CANCEL_MEDIA_DOWNLOAD: "cancel_media_download",

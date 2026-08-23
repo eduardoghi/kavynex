@@ -21,7 +21,6 @@ vi.mock("../../services/channel-service", () => ({
 vi.mock("../../services/thumbnail-service", () => ({
     persistThumbnailFile: vi.fn(),
     downloadChannelAvatarFromHandle: vi.fn(),
-    deleteThumbnailFile: vi.fn(),
 }));
 
 import {

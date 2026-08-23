@@ -202,20 +202,3 @@ export async function deleteTemporaryThumbnail(tempThumbnailPath: string): Promi
         path: normalizedTempThumbnailPath,
     });
 }
-
-export async function deleteThumbnailFile(
-    thumbnailPath: string,
-    libraryPath: string
-): Promise<void> {
-    const normalizedThumbnailPath = normalizeString(thumbnailPath);
-    const normalizedLibraryPath = normalizeString(libraryPath);
-
-    if (!normalizedThumbnailPath || !normalizedLibraryPath) {
-        return;
-    }
-
-    await invokeCommand(TAURI_COMMANDS.DELETE_THUMBNAIL_FILE, {
-        thumbnailPath: normalizedThumbnailPath,
-        libraryPath: normalizedLibraryPath,
-    });
-}

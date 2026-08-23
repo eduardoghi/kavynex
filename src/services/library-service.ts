@@ -62,11 +62,6 @@ export async function chooseLibraryDirectory(): Promise<string | null> {
     return normalizedSelection || null;
 }
 
-export async function resolveDefaultLibraryDirectory(): Promise<string> {
-    const path = await invokeCommand(TAURI_COMMANDS.RESOLVE_DEFAULT_LIBRARY_DIRECTORY);
-    return normalizeString(path);
-}
-
 export async function ensureDirectoryExists(path: string): Promise<string> {
     const normalizedPath = normalizeString(path);
 

@@ -255,9 +255,9 @@ describe("extractPathTakingCommands", () => {
     });
 
     it("does not read the function name as a path parameter", () => {
-        // `resolve_default_library_directory` is named after a directory and takes none. A check
-        // that matched against the whole signature string would list it and quietly widen the
-        // inventory with a command that has no path surface at all.
+        // A command named after a directory that takes none (the shape of a command this app once
+        // had). A check that matched against the whole signature string would list it and quietly
+        // widen the inventory with a command that has no path surface at all.
         const source = command("resolve_default_library_directory(app: AppHandle)");
 
         expect(extractPathTakingCommands(source)).toEqual([]);
