@@ -380,6 +380,59 @@ pub fn is_pool_initialized<R: Runtime>(app: &AppHandle<R>) -> bool {
         .unwrap_or(false)
 }
 
+/// Folds the write-ahead log back into the main database file and truncates it.
+///
+/// Not a durability step: WAL with `synchronous=NORMAL` is already crash-safe, and SQLite
+/// checkpoints on its own every ~1000 pages. What this buys is a small `-wal` sidecar between
+/// sessions. A session of light, sporadic writes never crosses the automatic threshold, so without
+/// an explicit checkpoint the sidecar can sit at a few MB indefinitely, which the size reported in
+/// Settings > Database includes. Best effort: `TRUNCATE` waits for readers, but at exit there are
+/// none, and a failure costs nothing but the sidecar staying as it was.
+pub async fn checkpoint_wal(pool: &SqlitePool) -> AppResult<()> {
+    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(pool)
+        .await
+        .map(|_| ())
+        .map_err(|error| db_error("failed to checkpoint the database write-ahead log", error))
+}
+
+/// How long the exit-time checkpoint may block the shutdown. A checkpoint of a few MB is
+/// milliseconds; the bound is for a stuck connection, where holding the window open is worse than
+/// leaving the sidecar.
+const EXIT_CHECKPOINT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// [`checkpoint_wal`] for the app-exit path, which is synchronous. Does nothing when the pool was
+/// never opened (a session that never touched the database has no log to fold), and never opens
+/// it: the point of exit is to stop, not to start.
+pub fn checkpoint_wal_blocking<R: Runtime>(app: &AppHandle<R>) {
+    let Some(db) = app.try_state::<Db>() else {
+        return;
+    };
+
+    if !db.is_initialized() {
+        return;
+    }
+
+    let outcome = tauri::async_runtime::block_on(async {
+        let pool = db.pool().await?;
+
+        match tokio::time::timeout(EXIT_CHECKPOINT_TIMEOUT, checkpoint_wal(&pool)).await {
+            Ok(result) => result,
+            Err(_) => Err(db_error(
+                "the exit-time write-ahead log checkpoint timed out",
+                "timed out",
+            )),
+        }
+    });
+
+    if let Err(error) = outcome {
+        crate::services::logger::warn(
+            "database",
+            format!("exit-time write-ahead log checkpoint skipped: {error}"),
+        );
+    }
+}
+
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
     // Every row, with no `IN (?, ?, ...)` filter. The filter used to be the thing that had to
     // grow a placeholder per setting, and building that list dynamically would mean handing sqlx
@@ -559,6 +612,63 @@ mod tests {
             check_updates_on_startup: bool_setting(check_updates_on_startup),
             external_backup_dir: None,
         }
+    }
+
+    #[tokio::test]
+    async fn checkpoint_wal_truncates_the_sidecar_after_writes() {
+        // A file-backed pool in WAL mode, the same options the app opens with. Writes land in
+        // the -wal sidecar first; the checkpoint folds them into the main file and truncates it,
+        // which is the observable the exit-time call exists for.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-checkpoint-test-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("kavynex.db");
+        let wal_path = dir.join("kavynex.db-wal");
+
+        let options = SqliteConnectOptions::new()
+            .filename(&db_path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+
+        sqlx::query("CREATE TABLE t (value TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for index in 0..64 {
+            sqlx::query("INSERT INTO t (value) VALUES (?1)")
+                .bind(format!("row {index}"))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        let before = std::fs::metadata(&wal_path).unwrap().len();
+        assert!(
+            before > 0,
+            "the writes must have landed in the -wal sidecar first"
+        );
+
+        checkpoint_wal(&pool).await.unwrap();
+
+        let after = std::fs::metadata(&wal_path).unwrap().len();
+        assert_eq!(after, 0, "TRUNCATE must leave the sidecar empty");
+
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 64, "the checkpoint must not lose a row");
+
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

@@ -12,9 +12,6 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager};
 
-// How often the in-session backup check below wakes up. `backup_database` itself throttles
-// the actual snapshot to once per 24h, so this only needs to be frequent enough that a
-// long-running session eventually crosses that threshold. It does not create extra backups.
 /// Payload of the [`EVENT_DATABASE_INTEGRITY_FAILED`](crate::constants::EVENT_DATABASE_INTEGRITY_FAILED)
 /// event: the list of problems the background full integrity check reported. Frontend-owned contract
 /// (validated there with a zod schema), so it is a plain serde struct rather than a ts-rs-exported
@@ -25,6 +22,9 @@ struct DatabaseIntegrityFailedEvent {
     problems: Vec<String>,
 }
 
+// How often the in-session backup check below wakes up. `backup_database` itself throttles
+// the actual snapshot to once per 24h, so this only needs to be frequent enough that a
+// long-running session eventually crosses that threshold. It does not create extra backups.
 const PERIODIC_BACKUP_CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 // The first backup pass runs after this short delay rather than a full interval, so a session
@@ -109,11 +109,6 @@ fn spawn_startup_library_cleanup(app_handle: AppHandle) {
     });
 }
 
-/// The pre-migration/post-open backup in `services::database` only runs once, at pool init,
-/// so an app left running for several days never gets a fresh daily snapshot mid-session.
-/// This periodically re-invokes the (internally throttled) `backup_database` so a long
-/// session still gets its daily snapshot without waiting for the next restart. Failures are
-/// logged and never stop the loop or the app.
 /// Reads the configured external backup directory (Settings > Database) and, when one is set,
 /// mirrors the database into it so a disk failure that takes the app config directory does not take
 /// every snapshot with it. Best effort: any failure is logged and never stops the periodic loop. An
@@ -261,6 +256,11 @@ fn spawn_pending_media_sweep(app_handle: AppHandle) {
     });
 }
 
+/// The pre-migration/post-open backup in `services::database` only runs once, at pool init,
+/// so an app left running for several days never gets a fresh daily snapshot mid-session.
+/// This periodically re-invokes the (internally throttled) `backup_database` so a long
+/// session still gets its daily snapshot without waiting for the next restart, and runs the
+/// external mirror after it. Failures are logged and never stop the loop or the app.
 fn spawn_periodic_backup(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut delay = Duration::from_secs(INITIAL_BACKUP_DELAY_SECS);
@@ -646,15 +646,19 @@ pub fn run() {
                 tauri::webview_version().is_ok(),
             ))
         })
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             // Terminate any in-flight yt-dlp/ffmpeg work when the app is exiting so it is not
             // left running as orphaned processes after the window closes. The download sweep
             // signals cancellation and kills the main download trees. The process-registry
             // sweep additionally covers the metadata, thumbnail and standalone (comment/format/
             // avatar) children, which the download registry never tracked.
+            //
+            // Then fold the database's write-ahead log back into the main file, after the kills
+            // so nothing is still writing. Best effort and bounded; see checkpoint_wal_blocking.
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 services::yt_dlp::cancel_all_active_downloads_blocking();
                 services::process_registry::kill_all_tracked_blocking();
+                services::database::checkpoint_wal_blocking(app_handle);
             }
         });
 }
