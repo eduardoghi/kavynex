@@ -581,8 +581,21 @@ mod registration {
 
     /// Writes a media file into the library and returns the artifacts naming it, exactly as the
     /// production step would have left them.
-    fn artifacts_on_disk(library: &Path, name: &str) -> PreparedArtifacts {
-        let relative = format!("{}/{name}", crate::constants::LIBRARY_DIR_VIDEO);
+    ///
+    /// The stored path carries `unique_temp_suffix` because `markers_naming` below matches markers
+    /// on the path they *name*, and the directory those markers live in is shared: under the mock
+    /// harness the app handle has no bundle identifier, so `app_cache_dir()` resolves to the bare
+    /// per-user cache directory rather than a per-app one, and every test process on the machine
+    /// writes into the same `pending-media/`. A marker left there by a run that did not finish
+    /// (a panicking test, or a mutation run, where dropping the cleanup is the mutation) would
+    /// otherwise be counted as this test's, and a fixed name made that certain rather than likely.
+    /// It is what turned a leftover from July into five red tests in August.
+    fn artifacts_on_disk(library: &Path, stem: &str) -> PreparedArtifacts {
+        let relative = format!(
+            "{}/{stem}_{}.mp4",
+            crate::constants::LIBRARY_DIR_VIDEO,
+            crate::utils::naming::unique_temp_suffix()
+        );
         std::fs::write(library.join(&relative), b"media bytes").unwrap();
 
         PreparedArtifacts {
@@ -826,7 +839,7 @@ mod registration {
         // files, so a creation that succeeded but failed to clear its marker is a video the next
         // launch may delete.
         let (app, library) = app_with_library("registered").await;
-        let prepared = artifacts_on_disk(&library, "media_ok.mp4");
+        let prepared = artifacts_on_disk(&library, "media_ok");
         let file_path = prepared.file_path.clone();
 
         let created =
@@ -874,7 +887,7 @@ mod registration {
         // report it as missing with nothing left to reconcile it against. A refusal is
         // recoverable: the user adds the media again.
         let (app, library) = app_with_library("vanished").await;
-        let prepared = artifacts_on_disk(&library, "media_vanished.mp4");
+        let prepared = artifacts_on_disk(&library, "media_vanished");
         let file_path = prepared.file_path.clone();
 
         std::fs::remove_file(library.join(&file_path)).unwrap();
@@ -915,7 +928,7 @@ mod registration {
         // media's file away as a side effect of refusing to add it twice, which is the worst
         // outcome available on this path: an error the user shrugs off, and a video gone.
         let (app, library) = app_with_library("duplicate").await;
-        let prepared = artifacts_on_disk(&library, "media_dup.mp4");
+        let prepared = artifacts_on_disk(&library, "media_dup");
         let file_path = prepared.file_path.clone();
 
         let pool = crate::services::database::shared_pool(app.handle())
@@ -971,7 +984,7 @@ mod registration {
         // the marker is cleared. The marker last, because until the cleanup has run it is the
         // only record of what is on disk.
         let (app, library) = app_with_library("orphaned").await;
-        let prepared = artifacts_on_disk(&library, "media_orphan.mp4");
+        let prepared = artifacts_on_disk(&library, "media_orphan");
         let file_path = prepared.file_path.clone();
 
         let missing_channel = CreateMediaRequest {
