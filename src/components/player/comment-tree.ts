@@ -70,7 +70,7 @@ export function formatCommentPublishedAt(value: string | null, timeText: string 
 
         if (Number.isFinite(unixSeconds) && unixSeconds > 0) {
             const formatted = formatPublishedDate(new Date(unixSeconds * 1000).toISOString());
-            return formatted || new Date(unixSeconds * 1000).toLocaleDateString();
+            return formatted || new Date(unixSeconds * 1000).toLocaleDateString("en-US");
         }
     }
 
