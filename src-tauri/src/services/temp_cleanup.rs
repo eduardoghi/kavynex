@@ -357,12 +357,22 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
 /// (`cleanup_stale_temp_files_sync`) never reaches these, because they live inside the library
 /// tree next to the real files rather than in the disposable cache directories. Reported by
 /// `library::integrity` as orphans until now, but nothing removed them.
+///
+/// Runs under the library read guard like every other function that unlinks inside the library
+/// (`library::media::delete_media_file_sync`, `thumbnail::persist::delete_thumbnail_file_sync`,
+/// `library::cleanup::delete_live_chat_file_at`), so it cannot remove a file out of a tree a
+/// migration is in the middle of copying. The exposure was small (the sweep runs once, early, and
+/// only reaches week-old scratch names), but it was the one library unlink outside the gate, and a
+/// rule with an exception is two rules. Nothing below acquires a second guard, which the gate's
+/// debug-only nesting check would refuse.
 pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSummary> {
     let mut summary = CleanupSummary::default();
 
     if !library_dir.exists() {
         return Ok(summary);
     }
+
+    let _library_guard = crate::services::library::lock::library_read_guard();
 
     let max_age = Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60);
 
@@ -689,6 +699,51 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn cleanup_library_leftovers_waits_for_a_migration_to_release_the_library() {
+        // The sweep unlinks inside the library, so it has to queue behind a migration's write
+        // guard like every other library unlink does. Same shape as the lock module's own test:
+        // hold the write side, start the sweep on another thread, and assert it reports nothing
+        // until the write side is released.
+        let root = unique_test_dir("leftovers-guard");
+        let video_dir = root.join("video");
+        fs::create_dir_all(&video_dir).unwrap();
+        let stale = video_dir.join(".tmp-old");
+        make_old_file(
+            &stale,
+            Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60),
+        );
+
+        let write = crate::services::library::lock::library_write_guard();
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let sweep_root = root.clone();
+        let handle = std::thread::spawn(move || {
+            let summary = cleanup_library_leftovers_sync(&sweep_root).unwrap();
+            let _ = tx.send(summary.removed_entries);
+        });
+
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "the sweep must not run while a migration holds the write side"
+        );
+        assert!(
+            stale.exists(),
+            "nothing may be unlinked while the write side is held"
+        );
+
+        drop(write);
+
+        let removed = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the sweep must run once the write side is released");
+        assert_eq!(removed, 1);
+        assert!(!stale.exists());
+
+        handle.join().unwrap();
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
