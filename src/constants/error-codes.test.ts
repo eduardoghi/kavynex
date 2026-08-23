@@ -184,19 +184,12 @@ const INTERNAL_BACKEND_CODES = new Set([
     "REMOVE_TEMP_THUMBNAIL_FAILED",
 
     // Driving the yt-dlp child process. The outcomes a user asked about (not found, cancelled,
-    // failed, timed out, format gone, metadata unreadable) are catalogued; these are the mechanics
-    // of spawning it and reading its pipes.
+    // failed, timed out, format gone, metadata unreadable, could not start, finished without a
+    // usable file) are catalogued; these are the mechanics of reading its pipes once it runs.
     "YT_DLP_INVALID_METADATA",
-    "YT_DLP_DOWNLOAD_SPAWN_FAILED",
     "YT_DLP_STDOUT_CAPTURE_FAILED",
     "YT_DLP_STDERR_CAPTURE_FAILED",
     "YT_DLP_WAIT_FAILED",
-    "YT_DLP_DOWNLOADED_FILE_NOT_FOUND",
-    "INVALID_DOWNLOADED_FILE",
-    // A thumbnail is optional: the add flow logs its absence and continues, so neither of these
-    // stops anything the user asked for.
-    "YT_DLP_THUMBNAIL_EXEC_FAILED",
-    "YT_DLP_THUMBNAIL_NOT_FOUND",
 ]);
 
 // Passed as the backend message so the two outcomes can be told apart: a catalogued code answers

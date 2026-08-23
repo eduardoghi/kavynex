@@ -49,6 +49,11 @@ import {
     YT_DLP_THUMBNAIL_FAILED_ERROR_CODE,
     YT_DLP_METADATA_FAILED_ERROR_CODE,
     YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_DOWNLOAD_SPAWN_FAILED_ERROR_CODE,
+    YT_DLP_DOWNLOADED_FILE_NOT_FOUND_ERROR_CODE,
+    INVALID_DOWNLOADED_FILE_ERROR_CODE,
+    YT_DLP_THUMBNAIL_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE,
     YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE,
     FFMPEG_NOT_FOUND_ERROR_CODE,
     FFMPEG_FAILED_ERROR_CODE,
@@ -187,8 +192,21 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [YT_DLP_DOWNLOAD_TIMEOUT_ERROR_CODE]: "The media download took too long and was interrupted.",
     [YT_DLP_DOWNLOAD_FAILED_ERROR_CODE]: "The media download failed.",
     [YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE]: "The media download was cancelled.",
+    [YT_DLP_DOWNLOAD_SPAWN_FAILED_ERROR_CODE]:
+        "yt-dlp could not be started to download the media.",
+    // These two are raised after yt-dlp reported success, so "the download failed" would be
+    // misleading. Both leave the library untouched, and saying so is what spares the user a
+    // search for a half-written file.
+    [YT_DLP_DOWNLOADED_FILE_NOT_FOUND_ERROR_CODE]:
+        "yt-dlp finished, but the downloaded file was not found. Nothing was added to the library.",
+    [INVALID_DOWNLOADED_FILE_ERROR_CODE]:
+        "The downloaded file could not be used. Nothing was added to the library.",
     [YT_DLP_THUMBNAIL_TIMEOUT_ERROR_CODE]: "Timed out while downloading the thumbnail.",
     [YT_DLP_THUMBNAIL_FAILED_ERROR_CODE]: "The thumbnail download failed.",
+    [YT_DLP_THUMBNAIL_EXEC_FAILED_ERROR_CODE]:
+        "yt-dlp could not be started to download the thumbnail.",
+    [YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE]:
+        "yt-dlp finished, but no thumbnail file was produced.",
     [YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE]:
         "The selected format is no longer offered for this media. Load the formats again and pick another one.",
     [YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE]:

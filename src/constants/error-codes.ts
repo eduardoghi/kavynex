@@ -60,6 +60,17 @@ export const YT_DLP_METADATA_FAILED_ERROR_CODE = "YT_DLP_METADATA_FAILED" as con
 // that cannot be started, and one too old to read what YouTube now returns.
 export const YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE = "YT_DLP_METADATA_EXEC_FAILED" as const;
 export const YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE = "YT_DLP_METADATA_PARSE_FAILED" as const;
+// The download and thumbnail failures that were still answering with the generic line. Spawn
+// and exec failures are the same cause as YT_DLP_METADATA_EXEC_FAILED (the process could not be
+// started), and the two not-found codes plus INVALID_DOWNLOADED_FILE are the "yt-dlp said it
+// finished but the file is not there or is not usable" cases, where the useful hint is that the
+// library was not touched.
+export const YT_DLP_DOWNLOAD_SPAWN_FAILED_ERROR_CODE = "YT_DLP_DOWNLOAD_SPAWN_FAILED" as const;
+export const YT_DLP_DOWNLOADED_FILE_NOT_FOUND_ERROR_CODE =
+    "YT_DLP_DOWNLOADED_FILE_NOT_FOUND" as const;
+export const INVALID_DOWNLOADED_FILE_ERROR_CODE = "INVALID_DOWNLOADED_FILE" as const;
+export const YT_DLP_THUMBNAIL_EXEC_FAILED_ERROR_CODE = "YT_DLP_THUMBNAIL_EXEC_FAILED" as const;
+export const YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE = "YT_DLP_THUMBNAIL_NOT_FOUND" as const;
 export const INVALID_FORMAT_ID_ERROR_CODE = "INVALID_FORMAT_ID" as const;
 export const INVALID_RUN_ID_ERROR_CODE = "INVALID_RUN_ID" as const;
 export const TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE =
@@ -179,6 +190,11 @@ export const KNOWN_ERROR_CODES = [
     YT_DLP_METADATA_FAILED_ERROR_CODE,
     YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE,
     YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE,
+    YT_DLP_DOWNLOAD_SPAWN_FAILED_ERROR_CODE,
+    YT_DLP_DOWNLOADED_FILE_NOT_FOUND_ERROR_CODE,
+    INVALID_DOWNLOADED_FILE_ERROR_CODE,
+    YT_DLP_THUMBNAIL_EXEC_FAILED_ERROR_CODE,
+    YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE,
     INVALID_FORMAT_ID_ERROR_CODE,
     INVALID_RUN_ID_ERROR_CODE,
     TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE,
