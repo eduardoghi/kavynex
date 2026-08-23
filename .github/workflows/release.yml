@@ -4,8 +4,9 @@ on:
     workflow_dispatch:
 
 # Least-privilege default for the whole workflow, matching ci.yml/mutation.yml. The jobs that need
-# more escalate in their own `permissions:` block: publish-tauri gets contents/id-token/attestations
-# write, checksums gets contents write. The audit job stays read-only. Declaring the read-only
+# more escalate in their own `permissions:` block: publish-tauri and checksums get
+# contents/id-token/attestations write (both attest what they upload), sbom gets contents write.
+# The audit job stays read-only. Declaring the read-only
 # default here means a job added later without its own block inherits read-only rather than the
 # repository/organization default, so a new job cannot silently gain write access.
 permissions:
@@ -696,6 +697,11 @@ jobs:
         timeout-minutes: 60
         permissions:
             contents: write
+            # For the attestation step at the end of this job, same pair publish-tauri holds and
+            # for the same reason: id-token mints the OIDC token Sigstore signs with, attestations
+            # lets the statement be stored against the repository.
+            id-token: write
+            attestations: write
 
         steps:
             - name: Checkout repository
@@ -864,3 +870,18 @@ jobs:
             # `-rpm` variants, but the client resolves the bare `<os>-<arch>` one.
             - name: Verify latest.json offers every platform
               run: node scripts/verify-latest-json.js assets/latest.json
+
+            # The installers were attested by the leg that built them; the three files this job and
+            # the SBOM job add afterwards were not, and one of them is the file the README tells a
+            # manual downloader to check their installer against. A SHA256SUMS.txt with no
+            # provenance is a hash list anyone could have written. Runs last, after every gate
+            # above, so only a draft that passed them carries a statement. `assets/` is the copy
+            # downloaded from the draft (post-rewrite for latest.json, which is what was uploaded
+            # back), and SHA256SUMS.txt is the file generated here and uploaded above.
+            - name: Attest the checksums, the updater manifest and the SBOM
+              uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+              with:
+                  subject-path: |
+                      SHA256SUMS.txt
+                      assets/latest.json
+                      assets/*_sbom.cdx.json

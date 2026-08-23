@@ -113,6 +113,13 @@ gh attestation verify <installer-file> --repo eduardoghi/kavynex
 
 A successful check confirms the file was built by this repository's release workflow.
 
+The three files added to the release after the installers are attested too, by the `checksums`
+job once every completeness check has passed: `SHA256SUMS.txt`, `latest.json` and the SBOM. The
+first is the one that matters for a manual download. The README tells a downloader to compare
+their installer against `SHA256SUMS.txt`, and without a statement on that file the comparison
+proved only that two things a third party could both have written agree with each other. The same
+`gh attestation verify` command works on it.
+
 ## Software Bill of Materials (SBOM)
 
 Every release also publishes a CycloneDX SBOM (`kavynex_<version>_sbom.cdx.json`,
