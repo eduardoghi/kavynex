@@ -4,6 +4,7 @@ import {
     extractCommandConstants,
     findCommandWrapper,
     findCallers,
+    stripReExports,
     verifyCommandSurfaceIsUsed,
 } from "./verify-command-surface-is-used.js";
 
@@ -133,6 +134,87 @@ describe("findCallers", () => {
         expect(
             findCallers("listMediaPage", "src/repositories/media-repository.ts", passingInput().sources)
         ).toEqual(["src/hooks/use-library.ts"]);
+    });
+
+    it("does not count a barrel that only re-exports the wrapper", () => {
+        // How `delete_thumbnail_file` outlived its last caller by six weeks: src/services/index.ts
+        // re-exported every service function, the gate saw the name there, and the wrapper passed
+        // as called. Single-line, multi-line and star re-exports are all names without calls.
+        const sources = passingInput().sources.filter(
+            (file) => file.name !== "src/hooks/use-library.ts"
+        );
+        sources.push({
+            name: "src/services/index.ts",
+            content: `
+export { openPathInSystem } from "./library-service";
+export {
+    listMediaPage,
+} from "../repositories/media-repository";
+export * from "./thumbnail-service";
+            `,
+        });
+
+        expect(
+            findCallers("listMediaPage", "src/repositories/media-repository.ts", sources)
+        ).toEqual([]);
+        expect(
+            findCallers("openPathInSystem", "src/services/library-service.ts", sources)
+        ).toEqual([]);
+    });
+
+    it("still counts a file that imports through a barrel and calls the wrapper", () => {
+        // Stripping the barrel's lines must not cost a legitimate caller: the calling file names
+        // the function in its own text, which is what the match reads.
+        const sources = passingInput().sources.filter(
+            (file) => file.name !== "src/hooks/use-library.ts"
+        );
+        sources.push(
+            {
+                name: "src/services/index.ts",
+                content: `export { listMediaPage } from "../repositories/media-repository";`,
+            },
+            {
+                name: "src/hooks/use-library.ts",
+                content: `
+import { listMediaPage } from "../services";
+export function useLibrary() {
+    return { listMediaPage };
+}
+                `,
+            }
+        );
+
+        expect(
+            findCallers("listMediaPage", "src/repositories/media-repository.ts", sources)
+        ).toEqual(["src/hooks/use-library.ts"]);
+    });
+});
+
+describe("stripReExports", () => {
+    it("removes every re-export form and leaves the rest of the file alone", () => {
+        const content = `
+import { a } from "./a";
+export { b, c } from "./bc";
+export {
+    d,
+    e as f,
+} from "./de";
+export * from "./star";
+export * as ns from "./ns";
+export function g() {
+    return b();
+}
+        `;
+
+        const stripped = stripReExports(content);
+
+        expect(stripped).not.toContain('from "./bc"');
+        expect(stripped).not.toContain('from "./de"');
+        expect(stripped).not.toContain('from "./star"');
+        expect(stripped).not.toContain('from "./ns"');
+        expect(stripped).toContain('import { a } from "./a";');
+        expect(stripped).toContain("export function g()");
+        expect(stripped).toContain("return b();");
     });
 });
 

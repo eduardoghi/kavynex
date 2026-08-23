@@ -70,7 +70,10 @@ directory path produced. `docs/DIRECTORIES.md` stopped describing a default libr
 the app never applied one.
 
 The lesson is about the gate, not the commands: a re-export is not a call, and an inventory check
-that cannot tell the two apart has a false negative for as long as a barrel exists.
+that cannot tell the two apart has a false negative for as long as a barrel exists. The script now
+drops every `export { ... } from` and `export * from` statement before it looks for a caller
+(`stripReExports`), with a test that feeds it a barrel and expects no caller back, so a future
+barrel cannot reopen the gap.
 
 ## Where the rule lives now
 

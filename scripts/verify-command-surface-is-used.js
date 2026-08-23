@@ -91,17 +91,33 @@ export function findCommandWrapper(constant, sources) {
     return null;
 }
 
-// The files, other than the one that defines it, that name `fn`.
+// `content` with every re-export statement removed: `export { a, b } from "./x"` (single- or
+// multi-line) and `export * from "./x"`.
 //
-// A word-boundary match on the identifier, not an import parse. An import is not the only way a
-// wrapper is reached (it can be re-exported through src/services/index.ts and imported from there),
-// and the question this answers is the loose one on purpose: does anything at all mention this name.
-// A wrapper with zero mentions anywhere is the defect; anything more is out of scope.
+// A re-export names a function without calling it. This gate counted one as a caller for as long as
+// `src/services/index.ts` existed, which is how `delete_thumbnail_file` stayed registered for six
+// weeks after its last real caller went: the barrel mentioned the wrapper, so the wrapper looked
+// used. A file that imports from a barrel and calls the function still mentions the name in its own
+// text, so dropping the barrel's lines costs a legitimate caller nothing.
+export function stripReExports(content) {
+    return content
+        .replace(/export\s*\{[^}]*\}\s*from\s*["'][^"']+["']\s*;?/g, "")
+        .replace(/export\s*\*\s*(?:as\s+[a-zA-Z0-9_$]+\s*)?from\s*["'][^"']+["']\s*;?/g, "");
+}
+
+// The files, other than the one that defines it, that name `fn` somewhere other than a re-export.
+//
+// A word-boundary match on the identifier, not an import parse. The question this answers is the
+// loose one on purpose: does anything at all mention this name in a position that could be a call.
+// A wrapper with zero such mentions anywhere is the defect; anything more is out of scope.
 export function findCallers(fn, definitionFile, sources) {
     const identifier = new RegExp(`\\b${fn}\\b`);
 
     return sources
-        .filter(({ name, content }) => name !== definitionFile && identifier.test(content))
+        .filter(
+            ({ name, content }) =>
+                name !== definitionFile && identifier.test(stripReExports(content))
+        )
         .map(({ name }) => name);
 }
 
