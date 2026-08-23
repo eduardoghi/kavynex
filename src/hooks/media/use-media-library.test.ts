@@ -15,10 +15,6 @@ vi.mock("../../lib/tauri-platform", () => ({
 }));
 
 vi.mock("../../services/media-service", () => ({
-    saveMediaProgress: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../../services/media-service", () => ({
     listChannelMediaPage: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     saveMediaProgress: vi.fn().mockResolvedValue(undefined),
     listMediaComments: vi.fn().mockResolvedValue([]),
