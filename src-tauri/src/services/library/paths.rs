@@ -36,9 +36,13 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
         return absolute;
     }
 
+    // No "already prefixed" check here: a path whose first component is `Prefix::Disk` cannot
+    // start with `\\?\`, since that spelling parses as `Prefix::VerbatimDisk` and returned above.
+    // A guard for it was dead code, and the mutation gate reported it as such (the guard replaced
+    // by `true` changed nothing observable).
     match absolute.to_str() {
-        Some(text) if !text.starts_with(r"\\?\") => PathBuf::from(format!(r"\\?\{text}")),
-        _ => absolute,
+        Some(text) => PathBuf::from(format!(r"\\?\{text}")),
+        None => absolute,
     }
 }
 
@@ -407,6 +411,182 @@ mod tests {
         assert!(!result);
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    // The containment decision behind "the library cannot live inside the app config directory",
+    // where the database and its backups sit. Both callers (the settings write and the destructive
+    // migration) trust this answer, so each direction is pinned on its own: a weakened
+    // `starts_with` here would let the library be moved in among the backups, and an over-eager
+    // one would refuse an ordinary folder that merely shares a prefix.
+    #[test]
+    fn library_path_is_inside_dir_accepts_a_descendant_and_the_directory_itself() {
+        let protected = unique_test_dir("inside-protected");
+        let nested = protected.join("library").join("deeper");
+        fs::create_dir_all(&nested).unwrap();
+
+        assert!(library_path_is_inside_dir(
+            nested.to_string_lossy().as_ref(),
+            &protected
+        ));
+        assert!(library_path_is_inside_dir(
+            protected.to_string_lossy().as_ref(),
+            &protected
+        ));
+        // The input is trimmed like every other path this module takes.
+        assert!(library_path_is_inside_dir(
+            &format!("  {}  ", nested.to_string_lossy()),
+            &protected
+        ));
+
+        let _ = fs::remove_dir_all(&protected);
+    }
+
+    #[test]
+    fn library_path_is_inside_dir_refuses_a_sibling_that_shares_a_prefix() {
+        // `<dir>-library` starts with the protected directory's *string* but is not inside it;
+        // a byte-prefix comparison would say yes, a component comparison says no.
+        let root = unique_test_dir("inside-prefix");
+        let protected = root.join("config");
+        let sibling = root.join("config-library");
+        fs::create_dir_all(&protected).unwrap();
+        fs::create_dir_all(&sibling).unwrap();
+
+        assert!(!library_path_is_inside_dir(
+            sibling.to_string_lossy().as_ref(),
+            &protected
+        ));
+        assert!(!library_path_is_inside_dir(
+            root.to_string_lossy().as_ref(),
+            &protected
+        ));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn library_path_is_inside_dir_fails_open_when_either_side_cannot_resolve() {
+        // A candidate that does not exist cannot be inside anything (the callers check existence
+        // separately), and a protected directory that does not exist protects nothing. Both
+        // answer "not inside" rather than erroring, by design.
+        let protected = unique_test_dir("inside-missing-protected");
+        let existing = unique_test_dir("inside-existing");
+        fs::create_dir_all(&existing).unwrap();
+        let missing = unique_test_dir("inside-missing-candidate");
+
+        assert!(!library_path_is_inside_dir(
+            missing.to_string_lossy().as_ref(),
+            &existing
+        ));
+        assert!(!library_path_is_inside_dir(
+            existing.to_string_lossy().as_ref(),
+            &protected
+        ));
+        assert!(!library_path_is_inside_dir("", &existing));
+
+        let _ = fs::remove_dir_all(&existing);
+    }
+
+    #[test]
+    fn resolve_existing_library_dir_rejects_a_file_and_an_empty_path() {
+        let dir = unique_test_dir("resolve-library-file");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("not-a-dir.txt");
+        fs::write(&file, b"x").unwrap();
+
+        let as_file = resolve_existing_library_dir(file.to_string_lossy().as_ref()).unwrap_err();
+        assert_eq!(as_file.code, AppErrorCode::InvalidLibraryPath.as_str());
+
+        let empty = resolve_existing_library_dir("   ").unwrap_err();
+        assert_eq!(empty.code, AppErrorCode::InvalidLibraryPath.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_directory_helpers_reject_an_empty_missing_or_file_path() {
+        // The three folder-picker helpers share one input rule and one error code; each branch
+        // is asserted on each of them so a guard dropped from one does not hide behind another.
+        let dir = unique_test_dir("dir-helpers");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("file.txt");
+        fs::write(&file, b"x").unwrap();
+        let missing = unique_test_dir("dir-helpers-missing");
+        let file_path = file.to_string_lossy().to_string();
+        let missing_path = missing.to_string_lossy().to_string();
+
+        for input in ["", "   "] {
+            assert_eq!(
+                ensure_directory_exists_sync(input).unwrap_err().code,
+                AppErrorCode::InvalidDirectoryPath.as_str()
+            );
+            assert_eq!(
+                resolve_existing_directory_sync(input).unwrap_err().code,
+                AppErrorCode::InvalidDirectoryPath.as_str()
+            );
+            assert_eq!(
+                is_directory_empty_sync(input).unwrap_err().code,
+                AppErrorCode::InvalidDirectoryPath.as_str()
+            );
+        }
+
+        assert_eq!(
+            resolve_existing_directory_sync(&missing_path)
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidDirectoryPath.as_str()
+        );
+        assert_eq!(
+            is_directory_empty_sync(&missing_path).unwrap_err().code,
+            AppErrorCode::InvalidDirectoryPath.as_str()
+        );
+        assert!(!missing.exists(), "a probe must not create the directory");
+
+        assert_eq!(
+            resolve_existing_directory_sync(&file_path)
+                .unwrap_err()
+                .code,
+            AppErrorCode::InvalidDirectoryPath.as_str()
+        );
+        assert_eq!(
+            is_directory_empty_sync(&file_path).unwrap_err().code,
+            AppErrorCode::InvalidDirectoryPath.as_str()
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_existing_directory_sync_returns_the_canonical_path_and_trims_input() {
+        let dir = unique_test_dir("resolve-dir");
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = dir.canonicalize().unwrap().to_string_lossy().to_string();
+
+        assert_eq!(
+            resolve_existing_directory_sync(&format!(" {} ", dir.to_string_lossy())).unwrap(),
+            canonical
+        );
+        assert_eq!(
+            ensure_directory_exists_sync(&format!(" {} ", dir.to_string_lossy())).unwrap(),
+            canonical
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn to_extended_length_path_leaves_a_relative_or_empty_path_alone() {
+        // An empty path cannot be made absolute, so it comes back as given and the callers' own
+        // empty check fires. A relative path is made absolute against the cwd and prefixed.
+        assert_eq!(to_extended_length_path(PathBuf::new()), PathBuf::new());
+
+        let relative = to_extended_length_path(PathBuf::from("Kavynex Library"));
+        assert!(
+            relative.to_string_lossy().starts_with(r"\\?\"),
+            "a relative path is absolutized then prefixed, got {}",
+            relative.to_string_lossy()
+        );
+        assert!(relative.is_absolute());
     }
 
     #[cfg(windows)]

@@ -51,6 +51,7 @@ examine_globs = [
     "src/commands/database.rs",
     "src/services/library/verification.rs",
     "src/services/library/integrity.rs",
+    "src/services/library/paths.rs",
 ]
 
 # The one file the directory globs above pull in that this gate has nothing to say about: it holds
@@ -138,6 +139,12 @@ exclude_re = [
     # cfg-split: EXDEV detection is unix errno 18 / windows 17. The name also matches the match-guard
     # mutants in move_or_copy_file that call it.
     'is_cross_device_error',
+    # cfg-split: the `\\?\` rewrite is a #[cfg(windows)] body with a #[cfg(not(windows))]
+    # pass-through, so whichever platform runs the gate reports the other body as missed. The
+    # Windows body is pinned by three cfg(windows) tests that run in the Windows test job. Narrow
+    # on purpose: library_input_path, which calls it, and every helper built on it stay in scope.
+    'in to_extended_length_path',
+    'replace to_extended_length_path -> PathBuf with Default::default\(\)',
     # cfg-split: unix File::sync_all / windows FlushFileBuffers, best effort, and flushing a
     # directory entry is invisible to any functional test.
     'fsync_parent_dir',
