@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-    validateChannelId,
-    validateCreateMediaInput,
-    validateMediaId,
-} from "./media-input-service";
+import { validateCreateMediaInput, validateMediaId } from "./media-input-service";
 
 describe("validateCreateMediaInput", () => {
     it("normalizes valid local input", () => {
@@ -359,12 +355,3 @@ describe("validateMediaId", () => {
     });
 });
 
-describe("validateChannelId", () => {
-    it("accepts valid channel id", () => {
-        expect(() => validateChannelId(10)).not.toThrow();
-    });
-
-    it("rejects invalid channel id", () => {
-        expect(() => validateChannelId(0)).toThrow("Channel id is invalid.");
-    });
-});

@@ -52,14 +52,14 @@ export async function updateChannelNameHandle(
     name: string,
     youtubeHandle: string
 ): Promise<void> {
-    const normalizedChannel = validateChannelId(channelId);
+    validateChannelId(channelId);
     const normalizedInput = validateCreateChannelInput({
         name,
         youtubeHandle,
         avatarPath: null,
     });
 
-    const existingChannel = await getChannelById(normalizedChannel.channelId);
+    const existingChannel = await getChannelById(channelId);
 
     if (!existingChannel) {
         return;
@@ -67,7 +67,7 @@ export async function updateChannelNameHandle(
 
     const existingWithHandle = await findChannelByYoutubeHandle(normalizedInput.youtubeHandle);
 
-    if (existingWithHandle && existingWithHandle.id !== normalizedChannel.channelId) {
+    if (existingWithHandle && existingWithHandle.id !== channelId) {
         throw createAppError(
             CHANNEL_ALREADY_EXISTS_ERROR_CODE,
             "A channel with this YouTube handle already exists."
@@ -75,7 +75,7 @@ export async function updateChannelNameHandle(
     }
 
     await updateChannelNameAndHandle(
-        normalizedChannel.channelId,
+        channelId,
         normalizedInput.name,
         normalizedInput.youtubeHandle
     );
@@ -85,7 +85,7 @@ export async function updateChannelAvatarWithCleanup(
     channelId: number,
     avatarPath: string | null
 ): Promise<void> {
-    const normalizedInput = validateChannelId(channelId);
+    validateChannelId(channelId);
     const nextAvatarPath = avatarPath?.trim() || null;
 
     // The backend updates the avatar and, in the same transaction, decides whether the
@@ -93,14 +93,14 @@ export async function updateChannelAvatarWithCleanup(
     // channel avatars) before removing it. Doing the row write and the reference decision
     // atomically closes the check-then-act race the old two-call sequence had; the old file
     // removal is best-effort, so files it could not delete are reported back as orphans.
-    const report = await replaceChannelAvatar(normalizedInput.channelId, nextAvatarPath);
+    const report = await replaceChannelAvatar(channelId, nextAvatarPath);
 
     if (report.failed_paths.length > 0) {
         logError(
             "channel-service",
             "Channel avatar was updated but the previous avatar file could not be deleted; it may be orphaned in the library.",
             null,
-            { channelId: normalizedInput.channelId, failedPaths: report.failed_paths }
+            { channelId: channelId, failedPaths: report.failed_paths }
         );
     }
 }
@@ -109,16 +109,16 @@ export async function updateChannelAvatarWithCleanup(
 // now-unreferenced files atomically; files it could not remove are reported back so an
 // orphaned file left in the library stays visible.
 export async function deleteChannelWithThumbnailCleanup(channelId: number): Promise<void> {
-    const normalizedInput = validateChannelId(channelId);
+    validateChannelId(channelId);
 
-    const report = await deleteChannelWithArtifacts(normalizedInput.channelId);
+    const report = await deleteChannelWithArtifacts(channelId);
 
     if (report.failed_paths.length > 0) {
         logError(
             "channel-service",
             "Channel was removed but some of its files could not be deleted; they may be orphaned in the library.",
             null,
-            { channelId: normalizedInput.channelId, failedPaths: report.failed_paths }
+            { channelId: channelId, failedPaths: report.failed_paths }
         );
     }
 }

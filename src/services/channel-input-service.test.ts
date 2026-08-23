@@ -53,11 +53,7 @@ describe("validateCreateChannelInput", () => {
 
 describe("validateChannelId", () => {
     it("accepts valid channel id", () => {
-        const result = validateChannelId(10);
-
-        expect(result).toEqual({
-            channelId: 10,
-        });
+        expect(() => validateChannelId(10)).not.toThrow();
     });
 
     it("rejects invalid channel id", () => {

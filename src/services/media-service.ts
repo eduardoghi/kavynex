@@ -16,10 +16,10 @@ import {
 import { readMediaDurationInSeconds } from "./media-metadata-service";
 import {
     type CreateMediaInput,
-    validateChannelId,
     validateCreateMediaInput,
     validateMediaId,
 } from "./media-input-service";
+import { validateChannelId } from "./channel-input-service";
 import { createAppError } from "../utils/app-error";
 import { commentsRefreshRunId, fetchYouTubeComments } from "./media-download-service";
 import {

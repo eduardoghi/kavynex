@@ -134,7 +134,6 @@ describe("channel-service", () => {
     });
 
     it("updates the avatar through the atomic backend command and trims the path", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({ channelId: 10 });
         vi.mocked(replaceChannelAvatar).mockResolvedValueOnce({
             deleted_paths: ["thumbnails/old.png"],
             skipped_shared_paths: [],
@@ -148,7 +147,6 @@ describe("channel-service", () => {
     });
 
     it("normalizes an empty avatar path to null when clearing the avatar", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({ channelId: 10 });
         vi.mocked(replaceChannelAvatar).mockResolvedValueOnce({
             deleted_paths: [],
             skipped_shared_paths: [],
@@ -161,7 +159,6 @@ describe("channel-service", () => {
     });
 
     it("logs an orphan warning when the backend could not delete the previous avatar", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({ channelId: 10 });
         vi.mocked(replaceChannelAvatar).mockResolvedValueOnce({
             deleted_paths: [],
             skipped_shared_paths: [],
@@ -193,10 +190,6 @@ describe("channel-service", () => {
     });
 
     it("deletes channel through the atomic backend command without logging when nothing failed", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
-        });
-
         vi.mocked(deleteChannelWithArtifacts).mockResolvedValueOnce({
             deleted_paths: ["thumbnails/avatar_a.png", "video/a.mp4"],
             skipped_shared_paths: [],
@@ -210,10 +203,6 @@ describe("channel-service", () => {
     });
 
     it("logs an orphan warning when the backend reports files it could not delete", async () => {
-        vi.mocked(validateChannelId).mockReturnValueOnce({
-            channelId: 10,
-        });
-
         vi.mocked(deleteChannelWithArtifacts).mockResolvedValueOnce({
             deleted_paths: [],
             skipped_shared_paths: [],

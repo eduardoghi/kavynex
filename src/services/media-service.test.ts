@@ -19,9 +19,12 @@ vi.mock("../repositories", () => ({
 }));
 
 vi.mock("./media-input-service", () => ({
-    validateChannelId: vi.fn(),
     validateCreateMediaInput: vi.fn(),
     validateMediaId: vi.fn(),
+}));
+
+vi.mock("./channel-input-service", () => ({
+    validateChannelId: vi.fn(),
 }));
 
 vi.mock("./media-metadata-service", () => ({

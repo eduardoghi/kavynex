@@ -5,7 +5,7 @@ import {
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_YOUTUBE_HANDLE_ERROR_CODE,
 } from "../constants/error-codes";
-import { isValidEntityId } from "../utils/id-validation";
+import { assertValidEntityId } from "../utils/id-validation";
 import { isValidNormalizedYoutubeHandle, normalizeYoutubeHandle } from "../utils/youtube";
 
 export type CreateChannelInput = {
@@ -55,21 +55,10 @@ export function validateCreateChannelInput(
     };
 }
 
-export function validateChannelId(
-    channelId: number
-): {
-    channelId: number;
-} {
-    if (!isValidEntityId(channelId)) {
-        throw createAppError(
-            INVALID_CHANNEL_ID_ERROR_CODE,
-            "Channel id is invalid."
-        );
-    }
-
-    return {
-        channelId,
-    };
+// The only channel id check on the frontend. The media input service used to carry a second
+// copy (same rule, same code as a string literal), which is the shape where one copy drifts.
+export function validateChannelId(channelId: number): void {
+    assertValidEntityId(channelId, INVALID_CHANNEL_ID_ERROR_CODE, "Channel id is invalid.");
 }
 
 export function requireLibraryPath(
