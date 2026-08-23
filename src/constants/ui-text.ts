@@ -6,6 +6,11 @@ export const UI_TEXT = {
         emptyAction: "Create your first channel",
         loadingApp: "Loading your library",
         selectChannelPrompt: "Select a channel from the sidebar to see its library.",
+        librarySetupTitle: "Choose where to save your library",
+        librarySetupDescription:
+            "Kavynex keeps downloaded media, imported files, thumbnails and live chat replays in one folder you pick. Until it is set, media cannot be added. If your library is on a drive that is not connected, plug it in and choose the same folder again.",
+        librarySetupAction: "Choose library folder",
+        librarySetupInProgress: "Setting up the library folder",
         addMedia: "Add media",
         back: "Back",
     },

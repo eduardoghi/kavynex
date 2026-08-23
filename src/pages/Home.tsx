@@ -27,6 +27,7 @@ import { MediaGridSkeleton } from "../components/library/media-grid-skeleton";
 import { SectionErrorBoundary } from "../components/common/section-error-boundary";
 import { SelectedChannelLibrarySection } from "../components/home/selected-channel-library-section";
 import { HomeModals } from "../components/home/home-modals";
+import { LibrarySetupCard } from "../components/home/library-setup-card";
 import { EditMediaTitleModal } from "../components/modals/edit-media-title-modal";
 import { ChannelSidebar } from "../components/layout/channel-sidebar";
 import { MediaPlayerView } from "../components/player/media-player-view";
@@ -133,6 +134,15 @@ export default function Home(): JSX.Element {
                                     <VisuallyHidden>{UI_TEXT.home.loadingApp}</VisuallyHidden>
                                     <MediaGridSkeleton shellBorder={viewState.shellBorder} />
                                 </Box>
+                            )}
+
+                            {viewState.showLibrarySetup && (
+                                <LibrarySetupCard
+                                    loading={settings.isMigratingLibraryPath}
+                                    onChooseLibraryPath={() => void settings.chooseLibraryPath()}
+                                    shellBorder={viewState.shellBorder}
+                                    shellSurface={viewState.shellSurface}
+                                />
                             )}
 
                             {showEmpty && (

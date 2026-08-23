@@ -276,6 +276,9 @@ export type HomeViewState = {
     showLoading: boolean;
     showEmpty: boolean;
     showSelectChannelPrompt: boolean;
+    // No library folder is configured and the page is in a state where telling the user so is
+    // useful (settings loaded, library view). True on every fresh install until a folder is picked.
+    showLibrarySetup: boolean;
     showLibrary: boolean;
     showPlayer: boolean;
 };

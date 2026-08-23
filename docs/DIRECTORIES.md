@@ -237,10 +237,11 @@ ever kept.
 ## The library directory
 
 The library directory is user-chosen (persisted as `library_path` in `app_settings`; see
-`docs/DATABASE.md`). There is no default: a fresh install has no library until one is picked in
-Settings > Library folder, and adding media or an avatar before that is refused with a message
-saying so. Unlike the app-owned directories above, the user can point this anywhere, and
-`services/library/migration.rs` supports moving its contents when the path changes.
+`docs/DATABASE.md`). There is no default: a fresh install has no library until one is picked, and
+the Home page shows a card saying so (with the same folder picker Settings > Library folder opens)
+until it is. Adding media or an avatar before that is refused with a message saying so. Unlike the
+app-owned directories above, the user can point this anywhere, and `services/library/migration.rs`
+supports moving its contents when the path changes.
 
 Inside the library directory, media services create these subfolders on demand:
 

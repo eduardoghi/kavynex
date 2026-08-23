@@ -262,4 +262,73 @@ describe("useHomeViewState", () => {
         expect(result.current.showLibrary).toBe(false);
         expect(result.current.showPlayer).toBe(true);
     });
+
+    describe("showLibrarySetup", () => {
+        function renderSetup(overrides: Partial<Parameters<typeof useHomeViewState>[0]> = {}) {
+            return renderHook(() =>
+                useHomeViewState({
+                    selectedChannel: null,
+                    hasChannels: false,
+                    isLoadingChannels: false,
+                    isPreparingSettings: false,
+                    mediaPlayer: { viewMode: "library" },
+                    libraryPath: "",
+                    ...overrides,
+                })
+            );
+        }
+
+        it("is on for a fresh install: settings loaded, library view, no folder", () => {
+            const { result } = renderSetup();
+
+            expect(result.current.showLibrarySetup).toBe(true);
+            // Stands next to the empty state rather than replacing it: creating a channel does not
+            // need the folder, so both actions are offered at once.
+            expect(result.current.showEmpty).toBe(true);
+        });
+
+        it("stays on once channels exist, since adding media still needs the folder", () => {
+            const { result } = renderSetup({ selectedChannel: createChannel(), hasChannels: true });
+
+            expect(result.current.showLibrarySetup).toBe(true);
+        });
+
+        it("is off once a folder is set", () => {
+            const { result } = renderSetup({ libraryPath: "/library" });
+
+            expect(result.current.showLibrarySetup).toBe(false);
+        });
+
+        it("treats a whitespace-only path as unset", () => {
+            const { result } = renderSetup({ libraryPath: "   " });
+
+            expect(result.current.showLibrarySetup).toBe(true);
+        });
+
+        it("is off while settings are still loading, when an empty path means not read yet", () => {
+            const { result } = renderSetup({ isPreparingSettings: true });
+
+            expect(result.current.showLibrarySetup).toBe(false);
+        });
+
+        it("is off while the player is open", () => {
+            const { result } = renderSetup({ mediaPlayer: { viewMode: "player" } });
+
+            expect(result.current.showLibrarySetup).toBe(false);
+        });
+
+        it("defaults to no folder when the path is not given", () => {
+            const { result } = renderHook(() =>
+                useHomeViewState({
+                    selectedChannel: null,
+                    hasChannels: false,
+                    isLoadingChannels: false,
+                    isPreparingSettings: false,
+                    mediaPlayer: { viewMode: "library" },
+                })
+            );
+
+            expect(result.current.showLibrarySetup).toBe(true);
+        });
+    });
 });

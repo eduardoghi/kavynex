@@ -9,6 +9,7 @@ type UseHomeViewStateOptions = {
     isLoadingChannels: boolean;
     isPreparingSettings: boolean;
     mediaPlayer: Pick<MediaPlayerController, "viewMode">;
+    libraryPath?: string;
 };
 
 export function useHomeViewState({
@@ -17,6 +18,7 @@ export function useHomeViewState({
     isLoadingChannels,
     isPreparingSettings,
     mediaPlayer,
+    libraryPath = "",
 }: UseHomeViewStateOptions): HomeViewState {
     // Color-scheme-aware via the CSS `light-dark()` function: the first value applies in the light
     // scheme, the second in dark. Mantine sets `color-scheme` on the root when the theme toggles, so
@@ -49,6 +51,12 @@ export function useHomeViewState({
     const showLibrary = mediaPlayer.viewMode === "library";
     const showPlayer = mediaPlayer.viewMode === "player";
 
+    // Independent of whether channels exist: a fresh install has neither, and a channel can be
+    // created before the folder is picked, so the card has to stand next to the empty state as
+    // well as above a channel's library. Gated on the settings having loaded, because until then
+    // an empty path means "not read yet" rather than "not set".
+    const showLibrarySetup = !isPreparingSettings && showLibrary && libraryPath.trim() === "";
+
     // All fields below are primitive strings/booleans recomputed fresh every render, so
     // useMemoObject's shallow compare still keeps the returned object's identity stable
     // whenever the computed values are unchanged, exactly like the useMemo this replaced.
@@ -59,6 +67,7 @@ export function useHomeViewState({
         showLoading,
         showEmpty,
         showSelectChannelPrompt,
+        showLibrarySetup,
         showLibrary,
         showPlayer,
     });

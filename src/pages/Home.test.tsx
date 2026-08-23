@@ -160,6 +160,8 @@ function controller(overrides: {
         },
         settings: {
             openSettings: vi.fn(),
+            chooseLibraryPath: vi.fn().mockResolvedValue(undefined),
+            isMigratingLibraryPath: false,
             settings: { loadRemoteImages: false },
         },
         diagnostics: { closeDiagnostics: vi.fn() },
@@ -199,6 +201,7 @@ function controller(overrides: {
             showLoading: false,
             showEmpty: false,
             showSelectChannelPrompt: false,
+            showLibrarySetup: false,
             showLibrary: true,
             showPlayer: false,
             ...overrides.viewState,
@@ -249,6 +252,31 @@ describe("Home", () => {
         );
         renderWithMantine(<Home />);
         expect(screen.getByText(UI_TEXT.home.selectChannelPrompt)).toBeInTheDocument();
+    });
+
+    it("shows the library setup card while no folder is set, next to the empty state, and its button opens the folder picker", () => {
+        // A fresh install has no channels and no library folder, so both cards stand together:
+        // creating a channel does not need the folder, adding media does. The button reaches the
+        // Home-level chooseLibraryPath (the one with the UI guards), not the raw settings action.
+        const ctrl = controller({
+            viewState: { showLibrarySetup: true, showEmpty: true, showLibrary: false },
+            selectedChannel: null,
+        });
+        vi.mocked(useHomeController).mockReturnValue(ctrl);
+        renderWithMantine(<Home />);
+
+        expect(screen.getByText(UI_TEXT.home.librarySetupTitle)).toBeInTheDocument();
+        expect(screen.getByText(UI_TEXT.home.emptyTitle)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: UI_TEXT.home.librarySetupAction }));
+        expect(ctrl.settings.chooseLibraryPath).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not render the library setup card once a folder is set", () => {
+        vi.mocked(useHomeController).mockReturnValue(controller({}));
+        renderWithMantine(<Home />);
+
+        expect(screen.queryByText(UI_TEXT.home.librarySetupTitle)).not.toBeInTheDocument();
     });
 
     it("renders the library section only when a channel is selected and the panel is on", () => {

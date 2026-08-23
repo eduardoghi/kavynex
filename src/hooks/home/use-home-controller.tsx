@@ -111,6 +111,7 @@ export function useHomeController(): HomeController {
         isLoadingChannels: channelsState.isLoadingChannels,
         isPreparingSettings: settingsState.isPreparingSettings,
         mediaPlayer: mediaLibrary.mediaPlayer,
+        libraryPath,
     });
 
     const libraryPanelState = useHomeLibraryPanel({
