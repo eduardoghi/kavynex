@@ -186,6 +186,11 @@ function MediaCardComponent({
                     ? `Open ${media.title}, ${UI_TEXT.library.watchedBadge}`
                     : `Open ${media.title}`
             }
+            // The active card (the one playing) was only told apart visually: tint, border,
+            // glow and the "Selected" pill in the thumbnail. aria-current is how the same fact
+            // reaches a screen reader walking the grid, the way the channel list item already
+            // does for the selected channel.
+            ariaCurrent={isActive}
             onClick={handleOpen}
             radius="xl"
             p="sm"

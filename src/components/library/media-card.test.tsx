@@ -190,6 +190,43 @@ describe("MediaCard", () => {
         expect((card as HTMLElement).style.boxShadow).not.toBe("");
     });
 
+    it("marks the active card with aria-current and no other card", () => {
+        const media = createMedia({ title: "Video A" });
+
+        const { rerender } = renderWithMantine(
+            <MediaCard
+                media={media}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                isActive
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: "Open Video A" })).toHaveAttribute(
+            "aria-current",
+            "true"
+        );
+
+        rerender(
+            <MediaCard
+                media={media}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                isActive={false}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        // Absent rather than "false": an aria-current="false" is still announced by some
+        // readers, and the wrapper already drops the attribute for that reason.
+        expect(screen.getByRole("button", { name: "Open Video A" })).not.toHaveAttribute(
+            "aria-current"
+        );
+    });
+
     it("opens media on card click", () => {
         const media = createMedia({
             title: "Video A",
