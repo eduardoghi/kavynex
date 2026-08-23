@@ -6,6 +6,7 @@ import {
 import "@fontsource-variable/bricolage-grotesque";
 import Home from "./pages/Home";
 import { DISPLAY_FONT_FAMILY } from "./constants/fonts";
+import { MotionPreferenceProvider } from "./hooks/use-motion-preference";
 
 const theme = createTheme({
     primaryColor: "violet",
@@ -101,7 +102,12 @@ export default function App(): JSX.Element {
             cssVariablesResolver={cssVariablesResolver}
             defaultColorScheme="dark"
         >
-            <Home />
+            {/* Resolves the motion preference (Settings > Motion, or the OS setting) and stamps it
+                on <html> for src/index.css. Inside MantineProvider only for the sake of the tree
+                order; it reads nothing from it. */}
+            <MotionPreferenceProvider>
+                <Home />
+            </MotionPreferenceProvider>
         </MantineProvider>
     );
 }

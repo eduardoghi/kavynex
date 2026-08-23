@@ -2,11 +2,13 @@ import { Divider, Modal, ScrollArea, Stack } from "@mantine/core";
 import { useSettingsController } from "../../hooks/settings/use-settings-controller";
 import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 import { useModalLock } from "../../hooks/use-modal-lock";
+import { useMotionPreference } from "../../hooks/use-motion-preference";
 import type { ImportMode } from "../../types/settings";
 import { AppUpdateSection } from "./settings-sections/app-update-section";
 import { DatabaseSection } from "./settings-sections/database-section";
 import { ImportBehaviorSection } from "./settings-sections/import-behavior-section";
 import { LibraryFolderSection } from "./settings-sections/library-folder-section";
+import { MotionSection } from "./settings-sections/motion-section";
 import { PrivacySection } from "./settings-sections/privacy-section";
 
 type SettingsModalProps = {
@@ -53,6 +55,11 @@ export function SettingsModal({
     onClearExternalBackupDir,
 }: SettingsModalProps): JSX.Element {
     const controller = useSettingsController({ opened, libraryPath });
+
+    // Read from context rather than threaded through Home like the other settings: it is a
+    // per-device presentation choice kept in localStorage (like the color scheme), not part of
+    // the settings row the database holds, so nothing upstream owns it.
+    const motion = useMotionPreference();
 
     // Locks the modal (no Esc, click-outside or close button) while a destructive database
     // operation, a library migration, or an app update check/download is in progress, so the user
@@ -117,6 +124,13 @@ export function SettingsModal({
                     <PrivacySection
                         loadRemoteImages={loadRemoteImages}
                         onChangeLoadRemoteImages={onChangeLoadRemoteImages}
+                    />
+
+                    <Divider />
+
+                    <MotionSection
+                        motionPreference={motion.preference}
+                        onChangeMotionPreference={motion.setPreference}
                     />
 
                     <Divider />

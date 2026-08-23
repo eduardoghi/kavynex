@@ -23,6 +23,25 @@
     outline: none;
 }
 
+/* Reduced motion. The answer is resolved in JS (Settings > Motion, or the operating system's
+   preference when that is set to follow it; see src/hooks/use-motion-preference.tsx) and stamped on
+   <html> as data-reduce-motion, so one rule here covers Mantine's own transitions (modal enter and
+   exit, the striped download bar) as well as the inline transitions the cards declare. Keyed on the
+   attribute rather than on prefers-reduced-motion directly because the user's override has to be
+   able to disagree with the OS in either direction, which a media query alone cannot express.
+   Near-zero durations rather than `none`, so transitionend/animationend still fire for anything
+   that waits on them (Mantine's Transition does). */
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+}
+
 /* Thin, subtle scrollbars for the native scroll areas (e.g. the media grid, which scrolls a plain
    overflow:auto box). Mantine's ScrollArea renders its own custom scrollbars and is unaffected.
    WebView2/Chromium supports the ::-webkit-scrollbar pseudo-elements. */
