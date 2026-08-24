@@ -255,4 +255,51 @@ mod tests {
         );
         assert_eq!(normalize_yt_dlp_upload_date(Some("abc".to_string())), None);
     }
+
+    #[test]
+    fn normalize_yt_dlp_upload_date_needs_both_halves_of_its_guard() {
+        // Every value rejected above fails the length check *and* the digit check at once, so it
+        // cannot tell an `||` from an `&&`: both spellings reject it. These two fail exactly one
+        // half each, which is the only arrangement where the two disagree.
+        //
+        // Eight characters, not all digits. With the guard weakened to `&&` this is accepted and
+        // sliced positionally, producing the nonsense date "2026--1--1" on a row that would then
+        // sort and display as though it were real.
+        assert_eq!(
+            normalize_yt_dlp_upload_date(Some("2026-1-1".to_string())),
+            None
+        );
+
+        // All digits, fewer than eight. The length half is what stops `&trimmed[6..8]` from
+        // indexing past the end, so weakening the guard turns this into a panic rather than a
+        // wrong answer. yt-dlp supplies this field, so the value is not this app's to trust.
+        assert_eq!(
+            normalize_yt_dlp_upload_date(Some("202601".to_string())),
+            None
+        );
+    }
+
+    #[test]
+    fn allowed_media_extensions_is_the_two_lists_and_is_never_empty() {
+        // The two tests that walk this list (`is_allowed_media_extension_accepts_every_listed_format`
+        // and `allowed_media_extensions_label_names_every_accepted_format`) both iterate it, so an
+        // empty list satisfies them without executing a single assertion. That is the shape a
+        // vacuous pass takes, and it left the one function the rejection message is built from
+        // unpinned. Asserted against the constants rather than a hand-written list, so a format
+        // added to either constant is covered here without anyone extending this test.
+        let allowed = allowed_media_extensions();
+
+        assert!(!allowed.is_empty());
+        assert_eq!(
+            allowed.len(),
+            ALLOWED_VIDEO_EXTENSIONS.len() + ALLOWED_AUDIO_EXTENSIONS.len()
+        );
+
+        for ext in ALLOWED_VIDEO_EXTENSIONS
+            .iter()
+            .chain(ALLOWED_AUDIO_EXTENSIONS.iter())
+        {
+            assert!(allowed.contains(ext), "the list should carry {ext}");
+        }
+    }
 }

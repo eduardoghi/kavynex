@@ -183,6 +183,79 @@ mod tests {
         assert_eq!(read_lossy_line_capped(&mut reader, &mut buf, 4).await, None);
     }
 
+    // The cap arithmetic is `max_bytes - buf.len()`, and every test above reads from a slice, whose
+    // `fill_buf` hands back everything at once. The subtraction is therefore only ever evaluated
+    // with an empty buffer, where `max_bytes - 0` and `max_bytes + 0` agree, so a `-` flipped to `+`
+    // changes nothing observable and the bound goes unpinned. `with_capacity` is what forces the
+    // second chunk to be measured against a buffer that already holds bytes, which is the only
+    // arrangement where the two spellings disagree. The same gap, in the same shape, was found in
+    // `thumbnail::download::process::read_drain_capped_async` and is recorded in
+    // docs/MUTATION-TESTING.md as the lesson this test applies.
+    #[tokio::test]
+    async fn a_line_spanning_several_chunks_is_capped_at_the_cap_not_past_it() {
+        // Four-byte chunks against a six-byte cap: the second chunk straddles it, so `take` is
+        // computed with `buf.len() == 4` rather than 0.
+        let data = b"0123456789ABCDEF\nafter\n".to_vec();
+        let mut reader = BufReader::with_capacity(4, &data[..]);
+        let mut buf = Vec::new();
+
+        let line = read_lossy_line_capped(&mut reader, &mut buf, 6)
+            .await
+            .unwrap();
+
+        // With the subtraction flipped to an addition the bound becomes `6 + 4`, so the straddling
+        // chunk is copied whole and the line comes back as "01234567".
+        assert_eq!(line, "012345");
+        assert_eq!(
+            line.len(),
+            6,
+            "a line assembled from several chunks must still stop at the cap"
+        );
+
+        // The stream stays in sync past the truncated line, as in the single-chunk case.
+        let next = read_lossy_line_capped(&mut reader, &mut buf, 16)
+            .await
+            .unwrap();
+        assert_eq!(next, "after");
+    }
+
+    #[tokio::test]
+    async fn a_terminator_arriving_after_the_cap_is_reached_does_not_reopen_it() {
+        // The sibling of the test above for the *newline* branch: the chunk carrying the `\n` is
+        // the one measured against a non-empty buffer, so it pins the second copy of the same
+        // arithmetic. Six-byte cap, and the newline lands in the second four-byte chunk.
+        let data = b"0123456\n".to_vec();
+        let mut reader = BufReader::with_capacity(4, &data[..]);
+        let mut buf = Vec::new();
+
+        let line = read_lossy_line_capped(&mut reader, &mut buf, 6)
+            .await
+            .unwrap();
+
+        assert_eq!(line, "012345");
+        assert_eq!(read_lossy_line_capped(&mut reader, &mut buf, 6).await, None);
+    }
+
+    // The two ceilings are load-bearing numbers rather than round decoration, and nothing else
+    // reads them back: `MAX_LINE_BYTES` has to stay clear of the 128 MiB JSON payload
+    // `--dump-single-json` legitimately emits (truncating that corrupts the parse), while
+    // `MAX_PROGRESS_LINE_BYTES` is multiplied by a ring buffer's length, so an arithmetic slip
+    // there is a memory bound moving by orders of magnitude. Same reasoning as
+    // `the_live_chat_decompression_ceiling_is_512_mib`.
+    #[test]
+    fn the_line_ceilings_are_the_sizes_they_are_written_as() {
+        assert_eq!(MAX_LINE_BYTES, 268_435_456);
+        assert_eq!(MAX_PROGRESS_LINE_BYTES, 65_536);
+
+        // A `const` block rather than a plain assert: both sides are constants, so this is decided
+        // at compile time and fails the build rather than a test run, which is the earlier of the
+        // two places to learn that the general cap dropped below the JSON payload yt-dlp may
+        // legitimately emit. (A bare `assert!` over constants is what clippy refuses here.)
+        const {
+            assert!(MAX_LINE_BYTES > 128 * 1024 * 1024);
+        }
+    }
+
     #[tokio::test]
     async fn capped_line_reader_reads_normal_short_lines_unchanged() {
         let data = b"first\nsecond\n".to_vec();

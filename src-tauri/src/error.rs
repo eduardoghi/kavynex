@@ -486,4 +486,42 @@ mod tests {
         assert!(!details.contains("alice"));
         assert!(!details.contains(r"C:\"));
     }
+
+    #[test]
+    fn displaying_an_error_carries_the_code_and_appends_only_real_details() {
+        // `Display` is what reaches the file log through the `{error}` in every logger call, so it
+        // is read far more often than it is asserted, and nothing pinned it. The three cases below
+        // are the three the match arm distinguishes.
+        let with_details = AppError::from_code_with_details(
+            AppErrorCode::InvalidUrl,
+            "url must be an http(s) YouTube URL",
+            "got ftp://example.com",
+        );
+        assert_eq!(
+            with_details.to_string(),
+            "INVALID_URL: url must be an http(s) YouTube URL (got ftp://example.com)"
+        );
+
+        // No details: the parenthesis must not appear at all rather than as an empty pair.
+        let without_details = AppError::from_code(AppErrorCode::InvalidUrl, "url is empty");
+        assert_eq!(without_details.to_string(), "INVALID_URL: url is empty");
+
+        // Details that are only whitespace are treated as absent. This is the half the guard's
+        // `trim` exists for, and the only case that tells `!details.trim().is_empty()` apart from
+        // a bare `details.is_some()`.
+        let blank_details =
+            AppError::from_code_with_details(AppErrorCode::InvalidUrl, "url is empty", "   ");
+        assert_eq!(blank_details.to_string(), "INVALID_URL: url is empty");
+    }
+
+    #[test]
+    fn displaying_a_code_writes_the_wire_string() {
+        // The `{}` in the Display above resolves through this impl, so a code that formatted as
+        // nothing would silently strip the identifier every log line is grepped by.
+        assert_eq!(AppErrorCode::InvalidUrl.to_string(), "INVALID_URL");
+        assert_eq!(
+            AppErrorCode::InvalidUrl.to_string(),
+            AppErrorCode::InvalidUrl.as_str()
+        );
+    }
 }
