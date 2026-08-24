@@ -110,6 +110,35 @@ command above.
 
 | `services/library/paths.rs` | 2026-08-23 | 49 mutants, 3 missed, 13 caught, 33 unviable; re-measured at 46 mutants, 1 missed (the excluded cfg-split body), 12 caught, 33 unviable, in 12min | The library-folder helpers, and `library_path_is_inside_dir`, the decision behind "the library cannot live inside the app config directory" (the database and every backup generation sit there). That function had no test at all, so a weakened `starts_with` would have let the library be moved in among the backups unnoticed; it is pinned in both directions now, with the fail-open branches. The other real gap was a happy-path test missing for `resolve_existing_directory_sync`, which let `delete !` on its existence check survive. The third survivor was a dead guard: the `!text.starts_with(r"\\?\")` check in `to_extended_length_path` can never be false, because a `\\?\` spelling parses as `VerbatimDisk` and returns earlier, so the guard was removed rather than excluded. What remains excluded is the cfg-split pass-through body, see below. |
 
+| `utils/io.rs`, `utils/format.rs`, `error.rs` | 2026-08-24 | 82 mutants, 66 caught, 10 unviable, 2 missed, 4 timeouts, in 49min (`format.rs` 42/42 and `error.rs` 8 caught + 6 unviable, both clean; every survivor and every timeout is in `io.rs`) | Admitted by the whole-crate measurement below. `read_lossy_line_capped` bounds each chunk with `max_bytes - buf.len()`, and every test read from a slice, whose `fill_buf` hands back the whole thing at once, so the subtraction was only ever evaluated against an empty buffer, where it agrees with an addition. Both copies of it were unpinned: a cap that grew by the buffer's own length would have gone unnoticed, on the reader that bounds every line of child-process output. Reading through a small-capacity `BufReader` is what makes the second chunk straddle the cap, and the fix was proven by hand before the glob went in (mutate, watch the two new tests go red and the six old ones stay green). The same gap in the same shape as `read_drain_capped_async`, which is the lesson two rows above. Both ceilings are pinned too, one in a `const` block. In `format.rs`, two tests walked `allowed_media_extensions()` with a `for` loop, so an empty list satisfied them without running an assertion, leaving the function the rejection message is built from unpinned; and `normalize_yt_dlp_upload_date`'s guard could not tell `\|\|` from `&&`, because every value the tests rejected failed both halves at once. `error.rs`'s `Display` is what every `logger::` call formats and nothing asserted it. |
+
+### The whole crate was measured once, and that is why the scope is still not "every file"
+
+**2026-08-24.** Everything outside `examine_globs` was measured in one pass (1504 mutants, sharded
+across two worktrees, about four hours each): **265 survivors, 389 caught, 844 unviable.** The three
+files in the row above came out of it. The rest is recorded here so the question "why not just gate
+the whole crate?" has a measured answer instead of an opinion.
+
+| Where the 265 sat | Count | What they are |
+|---|---|---|
+| `yt_dlp/metadata.rs`, `yt_dlp/download/mod.rs` | 90 | Async orchestration around a spawned process. The decisions were already extracted into `command.rs` and `redaction.rs`, which are in scope and clean. |
+| `lib.rs` | 30 | `setup()` and the `spawn_*` tasks, which need a live `AppHandle`, a pool and a window. |
+| `temp_cleanup.rs`, `utils/process.rs` | 37 | Cache sweeps and process spawning/killing. |
+| `thumbnail/temp.rs`, `thumbnail/download/mod.rs`, `download/fetch.rs` | 35 | FFmpeg spawn and outbound HTTP, both already documented as unreachable offline. |
+| `database.rs`, `logger.rs`, `file_manager.rs`, `yt_dlp/events.rs` | 33 | Pool construction, log writing, handing a path to the OS file manager, emitting an event. |
+| `commands/*.rs` | 12 | Command glue over services that are themselves in scope. |
+| everything else | 28 | Single survivors spread thin, all of the same kinds. |
+
+Two conclusions worth keeping. **The gate is not missing a module that carries real decisions**: the
+one file that did (`utils/io.rs`) is in it now, and the pure logic elsewhere had already been pulled
+out into files the gate covers, which is the extraction habit paying off rather than an accident.
+And **a survivor count is not a quality signal on its own**: 265 of them here describe how much of
+this crate is glue around a process, a handle or a socket, not how weak its tests are.
+
+`models/yt_dlp.rs::ImportMode::as_str` is the one survivor deliberately left alone rather than
+gated: two mutants, one caller, and what it decides is the word a log line uses. A test module for
+it would be the "a directory per pair" mistake in another form.
+
 ### What the `media_page.rs` pass did not establish
 
 A clean first measurement invites the wrong conclusion, so this one is written down. The file is
@@ -146,6 +175,7 @@ No input distinguishes the mutated code from the original, so no test can kill i
 | Pattern | Why |
 |---|---|
 | `replace < with <= in read_drain_capped_async` | The extra iteration `<=` admits is the one where `buffer.len()` equals `max_bytes`, and there `max_bytes - buffer.len()` is 0, so the `extend_from_slice` copies nothing. Same buffer, same drain. Its sibling on the next line (the `-` to `+`) is a real mutant and is deliberately left in scope. |
+| `replace < with <= in read_lossy_line_capped` | The same argument as the entry above, for the same shape in `utils/io.rs`, and it covers both branches (the one that found a newline and the one that did not). Their `-` to `+` siblings are likewise left in scope, and are killed by the two tests that read through a small-capacity `BufReader` so a chunk straddles the cap. |
 | `delete ! in remove_old_library_contents` | The guard decides only whether a `logger::warn` naming the leftover entries is emitted. The removal has already happened and the list is the value being reported. Precise rather than broad: the only other mutant in that function reads differently and is caught. |
 | `report_cleanup_outcome` | Writes a `logger::warn` and does nothing else. The cleanup has already run and its outcome is the report being matched on. The bare name covers both the `with ()` mutant and the `failed_paths` guard mutants, which are the same argument twice. |
 | `replace \|\| with && in paths_refer_to_same_location` | With `&&`, one empty input still returns false: `canonicalize("")` always errors and an empty string never equals a non-empty one, so the fallback compare yields the same false. |
@@ -171,6 +201,20 @@ deterministic test can arrange.
 | `replace && with \|\| in copy_file_atomic` | The failed-rename recovery branch, reachable only when the temp-to-destination rename itself fails. |
 | `error.kind() == ErrorKind::NotFound.* in replace_file_safely`, `replace == with != in replace_file_safely` | The backup-vanished race: needs the destination to disappear between the exists check and the rename. |
 | `replace && with \|\| in stage_database_import`, `replace != with == in stage_database_import`, `replace > with (==\|<\|>=) in stage_database_import` | The WAL-checkpoint "still in use" branch (`busy != 0 && frames > 0`) needs a second connection holding a lock on the source during the import. The valid path is exercised by the import tests. |
+
+### Mutants the suite catches, but only as a hang
+
+A category of one file so far, and the distinction it draws is worth keeping separate from the two
+above: these are **not** survivors and **not** equivalent. The suite does detect them. It just has
+no way to say so, because the mutation stops a reader consuming what it read, so
+`yt_dlp::metadata`'s `while let Some(line) = read_lossy_line(..)` never terminates. cargo-mutants
+waits out the 300-second deadline and reports a timeout, which fails the weekly run for a reason
+that has nothing to do with test strength, and costs five minutes apiece to learn nothing.
+
+| Pattern | Why |
+|---|---|
+| `replace read_lossy_line(_capped)? -> Option<String> with Some(String::new())` | Both spellings return a line forever without advancing the reader. The two `#[tokio::test]`s that assert the *first* line's contents do fail on them, so the mutation is caught in the ordinary sense; the run still sits until the deadline because a sibling test is spinning. |
+| `replace + with [-*] in read_lossy_line_capped` | `reader.consume(newline_pos + 1)` is what steps past the terminator. With `- 1` or `* 1` the same newline is found on every pass, so the loop never leaves the function at all, and no assertion anywhere can fire. |
 
 ### Bodies compiled only on another platform
 

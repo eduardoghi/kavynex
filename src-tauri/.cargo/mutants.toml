@@ -8,7 +8,7 @@
 # This file is the configuration. The reasoning is in `docs/MUTATION-TESTING.md`: how to widen the
 # scope, the measured pass behind every glob below, and the full triage behind every exclusion. Each
 # exclusion here carries a one-line reason and a category (equivalent / boundary / cfg-split /
-# AppHandle glue); the argument for it is in that document.
+# AppHandle glue / caught-only-as-a-hang); the argument for it is in that document.
 #
 # Run locally (`--in-place` is required, see the doc):
 #     cargo mutants --manifest-path src-tauri/Cargo.toml --in-place
@@ -52,6 +52,9 @@ examine_globs = [
     "src/services/library/verification.rs",
     "src/services/library/integrity.rs",
     "src/services/library/paths.rs",
+    "src/utils/io.rs",
+    "src/utils/format.rs",
+    "src/error.rs",
 ]
 
 # The one file the directory globs above pull in that this gate has nothing to say about: it holds
@@ -139,6 +142,20 @@ exclude_re = [
     # cfg-split: EXDEV detection is unix errno 18 / windows 17. The name also matches the match-guard
     # mutants in move_or_copy_file that call it.
     'is_cross_device_error',
+    # Equivalent: with `<=`, the extra iteration it admits is the one where buf.len() equals
+    # max_bytes, and there `max_bytes - buf.len()` is 0, so the extend_from_slice copies nothing.
+    # Same buffer, same line. The identical argument as the read_drain_capped_async entry above,
+    # for the identical shape. Narrow on purpose: the sibling `-` to `+` mutants on the very next
+    # line of each branch are NOT excluded, and are what the two chunked-reader tests were written
+    # to kill.
+    'replace < with <= in read_lossy_line_capped',
+    # Detected only as a hang, which cargo-mutants reports as a timeout rather than a kill. Each of
+    # these stops the reader consuming what it just read, so `yt_dlp::metadata`'s
+    # `while let Some(line) = read_lossy_line(..)` never terminates and the whole run sits until the
+    # deadline. The suite does catch them; it just has no way to say so, and paying 300s apiece for
+    # an answer already known is what the exclusion buys back.
+    'replace read_lossy_line(_capped)? -> Option<String> with Some\(String::new\(\)\)',
+    'replace \+ with [-*] in read_lossy_line_capped',
     # cfg-split: the `\\?\` rewrite is a #[cfg(windows)] body with a #[cfg(not(windows))]
     # pass-through, so whichever platform runs the gate reports the other body as missed. The
     # Windows body is pinned by three cfg(windows) tests that run in the Windows test job. Narrow
