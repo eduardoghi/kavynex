@@ -72,7 +72,16 @@ describe("MediaPlayerView", () => {
         // The replay panel is code-split, so it arrives a microtask after the first commit.
         // `find*` waits for its chunk. The badge above is in the header and is there immediately,
         // which is what keeps this test still covering the wiring it was written for.
-        expect(await screen.findByText("Live chat replay")).toBeInTheDocument();
+        //
+        // The explicit timeout is the part worth keeping. What is being waited on is a dynamic
+        // import, and how long that takes has nothing to do with this component. Run alone it
+        // lands in a few milliseconds. Run as one of 160-odd files competing for workers it can
+        // pass the 1s default, and then this fails for load rather than for behavior. It did,
+        // reproducibly, the day a single unrelated test file was deleted and the scheduler dealt
+        // this file a different set of neighbours.
+        expect(
+            await screen.findByText("Live chat replay", undefined, { timeout: 10_000 })
+        ).toBeInTheDocument();
     });
 
     // A longer timeout than the suite default, and this is the one place that needs it. This is the
