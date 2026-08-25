@@ -1,16 +1,24 @@
 export const UI_TEXT = {
     home: {
         emptyTitle: "No channels yet",
-        emptyDescription:
-            "Create a channel to start backing up its videos, audio, thumbnails and comments.",
-        emptyAction: "Create your first channel",
+        // Two descriptions because a first run has two states, not two screens. Until a folder is
+        // picked the sentence names both steps in the order they happen. Once it is, the folder
+        // belongs to Settings and saying anything about it here would be noise.
+        emptyDescription: "Add a YouTube channel to start backing up its media.",
+        emptyDescriptionNeedsLibrary:
+            "Choose a library folder, then add a YouTube channel to start backing up its media.",
+        // The same words the sidebar's add button and the modal's own title use, rather than a
+        // phrase written for onboarding alone. The button here opens that modal.
+        emptyAction: "New channel",
         loadingApp: "Loading your library",
         selectChannelPrompt: "Select a channel from the sidebar to see its library.",
-        librarySetupTitle: "Choose where to save your library",
-        librarySetupDescription:
-            "Kavynex keeps downloaded media, imported files, thumbnails and live chat replays in one folder you pick. Until it is set, media cannot be added. If your library is on a drive that is not connected, plug it in and choose the same folder again.",
+        // A line of state, not an instruction. The description above already says what to do, and
+        // this says what the app currently has. What the folder holds, a library on a drive that is
+        // not connected, pointing at the same folder again, all belong to Settings > Library folder
+        // and docs/TROUBLESHOOTING.md rather than to a first-run screen.
+        librarySetupTitle: "Library folder not configured",
         librarySetupAction: "Choose library folder",
-        librarySetupInProgress: "Setting up the library folder",
+        librarySetupInProgress: "Setting up",
         addMedia: "Add media",
         back: "Back",
     },

@@ -42,6 +42,7 @@ type SelectedChannelLibrarySectionProps = {
     selectedChannel: Channel;
     itemCountLabel: string;
     disableAddMedia: boolean;
+    addMediaDisabledReason?: string;
     isLoadingMedia: boolean;
     isVisible?: boolean;
     mediaItems: MediaRow[];
@@ -68,6 +69,7 @@ export function SelectedChannelLibrarySection({
     selectedChannel,
     itemCountLabel,
     disableAddMedia,
+    addMediaDisabledReason = "",
     isLoadingMedia,
     isVisible = true,
     mediaItems,
@@ -140,25 +142,43 @@ export function SelectedChannelLibrarySection({
                     </Box>
                 </Group>
 
-                <Group gap="xs">
-                    <AppButton
-                        appVariant="primary"
-                        leftSection={<Video size={18} />}
-                        onClick={onAddMedia}
-                        disabled={disableAddMedia}
-                    >
-                        {UI_TEXT.home.addMedia}
-                    </AppButton>
+                <Stack gap={6} align="flex-end">
+                    <Group gap="xs">
+                        <AppButton
+                            appVariant="primary"
+                            leftSection={<Video size={18} />}
+                            onClick={onAddMedia}
+                            disabled={disableAddMedia}
+                        >
+                            {UI_TEXT.home.addMedia}
+                        </AppButton>
 
-                    <AppButton
-                        appVariant="ghost"
-                        leftSection={<ArrowLeft size={18} />}
-                        onClick={onBack}
-                        disabled={isLoadingMedia}
-                    >
-                        {UI_TEXT.home.back}
-                    </AppButton>
-                </Group>
+                        <AppButton
+                            appVariant="ghost"
+                            leftSection={<ArrowLeft size={18} />}
+                            onClick={onBack}
+                            disabled={isLoadingMedia}
+                        >
+                            {UI_TEXT.home.back}
+                        </AppButton>
+                    </Group>
+
+                    {/* Why the button above it is dead, kept directly under the button so the two
+                        read as one thing. Under the channel heading instead, which is where this
+                        started, it sat across the width of the page from what it explained and
+                        read as a subtitle of the channel.
+
+                        A plain dimmed line rather than the amber Alert the settings section uses
+                        for its own disabled action. That one marks a transient block, a migration
+                        running or an avatar updating, and is gone in seconds. This states a
+                        condition that holds until the user acts on it, and a standing alert over
+                        the grid would read as an error rather than as a prerequisite. */}
+                    {disableAddMedia && addMediaDisabledReason && (
+                        <Text size="xs" c="dimmed" ta="right">
+                            {addMediaDisabledReason}
+                        </Text>
+                    )}
+                </Stack>
             </Group>
 
             <Stack gap="sm">

@@ -4,10 +4,13 @@ import {
     Box,
     Card,
     Container,
+    Group,
     Stack,
     Text,
+    Title,
     VisuallyHidden,
 } from "@mantine/core";
+import { FolderOpen, Plus } from "lucide-react";
 // A 128px raster for a mark the sidebar draws at 32 CSS px, which covers a 4x display and is 71x
 // smaller than what it replaced. The previous asset was a 962kB "SVG" carrying no vector geometry at
 // all (two base64 PNGs, one masking the other, in 1.1kB of scaffolding), so it was the largest file
@@ -22,12 +25,11 @@ import {
 // keep the lockup's original weight (23.5px against the old 23.4px) while losing the distortion, and
 // centered, since the shipped icon sits 5px high in its own canvas.
 import AppIcon from "../assets/app-icon.png";
-import { EmptyStateCard } from "../components/common/empty-state-card";
+import { AppButton } from "../components/ui/app-button";
 import { MediaGridSkeleton } from "../components/library/media-grid-skeleton";
 import { SectionErrorBoundary } from "../components/common/section-error-boundary";
 import { SelectedChannelLibrarySection } from "../components/home/selected-channel-library-section";
 import { HomeModals } from "../components/home/home-modals";
-import { LibrarySetupCard } from "../components/home/library-setup-card";
 import { EditMediaTitleModal } from "../components/modals/edit-media-title-modal";
 import { ChannelSidebar } from "../components/layout/channel-sidebar";
 import { MediaPlayerView } from "../components/player/media-player-view";
@@ -109,7 +111,6 @@ export default function Home(): JSX.Element {
                     selectedChannelId={channels.selectedChannelId}
                     viewMode={media.mediaPlayer.viewMode}
                     shellBorder={viewState.shellBorder}
-                    shellSurface={viewState.shellSurface}
                     loading={channels.isLoadingChannels}
                     deletingChannelId={channels.channelToDelete?.id ?? null}
                     updatingChannelAvatarId={channels.updatingChannelAvatarId}
@@ -136,24 +137,95 @@ export default function Home(): JSX.Element {
                                 </Box>
                             )}
 
-                            {viewState.showLibrarySetup && (
-                                <LibrarySetupCard
-                                    loading={settings.isMigratingLibraryPath}
-                                    onChooseLibraryPath={() => void settings.chooseLibraryPath()}
-                                    shellBorder={viewState.shellBorder}
-                                    shellSurface={viewState.shellSurface}
-                                />
-                            )}
+                            {/* One block for both halves of a first run. Picking the folder and
+                                adding the first channel are the same errand, and splitting them
+                                into a notice at the top and an empty state further down read as
+                                two fragments of an unfinished screen rather than one thing to do.
+                                Centered in the main area, then lifted. The bottom padding shrinks
+                                the box the centering happens inside, so the block rises by half of
+                                it without anyone measuring the window. That lands it a little
+                                above the middle, which is where the eye goes on a desktop.
 
+                                No surface around it, because it is the only content on the page at
+                                this point and a border would be one drawn around the whole
+                                screen. */}
                             {showEmpty && (
-                                <EmptyStateCard
-                                    title={UI_TEXT.home.emptyTitle}
-                                    description={UI_TEXT.home.emptyDescription}
-                                    actionLabel={UI_TEXT.home.emptyAction}
-                                    onAction={() => channels.setCreateChannelOpen(true)}
-                                    shellBorder={viewState.shellBorder}
-                                    shellSurface={viewState.shellSurface}
-                                />
+                                <Stack
+                                    gap="lg"
+                                    align="center"
+                                    ta="center"
+                                    justify="center"
+                                    mih="55vh"
+                                    pb="calc(var(--mantine-spacing-xl) * 3)"
+                                    role="region"
+                                    aria-label={UI_TEXT.home.emptyTitle}
+                                >
+                                    <Stack gap={4} align="center">
+                                        <Title order={4} fw={900}>
+                                            {UI_TEXT.home.emptyTitle}
+                                        </Title>
+
+                                        <Text c="dimmed" size="sm" maw={420}>
+                                            {viewState.showLibrarySetup
+                                                ? UI_TEXT.home.emptyDescriptionNeedsLibrary
+                                                : UI_TEXT.home.emptyDescription}
+                                        </Text>
+
+                                        {/* State rather than instruction, so it is quieter than
+                                            the line above it and disappears the moment the folder
+                                            exists. After that the folder belongs to Settings.
+                                            Set off from the description by more than the stack's
+                                            own gap, so it reads as its own line rather than as a
+                                            second sentence, and taken one step below `dimmed`,
+                                            which is the theme's only secondary level, with the
+                                            same opacity lever the cards already use. */}
+                                        {viewState.showLibrarySetup && (
+                                            <Text
+                                                c="dimmed"
+                                                size="xs"
+                                                mt="xs"
+                                                style={{ opacity: 0.85 }}
+                                            >
+                                                {UI_TEXT.home.librarySetupTitle}
+                                            </Text>
+                                        )}
+                                    </Stack>
+
+                                    {/* The order is the order the steps happen in, and which one
+                                        is primary follows the same rule. A channel can be created
+                                        with no library folder (only importing an avatar needs
+                                        one, see use-channel-actions), so the second action stays
+                                        live rather than disabled. Nothing here is blocked, it is
+                                        just not the thing to do first. */}
+                                    <Group gap="sm" justify="center">
+                                        {viewState.showLibrarySetup && (
+                                            <AppButton
+                                                type="button"
+                                                appVariant="primary"
+                                                leftSection={<FolderOpen size={18} />}
+                                                loading={settings.isMigratingLibraryPath}
+                                                onClick={() => void settings.chooseLibraryPath()}
+                                            >
+                                                {settings.isMigratingLibraryPath
+                                                    ? UI_TEXT.home.librarySetupInProgress
+                                                    : UI_TEXT.home.librarySetupAction}
+                                            </AppButton>
+                                        )}
+
+                                        <AppButton
+                                            type="button"
+                                            appVariant={
+                                                viewState.showLibrarySetup
+                                                    ? "secondary"
+                                                    : "primary"
+                                            }
+                                            leftSection={<Plus size={18} />}
+                                            onClick={() => channels.setCreateChannelOpen(true)}
+                                        >
+                                            {UI_TEXT.home.emptyAction}
+                                        </AppButton>
+                                    </Group>
+                                </Stack>
                             )}
 
                             {showSelectChannelPrompt && (
@@ -234,6 +306,9 @@ export default function Home(): JSX.Element {
                                         selectedChannel={channels.selectedChannel}
                                         itemCountLabel={controller.libraryPanelState.itemCountLabel}
                                         disableAddMedia={controller.libraryPanelState.disableAddMedia}
+                                        addMediaDisabledReason={
+                                            controller.libraryPanelState.addMediaDisabledReason
+                                        }
                                         isLoadingMedia={media.isLoadingMedia}
                                         isVisible={showLibrary}
                                         mediaItems={media.mediaItems}

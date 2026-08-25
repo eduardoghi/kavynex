@@ -287,6 +287,10 @@ export type HomeLibraryPanelState = {
     showSelectedChannelPanel: boolean;
     itemCountLabel: string;
     disableAddMedia: boolean;
+    // Non-empty only while no library folder is configured, which is the one condition above that
+    // nothing else on the screen explains. See use-home-library-panel for why the flag is not
+    // derived from this.
+    addMediaDisabledReason: string;
 };
 
 // Composed from the per-domain slice controllers above instead of flattening every field.

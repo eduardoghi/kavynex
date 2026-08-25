@@ -2,7 +2,6 @@ import {
     ActionIcon,
     AppShell,
     Box,
-    Card,
     Group,
     ScrollArea,
     Skeleton,
@@ -32,7 +31,6 @@ type ChannelSidebarProps = {
     selectedChannelId: number | null;
     viewMode: ViewMode;
     shellBorder: string;
-    shellSurface: string;
     loading?: boolean;
     deletingChannelId?: number | null;
     updatingChannelAvatarId?: number | null;
@@ -56,7 +54,6 @@ export function ChannelSidebar({
     selectedChannelId,
     viewMode,
     shellBorder,
-    shellSurface,
     loading = false,
     deletingChannelId = null,
     updatingChannelAvatarId = null,
@@ -202,22 +199,11 @@ export function ChannelSidebar({
                             </Box>
                         )}
 
-                        {!loading && channels.length === 0 && (
-                            <Card
-                                withBorder
-                                p="md"
-                                style={{
-                                    borderColor: shellBorder,
-                                    background: shellSurface,
-                                }}
-                            >
-                                <Text fw={900}>No channels yet</Text>
-
-                                <Text c="dimmed" size="sm" mt={4}>
-                                    Use the <b>+</b> above to add your first channel.
-                                </Text>
-                            </Card>
-                        )}
+                        {/* No empty state here, deliberately. The count beside the CHANNELS
+                            heading already says the list holds nothing, and the page's own empty
+                            state carries the same words plus the button to act on them. A card
+                            repeating them here made one screen say the same sentence twice and
+                            offer the same step from two places. */}
 
                         {!loading && channels.length > 0 && (
                             // Only the rows near the viewport exist in the DOM, so assistive tech

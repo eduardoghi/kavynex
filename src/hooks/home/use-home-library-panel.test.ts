@@ -153,6 +153,48 @@ describe("useHomeLibraryPanel", () => {
         expect(result.current.disableAddMedia).toBe(true);
     });
 
+    it("explains a disabled add media only when the library folder is what is missing", () => {
+        const channel = {
+            id: 1,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: null,
+            created_at: "2026-03-31T10:00:00.000Z",
+        };
+
+        const withoutFolder = renderHook(() =>
+            useHomeLibraryPanel({
+                selectedChannel: channel,
+                channelMediaTotal: 0,
+                viewMode: "library",
+                isLoadingMedia: false,
+                isAddingMedia: false,
+                isMigratingLibraryPath: false,
+                libraryPath: "   ",
+            })
+        );
+
+        expect(withoutFolder.result.current.addMediaDisabledReason).not.toBe("");
+
+        // Disabled for a transient cause instead. The button says why it is busy by being busy,
+        // so a line of text under it would be noise, and the reason has to stay empty for the
+        // component to know not to render one.
+        const whileLoading = renderHook(() =>
+            useHomeLibraryPanel({
+                selectedChannel: channel,
+                channelMediaTotal: 0,
+                viewMode: "library",
+                isLoadingMedia: true,
+                isAddingMedia: false,
+                isMigratingLibraryPath: false,
+                libraryPath: "/library",
+            })
+        );
+
+        expect(whileLoading.result.current.disableAddMedia).toBe(true);
+        expect(whileLoading.result.current.addMediaDisabledReason).toBe("");
+    });
+
     it("defaults isAddingMedia to false when omitted", () => {
         const { result } = renderHook(() =>
             useHomeLibraryPanel({

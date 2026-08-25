@@ -33,7 +33,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={null}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -56,14 +55,13 @@ describe("ChannelSidebar", () => {
         expect(screen.getByText("...")).toBeInTheDocument();
     });
 
-    it("shows empty state", () => {
+    it("states an empty list with the count alone, and carries no empty card", () => {
         renderWithMantine(
             <ChannelSidebar
                 channels={[]}
                 selectedChannelId={null}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -79,18 +77,12 @@ describe("ChannelSidebar", () => {
             { withAppShell: true }
         );
 
-        expect(screen.getByText("No channels yet")).toBeInTheDocument();
-
-        const description = screen.getByText((_, element) => {
-            return (
-                element?.tagName.toLowerCase() === "p" &&
-                element.textContent?.includes("Use the") === true &&
-                element.textContent?.includes("above to add your first channel.") === true
-            );
-        });
-
-        expect(description).toBeInTheDocument();
-        expect(description).toHaveTextContent("Use the + above to add your first channel.");
+        // The count beside the heading is the whole empty state here. The words and the button
+        // for that step belong to the page, and a card repeating them made one screen say the
+        // same sentence twice.
+        expect(screen.getByText("CHANNELS")).toBeInTheDocument();
+        expect(screen.getByText("0")).toBeInTheDocument();
+        expect(screen.queryByText("No channels yet")).not.toBeInTheDocument();
     });
 
     it("renders the branding and app actions the sidebar now hosts", () => {
@@ -103,7 +95,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={null}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -154,7 +145,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={10}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -194,7 +184,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={null}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -232,7 +221,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={null}
                 viewMode="player"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -269,7 +257,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={10}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={10}
                 updatingChannelAvatarId={null}
@@ -305,7 +292,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={10}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -344,7 +330,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={10}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -390,7 +375,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={null}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}
@@ -431,7 +415,6 @@ describe("ChannelSidebar", () => {
                 selectedChannelId={10}
                 viewMode="library"
                 shellBorder="rgba(255,255,255,0.1)"
-                shellSurface="rgba(255,255,255,0.03)"
                 loading={false}
                 deletingChannelId={null}
                 updatingChannelAvatarId={null}

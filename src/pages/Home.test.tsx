@@ -254,10 +254,12 @@ describe("Home", () => {
         expect(screen.getByText(UI_TEXT.home.selectChannelPrompt)).toBeInTheDocument();
     });
 
-    it("shows the library setup card while no folder is set, next to the empty state, and its button opens the folder picker", () => {
-        // A fresh install has no channels and no library folder, so both cards stand together:
-        // creating a channel does not need the folder, adding media does. The button reaches the
-        // Home-level chooseLibraryPath (the one with the UI guards), not the raw settings action.
+    it("offers both first-run steps in one empty state, with the folder first", () => {
+        // A fresh install needs a folder and a channel, and they are one errand rather than two
+        // screens. The folder line states what the app is missing, and its button reaches the
+        // Home-level chooseLibraryPath (the one carrying the UI guards), not the raw settings
+        // action. New channel stays live beside it because creating a channel needs no folder,
+        // only importing an avatar does, so it is second rather than blocked.
         const ctrl = controller({
             viewState: { showLibrarySetup: true, showEmpty: true, showLibrary: false },
             selectedChannel: null,
@@ -265,18 +267,41 @@ describe("Home", () => {
         vi.mocked(useHomeController).mockReturnValue(ctrl);
         renderWithMantine(<Home />);
 
-        expect(screen.getByText(UI_TEXT.home.librarySetupTitle)).toBeInTheDocument();
         expect(screen.getByText(UI_TEXT.home.emptyTitle)).toBeInTheDocument();
+        expect(
+            screen.getByText(UI_TEXT.home.emptyDescriptionNeedsLibrary)
+        ).toBeInTheDocument();
+        expect(screen.getByText(UI_TEXT.home.librarySetupTitle)).toBeInTheDocument();
+
+        const newChannel = screen.getByRole("button", { name: UI_TEXT.home.emptyAction });
+        expect(newChannel).toBeEnabled();
 
         fireEvent.click(screen.getByRole("button", { name: UI_TEXT.home.librarySetupAction }));
         expect(ctrl.settings.chooseLibraryPath).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(newChannel);
+        expect(ctrl.channels.setCreateChannelOpen).toHaveBeenCalledWith(true);
     });
 
-    it("does not render the library setup card once a folder is set", () => {
-        vi.mocked(useHomeController).mockReturnValue(controller({}));
+    it("drops the folder half of the empty state once one is configured", () => {
+        // The folder belongs to Settings from here on, so neither the state line nor its action
+        // has anything left to say, and the description loses the step that is done.
+        vi.mocked(useHomeController).mockReturnValue(
+            controller({
+                viewState: { showLibrarySetup: false, showEmpty: true, showLibrary: false },
+                selectedChannel: null,
+            })
+        );
         renderWithMantine(<Home />);
 
+        expect(screen.getByText(UI_TEXT.home.emptyDescription)).toBeInTheDocument();
         expect(screen.queryByText(UI_TEXT.home.librarySetupTitle)).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: UI_TEXT.home.librarySetupAction })
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getByRole("button", { name: UI_TEXT.home.emptyAction })
+        ).toBeInTheDocument();
     });
 
     it("renders the library section only when a channel is selected and the panel is on", () => {

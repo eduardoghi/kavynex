@@ -341,6 +341,7 @@ const mockLibraryPanelState = {
     showSelectedChannelPanel: true,
     itemCountLabel: "0 itens",
     disableAddMedia: false,
+    addMediaDisabledReason: "",
 };
 
 describe("useHomeController", () => {
