@@ -1,7 +1,15 @@
 import { useCallback, useState } from "react";
 import type { ErrorModalVariant } from "../components/modals/error-modal";
-import type { ErrorModalController } from "../types/controllers";
 import { useMemoObject } from "./use-memo-object";
+
+export type ErrorModalController = {
+    errorOpen: boolean;
+    errorMessage: string;
+    errorVariant: ErrorModalVariant;
+    showError: (message: string) => void;
+    showNotice: (message: string) => void;
+    closeErrorModal: () => void;
+};
 
 export function useErrorModal(): ErrorModalController {
     const [errorOpen, setErrorOpen] = useState(false);

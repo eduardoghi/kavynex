@@ -1,11 +1,9 @@
 import { useCallback } from "react";
-import type {
-    AppSettingsController,
-    ChannelsController,
-    ErrorModalController,
-    HomeUiGuardsController,
-    MediaLibraryController,
-} from "../../types/controllers";
+import type { ChannelsController } from "../channels/use-channels";
+import type { MediaLibraryController } from "../media/use-media-library";
+import type { AppSettingsController } from "../settings/use-app-settings";
+import type { ErrorModalController } from "../use-error-modal";
+import type { HomeUiGuardsController } from "./use-home-ui-guards";
 import { executeDeleteSelectedChannel } from "../../use-cases/delete-selected-channel";
 import { resolveErrorMessage } from "../../utils/error-message";
 import { logError } from "../../utils/app-logger";

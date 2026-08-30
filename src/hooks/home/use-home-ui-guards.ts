@@ -1,17 +1,22 @@
 import { useCallback, useMemo } from "react";
-import type {
-    AppSettingsController,
-    ChannelsController,
-    HomeUiGuardsController,
-    MediaLibraryController,
-    MediaPlayerController,
-} from "../../types/controllers";
+import type { ChannelsController } from "../channels/use-channels";
+import type { MediaLibraryController } from "../media/use-media-library";
+import type { MediaPlayerController } from "../media/use-media-player";
+import type { AppSettingsController } from "../settings/use-app-settings";
 import type { MediaPreparationState } from "../../utils/media-operation-busy";
 import {
     isMediaOperationBusy,
     resolveMediaOperationBusyReason,
 } from "../../utils/media-operation-busy";
 import { useMemoObject } from "../use-memo-object";
+
+export type HomeUiGuardsController = {
+    disableLibraryPathChange: boolean;
+    libraryPathChangeDisabledReason: string;
+    disableChannelDeletion: boolean;
+    channelDeletionDisabledReason: string;
+    closeAddMediaModalSafely: () => Promise<void>;
+};
 
 type UseHomeUiGuardsOptions = {
     settingsState: AppSettingsController;

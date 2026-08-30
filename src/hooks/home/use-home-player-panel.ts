@@ -1,5 +1,15 @@
-import type { HomePlayerPanelState, MediaPlayerController } from "../../types/controllers";
+import type { MediaRow } from "../../types/media";
+import type { MediaPlayerController } from "../media/use-media-player";
 import { useMemoObject } from "../use-memo-object";
+
+export type HomePlayerPanelState = {
+    media: MediaRow | null;
+    mediaSrc: string;
+    thumbnailSrc: string;
+    isAudio: boolean;
+    canOpenInYoutube: boolean;
+    isWatched: boolean;
+};
 
 type UseHomePlayerPanelOptions = {
     mediaPlayer: Pick<

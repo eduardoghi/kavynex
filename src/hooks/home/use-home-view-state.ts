@@ -1,7 +1,20 @@
-import type { HomeViewState } from "../../types/controllers";
-import type { MediaPlayerController } from "../../types/controllers";
+import type { MediaPlayerController } from "../media/use-media-player";
 import type { Channel } from "../../types/media";
 import { useMemoObject } from "../use-memo-object";
+
+export type HomeViewState = {
+    shellSurface: string;
+    shellBorder: string;
+    pageBackground: string;
+    showLoading: boolean;
+    showEmpty: boolean;
+    showSelectChannelPrompt: boolean;
+    // No library folder is configured and the page is in a state where telling the user so is
+    // useful (settings loaded, library view). True on every fresh install until a folder is picked.
+    showLibrarySetup: boolean;
+    showLibrary: boolean;
+    showPlayer: boolean;
+};
 
 type UseHomeViewStateOptions = {
     selectedChannel: Channel | null;

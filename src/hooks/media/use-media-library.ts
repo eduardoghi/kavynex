@@ -1,15 +1,71 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { MediaLibraryController } from "../../types/controllers";
+import type React from "react";
 import type { MediaRow } from "../../types/media";
 import type { ImportMode } from "../../types/settings";
+import type { MediaQueryFilters } from "../../utils/media-library-filters";
+import type { YtDlpProgress } from "../../services/yt-dlp-progress";
+import type { YtDlpLogLine } from "../use-yt-dlp-events";
+import type { AddMediaFormController } from "../use-add-media-form";
 import { useAddMediaWorkflow } from "../use-add-media-workflow";
 import { useChannelMediaList } from "../channels/use-channel-media-list";
 import { useMediaActions } from "./use-media-actions";
 import { useMediaPlayer } from "./use-media-player";
+import type { MediaPlayerController } from "./use-media-player";
 import { saveMediaProgress as persistMediaProgress } from "../../services/media-service";
 import { updateItemById } from "../../utils/update-item-by-id";
 import { isMediaWatched } from "../../utils/media-utils";
 import { useMemoObject } from "../use-memo-object";
+
+export type MediaLibraryController = {
+    mediaItems: MediaRow[];
+    // Rows matching the active filters across the whole channel (for "X of Y").
+    mediaTotal: number;
+    // Rows in the channel with no filter applied (for the channel header count).
+    channelMediaTotal: number;
+    hasMoreMedia: boolean;
+    isLoadingMoreMedia: boolean;
+    addMediaOpen: boolean;
+    setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
+    closeAddMediaModal: () => Promise<void>;
+    confirmDeleteMediaOpen: boolean;
+    mediaToDelete: MediaRow | null;
+    isLoadingMedia: boolean;
+    isAddingMedia: boolean;
+    isDeletingMedia: boolean;
+    // The media ids whose comments are being refreshed, rather than one "something is refreshing"
+    // flag. A shared flag both dropped the second refresh and disabled the button that would have
+    // retried it, so the two have to be per media together. Guarding one row while marking every
+    // row busy just moves the silent no-op into the UI.
+    commentsInFlight: ReadonlySet<number>;
+    // The media ids currently being marked watched/unwatched, per id rather than one shared flag,
+    // for the same reason as commentsInFlight. Guarding one row must not read as every row being
+    // busy.
+    watchedActionInFlight: ReadonlySet<number>;
+    isUpdatingTitle: boolean;
+    isCancellingYtDlp: boolean;
+    ytDlpLogs: YtDlpLogLine[];
+    isYtDlpRunning: boolean;
+    ytDlpProgress: YtDlpProgress | null;
+    addMediaForm: AddMediaFormController;
+    mediaPlayer: MediaPlayerController;
+    applyMediaQuery: (filters: MediaQueryFilters) => Promise<void>;
+    loadMoreMedia: () => Promise<void>;
+    reloadMedia: () => Promise<void>;
+    addMedia: () => Promise<void>;
+    cancelYtDlpDownload: () => Promise<void>;
+    markAsWatched: (mediaId: number) => Promise<void>;
+    markAsUnwatched: (mediaId: number) => Promise<void>;
+    refreshComments: (media: MediaRow) => Promise<void>;
+    cancelRefreshComments: (mediaId: number) => Promise<void>;
+    editTitle: (media: MediaRow, title: string) => Promise<void>;
+    openMediaFileLocation: (media: MediaRow) => Promise<void>;
+    openMediaSourceInYoutube: (media: MediaRow) => Promise<void>;
+    saveMediaProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
+    requestDeleteMedia: (media: MediaRow) => void;
+    confirmDeleteMedia: () => Promise<void>;
+    closeDeleteMediaModal: () => void;
+    clearMediaAndPlayer: () => void;
+};
 
 type UseMediaLibraryOptions = {
     libraryPath: string;

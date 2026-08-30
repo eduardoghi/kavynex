@@ -2,18 +2,16 @@ import { fireEvent, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { HomeModals } from "./home-modals";
 import { renderWithMantine } from "../../test/test-utils";
-import type {
-    AddMediaFormController,
-    AppSettingsController,
-    ChannelsController,
-    DatabaseRecoveryController,
-    DiagnosticsController,
-    ErrorModalController,
-    HomeMediaActionsController,
-    HomeUiGuardsController,
-    MediaLibraryController,
-    MediaPlayerController,
-} from "../../types/controllers";
+import type { ChannelsController } from "../../hooks/channels/use-channels";
+import type { HomeMediaActionsController } from "../../hooks/home/use-home-media-actions";
+import type { HomeUiGuardsController } from "../../hooks/home/use-home-ui-guards";
+import type { MediaLibraryController } from "../../hooks/media/use-media-library";
+import type { MediaPlayerController } from "../../hooks/media/use-media-player";
+import type { AppSettingsController } from "../../hooks/settings/use-app-settings";
+import type { AddMediaFormController } from "../../hooks/use-add-media-form";
+import type { DatabaseRecoveryController } from "../../hooks/use-app-bootstrap";
+import type { DiagnosticsController } from "../../hooks/use-diagnostics";
+import type { ErrorModalController } from "../../hooks/use-error-modal";
 
 function createAddMediaForm(): AddMediaFormController {
     return {
@@ -34,6 +32,10 @@ function createAddMediaForm(): AddMediaFormController {
         selectedYtDlpFormatId: "",
         isLoadingYtDlpFormats: false,
         selectedYtDlpMediaType: "video",
+        // Required since AddMediaFormController stopped being a hand-kept copy of what
+        // useAddMediaForm returns. The copy omitted this field, so the controller type narrowed it
+        // away and this factory never had to supply it.
+        resolvedYoutubeVideoId: null,
         setSourceMode: vi.fn().mockResolvedValue(undefined),
         setMediaUrl: vi.fn(),
         setTitle: vi.fn(),

@@ -14,7 +14,7 @@ type UseAppSettingsOptions = {
     onError: (message: string) => void;
 };
 
-type UseAppSettingsReturn = {
+export type AppSettingsController = {
     settingsOpen: boolean;
     settings: AppSettings;
     isPreparingSettings: boolean;
@@ -33,7 +33,7 @@ type UseAppSettingsReturn = {
 
 export function useAppSettings({
     onError,
-}: UseAppSettingsOptions): UseAppSettingsReturn {
+}: UseAppSettingsOptions): AppSettingsController {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [settings, setSettings] = useState<AppSettings>(getDefaultAppSettings());
 

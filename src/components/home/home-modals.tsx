@@ -24,16 +24,14 @@ const DiagnosticsModal = lazy(() =>
 const SettingsModal = lazy(() =>
     import("../modals/settings-modal").then((module) => ({ default: module.SettingsModal }))
 );
-import type {
-    AppSettingsController,
-    ChannelsController,
-    DatabaseRecoveryController,
-    DiagnosticsController,
-    ErrorModalController,
-    HomeMediaActionsController,
-    HomeUiGuardsController,
-    MediaLibraryController,
-} from "../../types/controllers";
+import type { ChannelsController } from "../../hooks/channels/use-channels";
+import type { HomeMediaActionsController } from "../../hooks/home/use-home-media-actions";
+import type { HomeUiGuardsController } from "../../hooks/home/use-home-ui-guards";
+import type { MediaLibraryController } from "../../hooks/media/use-media-library";
+import type { AppSettingsController } from "../../hooks/settings/use-app-settings";
+import type { DatabaseRecoveryController } from "../../hooks/use-app-bootstrap";
+import type { DiagnosticsController } from "../../hooks/use-diagnostics";
+import type { ErrorModalController } from "../../hooks/use-error-modal";
 import type { DiagnosticsMediaTarget } from "../../types/diagnostics";
 
 type HomeModalsProps = {

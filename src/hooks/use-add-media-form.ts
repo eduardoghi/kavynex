@@ -29,7 +29,7 @@ type UseAddMediaFormOptions = {
     };
 };
 
-type UseAddMediaFormReturn = {
+export type AddMediaFormController = {
     sourceMode: MediaSourceMode;
     mediaUrl: string;
     title: string;
@@ -96,7 +96,7 @@ function isCookiesTextFile(path: string): boolean {
 export function useAddMediaForm({
     onError,
     ytDlpTerminal,
-}: UseAddMediaFormOptions = {}): UseAddMediaFormReturn {
+}: UseAddMediaFormOptions = {}): AddMediaFormController {
     const formState = useAddMediaFormState();
     const [downloadComments, setDownloadComments] = useState(true);
     const [downloadLiveChat, setDownloadLiveChat] = useState(true);

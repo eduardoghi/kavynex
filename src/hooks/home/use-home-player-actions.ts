@@ -3,12 +3,24 @@ import { openFileLocation } from "../../services/library-service";
 import { resolveErrorMessage } from "../../utils/error-message";
 import { isMediaWatched } from "../../utils/media-utils";
 import type { MediaRow } from "../../types/media";
-import type {
-    HomePlayerActionsController,
-    HomeMediaActionsController,
-    MediaPlayerController,
-} from "../../types/controllers";
+import type { MediaPlayerController } from "../media/use-media-player";
+import type { HomeMediaActionsController } from "./use-home-media-actions";
 import { useMemoObject } from "../use-memo-object";
+
+export type HomePlayerActionsController = {
+    openInYoutube: () => Promise<void>;
+    markActiveAsWatched: () => Promise<void>;
+    markActiveAsUnwatched: () => Promise<void>;
+    saveProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
+    closePlayer: (progressSeconds?: number) => Promise<void>;
+    openFileLocation: () => Promise<void>;
+    refreshComments: () => Promise<void>;
+    cancelRefreshComments: () => Promise<void>;
+    isRefreshingComments: boolean;
+    // Resolved against the media on screen (like isRefreshingComments), true while a
+    // markActiveAsWatched/markActiveAsUnwatched call for it is in flight.
+    isUpdatingWatchedStatus: boolean;
+};
 
 type UseHomePlayerActionsOptions = {
     mediaPlayer: Pick<

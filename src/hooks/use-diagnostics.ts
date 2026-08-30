@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DiagnosticsController } from "../types/controllers";
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
 import {
     openFileLocation,
@@ -17,6 +16,32 @@ type UseDiagnosticsOptions = {
     libraryPath: string;
     importMode: ImportMode;
     onError: (message: string) => void;
+};
+
+export type DiagnosticsController = {
+    diagnosticsOpen: boolean;
+    setDiagnosticsOpen: (value: boolean) => void;
+    diagnosticsSummary: DiagnosticsSummary | null;
+    isLoadingDiagnostics: boolean;
+    openDiagnostics: () => Promise<void>;
+    closeDiagnostics: () => void;
+    reloadDiagnostics: () => Promise<void>;
+    // Reveals the app's log directory in the OS file manager. Lives on this slice because
+    // Diagnostics is where a user is sent to gather what a bug report needs, and it is the one
+    // action here that touches no diagnostics state. Hence its own in-flight flag rather than
+    // sharing `isLoadingDiagnostics`, which the Refresh button owns.
+    openLogDirectory: () => Promise<void>;
+    isOpeningLogDirectory: boolean;
+    // Reveals one of the report's example files in the OS file manager, by its library-relative
+    // path. Offered only for the issues whose examples name a file that is on disk (see
+    // `examplesAreOnDisk`), and it is the step the report deliberately stops short of: Diagnostics
+    // reports and never deletes, so the file manager is where the user finishes, and a
+    // content-addressed name is not something to find by hand.
+    //
+    // No in-flight flag beside it, unlike `openLogDirectory`. Nothing renders a busy state for a
+    // link in a list, so the flag it does use internally exists only to stop a double click from
+    // opening two windows.
+    revealLibraryPath: (path: string) => Promise<void>;
 };
 
 export function useDiagnostics({

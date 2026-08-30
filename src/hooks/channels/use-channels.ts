@@ -13,7 +13,7 @@ type UseChannelsOptions = {
     onChannelDeleted?: (channelId: number) => void;
 };
 
-type UseChannelsReturn = {
+export type ChannelsController = {
     channels: Channel[];
     selectedChannelId: number | null;
     selectedChannel: Channel | null;
@@ -70,7 +70,7 @@ export function useChannels({
     libraryPath,
     onError,
     onChannelDeleted,
-}: UseChannelsOptions): UseChannelsReturn {
+}: UseChannelsOptions): ChannelsController {
     const [channels, setChannels] = useState<Channel[]>([]);
     const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
 

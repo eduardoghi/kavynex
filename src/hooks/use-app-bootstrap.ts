@@ -4,7 +4,6 @@ import {
     getDatabaseBackupStatus,
     restoreDatabaseFromBackup,
 } from "../services/database-service";
-import type { DatabaseRecoveryController } from "../types/controllers";
 import { DATABASE_SCHEMA_TOO_NEW_ERROR_CODE } from "../constants/error-codes";
 import { parseAppError } from "../utils/app-error";
 import { resolveErrorMessage } from "../utils/error-message";
@@ -16,6 +15,14 @@ const SCHEMA_TOO_NEW_MESSAGE =
 
 type UseAppBootstrapOptions = {
     onError: (message: string) => void;
+};
+
+export type DatabaseRecoveryController = {
+    open: boolean;
+    backedUpAtMs: number | null;
+    isRestoring: boolean;
+    restoreFromBackup: () => Promise<void>;
+    dismiss: () => void;
 };
 
 function reloadApp(): void {

@@ -1,11 +1,21 @@
 import { useCallback } from "react";
-import type {
-    DiagnosticsController,
-    HomeMediaActionsController,
-    MediaLibraryController,
-} from "../../types/controllers";
+import type { MediaLibraryController } from "../media/use-media-library";
+import type { DiagnosticsController } from "../use-diagnostics";
 import type { MediaRow } from "../../types/media";
 import { useMemoObject } from "../use-memo-object";
+
+export type HomeMediaActionsController = {
+    addMedia: () => Promise<void>;
+    confirmDeleteMedia: () => Promise<void>;
+    confirmDeleteChannel: () => Promise<void>;
+    markAsWatched: (mediaId: number) => Promise<void>;
+    markAsUnwatched: (mediaId: number) => Promise<void>;
+    // See MediaLibraryController.watchedActionInFlight. Passed through unchanged so the grid can
+    // disable a card's watch/unwatch action while that row's own toggle is in flight.
+    watchedActionInFlight: ReadonlySet<number>;
+    editMediaTitle: (media: MediaRow, title: string) => Promise<void>;
+    saveMediaProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
+};
 
 type UseHomeMediaActionsOptions = {
     diagnosticsState: DiagnosticsController;

@@ -204,6 +204,7 @@ const mockMediaLibrary = {
         selectedYtDlpFormatId: "",
         isLoadingYtDlpFormats: false,
         selectedYtDlpMediaType: "video" as const,
+        resolvedYoutubeVideoId: null,
 
         setSourceMode: vi.fn(),
         setMediaUrl: vi.fn(),
