@@ -45,7 +45,7 @@ and try again.
 Neither message means the download is corrupt. Kavynex's installers are not code-signed (see
 [`RELEASE-SECURITY.md`](RELEASE-SECURITY.md) for why), so macOS quarantines the app on first launch
 and reports it in whichever of those two ways your version prefers. The "damaged" wording is the one
-a genuinely broken bundle gets too, which is exactly why this belongs here: it reads as a failed
+a genuinely broken bundle gets too, which is exactly why this belongs here. It reads as a failed
 download rather than as the expected first run of an unsigned app.
 
 Confirm the file is authentic *before* clearing the quarantine, since that is the check Gatekeeper
@@ -71,7 +71,7 @@ Then drag the app into Applications and let it open, either way:
   ```
 
 Either one is a once-per-install step. An update installed through Settings > Application update
-does not bring it back: that artifact is fetched by Kavynex itself rather than by a browser, so
+does not bring it back, because that artifact is fetched by Kavynex itself rather than by a browser, so
 nothing marks it as quarantined, and the updater verifies its minisign signature before installing
 it.
 
@@ -156,11 +156,11 @@ and asks for the restart. After restarting, the folder is authorized normally.
 Your media list looks normal, but no thumbnail draws, nothing plays, and Diagnostics reports the
 library summary check as failed and *every* media file as missing, with real filenames listed as
 examples. That reads like the library was wiped. It was not, and the reason the two halves disagree
-is where each one lives: the database sits with the app's own data, not in the library folder, so
+is where each one lives. The database sits with the app's own data, not in the library folder, so
 the rows survive a disconnected drive intact while the files they point at are simply out of reach.
 
 Reconnect the drive (or bring the network share back online) and **restart Kavynex**. The restart is
-the part worth knowing about: the library folder is authorized with the webview once, when the
+the part worth knowing about. The library folder is authorized with the webview once, when the
 library path is loaded at startup, and reconnecting the drive mid-session does not re-run that, so
 without a restart the files are reachable again while the thumbnails and the player still refuse
 them.
@@ -168,7 +168,7 @@ them.
 Nothing needs repairing afterwards. If you want to confirm, run Diagnostics once the library is back
 and the same checks report the real numbers.
 
-One thing to *not* do while the drive is away: do not point Settings > Library folder at a new
+One thing to *not* do while the drive is away. Do not point Settings > Library folder at a new
 location to "fix" it. Kavynex cannot tell a library that is temporarily unreachable from one that
 was never there, so instead of refusing it treats the move as a first-time setup. It reports
 success, copies nothing, and adopts the new empty folder as your library. Your media is not deleted
@@ -192,7 +192,7 @@ Both are deliberate, and which one you see depends on whether the video is going
 - **A different channel.** This is allowed, because the same video can legitimately belong to two
   channels, so the download runs normally. If the library already holds that video *in that same
   format*, the finished download is then discarded and the file already on disk is reused. The
-  terminal says so: "A file for this video and format already existed in the library; kept the
+  terminal says so, with "A file for this video and format already existed in the library; kept the
   existing copy and discarded the new download." A live chat replay is handled the same way, with
   its own message. Both entries now point at one file, and deleting either one leaves the file
   alone while the other still references it; it is removed when the last reference goes.
@@ -215,8 +215,8 @@ one.
 
 Fill in the **Browser profile** field that appears under the browser selector. It takes the
 profile's name (`default-release`, `Profile 2`) or its full path, and the **Load formats** button
-is the quick way to check it: with the right profile the formats that need a login appear. Two
-rarer shapes use the same field: a Firefox container is `profile::Container` (or `::Container`
+is the quick way to check it, since with the right profile the formats that need a login appear.
+Two rarer shapes use the same field. A Firefox container is `profile::Container` (or `::Container`
 alone for the default profile), and on Linux a Chromium-based browser whose cookies yt-dlp cannot
 decrypt takes a keyring first, `+gnomekeyring:Default` or `+kwallet5`. That is yt-dlp's own
 `BROWSER[+KEYRING][:PROFILE][::CONTAINER]` grammar with the browser already filled in for you.
@@ -262,7 +262,7 @@ There is also one case where both buttons fail outright rather than behaving dif
   resolving one makes the system authenticate to whatever host is named and hand over your
   account's password hash, so the path is rejected before it is touched. Everything else about
   a library on a share is unaffected. Playing, downloading, importing and thumbnails all work.
-  The refusal is specific to the `\\server\share` form: a share mounted as a drive letter
+  The refusal is specific to the `\\server\share` form. A share mounted as a drive letter
   (`Z:\...`) is an ordinary local path as far as this check is concerned, so mapping the share
   and pointing the library at the drive letter keeps both buttons working. See `THREAT-MODEL.md`
   for the full reasoning.
@@ -271,8 +271,8 @@ There is also one case where both buttons fail outright rather than behaving dif
 
 Kavynex writes a rolling log file in addition to stderr. The quickest way there is the
 **Open log folder** button in the Diagnostics dialog, which reveals the directory in your file
-manager. Failing that, it is the current platform's app log directory (see `DIRECTORIES.md`):
-look for `kavynex.log` (and `kavynex.log.1`, the previous rotation, once the current file passes
+manager. Failing that, it is the current platform's app log directory (see `DIRECTORIES.md`).
+Look for `kavynex.log` (and `kavynex.log.1`, the previous rotation, once the current file passes
 5 MB). Attach the relevant lines when reporting a bug. Logs can contain file paths and a reference to each video you download, so
 they do reveal which videos were fetched. A run that succeeds records only a reduced
 reference (the video id; the playlist and tracking parameters of the URL you pasted are

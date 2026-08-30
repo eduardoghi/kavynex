@@ -22,7 +22,7 @@ Concretely, what is expected:
 - **Accept a decline gracefully.** A feature can be right and still be out of scope for what one
   person can maintain for years.
 
-What is not acceptable: harassment of any kind; insults or personal attacks; discriminatory or
+What is not acceptable, in any form, is harassment; insults or personal attacks; discriminatory or
 demeaning comments about who someone is, including race, gender, gender identity, sexual
 orientation, disability, appearance, age, religion, or nationality; publishing someone's private
 information; sexualized language or attention; and sustained disruption of a discussion after
@@ -37,7 +37,7 @@ review, and security advisories), and to anyone representing the project elsewhe
 
 Report a problem privately to the maintainer through their
 [GitHub profile](https://github.com/eduardoghi). Do not open a public issue about someone's
-conduct: it escalates the situation before anything has been looked into, and it drags in people
+conduct. It escalates the situation before anything has been looked into, and it drags in people
 who did not choose to be part of it.
 
 A report will be read and kept confidential. You will not be asked to justify being uncomfortable,

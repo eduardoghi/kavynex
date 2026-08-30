@@ -4,7 +4,7 @@ import { logError } from "../utils/app-logger";
 
 const EMPTY_DISPLAY_THUMBNAILS: ReadonlyMap<string, string> = new Map();
 
-// Joins the requested paths into the effect's dependency key. A newline, not a space: a library
+// Joins the requested paths into the effect's dependency key. A newline, not a space. A library
 // path is app-written and content-addressed today (`thumbnails/thumb_<sha256>.jpg`), but the value
 // comes out of the database, so a row written by an older build or arriving through an import can
 // hold anything, and a space in one would split into two path fragments that resolve to nothing,
@@ -19,7 +19,7 @@ const DISPLAY_RETRY_DELAY_MS = 1500;
 
 // How many times one request may be re-asked without settling anything before the hook gives up.
 //
-// The contention this recovers from clears in a round or two: the call holding the backend's resolve
+// The contention this recovers from clears in a round or two. The call holding the backend's resolve
 // slot finishes and releases it. A request still making no progress after that is not contended, it
 // is one the backend cannot answer. A machine where FFmpeg hangs, so every entry spends the call
 // budget instead of producing a derivative. Re-asking *that* forever would leave a timer running for
@@ -48,18 +48,18 @@ const MAX_DISPLAY_RETRIES = 3;
  * are load-bearing at library scale rather than micro-optimizations:
  *
  * - **The dependency key is memoized on the (already stable) input array.** The grid re-renders on
- *   every scroll tick: that is what `useVirtualizer` does, and it passes every row loaded so far,
+ *   every scroll tick. That is what `useVirtualizer` does, and it passes every row loaded so far,
  *   not just the visible window. Rebuilding the key in the hook body therefore meant a map, a filter
  *   and a join over thousands of strings per frame, allocating a several-hundred-kilobyte string each
  *   time. That is a scroll-jank source that grows with the library, in the hook whose entire purpose
  *   is to make scrolling cheaper.
  * - **Only paths without a derivative yet are asked about.** Each request otherwise carried every
  *   loaded path, so appending page k re-asked about all k pages, and the backend paid a `stat` per
- *   entry to answer "already cached": quadratic in the number of pages for an answer this side
+ *   entry to answer "already cached". Quadratic in the number of pages for an answer this side
  *   already had. Skipping the resolved ones leaves each append asking about its own page.
  *
  * The set of settled paths is mirrored in a ref rather than read off the map, so it can be consulted
- * without the map becoming an effect dependency: with the map in the deps, every resolution would
+ * without the map becoming an effect dependency. With the map in the deps, every resolution would
  * re-run the effect and turn one request per page into a chain of them.
  *
  * "Settled" is the backend's word, not this hook's guess, and that is the point. An entry that came
@@ -67,7 +67,7 @@ const MAX_DISPLAY_RETRIES = 3;
  * right for a page whose misses exhausted the per-call generation budget, and wrong for every other
  * way a path can fail to resolve. Those other ways are permanent (a name this app did not write, a
  * machine with no FFmpeg, a source that is gone), so re-asking about them meant every page append
- * carried them again: the request grew with the number of pages scrolled instead of staying one
+ * carried them again. The request grew with the number of pages scrolled instead of staying one
  * page's worth, which is the quadratic cost this hook exists to remove, and past the backend's
  * per-call ceiling it also logged a truncation warning per page. The backend now says which kind of
  * miss it was (`DisplayThumbnail`), and only the retryable kind is left out of the set.
@@ -102,7 +102,7 @@ export function useDisplayThumbnails(
     const [retryTick, setRetryTick] = useState(0);
 
     // Retries already spent on the current request, and which request they belong to. Refs rather
-    // than state: resetting a counter when the request changes must not itself cause a render in the
+    // than state. Resetting a counter when the request changes must not itself cause a render in the
     // commit where the fetch effect is already running, which is what a second piece of state here
     // would do (and it would fetch twice for it).
     const retriesSpentRef = useRef(0);
@@ -129,7 +129,7 @@ export function useDisplayThumbnails(
         // effect is declared before the fetch below so it runs first in the same commit.
         settledPathsRef.current = new Set();
         setDisplayThumbnails(EMPTY_DISPLAY_THUMBNAILS);
-        // Forces the retry budget below to reset on the next request too: every path it was
+        // Forces the retry budget below to reset on the next request too. Every path it was
         // counting attempts for belongs to a library that is no longer in use.
         retriedRequestRef.current = null;
     }, [libraryPath]);
@@ -164,7 +164,7 @@ export function useDisplayThumbnails(
                     return;
                 }
 
-                // Recorded before the state update rather than inside it: a state updater must stay
+                // Recorded before the state update rather than inside it. A state updater must stay
                 // pure, and React may call it more than once for a single commit. Every settled path
                 // is recorded, including the ones with no derivative. That is what stops a path
                 // that can never resolve from riding along on every later request.
@@ -173,13 +173,13 @@ export function useDisplayThumbnails(
                 }
 
                 // Nothing at all was settled, so this call decided nothing about any of these
-                // paths: the backend was busy rather than unable to answer, which is what its
+                // paths. The backend was busy rather than unable to answer, which is what its
                 // "budgetSpent" means. Re-ask on a timer instead of waiting for the item list to
                 // change, because the list may never change again. The last page of a channel has
                 // no later append behind it, so a request refused here would otherwise leave those
                 // cards decoding the full-resolution stored file for the rest of the session. That
                 // is the same outcome MAX_GENERATIONS_PER_CALL was raised from 64 to 100 to remove,
-                // reached through a different door: the backend's single resolve slot.
+                // reached through a different door. The backend's single resolve slot.
                 if (settledPaths.size === 0 && retriesSpentRef.current < MAX_DISPLAY_RETRIES) {
                     retriesSpentRef.current += 1;
                     retryTimerRef.current = window.setTimeout(() => {
@@ -188,7 +188,7 @@ export function useDisplayThumbnails(
                     }, DISPLAY_RETRY_DELAY_MS);
                 }
 
-                // Checked after the ref update, not before it: a call that settled paths without
+                // Checked after the ref update, not before it. A call that settled paths without
                 // resolving any still has to be remembered, and returning early on an empty map
                 // would throw that away and re-ask about all of them on the next page.
                 if (displayPaths.size === 0) {
@@ -205,7 +205,7 @@ export function useDisplayThumbnails(
                     return merged;
                 });
             } catch (error) {
-                // Purely an optimization: the grid is already rendering the stored thumbnails, so a
+                // Purely an optimization. The grid is already rendering the stored thumbnails, so a
                 // failure here costs nothing visible and must not reach the user as an error.
                 logError("display-thumbnails", "Could not resolve display thumbnails.", error);
             }

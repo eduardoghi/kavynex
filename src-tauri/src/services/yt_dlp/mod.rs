@@ -1,9 +1,9 @@
-//! The yt-dlp feature family: every invocation of the external binary, the run registry that makes
+//! The yt-dlp feature family. Every invocation of the external binary, the run registry that makes
 //! those invocations cancellable, and the URL/cookie/argument handling that decides what is
 //! allowed to reach it. Each concern is a submodule here rather than a `yt_dlp_*` sibling of this
 //! file; see `services/mod.rs` for why the grouping exists.
 //!
-//! `download/` keeps its own directory inside the family: it had already outgrown a single file
+//! `download/` keeps its own directory inside the family. It had already outgrown a single file
 //! and split into the async orchestration, the pure argv/outcome planning (`command.rs`) and the
 //! log redaction (`redaction.rs`).
 //!

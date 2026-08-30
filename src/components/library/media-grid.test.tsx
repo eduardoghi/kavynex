@@ -127,7 +127,7 @@ describe("MediaGrid", () => {
     it("scrolls to a focused media once and clears the request", () => {
         scrollToIndexMock.mockClear();
 
-        // Mirror the real caller (Home): clearing focus on onFocusHandled is what stops the
+        // Mirror the real caller (Home). Clearing focus on onFocusHandled is what stops the
         // effect from acting again. Without it the mocked virtualizer's fresh-per-render identity
         // would make the effect re-run.
         function Harness(): JSX.Element {
@@ -153,7 +153,7 @@ describe("MediaGrid", () => {
 
         renderWithMantine(<Harness />);
 
-        // jsdom reports width 0, so the grid is a single column: the second item is row index 1.
+        // jsdom reports width 0, so the grid is a single column. The second item is row index 1.
         expect(scrollToIndexMock).toHaveBeenCalledTimes(1);
         expect(scrollToIndexMock).toHaveBeenCalledWith(1, { align: "center" });
     });
@@ -204,7 +204,7 @@ describe("MediaGrid", () => {
             />
         );
 
-        // The target may be on a later page: keep paging (do not scroll or clear yet).
+        // The target may be on a later page. Keep paging (do not scroll or clear yet).
         expect(scrollToIndexMock).not.toHaveBeenCalled();
         expect(onLoadMore).toHaveBeenCalled();
         expect(onFocusHandled).not.toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe("MediaGrid", () => {
                 "2",
                 "3",
             ]);
-            // Fully loaded: the set size is known and real.
+            // Fully loaded. The set size is known and real.
             expect(items.map((item) => item.getAttribute("aria-setsize"))).toEqual([
                 "3",
                 "3",
@@ -260,7 +260,7 @@ describe("MediaGrid", () => {
         it("renders no stray text around the list", () => {
             renderGrid(false);
 
-            // A `//` comment written in JSX children position is a text node, not a comment: it
+            // A `//` comment written in JSX children position is a text node, not a comment. It
             // ships as visible page text. The spot that invites the mistake is the scroll
             // container that wraps the list, so assert on structure rather than on any one
             // phrase, neither it nor the list itself may contribute text of its own; every
@@ -283,8 +283,8 @@ describe("MediaGrid", () => {
         it("reports an unknown set size while more pages remain", () => {
             renderGrid(true);
 
-            // -1 is the ARIA value for "larger than what is rendered, total not known here":
-            // claiming 3 would tell a screen reader the library ends at the loaded page.
+            // -1 is the ARIA value for "larger than what is rendered, total not known here".
+            // Claiming 3 would tell a screen reader the library ends at the loaded page.
             for (const item of screen.getAllByRole("listitem")) {
                 expect(item.getAttribute("aria-setsize")).toBe("-1");
             }
@@ -323,7 +323,7 @@ describe("MediaGrid", () => {
     // exercised directly rather than through a render.
     describe("getColumnCount", () => {
         it("keeps a card under the width its thumbnail derivative is capped at", () => {
-            // The property the upper breakpoints exist for: past four columns a card would be drawn
+            // The property the upper breakpoints exist for. Past four columns a card would be drawn
             // wider than the 640px derivative it renders, so the largest monitors were the ones
             // getting an upscaled image. Asserted as the property rather than as the two thresholds,
             // so tuning MAX_CARD_WIDTH cannot quietly reintroduce the case it was added to remove.
@@ -346,7 +346,7 @@ describe("MediaGrid", () => {
 
         it("leaves the original breakpoints untouched", () => {
             // These are the widths a normal window actually hits, and they behaved correctly
-            // before: the change is meant to be invisible below 2100px.
+            // before. The change is meant to be invisible below 2100px.
             expect(getColumnCount(1200)).toBe(4);
             expect(getColumnCount(1199)).toBe(3);
             expect(getColumnCount(992)).toBe(3);

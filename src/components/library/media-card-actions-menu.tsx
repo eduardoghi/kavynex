@@ -12,8 +12,8 @@ import {
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaRow } from "../../types/media";
 
-// The per-card actions menu. Split out of `media-card.tsx` because it is where that component grows:
-// every action added to a card lands here, and it already carried six of them plus the four
+// The per-card actions menu. Split out of `media-card.tsx` because it is where that component grows.
+// Every action added to a card lands here, and it already carried six of them plus the four
 // conditions that decide which are shown. Keeping it beside the card rather than in a subdirectory
 // matches how `media-grid-skeleton.tsx` already sits beside `media-grid.tsx`.
 //

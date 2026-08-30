@@ -310,7 +310,7 @@ export function useSettingsController({
         })();
 
         // When the last automatic snapshot was taken, and how much disk the database plus its
-        // snapshots occupy. Read on every open rather than cached: an export or an import in this
+        // snapshots occupy. Read on every open rather than cached. An export or an import in this
         // same dialog changes both, and the periodic backup can land while it is open.
         void (async () => {
             try {

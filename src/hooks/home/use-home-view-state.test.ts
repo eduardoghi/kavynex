@@ -282,7 +282,7 @@ describe("useHomeViewState", () => {
             const { result } = renderSetup();
 
             expect(result.current.showLibrarySetup).toBe(true);
-            // Stands next to the empty state rather than replacing it: creating a channel does not
+            // Stands next to the empty state rather than replacing it. Creating a channel does not
             // need the folder, so both actions are offered at once.
             expect(result.current.showEmpty).toBe(true);
         });

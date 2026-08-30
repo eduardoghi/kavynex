@@ -12,11 +12,11 @@ import { useHasBeenTrue } from "../../hooks/use-has-been-true";
 // pulls in the whole library-integrity report and its rules. None of which is on the path to the
 // first paint, which is the grid.
 //
-// Lazy alone would not defer anything here: both are mounted unconditionally and told whether they
+// Lazy alone would not defer anything here. Both are mounted unconditionally and told whether they
 // are `opened`, so their chunks would be requested on the first render like any static import.
 // `useHasBeenTrue` below is what actually holds the mount back until the first open, and what keeps
 // them mounted afterwards so closing still runs the modal's own exit transition. The other modals
-// stay static: each is small, and the delete confirmation in particular gates a destructive action
+// stay static. Each is small, and the delete confirmation in particular gates a destructive action
 // that should not wait on a chunk.
 const DiagnosticsModal = lazy(() =>
     import("../modals/diagnostics-modal").then((module) => ({ default: module.DiagnosticsModal }))
@@ -162,7 +162,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
             />
 
             {settingsWasOpened ? (
-                // `null` while the chunk arrives: this renders only once, on the first open, and
+                // `null` while the chunk arrives. This renders only once, on the first open, and
                 // the modal's own overlay is what the user is waiting for. A spinner in its place
                 // would flash for a frame and then be replaced by the real overlay.
                 <Suspense fallback={null}>

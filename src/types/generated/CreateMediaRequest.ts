@@ -5,7 +5,7 @@
  *
  * Deliberately the same field set the frontend already assembled for its own orchestration, so the
  * move is a change of *who runs the steps* rather than of what the user is asked for. Every value
- * here is caller-supplied and none is trusted: `library_path` is checked against the persisted
+ * here is caller-supplied and none is trusted. `library_path` is checked against the persisted
  * settings by the command layer, the title and media type go through the shared validators, and
  * every produced path is re-checked as a managed library-relative path before it reaches a row.
  */

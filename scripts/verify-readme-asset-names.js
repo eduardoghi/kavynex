@@ -1,9 +1,9 @@
-// Release gate: fails when README.md's download list and the assets a release actually carries
+// Release gate. Fails when README.md's download list and the assets a release actually carries
 // disagree.
 //
 // README.md's Installation section is the only place in this repository that spells out installer
 // filenames for a *reader*, and it is what someone lands on to pick their download. The names in it
-// track tauri's per-bundler conventions, which are not stable: the v1.2.0 dispatch confirmed the
+// track tauri's per-bundler conventions, which are not stable. The v1.2.0 dispatch confirmed the
 // arm64 names that release.yml had flagged as derived rather than observed, and broke on the pair
 // that *had* been observed. The macOS `.app.tar.gz` names gained a version between v1.1.1 and
 // v1.2.0. So the list is perishable in both directions, and until this existed nothing held it.
@@ -17,7 +17,7 @@
 //
 //   - A README pattern matching no asset sends a user looking for a file that is not there.
 //   - An installer asset no pattern names is a download the release page offers and the README
-//     never mentions, which is how an architecture ships undocumented. That is not hypothetical:
+//     never mentions, which is how an architecture ships undocumented. That is not hypothetical.
 //     Windows-on-ARM and Linux aarch64 first shipped in v1.2.0 and had to be added to the README by
 //     hand afterwards.
 //
@@ -34,8 +34,8 @@ import { fileURLToPath } from "url";
 // or for the updater alone (the macOS `.app.tar.gz`, which is the update bundle and never a link
 // the README should offer).
 //
-// This list is the classification decision, so it is stated rather than derived from the README:
-// deriving it would make the reverse check answer "is every documented extension documented",
+// This list is the classification decision, so it is stated rather than derived from the README.
+// Deriving it would make the reverse check answer "is every documented extension documented",
 // which is vacuous. A bundler added to `bundle.targets` that emits a new extension has to be added
 // here to be covered, which is the same edit `docs/RELEASING.md` already says a new bundler
 // forces, alongside the completeness list and the attestation's subject-path.
@@ -45,7 +45,7 @@ const INSTALLER_EXTENSIONS = ["exe", "msi", "dmg", "appimage", "deb", "rpm"];
  * The asset-name patterns README.md documents, in document order.
  *
  * A pattern is an inline-code token beginning with `kavynex` and containing a `*`. Requiring the
- * `*` is what does the work: the README mentions `kavynex.db.corrupt` and `kavynex.log` elsewhere,
+ * `*` is what does the work. The README mentions `kavynex.db.corrupt` and `kavynex.log` elsewhere,
  * and neither is an asset. The cost of that rule is that a name written out with a literal version
  * would be skipped silently, which the reverse direction below catches, since every installer it
  * was supposed to name then goes unmatched.
@@ -65,7 +65,7 @@ export function parseReadmeAssetPatterns(readmeContent) {
 /**
  * Compiles one README pattern into an anchored matcher, with `*` standing for the version segment.
  *
- * `[^\s]+` rather than `.*`: the placeholder always covers a version (`1.2.0`, or `1.2.0-1` in the
+ * `[^\s]+` rather than `.*`. The placeholder always covers a version (`1.2.0`, or `1.2.0-1` in the
  * rpm names), never nothing and never a gap between two names. Anchoring both ends is what keeps
  * `kavynex_*_amd64.deb` from also matching its own `.sig`.
  */

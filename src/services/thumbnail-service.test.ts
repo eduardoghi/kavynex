@@ -20,7 +20,7 @@ describe("resolveDisplayThumbnails", () => {
     });
 
     it("maps each answer back onto the path that asked for it", async () => {
-        // The backend answers positionally, so this zip is the whole contract: an off-by-one here
+        // The backend answers positionally, so this zip is the whole contract. An off-by-one here
         // would put one media's derivative on another media's card, which reads as the grid showing
         // the wrong thumbnails rather than as a bug in a cache.
         vi.mocked(invokeCommand).mockResolvedValueOnce([
@@ -62,7 +62,7 @@ describe("resolveDisplayThumbnails", () => {
     });
 
     it("leaves a budget-spent path unsettled so it is asked about again", async () => {
-        // The one answer that is not final: the path is fine and the source is there, the call just
+        // The one answer that is not final. The path is fine and the source is there, the call just
         // had no generation slots left. Settling it would strand that card on the stored file for
         // the rest of the session.
         vi.mocked(invokeCommand).mockResolvedValueOnce([budgetSpent, unavailable]);
@@ -135,7 +135,7 @@ describe("resolveDisplayThumbnails", () => {
     });
 
     it("ignores an answer shorter than the request instead of misaligning it", async () => {
-        // Defense in depth over the zod array schema at the seam: a truncated response must leave
+        // Defense in depth over the zod array schema at the seam. A truncated response must leave
         // the unanswered paths without a derivative, never shift the remaining answers onto them.
         // and must not settle them either, since nothing was decided about those paths.
         vi.mocked(invokeCommand).mockResolvedValueOnce([resolved("/cache/thumb-display/aaa.jpg")]);

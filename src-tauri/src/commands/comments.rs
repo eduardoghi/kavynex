@@ -19,7 +19,7 @@ pub async fn replace_media_comments(
 /// untouched.
 ///
 /// Its own command rather than an empty `replace_media_comments`, because that one deletes before
-/// it inserts: calling it with nothing would wipe a saved backup on the strength of a later fetch
+/// it inserts. Calling it with nothing would wipe a saved backup on the strength of a later fetch
 /// coming back empty. See `media_comments::mark_media_comments_absent`.
 #[tauri::command]
 pub async fn mark_media_comments_absent(db: State<'_, Db>, media_id: i64) -> AppResult<()> {
@@ -57,7 +57,7 @@ mod tests {
     /// Seeds the video row these tests attach comments to.
     ///
     /// The media row goes in through the repository rather than through an `insert_media` command,
-    /// which no longer exists: a media is created by `create_media`, and the individual steps are
+    /// which no longer exists. A media is created by `create_media`, and the individual steps are
     /// not on the IPC surface. What this test needs is the row, not a particular way of producing it.
     fn seed_media(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> i64 {
         let channel_id = invoke(

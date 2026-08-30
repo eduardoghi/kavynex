@@ -3,7 +3,7 @@
 //!
 //! The frontend already validates these for fast UX feedback (`src/services/
 //! channel-input-service.ts`, `src/services/media-input-service.ts`,
-//! `src/utils/youtube.ts`), but the frontend is not a durable trust boundary: another call
+//! `src/utils/youtube.ts`), but the frontend is not a durable trust boundary. Another call
 //! path (a future feature, a devtools `invoke()`, or a bug that skips the service layer),
 //! could otherwise persist a malformed handle or an empty title. The SQLite `CHECK`
 //! constraints (`db_schema.rs`) already reject empty/blank names and a non-`video`/`audio`
@@ -35,7 +35,7 @@ const MAX_YOUTUBE_HANDLE_CHARS: usize = 200;
 const MAX_MEDIA_TITLE_CHARS: usize = 500;
 
 /// True for a normalized YouTube handle, mirroring `isValidNormalizedYoutubeHandle` in
-/// `src/utils/youtube.ts`: either `@<name>` where `<name>` is non-empty and made only of
+/// `src/utils/youtube.ts`. Either `@<name>` where `<name>` is non-empty and made only of
 /// ASCII alphanumerics plus `.`/`_`/`-`, or a `channel/`, `c/` or `user/` prefix (case
 /// insensitive) followed by a non-empty identifier. The frontend normalizes free-form input
 /// (stripping URLs, adding the `@`) before it gets here; this only checks the stored shape.
@@ -117,7 +117,7 @@ pub fn ensure_valid_channel_name(name: &str) -> AppResult<()> {
 /// responsible for. This mirrors how [`ensure_valid_channel_name`] and [`ensure_valid_media_title`]
 /// are already built, where the same two rules sit beside the emptiness check rather than inside it.
 ///
-/// They matter more here than the `@` form suggests, because the two halves were never symmetric:
+/// They matter more here than the `@` form suggests, because the two halves were never symmetric.
 /// `@name` is confined to ASCII alphanumerics plus `.`/`_`/`-`, which excludes a control character
 /// by construction, while `channel/`, `c/` and `user/` accept any non-empty identifier. So a handle
 /// like `channel/UC\nfake log line` satisfied the shape check, reached the row, and from there the
@@ -236,7 +236,7 @@ mod tests {
     fn youtube_handle_validation_matches_the_shared_fixture() {
         // The frontend has its own copy of this rule (isValidNormalizedYoutubeHandle in
         // src/utils/youtube.ts) so it can give fast, friendly feedback before a round trip. The two
-        // are independent implementations that must agree on every normalized handle: if the
+        // are independent implementations that must agree on every normalized handle. If the
         // backend tightened the rule and the frontend did not, an invalid handle would pass the
         // client check and come back as a raw backend error instead of the catalogued one. This
         // asserts the Rust side against the same shared cases the TypeScript side checks (see
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn youtube_handle_rejects_embedded_control_characters() {
-        // The asymmetry these cover: `@name` is confined to a character set that excludes a control
+        // The asymmetry these cover. `@name` is confined to a character set that excludes a control
         // character already, while the three path-prefix forms accept any non-empty identifier, so
         // this was the half that let one through to the row and from there to the log lines. Both
         // halves are asserted so a future change that loosened the `@` charset would still be held.
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn youtube_handle_length_counts_scalar_values_not_bytes() {
-        // Same rule as the name/title ceilings: a multi-byte character counts once. Asserted on the
+        // Same rule as the name/title ceilings. A multi-byte character counts once. Asserted on the
         // `channel/` form because it is the one whose identifier admits non-ASCII at all.
         let prefix_len = "channel/".chars().count();
         let handle = format!(

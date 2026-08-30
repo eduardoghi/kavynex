@@ -1,6 +1,6 @@
 //! Pure planning for a yt-dlp download run, kept out of the async orchestration in the parent
-//! module so it can be unit-tested without spawning a process: validating/normalizing the
-//! request from the frontend, building the yt-dlp argument vector (with the `--` separator that
+//! module so it can be unit-tested without spawning a process. It validates and normalizes the
+//! request from the frontend, builds the yt-dlp argument vector (with the `--` separator that
 //! keeps the URL from ever being read as a flag), and classifying the run's terminal outcome
 //! from the flags the wait loop set. Tests live in the parent's `mod tests`.
 
@@ -17,7 +17,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// it validates rather than assuming the run id is well-formed.
 pub(super) const MAX_RUN_ID_LEN: usize = 128;
 
-/// True for a well-formed run id: non-empty, within [`MAX_RUN_ID_LEN`], and made only of the
+/// True for a well-formed run id. non-empty, within [`MAX_RUN_ID_LEN`], and made only of the
 /// characters a UUID (or a hex/dash fallback) uses. It becomes part of a temp-directory name, so
 /// restricting it to `[A-Za-z0-9._-]` also keeps a path separator or other filesystem-significant
 /// character out of that name regardless of what the frontend sends.
@@ -25,7 +25,7 @@ pub(super) const MAX_RUN_ID_LEN: usize = 128;
 /// `pub(crate)` (re-exported by `yt_dlp::download`) because a local import registers a run id too,
 /// so `cancel_media_download` can reach it. That id never becomes a path (it is only a key in the
 /// process registry), so this rule is stricter than that caller strictly needs. Reusing it anyway is
-/// the point: one definition of what a run id may be beats a second, looser spelling that would
+/// the point. One definition of what a run id may be beats a second, looser spelling that would
 /// then have to be kept in step with this one.
 pub(crate) fn is_valid_run_id(run_id: &str) -> bool {
     !run_id.is_empty()
@@ -57,7 +57,7 @@ pub(super) fn is_valid_format_id(format_id: &str) -> bool {
 /// One definition with two callers, which is the point of it being here rather than spelled twice.
 /// `yt_dlp::events::infer_log_level` uses it to label a line for the in-app terminal, and the
 /// stderr reader in the parent module uses it to decide what may enter the buffer that becomes the
-/// user-facing failure message. Those two have to agree: a line shown as a warning must not also be
+/// user-facing failure message. Those two have to agree. A line shown as a warning must not also be
 /// quoted back as the reason a download failed.
 ///
 /// Substring rather than a `WARNING:` prefix match, because yt-dlp prefixes the reporting stage
@@ -65,11 +65,11 @@ pub(super) fn is_valid_format_id(format_id: &str) -> bool {
 /// reclassify the prefixed ones as errors, which is the direction that does damage.
 ///
 /// The explicit refusal of `error` closes the other direction of that same looseness, which the
-/// substring test opened. A yt-dlp error line carries text this app does not control: the message
+/// substring test opened. A yt-dlp error line carries text this app does not control. The message
 /// YouTube returned for the video, quoted back verbatim. One that happens to mention a warning
 /// (YouTube uses the word for a strike on a channel) would be classified as a warning here, kept
 /// out of the stderr buffer by the reader in the parent module, and therefore absent from the
-/// failure message. When it is the only error line, the user is told `yt-dlp download failed:
+/// failure message. When it is the only error line, the user is told `yt-dlp download failed.
 /// yt-dlp failed`, which is the empty-buffer fallback saying nothing at all. A line that declares
 /// itself an error is not a warning, whatever else it contains.
 pub(crate) fn line_is_warning(line: &str) -> bool {
@@ -187,7 +187,7 @@ pub(super) fn build_download_command_args(
         // one diagnostic surface this app offers, silent about the reason. They are kept out of the
         // failure evidence instead (see `line_is_warning` and the stderr reader in the parent
         // module), so surfacing them costs the error message nothing. The metadata calls keep the
-        // flag: their output is parsed, not read.
+        // flag. Their output is parsed, not read.
         "--ffmpeg-location".to_string(),
         ffmpeg_location.to_string(),
         "-f".to_string(),
@@ -237,7 +237,7 @@ pub(super) enum DownloadTermination {
 /// asserted without spawning a process; the surrounding orchestration (`download_media_from_url_async`)
 /// needs a live `AppHandle` to emit events and cannot run under the unit-test harness.
 ///
-/// The precedence matters: a run killed for stalling also comes back with a non-success exit
+/// The precedence matters. A run killed for stalling also comes back with a non-success exit
 /// status and a cancel flag set once the kill lands, so classifying purely on the exit status
 /// would report every stall/cancel as a generic failure. `captured_stderr` is consulted only for
 /// the `Failed` case and is expected to already carry the empty-buffer fallback the caller applies.

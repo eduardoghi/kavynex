@@ -156,7 +156,7 @@ describe("buildDiagnosticsIssues", () => {
 
     it("stays quiet about a yt-dlp release that is recent, ageless, or exactly at the threshold", () => {
         // `null` is the ffmpeg/unparseable case, and it must not read as "age zero" or as stale.
-        // 60 is the threshold itself: the rule fires *past* it, so the boundary stays silent.
+        // 60 is the threshold itself. The rule fires *past* it, so the boundary stays silent.
         for (const releaseAge of [null, 0, 59, 60]) {
             const input = baseDiagnostics();
             input.externalTools.yt_dlp.release_age_days = releaseAge;
@@ -477,7 +477,7 @@ describe("buildDiagnosticsIssues", () => {
     it("marks only the issues whose example paths name a file that is on disk", () => {
         // The whole partition in one assertion, because what matters is the split rather than any
         // single member of it. The flag is what lets the UI offer "reveal in the file manager", and
-        // both directions of getting it wrong are bad in the same way: a missing file offered for
+        // both directions of getting it wrong are bad in the same way. A missing file offered for
         // reveal is a link that fails every click, and an invalid reference points outside the
         // library, which the backend guard refuses by design.
         //

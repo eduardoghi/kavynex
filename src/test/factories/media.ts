@@ -17,7 +17,7 @@ export function createMedia(overrides: CreateMediaOverrides = {}): MediaRow {
         progress_seconds: 0,
         has_comments: 0,
         comments_count: 0,
-        // The state a row starts in: nothing has been fetched for it yet. Fixtures that are
+        // The state a row starts in. Nothing has been fetched for it yet. Fixtures that are
         // about the comments panel override it, which is the point of the default being the
         // one that offers a Fetch button.
         comments_state: "unknown" as const,

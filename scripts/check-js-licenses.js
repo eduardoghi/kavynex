@@ -2,15 +2,15 @@
 //
 // The Rust side has enforced this since cargo-deny landed (src-tauri/deny.toml, `cargo deny check
 // licenses`), but the npm side only ever had `pnpm audit`, which reports security advisories and
-// says nothing about licensing. That asymmetry matters for an MIT-licensed public project: a
+// says nothing about licensing. That asymmetry matters for an MIT-licensed public project. A
 // copyleft transitive could arrive inside a grouped Dependabot PR with nothing to flag it.
 //
-// Reads `pnpm licenses list --prod --json` rather than adding a license-checker dependency: pnpm
+// Reads `pnpm licenses list --prod --json` rather than adding a license-checker dependency. pnpm
 // resolves this from the lockfile it already owns, so the check costs no new supply-chain surface
 // in a project that deliberately runs minimumReleaseAge and blockExoticSubdeps.
 //
 // The allow-list mirrors src-tauri/deny.toml's, minus the entries no npm package here uses. Keep
-// the two in step: a license permissible for a crate is permissible for a package. OFL-1.1 is the
+// the two in step. A license permissible for a crate is permissible for a package. OFL-1.1 is the
 // one deliberate exception to that mirroring. It covers a bundled font asset, which has no crate
 // counterpart, so adding it to deny.toml would only imply a crate could ship under it.
 
@@ -45,7 +45,7 @@ const ALLOWED = new Set([
 // pnpm reports SPDX expressions ("MIT OR Apache-2.0", "(MIT OR CC0-1.0)"). A dual license is fine
 // as long as one side is allowed. We can take that side. An AND expression needs every term to be
 // allowed, since all of them bind. Exported so the AND/OR/paren logic is unit-tested (see
-// scripts/check-js-licenses.test.js): the current tree has no compound expression, so nothing else
+// scripts/check-js-licenses.test.js). The current tree has no compound expression, so nothing else
 // exercises this branch until the day a dependency ships one, exactly when a bug here would matter.
 export function isAllowed(expression) {
     const normalized = expression.trim().replace(/^\(|\)$/g, "");
@@ -65,11 +65,11 @@ function readProductionLicenses() {
     // `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to spawn
     // `.bat`/`.cmd` without one (CVE-2024-27980). CI runs on Linux and takes the shell-free path.
     //
-    // Note what the argv array does and does not buy on that Windows path: with `shell: true` Node
+    // Note what the argv array does and does not buy on that Windows path. With `shell: true` Node
     // concatenates the array into a command line rather than passing it through, which is what
     // DEP0190 warns about. The array is not an escaping mechanism there. What actually makes this
     // safe is that every argument below is a literal written in this file, not derived from a
-    // package name, a lockfile entry, or anything else outside it. Keep it that way: an argument
+    // package name, a lockfile entry, or anything else outside it. Keep it that way. An argument
     // built from external data would need the shim resolved and invoked directly instead.
     const raw = execFileSync("pnpm", ["licenses", "list", "--prod", "--json"], {
         encoding: "utf-8",

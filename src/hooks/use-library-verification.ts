@@ -28,7 +28,7 @@ type UseLibraryVerificationReturn = {
 // presentational and this stays unit-testable, matching every other stateful flow in the app.
 //
 // The cancel is a separate backend call rather than an aborted promise, because the work happens on
-// the blocking pool inside one command: dropping the promise here would leave that sweep reading the
+// the blocking pool inside one command. Dropping the promise here would leave that sweep reading the
 // whole library with nobody listening. `cancel` asks it to stop; the run still resolves normally,
 // with a report that says it was cancelled.
 export function useLibraryVerification(): UseLibraryVerificationReturn {
@@ -75,7 +75,7 @@ export function useLibraryVerification(): UseLibraryVerificationReturn {
         try {
             await cancelLibraryVerification();
         } catch (error) {
-            // Nothing to show the user: the run either stops on its own or finishes, and either way
+            // Nothing to show the user. The run either stops on its own or finishes, and either way
             // the report that lands is what they see. A failed cancel is worth a log line and not an
             // error dialog on top of a check that is still working.
             logError("diagnostics", "Failed to cancel the library verification.", error);

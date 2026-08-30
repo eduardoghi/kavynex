@@ -111,7 +111,7 @@ describe("severityOf", () => {
     });
 
     it("falls back to the top-level CVSS vector when there is no declared severity", () => {
-        // The exact gap this closes: an advisory carrying its severity only as a CVSS vector in the
+        // The exact gap this closes. An advisory carrying its severity only as a CVSS vector in the
         // top-level `severity` array, with no database_specific.severity, must still be classified
         // rather than read as UNKNOWN.
         expect(

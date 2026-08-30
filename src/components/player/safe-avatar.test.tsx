@@ -47,7 +47,7 @@ describe("SafeAvatar", () => {
         expect(image).not.toBeNull();
         expect(image).toHaveAttribute("src", REMOTE_SRC);
         expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
-        // Decorative: the author name sits next to it, so the alt stays empty.
+        // Decorative. The author name sits next to it, so the alt stays empty.
         expect(image).toHaveAttribute("alt", "");
     });
 

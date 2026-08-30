@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// This is the one file that mocks `@tauri-apps` directly rather than mocking the seam: it is
+// This is the one file that mocks `@tauri-apps` directly rather than mocking the seam. It is
 // the seam. Every other test stubs `../lib/tauri-client`, which means nothing else exercises
 // the two things this module actually contributes on top of Tauri's `invoke`. Forwarding the
 // command/args untouched, and turning whatever the backend rejects with into a normalized
@@ -53,7 +53,7 @@ describe("invokeCommand", () => {
     });
 
     it("rejects with a normalized error when the backend result fails its schema", async () => {
-        // The seam validates structured results (ipc-schemas.ts): a malformed response is turned
+        // The seam validates structured results (ipc-schemas.ts). A malformed response is turned
         // into the same AppErrorShape a rejection would be, so a caller never receives an object of
         // the wrong shape. The specific failing field is logged, not surfaced.
         const spy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -69,7 +69,7 @@ describe("invokeCommand", () => {
     });
 
     it("normalizes a rejected backend error into an AppErrorShape", async () => {
-        // What a Rust command rejects with: the serialized AppError, not an Error instance.
+        // What a Rust command rejects with. The serialized AppError, not an Error instance.
         invokeMock.mockRejectedValue({
             code: "INVALID_LIBRARY_PATH",
             message: "library path is empty",
@@ -169,7 +169,7 @@ describe("listenValidated", () => {
         await listenValidated("yt-dlp-log", IPC_EVENT_SCHEMAS.ytDlpLog, handler);
 
         const wrapped = listenMock.mock.calls[0]?.[1] as (event: { payload: unknown }) => void;
-        // `run_id` as a number, and missing `stream`/`level`: a backend contract break.
+        // `run_id` as a number, and missing `stream`/`level`. A backend contract break.
         wrapped({ payload: { run_id: 7, line: "hello" } });
 
         expect(handler).not.toHaveBeenCalled();

@@ -25,7 +25,7 @@ const CANCEL_POLL_INTERVAL_MS: u64 = 200;
 /// How long the process-tree kill waits for the killer itself (`taskkill`, or `kill` on the
 /// fallback target) before giving up. The killer is normally near-instant, but it can wedge (an
 /// AV/EDR hook, a target stuck in an uninterruptible wait), and both call sites must never block
-/// on it: the download-cancel path runs inside the async wait loop, and the app-exit sweep runs
+/// on it. The download-cancel path runs inside the async wait loop, and the app-exit sweep runs
 /// synchronously on the event-loop thread, where a hung killer would stop the app from closing at
 /// all.
 #[cfg(not(unix))]
@@ -37,7 +37,7 @@ const KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const KILL_WAIT_POLL: Duration = Duration::from_millis(50);
 
 /// Waits for a spawned killer child to exit, but gives up after [`KILL_WAIT_TIMEOUT`]. Returning
-/// early leaves the killer running detached, which is acceptable: the signal it carries has
+/// early leaves the killer running detached, which is acceptable. The signal it carries has
 /// already been delivered to the target tree, and the caller must not block on the killer's own
 /// bookkeeping.
 #[cfg(not(unix))]
@@ -121,7 +121,7 @@ pub async fn kill_process_tree(pid: u32) {
             // Bound the wait on the killer itself so a hung taskkill cannot stall the caller.
             let _ = tokio::time::timeout(KILL_WAIT_TIMEOUT, child.wait()).await;
         }
-        // Not swallowed: a cancel that could not reach the tree leaves yt-dlp/ffmpeg running while
+        // Not swallowed. A cancel that could not reach the tree leaves yt-dlp/ffmpeg running while
         // the UI reports the run as stopped, and the log is the only place that would say so.
         Err(error) => crate::services::logger::warn(
             "process",
@@ -140,7 +140,7 @@ pub async fn kill_process_tree(pid: u32) {
 /// kept running. The syscall has no such dependency, returns synchronously, and reports the one
 /// outcome worth knowing about.
 ///
-/// `ESRCH` is not reported: the group is already gone, which is the state the caller wanted.
+/// `ESRCH` is not reported. The group is already gone, which is the state the caller wanted.
 #[cfg(unix)]
 fn kill_process_group(pid: u32) {
     // The negated pid addresses the process group `configure_process_group` put the child in, so
@@ -193,7 +193,7 @@ pub fn kill_process_tree_blocking(pid: u32) {
         .stderr(Stdio::null());
     hide_console(&mut command);
 
-    // Spawn and wait with a bound rather than `status()`: the app-exit sweep calls this on the
+    // Spawn and wait with a bound rather than `status()`. The app-exit sweep calls this on the
     // event-loop thread, where a hung taskkill would block shutdown indefinitely.
     match command.spawn() {
         Ok(child) => wait_child_bounded_blocking(child),

@@ -80,7 +80,7 @@ export function ChannelSidebar({
         estimateSize: () => CHANNEL_ROW_ESTIMATE + CHANNEL_ROW_GAP,
         // Key by channel id, not by position. The rows below take `measureElement` and are keyed to
         // React by `channel.id`, so leaving this at the default index key indexes the measurement
-        // cache by position while React reconciles by identity: renaming, adding or deleting a
+        // cache by position while React reconciles by identity. Renaming, adding or deleting a
         // channel reorders the list and a row inherits the height measured for a different channel.
         getItemKey: (index) => channels[index]?.id ?? index,
         overscan: 6,
@@ -208,7 +208,7 @@ export function ChannelSidebar({
                         {!loading && channels.length > 0 && (
                             // Only the rows near the viewport exist in the DOM, so assistive tech
                             // cannot count the channels by walking it. The explicit list role plus
-                            // aria-setsize/aria-posinset below restore that: every row announces
+                            // aria-setsize/aria-posinset below restore that. Every row announces
                             // "N of <total>" even though the rest is not rendered.
                             <Box
                                 role="list"

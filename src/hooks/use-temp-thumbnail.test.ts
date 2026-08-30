@@ -219,7 +219,7 @@ describe("useTempThumbnail", () => {
     });
 
     it("never deletes a manual path the app did not stage", async () => {
-        // The fallback when staging fails: the path is the user's own file, somewhere on their disk.
+        // The fallback when staging fails. The path is the user's own file, somewhere on their disk.
         // Handing it to the delete command would be pointing a remove at a file outside the app's
         // own directories. Refused by the backend's containment check, but it must not be asked in
         // the first place.

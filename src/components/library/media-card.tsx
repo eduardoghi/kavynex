@@ -38,7 +38,7 @@ const MEDIA_FOOTER_HEIGHT = 28;
 
 // Style values that never depend on the card's props or state, hoisted to module scope so they
 // are built once instead of on every render. Truly only the delta that reacts to state stays
-// inline below: the media-type badge reacts only to isAudio (a boolean), so both of its variants
+// inline below. The media-type badge reacts only to isAudio (a boolean), so both of its variants
 // are fully hoisted and picked between; the root card keeps its static base here
 // (ROOT_CARD_BASE_STYLE) and spreads only the few properties that react to isActive/isWatched/
 // shellBorder over it. This component is memoized and re-renders whenever its own primitive props
@@ -119,7 +119,7 @@ const MEDIA_TYPE_BADGE_LABEL_STYLE: CSSProperties = {
 //
 // `light-dark()` resolves a *color*, so it has to sit in the color slot of each shadow, not around
 // the shadow as a whole. Wrapping the whole thing (`light-dark(0 6px 18px <color>, 0 12px 32px
-// <color>)`) makes the declaration invalid, and that had two consequences: no card ever got its
+// <color>)`) makes the declaration invalid, and that had two consequences. No card ever got its
 // resting shadow, and (worse), a card that had been the active one kept the violet active glow
 // forever, because assigning an invalid value to an element's inline style is ignored and leaves the
 // previous valid value in place. So the highlight survived the media being closed, on every card the
@@ -186,7 +186,7 @@ function MediaCardComponent({
                     ? `Open ${media.title}, ${UI_TEXT.library.watchedBadge}`
                     : `Open ${media.title}`
             }
-            // The active card (the one playing) was only told apart visually: tint, border,
+            // The active card (the one playing) was only told apart visually. Tint, border,
             // glow and the "Selected" pill in the thumbnail. aria-current is how the same fact
             // reaches a screen reader walking the grid, the way the channel list item already
             // does for the selected channel.
@@ -207,7 +207,7 @@ function MediaCardComponent({
                 // there now and the green border, which is a thin line rather than an area, is
                 // what states the run of them.
                 //
-                // Active still wins on more than alpha: it also gets the ring, the drop glow and the
+                // Active still wins on more than alpha. It also gets the ring, the drop glow and the
                 // lift below, none of which watched has. That is what lets watched sit this close in
                 // tint without the two competing for "which card am I on".
                 background: isActive

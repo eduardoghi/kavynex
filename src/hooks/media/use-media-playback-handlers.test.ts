@@ -23,7 +23,7 @@ describe("useMediaPlaybackHandlers", () => {
 
     it("starts from the beginning when the saved position is at or past the end", () => {
         // A position saved past the end (a duration that shrank, or a row written before finishing
-        // a media marked it watched) must not resume there: the media would play for an instant
+        // a media marked it watched) must not resume there. The media would play for an instant
         // and end again, which reads as a broken file.
         const { result } = renderHook(() =>
             useMediaPlaybackHandlers({ progressSeconds: 500 })

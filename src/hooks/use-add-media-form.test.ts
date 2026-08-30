@@ -313,7 +313,7 @@ describe("useAddMediaForm", () => {
     });
 
     it("picks thumbnail through dialog and previews the staged copy", async () => {
-        // The staged copy is what the preview must point at: it lives in a directory the asset
+        // The staged copy is what the preview must point at. It lives in a directory the asset
         // protocol already serves, which is what replaced granting the user's own file. It is also
         // flagged as a temp file, so the hook that owns it will delete it.
         vi.mocked(openFileDialog).mockResolvedValueOnce("/tmp/thumb.jpg");
@@ -489,7 +489,7 @@ describe("useAddMediaForm", () => {
             "add-media-form",
             "Failed to load yt-dlp formats.",
             expect.any(Error),
-            // The profile is deliberately absent from the details: it is often a path under
+            // The profile is deliberately absent from the details. It is often a path under
             // the user's home directory, and this context reaches the file log.
             {
                 mediaUrl: "https://youtube.com/watch?v=abc",

@@ -10,6 +10,6 @@ export const EVENT_DATABASE_INTEGRITY_FAILED = "database-integrity-failed";
 
 // Emitted by the backend's startup sweep when it stops retrying one or more crashed media
 // creations, leaving their files in the library for Diagnostics to report. Same reasoning as the
-// event above: the outcome costs the user disk and has a concrete next step, so it should not live
+// event above. The outcome costs the user disk and has a concrete next step, so it should not live
 // only in the log file.
 export const EVENT_PENDING_MEDIA_ABANDONED = "pending-media-abandoned";

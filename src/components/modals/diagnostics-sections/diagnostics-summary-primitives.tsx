@@ -3,7 +3,7 @@ import { Badge, Box, Group, SimpleGrid, Stack, Text, Title } from "@mantine/core
 
 // The presentational primitives the diagnostics sections share. Kept in their own module so each
 // section reads as layout, and so the issues section styles its badges the same way instead of
-// copying them. Nothing here knows what a section is about: a heading is a glyph and a word, a
+// copying them. Nothing here knows what a section is about. A heading is a glyph and a word, a
 // metric is a label over a value, and the list is whatever strings it is handed.
 
 export function StatusBadge({
@@ -78,7 +78,7 @@ type DiagnosticsExamplesListProps = {
     items: string[];
 };
 
-// A labelled list of example paths, or nothing at all when there are none: an empty heading over
+// A labelled list of example paths, or nothing at all when there are none. An empty heading over
 // no items would only say that a category exists, which the metric above it already does.
 export function DiagnosticsExamplesList({
     label,

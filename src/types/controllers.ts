@@ -88,11 +88,11 @@ export type MediaLibraryController = {
     isDeletingMedia: boolean;
     // The media ids whose comments are being refreshed, rather than one "something is refreshing"
     // flag. A shared flag both dropped the second refresh and disabled the button that would have
-    // retried it, so the two have to be per media together: guarding one row while marking every
+    // retried it, so the two have to be per media together. Guarding one row while marking every
     // row busy just moves the silent no-op into the UI.
     commentsInFlight: ReadonlySet<number>;
     // The media ids currently being marked watched/unwatched, per id rather than one shared flag,
-    // for the same reason as commentsInFlight: guarding one row must not read as every row being
+    // for the same reason as commentsInFlight. Guarding one row must not read as every row being
     // busy.
     watchedActionInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
@@ -201,7 +201,7 @@ export type DiagnosticsController = {
     // reports and never deletes, so the file manager is where the user finishes, and a
     // content-addressed name is not something to find by hand.
     //
-    // No in-flight flag beside it, unlike `openLogDirectory`: nothing renders a busy state for a
+    // No in-flight flag beside it, unlike `openLogDirectory`. Nothing renders a busy state for a
     // link in a list, so the flag it does use internally exists only to stop a double click from
     // opening two windows.
     revealLibraryPath: (path: string) => Promise<void>;

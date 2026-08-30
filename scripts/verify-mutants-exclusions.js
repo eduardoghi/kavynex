@@ -1,4 +1,4 @@
-// CI gate: fails when an `exclude_re` entry in src-tauri/.cargo/mutants.toml no longer matches any
+// CI gate. Fails when an `exclude_re` entry in src-tauri/.cargo/mutants.toml no longer matches any
 // mutant cargo-mutants would generate.
 //
 // An exclusion that stops matching is silent in both directions, and both are bad. The mutant it
@@ -8,7 +8,7 @@
 // tests had gone stale.
 //
 // That is not hypothetical here. Two entries in that file have already died this way, both after a
-// pure extraction moved the code they named: `replace < with <= in is_recent` (the comparison became
+// pure extraction moved the code they named. `replace < with <= in is_recent` (the comparison became
 // `duration_is_recent`) and `in ensure_schema` (the guard became `needs_migration`). Both were found
 // by hand, by someone deciding to check. Nothing in the pipeline was looking.
 //
@@ -34,7 +34,7 @@ import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 // Pulls one `name = [ ... ]` array out of the TOML and returns its raw element strings, in document
-// order. Hand-rolled rather than pulling in a TOML parser: this file is the only consumer, the two
+// order. Hand-rolled rather than pulling in a TOML parser. This file is the only consumer, the two
 // arrays it reads are plain lists of quoted strings, and a dependency added to a supply-chain-gated
 // repository to read two arrays is a poor trade. Comment lines inside the array are skipped, which
 // matters because mutants.toml is mostly comment (roughly 400 of its 600 lines), and several of
@@ -81,7 +81,7 @@ export function parseExcludePatterns(tomlContent) {
 }
 
 // The `examine_globs` entries (double-quoted). Read so the caller can reconstruct the file scope on
-// the command line: `--list` has to run with `--no-config` here, since a run that applied the config
+// the command line. `--list` has to run with `--no-config` here, since a run that applied the config
 // would already have removed every mutant the exclusions name, leaving nothing to match against and
 // making this gate pass vacuously. `--no-config` also drops `examine_globs`, so it is passed back in
 // as `--file` arguments, from this same list, so the scope the check sees cannot drift from the
@@ -100,11 +100,11 @@ export function parseExamineGlobs(tomlContent) {
 // text spans one of those boundaries stops matching, and the gate reports it as an exclusion that
 // no longer names a mutant.
 //
-// That is exactly backwards, and expensively so: it fired on this check's first ever run
+// That is exactly backwards, and expensively so. It fired on this check's first ever run
 // (2026-08-03) against twenty-six live patterns, and the obvious response to a red run (delete the
 // exclusions it names) would have silently unexcluded twenty-six real mutants in the security
 // modules this gate exists to protect. The workflow now also passes `--colors never`, but the
-// stripping stays: this function's contract is "given a `cargo mutants --list` output, which
+// stripping stays. This function's contract is "given a `cargo mutants --list` output, which
 // patterns are dead", and a caller who produced that output with colour on deserves the right
 // answer rather than an inverted one.
 function stripAnsi(value) {

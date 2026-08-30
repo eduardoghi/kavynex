@@ -411,7 +411,7 @@ describe("useChannelMediaList", () => {
     });
 
     it("advances the offset by the rows the backend returned, not by the rows it kept", async () => {
-        // The failure deduplication introduces if the cursor is read off the list length: a page
+        // The failure deduplication introduces if the cursor is read off the list length. A page
         // whose rows were all dropped as duplicates leaves the length unchanged, so the next
         // loadMore asks for the same offset again. Forever, on every scroll to the bottom.
         // A total of six leaves a page still to fetch after the duplicate one, which is what makes
@@ -420,7 +420,7 @@ describe("useChannelMediaList", () => {
             .mockResolvedValueOnce(
                 page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 6)
             )
-            // An entirely duplicate page: nothing is appended.
+            // An entirely duplicate page. Nothing is appended.
             .mockResolvedValueOnce(
                 page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 6)
             )
@@ -501,7 +501,7 @@ describe("useChannelMediaList", () => {
         // at 3. Renaming a loaded row moves it in the backend's sort (every ORDER BY ties on
         // title_normalized), and if it lands at or past position 3, the row that was first on the
         // next page shifts onto position 2. Asking for offset 3 then starts one row too late and
-        // that row is never fetched: it is not on screen, and nothing would ever ask for it again.
+        // that row is never fetched. It is not on screen, and nothing would ever ask for it again.
         vi.mocked(listChannelMediaPage)
             .mockResolvedValueOnce(
                 page(
@@ -509,7 +509,7 @@ describe("useChannelMediaList", () => {
                     6
                 )
             )
-            // The backend's view after the rename: id 4 has shifted onto position 2, so a request
+            // The backend's view after the rename. Id 4 has shifted onto position 2, so a request
             // from offset 2 is what returns it.
             .mockResolvedValueOnce(
                 page([createMediaRow({ id: 4 }), createMediaRow({ id: 5 })], 6)
@@ -540,7 +540,7 @@ describe("useChannelMediaList", () => {
     });
 
     it("costs nothing when the rename did not move the row across the boundary", async () => {
-        // The other direction, and why calling this on every rename is safe: refetching one
+        // The other direction, and why calling this on every rename is safe. Refetching one
         // position earlier normally returns a row the list already holds, which the append's own
         // dedup drops. The cursor still advances by what the backend returned, so it cannot stall
         // and re-request the same offset forever, which is what taking it from the list length
@@ -573,7 +573,7 @@ describe("useChannelMediaList", () => {
         });
 
         expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2, 3, 4]);
-        // 2 + the 2 rows returned, not 3 + 2: the cursor counts what was handed out, so the
+        // 2 + the 2 rows returned, not 3 + 2. The cursor counts what was handed out, so the
         // position given back is taken again rather than lost.
         expect(result.current.hasMore).toBe(true);
 
@@ -607,7 +607,7 @@ describe("useChannelMediaList", () => {
             result.current.handleItemReordered();
         });
 
-        // Nothing to load, so nothing is asked for: the cursor is 0 and the total is 0.
+        // Nothing to load, so nothing is asked for. The cursor is 0 and the total is 0.
         expect(result.current.hasMore).toBe(false);
 
         await act(async () => {
@@ -640,7 +640,7 @@ describe("useChannelMediaList", () => {
             await result.current.loadMore();
         });
 
-        // Two rows on screen against a total of three, and still no more to ask for: the third was
+        // Two rows on screen against a total of three, and still no more to ask for. The third was
         // handed out and dropped as a duplicate. Reading the length here would loop.
         expect(result.current.mediaItems).toHaveLength(2);
         expect(result.current.hasMore).toBe(false);

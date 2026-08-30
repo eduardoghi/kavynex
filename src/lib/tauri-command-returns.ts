@@ -1,6 +1,6 @@
 // The typed contract between a Tauri command name and what invoking it resolves to. `invokeCommand`
 // indexes this map by the command it is given, so a caller can no longer pick an arbitrary result
-// type unrelated to the command (the one type-safety hole at the IPC seam): the return type follows
+// type unrelated to the command (the one type-safety hole at the IPC seam). The return type follows
 // from the command name itself. When a Rust command's return type changes, update its entry here and
 // every call site is re-checked against it. The same drift protection the generated ts-rs bindings
 // give the payload types, extended to the command results.
@@ -36,7 +36,7 @@ export type TauriCommandReturns = {
     open_log_directory: void;
 
     // null on every launch that is not a `--webview-check` run, which is what lets the frontend ask
-    // unconditionally at boot. `report_webview_check` never resolves during a check: the backend
+    // unconditionally at boot. `report_webview_check` never resolves during a check. The backend
     // terminates the process with the outcome instead of answering.
     begin_webview_check: WebviewCheckPlan | null;
     report_webview_check: void;
@@ -54,7 +54,7 @@ export type TauriCommandReturns = {
     cancel_library_verification: void;
     open_path_in_system: void;
 
-    // The whole creation, not a step of it: the backend produces the artifacts, records the crash
+    // The whole creation, not a step of it. The backend produces the artifacts, records the crash
     // marker, inserts the row and clears the marker, and answers with the registered media.
     create_media: CreatedMedia;
     stream_live_chat_file: void;
@@ -66,7 +66,7 @@ export type TauriCommandReturns = {
     stage_manual_thumbnail: string;
     persist_thumbnail_file: string;
     download_channel_avatar_from_handle: string;
-    // One entry per requested path, in order. Not a nullable string: "no derivative" carries
+    // One entry per requested path, in order. Not a nullable string. "no derivative" carries
     // whether asking again could change the answer, which is what stops the caller re-asking
     // forever about a path that can never be resolved. See the DisplayThumbnail doc comment.
     resolve_display_thumbnails: DisplayThumbnail[];
@@ -113,7 +113,7 @@ export type TauriCommandReturns = {
     get_media_repository_stats: MediaRepositoryStats;
 };
 
-// Compile-time proof the map stays in lockstep with the command list: its type is `true` only when
+// Compile-time proof the map stays in lockstep with the command list. Its type is `true` only when
 // every command in TAURI_COMMANDS has an entry above and no entry names something that is not a
 // command. If either drifts, the type becomes `false`, the `= true` assignment fails to compile, and
 // the build points here instead of failing at some unrelated call site. Exported so `noUnusedLocals`

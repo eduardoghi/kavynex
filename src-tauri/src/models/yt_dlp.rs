@@ -12,7 +12,7 @@ impl ImportMode {
     /// The mode's name for a log line.
     ///
     /// Spelled out rather than reached through `{:?}`, so that a log line never carries a
-    /// `Debug`-formatted value: `Debug` on a `Path` prints the whole path, which is what
+    /// `Debug`-formatted value. `Debug` on a `Path` prints the whole path, which is what
     /// `services::logger::redact_path` exists to prevent, and CI now refuses `{:?}` anywhere near a
     /// logger call rather than trusting each site to be the harmless kind. This was the one
     /// harmless kind.
@@ -173,11 +173,11 @@ pub struct YtDlpCommentMetadata {
 // serializes them as JSON numbers, not the bigint ts-rs emits by default); f64 fields map
 // to `number` natively.
 //
-// Carries no display label or presentation order on purpose. The frontend cannot use either:
-// it synthesizes the "merged" video+audio entries that YouTube does not serve as a single
+// Carries no display label or presentation order on purpose. The frontend cannot use either.
+// It synthesizes the "merged" video+audio entries that YouTube does not serve as a single
 // format (see `buildMergedFormats`), so it has to label and order entries this side never
 // emitted, and a label produced here would be overwritten for every row. What the two sides
-// do agree on is `format_id`: the frontend mints combined ids like `137+140` from these, and
+// do agree on is `format_id`. The frontend mints combined ids like `137+140` from these, and
 // `yt_dlp::download::resolve_format_has_video` resolves them back against this metadata.
 #[derive(Serialize, Deserialize, Clone, Debug, TS)]
 #[ts(
@@ -251,7 +251,7 @@ pub struct ExternalToolHealth {
     /// date. Yt-dlp's versions are dates (`2026.07.01`), ffmpeg's are not, so this is `None` for
     /// ffmpeg and for anything unparseable.
     ///
-    /// Deliberately a fact rather than a verdict: whether an age is worth warning about is a
+    /// Deliberately a fact rather than a verdict. Whether an age is worth warning about is a
     /// diagnostics policy, and every other such rule lives in `src/services/diagnostics-rules.ts`
     /// rather than being split across the IPC boundary.
     pub release_age_days: Option<u32>,

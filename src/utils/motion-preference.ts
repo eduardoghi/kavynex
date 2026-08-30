@@ -12,7 +12,7 @@ export const REDUCED_MOTION_MEDIA_QUERY = "(prefers-reduced-motion: reduce)";
 
 // Anything that is not one of the three known values (a missing key, a hand-edited entry, a value
 // from a build that spelled them differently) reads as "system", which is the default and the one
-// choice that cannot be wrong for the user: it is whatever their operating system already says.
+// choice that cannot be wrong for the user. It is whatever their operating system already says.
 export function parseMotionPreference(raw: unknown): MotionPreference {
     return MOTION_PREFERENCES.find((value) => value === raw) ?? "system";
 }

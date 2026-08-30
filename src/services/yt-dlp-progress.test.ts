@@ -67,7 +67,7 @@ describe("parseYtDlpProgress", () => {
     });
 
     it("does not read a percentage that is not the progress field", () => {
-        // The anchor is what makes this hold: a percent sign inside a filename or a message is not
+        // The anchor is what makes this hold. A percent sign inside a filename or a message is not
         // progress, and a bar driven from one would jump around for no reason.
         expect(parseYtDlpProgress('[download] Destination: 50% off sale.mp4')).toEqual({
             phase: "downloading",
@@ -101,7 +101,7 @@ describe("advanceYtDlpProgress", () => {
     });
 
     it("clears the percentage when the stage changes", () => {
-        // The reading this exists to prevent: the merge inheriting the download's 100% shows a full
+        // The reading this exists to prevent. The merge inheriting the download's 100% shows a full
         // bar while FFmpeg works silently for minutes, which is a finished-then-frozen run rather
         // than a working one.
         expect(advanceYtDlpProgress(downloading, '[Merger] Merging formats into "video.mp4"')).toEqual(

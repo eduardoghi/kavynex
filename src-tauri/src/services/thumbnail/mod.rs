@@ -1,8 +1,8 @@
-//! The thumbnail feature family: producing, fetching, persisting and serving the images the grid
+//! The thumbnail feature family. Producing, fetching, persisting and serving the images the grid
 //! and the player draw. Each concern is a submodule here rather than a `thumbnail_*` sibling of
 //! this file; see `services/mod.rs` for why the grouping exists.
 //!
-//! This module holds only re-exports: the command layer imports the entry points from here, so it
+//! This module holds only re-exports. The command layer imports the entry points from here, so it
 //! does not have to know which submodule produces a preview, which persists one into the library,
 //! and which resolves a display-sized copy.
 

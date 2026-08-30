@@ -37,7 +37,7 @@ export function LiveChatReplay({
     // True from a "seeking" event until its matching "seeked" fires. Some engines emit a
     // timeupdate in that window (mid-scrub, before the seek has actually settled), and
     // handleTimeUpdate must not treat that as ordinary playback and re-enable announcements while
-    // the seek is still in flight: doing so let up to ~200 messages announce as a burst once the
+    // the seek is still in flight. Doing so let up to ~200 messages announce as a burst once the
     // seek finally landed, because announcements were back on before the jump happened.
     const isSeekingRef = useRef(false);
 
@@ -149,7 +149,7 @@ export function LiveChatReplay({
     );
 
     // Derived here, from the full pin list, rather than inside the panel from the capped visible
-    // window: a pin that was set more than a visible-window ago is no longer in that window but is
+    // window. A pin that was set more than a visible-window ago is no longer in that window but is
     // still the active pin, and deriving it from the window would make the banner disappear.
     const activePin = useMemo(
         () => getActiveLiveChatPinFromPins(liveChatPins, currentPlaybackTime),

@@ -53,12 +53,12 @@ describe("usePendingMediaAlert", () => {
         // The point of the notice is the next step; a message without it is just an alarm.
         expect(message).toContain("Diagnostics");
         // And the next step has to be the one that exists. Diagnostics reports and never deletes,
-        // so the message names the file manager: the earlier wording sent the user there to "remove
+        // so the message names the file manager. The earlier wording sent the user there to "remove
         // them", which is an action that screen does not have.
         expect(message).toContain("file manager");
         // And it must not read as data loss, because nothing was lost. The files are still there.
         expect(message).toContain("Nothing was lost");
-        // No marker file name, no library-relative path: the banner says that something is there,
+        // No marker file name, no library-relative path. The banner says that something is there,
         // and Diagnostics says what.
         expect(message).not.toContain("pending-");
     });

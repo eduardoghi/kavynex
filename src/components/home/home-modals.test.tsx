@@ -259,7 +259,7 @@ describe("HomeModals", () => {
     // the one-second budget `findBy*` gives the assertion below.
     //
     // On a machine running this file alone that is comfortable. Under the full suite, with 144
-    // files competing for the same cores, it is not: this test failed intermittently there while
+    // files competing for the same cores, it is not. This test failed intermittently there while
     // passing every time in isolation, which is the shape that makes a flake expensive. It reddens
     // CI for a reason unrelated to the change being tested, and the natural response is to stop
     // trusting the run.
@@ -284,7 +284,7 @@ describe("HomeModals", () => {
 
         // Settings and Diagnostics are code-split, so they arrive a microtask later. `find*`
         // rather than `get*` is what waits for their chunk. Asserting they arrive at all is the
-        // point: a split that never resolved would leave both modals permanently blank, and the
+        // point. A split that never resolved would leave both modals permanently blank, and the
         // Suspense fallback is `null`, so nothing else in the tree would say so.
         expect(await screen.findByText("Settings")).toBeInTheDocument();
         expect((await screen.findAllByText("Diagnostics")).length).toBeGreaterThan(0);

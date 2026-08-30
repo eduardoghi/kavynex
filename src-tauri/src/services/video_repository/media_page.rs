@@ -28,7 +28,7 @@ fn ensure_allowed(value: &str, allowed: &[&str], field: &str) -> AppResult<()> {
 /// Maps a validated (sort category, direction) pair to a fixed `ORDER BY` clause. The clause is
 /// always a compile-time constant chosen by `match`, so no caller-supplied text is ever
 /// interpolated into the SQL. The clauses mirror the frontend's original `filterAndSortMedia`
-/// ordering as closely as SQL allows: `title_normalized` gives accent/case-insensitive title
+/// ordering as closely as SQL allows. `title_normalized` gives accent/case-insensitive title
 /// ordering, published-date sorts always keep dated media before undated (with the undated group
 /// ordered by title), and every category tie-breaks by title then `id` for a deterministic page.
 pub(super) fn resolve_order_by(
@@ -162,7 +162,7 @@ pub async fn list_media_page(
     // Taken from the pool separately they can straddle a concurrent insert or delete (a download
     // finishing, a delete committing), and the grid then renders a page drawn from one version of
     // the table while reporting a total from another. An off-by-one "x of y", or a page whose
-    // offset no longer means what the total says it does. Deferred and read-only: it never asks for
+    // offset no longer means what the total says it does. Deferred and read-only. It never asks for
     // the write lock, so it cannot hit the SQLITE_BUSY_SNAPSHOT upgrade that makes the
     // read-then-write transactions elsewhere use BEGIN IMMEDIATE. In WAL a reader takes its
     // snapshot on the first read and holds it, which is exactly the guarantee wanted here.

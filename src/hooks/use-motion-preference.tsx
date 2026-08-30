@@ -16,7 +16,7 @@ import {
 } from "../utils/motion-preference";
 
 export type MotionPreferenceController = {
-    // What the user chose: follow the operating system, or force one way.
+    // What the user chose, either following the operating system or forcing one way.
     preference: MotionPreference;
     setPreference: (preference: MotionPreference) => void;
     // The resolved answer right now, after applying the preference to what the OS reports.
@@ -30,7 +30,7 @@ export type MotionPreferenceController = {
 // operating system in both directions, and CSS cannot invert a media query on its own.
 export const REDUCE_MOTION_ATTRIBUTE = "data-reduce-motion";
 
-// Fails safe for a consumer rendered outside the provider (a test, a stray component): motion
+// Fails safe for a consumer rendered outside the provider (a test, a stray component). Motion
 // stays on and the setter does nothing, matching what the page did before this existed.
 const MotionPreferenceContext = createContext<MotionPreferenceController>({
     preference: "system",
@@ -53,7 +53,7 @@ function writeStoredPreference(preference: MotionPreference): void {
     try {
         window.localStorage.setItem(MOTION_PREFERENCE_STORAGE_KEY, preference);
     } catch {
-        // Same as above: a write failure costs persistence, not the feature.
+        // Same as above. A write failure costs persistence, not the feature.
     }
 }
 

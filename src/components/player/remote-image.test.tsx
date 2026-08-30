@@ -134,7 +134,7 @@ describe("SafeAvatar", () => {
 });
 
 describe("the remote image privacy gate", () => {
-    // What this pins is the README's plain promise: with "Load comment and live chat images from
+    // What this pins is the README's plain promise. With "Load comment and live chat images from
     // Google" off, viewing saved media makes no network requests at all. That used to rest on every
     // call site remembering to consult the context before rendering an <img>. A convention a
     // component added later could break while Settings still read "off". These assertions are over

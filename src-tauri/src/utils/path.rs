@@ -198,7 +198,7 @@ pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
 /// managed subdirectories (video/audio/thumbnails/live_chat).
 ///
 /// The managed-directory requirement is what keeps this from being a foothold for arbitrary
-/// file deletion: every path the app legitimately produces is content-addressed under one of
+/// file deletion. Every path the app legitimately produces is content-addressed under one of
 /// those directories, so a bare name like `contract.docx` is rejected here. Without it, a
 /// compromised frontend could persist such a name and (combined with a redirected library
 /// directory) have a later delete/move command act on a file outside the app's own layout.
@@ -226,7 +226,7 @@ pub fn ensure_managed_library_relative_path(value: &str) -> AppResult<()> {
 
 /// Like [`ensure_managed_library_relative_path`], but requires the path to be rooted at one
 /// specific managed subdirectory rather than any of them. Used by the live chat commands, whose
-/// `relative_path` arrives raw over IPC: `sanitize_relative_path_strict` alone rejects `..`/absolute
+/// `relative_path` arrives raw over IPC. `sanitize_relative_path_strict` alone rejects `..`/absolute
 /// paths but not a sibling managed directory, so without this a "stream/delete a live chat file"
 /// call could be pointed at a video/audio/thumbnail file instead of the `live_chat/` tree it is
 /// meant for.
@@ -339,13 +339,13 @@ pub fn ensure_path_parent_inside_dir(path: &Path, base_dir: &Path) -> AppResult<
 ///
 /// The rule it enforces was previously a separate call the caller made, or did not.
 /// `cleanup_unreferenced_media_artifacts` and `delete_thumbnail_file` both shipped without it, five
-/// weeks apart, each confining a caller-supplied path to the library *root* instead: containment
+/// weeks apart, each confining a caller-supplied path to the library *root* instead. Containment
 /// stopped a traversal, and a bare `contract.docx` still resolved inside the folder the user chose
 /// as their library and was unlinked. Both were listed in the IPC path inventory the whole time (see
 /// `scripts/verify-command-path-surface.js`), which is why the answer had to move from a list into
 /// the type of the thing every one of them calls.
 ///
-/// The variants are the subtrees an operation actually targets, not the four directories: a media
+/// The variants are the subtrees an operation actually targets, not the four directories. A media
 /// file is `video/` or `audio/` depending on what was downloaded, and the delete that removes one
 /// cannot know which ahead of time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -376,14 +376,14 @@ impl ManagedSubtree {
 ///
 /// The `subtree` argument is what makes the managed-directory rule impossible to omit; see
 /// [`ManagedSubtree`] for the two production bugs that came from it being a separate, forgettable
-/// call. Note what this does *not* do: the containment check here is lexical, so a caller unlinking
+/// call. Note what this does *not* do. The containment check here is lexical, so a caller unlinking
 /// or reading the result still re-checks it with [`ensure_existing_path_inside_dir`], which
 /// canonicalizes and therefore also resolves a symlinked intermediate component.
 ///
 /// A path stored in the database is validated on the way in (`video_repository::insert_media` runs
 /// `ensure_managed_library_relative_path`), so a row written by this app always passes. One written
 /// before that validation existed, or by a hand-edited or imported database, can fail here, and that
-/// is the intended direction: the caller reports the artifact as one it could not remove rather than
+/// is the intended direction. The caller reports the artifact as one it could not remove rather than
 /// unlinking a file outside the managed tree on a corrupt row's say-so.
 pub fn absolute_path_from_relative(
     base_dir: &Path,
@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn sanitize_relative_path_allows_four_char_names_ending_in_a_digit() {
         // A four-character stem that ends in a digit but does not start with COM/LPT (e.g.
-        // "pic1", "km2x" is five, "abc9") is a normal name, not a reserved device: the device
+        // "pic1", "km2x" is five, "abc9") is a normal name, not a reserved device. The device
         // check must require *both* the COM/LPT head and the trailing digit, so this must be
         // accepted while COM1/LPT9 stay rejected.
         for path in ["video/pic1.mp4", "audio/abc9.m4a", "thumbnails/xyz0.jpg"] {
@@ -715,7 +715,7 @@ mod tests {
             // A file of the user's that merely shares the folder.
             ("contract.docx", ManagedSubtree::Media),
             ("photos/wedding.jpg", ManagedSubtree::Thumbnails),
-            // A sibling managed directory: managed, and still not the one this call is for. The
+            // A sibling managed directory. Managed, and still not the one this call is for. The
             // generic "is it one of the four" check would have allowed each of these.
             ("video/media_abc.mp4", ManagedSubtree::Thumbnails),
             ("thumbnails/thumb_abc.jpg", ManagedSubtree::LiveChat),
@@ -788,7 +788,7 @@ mod tests {
     #[test]
     fn ensure_path_parent_inside_dir_creates_a_missing_base_dir() {
         // When the base directory does not exist yet, the function must create it (and the
-        // target's parent) rather than fail: the containment check that follows canonicalizes the
+        // target's parent) rather than fail. The containment check that follows canonicalizes the
         // base, which errors on a missing directory. This pins the defensive create-if-missing
         // branch that callers pre-creating the base would otherwise leave unexercised.
         let base_dir = unique_test_dir();

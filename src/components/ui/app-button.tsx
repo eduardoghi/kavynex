@@ -28,7 +28,7 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
             border: "1px solid rgba(124,92,255,0.45)",
             background: "#7C5CFF",
             color: "#ffffff",
-            // A soft, muted shadow rather than a bright glow: a saturated semi-transparent violet
+            // A soft, muted shadow rather than a bright glow. A saturated semi-transparent violet
             // over a near-black OLED background reads as a burned purple halo, so keep the color
             // dark and the alpha low so it registers as depth, not light.
             boxShadow: "0 8px 22px rgba(60,40,120,0.22)",

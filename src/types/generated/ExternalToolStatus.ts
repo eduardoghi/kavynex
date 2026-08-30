@@ -6,7 +6,7 @@ export type ExternalToolStatus = { path: string, version: string, healthy: boole
  * date. Yt-dlp's versions are dates (`2026.07.01`), ffmpeg's are not, so this is `None` for
  * ffmpeg and for anything unparseable.
  *
- * Deliberately a fact rather than a verdict: whether an age is worth warning about is a
+ * Deliberately a fact rather than a verdict. Whether an age is worth warning about is a
  * diagnostics policy, and every other such rule lives in `src/services/diagnostics-rules.ts`
  * rather than being split across the IPC boundary.
  */

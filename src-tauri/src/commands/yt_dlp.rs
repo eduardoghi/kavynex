@@ -53,7 +53,7 @@ pub async fn check_external_tools<R: Runtime>(app: AppHandle<R>) -> AppResult<Ex
 
 // `list_yt_dlp_formats`, `fetch_youtube_comments` and `check_external_tools` are generic over
 // `R: Runtime` like every other command now, so the mock-runtime harness *can* register them. What
-// keeps them out of an IPC test is what they do, not their signature: each resolves and spawns the
+// keeps them out of an IPC test is what they do, not their signature. Each resolves and spawns the
 // real yt-dlp (and ffmpeg) binary, which a deterministic, offline test must not depend on. The
 // URL/video-id validation they perform before ever spawning (host allow-list, empty or malformed id)
 // is covered directly at the service layer in `services/yt_dlp/url.rs` and `metadata.rs`.

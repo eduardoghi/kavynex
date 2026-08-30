@@ -8,7 +8,7 @@ import {
     verifyCommandSurfaceIsUsed,
 } from "./verify-command-surface-is-used.js";
 
-// A miniature version of the real shape: two commands, each registered, named by a constant,
+// A miniature version of the real shape. Two commands, each registered, named by a constant,
 // invoked by an exported wrapper, and called from a hook. Every refusal below is this baseline with
 // exactly one thing broken, so a test that fails names the branch it broke.
 function passingInput(overrides = {}) {
@@ -129,7 +129,7 @@ export async function listMediaPage(channelId) {
 
 describe("findCallers", () => {
     it("does not count the defining file as a caller of its own wrapper", () => {
-        // The whole gate rests on this: a wrapper's own file always mentions its name, so counting
+        // The whole gate rests on this. A wrapper's own file always mentions its name, so counting
         // it would make every wrapper look called.
         expect(
             findCallers("listMediaPage", "src/repositories/media-repository.ts", passingInput().sources)
@@ -137,7 +137,7 @@ describe("findCallers", () => {
     });
 
     it("does not count a barrel that only re-exports the wrapper", () => {
-        // How `delete_thumbnail_file` outlived its last caller by six weeks: src/services/index.ts
+        // How `delete_thumbnail_file` outlived its last caller by six weeks. src/services/index.ts
         // re-exported every service function, the gate saw the name there, and the wrapper passed
         // as called. Single-line, multi-line and star re-exports are all names without calls.
         const sources = passingInput().sources.filter(
@@ -163,7 +163,7 @@ export * from "./thumbnail-service";
     });
 
     it("still counts a file that imports through a barrel and calls the wrapper", () => {
-        // Stripping the barrel's lines must not cost a legitimate caller: the calling file names
+        // Stripping the barrel's lines must not cost a legitimate caller. The calling file names
         // the function in its own text, which is what the match reads.
         const sources = passingInput().sources.filter(
             (file) => file.name !== "src/hooks/use-library.ts"
@@ -227,7 +227,7 @@ describe("verifyCommandSurfaceIsUsed", () => {
     });
 
     it("refuses a registered command whose wrapper nothing calls", () => {
-        // This is the defect the gate was written for, in the exact shape it shipped in twice:
+        // This is the defect the gate was written for, in the exact shape it shipped in twice.
         // `cleanup_unreferenced_media_artifacts` and `delete_live_chat_file` were registered, had a
         // constant, had a wrapper, and had no caller anywhere in the app. Both unlinked files.
         const input = passingInput();
@@ -255,7 +255,7 @@ describe("verifyCommandSurfaceIsUsed", () => {
     });
 
     it("refuses a constant naming a command that is not registered", () => {
-        // The other direction, and it fails at runtime rather than silently: invoking a command the
+        // The other direction, and it fails at runtime rather than silently. Invoking a command the
         // handler does not register comes back as an unknown-command error on the first click.
         const input = passingInput();
         input.handlerSource = input.handlerSource.replace(

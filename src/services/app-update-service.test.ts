@@ -17,7 +17,7 @@ const checkForAppUpdateMock = vi.mocked(checkForAppUpdate);
 const relaunchMock = vi.mocked(relaunch);
 
 // The subset of the plugin's `DownloadEvent` union `installAppUpdate` actually reads. Declared here
-// rather than imported so the test pins the wire shape the service is written against: the plugin
+// rather than imported so the test pins the wire shape the service is written against. The plugin
 // type is what a dependency bump changes, and the point of these assertions is to notice when the
 // service stops agreeing with it.
 type DownloadEvent =
@@ -53,7 +53,7 @@ describe("checkAppUpdate", () => {
     });
 
     it("asks the plugin with the 30s timeout the caller depends on", async () => {
-        // The timeout is the only argument this function contributes, and it is load-bearing:
+        // The timeout is the only argument this function contributes, and it is load-bearing.
         // useAppUpdate's request guard exists because a check can hang for this long, so a check
         // left unbounded would hang the Settings button with nothing to supersede it.
         checkForAppUpdateMock.mockResolvedValue(null);
@@ -79,7 +79,7 @@ describe("checkAppUpdate", () => {
     });
 
     it("propagates a failed check rather than swallowing it into a null", async () => {
-        // Swallowing here would be the worse failure: the hook would render "you are up to date"
+        // Swallowing here would be the worse failure. The hook would render "you are up to date"
         // for a check that never completed, so a user on an outdated build is told the opposite.
         checkForAppUpdateMock.mockRejectedValue(new Error("network unreachable"));
 
@@ -145,7 +145,7 @@ describe("installAppUpdate", () => {
 
     it("reports the download size up front with no percentage yet", async () => {
         // `Started` is the only event carrying the content length, and the percentage is
-        // deliberately null here rather than 0: nothing has been downloaded, and a 0% bar is
+        // deliberately null here rather than 0. Nothing has been downloaded, and a 0% bar is
         // indistinguishable from a stalled one.
         const progress = await collectProgress([
             { event: "Started", data: { contentLength: 400 } },
@@ -205,8 +205,8 @@ describe("installAppUpdate", () => {
     });
 
     it("finishes at 100 percent even when the chunks never summed to the total", async () => {
-        // `Finished` is what the bar completes on, and it must not be derived from the byte count:
-        // a content length that disagrees with the bytes actually delivered would otherwise leave
+        // `Finished` is what the bar completes on, and it must not be derived from the byte count.
+        // A content length that disagrees with the bytes actually delivered would otherwise leave
         // the bar short of the end for an install that succeeded.
         const progress = await collectProgress([
             { event: "Started", data: { contentLength: 1000 } },
@@ -236,7 +236,7 @@ describe("installAppUpdate", () => {
     });
 
     it("ignores an event it does not recognize", async () => {
-        // Forward compatibility rather than a shape the plugin emits today: `DownloadEvent` is a
+        // Forward compatibility rather than a shape the plugin emits today. `DownloadEvent` is a
         // union a minor bump can grow, and the three branches here are checks rather than an
         // exhaustive match, so an unknown variant has to fall through silently. Throwing would fail
         // an install that was otherwise fine.
@@ -277,12 +277,12 @@ describe("installAppUpdate", () => {
         // The order, asserted as the order rather than inferred from a failure path. Inverting the
         // two statements in `installAppUpdate` is already caught here, but only by the failure test
         // below, which notices a relaunch that happened before a rejecting download. That is an
-        // incidental catch: it holds because that test exists, not because anything states the rule,
+        // incidental catch. It holds because that test exists, not because anything states the rule,
         // and a version of it written against a *resolving* download would let the inversion pass.
         //
         // The rule is worth naming on its own because getting it wrong is silent and total.
         // `relaunch()` replaces the process, so a relaunch that runs first means the installer never
-        // runs at all: the app restarts into the version the user already had, the progress bar was
+        // runs at all. The app restarts into the version the user already had, the progress bar was
         // real, no error is raised anywhere, and the update simply never happens. The user's only
         // evidence is the update notice still being there afterwards.
         const calls: string[] = [];

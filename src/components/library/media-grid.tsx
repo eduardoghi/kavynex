@@ -19,7 +19,7 @@ type MediaGridProps = {
     // highlights it, then calls onFocusHandled. Used to jump to a media from Diagnostics.
     focusMediaId?: number | null;
     onFocusHandled?: () => void;
-    // Server-side pagination: the grid appends the next page as the user scrolls near the bottom.
+    // Server-side pagination. The grid appends the next page as the user scrolls near the bottom.
     hasMore?: boolean;
     isLoadingMore?: boolean;
     onLoadMore?: () => void;
@@ -42,7 +42,7 @@ type MediaGridProps = {
 const GRID_GAP = 16;
 
 // Space held between the rightmost column and the scroll area's own scrollbar. Without it a card's
-// border sits flush against the scrollbar, and the card highlight is worse off than that: it draws
+// border sits flush against the scrollbar, and the card highlight is worse off than that. It draws
 // a 2px outline at `outlineOffset: 2` (see the focus/jump highlight below), so a highlighted card in
 // the last column had four pixels of ring with nowhere to go.
 //
@@ -50,7 +50,7 @@ const GRID_GAP = 16;
 // two cards, rather than as a second, arbitrary measurement.
 const GRID_SCROLLBAR_GUTTER = GRID_GAP;
 
-// Roughly what sits above the grid inside the viewport: the app shell's padding, the channel
+// Roughly what sits above the grid inside the viewport. The app shell's padding, the channel
 // header, the filter row and the grid's own title. Deliberately an approximation rather than a
 // measurement. Reading it would mean a layout query on a container that re-renders on every scroll
 // tick, which is the cost this file already refuses to pay for row heights (see measureFirstRow).
@@ -58,7 +58,7 @@ const GRID_SCROLLBAR_GUTTER = GRID_GAP;
 const GRID_CHROME_ABOVE = 300;
 
 // The inner scroll area the virtualizer measures against. This was a flat `70vh`, which is wrong in
-// both directions once the window is not about 1080 tall: on a short window the grid plus the chrome
+// both directions once the window is not about 1080 tall. On a short window the grid plus the chrome
 // above it overflow, so the page scrolls behind a grid that is itself scrolling, and on a tall one a
 // fixed fraction leaves viewport unused that a fourth row would have filled.
 //
@@ -169,7 +169,7 @@ export function MediaGrid({
     );
 
     // Measured on the outer box, so the gutter reserved for the scrollbar has to come off before the
-    // breakpoints are applied: the cards divide what is left, not what was measured. Without the
+    // breakpoints are applied. The cards divide what is left, not what was measured. Without the
     // subtraction a window sitting just above a breakpoint would be given a column that then has
     // GRID_SCROLLBAR_GUTTER less room than the breakpoint was chosen for.
     const columnCount = useMemo(
@@ -179,7 +179,7 @@ export function MediaGrid({
 
     // Display-sized copies of the thumbnails on screen, so a card decodes a few hundred pixels
     // rather than the stored file's full resolution. Resolved for every loaded item rather than only
-    // the virtualized window: the window changes on every scroll tick, and asking per tick would
+    // the virtualized window. The window changes on every scroll tick, and asking per tick would
     // turn a scroll into a stream of IPC calls. Purely an optimization. A path with no entry here
     // renders the stored thumbnail, which is what every card did before this existed.
     const displayThumbnails = useDisplayThumbnails(
@@ -216,12 +216,12 @@ export function MediaGrid({
     // The index of the last row currently rendered, which is the only thing the infinite-scroll
     // effect below reads out of the virtualizer. Depending on the number rather than on
     // `virtualRows` is what keeps that effect from re-running on frames where nothing it cares
-    // about moved: `getVirtualItems()` returns a freshly built array on every render, and this
+    // about moved. `getVirtualItems()` returns a freshly built array on every render, and this
     // component re-renders on every scroll tick (that is what `useVirtualizer` does), so the effect
     // was running, re-evaluating its four guards and returning, once per frame of every scroll.
     const lastVisibleRowIndex = virtualRows[virtualRows.length - 1]?.index ?? -1;
 
-    // Infinite scroll: when the last virtualized row comes into view and the backend reports more
+    // Infinite scroll. When the last virtualized row comes into view and the backend reports more
     // matching rows, ask for the next page. isLoadingMore guards against firing repeatedly while a
     // page is in flight.
     useEffect(() => {

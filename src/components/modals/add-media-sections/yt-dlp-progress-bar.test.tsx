@@ -62,7 +62,7 @@ describe("YtDlpProgressBar", () => {
     });
 
     it("reports the real value to assistive tech while downloading", () => {
-        // The other half of the rule above: a percentage is a measurement, so it is announced.
+        // The other half of the rule above. A percentage is a measurement, so it is announced.
         renderWithMantine(
             <YtDlpProgressBar progress={{ phase: "downloading", percent: 41 }} isRunning />
         );

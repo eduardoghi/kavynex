@@ -92,11 +92,11 @@ function normalizeFetchedComments(comments: YtDlpComment[]): YtDlpComment[] {
 }
 
 // Measures the media that was just created and stores the result. Best effort and deliberately
-// after the fact: the probe decodes the file through a media element, so it can only run here, and
+// after the fact. The probe decodes the file through a media element, so it can only run here, and
 // a media whose duration cannot be read is a card without a runtime rather than a failed import.
 //
 // It used to run *inside* the creation, between the crash marker and the insert. Besides putting a
-// renderer step in the middle of a backend transaction, that placement carried a real hazard: the
+// renderer step in the middle of a backend transaction, that placement carried a real hazard. The
 // probe settles on `loadedmetadata` or `error`, and a source that fires neither left the promise
 // pending forever with the marker on disk and the row never inserted.
 async function tryStoreMeasuredDuration(
@@ -209,7 +209,7 @@ export async function refreshMediaComments(
         // generated run id back through React state.
         commentsRefreshRunId(mediaId)
     );
-    // Guard the payload shape before normalizing it: normalizeFetchedComments maps over the value,
+    // Guard the payload shape before normalizing it. normalizeFetchedComments maps over the value,
     // so a non-array would throw a raw TypeError there instead of this friendly AppError. The IPC
     // seam already validates this against a zod array schema, so this is defense in depth that must
     // still run first to mean anything.
@@ -231,7 +231,7 @@ export async function refreshMediaComments(
         // had ever been fetched for, so the player kept offering a Fetch button and the user could
         // re-run a refresh that could never return anything.
         //
-        // Deliberately not `replaceMediaCommentsInBackend(mediaId, [])`: that deletes before it
+        // Deliberately not `replaceMediaCommentsInBackend(mediaId, [])`. That deletes before it
         // inserts, so it would wipe a saved backup because a later fetch came back empty. This one
         // writes only the state, and only when no comments are stored.
         await markMediaCommentsAbsentInBackend(mediaId);
@@ -258,7 +258,7 @@ export async function createMedia(
 
     await emitProgress(options.onProgress, "Registering media in local library...");
 
-    // One call, and everything that used to be sequenced here is inside it: the duplicate
+    // One call, and everything that used to be sequenced here is inside it. The duplicate
     // pre-check, the download or import, the thumbnail, the crash marker, the insert and the
     // marker's removal. What that buys is not fewer lines but a window that no longer crosses the
     // process boundary, and an exclusion against a concurrent cleanup that is a backend lock rather
@@ -285,7 +285,7 @@ export async function createMedia(
     await emitProgress(options.onProgress, "Media registered successfully.");
 
     // Everything below runs against a media that is already registered, which is why it stayed on
-    // this side: each step is best effort, none of it can strand an artifact, and the duration probe
+    // this side. Each step is best effort, none of it can strand an artifact, and the duration probe
     // needs a media element the backend does not have.
     await tryStoreMeasuredDuration(created, normalizedInput.libraryPath);
 
@@ -299,7 +299,7 @@ export async function createMedia(
                 options.onProgress
             );
         } else {
-            await emitProgress(options.onProgress, "Skipping comments: disabled by user.");
+            await emitProgress(options.onProgress, "Skipping comments because the user disabled them.");
         }
 
         if (normalizedInput.downloadLiveChat) {
@@ -312,7 +312,7 @@ export async function createMedia(
                 );
             }
         } else {
-            await emitProgress(options.onProgress, "Skipping live chat: disabled by user.");
+            await emitProgress(options.onProgress, "Skipping live chat because the user disabled it.");
         }
     }
 

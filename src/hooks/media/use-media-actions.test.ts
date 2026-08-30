@@ -255,7 +255,7 @@ describe("useMediaActions", () => {
             })
         );
 
-        // Keying the guard by media id must not lose the guard itself: the same row toggled
+        // Keying the guard by media id must not lose the guard itself. The same row toggled
         // twice concurrently still runs once.
         await act(async () => {
             await Promise.all([result.current.markAsWatched(1), result.current.markAsWatched(1)]);
@@ -476,7 +476,7 @@ describe("useMediaActions", () => {
             await result.current.cancelRefreshComments(1);
         });
 
-        // Best effort: the run finished before the cancel reached it, which is not worth
+        // Best effort. The run finished before the cancel reached it, which is not worth
         // reporting to the user.
         expect(onNotice).not.toHaveBeenCalled();
         expect(onError).not.toHaveBeenCalled();
@@ -687,7 +687,7 @@ describe("useMediaActions", () => {
         const first = createMediaRow({ id: 1 });
         const second = createMediaRow({ id: 2 });
 
-        // Left in flight on purpose: this is the state that used to swallow the next refresh.
+        // Left in flight on purpose. This is the state that used to swallow the next refresh.
         let firstRefresh: Promise<void>;
         act(() => {
             firstRefresh = result.current.refreshComments(first);
@@ -707,7 +707,7 @@ describe("useMediaActions", () => {
     });
 
     it("ignores a second refresh of the same media while one is in flight", async () => {
-        // The other half of the guard: keying by id must still stop the same row being refreshed
+        // The other half of the guard. Keying by id must still stop the same row being refreshed
         // twice at once, which is what the shared flag got right.
         const mediaPlayer = createMediaPlayer();
 

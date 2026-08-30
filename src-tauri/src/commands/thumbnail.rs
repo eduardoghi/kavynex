@@ -67,7 +67,7 @@ pub async fn resolve_display_thumbnails<R: Runtime>(
     library_path: String,
 ) -> AppResult<Vec<DisplayThumbnail>> {
     // Taken before the library-path check rather than after it, so a refused call costs one atomic
-    // rather than a settings read. That ordering is safe only because the refusal reveals nothing: it
+    // rather than a settings read. That ordering is safe only because the refusal reveals nothing. It
     // is the same answer for a valid and an invalid library path, and no path is touched either way.
     //
     // `all_retryable` bounds the answer by the module's own per-call ceiling rather than by the
@@ -88,10 +88,10 @@ pub async fn resolve_display_thumbnails<R: Runtime>(
 /// path there, so the manual-thumbnail preview can be drawn without widening the asset scope to the
 /// file the user chose.
 ///
-/// The copy is what keeps the preview out of the asset scope, and it must stay that way: a
+/// The copy is what keeps the preview out of the asset scope, and it must stay that way. A
 /// per-file grant is the shape this deliberately does not have. Tauri's scope offers no way to
 /// withdraw a grant, so those accumulated for the whole session, and the obvious cleanup is worse
-/// than the problem: a forbid outranks every later allow, so revoking a preview would make the same
+/// than the problem. A forbid outranks every later allow, so revoking a preview would make the same
 /// image picked for a second media silently render nothing. Staging a copy in a directory that is
 /// already authorized removes the grant entirely instead of managing it.
 #[tauri::command]

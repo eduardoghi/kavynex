@@ -20,7 +20,7 @@ export function useHomeViewState({
     mediaPlayer,
     libraryPath = "",
 }: UseHomeViewStateOptions): HomeViewState {
-    // Color-scheme-aware via the CSS `light-dark()` function: the first value applies in the light
+    // Color-scheme-aware via the CSS `light-dark()` function. The first value applies in the light
     // scheme, the second in dark. Mantine sets `color-scheme` on the root when the theme toggles, so
     // these resolve automatically wherever they are used as inline style values. The light values are
     // a deliberate light palette (a soft off-white page with raised white surfaces), not a mechanical
@@ -51,7 +51,7 @@ export function useHomeViewState({
     const showLibrary = mediaPlayer.viewMode === "library";
     const showPlayer = mediaPlayer.viewMode === "player";
 
-    // Independent of whether channels exist: a fresh install has neither, and a channel can be
+    // Independent of whether channels exist. A fresh install has neither, and a channel can be
     // created before the folder is picked, so the card has to stand next to the empty state as
     // well as above a channel's library. Gated on the settings having loaded, because until then
     // an empty path means "not read yet" rather than "not set".

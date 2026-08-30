@@ -66,7 +66,7 @@ export async function persistThumbnailFile(
     );
 }
 
-// Fetching a thumbnail by URL is not called from here any more: its only caller resolved the
+// Fetching a thumbnail by URL is not called from here any more. Its only caller resolved the
 // thumbnail for a media being created, and that whole sequence runs in the backend now
 // (`create_media`). The avatar download below stays, because it is its own operation. A user
 // changing a channel's picture, with no artifacts-without-a-row window behind it.
@@ -98,7 +98,7 @@ export async function downloadChannelAvatarFromHandle(
  * What one call learned about the paths it asked about.
  *
  * Two collections rather than one map, because "no derivative" is two different facts and the caller
- * has to act on them differently: it stops asking about a `settled` path and keeps asking about
+ * has to act on them differently. It stops asking about a `settled` path and keeps asking about
  * anything else. Folding them back into a single map here would discard on this side exactly the
  * distinction the backend was changed to report.
  */
@@ -127,7 +127,7 @@ const EMPTY_RESOLUTION: DisplayThumbnailResolution = {
  * instead.
  *
  * A path with no derivative is simply absent from `displayPaths`, which is the normal answer rather
- * than a failure: the caller keeps rendering the stored file. Blanks and duplicates are dropped
+ * than a failure. The caller keeps rendering the stored file. Blanks and duplicates are dropped
  * before the call so the backend's per-call generation budget is spent on distinct real work.
  */
 export async function resolveDisplayThumbnails(
@@ -164,7 +164,7 @@ export async function resolveDisplayThumbnails(
         const answer = resolved[index];
 
         // An answer shorter than the request leaves the tail unsettled rather than shifting the
-        // remaining answers onto it: an entry with no answer was not decided, so it is asked about
+        // remaining answers onto it. An entry with no answer was not decided, so it is asked about
         // again rather than recorded as final.
         if (!answer) {
             return;

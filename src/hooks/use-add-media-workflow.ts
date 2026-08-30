@@ -32,7 +32,7 @@ type UseAddMediaWorkflowOptions = {
     // channel rather than the error modal (the same split useMediaActions makes for "no comments
     // were found").
     onNotice: (message: string) => void;
-    // Reloads the current channel's media list. Takes no channel argument on purpose: the wired
+    // Reloads the current channel's media list. Takes no channel argument on purpose. The wired
     // implementation (useChannelMediaList.reloadMedia) always reloads the currently selected
     // channel from its own ref, so a passed id would be silently ignored.
     onReloadMedia: () => Promise<void>;
@@ -63,7 +63,7 @@ export function useAddMediaWorkflow({
     const [addMediaOpen, setAddMediaOpen] = useState(false);
 
     // Both operations guard reentrancy through useAsyncFlag, whose ref is set before any
-    // await: two synchronous invocations can never both pass the guard, so a double
+    // await. Two synchronous invocations can never both pass the guard, so a double
     // click cannot start two downloads (each with its own run id).
     const { isRunning: isAddingMedia, runWithFlag: runAddMedia } = useAsyncFlag();
     const {
@@ -98,7 +98,7 @@ export function useAddMediaWorkflow({
     // objects so the callbacks and effects below can depend on them directly. This keeps the
     // dependency arrays honest (no eslint-disable) while still not depending on the whole
     // objects, whose identity changes every render. isGeneratingThumb, isLoadingYtDlpFormats,
-    // and isYtDlpRunning are deliberately NOT destructured here: closeAddMediaModal below must
+    // and isYtDlpRunning are deliberately NOT destructured here. closeAddMediaModal below must
     // read them live off addMediaForm/ytDlpEvents at call time rather than from a snapshot
     // captured at the last render (see the "does not close the modal while ..." tests, which
     // flip these flags on the mocked controllers without triggering a re-render in between).
@@ -240,7 +240,7 @@ export function useAddMediaWorkflow({
                 markStopped();
 
                 // A cancelled run travels as an error because that is how the backend unwinds it,
-                // but it is the outcome the user clicked for: the run stopped and nothing was left
+                // but it is the outcome the user clicked for. The run stopped and nothing was left
                 // behind. Reporting it through the error modal told them something went wrong when
                 // the thing they asked for is exactly what happened.
                 //
@@ -291,7 +291,7 @@ export function useAddMediaWorkflow({
     ]);
 
     const cancelYtDlpDownload = useCallback(async (): Promise<void> => {
-        // Two sources for one id, because the two modes track it in different places: a download
+        // Two sources for one id, because the two modes track it in different places. A download
         // keeps it in useYtDlpEvents (which also needs it to correlate the log stream), while a
         // local import has no events and keeps its own ref. The yt-dlp branch is unchanged, down to
         // requiring isYtDlpRunning, so a stale id from a finished download still cancels nothing;

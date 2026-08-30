@@ -1,4 +1,4 @@
-//! The library feature family: the user-chosen media directory, everything that reads, writes,
+//! The library feature family. The user-chosen media directory, everything that reads, writes,
 //! validates or repairs it. Each concern is a submodule here rather than a `library_*` sibling of
 //! this file; see `services/mod.rs` for why the grouping exists.
 //!
@@ -68,7 +68,7 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
 
     // Refuse UNC / network locations before any filesystem call. Both `path` and
     // `library_path` arrive over IPC, and the containment check below cannot be trusted to
-    // catch this because `library_path` is caller-supplied too: an attacker who drives IPC can
+    // catch this because `library_path` is caller-supplied too. An attacker who drives IPC can
     // pass a `\\host\share` as both, making `starts_with` trivially true. Rejecting here (and
     // before the `canonicalize` calls, which is what would trigger the SMB/NTLM handshake),
     // closes that. The cost is that a library kept on a network share loses only the "reveal in
@@ -91,7 +91,7 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
     // library cases below. It is the one failure here with a cause the user recognizes and can act
     // on (the file was moved, deleted, or lives on a drive that is not plugged in), and the
     // frontend cannot tell it apart from the others once they all arrive as InvalidMediaPath. Only
-    // NotFound is treated this way: a permission error or an IO failure says nothing about the file
+    // NotFound is treated this way. A permission error or an IO failure says nothing about the file
     // being gone.
     let canonical_path = std::fs::canonicalize(&resolved_path).map_err(|error| {
         let code = if error.kind() == std::io::ErrorKind::NotFound {
@@ -122,7 +122,7 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
 /// Reveals a media file (or the library folder itself) in the OS file manager.
 ///
 /// The containment is the whole of what this function adds, and it is why it stays here while the
-/// spawn does not: `resolve_path_inside_library` confines a caller-supplied `path` to the
+/// spawn does not. `resolve_path_inside_library` confines a caller-supplied `path` to the
 /// configured library before anything is revealed. `services::file_manager` performs the reveal and
 /// deliberately decides nothing about which paths are allowed. See its module comment for the two
 /// callers and how each answers that question.
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn reports_a_missing_file_as_missing_rather_than_invalid() {
-        // The one failure here with a cause the user recognizes: the file was moved, deleted, or
+        // The one failure here with a cause the user recognizes. The file was moved, deleted, or
         // sits on a drive that is not plugged in. Sharing InvalidMediaPath with the empty-path and
         // outside-the-library cases left it reaching them as "the selected media item is invalid",
         // which describes their library rather than their disk.
@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn keeps_a_path_outside_the_library_distinct_from_a_missing_one() {
-        // Both fail, but only one is the user's file being gone: a path that resolves outside the
+        // Both fail, but only one is the user's file being gone. A path that resolves outside the
         // library is a containment failure, and reporting it as "missing" would send the user
         // looking for a file that is right where they left it.
         let library = make_temp_library("outside-library-code");

@@ -25,7 +25,7 @@ export async function registerLibraryAssetScope(libraryPath: string): Promise<vo
 }
 
 // There used to be an `allowAssetFile` here, which authorized one user-picked image so the manual
-// thumbnail preview could load it. It is gone: the scope has no way to withdraw a grant, so those
+// thumbnail preview could load it. It is gone. The scope has no way to withdraw a grant, so those
 // accumulated for the whole session, and revoking one would have been worse (a forbid outranks every
 // later allow, so the same image picked twice would stop rendering). The preview now draws a staged
 // copy from a directory that is already authorized. See `stageManualThumbnail` in

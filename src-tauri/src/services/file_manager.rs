@@ -1,7 +1,7 @@
 //! Revealing a path in the operating system's own file manager.
 //!
 //! This used to live inside `services::library`, which is where its first caller was but not where
-//! it belongs: resolving `explorer.exe`/`open`/`xdg-open` and spawning it has nothing to do with
+//! it belongs. Resolving `explorer.exe`/`open`/`xdg-open` and spawning it has nothing to do with
 //! the user's media directory. It moved when a second caller appeared (the Diagnostics dialog's
 //! "Open log folder"), and the alternative was a second copy of the three platform spawn branches,
 //! which is exactly the kind of duplicated rule this codebase gates elsewhere rather than tolerates.
@@ -55,7 +55,7 @@ fn strip_windows_verbatim_prefix(path: &Path) -> PathBuf {
 /// hijack class `services::binaries` was hardened against for yt-dlp and ffmpeg
 /// (`resolve_from_path_var`, and `docs/THREAT-MODEL.md`'s "External binary resolution"). These spawns
 /// sat outside that policy only because they lived in a different module, not because a file manager
-/// deserves less care than a downloader: it is spawned from a process that owns the user's library.
+/// deserves less care than a downloader. It is spawned from a process that owns the user's library.
 ///
 /// Windows and macOS have a fixed system location for theirs, so those are absolute paths built
 /// from `%SystemRoot%` (set by the OS, not by any caller) and a literal respectively. Linux has no
@@ -88,12 +88,12 @@ fn resolve_file_manager_binary() -> AppResult<PathBuf> {
 /// Reveals an already-canonical, already-authorized path in the OS file manager.
 ///
 /// `failure_code` is the error code a failed spawn is reported under, and it is a parameter rather
-/// than a constant because the two callers are different operations: a media file that will not
+/// than a constant because the two callers are different operations. A media file that will not
 /// reveal is an `InvalidMediaPath` to the flow that asked, while the log folder failing to open is
 /// not about a media path at all. Passing it keeps each caller's observable error honest instead of
 /// making one of them lie for the other's benefit.
 ///
-/// See the module comment for the contract this does *not* enforce: the caller must already have
+/// See the module comment for the contract this does *not* enforce. The caller must already have
 /// decided that this path is one the app may reveal.
 ///
 /// Each platform block ends with an explicit `return` because the sibling `#[cfg]` blocks are
@@ -175,11 +175,11 @@ pub(crate) fn reveal_canonical_path(
 /// user deleting the folder while the app runs, and revealing a directory that is not there fails
 /// on every platform, which would surface as a button that sometimes does nothing. Creating it
 /// makes the button always land somewhere. It is safe to create because the path is derived from
-/// the OS, never from a caller: this is not the caller-chosen `create_dir_all` that
+/// the OS, never from a caller. This is not the caller-chosen `create_dir_all` that
 /// `docs/THREAT-MODEL.md` records as an accepted residual for `ensure_directory_exists`.
 ///
 /// Split out from [`reveal_app_log_dir`] because it is the whole of that function a test can
-/// observe: the resolution needs a live `AppHandle` and the reveal spawns a real file manager,
+/// observe. The resolution needs a live `AppHandle` and the reveal spawns a real file manager,
 /// neither of which belongs in a unit test.
 fn prepare_dir_for_reveal(dir: &Path) -> AppResult<PathBuf> {
     std::fs::create_dir_all(dir).map_err(|error| {
@@ -205,14 +205,14 @@ fn prepare_dir_for_reveal(dir: &Path) -> AppResult<PathBuf> {
 
 /// Reveals the app's log directory in the OS file manager.
 ///
-/// Takes no path, and that is the point rather than a convenience: this is the one thing that makes
+/// Takes no path, and that is the point rather than a convenience. This is the one thing that makes
 /// it safe without a containment check. The README asks users to attach `kavynex.log` to a bug
 /// report and then tells them where to find it per OS; a command that accepts a path could be
 /// redirected by a compromised renderer to reveal any directory on disk, so it accepts none and
 /// asks Tauri where the log directory is.
 ///
 /// No network-location refusal, deliberately, and for the same reason `set_external_backup_dir` has
-/// none: the UNC rule exists to stop a *caller-supplied* path pointing at an attacker's host, and
+/// none. The UNC rule exists to stop a *caller-supplied* path pointing at an attacker's host, and
 /// this path comes from the OS. A Windows profile redirected onto a corporate share is a supported
 /// configuration where refusing would break the feature for the user whose own share it is.
 pub fn reveal_app_log_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<()> {
@@ -241,7 +241,7 @@ mod tests {
     }
 
     // The property that matters is the same on every platform and is what a bare-name spawn would
-    // not have: whatever this returns is an absolute path, so the OS never gets to pick the
+    // not have. Whatever this returns is an absolute path, so the OS never gets to pick the
     // executable out of its own search order (which on Windows starts with the application's
     // directory). Split per target because each one resolves it a different way.
 
@@ -272,7 +272,7 @@ mod tests {
     fn file_manager_resolves_xdg_open_to_an_absolute_path_when_it_is_installed() {
         // xdg-open is not guaranteed on every machine the suite runs on (it is a desktop package,
         // and ci.yml's Ubuntu job does not install it), so a missing one is a valid outcome rather
-        // than a failure. What is asserted is the part that must hold whenever it *is* found: the
+        // than a failure. What is asserted is the part that must hold whenever it *is* found. The
         // lookup went through the PATH-only search and produced an absolute path, never the bare
         // name the OS would have resolved itself.
         if let Ok(resolved) = resolve_file_manager_binary() {
@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn preparing_a_directory_creates_it_when_it_is_missing() {
-        // The branch the log-folder button depends on: the directory is created by logger::init at
+        // The branch the log-folder button depends on. The directory is created by logger::init at
         // startup, but that is best effort and the user can delete it while the app runs. Without
         // the create, revealing it fails and the button does nothing.
         let dir = unique_test_dir("missing");

@@ -24,7 +24,7 @@ pub async fn delete_media_with_artifacts<R: Runtime>(
 pub async fn update_media_title(db: State<'_, Db>, media_id: i64, title: String) -> AppResult<()> {
     ensure_valid_media_title(&title)?;
 
-    // Store the trimmed title: validation checks the trimmed form, so persist that rather than a
+    // Store the trimmed title. Validation checks the trimmed form, so persist that rather than a
     // padded value.
     let title = title.trim();
 
@@ -70,13 +70,13 @@ pub async fn mark_media_as_unwatched(db: State<'_, Db>, media_id: i64) -> AppRes
 
 /// Records the duration the renderer measured for a media that has already been created.
 ///
-/// The probe runs after `create_media` returns, not inside it: it decodes the file through a media
+/// The probe runs after `create_media` returns, not inside it. It decodes the file through a media
 /// element, which is a capability the webview has and the backend would have to re-implement over
 /// FFmpeg to match. Keeping it outside also keeps it off the creation's critical path. It used to
 /// sit between the crash marker and the insert, where a source that never fired `loadedmetadata` nor
 /// `error` would hang the whole creation with the marker on disk.
 ///
-/// A negative or absurd value is refused rather than stored: it arrives over IPC, and a duration is
+/// A negative or absurd value is refused rather than stored. It arrives over IPC, and a duration is
 /// only ever a count of seconds.
 #[tauri::command]
 pub async fn update_media_duration(
@@ -162,7 +162,7 @@ mod tests {
     ///
     /// These tests used to seed through the `insert_media` command, which is what kept that command
     /// registered long after `create_media` had made it dead IPC surface. Seeding through the
-    /// repository instead is what let it be removed: the row is what these tests need, and how it got
+    /// repository instead is what let it be removed. The row is what these tests need, and how it got
     /// there is not what any of them is about.
     fn seed_pool(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> sqlx::SqlitePool {
         let db = webview.state::<Db>();
@@ -249,7 +249,7 @@ mod tests {
     }
 
     // The five tests that pinned `insert_media`'s validation over IPC moved with that validation,
-    // into `services::video_repository`'s own test module: the trimmed and blank youtube id, the
+    // into `services::video_repository`'s own test module. The trimmed and blank youtube id, the
     // unmanaged file path, the empty title and the invalid media type. They assert the same
     // behaviors against the function that now performs them, which is also the one every caller
     // reaches. The command layer was never the only way in, it was just the only one being tested.

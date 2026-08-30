@@ -139,12 +139,12 @@ describe("youtube utils", () => {
 // The backend has its own copy of this rule (is_valid_youtube_handle in
 // src-tauri/src/utils/validation.rs) that rejects a malformed handle regardless of what this
 // client check let through. The two are independent implementations that must agree on every
-// normalized handle: if they drift, an input this side accepts comes back as a raw backend error
+// normalized handle. If they drift, an input this side accepts comes back as a raw backend error
 // instead of the friendly one the UI expects. Both sides assert against the same shared fixture so
 // a divergence fails a test here (and the mirrored one in validation.rs) rather than reaching a
 // user. Add a case to shared/youtube-handle-cases.json and both checks pick it up.
 describe("isValidNormalizedYoutubeHandle shared parity fixture", () => {
-    // Resolved from the repo root (vitest's cwd), not import.meta.url: vitest does not serve the
+    // Resolved from the repo root (vitest's cwd), not import.meta.url. Vitest does not serve the
     // test module as a file: URL, so fileURLToPath would reject it.
     const fixture = JSON.parse(
         readFileSync(resolve(process.cwd(), "shared/youtube-handle-cases.json"), "utf-8")

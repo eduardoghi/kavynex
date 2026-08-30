@@ -4,7 +4,7 @@ import { Music, Play } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { fileSrcFromAbsolutePath, fileSrcFromStoredPath } from "../../utils/media-utils";
 
-// The image block at the top of a media card: the thumbnail itself (with its missing-file
+// The image block at the top of a media card. The thumbnail itself (with its missing-file
 // fallback), the state badges laid over it, and the duration pill in its corner.
 //
 // Split out of `media-card.tsx` because it is the one part of a card that owns state. Everything
@@ -73,7 +73,7 @@ type MediaCardThumbnailProps = {
     // The library-relative path stored on the row, and the absolute path of the display-sized copy
     // when one has been resolved (see hooks/use-display-thumbnails.ts). The derivative is preferred
     // because the webview decodes an image at its natural size. A 1280x720 thumbnail costs the same
-    // bitmap in a 280px card as it would full screen. Both are optional: absent is the ordinary
+    // bitmap in a 280px card as it would full screen. Both are optional. Absent is the ordinary
     // state on first paint and the permanent state whenever a derivative cannot be produced.
     thumbnailPath: string | null;
     libraryPath: string;
@@ -108,12 +108,12 @@ export function MediaCardThumbnail({
 
     // Reset the failure when the thumbnail itself changes, so replacing a missing thumbnail with a
     // new one shows it rather than staying on the placeholder. Keying state to a value is cheaper
-    // and less error-prone here than an effect: the grid keys cards by media id, so this only has
+    // and less error-prone here than an effect. The grid keys cards by media id, so this only has
     // to cover the same card getting a new thumbnail.
     //
     // This is deliberately React's "adjust state directly during render" pattern (the set-state
     // call runs during render, React re-renders immediately before committing), NOT a useEffect.
-    // Do not "fix" it into an effect: an effect would render one frame with the stale thumbFailed
+    // Do not "fix" it into an effect. An effect would render one frame with the stale thumbFailed
     // (a flash of the broken-image placeholder) before resetting. See
     // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
     const [thumbFailed, setThumbFailed] = useState(false);

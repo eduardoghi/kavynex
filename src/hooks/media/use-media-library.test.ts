@@ -94,7 +94,7 @@ function page(items: MediaRow[], total = items.length): MediaPage {
     return { items, total };
 }
 
-// A single stable onError reference is required: useChannelMediaList's real applyQuery
+// A single stable onError reference is required. useChannelMediaList's real applyQuery
 // callback depends on it, so a fresh vi.fn() per render would recreate applyQuery every
 // render.
 const onErrorMock = vi.fn();

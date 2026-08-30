@@ -66,7 +66,7 @@ describe("AddMediaModalActions", () => {
             </form>
         );
 
-        // Worded for the operation in front of the user: "Cancel download" over a file copy would
+        // Worded for the operation in front of the user. "Cancel download" over a file copy would
         // describe the wrong thing. The handler is shared because the backend mechanism is. An
         // import registers the same kind of run a download does.
         const button = screen.getByRole("button", { name: /cancel import/i });
@@ -77,7 +77,7 @@ describe("AddMediaModalActions", () => {
     });
 
     it("offers no cancel button in local mode when no import is running", () => {
-        // The guard that keeps the button from appearing over an idle form: it is the import being
+        // The guard that keeps the button from appearing over an idle form. It is the import being
         // in flight that makes it meaningful, not the mode.
         renderWithMantine(
             <form>

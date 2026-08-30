@@ -90,7 +90,7 @@ describe("useMediaComments", () => {
             { initialProps: { refreshing: true } }
         );
 
-        // While a refresh is in flight nothing is fetched: reloading now would only re-read the
+        // While a refresh is in flight nothing is fetched. Reloading now would only re-read the
         // pre-refresh rows. Give any stray effect a tick to run, then confirm it stayed quiet.
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(listMock).not.toHaveBeenCalled();

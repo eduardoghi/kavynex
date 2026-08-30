@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
-/// Windows: rewrite a path to its extended-length (`\\?\`) form so filesystem calls made
+/// Windows. Rewrite a path to its extended-length (`\\?\`) form so filesystem calls made
 /// *before* `canonicalize` (create_dir_all, exists, is_dir) are not capped at the 260-char
 /// MAX_PATH limit, matching every post-canonicalize operation, which already builds off the
 /// `\\?\` form `canonicalize` returns. Only a clean, absolute drive path (`C:\...`) is
-/// rewritten: verbatim, UNC and device paths, and any path still carrying `.`/`..` (which are
+/// rewritten. Verbatim, UNC and device paths, and any path still carrying `.`/`..` (which are
 /// literal under `\\?\`), are left untouched, so this never changes how an already-working
 /// path resolves. `canonicalize` still returns the same value it did before, so nothing the
 /// callers hand back to the frontend changes.
@@ -36,7 +36,7 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
         return absolute;
     }
 
-    // No "already prefixed" check here: a path whose first component is `Prefix::Disk` cannot
+    // No "already prefixed" check here. A path whose first component is `Prefix::Disk` cannot
     // start with `\\?\`, since that spelling parses as `Prefix::VerbatimDisk` and returned above.
     // A guard for it was dead code, and the mutation gate reported it as such (the guard replaced
     // by `true` changed nothing observable).
@@ -57,7 +57,7 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
 /// trim on other platforms.
 ///
 /// Deliberately does NOT reject a UNC / network path here (unlike `services::library::guard` and
-/// `services::library::resolve_path_inside_library`, which do): these helpers sit on the
+/// `services::library::resolve_path_inside_library`, which do). These helpers sit on the
 /// library-selection path (onboarding and change-library both call `ensure_directory_exists`/
 /// `resolve_existing_directory`/`is_directory_empty` on the candidate folder), and a library kept
 /// on a network share is a supported configuration (docs/THREAT-MODEL.md. It only loses the
@@ -157,7 +157,7 @@ pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
 
 /// Whether `library_path` resolves to `protected_dir` or a directory inside it, comparing canonical
 /// paths so a symlink or a `..`-laden path cannot dodge the check. Used to keep the library out of
-/// the app's own config directory, where `kavynex.db` and every backup generation live: pointing the
+/// the app's own config directory, where `kavynex.db` and every backup generation live. Pointing the
 /// library there would run library maintenance (which removes managed subdirectories) in the same
 /// tree as the database and defeat the "backups off the library volume" intent. A path that cannot
 /// be canonicalized is treated as *not* inside (fail open); callers validate existence separately,
@@ -415,7 +415,7 @@ mod tests {
 
     // The containment decision behind "the library cannot live inside the app config directory",
     // where the database and its backups sit. Both callers (the settings write and the destructive
-    // migration) trust this answer, so each direction is pinned on its own: a weakened
+    // migration) trust this answer, so each direction is pinned on its own. A weakened
     // `starts_with` here would let the library be moved in among the backups, and an over-eager
     // one would refuse an ordinary folder that merely shares a prefix.
     #[test]
@@ -608,7 +608,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn to_extended_length_path_leaves_verbatim_and_unc_paths_untouched() {
-        // Already verbatim: must not be double-prefixed.
+        // Already verbatim. Must not be double-prefixed.
         let verbatim = PathBuf::from(r"\\?\C:\Users\me\Library");
         assert_eq!(
             to_extended_length_path(verbatim.clone()).to_string_lossy(),

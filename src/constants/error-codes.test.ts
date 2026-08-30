@@ -7,7 +7,7 @@ import { toUserFriendlyError } from "../utils/user-friendly-error";
 
 // error-codes.ts is a hand-maintained mirror of a curated subset of the Rust
 // `AppErrorCode` enum in src-tauri/src/error.rs. It does not (and is not meant to) mirror
-// every backend code: most of the ~110 backend codes are internal failure reasons that
+// every backend code. Most of the ~110 backend codes are internal failure reasons that
 // never need frontend-specific handling and simply fall back to the generic error message.
 // It also declares a handful of frontend-only codes for validation that happens purely in
 // the UI before a backend call is ever made (e.g. duplicate-channel checks), which have no
@@ -19,7 +19,7 @@ import { toUserFriendlyError } from "../utils/user-friendly-error";
 const testFileDir = dirname(fileURLToPath(import.meta.url));
 const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
 
-// Client-side-only codes: validated in the frontend before a backend call is made, so they
+// Client-side-only codes. Validated in the frontend before a backend call is made, so they
 // are never returned by src-tauri/src/error.rs and have no backend code to mirror.
 //
 // Several codes that used to be frontend-only are NOT listed here because the backend now
@@ -30,7 +30,7 @@ const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
 //   INVALID_MEDIA_CREATION_ARGUMENTS: frontend validation for fast UX AND backend validation
 //   at the command boundary (utils::validation), since the backend is the durable trust
 //   boundary.
-// INVALID_CHANNEL_ID stays frontend-only: channel ids reach the backend as a typed i64, so
+// INVALID_CHANNEL_ID stays frontend-only. Channel ids reach the backend as a typed i64, so
 // there is no backend code that rejects an invalid one.
 // CLIENT_ERROR tags a user-facing error authored purely on the frontend (utils/app-error.ts's
 // ClientError), so it has no backend counterpart in error.rs.
@@ -77,7 +77,7 @@ describe("error codes stay in sync with the backend", () => {
     });
 
     it("does not list a frontend-only code that the backend has started emitting", () => {
-        // If this fails, the backend now emits one of these codes for real: drop it from
+        // If this fails, the backend now emits one of these codes for real. Drop it from
         // FRONTEND_ONLY_ERROR_CODES and let the mirroring check above cover it instead.
         for (const code of FRONTEND_ONLY_ERROR_CODES) {
             expect(rustCodes.has(code)).toBe(false);
@@ -85,20 +85,20 @@ describe("error codes stay in sync with the backend", () => {
     });
 });
 
-// The checks above run frontend -> backend: every code the frontend claims to mirror still exists
-// in Rust, which catches a rename. This is the other direction, and it is deliberately *total*:
-// every code error.rs emits is either catalogued with a message of its own, or named below as one
+// The checks above run frontend -> backend. Every code the frontend claims to mirror still exists
+// in Rust, which catches a rename. This is the other direction, and it is deliberately *total*.
+// Every code error.rs emits is either catalogued with a message of its own, or named below as one
 // that falls back on purpose. There is no third outcome, and that is the whole point.
 //
-// It replaced a hand-listed USER_FACING_BACKEND_CODES: thirty codes asserted not to reach the
+// It replaced a hand-listed USER_FACING_BACKEND_CODES. Thirty codes asserted not to reach the
 // generic line. That list was opt-in on precisely the act it existed to protect. A code added to
 // error.rs for a new user-facing refusal was only checked once someone remembered to list it, and
 // forgetting to list it degrades in silence exactly the way forgetting the message does. A
-// partition has nothing to remember: a new Rust code fails this file until it is classified, and
+// partition has nothing to remember. A new Rust code fails this file until it is classified, and
 // classifying it means reading the generic line and deciding whether it is the right answer.
 //
 // Most codes belong below, and that is not a shortcoming. An unreachable canonicalize failure, a
-// temp-directory create that only fails when the disk is full: the generic line plus the backend
+// temp-directory create that only fails when the disk is full. The generic line plus the backend
 // detail is the right answer for those, and a bespoke message for each would be noise the user
 // reads instead of a message that matters. What the generic line is NOT for is a failure the user
 // caused and can fix, and nothing about a code's shape separates the two, which is why the split
@@ -138,7 +138,7 @@ const INTERNAL_BACKEND_CODES = new Set([
     "CANONICALIZE_TARGET_PARENT_FAILED",
     "RELATIVE_PATH_RESOLVE_FAILED",
 
-    // services/filesystem.rs: the atomic copy/replace primitives and the post-download file
+    // services/filesystem.rs. The atomic copy/replace primitives and the post-download file
     // matching. Every one is an I/O failure mid-operation, where the detail line (the OS error) is
     // the diagnostic and a rephrasing would add nothing.
     "SOURCE_FILE_NOT_FOUND",
@@ -190,7 +190,7 @@ const INTERNAL_BACKEND_CODES = new Set([
     "YT_DLP_WAIT_FAILED",
 ]);
 
-// Passed as the backend message so the two outcomes can be told apart: a catalogued code answers
+// Passed as the backend message so the two outcomes can be told apart. A catalogued code answers
 // with its own line and must never quote this, while an internal one falls back and folds it into
 // the details block.
 const RAW_BACKEND_TEXT = "raw internal backend text";
@@ -199,7 +199,7 @@ describe("every backend error code is classified", () => {
     const rustCodes = [...extractRustErrorCodes(readFileSync(errorRsPath, "utf-8"))];
 
     // Derived rather than written out, so the assertions below survive a rewording of the fallback.
-    // The code cannot collide with a real one: error.rs has no variant named for this test.
+    // The code cannot collide with a real one. error.rs has no variant named for this test.
     const genericFallback = toUserFriendlyError({
         code: "SYNTHETIC_UNCATALOGUED_CODE_FOR_THIS_TEST",
         message: "",
@@ -210,7 +210,7 @@ describe("every backend error code is classified", () => {
     });
 
     it("derives a generic fallback rather than a real message", () => {
-        // Guards the probe itself: if this synthetic code ever resolved to something specific,
+        // Guards the probe itself. If this synthetic code ever resolved to something specific,
         // every assertion below would pass while checking nothing.
         expect(genericFallback).toContain("check the app log file");
     });
@@ -223,7 +223,7 @@ describe("every backend error code is classified", () => {
             return;
         }
 
-        // A failure here for a code just added to error.rs is the check working: either write it a
+        // A failure here for a code just added to error.rs is the check working. Either write it a
         // message in utils/user-friendly-error.ts, or add it to INTERNAL_BACKEND_CODES above,
         // having decided that "check the app log file" is the right thing to tell the user.
         expect(message).not.toContain(genericFallback);

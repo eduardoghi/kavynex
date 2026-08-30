@@ -451,7 +451,7 @@ describe("useDiagnostics", () => {
 
         rerender({ libraryPath: "/library", importMode: "copy" });
 
-        // Same libraryPath and importMode: the auto-reload effect must bail out.
+        // Same libraryPath and importMode. The auto-reload effect must bail out.
         expect(getDiagnosticsSummaryMock).toHaveBeenCalledTimes(1);
     });
 
@@ -708,7 +708,7 @@ describe("useDiagnostics", () => {
 
         it("drops a second click while the first is still in flight", async () => {
             // Same guard as the log folder above, and it has its own flag rather than sharing that
-            // one: opening the log folder must not block revealing a file.
+            // one. Opening the log folder must not block revealing a file.
             const onError = vi.fn();
 
             let release: () => void = () => {};

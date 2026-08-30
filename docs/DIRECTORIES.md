@@ -31,7 +31,7 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   because the newest can itself have captured an already-degrading database.
 - `kavynex.db.corrupt` plus `kavynex.db.corrupt.1` .. `kavynex.db.corrupt.2`: databases moved
   aside after a failed restore, rotated the same way so a repeated restore keeps the earlier
-  evidence. Fewer generations than `.bak`: each is a full copy of an already-broken database.
+  evidence. Fewer generations than `.bak`, since each is a full copy of an already-broken database.
 - `kavynex.db.pre-import`: the database as it was before the last applied import, kept so the
   import can be undone. It persists until the next import replaces it.
 - `kavynex.db.integrity-checked`: an empty marker whose mtime records the last time the background
@@ -60,8 +60,8 @@ almost-complete:
   `tauri-plugin-window-state` when the app closes and read back on the next launch (see
   `docs/ARCHITECTURE.md` for where that plugin is registered). Kavynex never reads or writes it
   itself; the name and the location are the plugin's defaults, not something this codebase chooses,
-  so treat the file on your machine as authoritative if it differs. Safe to delete at any time: the
-  next launch opens at the size in `src-tauri/tauri.conf.json` and writes a fresh one.
+  so treat the file on your machine as authoritative if it differs. Safe to delete at any time,
+  since the next launch opens at the size in `src-tauri/tauri.conf.json` and writes a fresh one.
 
 See `docs/DATABASE.md` for the rotation, restore and import rules these files follow. The
 counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in
@@ -78,7 +78,7 @@ snapshot and restore machinery moved into submodules of their own, because it is
 that has to know about all of them at once.
 
 All of the snapshots above sit on the same volume as the live database, so a disk failure takes
-them with it. Every generation, not just the newest: the seven `.bak` files and the `.corrupt` ones
+them with it. Every generation, not just the newest. The seven `.bak` files and the `.corrupt` ones
 are siblings of `kavynex.db`, so the rotation buys nothing against losing the disk. It is depth
 against corruption, not against hardware.
 
@@ -92,7 +92,7 @@ in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir` wri
 database is mirrored (the media files are not), and the folder is left untouched when it is
 unreachable (an unplugged drive) rather than recreated.
 
-What is at stake if it is left off is the metadata rather than the media: the comments, the live
+What is at stake if it is left off is the metadata rather than the media. The comments, the live
 chat, the titles, the publication dates and the channel/watched state all live only in the database,
 and for a video that has since been removed from YouTube none of it can be fetched again. The media
 files are the recoverable half, and `PRIVACY.md` is where that trade is stated for the user.
@@ -125,7 +125,7 @@ in `src-tauri/src/constants.rs`). Three of them hold pure scratch:
 A fourth, `thumb-display/`, holds something different from scratch data: a **display-sized copy** of
 each thumbnail the grid has drawn (`services/thumbnail/display.rs`), named
 `<sha256-of-the-stored-thumbnail>-w<width>.jpg`. The width is in the name so that changing
-`DISPLAY_THUMBNAIL_MAX_WIDTH` invalidates the cache: nothing revalidates a cached file's dimensions,
+`DISPLAY_THUMBNAIL_MAX_WIDTH` invalidates the cache. Nothing revalidates a cached file's dimensions,
 so a name without it would keep serving the old size indefinitely. A stored thumbnail keeps whatever
 size it arrived at (a
 yt-dlp `maxresdefault` is 1280x720), and a webview decodes an image at its natural size regardless
@@ -136,7 +136,7 @@ quarter of that.
 Nothing in the database refers to them. `videos.thumbnail_path` and `channels.avatar_path` still
 point at the canonical file in the library; a derivative is addressed *by* that file's own content
 hash, which is already in its name, so the mapping needs no storage. That is also why the cache is
-safe to delete at any time: a missing entry is regenerated the next time the grid asks, and a
+safe to delete at any time, because a missing entry is regenerated the next time the grid asks, and a
 thumbnail that has been in the library for years gets one the first time it is drawn. If FFmpeg is
 not available, or the source has moved, the grid simply draws the stored file as it always did.
 
@@ -145,11 +145,11 @@ Regenerating a derivative costs an FFmpeg process, and a cache *hit* is a `stat`
 so an age rule discarded the thumbnails the grid draws every day at the same rate as the ones nothing
 had looked at since they were written. Emptying the whole cache every seven days and paying it back
 as a burst of FFmpeg runs on the next scroll. It is bounded by total size instead
-(`DISPLAY_CACHE_MAX_BYTES` in `services/thumbnail/display.rs`): a cache that fits is left entirely
+(`DISPLAY_CACHE_MAX_BYTES` in `services/thumbnail/display.rs`). A cache that fits is left entirely
 alone whatever its age, and one that does not is trimmed oldest-first until it fits.
 
 A fifth, `pending-media/`, is created by `services/pending_media.rs` rather than
-`temp_paths.rs`, and holds something different again: one `pending-*.json`
+`temp_paths.rs`, and holds something different again, one `pending-*.json`
 marker per media creation that has already written its artifacts into the library but has
 not yet inserted the row. Adding media is not a single call, and between those two steps
 the files exist with nothing pointing at them, so the marker names them. It is removed as
@@ -163,7 +163,7 @@ registered row still points at is kept and only a genuine orphan is removed. Fin
 handles it on the next launch and nothing needs to be deleted by hand.
 
 The sweep runs on a short delay rather than inline with startup, so "still present" is not by
-itself enough to act on: a marker written by a creation the user started *after* launch is
+itself enough to act on. A marker written by a creation the user started *after* launch is
 also present, and its row has legitimately not been inserted yet. Consuming it would unlink
 the file being added right now. So the sweep only considers a marker that is neither
 registered as in flight by this process nor newer than the process itself
@@ -174,7 +174,7 @@ A marker whose reconciliation *fails* is kept for the next launch to retry, sinc
 transient (the library drive not mounted yet). Nothing there can tell transient from permanent, so
 the marker carries an `attempts` count and is abandoned after `MAX_MARKER_SWEEP_ATTEMPTS` (5). A
 failure that survives five launches is not a slow drive. Abandoning it means the *record* is given
-up on, never the files: the marker stays on disk and its artifacts stay in the library, where the
+up on, never the files. The marker stays on disk and its artifacts stay in the library, where the
 Diagnostics dialog reports them as unreferenced. The difference is that the failure is logged once,
 at error level with its count, instead of at warning level on every launch forever.
 
@@ -194,7 +194,7 @@ On startup, `lib.rs`'s `setup()` authorizes `thumbs-temp/` and `thumb-display/` 
 two), in the Tauri asset-protocol scope (`commands/security.rs::register_cache_asset_scope`, see
 `THREAT-MODEL.md`), so a thumbnail preview can be shown in the webview via `convertFileSrc` before it is
 persisted and a display derivative can be drawn by the grid. The cache **root** is deliberately not
-granted: on Windows it is the parent of the `logs` directory described below and of the WebView2
+granted, because on Windows it is the parent of the `logs` directory described below and of the WebView2
 profile (`EBWebView/`), and the other three subdirectories here are read by the backend alone. A
 background task
 (`services::temp_cleanup::cleanup_stale_temp_files_sync`, spawned from `lib.rs`) sweeps the cache
@@ -204,12 +204,12 @@ directory on every startup, and the rule it applies depends on what a directory 
   entry older than 7 days (`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/temp_cleanup.rs`), so an
   interrupted download/thumbnail generation does not leak disk space indefinitely.
 - `thumb-display/` is bounded by total size instead, for the reason given above.
-- `pending-media/` is swept by neither: its markers are reconciled by
+- `pending-media/` is swept by neither. Its markers are reconciled by
   `spawn_pending_media_sweep`, which decides per marker (see `marker_is_sweepable`) rather than
   by age, and a marker it cannot reconcile is deliberately kept.
 
 So this one directory has no bound at all, and that is worth stating rather than leaving to be
-noticed: an abandoned marker is never removed by anything. The growth is accepted rather than
+noticed. An abandoned marker is never removed by anything. The growth is accepted rather than
 overlooked. A marker is a couple of hundred bytes, and producing one that is never reconciled takes
 a media creation that crashed *and* five consecutive launches that could not clean up after it, so
 the directory grows at a rate no user will measure. Against that, a sweep able to delete these files
@@ -230,14 +230,14 @@ The logger writes to stderr always, and additionally appends to `kavynex.log` in
 directory once `services::logger::init()` has been called from `lib.rs`'s `setup()`. Log
 lines are `[<RFC 3339 UTC timestamp>] [<LEVEL>] [<scope>] <message>` (for example
 `[2026-07-06T12:34:56Z] [INFO] [app] application setup finished`). When the file passes 5 MB
-(`MAX_LOG_BYTES`), it is rotated: the existing file becomes `kavynex.log.1` (replacing any
+(`MAX_LOG_BYTES`), it is rotated. The existing file becomes `kavynex.log.1` (replacing any
 previous rotation) and a fresh `kavynex.log` is started, so at most two generations are
 ever kept.
 
 ## The library directory
 
 The library directory is user-chosen (persisted as `library_path` in `app_settings`; see
-`docs/DATABASE.md`). There is no default: a fresh install has no library until one is picked, and
+`docs/DATABASE.md`). There is no default, so a fresh install has no library until one is picked, and
 the Home page shows a card saying so (with the same folder picker Settings > Library folder opens)
 until it is. Adding media or an avatar before that is refused with a message saying so. Unlike the
 app-owned directories above, the user can point this anywhere, and `services/library/migration.rs`
@@ -280,7 +280,7 @@ see `build_download_command_args` in `services/yt_dlp/download/command.rs` and
 for a given video+format, and the download path never overwrites an existing destination,
 so re-downloading the same
 video+format keeps the already-catalogued bytes rather than replacing them with a
-re-encode. One consequence worth knowing: because the two schemes differ, downloading a
+re-encode. One consequence is worth knowing. Because the two schemes differ, downloading a
 video via yt-dlp and *separately* importing the same file locally produces two distinct
 on-disk copies (there is no cross-scheme deduplication). Within a single scheme, dedup
 still holds.

@@ -3,7 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import type { ExternalToolName } from "../../../hooks/use-external-tools-availability";
 
 // What each tool is for, so the warning says what will actually break rather than only naming a
-// missing binary. Neither line mentions a source mode: the hook already decided which tools matter
+// missing binary. Neither line mentions a source mode. The hook already decided which tools matter
 // for the mode in view, and a line that hedged about both would read as though it were unsure.
 const TOOL_PURPOSE: Record<ExternalToolName, string> = {
     "yt-dlp": "downloads the media from the URL",

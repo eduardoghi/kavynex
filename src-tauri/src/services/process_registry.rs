@@ -9,7 +9,7 @@
 //! direct child and not the ffmpeg grandchild yt-dlp spawns for a merge/`--convert-thumbnails`,
 //! and whose drop is not even guaranteed to run during runtime teardown.
 //!
-//! This registry closes that gap: every spawn helper registers its child pid here for the
+//! This registry closes that gap. Every spawn helper registers its child pid here for the
 //! child's lifetime, and the app-exit handler tree-kills the whole set. It is backed by a
 //! `std::sync::Mutex` (not tokio's) so the exit handler can drain it synchronously without
 //! touching the async runtime, mirroring `yt_dlp::registry`.
@@ -74,7 +74,7 @@ pub fn tracked_pids() -> Vec<u32> {
 
 /// Synchronously tree-kills every tracked external child. Intended for the app-exit path,
 /// which must not touch the async runtime, so it uses the blocking process-tree kill. Safe to
-/// call alongside [`crate::services::yt_dlp::cancel_all_active_downloads_blocking`]: a pid that
+/// call alongside [`crate::services::yt_dlp::cancel_all_active_downloads_blocking`]. A pid that
 /// both target (the main download child) is simply killed twice, and killing an
 /// already-exited pid is a no-op.
 pub fn kill_all_tracked_blocking() {

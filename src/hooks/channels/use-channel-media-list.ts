@@ -83,7 +83,7 @@ export function useChannelMediaList({
     // repeat a row already on screen.
     //
     // Deduplicating the append is what fixes the repeat, and taking the cursor from the list length
-    // is what would then break: a page whose rows were all dropped as duplicates would leave the
+    // is what would then break. A page whose rows were all dropped as duplicates would leave the
     // length unchanged, so the next `loadMore` would request the same offset again, forever, on
     // every scroll to the bottom. Counting what the backend *returned* keeps the cursor advancing
     // whatever the append decides to keep.
@@ -107,7 +107,7 @@ export function useChannelMediaList({
         totalRef.current = total;
     }, [total]);
 
-    // Derived from the rows handed out rather than from the rows kept, for the reason above: a
+    // Derived from the rows handed out rather than from the rows kept, for the reason above. A
     // deduplicated append leaves the list shorter than the cursor, and reading `mediaItems.length`
     // here would leave "load more" enabled against an offset that has nothing left to give.
     const hasMore = loadedCount < total;
@@ -147,7 +147,7 @@ export function useChannelMediaList({
             lastRequestIdRef.current = requestId;
             setIsLoadingMedia(true);
 
-            // Switching channels: drop the previous channel's page (and its counts) so they do not
+            // Switching channels. Drop the previous channel's page (and its counts) so they do not
             // flash before the new load resolves. A filter change on the same channel keeps the
             // current rows visible under the loading state.
             if (loadedChannelIdRef.current !== channelId) {
@@ -214,7 +214,7 @@ export function useChannelMediaList({
             return;
         }
 
-        // Tie this append to the load that produced the current list: if a newer applyQuery
+        // Tie this append to the load that produced the current list. If a newer applyQuery
         // (a filter change or channel switch) began meanwhile, its id becomes current and this
         // stale append is dropped instead of corrupting the new list.
         const requestId = lastRequestIdRef.current;
@@ -297,14 +297,14 @@ export function useChannelMediaList({
     // this one. A row this list does not hold, at an offset `loadMore` has already passed. Exactly
     // one row moves that way per edit, so exactly one position has to be given back.
     //
-    // What makes this cheap is that the correction costs nothing when it was not needed: refetching
+    // What makes this cheap is that the correction costs nothing when it was not needed. Refetching
     // one position earlier either returns the displaced row (kept) or a row already loaded (dropped
     // by the append's own dedup), and the cursor advances by what the backend returned either way,
     // so it cannot stall. That is the same machinery the dedup already rests on, used from the other
     // end, and it is why this is a subtraction here rather than keyset pagination, or a refetch of
     // the whole scrolled window, which would throw away the pages a rename should not cost.
     //
-    // Deliberately also allowed to raise `hasMore` from false: a channel whose last page held the
+    // Deliberately also allowed to raise `hasMore` from false. A channel whose last page held the
     // displaced row has no later append to correct itself, which is precisely the case that would
     // otherwise stay wrong for the rest of the session. The extra request that follows is one row.
     const handleItemReordered = useCallback((): void => {

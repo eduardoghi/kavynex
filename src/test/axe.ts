@@ -6,11 +6,11 @@
 // not worth taking on for what amounts to fifteen lines. axe-core itself is Deque's own, stable, and
 // dev-scope only. It is never bundled into the app.
 //
-// What these checks are for, and what they are not: they pin the *structure* the virtualized lists
+// What these checks are for, and what they are not. They pin the *structure* the virtualized lists
 // depend on. `MediaGrid` and `ChannelSidebar` render only the rows near the viewport, so assistive
 // technology cannot count the items by walking the DOM. The explicit `list` role plus
 // `aria-setsize`/`aria-posinset` on each row are what restore that, and nothing failed if a refactor
-// dropped them. They are also blind to the things jsdom has no answer for: colour contrast needs
+// dropped them. They are also blind to the things jsdom has no answer for. Colour contrast needs
 // real computed styles, and focus order needs a real layout. Neither is asserted here, and neither
 // should be read as covered.
 import axe, { type AxeResults, type RunOptions } from "axe-core";

@@ -45,7 +45,7 @@ describe("DiagnosticsDatabaseIntegrityCheck", () => {
             expect(screen.getByText("Integrity check reported a problem")).toBeInTheDocument();
         });
 
-        // The detail is the point of the report: "there is a problem" on its own leaves nothing to
+        // The detail is the point of the report. "there is a problem" on its own leaves nothing to
         // act on or to paste into a bug report.
         expect(
             screen.getByText(/row 3 missing from index idx_videos_channel_id/)

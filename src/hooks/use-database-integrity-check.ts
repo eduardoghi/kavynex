@@ -4,7 +4,7 @@ import { logError } from "../utils/app-logger";
 import { resolveErrorMessage } from "../utils/error-message";
 import { useMemoObject } from "./use-memo-object";
 
-// The outcome of a full integrity check as the UI needs it: a healthy result, the problems
+// The outcome of a full integrity check as the UI needs it. A healthy result, the problems
 // SQLite listed (with whether the list was capped), or a failure to run the check at all.
 export type IntegrityResult =
     | { status: "ok" }

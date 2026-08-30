@@ -15,7 +15,7 @@ type MediaPlaybackHandlers<T extends HTMLMediaElement> = {
     handleCanPlay: () => void;
 };
 
-// Shared <video>/<audio> event handlers: seek to the saved progress once metadata loads, and
+// Shared <video>/<audio> event handlers. Seek to the saved progress once metadata loads, and
 // surface playback errors and recovery to the caller. Generic over the media element so each
 // surface keeps its precise event type, both HTMLVideoElement and HTMLAudioElement extend
 // HTMLMediaElement, and the previous per-surface copies were identical apart from that type.

@@ -49,7 +49,7 @@ const MAX_CAPTURED_STDERR_LINES: usize = 100;
 
 // A download that produces no output AND whose temp files stop growing for this long is
 // treated as hung (dead network, deadlocked ffmpeg) and killed. Output alone is not a
-// sufficient liveness signal: a large ffmpeg merge/remux can run for minutes writing to the
+// sufficient liveness signal. A large ffmpeg merge/remux can run for minutes writing to the
 // output file without printing a line, so file growth counts as activity too (see the stall
 // check in the wait loop). This stays generous so a slow-but-progressing download or merge
 // is never killed by mistake.
@@ -75,13 +75,13 @@ const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 // (`yt_dlp::metadata`, `thumbnail::download`). This was a bare `tokio::sync::Semaphore` whose
 // `acquire()` result was `.expect()`ed on the (true) grounds that a 'static semaphore is never
 // closed. The one production `expect` left in the crate. The reasoning was sound and the shape was
-// still the odd one out: the app is built with `panic = "unwind"` precisely so a webview app degrades
+// still the odd one out. The app is built with `panic = "unwind"` precisely so a webview app degrades
 // rather than aborts, and every other impossible-permit case here already answers with a refusal
 // (`thumbnail::display::try_reserve_resolve_slot` collapses the same `Closed` to "no slot").
-// Refusing this one run is the equivalent, and it is the only degradation that keeps the bound:
-// continuing without a permit would drop the concurrency cap the gate exists to hold.
+// Refusing this one run is the equivalent, and it is the only degradation that keeps the bound.
+// Continuing without a permit would drop the concurrency cap the gate exists to hold.
 //
-// The in-flight ceiling is the registry's, not a second number: `register_download_run` runs *before*
+// The in-flight ceiling is the registry's, not a second number. `register_download_run` runs *before*
 // this acquire and already refuses past `MAX_ACTIVE_RUNS`, so the queue behind these permits cannot
 // grow deeper than that. Passing the same value states the relationship rather than inventing a
 // ceiling that can never be reached from a different one.
@@ -102,7 +102,7 @@ fn download_exceeded_runtime(elapsed_ms: u64, max_ms: u64) -> bool {
 
 /// Sums the byte sizes of the files in `dir` whose name starts with `prefix`. The stall
 /// watchdog uses this to tell a silent-but-progressing ffmpeg merge (the output file keeps
-/// growing) apart from a genuinely hung download. Best-effort: unreadable entries are skipped
+/// growing) apart from a genuinely hung download. Best-effort. Unreadable entries are skipped
 /// and a missing/unreadable directory yields 0.
 fn total_matching_file_size(dir: &Path, prefix: &str) -> u64 {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -162,7 +162,7 @@ fn resolve_format_has_video(format_id: &str, formats: &[YtDlpFormatMetadata]) ->
 /// Moves the freshly downloaded temp file into the media directory and returns its final
 /// path. A download filename is deterministic for a given video+format, so a file already at
 /// the destination is content that is already catalogued (and possibly shared with another
-/// channel). It is never overwritten: re-downloading could replace the stored bytes with a
+/// channel). It is never overwritten. re-downloading could replace the stored bytes with a
 /// re-encoded variant, silently changing media already in the library. The existing file is
 /// kept, and the caller's duplicate check decides what to do.
 /// Returns the process-wide lock guarding a specific destination path, creating it on first use.
@@ -222,7 +222,7 @@ fn place_downloaded_file(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    // A single existence check under the placement lock: whether it existed decides both that the
+    // A single existence check under the placement lock. Whether it existed decides both that the
     // fresh bytes are discarded and what the caller reports to the user.
     let kept_existing = final_destination.exists();
 
@@ -298,7 +298,7 @@ fn build_live_chat_relative_path(file_name: &Path) -> String {
 }
 
 /// Cancels every active download and synchronously kills the process tree of each one
-/// whose child has been spawned. Intended to run on app exit: it does not touch the async
+/// whose child has been spawned. Intended to run on app exit. It does not touch the async
 /// runtime, so in-flight yt-dlp/ffmpeg children are terminated instead of being orphaned
 /// when the window closes.
 pub fn cancel_all_active_downloads_blocking() {
@@ -325,14 +325,14 @@ use command::{is_valid_format_id, MAX_RUN_ID_LEN};
 // remembered. See the function's own comment.
 pub(crate) use command::is_valid_run_id;
 
-// Re-exported for the same reason: `events::infer_log_level` labels a line for the in-app terminal
+// Re-exported for the same reason. `events::infer_log_level` labels a line for the in-app terminal
 // and the stderr reader below decides whether that same line may enter the failure evidence. A line
 // shown as a warning must not also be quoted back as the reason the download failed, so both ask
 // one function rather than each spelling the test.
 pub(crate) use command::line_is_warning;
 
 // Redacting the argument vector before it reaches the in-app terminal (and, from there, a public
-// bug report) also lives in its own submodule: it has a privacy consequence and no I/O, which is
+// bug report) also lives in its own submodule. It has a privacy consequence and no I/O, which is
 // exactly the shape that belongs under the mutation gate rather than buried in the orchestration.
 mod redaction;
 #[cfg(test)]
@@ -403,7 +403,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             normalized_format_id,
             download_live_chat,
             skip_auto_thumbnail_download,
-            // The browser name is kept, a profile or container after it is not: a profile is often
+            // The browser name is kept, a profile or container after it is not. A profile is often
             // a path under the user's home directory, and this log may be pasted into a bug report.
             normalized_cookies_browser
                 .as_deref()
@@ -431,7 +431,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
         )?;
 
         if let Some(path) = normalized_cookies_path.as_ref() {
-            // Show only the file name, never the full path: this line is rendered in the UI
+            // Show only the file name, never the full path. This line is rendered in the UI
             // terminal and may be pasted into a public bug report, and the directory reveals
             // the local username/profile layout.
             let file_name = Path::new(path)
@@ -446,7 +446,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 "system",
             )?;
         } else if let Some(browser) = normalized_cookies_browser.as_ref() {
-            // Same rule as the file log: the UI terminal may be pasted into a bug report, so the
+            // Same rule as the file log. The UI terminal may be pasted into a bug report, so the
             // profile (often a path) is not shown, only that one was set.
             emit_download_log(
                 app,
@@ -718,7 +718,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
         let _tracked_child =
             crate::services::process_registry::TrackedChildGuard::register(child_pid);
 
-        // Stall detection: the reader tasks record the elapsed millis of the last line the
+        // Stall detection. The reader tasks record the elapsed millis of the last line the
         // child produced; the wait loop kills the download if it goes silent for too long.
         let download_start = Instant::now();
         let last_activity_ms = Arc::new(AtomicU64::new(0));
@@ -790,7 +790,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 // verbatim into the user-facing failure message, so a run that warned about a
                 // missing format and then failed for an unrelated reason would report the warnings
                 // as the cause. Keeping them out is what makes dropping `--no-warnings` from the
-                // argv free: the terminal gains the diagnostic, the error message is unchanged.
+                // argv free. The terminal gains the diagnostic, the error message is unchanged.
                 if !line_is_warning(&line) {
                     let mut guard = stderr_buffer_reader.lock().await;
 
@@ -835,10 +835,10 @@ pub async fn download_media_from_url_async<R: Runtime>(
             {
                 // The child has gone silent past the threshold, but a large ffmpeg merge/remux
                 // can run for minutes writing to the output file without printing a line. Before
-                // killing it, check whether the temp files are still growing: if so it is
+                // killing it, check whether the temp files are still growing. If so it is
                 // progressing, so record the growth as activity and keep waiting. Only a stretch
                 // with neither output nor file growth is treated as a real stall.
-                // Off the async runtime: read_dir is blocking I/O, and the project's convention
+                // Off the async runtime. read_dir is blocking I/O, and the project's convention
                 // (utils::task) is that no synchronous filesystem work runs on a Tokio worker.
                 // A join failure defaults to 0 (no growth observed), which is the safe direction.
                 // it lets the stall be confirmed rather than masking a genuinely hung download.
@@ -851,12 +851,12 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 .unwrap_or(0);
 
                 if current_temp_size > last_observed_temp_size {
-                    // Say so. This branch is the app knowing something the user cannot see: the
+                    // Say so. This branch is the app knowing something the user cannot see. The
                     // child has printed nothing for the whole stall threshold, and the only reason
                     // it is not being killed is that its output file is still growing. That is
                     // exactly the stretch (a large ffmpeg merge) where the terminal stops moving and
                     // the reasonable read is that the download hung, so cancelling is the next thing
-                    // a user does. Bounded by construction: reaching here resets the activity clock,
+                    // a user does. Bounded by construction. Reaching here resets the activity clock,
                     // so this can only be reported once per stall threshold.
                     emit_download_log_infallible(
                         app,
@@ -927,7 +927,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             String::new()
         };
 
-        // The absolute run-time cap is reported before the stall/cancel/exit classification: a run
+        // The absolute run-time cap is reported before the stall/cancel/exit classification. A run
         // killed for exceeding it comes back with cancel_requested set and a non-success status, so
         // classify_download_termination would otherwise report it as a plain cancel. It gets its own
         // message so the cause is clear rather than looking like a user cancel.
@@ -1043,7 +1043,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 };
 
                 if kept_existing_live_chat {
-                    // Same visibility rule as the kept-existing media log above: keeping the
+                    // Same visibility rule as the kept-existing media log above. Keeping the
                     // stored replay is correct, but doing it silently reads as "the fresh replay
                     // was saved" when it was discarded.
                     emit_download_log(
@@ -1189,7 +1189,7 @@ mod tests {
 
     #[test]
     fn a_warning_line_is_recognized_however_yt_dlp_prefixes_it() {
-        // Both spellings appear in real output: bare, and with the reporting stage in between.
+        // Both spellings appear in real output. Bare, and with the reporting stage in between.
         assert!(line_is_warning(
             "WARNING: Requested format is not available"
         ));
@@ -1201,7 +1201,7 @@ mod tests {
 
     #[test]
     fn an_error_line_is_not_mistaken_for_a_warning() {
-        // The direction that costs something: a genuine failure classified as a warning would be
+        // The direction that costs something. A genuine failure classified as a warning would be
         // dropped from the failure evidence, leaving the user an error message that says nothing.
         assert!(!line_is_warning("ERROR: unable to download video data"));
         assert!(!line_is_warning("[download] 12.3% of 4.00MiB"));
@@ -1212,7 +1212,7 @@ mod tests {
     fn an_error_line_that_mentions_a_warning_is_still_an_error() {
         // The substring test alone answered "warning" to all three of these, which kept them out
         // of the stderr buffer and therefore out of the failure message. The text of a yt-dlp error
-        // line is not this app's: it quotes back what YouTube returned for the video, and YouTube
+        // line is not this app's. It quotes back what YouTube returned for the video, and YouTube
         // uses "warning" for a strike on a channel, so this is reachable from content rather than
         // only from an unlucky phrasing.
         for line in [
@@ -1226,7 +1226,7 @@ mod tests {
             );
         }
 
-        // And the case that keeps the refusal from being a blanket one: a warning line that
+        // And the case that keeps the refusal from being a blanket one. A warning line that
         // mentions no error is still a warning, so the terminal keeps the diagnostic that dropping
         // `--no-warnings` was meant to surface.
         assert!(line_is_warning(
@@ -1405,7 +1405,7 @@ mod tests {
         // The frontend's buildMergedFormats (src/services/yt-dlp-format-rules.ts) synthesizes the
         // merged `<video>+<audio>` selector this rule then validates, and TypeScript has its own copy
         // of the rule (isValidYtDlpFormatId) so it can flag a bad selector before the round trip. The
-        // two are independent implementations that must agree on every id: a drift would let a
+        // two are independent implementations that must agree on every id. A drift would let a
         // selector the frontend built come back as a raw backend error instead of being caught up
         // front. Both sides assert against the same shared cases (see
         // src/services/yt-dlp-format-rules.test.ts), so a change to either rule that the other did not
@@ -1479,7 +1479,7 @@ mod tests {
         assert_eq!(resolve_format_has_video("137", &formats), Some(true));
         assert_eq!(resolve_format_has_video("140", &formats), Some(false));
 
-        // Combined video+audio: has video, both parts exist.
+        // Combined video+audio. Has video, both parts exist.
         assert_eq!(resolve_format_has_video("137+140", &formats), Some(true));
 
         // Unknown single format and a combined selector with an unknown part are rejected.
@@ -1495,7 +1495,7 @@ mod tests {
 
     #[test]
     fn classify_download_termination_applies_stall_cancel_failure_precedence() {
-        // A stall preempts everything: a killed-for-stalling child also comes back non-success with
+        // A stall preempts everything. A killed-for-stalling child also comes back non-success with
         // the cancel flag set, so the exit status alone must not win.
         assert_eq!(
             classify_download_termination(true, true, false, "boom"),
@@ -1632,7 +1632,7 @@ mod tests {
 
     #[test]
     fn redact_paths_value_keeps_the_scope_and_drops_everything_after_it() {
-        // The scope prefix is kept for readability, the directory is not: it sits under the
+        // The scope prefix is kept for readability, the directory is not. It sits under the
         // per-user app cache and so embeds the OS username.
         assert_eq!(
             redact_paths_value("home:C:\\Users\\alice\\AppData\\Local\\cache"),

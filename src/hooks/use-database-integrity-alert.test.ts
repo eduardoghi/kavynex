@@ -50,7 +50,7 @@ describe("useDatabaseIntegrityAlert", () => {
 
         expect(onIntegrityFailure).toHaveBeenCalledTimes(1);
         const message = onIntegrityFailure.mock.calls[0]?.[0] as string;
-        // Action-oriented and non-technical: it points at the restore flow and never echoes the raw
+        // Action-oriented and non-technical. It points at the restore flow and never echoes the raw
         // PRAGMA problem text (which stays in the log and the event payload for a bug report).
         expect(message).toContain("Settings > Database");
         expect(message).not.toContain("***");
@@ -68,7 +68,7 @@ describe("useDatabaseIntegrityAlert", () => {
     });
 
     it("stops a listener that resolves after the hook was disposed", async () => {
-        // Model the StrictMode/teardown race: the subscription promise resolves only after the hook
+        // Model the StrictMode/teardown race. The subscription promise resolves only after the hook
         // has been disposed. The hook must call the returned stop() rather than leak the listener,
         // and must never fire the handler for a subscription that outlived its effect.
         let resolveListen!: (stop: () => void) => void;

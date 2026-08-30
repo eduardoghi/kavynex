@@ -41,7 +41,7 @@ In order of severity:
 
 ## The general shape
 
-An exception justified by a caller nobody checked. The lesson generalizes past these three: before
+An exception justified by a caller nobody checked. The lesson generalizes past these three. Before
 granting one, confirm the flow that supposedly needs it actually calls the command that way.
 [`../THREAT-MODEL.md`](../THREAT-MODEL.md) keeps the current rule and enumerates the commands that
 *do* legitimately take a caller-supplied path, each with what bounds it.

@@ -48,7 +48,7 @@ function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
 }
 
 // The props every render needs, so the tests below can name only what they are about. Kept minimal
-// on purpose: a fixture carrying `commentsState` would make the tests that assert on it pass for the
+// on purpose. A fixture carrying `commentsState` would make the tests that assert on it pass for the
 // fixture's reason rather than the component's.
 const baseProps = {
     comments: [],
@@ -392,7 +392,7 @@ describe("CommentsPanel", () => {
     });
 
     it("says nothing about why a fetch found nothing", () => {
-        // Worded as what was observed rather than as a claim about the video: yt-dlp reports a
+        // Worded as what was observed rather than as a claim about the video. yt-dlp reports a
         // comment count and no separate "comments are disabled" flag, so distinguishing a video with
         // comments switched off from one that simply has none would be a guess shown as fact.
         renderWithMantine(

@@ -10,7 +10,7 @@ vi.mock("../services/media-download-service", () => ({
 import { listYtDlpFormats } from "../services/media-download-service";
 import type { YtDlpFormat, YtDlpFormatsResult } from "../types/media";
 
-// The backend's shape. It carries no label: the loader runs every format through
+// The backend's shape. It carries no label. The loader runs every format through
 // buildMergedFormats, which is what names each row (and adds the merged ones).
 function makeFormat(overrides: Partial<YtDlpFormat> = {}): YtDlpFormat {
     return {
@@ -1009,7 +1009,7 @@ describe("useYtDlpFormatLoader: final display ordering (compareDisplayOrder)", (
         const { result } = renderLoader();
 
         // All are native (same sort_rank) so every remaining tie-break level in
-        // compareDisplayOrder gets exercised in a single deterministic chain: each
+        // compareDisplayOrder gets exercised in a single deterministic chain. Each
         // pair below ties on every earlier criterion and differs only on the next one.
         await loadFormats(result, [
             makeFormat({ format_id: "i10", has_video: true, has_audio: true, height: 100, abr: 10, tbr: 100, filesize_bytes: 100 }),

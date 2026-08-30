@@ -2,7 +2,7 @@
 //!
 //! The `yt-dlp args: ...` line is streamed to the in-app terminal and is one of the first things a
 //! user copies into a public bug report, so the values that carry an absolute local path are
-//! dropped before it is built: the cookies file location, the ffmpeg directory (which falls back to
+//! dropped before it is built. The cookies file location, the ffmpeg directory (which falls back to
 //! `<app_data_dir>/tools`, i.e. `C:\Users\<name>\AppData\...`), the `--paths` temp directory under
 //! the app cache, and the pasted URL with whatever playlist/tracking parameters came with it.
 //!

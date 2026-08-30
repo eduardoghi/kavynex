@@ -13,7 +13,7 @@ const NO_MISSING_TOOLS: readonly ExternalToolName[] = Object.freeze([]);
 
 // Which missing tools actually block what the user is about to do.
 //
-// The two modes do not need the same things: a URL import runs yt-dlp and then hands the result to
+// The two modes do not need the same things. A URL import runs yt-dlp and then hands the result to
 // ffmpeg, while a local import never calls yt-dlp but still runs ffmpeg to generate the thumbnail
 // preview. Warning about yt-dlp on the local path would be noise, and staying silent about ffmpeg
 // there would leave the thumbnail failing for a reason the form never mentioned.
@@ -45,7 +45,7 @@ type UseExternalToolsAvailabilityReturn = {
 // find out was to fill the whole form, paste a URL and have the format load fail with
 // YT_DLP_NOT_FOUND.
 //
-// A failure to check is deliberately silent: the status is an extra warning, not a precondition,
+// A failure to check is deliberately silent. The status is an extra warning, not a precondition,
 // and turning "we could not probe the tools" into a message in the import form would be alarming
 // about the wrong thing. The import itself still reports a missing binary with its own error.
 export function useExternalToolsAvailability(
@@ -61,7 +61,7 @@ export function useExternalToolsAvailability(
 
     useEffect(() => {
         if (!enabled) {
-            // Cleared so a reopen re-checks rather than showing what was true last time: the
+            // Cleared so a reopen re-checks rather than showing what was true last time. The
             // usual reason to close this modal after seeing the warning is to go install the tool.
             setStatus(null);
             return;
@@ -84,7 +84,7 @@ export function useExternalToolsAvailability(
     }, [enabled]);
 
     // The source mode is applied here rather than inside the effect above, which is what keeps
-    // switching modes from spawning another probe: the probe's answer is the same either way, and
+    // switching modes from spawning another probe. The probe's answer is the same either way, and
     // only which half of it matters changes.
 
     const missingTools = useMemo(

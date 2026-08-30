@@ -51,7 +51,7 @@ type CreateChannelModalProps = {
     onChangeChannelName: (value: string) => void;
     onChangeYoutubeHandle: (value: string) => void;
     // Avatar handlers are only used when `allowAvatarEditing` is true (the avatar section is not
-    // rendered otherwise), so they are optional: the edit-channel reuse of this modal omits them
+    // rendered otherwise), so they are optional. The edit-channel reuse of this modal omits them
     // instead of passing no-ops.
     onChangeAvatarMode?: (value: ChannelAvatarMode) => void;
     onPickAvatar?: () => void;

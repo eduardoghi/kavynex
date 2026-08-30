@@ -45,7 +45,7 @@ where
     Ok(())
 }
 
-/// The subdirectories of `library_root` whose files the asset protocol may serve: only the managed
+/// The subdirectories of `library_root` whose files the asset protocol may serve. Only the managed
 /// media/thumbnail/live-chat trees the app writes itself (`video/`, `audio/`, `thumbnails/`,
 /// `live_chat/`), never the library root. Every path the app legitimately reproduces is
 /// content-addressed under one of these, so confining the grant to them keeps `convertFileSrc` from
@@ -58,12 +58,12 @@ pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The subdirectories of the app cache directory whose files the asset protocol may serve: the
+/// The subdirectories of the app cache directory whose files the asset protocol may serve. The
 /// preview written before a thumbnail is committed (`thumbs-temp/`) and the display-sized
 /// derivatives the grid draws (`thumb-display/`). See
 /// [`crate::constants::WEBVIEW_READABLE_CACHE_DIRS`] for why the other three are excluded.
 ///
-/// The sibling of [`managed_asset_scope_dirs`], and it exists for the same reason: the cache root is
+/// The sibling of [`managed_asset_scope_dirs`], and it exists for the same reason. The cache root is
 /// never granted. On Windows that root is the parent of the log directory and of the WebView2
 /// profile, so granting it recursively (which is what this replaced), authorized the renderer to
 /// read a tree that has nothing to do with rendering a thumbnail.
@@ -78,7 +78,7 @@ pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
 /// `setup()`. The library directory is authorized separately, at runtime, once the stored library
 /// path is known ([`register_library_asset_scope`]).
 ///
-/// Best effort throughout, exactly like the single recursive grant it replaced: a subdirectory that
+/// Best effort throughout, exactly like the single recursive grant it replaced. A subdirectory that
 /// cannot be created or authorized is logged and skipped rather than failing startup, because the
 /// consequence is a thumbnail preview that does not appear, never an app that cannot open.
 ///
@@ -111,7 +111,7 @@ pub fn register_cache_asset_scope<R: Runtime>(app: &AppHandle<R>, cache_root: &P
 ///
 /// Split out of [`register_cache_asset_scope`] because it is the whole of what that function does
 /// that a test can observe. The grant itself needs a live `AppHandle`, so the mutation run reported
-/// `replace register_cache_asset_scope with ()` as surviving: the entire body could become a no-op
+/// `replace register_cache_asset_scope with ()` as surviving. The entire body could become a no-op
 /// (no directories created, nothing authorized, every thumbnail preview and display derivative
 /// silently unreadable), and the suite would not notice. It still cannot observe the grant, but the
 /// creation is now one call from a test, which is the half that has an effect on disk.
@@ -139,14 +139,14 @@ fn prepare_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
 /// The managed directories this session has forbidden in the asset scope, i.e. the libraries the
 /// app migrated *away* from while running.
 ///
-/// This set exists because Tauri's asset scope is append-only in both directions: `is_allowed`
+/// This set exists because Tauri's asset scope is append-only in both directions. `is_allowed`
 /// consults the forbidden patterns first and returns false on a match, and there is no API to
 /// withdraw one. So once `revoke_directory_from_asset_scope` (commands/library.rs) forbids a
 /// library's managed subdirectories, re-granting them later in the same session does nothing.
 /// `allow_directory` succeeds, the forbid still wins, and every `convertFileSrc` into that library
 /// resolves to a blocked asset.
 ///
-/// That is reachable through an ordinary settings flow: move the library to a new folder, change
+/// That is reachable through an ordinary settings flow. Move the library to a new folder, change
 /// your mind, move it back. Without this set the second migration reports success, the grid renders
 /// every item, and not one thumbnail or video loads, with nothing said. Recording what was forbidden
 /// lets the re-registration say so instead.
@@ -191,7 +191,7 @@ pub(crate) fn record_forbidden_library_dirs(library_root: &Path) {
 
 /// Authorizes the asset protocol to read files inside the user's library directory.
 ///
-/// The requested path is never trusted on its own: it must match the library path
+/// The requested path is never trusted on its own. It must match the library path
 /// persisted in the application settings. This prevents a compromised frontend from
 /// widening the asset scope to an arbitrary directory which, combined with
 /// `convertFileSrc`, would become an arbitrary local-file read primitive rendered inside
@@ -199,7 +199,7 @@ pub(crate) fn record_forbidden_library_dirs(library_root: &Path) {
 /// authorized here.
 ///
 /// Within that library, only the four managed subdirectories are granted, not the root
-/// (see [`managed_asset_scope_dirs`]): the app only ever serves content-addressed files
+/// (see [`managed_asset_scope_dirs`]). The app only ever serves content-addressed files
 /// from those, so authorizing the whole root recursively would needlessly expose any other
 /// file the chosen library folder contains.
 ///
@@ -244,7 +244,7 @@ pub async fn register_library_asset_scope<R: Runtime>(
     run_blocking(move || {
         for managed_dir in managed_asset_scope_dirs(Path::new(&trimmed)) {
             // Create the subdirectory first so its canonical (`\\?\`) form resolves and can be
-            // granted alongside the plain form. Best effort: a subdir that cannot be created is
+            // granted alongside the plain form. Best effort. A subdir that cannot be created is
             // skipped (the import/download paths create it on demand), rather than failing the
             // whole registration and leaving the library unusable.
             if let Err(error) = std::fs::create_dir_all(&managed_dir) {
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn grant_path_with_canonical_authorizes_both_forms_when_they_differ() {
-        // This is the whole reason the helper exists: convertFileSrc can hand the asset scope
+        // This is the whole reason the helper exists. convertFileSrc can hand the asset scope
         // either the plain path or its canonical (`\\?\`-prefixed, on Windows) form, and a scope
         // holding only one of them refuses the other, which surfaces as every thumbnail and video
         // silently failing to load, with nothing logged. Routing through a `..` segment yields a
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn grant_path_with_canonical_propagates_the_primary_failure_but_not_the_canonical_one() {
-        // The documented asymmetry: failing to authorize the requested path is the caller's
+        // The documented asymmetry. Failing to authorize the requested path is the caller's
         // problem, while the canonical retry is best effort and only warns. A change that made the
         // retry fatal would break registration for any path whose canonical form cannot be granted.
         let base = unique_test_dir("grant-failure");
@@ -360,7 +360,7 @@ mod tests {
         fs::create_dir_all(&nested).unwrap();
         let indirect = nested.join("..");
 
-        // The first grant fails: the error reaches the caller.
+        // The first grant fails. The error reaches the caller.
         let error = grant_path_with_canonical(&indirect, "test path", |_| {
             Err(AppError::from_code(
                 AppErrorCode::AssetScopeRegisterFailed,
@@ -370,7 +370,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.code, AppErrorCode::AssetScopeRegisterFailed.as_str());
 
-        // Only the canonical retry fails: the run still succeeds, and both grants were tried.
+        // Only the canonical retry fails. The run still succeeds, and both grants were tried.
         let calls = std::cell::RefCell::new(0);
         grant_path_with_canonical(&indirect, "test path", |_| {
             let mut calls = calls.borrow_mut();
@@ -397,8 +397,8 @@ mod tests {
         let root = Path::new("/library");
         let dirs = managed_asset_scope_dirs(root);
 
-        // Exactly the four managed subdirectories the app serves, and never the root itself:
-        // granting the root recursively is what would expose unrelated files in the chosen folder.
+        // Exactly the four managed subdirectories the app serves, and never the root itself.
+        // Granting the root recursively is what would expose unrelated files in the chosen folder.
         assert_eq!(dirs.len(), 4);
         assert!(dirs.contains(&root.join("video")));
         assert!(dirs.contains(&root.join("audio")));
@@ -410,10 +410,10 @@ mod tests {
     #[test]
     fn managed_cache_scope_dirs_are_the_rendered_subdirs_never_the_root() {
         // The negative assertion is the one that matters, and it is what this function was created
-        // to make testable: the grant it replaced was a single recursive `allow_directory` on the
+        // to make testable. The grant it replaced was a single recursive `allow_directory` on the
         // cache root, and on Windows that root is `%LOCALAPPDATA%\<identifier>`. The parent of the
         // log directory and of the WebView2 profile. Granting the root therefore authorized the
-        // renderer to read both, for no reason: only these two subdirectories are ever drawn.
+        // renderer to read both, for no reason. Only these two subdirectories are ever drawn.
         let root = Path::new("/cache");
         let dirs = managed_cache_scope_dirs(root);
 
@@ -426,14 +426,14 @@ mod tests {
             "the cache root must never be granted"
         );
 
-        // The backend-only siblings, named explicitly rather than left to the length check: each
+        // The backend-only siblings, named explicitly rather than left to the length check. Each
         // holds something the webview has no reason to read, and a future grant that widened this
         // list should have to delete an assertion that says so.
         for excluded in [
             crate::constants::TEMP_DIR_YT_DLP,
             crate::constants::TEMP_DIR_YT_DLP_THUMB,
             crate::constants::TEMP_DIR_PENDING_MEDIA,
-            // Not one of ours to name as a constant, but it is the reason the root is refused: the
+            // Not one of ours to name as a constant, but it is the reason the root is refused. The
             // WebView2 user-data folder sits next to these on Windows.
             "EBWebView",
             "logs",
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn preparing_the_cache_scope_creates_every_subdirectory_it_returns() {
         // The half of register_cache_asset_scope that leaves a trace, pinned because the whole
-        // function could be replaced with a no-op and nothing failed: no directory created, nothing
+        // function could be replaced with a no-op and nothing failed. No directory created, nothing
         // granted, and every thumbnail preview and display derivative unreadable with no error
         // anywhere. Asserting the returned paths *and* their existence is what makes an empty
         // return (the shape a gutted body would produce), fail rather than pass vacuously.
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn preparing_the_cache_scope_drops_a_subdirectory_it_could_not_create() {
         // A path that cannot become a directory because a file already occupies it. The dropped
-        // entry must not be returned: granting a path that is not there is the case the `continue`
+        // entry must not be returned. Granting a path that is not there is the case the `continue`
         // exists for, and a plan that returned it anyway would push that failure into the asset
         // scope instead of the log.
         let cache_root = unique_test_dir("cache-scope-blocked");
@@ -506,7 +506,7 @@ mod tests {
             "a library nothing has revoked must still be authorizable"
         );
 
-        // A single revoked subdirectory is enough: the scope refuses that tree for the rest of the
+        // A single revoked subdirectory is enough. The scope refuses that tree for the rest of the
         // session, so re-registering the library would leave part of it unreadable.
         forbidden.insert(library.join("video"));
 
@@ -516,7 +516,7 @@ mod tests {
     #[test]
     fn forbidding_one_library_leaves_a_different_one_authorizable() {
         // The normal migration is A -> B, and B must not inherit A's revocation. Otherwise the
-        // guard would break the very flow it is meant to protect. Also covers the prefix case: a
+        // guard would break the very flow it is meant to protect. Also covers the prefix case. A
         // sibling whose path starts with the revoked one is a different library.
         let old_library = Path::new("/library");
         let forbidden: HashSet<PathBuf> =
@@ -553,7 +553,7 @@ mod tests {
     }
 
     // The gate that decided what could be authorized for the manual-thumbnail preview moved with
-    // the flow it served: it is now `validate_picked_thumbnail_path` in
+    // the flow it served. It is now `validate_picked_thumbnail_path` in
     // `services::thumbnail::temp`, tested there, and with a network-location refusal it did not
     // have here.
 }

@@ -6,7 +6,7 @@ import {
     replaceCargoVersion,
 } from "./version-utils.js";
 
-// A representative Cargo.toml: the [package] version comes first, then a dependency declared
+// A representative Cargo.toml. The [package] version comes first, then a dependency declared
 // as a sub-table (which also has a `version = "..."` line at the start of a line). The gate
 // relies on [package] preceding those, so the first match is always the app version.
 const CARGO_TOML = `[package]

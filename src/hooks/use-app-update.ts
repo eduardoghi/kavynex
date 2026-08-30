@@ -16,7 +16,7 @@ import { logError } from "../utils/app-logger";
 // Windows the installer can end the process from inside `downloadAndInstall`, before the relaunch is
 // even reached. An `"installed"` member existed here and was set on success; it was rendered
 // nowhere, and the two places that read this status both behaved *worse* for it in the one window
-// where it was reachable: the "Download and install" button sprang back to enabled as though
+// where it was reachable. The "Download and install" button sprang back to enabled as though
 // nothing had happened, and settings-modal.tsx's `isUpdateInProgress` went false, unlocking the
 // modal in the moment before the relaunch. The exact surprise that lock's comment says it exists to
 // prevent. Staying on "downloading" until the process is gone is what both of them want.
@@ -47,7 +47,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
     // Latest-wins over the update check, which is a network call with a 30s timeout
     // (app-update-service.ts). The Settings button disables itself while a check runs, but that is a
     // promise about Mantine having re-rendered before the next click lands rather than about state,
-    // and it says nothing at all about the second reader of this hook: useStartupUpdateCheck fires
+    // and it says nothing at all about the second reader of this hook. useStartupUpdateCheck fires
     // its own check on launch, so an opt-in startup check and a user clicking "Check update" can
     // genuinely overlap. Without this, whichever resolves last wins, which for a startup check that
     // hangs near its timeout means a stale answer landing on top of the one the user asked for.
@@ -99,7 +99,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
             return;
         }
 
-        // Discards any check still in flight. This is the case the guard matters most for: the
+        // Discards any check still in flight. This is the case the guard matters most for. The
         // status is about to become "downloading" and stay there until the relaunch takes the
         // process (see AppUpdateStatus above), and a check landing afterwards would move it back to
         // "available"/"not-available"/"error". Unlocking the settings modal and re-enabling the
@@ -124,7 +124,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
         // is still the only thing that recreates it.
     }, [update, checkGuard]);
 
-    // Reference-stable so the controller keeps the shared convention (see use-memo-object): a
+    // Reference-stable so the controller keeps the shared convention (see use-memo-object). A
     // consumer that depends on the whole object does not churn on every render.
     return useMemoObject({
         status,

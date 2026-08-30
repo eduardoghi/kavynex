@@ -42,7 +42,7 @@ export function useHomeLibraryPanel({
 
     // Only the missing library folder gets a reason, and `disableAddMedia` above is deliberately
     // not derived from it (unlike `use-home-ui-guards`, where the reason is the source of the
-    // flag). The other conditions are transient and visibly so: a page still loading, a creation
+    // flag). The other conditions are transient and visibly so. A page still loading, a creation
     // in flight, a migration running, the player open. A line of text under the button for each
     // would be noise, and deriving the flag from the reason would mean inventing one for all of
     // them or quietly re-enabling the button where none exists.

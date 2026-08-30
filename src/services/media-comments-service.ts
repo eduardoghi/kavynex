@@ -16,7 +16,7 @@ export async function replaceMediaCommentsInBackend(
  * Records that a comment fetch for this media came back with nothing, leaving whatever is already
  * saved untouched.
  *
- * Separate from `replaceMediaCommentsInBackend` because that one deletes before it inserts: calling
+ * Separate from `replaceMediaCommentsInBackend` because that one deletes before it inserts. Calling
  * it with an empty list to record the same fact would wipe a saved backup on the strength of a later
  * fetch returning nothing, which is the opposite of what this app is for. The backend additionally
  * refuses to downgrade a media that does have stored comments, so this is safe to call blind.

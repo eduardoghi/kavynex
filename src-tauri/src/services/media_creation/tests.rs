@@ -33,7 +33,7 @@ fn with_video_id(source_mode: MediaSourceMode, video_id: Option<&str>) -> Create
 
 #[test]
 fn a_managed_thumbnail_path_is_taken_as_it_is() {
-    // The one case that must not be re-persisted: it already names a file in the library, so
+    // The one case that must not be re-persisted. It already names a file in the library, so
     // treating it as a local path would copy that file onto itself under a new hash.
     assert_eq!(
         classify_thumbnail_source(Some("thumbnails/thumb_abc.jpg")),
@@ -189,7 +189,7 @@ fn normalizing_trims_every_stored_value() {
 
 #[test]
 fn a_blank_optional_value_normalizes_to_absent_rather_than_an_empty_string() {
-    // An empty string is not the same as "not supplied" downstream: a blank youtube id stored
+    // An empty string is not the same as "not supplied" downstream. A blank youtube id stored
     // verbatim would sit in the partial unique index as a present value and collide with the
     // next blank one, which is exactly what insert_media normalizes away on its own side.
     let blanks = CreateMediaRequest {
@@ -213,7 +213,7 @@ fn a_blank_optional_value_normalizes_to_absent_rather_than_an_empty_string() {
 #[test]
 fn a_request_is_refused_before_anything_is_written() {
     // Each of these used to be checked by the frontend alone. They run here now, and they run
-    // first: a rejected request must produce nothing to clean up, which is only true while no
+    // first. A rejected request must produce nothing to clean up, which is only true while no
     // download or import has started.
     let empty_title = CreateMediaRequest {
         title: "   ".to_string(),
@@ -326,7 +326,7 @@ fn every_prepared_path_has_to_be_a_managed_library_path() {
 
 #[test]
 fn a_fetched_thumbnail_is_discarded_only_when_it_is_not_the_one_that_was_stored() {
-    // The direction that matters: this answer becomes an unlink. Inverted, it discards the
+    // The direction that matters. This answer becomes an unlink. Inverted, it discards the
     // thumbnail the row is about to point at and keeps the one nothing references, which shows
     // up as a card with no image and nothing logged anywhere.
     assert_eq!(
@@ -347,7 +347,7 @@ fn a_fetched_thumbnail_is_discarded_only_when_it_is_not_the_one_that_was_stored(
         None
     );
 
-    // Nothing was fetched: the run skipped its own thumbnail, which is the normal case when the
+    // Nothing was fetched. The run skipped its own thumbnail, which is the normal case when the
     // user supplied one.
     assert_eq!(
         fetched_thumbnail_to_discard(None, Some("thumbnails/thumb_supplied.jpg")),
@@ -366,7 +366,7 @@ fn a_fetched_thumbnail_is_discarded_only_when_it_is_not_the_one_that_was_stored(
 #[test]
 fn a_cleanup_is_skipped_only_when_no_artifact_was_named_at_all() {
     // Every combination that names something has to answer true. The failure this guards is the
-    // `&&`/`||` flip: with `||` the guard reads "skip if any is absent", and the ordinary
+    // `&&`/`||` flip. With `||` the guard reads "skip if any is absent", and the ordinary
     // creation (a media file with no live chat replay) would skip its cleanup entirely,
     // stranding the file it just wrote.
     assert!(nothing_to_clean_up(None, None, None));
@@ -396,7 +396,7 @@ fn a_cleanup_is_skipped_only_when_no_artifact_was_named_at_all() {
 
 #[test]
 fn the_duplicate_pre_check_applies_only_to_a_yt_dlp_source_with_a_resolved_video_id() {
-    // Both halves, because both flips are silent: run it for a local import and the query
+    // Both halves, because both flips are silent. Run it for a local import and the query
     // always answers "no" (there is no video id to match), skip it for a yt-dlp source and the
     // whole video downloads before the unique index refuses it.
     assert!(needs_youtube_duplicate_pre_check(&with_video_id(
@@ -431,12 +431,12 @@ fn unique_run_id(label: &str) -> String {
 
 #[test]
 fn a_well_formed_run_id_makes_a_local_import_cancellable() {
-    // What the Cancel button rests on: the run has to reach the registry, because that is what
+    // What the Cancel button rests on. The run has to reach the registry, because that is what
     // `cancel_media_download(runId)` looks the flag up in. Returning `None` here is a Cancel
     // button that silently does nothing. No error, no log the user sees, just a click that
     // does not land.
     //
-    // The guard is bound rather than dropped immediately: dropping it unregisters the run, and
+    // The guard is bound rather than dropped immediately. Dropping it unregisters the run, and
     // the flag would then belong to an id the cancel command can no longer find, which is the
     // same silent failure by a different route.
     let run_id = unique_run_id("valid");
@@ -455,11 +455,11 @@ fn a_well_formed_run_id_makes_a_local_import_cancellable() {
 #[test]
 fn a_malformed_run_id_is_refused_without_reaching_the_registry() {
     // The non-empty half of the guard, and the reason it is `||` rather than `&&`. An empty id
-    // is refused either way, so it proves nothing: with `&&` the two conditions both hold for
+    // is refused either way, so it proves nothing. With `&&` the two conditions both hold for
     // `""` and the refusal still happens. Only a value that is *present but malformed* tells
     // the two apart (weakened to `&&` this falls through and registers a run id that
     // `is_valid_run_id` exists to keep out of a temp-directory name.
-    // `..` is deliberately absent: it satisfies `is_valid_run_id`, and correctly so), the id
+    // `..` is deliberately absent. It satisfies `is_valid_run_id`, and correctly so), the id
     // only ever becomes one component of `{run_id}-{suffix}`, so `..-<suffix>` is an ordinary
     // directory name and never a parent reference. What the rule keeps out is a separator.
     for malformed in ["has space", "a/b", "../evil", "x".repeat(200).as_str()] {
@@ -472,7 +472,7 @@ fn a_malformed_run_id_is_refused_without_reaching_the_registry() {
 
 #[test]
 fn a_blank_run_id_simply_is_not_cancellable() {
-    // The three ways a caller legitimately has no run id: an older frontend that sends none, a
+    // The three ways a caller legitimately has no run id. An older frontend that sends none, a
     // caller with no Cancel button to offer, and whitespace that trims to nothing. None is an
     // error (the import still runs, it just cannot be cancelled), so this pins that the
     // function answers `None` rather than refusing the import.
@@ -522,11 +522,11 @@ fn the_source_mode_deserializes_from_the_wire_spelling() {
 // Everything above this point tests a pure decision. This block tests the *ordering* (the crash
 // marker written after the artifacts and cleared only once the row has landed or their cleanup
 // has run), which is the part of this module a mistake in costs a user their data, and which had
-// no test at all. It could not have one: `AppHandle` alone is `AppHandle<Wry>`, so every
+// no test at all. It could not have one. `AppHandle` alone is `AppHandle<Wry>`, so every
 // function in the chain was unreachable from `tauri::test::mock_builder`'s `MockRuntime` app.
 // Widening the chain to `R: Runtime` is what these assert against.
 //
-// Deliberately not covered here: the artifact *production* above it. That runs yt-dlp, FFmpeg
+// Deliberately not covered here. The artifact *production* above it. That runs yt-dlp, FFmpeg
 // and an HTTP fetch, none of which belongs in a unit test, and it is also the half where a
 // failure is loud. The registration is the quiet one.
 mod registration {
@@ -542,10 +542,10 @@ mod registration {
     /// A mock app holding an in-memory database with the real schema and one channel, plus a
     /// library directory on disk whose path is persisted in settings.
     ///
-    /// The library is real rather than mocked because the failure path unlinks from it: a
+    /// The library is real rather than mocked because the failure path unlinks from it. A
     /// cleanup that could not reach the library would report "unavailable" and the test would
     /// pass without proving anything was removed.
-    /// `async` rather than blocking on the setup: these are `#[tokio::test]`s, so a
+    /// `async` rather than blocking on the setup. These are `#[tokio::test]`s, so a
     /// `block_on` here starts a runtime from inside one and panics before any assertion runs.
     async fn app_with_library(label: &str) -> (MockApp, PathBuf) {
         let library = std::env::temp_dir().join(format!(
@@ -583,7 +583,7 @@ mod registration {
     /// production step would have left them.
     ///
     /// The stored path carries `unique_temp_suffix` because `markers_naming` below matches markers
-    /// on the path they *name*, and the directory those markers live in is shared: under the mock
+    /// on the path they *name*, and the directory those markers live in is shared. Under the mock
     /// harness the app handle has no bundle identifier, so `app_cache_dir()` resolves to the bare
     /// per-user cache directory rather than a per-app one, and every test process on the machine
     /// writes into the same `pending-media/`. A marker left there by a run that did not finish
@@ -612,7 +612,7 @@ mod registration {
     /// How many crash markers currently name `file_path`.
     ///
     /// Matched on the marker's contents rather than counted, because the cache directory is the
-    /// real per-OS one: another test in this process (or a running app) has markers there too,
+    /// real per-OS one. Another test in this process (or a running app) has markers there too,
     /// and a bare count would make this assert about them.
     fn markers_naming(app: &MockApp, file_path: &str) -> usize {
         let dir = match app.path().app_cache_dir() {
@@ -649,7 +649,7 @@ mod registration {
 
     /// A local-import request against `library`, carrying an already-managed thumbnail path.
     ///
-    /// The thumbnail matters: `classify_thumbnail_source` returns `Managed` for it and
+    /// The thumbnail matters. `classify_thumbnail_source` returns `Managed` for it and
     /// `store_thumbnail_source` hands it back untouched, so this drives the whole creation
     /// without reaching the FFmpeg preview. Leaving it absent would make the test pass or fail
     /// depending on whether the machine running it happens to have FFmpeg installed.
@@ -687,14 +687,14 @@ mod registration {
     }
 
     // The three tests below are the first that drive `create_media_async` itself rather than
-    // the half of it `register_prepared_media` covers. What they pin is the *sequence*: which
+    // the half of it `register_prepared_media` covers. What they pin is the *sequence*. Which
     // step runs before which, which is the property that has no other guard. Reaching them at
     // all took generalizing the chain from `AppHandle` (i.e. `AppHandle<Wry>`) to `R: Runtime`
     // down through binaries, the thumbnail tree and the yt-dlp tree, because the mock runtime
     // is a different concrete type and one bare `AppHandle` anywhere in the chain put the whole
     // thing out of reach.
     //
-    // Only the local mode runs to completion here, and deliberately: the yt-dlp mode's
+    // Only the local mode runs to completion here, and deliberately. The yt-dlp mode's
     // preparation spawns yt-dlp and FFmpeg, which does not belong in a unit test. Its ordering
     // is pinned from the other side, by a refusal that has to happen *before* that spawn.
 
@@ -724,7 +724,7 @@ mod registration {
             Some("thumbnails/thumb_abc.jpg")
         );
 
-        // The registration step ran to the end: a row exists and its marker is gone.
+        // The registration step ran to the end. A row exists and its marker is gone.
         let pool = shared_pool(app.handle()).await.unwrap();
         let row =
             video_repository::find_media_by_channel_and_file_path(&pool, 1, &created.file_path)
@@ -740,13 +740,13 @@ mod registration {
     #[tokio::test]
     async fn an_invalid_request_is_refused_before_the_source_file_is_consumed() {
         // Normalization runs first, and a `move` import is what makes that observable rather
-        // than merely tidy: the import removes the user's original once it is in the library,
+        // than merely tidy. The import removes the user's original once it is in the library,
         // so a request validated only at the write boundary would consume the source, fail the
         // insert, and have the cleanup unlink the library copy. The user's file would be gone
         // and no row would exist.
         //
         // The surviving source is therefore the assertion, and it is the one that discriminates.
-        // Asserting an empty video/ directory does not: the failure path unlinks the imported
+        // Asserting an empty video/ directory does not. The failure path unlinks the imported
         // file either way, so that check passes whether the refusal came before the import or
         // after it. Verified by neutralizing `ensure_valid_media_title` and watching this test
         // keep passing on that assertion alone, which is why it is not the one relied on here.
@@ -778,7 +778,7 @@ mod registration {
         // that runs *before* `prepare_yt_dlp_artifacts`, so a video already registered for this
         // channel fails now rather than after the whole file has been fetched.
         //
-        // It is also why the yt-dlp mode is drivable here at all: the refusal lands before
+        // It is also why the yt-dlp mode is drivable here at all. The refusal lands before
         // anything spawns. If the two steps were ever reordered this test would not merely
         // fail, it would try to run yt-dlp, which is the loud kind of failure.
         let (app, library) = app_with_library("create-duplicate").await;
@@ -818,7 +818,7 @@ mod registration {
             AppErrorCode::VideoAlreadyExistsForChannel.as_str()
         );
 
-        // Nothing beyond the pre-existing row, and nothing on disk: the refusal landed before
+        // Nothing beyond the pre-existing row, and nothing on disk. The refusal landed before
         // the preparation, which is the whole claim.
         assert_eq!(media_row_count(&app).await, 1);
         assert_eq!(
@@ -833,7 +833,7 @@ mod registration {
 
     #[tokio::test]
     async fn a_registered_media_lands_as_a_row_and_leaves_no_marker_behind() {
-        // The happy path's whole contract in one place: the row exists afterwards, and the
+        // The happy path's whole contract in one place. The row exists afterwards, and the
         // marker that described the window before it does not. A marker left behind is not
         // cosmetic. The startup sweep reads it and hands its paths to a cleanup that unlinks
         // files, so a creation that succeeded but failed to clear its marker is a video the next
@@ -885,7 +885,7 @@ mod registration {
         // What must not happen is the insert going through regardless. A row pointing at a
         // file that is gone stays invisible until playback fails, and Diagnostics can only
         // report it as missing with nothing left to reconcile it against. A refusal is
-        // recoverable: the user adds the media again.
+        // recoverable. The user adds the media again.
         let (app, library) = app_with_library("vanished").await;
         let prepared = artifacts_on_disk(&library, "media_vanished");
         let file_path = prepared.file_path.clone();
@@ -926,7 +926,7 @@ mod registration {
         // resolves to the *same file* the row already there points at, and the cleanup is
         // reference-counted precisely so it keeps that one. Deleting it would take the existing
         // media's file away as a side effect of refusing to add it twice, which is the worst
-        // outcome available on this path: an error the user shrugs off, and a video gone.
+        // outcome available on this path. An error the user shrugs off, and a video gone.
         let (app, library) = app_with_library("duplicate").await;
         let prepared = artifacts_on_disk(&library, "media_dup");
         let file_path = prepared.file_path.clone();
@@ -974,13 +974,13 @@ mod registration {
 
     #[tokio::test]
     async fn a_registration_that_cannot_insert_removes_the_artifacts_nothing_references() {
-        // The other half of the failure path: an insert that fails with no row anywhere pointing
+        // The other half of the failure path. An insert that fails with no row anywhere pointing
         // at the file, so the reference count really is zero and the artifacts have to go. The
         // channel is gone (deleted while the download ran, which is how this happens in
         // practice), so the insert fails on the foreign key.
         //
         // All three consequences are asserted together because any one alone can pass while the
-        // ordering is wrong: the error reaches the caller, the unreferenced file is gone, and
+        // ordering is wrong. The error reaches the caller, the unreferenced file is gone, and
         // the marker is cleared. The marker last, because until the cleanup has run it is the
         // only record of what is on disk.
         let (app, library) = app_with_library("orphaned").await;
@@ -1012,7 +1012,7 @@ mod registration {
     #[tokio::test]
     async fn a_path_outside_the_managed_layout_is_refused_before_a_marker_exists() {
         // `ensure_managed_prepared_paths` runs before the lock and before the marker, and that
-        // order is the point: a marker naming a path the layout does not own would hand the
+        // order is the point. A marker naming a path the layout does not own would hand the
         // startup sweep something to reconcile that this run should never have produced. So the
         // refusal has to leave nothing at all behind, not merely fail.
         let (app, library) = app_with_library("escaped").await;

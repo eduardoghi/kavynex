@@ -100,8 +100,8 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
 pub fn persist_thumbnail_file_sync(path: &str, library_path: &str) -> AppResult<String> {
     let source = PathBuf::from(path.trim());
 
-    // Refused here as well as in `persist_thumbnail_from_source`, ahead of `ensure_library_dir`:
-    // the source is the value that arrived over IPC, and nothing should run on its account (not
+    // Refused here as well as in `persist_thumbnail_from_source`, ahead of `ensure_library_dir`.
+    // The source is the value that arrived over IPC, and nothing should run on its account (not
     // even creating the library directory) before it is known to be one this app will read.
     if is_network_path(&source.to_string_lossy()) {
         return Err(AppError::from_code(
@@ -162,7 +162,7 @@ mod tests {
     fn persist_thumbnail_from_source_refuses_a_network_source_before_touching_it() {
         // Every spelling Windows resolves to a share, each carrying a valid image extension so only
         // the network check can be what refuses it. The library is deliberately a path that does
-        // not exist: the refusal has to come before anything (the stat of the source, the creation
+        // not exist. The refusal has to come before anything (the stat of the source, the creation
         // of the library) runs, and a library that was created would show it did not.
         let library = unique_test_dir();
 

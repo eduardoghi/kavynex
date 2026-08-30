@@ -1,5 +1,5 @@
 //! SQLite's table-rebuild procedure, for the schema changes `ALTER TABLE ADD COLUMN` and a trigger
-//! cannot express: a new or changed `CHECK`, a new `UNIQUE`, a changed column type, a dropped
+//! cannot express. A new or changed `CHECK`, a new `UNIQUE`, a changed column type, a dropped
 //! column. Split out of `mod.rs` because it is the one migration mechanism with machinery of its
 //! own (a pooled connection whose foreign-key state must never leak back), and because it is
 //! deliberately unused so far. Kept ready and tested so the first real rebuild
@@ -31,11 +31,11 @@ pub(crate) struct TableRebuild {
 
 /// Rebuilds a single table to change what `ALTER TABLE ADD COLUMN` cannot express (a
 /// CHECK, a UNIQUE, a column type, or a dropped column), following SQLite's documented
-/// table-rebuild procedure: create the new shape under a staging name, copy the carried
+/// table-rebuild procedure. Create the new shape under a staging name, copy the carried
 /// columns across, drop the old table and rename the staging one into place.
 ///
 /// The caller must run this inside a transaction on a connection with foreign keys disabled
-/// (see [`apply_table_rebuilds`]): with enforcement on, `DROP TABLE` performs an implicit
+/// (see [`apply_table_rebuilds`]). With enforcement on, `DROP TABLE` performs an implicit
 /// delete of the table's rows, which would fire `ON DELETE CASCADE` on child tables and
 /// wipe them out.
 #[allow(dead_code)]
@@ -112,10 +112,10 @@ impl Drop for RebuildConnection {
     fn drop(&mut self) {
         if let Some(conn) = self.conn.take() {
             if self.restored {
-                // Enforcement restored: hand the connection back to the pool normally.
+                // Enforcement restored. Hand the connection back to the pool normally.
                 drop(conn);
             } else {
-                // The restore never ran (a panic unwound through the rebuild) or failed: discard
+                // The restore never ran (a panic unwound through the rebuild) or failed. Discard
                 // the connection so a foreign_keys = OFF one is never reused.
                 conn.detach();
             }
@@ -133,7 +133,7 @@ pub(crate) async fn apply_table_rebuilds(
         .acquire()
         .await
         .map_err(|error| db_error("failed to acquire a connection for schema migration", error))?;
-    // Guard the connection from here on: any early return, error, or panic below must not return
+    // Guard the connection from here on. Any early return, error, or panic below must not return
     // a foreign_keys = OFF connection to the pool (see RebuildConnection).
     let mut guard = RebuildConnection {
         conn: Some(conn),
@@ -192,7 +192,7 @@ async fn apply_table_rebuilds_in_transaction(
     }
 
     // The comment unique index lives outside INDEX_DDLS (see COMMENT_UNIQUE_INDEX_DDL), so recreate
-    // it explicitly when its table was rebuilt. Safe unconditionally here: a rebuild only runs well
+    // it explicitly when its table was rebuilt. Safe unconditionally here. A rebuild only runs well
     // after v10, so no duplicate the index forbids can remain.
     if rebuilt_tables.contains(COMMENT_UNIQUE_INDEX_TABLE) {
         sqlx::query(COMMENT_UNIQUE_INDEX_DDL)

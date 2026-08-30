@@ -4,7 +4,7 @@ use std::fmt;
 // Exported to the frontend as a string-literal union via ts-rs. `rename_all` makes ts-rs emit
 // the same SCREAMING_SNAKE_CASE strings `as_str` below produces (the values that actually cross
 // the IPC boundary on `AppError.code`), so `src/constants/error-codes.ts` can be type-checked
-// against this generated union: renaming or removing a variant here then breaks the frontend
+// against this generated union. Renaming or removing a variant here then breaks the frontend
 // build instead of silently leaving a dead `error.code === X` comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ts_rs::TS)]
 #[ts(
@@ -58,13 +58,13 @@ pub enum AppErrorCode {
     // Split out from LiveChatCompressFailed, which covered every live chat failure (compressing,
     // a missing file, a corrupt archive), with one code the frontend had no message for, so all of
     // them reached the user as the generic fallback plus a raw Rust string. These two are the ones
-    // a user can actually act on, and they call for opposite actions: a moved/deleted file is
+    // a user can actually act on, and they call for opposite actions. A moved/deleted file is
     // recoverable by putting it back, a corrupt archive is not.
     LiveChatFileNotFound,
     LiveChatFileUnreadable,
     // Refused by the concurrency gate in front of the replay reader, not by anything wrong with the
     // file. Its own code rather than reusing TooManyConcurrentYtDlpRuns for the reason
-    // MediaImportCancelled is not YtDlpDownloadCancelled: the two say the same thing about load and
+    // MediaImportCancelled is not YtDlpDownloadCancelled. The two say the same thing about load and
     // nothing about each other, and a code named for yt-dlp appearing after opening a saved chat
     // would be a lie in the log.
     TooManyConcurrentLiveChatReads,
@@ -114,8 +114,8 @@ pub enum AppErrorCode {
     CreateMediaDirFailed,
     RemoveMediaFailed,
     UnsupportedMediaExtension,
-    // A local import the user stopped. Distinct from YtDlpDownloadCancelled rather than reusing it:
-    // the two travel the same way (a cancel unwinds as an error, and the frontend routes both to
+    // A local import the user stopped. Distinct from YtDlpDownloadCancelled rather than reusing it.
+    // The two travel the same way (a cancel unwinds as an error, and the frontend routes both to
     // the neutral notice channel instead of the error modal) but they are different operations, and
     // a code named for yt-dlp appearing after a file import would be a lie in the log.
     MediaImportCancelled,
@@ -458,7 +458,7 @@ mod tests {
         // details holds only the redacted final component, prefixed with "path: ".
         assert_eq!(error.details.as_deref(), Some("path: clip.mp4"));
 
-        // The middle segments (which embed the profile/library name) must never survive: this is
+        // The middle segments (which embed the profile/library name) must never survive. This is
         // the assertion a raw-path mutant fails.
         let details = error.details.unwrap();
         assert!(!details.contains("alice"));
@@ -502,7 +502,7 @@ mod tests {
             "INVALID_URL: url must be an http(s) YouTube URL (got ftp://example.com)"
         );
 
-        // No details: the parenthesis must not appear at all rather than as an empty pair.
+        // No details. The parenthesis must not appear at all rather than as an empty pair.
         let without_details = AppError::from_code(AppErrorCode::InvalidUrl, "url is empty");
         assert_eq!(without_details.to_string(), "INVALID_URL: url is empty");
 

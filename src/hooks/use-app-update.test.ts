@@ -133,7 +133,7 @@ describe("useAppUpdate", () => {
     });
 
     it("lets the newest check win when two overlap and the older one resolves last", async () => {
-        // The overlap this guards is not the double click the Settings button already disables: it
+        // The overlap this guards is not the double click the Settings button already disables. It
         // is a user-driven check racing the opt-in startup one (useStartupUpdateCheck), which the
         // button cannot see. Resolving the *first* call last is the ordering that made the stale
         // answer win before the guard existed.
@@ -152,7 +152,7 @@ describe("useAppUpdate", () => {
         const { result } = renderHook(() => useAppUpdate());
 
         await act(async () => {
-            // Started but not awaited: this is the request that will be superseded.
+            // Started but not awaited. This is the request that will be superseded.
             void result.current.checkForUpdate();
             await result.current.checkForUpdate();
         });
@@ -171,7 +171,7 @@ describe("useAppUpdate", () => {
     });
 
     it("does not let a superseded check report an error over a newer result", async () => {
-        // The failure branch needs its own coverage: it sets state through a different path, and a
+        // The failure branch needs its own coverage. It sets state through a different path, and a
         // guard applied to only the success branch would still let a slow failure overwrite a good
         // answer with "Could not check for updates."
         let rejectFirst: (reason: Error) => void = () => {};
@@ -200,7 +200,7 @@ describe("useAppUpdate", () => {
 
         expect(result.current.status).toBe("available");
         expect(result.current.errorMessage).toBe("");
-        // Still logged, though: a failed check is worth recording whichever request it belonged to,
+        // Still logged, though. A failed check is worth recording whichever request it belonged to,
         // and only the user-facing half is suppressed.
         expect(logErrorMock).toHaveBeenCalledWith(
             "app-update",
@@ -211,7 +211,7 @@ describe("useAppUpdate", () => {
 
     it("does not let a check landing after an install started move the status off downloading", async () => {
         // The case the guard matters most for. `installUpdate` leaves the status on "downloading"
-        // until the relaunch replaces the process, and both readers depend on that: the install
+        // until the relaunch replaces the process, and both readers depend on that. The install
         // button stays disabled and the settings modal stays locked. A check resolving into that
         // window would unlock both mid-install.
         let resolveStaleCheck: (value: null) => void = () => {};
@@ -283,7 +283,7 @@ describe("useAppUpdate", () => {
         expect(result.current.progress).toEqual({ downloaded: 50, total: 100, percent: 50 });
         expect(result.current.errorMessage).toBe("");
 
-        // A successful install sets no terminal state: in production the relaunch has replaced the
+        // A successful install sets no terminal state. In production the relaunch has replaced the
         // process by now, and the two readers of this status both want it to still say
         // "downloading". The install button stays disabled and the settings modal stays locked
         // right through to the relaunch. This test only observes the gap because the mock removes
@@ -345,7 +345,7 @@ describe("useAppUpdate", () => {
 
         expect(result.current.errorMessage).toBe("");
         // Back to the in-flight state a successful install leaves behind, and specifically no
-        // longer "error": the retry is what clears it.
+        // longer "error". The retry is what clears it.
         expect(result.current.status).toBe("downloading");
     });
 

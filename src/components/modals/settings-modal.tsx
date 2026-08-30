@@ -56,7 +56,7 @@ export function SettingsModal({
 }: SettingsModalProps): JSX.Element {
     const controller = useSettingsController({ opened, libraryPath });
 
-    // Read from context rather than threaded through Home like the other settings: it is a
+    // Read from context rather than threaded through Home like the other settings. It is a
     // per-device presentation choice kept in localStorage (like the color scheme), not part of
     // the settings row the database holds, so nothing upstream owns it.
     const motion = useMotionPreference();

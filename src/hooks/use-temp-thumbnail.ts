@@ -19,7 +19,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
     const [thumbPath, setThumbPath] = useState("");
     const [isGeneratingThumb, setIsGeneratingThumb] = useState(false);
 
-    // Guards against a stale async result overwriting a newer one: every generate begins a new
+    // Guards against a stale async result overwriting a newer one. Every generate begins a new
     // request and every reset invalidates the in-flight one, and a settled request only applies its
     // result when its id is still current. This is what makes a setState after unmount harmless too.
     // React 18+ dropped the unmounted-setState warning and treats the call as a no-op, so no

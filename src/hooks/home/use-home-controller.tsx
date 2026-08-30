@@ -51,7 +51,7 @@ export function useHomeController(): HomeController {
         onError: errorState.showError,
     });
 
-    // Opt-in passive update check: when enabled (Settings > Application update), checks once on
+    // Opt-in passive update check. When enabled (Settings > Application update), checks once on
     // startup and surfaces a non-intrusive notice if a newer version exists. Off by default.
     useStartupUpdateCheck({
         enabled: settingsState.settings.checkUpdatesOnStartup,
@@ -64,7 +64,7 @@ export function useHomeController(): HomeController {
         onIntegrityFailure: errorState.showError,
     });
 
-    // The same treatment for the startup sweep giving up on a crashed media creation: its files stay
+    // The same treatment for the startup sweep giving up on a crashed media creation. Its files stay
     // in the library with nothing pointing at them, and Diagnostics is where to deal with them. A
     // notice rather than an error, since nothing is broken and nothing was lost.
     usePendingMediaAlert({
@@ -136,7 +136,7 @@ export function useHomeController(): HomeController {
         [settingsState, homeActions.chooseLibraryPath]
     );
 
-    // Reference-stable controller, per the hook conventions in CONTRIBUTING.md: its identity only
+    // Reference-stable controller, per the hook conventions in CONTRIBUTING.md. Its identity only
     // changes when one of its (already individually memoized) slices does, rather than every render.
     return useMemoObject({
         channels: channelsState,

@@ -21,7 +21,7 @@ type YtDlpTerminalProps = {
 // Height of the scrollback viewport. Previously a Mantine ScrollArea `h`; the virtualizer needs a
 // plain scrolling element it owns, so this is applied to that element directly.
 //
-// Scales with the viewport rather than sitting at a fixed 320px: the modal around it is now sized
+// Scales with the viewport rather than sitting at a fixed 320px. The modal around it is now sized
 // off the viewport too, and this is the element that actually wants the extra room. It is what the
 // user watches for the minutes a download runs. `clamp` keeps it a definite computed height, which
 // is what the virtualizer measures the scroll element for, so virtualization is unaffected. The
@@ -76,7 +76,7 @@ export function YtDlpTerminal({
     const virtualRows = virtualizer.getVirtualItems();
     const totalSize = virtualizer.getTotalSize();
 
-    // Follow the tail as lines arrive. Re-applied on totalSize as well as on the log itself: with
+    // Follow the tail as lines arrive. Re-applied on totalSize as well as on the log itself. With
     // virtualization the scrollable height grows only once the new row has been measured, so
     // scrolling on the log change alone would stop one row short of the bottom.
     useEffect(() => {
@@ -103,7 +103,7 @@ export function YtDlpTerminal({
         return null;
     }
 
-    // Screen readers announce changes to a live region, and the scrollback below is not one: it
+    // Screen readers announce changes to a live region, and the scrollback below is not one. It
     // holds up to 500 lines and now renders only the rows near the viewport, so making it live
     // would announce whatever the virtualizer happened to mount rather than the new line. Instead
     // this hidden region carries only the most recent line, so assistive tech announces just that

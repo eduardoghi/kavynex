@@ -10,7 +10,7 @@ type UseDatabaseIntegrityAlertOptions = {
 };
 
 // The user-facing message for a failed background integrity check. Deliberately non-technical and
-// action-oriented: the raw PRAGMA problems stay in the log file (and the event payload) for a bug
+// action-oriented. The raw PRAGMA problems stay in the log file (and the event payload) for a bug
 // report, but the user is told what happened and what to do, not shown the internal diagnostics.
 const INTEGRITY_FAILURE_MESSAGE =
     "A routine check found that the app database may be corrupted. Open Settings > Database to " +

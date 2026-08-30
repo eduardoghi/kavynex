@@ -6,7 +6,7 @@
 // bundled build, so neither can be exercised by anything the backend does on its own, and neither
 // is reachable from `--smoke-test`, which exits inside `setup()` before the window opens.
 //
-// This module is in the production bundle by design: the shipped binary has to be able to check
+// This module is in the production bundle by design. The shipped binary has to be able to check
 // itself, without a second build that would then be a different binary. The cost on a normal launch
 // is one `invoke` that returns null immediately.
 
@@ -22,7 +22,7 @@ import type { WebviewCheckReport } from "../types/generated/WebviewCheckReport";
 // being cut off by it.
 const ASSET_PROBE_TIMEOUT_MS = 15_000;
 
-// The event the listen probe subscribes to. Nothing ever emits it, and that is the point: what is
+// The event the listen probe subscribes to. Nothing ever emits it, and that is the point. What is
 // being tested is whether `listen`/`unlisten` are permitted at all, which the ACL decides when the
 // call is made rather than when a payload arrives. Kept local rather than added to
 // constants/events.ts, which names events the backend actually emits.
@@ -112,7 +112,7 @@ function probeAssetLoad(assetPath: string, failures: string[]): Promise<boolean>
     });
 }
 
-// Runs every probe, so one failure never hides another: a report that names all three problems at
+// Runs every probe, so one failure never hides another. A report that names all three problems at
 // once is what makes a badly narrowed capability list fixable in a single pass.
 async function collectReport(assetPath: string): Promise<WebviewCheckReport> {
     const failures: string[] = [];
@@ -130,7 +130,7 @@ async function collectReport(assetPath: string): Promise<WebviewCheckReport> {
  * process itself is terminated by the backend once the report lands.
  *
  * Never throws. A normal launch must not be affected by anything here, so a failure to even ask is
- * swallowed: the backend's watchdog is what turns a check that could not report into a non-zero
+ * swallowed. The backend's watchdog is what turns a check that could not report into a non-zero
  * exit, and outside a check run there is nothing to report at all.
  */
 export async function runWebviewCheckIfRequested(): Promise<boolean> {

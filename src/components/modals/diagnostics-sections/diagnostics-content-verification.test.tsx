@@ -54,7 +54,7 @@ describe("DiagnosticsContentVerification", () => {
     });
 
     it("shows the count alongside the bar while running", () => {
-        // The count is what keeps a large library from looking stuck: the percentage moves slowly
+        // The count is what keeps a large library from looking stuck. The percentage moves slowly
         // enough to read as frozen, and "412 of 3208" visibly does not.
         hookState = { running: true, progress: { checked: 412, total: 3208 }, result: null };
 
@@ -105,7 +105,7 @@ describe("DiagnosticsContentVerification", () => {
     });
 
     it("never presents a cancelled run as a clean result", () => {
-        // The one way this check could do harm: reporting "no problems" over files it never opened.
+        // The one way this check could do harm. Reporting "no problems" over files it never opened.
         // A cancelled run found no corruption *and* checked almost nothing, and the first half must
         // not be shown without the second.
         hookState = {

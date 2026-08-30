@@ -26,7 +26,7 @@ function OverviewStatusIcon({ status }: { status: DiagnosticsOverviewStatus }): 
     );
 }
 
-// The headline of the report: one line of status, one of explanation, and the issue counts when
+// The headline of the report. One line of status, one of explanation, and the issue counts when
 // there are any. The overview was a card wrapping an icon tile, a headline, a sentence and a badge.
 // The badge said what the headline says, so the headline kept the job.
 export function DiagnosticsOverviewHeader({

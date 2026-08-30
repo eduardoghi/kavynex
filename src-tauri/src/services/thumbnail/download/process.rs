@@ -1,8 +1,8 @@
-//! Running the yt-dlp thumbnail/avatar command: its argument vector, its concurrency bound, and
+//! Running the yt-dlp thumbnail/avatar command. Its argument vector, its concurrency bound, and
 //! the spawn/wait/kill machinery around it.
 //!
 //! Split out of the orchestration in `super` because it shares nothing with the HTTP fetch next to
-//! it beyond both ending in an image on disk: this half owns a process tree (yt-dlp plus the
+//! it beyond both ending in an image on disk. This half owns a process tree (yt-dlp plus the
 //! ffmpeg child `--convert-thumbnails` spawns), and the other owns a socket.
 
 use std::path::Path;
@@ -159,8 +159,8 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
             }
         },
         _ = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
-            // The download was cancelled while this bounded thumbnail phase was still running:
-            // kill the whole tree now rather than blocking cancellation until the timeout. Only
+            // The download was cancelled while this bounded thumbnail phase was still running.
+            // Kill the whole tree now rather than blocking cancellation until the timeout. Only
             // reached for the media-thumbnail path (which passes the run's cancel flag); the
             // standalone and avatar paths pass None, so this branch pends forever.
             if let Some(pid) = child_pid {
@@ -180,9 +180,9 @@ pub(super) const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;
 /// What a thumbnail fetch is pointed at, which decides how yt-dlp treats playlists.
 #[derive(Clone, Copy)]
 pub(super) enum ThumbnailTarget {
-    /// A single video or direct media URL: `--no-playlist`, so only that entry is considered.
+    /// A single video or direct media URL. `--no-playlist`, so only that entry is considered.
     SingleMedia,
-    /// A channel URL: `--playlist-items 0`, so no video is enumerated and only the
+    /// A channel URL. `--playlist-items 0`, so no video is enumerated and only the
     /// channel-level thumbnail (the avatar) is written.
     ChannelAvatar,
 }
@@ -263,7 +263,7 @@ mod tests {
     /// which is what the cap arithmetic is actually about; a reader that satisfied the whole request
     /// in one call would leave the `min` untested. The counter is what lets a test assert that the
     /// stream was drained *past* the cap rather than abandoned at it, which is the property the
-    /// truncation cannot be allowed to break: a child whose pipe stops being read blocks on the
+    /// truncation cannot be allowed to break. A child whose pipe stops being read blocks on the
     /// write and never exits, so this would trade bounded memory for a hung process.
     struct CountingReader {
         data: Vec<u8>,
@@ -338,7 +338,7 @@ mod tests {
         // test anything. The first version read 512 bytes into a 100-byte cap, so the buffer filled
         // to exactly the cap on the first chunk and the remaining-capacity arithmetic
         // (`max_bytes - buffer.len()`) was never evaluated with a non-zero buffer. The mutation run
-        // caught it: replacing that `-` with a `+` survived. At 30 into 100 the last chunk straddles
+        // caught it. Replacing that `-` with a `+` survived. At 30 into 100 the last chunk straddles
         // the cap (30, 60, 90, then 10 of the next 30), which is the only shape where that
         // subtraction has a value to get wrong.
         let payload = vec![b'x'; 5000];
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn the_captured_output_ceiling_is_one_mebibyte_per_stream() {
         // Pinned by value rather than re-derived from the same multiplication the constant uses, for
-        // the reason the live-chat decompression ceiling is pinned the same way: an arithmetic slip
+        // the reason the live-chat decompression ceiling is pinned the same way. An arithmetic slip
         // (1024 + 1024 is 2048 bytes, not 1 MiB) either truncates every real error message to
         // nothing useful or removes the bound, and no behavioural test can afford to exercise the
         // real size to tell the difference.
@@ -407,7 +407,7 @@ mod tests {
         assert!(args.iter().any(|arg| arg == "--no-playlist"));
         assert!(!args.iter().any(|arg| arg == "--playlist-items"));
 
-        // The shared skeleton is present: skip download, write and convert the thumbnail,
+        // The shared skeleton is present. Skip download, write and convert the thumbnail,
         // pin ffmpeg, sandbox writes to the temp dir, and template the output name.
         assert!(args.iter().any(|arg| arg == "--skip-download"));
         assert!(args.iter().any(|arg| arg == "--write-thumbnail"));

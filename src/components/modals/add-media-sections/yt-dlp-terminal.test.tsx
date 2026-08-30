@@ -112,7 +112,7 @@ describe("YtDlpTerminal", () => {
     });
 
     it("colours a line by its level rather than by what its text starts with", () => {
-        // The three levels must be visually distinct, and a warning in particular has to be: yt-dlp
+        // The three levels must be visually distinct, and a warning in particular has to be. yt-dlp
         // warnings are no longer suppressed on a download, and they are the lines that explain an
         // outcome the user did not ask for. Rendering them like ordinary progress output would put
         // them back out of reach in a terminal that scrolls fast.

@@ -30,12 +30,12 @@ pub async fn list_channels(pool: &SqlitePool) -> AppResult<Vec<ChannelRow>> {
 
 /// Every non-blank channel avatar path.
 ///
-/// Read by the library integrity check, which has to count an avatar as a *referenced* thumbnail:
-/// avatars live under `thumbnails/` but are referenced by the channels table rather than by any
+/// Read by the library integrity check, which has to count an avatar as a *referenced* thumbnail.
+/// Avatars live under `thumbnails/` but are referenced by the channels table rather than by any
 /// media row, so without them an avatar that is not also a media thumbnail would be reported as an
 /// orphan. Inviting the user to delete a file the app is still using.
 ///
-/// Selects only the column it needs rather than reusing `list_channels`: this runs on every
+/// Selects only the column it needs rather than reusing `list_channels`. This runs on every
 /// Diagnostics open, the blank filter is what keeps an empty-string path out of the expected set,
 /// and `idx_channels_avatar_path` can serve it without touching the table.
 pub async fn list_channel_avatar_paths(pool: &SqlitePool) -> AppResult<Vec<String>> {
@@ -156,7 +156,7 @@ pub async fn update_channel_name_and_handle(
 // `update_channel_avatar_path` and `count_channels_using_avatar_path_outside_channel` lived here
 // until they were superseded by `library::cleanup::replace_channel_avatar_and_plan_cleanup`, which
 // does the update and the reference decision in one transaction. Both were removed rather than
-// kept "in case": neither had a caller outside its own test, and the count encoded the *older*
+// kept "in case". Neither had a caller outside its own test, and the count encoded the *older*
 // rule. It only looked at other channels' avatars, missing the video thumbnails that can point
 // at the same content-addressed file, which is the exact bug the replacement fixes. A dead
 // helper that still passes its own tests is the kind of thing a future change reaches for.

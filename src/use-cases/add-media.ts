@@ -50,8 +50,8 @@ export function hasInvalidCookiesBrowserSelector(
     return selector !== "" && normalizeCookiesBrowser(selector) === null;
 }
 
-// The outcome of validating the form before a submit: a hard error to surface, a silent skip
-// (busy: a preparation/download/cancel is already in flight), or a green light with the resolved
+// The outcome of validating the form before a submit. A hard error to surface, a silent skip
+// (busy. A preparation/download/cancel is already in flight), or a green light with the resolved
 // source.
 export type AddMediaValidation =
     | { status: "error"; message: string }
@@ -94,7 +94,7 @@ export function validateAddMediaForm(
         };
     }
 
-    // Refused here rather than dropped downstream: the backend treats an invalid selector as "no
+    // Refused here rather than dropped downstream. The backend treats an invalid selector as "no
     // cookies" and runs anyway, so without this the user who typed a bad profile would get an
     // unauthenticated download and a failure that names the wrong cause.
     if (
@@ -107,7 +107,7 @@ export function validateAddMediaForm(
     return { status: "ok", sourceMode, sourceValue };
 }
 
-// Resolves the cookies source the format loader also uses: "manual" selects the user-picked .txt
+// Resolves the cookies source the format loader also uses. "manual" selects the user-picked .txt
 // file and is never a real --cookies-from-browser value, so it must not be sent as one. A browser
 // is sent with the optional profile appended (`browser:profile`), which is the selector yt-dlp
 // reads; see composeCookiesBrowserSelector.

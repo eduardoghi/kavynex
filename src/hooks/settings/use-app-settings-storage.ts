@@ -31,7 +31,7 @@ function normalizeLibraryPath(value: string | null | undefined): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
-// Remote images are opt-in: only an explicit "true" enables them. An absent key (older
+// Remote images are opt-in. Only an explicit "true" enables them. An absent key (older
 // databases that predate the setting, or a fresh install) or any other value keeps them off,
 // so opening comments/live chat makes no network request to Google's CDNs until the user turns
 // it on in Settings > Privacy.
@@ -39,7 +39,7 @@ function normalizeLoadRemoteImages(value: string | null | undefined): boolean {
     return value === "true";
 }
 
-// The startup update check is opt-in too: only an explicit "true" enables it, so the app
+// The startup update check is opt-in too. Only an explicit "true" enables it, so the app
 // contacts the update endpoint on startup only after the user turns it on in Settings.
 function normalizeCheckUpdatesOnStartup(value: string | null | undefined): boolean {
     return value === "true";
@@ -78,7 +78,7 @@ export async function persistSettings(settings: AppSettings): Promise<void> {
 
 // Serializes the read-modify-write updates below.
 //
-// `app_settings` is written as a whole row: each setter loads all four values, replaces one, and
+// `app_settings` is written as a whole row. Each setter loads all four values, replaces one, and
 // writes them all back. Run two of those concurrently and both read the same pre-change snapshot,
 // so the second write reverts the first one's field. That is not theoretical. The Privacy and
 // Application-update toggles live in the same modal, a double-click apart, and the callers are
@@ -90,7 +90,7 @@ export async function persistSettings(settings: AppSettings): Promise<void> {
 let settingsUpdateQueue: Promise<unknown> = Promise.resolve();
 
 function enqueueSettingsUpdate(operation: () => Promise<AppSettings>): Promise<AppSettings> {
-    // Run the next update whether the previous one resolved or rejected: a failed write must not
+    // Run the next update whether the previous one resolved or rejected. A failed write must not
     // wedge every later setting change for the rest of the session.
     const result = settingsUpdateQueue.then(operation, operation);
 
@@ -140,7 +140,7 @@ export function updateStoredCheckUpdatesOnStartup(
 }
 
 // The external backup directory has its own backend command (not the whole-row write persistSettings
-// does), so this does not go through updateStoredField: it calls the dedicated command and merges the
+// does), so this does not go through updateStoredField. It calls the dedicated command and merges the
 // new value into the current settings. Still enqueued so it stays ordered with the other updates and
 // the returned settings reflect a consistent snapshot. An empty string turns the feature off.
 export function updateStoredExternalBackupDir(externalBackupDir: string): Promise<AppSettings> {

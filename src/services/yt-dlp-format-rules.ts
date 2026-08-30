@@ -1,20 +1,20 @@
-// Pure yt-dlp format logic: labelling, preference sorting, synthesizing merged video+audio
+// Pure yt-dlp format logic. Labelling, preference sorting, synthesizing merged video+audio
 // options, and picking a sensible default. Kept free of React/IPC so it can be unit-tested
 // in isolation and reused by the format-loader hook.
 //
 // This module owns what the picker shows. It takes the backend's formats (`YtDlpFormat`) and
-// returns the list the user chooses from (`YtDlpFormatOption`), which is a different list: it
+// returns the list the user chooses from (`YtDlpFormatOption`), which is a different list. It
 // adds the merged video+audio entries YouTube does not serve as a single format, and every
 // entry carries a label built here. The backend deliberately sends no label or order, because
 // it cannot produce either for a row it never emitted.
 //
-// One value this module produces does cross back to the backend and is a shared contract with it:
-// the merged `format_id` string `<video_id>+<audio_id>` (see buildMergedFormats). That `+` join is
+// One value this module produces does cross back to the backend and is a shared contract with it.
+// The merged `format_id` string `<video_id>+<audio_id>` (see buildMergedFormats). That `+` join is
 // yt-dlp's own selector syntax, and the backend re-validates every id it receives against it.
 // `is_valid_format_id` (charset, non-empty `+`-separated parts) and `resolve_format_has_video`
 // (each part must resolve to a real format from the fetched metadata) in
 // `src-tauri/src/services/yt_dlp/download.rs`. So a compromised/garbled selector is rejected there,
-// not trusted. What has no compile-time or schema guard is the *semantics*: if yt-dlp ever changed
+// not trusted. What has no compile-time or schema guard is the *semantics*. If yt-dlp ever changed
 // how `+` merges, this construction and those two Rust checks would have to move together, and
 // nothing but this note and the round-trip tests (yt-dlp-format-rules.test.ts) would flag the drift.
 import type { MediaType, YtDlpFormat, YtDlpFormatOption } from "../types/media";
@@ -27,14 +27,14 @@ function normalizeFormatId(value: string | null | undefined): string {
     return value?.trim() ?? "";
 }
 
-// Mirrors the backend's `is_valid_format_id` (src-tauri/src/services/yt_dlp/download/mod.rs): a
+// Mirrors the backend's `is_valid_format_id` (src-tauri/src/services/yt_dlp/download/mod.rs). A
 // concrete yt-dlp format id, optionally `+`-combined for a merged video+audio selection, where every
 // part is non-empty, does not start with `-` (so the value after `-f` can never be read as a flag),
 // and is made only of ASCII alphanumerics plus `.`/`_`/`-`. `buildMergedFormats` synthesizes the
 // `<video>+<audio>` selector this describes, and the backend re-validates it with the same rule
 // before resolving it. The two are kept from drifting apart by shared/yt-dlp-format-id-cases.json,
 // asserted on both sides (see the parity test). Note the leading-`-` guard is separate from the
-// character class on purpose: `-` is a legal *inner* character (`233-drc`), so the class alone would
+// character class on purpose. `-` is a legal *inner* character (`233-drc`), so the class alone would
 // accept a leading one.
 export function isValidYtDlpFormatId(formatId: string): boolean {
     return formatId
@@ -377,7 +377,7 @@ export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormatOption[] 
                       has_audio: true,
                       // Only report a merged size when *both* sides are known. Coalescing a
                       // missing side to 0 understates the total by that whole track, and the
-                      // side that goes missing is normally the video one: yt-dlp often omits
+                      // side that goes missing is normally the video one. yt-dlp often omits
                       // filesize on DASH video-only formats, which would render a 1080p entry
                       // as the size of its audio alone. A null reads as "size unknown", which
                       // is the truth here.

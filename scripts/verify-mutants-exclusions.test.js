@@ -9,8 +9,8 @@ import {
     verifyMutantsExclusions,
 } from "./verify-mutants-exclusions.js";
 
-// A mutants.toml body carrying the two arrays this script reads, in the shape the real file uses:
-// one quoted value per line, with comments interleaved between them.
+// A mutants.toml body carrying the two arrays this script reads, in the shape the real file uses.
+// One quoted value per line, with comments interleaved between them.
 const toml = ({ excludes = [], globs = [] } = {}) =>
     [
         "# The scope.",
@@ -50,7 +50,7 @@ describe("parseExcludePatterns", () => {
     });
 
     it("returns null when the array is not there at all", () => {
-        // Distinguished from an empty array on purpose: a missing key means the parse (or the file)
+        // Distinguished from an empty array on purpose. A missing key means the parse (or the file)
         // changed shape, which the gate refuses rather than passing vacuously.
         expect(parseExcludePatterns("examine_globs = [\n]\n")).toBeNull();
     });
@@ -75,7 +75,7 @@ describe("findDeadPatterns", () => {
     });
 
     it("reports a pattern whose function was renamed out from under it", () => {
-        // The exact shape both real failures took: an extraction moved the code and the pattern
+        // The exact shape both real failures took. An extraction moved the code and the pattern
         // kept naming the old site. `in is_recent` is not a substring of `in duration_is_recent`.
         const result = findDeadPatterns(["replace < with <= in is_recent"], mutantList);
 
@@ -154,7 +154,7 @@ describe("verifyMutantsExclusions", () => {
     });
 
     it("refuses an empty mutant list instead of calling every pattern dead", () => {
-        // The failure mode worth guarding: `--list` producing nothing (a bad --file argument, a
+        // The failure mode worth guarding. `--list` producing nothing (a bad --file argument, a
         // cargo error swallowed upstream) would otherwise report all 43 patterns as dead, which
         // reads as a catastrophic config regression rather than as a broken invocation.
         const result = verifyMutantsExclusions({
@@ -182,8 +182,8 @@ describe("the real mutants.toml", () => {
     const tomlContent = readFileSync(join(root, "src-tauri", ".cargo", "mutants.toml"), "utf8");
 
     it("parses into a non-empty set of patterns and globs", () => {
-        // The check that keeps this gate honest without a cargo-mutants run in the frontend suite:
-        // if the parse ever silently stopped finding anything, every assertion above would still
+        // The check that keeps this gate honest without a cargo-mutants run in the frontend suite.
+        // If the parse ever silently stopped finding anything, every assertion above would still
         // pass against its synthetic fixtures while the real gate verified nothing.
         expect(parseExcludePatterns(tomlContent).length).toBeGreaterThan(0);
         expect(parseExamineGlobs(tomlContent).length).toBeGreaterThan(0);

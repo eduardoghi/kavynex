@@ -16,7 +16,7 @@ pub async fn get_app_settings(db: State<'_, Db>) -> AppResult<StoredAppSettings>
     let pool = db.pool().await?;
 
     // Self-heal a library migration that was interrupted before the frontend could persist the
-    // new path: if the configured library lost its content but a commit marker points at a
+    // new path. If the configured library lost its content but a commit marker points at a
     // populated directory, adopt it before returning, so the frontend never sees the library as
     // "disappeared". Best effort and cheap in the common case (a single stat of a missing
     // marker); see services::library::recovery.
@@ -69,7 +69,7 @@ pub async fn set_app_settings(
     // (the same derivation get_app_settings uses); the library must not be nested inside it.
     let config_dir = db.path().parent().map(Path::to_path_buf);
 
-    // Validate the library path off the async runtime: resolve_existing_library_dir touches the
+    // Validate the library path off the async runtime. resolve_existing_library_dir touches the
     // filesystem (exists / is_dir / canonicalize).
     let path_for_validation = trimmed_library_path.clone();
     run_blocking(move || {
@@ -79,7 +79,7 @@ pub async fn set_app_settings(
 
     let pool = db.pool().await?;
 
-    // The four keys this form owns. `external_backup_dir` stays `None` on purpose: it has its own
+    // The four keys this form owns. `external_backup_dir` stays `None` on purpose. It has its own
     // command, and a `None` field is skipped rather than cleared, so saving the settings form
     // cannot wipe a configured backup folder.
     set_app_settings_in_pool(
@@ -123,7 +123,7 @@ fn validate_external_backup_dir(
 
     // Refuse a mirror directory inside (or equal to) the app config directory. Pointing the
     // "off-volume" backup at the very directory it exists to outlive would silently defeat the
-    // disaster-recovery intent: the daily mirror would write kavynex-backup.db next to the live
+    // disaster-recovery intent. The daily mirror would write kavynex-backup.db next to the live
     // database, with no error or warning. Mirrors the containment check set_app_settings applies
     // to the library path, and the guard the manual export command already runs.
     if let Some(config_dir) = config_dir {
@@ -146,7 +146,7 @@ pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResu
     // (the same derivation set_app_settings uses); the external mirror must not be nested inside it.
     let config_dir = db.path().parent().map(Path::to_path_buf);
 
-    // Validate off the async runtime: std::fs::metadata touches the filesystem (and can block on a
+    // Validate off the async runtime. std::fs::metadata touches the filesystem (and can block on a
     // slow external/network path).
     let path_for_validation = trimmed.clone();
     run_blocking(move || validate_external_backup_dir(&path_for_validation, config_dir.as_deref()))

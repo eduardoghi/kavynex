@@ -2,7 +2,7 @@ import { openExternalUrl } from "./library-service";
 import { logError } from "../utils/app-logger";
 
 /**
- * Best-effort: opens a YouTube channel by its external channel id (UC...) in the system
+ * Best-effort. Opens a YouTube channel by its external channel id (UC...) in the system
  * browser. Used by the comment and live chat panels to make authors clickable. Failures
  * are logged, not thrown, since this is a fire-and-forget UI action.
  */

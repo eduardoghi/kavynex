@@ -207,7 +207,7 @@ describe("SelectedChannelLibrarySection", () => {
             expect.objectContaining({ search: "hello" })
         );
 
-        // Switching channels remounts the section (key change): the search input resets and the
+        // Switching channels remounts the section (key change). The search input resets and the
         // fresh mount queries with the default empty search.
         const channelB: Channel = { ...CHANNEL_A, id: 20, name: "Canal B", youtube_handle: "@canalb" };
         const onApplyQueryB = vi.fn();

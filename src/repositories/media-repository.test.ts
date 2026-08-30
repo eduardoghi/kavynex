@@ -82,7 +82,7 @@ describe("media-repository command wiring", () => {
         });
 
         // A file the probe could not read reports null, and that has to reach the command as null
-        // rather than being dropped: the argument is not optional on the Rust side.
+        // rather than being dropped. The argument is not optional on the Rust side.
         await updateMediaDuration(9, null);
         expect(invokeVoidMock).toHaveBeenLastCalledWith(TAURI_COMMANDS.UPDATE_MEDIA_DURATION, {
             mediaId: 9,

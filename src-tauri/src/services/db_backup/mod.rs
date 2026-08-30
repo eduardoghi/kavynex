@@ -1,4 +1,4 @@
-//! Backup, restore, export, import: everything this app does with the database *file* rather than
+//! Backup, restore, export, import. Everything this app does with the database *file* rather than
 //! with its rows.
 //!
 //! What lives here is the machinery more than one of those needs, and nothing else. Each of the
@@ -12,12 +12,12 @@
 //!
 //! Most of the tests for all of them are still this module's `mod tests` (in `tests.rs` beside this
 //! file, so the module reads as its production code), and one reason for that
-//! is genuine while the other was not. The genuine one: many exercise more than one of the machines
+//! is genuine while the other was not. The genuine one. Many exercise more than one of the machines
 //! together (a snapshot taken, the database corrupted, the restore checked), which is the behavior
 //! worth pinning and would have to be duplicated or arbitrarily assigned if it were split along the
 //! same line as the code.
 //!
-//! The other reason was the shared fixtures (`temp_dir`, `seed_db`, `filetime_set`): a test could
+//! The other reason was the shared fixtures (`temp_dir`, `seed_db`, `filetime_set`). A test could
 //! not move without them, so every split moved code out of this module and left its tests in, and
 //! the test file kept growing as the code shrank. Those fixtures now live in `test_support.rs`, so a test that
 //! belongs to exactly one submodule can go and live there. `integrity.rs` has taken its four; the
@@ -41,11 +41,11 @@ use crate::AppErrorCode;
 // is_recent() throttle is mtime-based, so it only suppresses a second call once the first has
 // finished and refreshed `.bak`. While the first is still vacuuming, a second would pass is_recent()
 // too and race it on the shared `.bak.tmp` and the rotate/rename chain, at worst promoting a
-// half-written snapshot or burning a rotated generation. A single static lock is enough: there is
+// half-written snapshot or burning a rotated generation. A single static lock is enough. There is
 // one database process-wide and, unlike the pool, this lock holds no state a test needs to inject.
 //
 // `restore_database_from_backup` takes it too, which is why it lives here rather than in
-// `snapshot.rs`: the restore reads the same `.bak` family a rotation rewrites.
+// `snapshot.rs`. The restore reads the same `.bak` family a rotation rewrites.
 static BACKUP_IN_PROGRESS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
@@ -58,7 +58,7 @@ fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
 }
 
 /// Shifts a rotated snapshot family up by one generation, dropping the oldest, so a fresh file
-/// can be promoted into generation 0 without discarding the previous ones: generation `N` is
+/// can be promoted into generation 0 without discarding the previous ones. Generation `N` is
 /// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort. A
 /// generation that cannot be moved is left where it is rather than failing the caller.
 ///
@@ -75,8 +75,8 @@ fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, us
 
         // `rename` already replaces an existing target on both Windows and Unix, so the removal
         // below is only a fallback for the targets rename itself refuses (a locked or read-only
-        // file on Windows). It has to come *after* the first attempt rather than before it:
-        // clearing the target up front and then failing to rename into it leaves the snapshot
+        // file on Windows). It has to come *after* the first attempt rather than before it.
+        // Clearing the target up front and then failing to rename into it leaves the snapshot
         // sitting in `source`, which the next iteration's removal would then delete without it
         // ever having been copied anywhere. Silently costing a generation.
         if std::fs::rename(&source, &target).is_ok() {
@@ -101,7 +101,7 @@ fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, us
 }
 
 fn backup_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
-    // Same shape as services::media_comments and the rest of the app: reuse the single
+    // Same shape as services::media_comments and the rest of the app. Reuse the single
     // db_error constructor rather than re-deriving the AppError here.
     crate::services::database::db_error(message, error)
 }
@@ -114,7 +114,7 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
         // a busy timeout any contention surfaces as an immediate SQLITE_BUSY failure.
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS));
     // Unlike the main pool (services::database), this one does not enable
-    // `.foreign_keys(true)`. That is intentional, not an oversight: this pool is only ever
+    // `.foreign_keys(true)`. That is intentional, not an oversight. This pool is only ever
     // used read-only (quick_check, VACUUM INTO, import validation), so there are no
     // INSERT/UPDATE/DELETE statements here for FK enforcement to guard against.
     //
@@ -168,7 +168,7 @@ async fn is_healthy(pool: &SqlitePool) -> bool {
 /// temp/backup path) is assembled into raw SQL text rather than bound as a `?` parameter, and it
 /// only exists because `VACUUM INTO` is a statement SQLite does not let you parameterize. Every
 /// other query in the codebase uses `.bind(...)`. If this function is ever changed, the doubling
-/// of every single quote must be preserved: it is the sole guard keeping a path from breaking out
+/// of every single quote must be preserved. It is the sole guard keeping a path from breaking out
 /// of the literal. Covered by the adversarial-path export tests below.
 fn escape_sql_literal(value: &str) -> String {
     value.replace('\'', "''")
@@ -185,7 +185,7 @@ fn modified_ms(path: &Path) -> Option<u64> {
 }
 
 /// Sums the sizes of whichever of `paths` exist. A path that cannot be stat'd contributes zero
-/// rather than failing the whole report: this feeds a display-only number, and a missing
+/// rather than failing the whole report. This feeds a display-only number, and a missing
 /// generation is the normal case, not an error.
 fn total_size_bytes(paths: &[PathBuf]) -> u64 {
     paths
@@ -196,7 +196,7 @@ fn total_size_bytes(paths: &[PathBuf]) -> u64 {
         .fold(0u64, |total, size| total.saturating_add(size))
 }
 
-/// Every file this module owns beside the live database in the app config directory: the database
+/// Every file this module owns beside the live database in the app config directory. The database
 /// itself, SQLite's WAL sidecars, all seven backup generations, all three corrupt snapshots, the
 /// import undo/staging files, every short-lived scratch file, and the two markers.
 /// `docs/DIRECTORIES.md` documents the same set for the user.
@@ -206,7 +206,7 @@ fn total_size_bytes(paths: &[PathBuf]) -> u64 {
 ///
 /// Deliberately pure), it names paths without touching the filesystem, so the set is pinned by a
 /// test rather than by whatever happens to exist on the machine running it. That matters because
-/// the whole point of summing these is that the number is *complete*: a file this module starts
+/// the whole point of summing these is that the number is *complete*. A file this module starts
 /// writing later and forgets to add here does not report as an error, it silently stops being
 /// counted, and the reported size drifts below the real one exactly when the total is largest.
 fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
@@ -268,7 +268,7 @@ async fn database_schema_version(db_path: &Path) -> Option<i64> {
     version.ok().map(|(value,)| value)
 }
 
-/// Whether opening the database will run a schema migration: true when the file is missing
+/// Whether opening the database will run a schema migration. true when the file is missing
 /// (the schema is created on first open) or its `user_version` is below the version this
 /// build ships. Callers use this to decide whether the pre-migration snapshot must block
 /// startup (only when a migration will actually run), or can be deferred to the background.
@@ -318,7 +318,7 @@ pub use integrity::{
 };
 // The integrity tests now live in `integrity.rs` itself, so the `#[cfg(test)] use` that used to
 // pull `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them is gone with
-// them, which is the point of the move: an internal a submodule's own tests reach no longer has
+// them, which is the point of the move. An internal a submodule's own tests reach no longer has
 // to be visible to its parent.
 
 // The user-triggered export and the once-a-day external mirror live in the `external` submodule.

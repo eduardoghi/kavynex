@@ -262,7 +262,7 @@ describe("useAddMediaWorkflow", () => {
 
     it("reports a cancelled download as a notice rather than an error", async () => {
         // Cancelling travels as an error because that is how the backend unwinds the run, but it is
-        // the outcome the user clicked for: the download stopped and nothing was left behind.
+        // the outcome the user clicked for. The download stopped and nothing was left behind.
         // Routing it to the error modal answered "Cancel" with "Something went wrong".
         vi.mocked(createMedia).mockRejectedValue({
             code: "YT_DLP_DOWNLOAD_CANCELLED",
@@ -292,7 +292,7 @@ describe("useAddMediaWorkflow", () => {
 
     it("reports a cancelled local import as a notice rather than an error", async () => {
         // The import half of the same split. It gets its own code and its own wording because it is
-        // a different operation: an import also has to say what happened to the file it was reading,
+        // a different operation. An import also has to say what happened to the file it was reading,
         // which a download has nothing to answer for.
         vi.mocked(createMedia).mockRejectedValue({
             code: "MEDIA_IMPORT_CANCELLED",
@@ -321,7 +321,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("cancels an in-flight local import with the run id the backend registered", async () => {
-        // The whole point of generating a run id in local mode: a file copy is the one long
+        // The whole point of generating a run id in local mode. A file copy is the one long
         // operation in this app the user had no way out of, and the Cancel button can only reach it
         // if both sides agree on the id. Asserted as "the id createMedia was given is the id
         // cancelMediaDownload was called with", so a hook that generated two ids (or cancelled a
@@ -348,7 +348,7 @@ describe("useAddMediaWorkflow", () => {
             })
         );
 
-        // Deliberately not awaited: the import has to still be running when Cancel is clicked,
+        // Deliberately not awaited. The import has to still be running when Cancel is clicked,
         // which is the only state in which any of this means anything.
         let addMediaPromise: Promise<void> | undefined;
         await act(async () => {
@@ -370,7 +370,7 @@ describe("useAddMediaWorkflow", () => {
             await addMediaPromise;
         });
 
-        // The run is over, so a later click must reach nothing: the registry has already released
+        // The run is over, so a later click must reach nothing. The registry has already released
         // that id, and cancelling it would surface as an error modal for a button that should have
         // been inert.
         vi.mocked(cancelMediaDownload).mockClear();
@@ -383,7 +383,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("still reports a real download failure as an error", async () => {
-        // The other side of the split: only cancellation is the expected outcome, so an actual
+        // The other side of the split. Only cancellation is the expected outcome, so an actual
         // failure must keep reaching the error modal.
         vi.mocked(createMedia).mockRejectedValue({
             code: "YT_DLP_DOWNLOAD_FAILED",
@@ -783,7 +783,7 @@ describe("useAddMediaWorkflow", () => {
 
     it("sends the composed browser selector and logs it with the profile redacted", async () => {
         // The download receives `browser:profile` (what yt-dlp reads), while the terminal line a
-        // user may paste into a bug report names only the browser: the profile is often a path
+        // user may paste into a bug report names only the browser. The profile is often a path
         // under their home directory.
         mockAddMediaForm.sourceMode = "yt-dlp";
         mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
@@ -889,7 +889,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("forwards the manual cookies file to the download instead of a browser", async () => {
-        // Regression guard: "manual" is a UI-only Select option, never a real
+        // Regression guard. "manual" is a UI-only Select option, never a real
         // --cookies-from-browser value. The picked .txt file path must reach createMedia as
         // cookiesPath (with cookiesBrowser null), otherwise the download runs unauthenticated
         // while the UI claims cookies were used.
@@ -943,7 +943,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("starts a single createMedia run when addMedia fires twice synchronously", async () => {
-        // Regression guard: the reentrancy check must use a synchronous ref, not render
+        // Regression guard. The reentrancy check must use a synchronous ref, not render
         // state, so a double click before the next render can never start two downloads.
         let resolveCreateMedia: (value: { id: number | null }) => void = () => {};
         vi.mocked(createMedia).mockImplementation(

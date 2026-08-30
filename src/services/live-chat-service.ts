@@ -128,7 +128,7 @@ export function extractLiveChatPins(
     return messages.filter((message) => message.kind === "pinned");
 }
 
-// The pin in effect at `playbackSeconds` given the pre-extracted, offset-sorted `pins`: the most
+// The pin in effect at `playbackSeconds` given the pre-extracted, offset-sorted `pins`. The most
 // recent pin at or before the current time. O(log P) in the number of pins. A pin "stays until a
 // newer pin replaces it", so it is searched over the whole pin list, never the capped visible
 // window. It can have been set far more than MAX_VISIBLE_LIVE_CHAT_MESSAGES ago and must not
@@ -147,7 +147,7 @@ export function getActiveLiveChatPinFromPins(
     return pins[upperBound - 1] ?? null;
 }
 
-// Convenience over the whole message list: extracts the pins and resolves the active one. The
+// Convenience over the whole message list. Extracts the pins and resolves the active one. The
 // per-tick UI path uses the two functions above directly (memoizing the extraction) so it does not
 // re-filter every message each tick.
 export function getActiveLiveChatPin(

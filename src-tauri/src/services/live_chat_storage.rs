@@ -76,7 +76,7 @@ fn compress_file_to_temp(src: &Path, temp: &Path, max_bytes: u64) -> AppResult<S
     // Flushed through the handle already open rather than by reopening the path, which is what
     // `fsync_file` would do. Same durability guarantee, one fewer open, and no window in which the
     // path could name a different file than the one just written. It has to happen before the
-    // caller's rename: without it a crash could leave a truncated file that the rename then
+    // caller's rename. Without it a crash could leave a truncated file that the rename then
     // promotes to the live one.
     file.sync_all()
         .map_err(|e| compress_error("failed to flush compressed live chat", e))?;
@@ -91,7 +91,7 @@ fn compress_file_to_temp(src: &Path, temp: &Path, max_bytes: u64) -> AppResult<S
 /// version compared an in-memory buffer against the bytes it had just compressed and *then* wrote
 /// the result to disk, so a write that truncated or corrupted the file fell outside what the check
 /// proved. Reading the staged file back covers the write too, which is the failure the whole dance
-/// exists for: `compress_file_to`'s source is a just-downloaded replay of a finished livestream,
+/// exists for. `compress_file_to`'s source is a just-downloaded replay of a finished livestream,
 /// and it may no longer be re-fetchable.
 ///
 /// The ceiling is a plain `take(max_bytes)`, and it deliberately does **not** carry the `+ 1` that
@@ -139,7 +139,7 @@ pub const LIVE_CHAT_STREAM_BATCH_LINES: usize = 500;
 /// import, the content hashing and the library cleanup, so an unbounded number of concurrent reads
 /// starves work that has nothing to do with live chat. The bound is stated here rather than left to
 /// the caller for the same reason `MAX_MEDIA_PAGE_LIMIT`, `MAX_MEDIA_COMMENTS_LOADED` and
-/// `MAX_RUN_ID_LEN` are: the backend is the trust boundary, so it declares its own limit instead of
+/// `MAX_RUN_ID_LEN` are. The backend is the trust boundary, so it declares its own limit instead of
 /// inheriting whatever the renderer sends.
 ///
 /// Two is enough for every legitimate use. The player shows one media at a time, so the only way a
@@ -171,7 +171,7 @@ const _: () = {
 /// A single process-wide gate, deliberately separate from `DOWNLOAD_SEMAPHORE`,
 /// `STANDALONE_RUN_SEMAPHORE` and `THUMBNAIL_RUN_SEMAPHORE` rather than shared with them.
 ///
-/// The download gate's own comment gives the reason in the other direction: gating two kinds of work
+/// The download gate's own comment gives the reason in the other direction. Gating two kinds of work
 /// on one semaphore couples them, and a read that waited on a permit a download holds would be
 /// serialized behind an operation it has nothing to do with. Reading a saved replay is local I/O
 /// with no child process, so it is a different resource and gets a different bound.
@@ -188,7 +188,7 @@ static LIVE_CHAT_READ_SEMAPHORE: BoundedSemaphore = BoundedSemaphore::new(
 /// one on a permit nothing will release. See the test module for why that is a deadlock rather than
 /// a slow test. So the value is pinned directly instead.
 ///
-/// It is worth pinning: a wrong code here is not a wrong log line. `src/constants/error-codes.ts`
+/// It is worth pinning. A wrong code here is not a wrong log line. `src/constants/error-codes.ts`
 /// catalogues this one, and a code with no catalogued message degrades in the renderer to the
 /// generic "check the app log file", which is precisely the wrong thing to tell someone whose only
 /// problem is that another replay is still loading.
@@ -198,7 +198,7 @@ const READ_GATE_BUSY_CODE: AppErrorCode = AppErrorCode::TooManyConcurrentLiveCha
 /// caller binds it for the duration of its `run_blocking` rather than dropping it at the call.
 ///
 /// Lives beside the reader it bounds rather than in the command, so the gate travels with the
-/// operation: a second caller of [`stream_live_chat_lines`] added later reaches the bound by calling
+/// operation. A second caller of [`stream_live_chat_lines`] added later reaches the bound by calling
 /// this, instead of having to notice that the command layer was where the bound happened to live.
 pub async fn acquire_read_permit() -> AppResult<BoundedSemaphorePermit> {
     LIVE_CHAT_READ_SEMAPHORE.acquire(READ_GATE_BUSY_CODE).await
@@ -206,13 +206,13 @@ pub async fn acquire_read_permit() -> AppResult<BoundedSemaphorePermit> {
 
 /// Streams a stored live chat file to `emit`, one batch of lines at a time, transparently
 /// gunzipping the gzip-compressed files (older files may still be plain JSON and stream as-is).
-/// The whole decompressed payload is never held in memory: the previous read returned the entire
+/// The whole decompressed payload is never held in memory. The previous read returned the entire
 /// file as one `String`, which for a long dense stream is hundreds of MB, and the frontend then
 /// held a second copy across the IPC boundary before parsing. Here only a bounded batch is alive
 /// at once, and only the compact parsed messages are retained on the frontend.
 ///
 /// The two ways this fails are told apart rather than sharing one code, because they call for
-/// opposite things from the user: a file that was moved or deleted can be put back
+/// opposite things from the user. A file that was moved or deleted can be put back
 /// (`LiveChatFileNotFound`), while a corrupt or oversized archive cannot and only the backup can
 /// help (`LiveChatFileUnreadable`).
 ///
@@ -337,7 +337,7 @@ where
 
 /// One-time migration that moves live chat files from the old app-data location into the
 /// library, so all of a video's bulk artifacts (media, thumbnail, live chat) live together
-/// and travel with the library folder. Idempotent: a no-op once the source folder is empty
+/// and travel with the library folder. Idempotent. A no-op once the source folder is empty
 /// or gone. Handles the app-data-on-SSD to library-on-HDD case by falling back to copy+delete
 /// when a cross-volume rename fails. Returns how many files were moved.
 pub fn migrate_live_chat_files(app_data_dir: &Path, library_dir: &Path) -> AppResult<usize> {
@@ -391,7 +391,7 @@ pub fn migrate_live_chat_files(app_data_dir: &Path, library_dir: &Path) -> AppRe
         moved += 1;
     }
 
-    // Best effort: drop the now-empty source directory.
+    // Best effort. Drop the now-empty source directory.
     let _ = fs::remove_dir(&source_dir);
 
     Ok(moved)
@@ -458,7 +458,7 @@ fn temp_sibling_path(path: &Path) -> AppResult<PathBuf> {
 ///
 /// Nothing is promoted here and the source is never touched, so every failure path leaves the
 /// original exactly as it was. A failure does leave the staged `<name>.gztmp` behind, which is
-/// deliberate rather than overlooked: the next attempt truncates it (`File::create`), and removing
+/// deliberate rather than overlooked. The next attempt truncates it (`File::create`), and removing
 /// it here would add a cleanup no test can observe. The only way to fail *after* the file exists is
 /// a verification failure, which cannot be produced without corrupting the staged file mid-call.
 fn compress_to_temp_verified(src: &Path, temp: &Path) -> AppResult<()> {
@@ -504,7 +504,7 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
 /// worth stating because the extraction otherwise looks gratuitous. cargo-mutants names a mutant by
 /// the function it lives in, so the five `+= 1` sites in `compress_existing_live_chat_files` all
 /// shared one description, four of them killable, this one not, since a `read_dir` entry that fails
-/// to yield cannot be produced portably. That made the file ungateable: excluding the description
+/// to yield cannot be produced portably. That made the file ungateable. Excluding the description
 /// would have silently dropped four working checks along with the one that needed it.
 ///
 /// The extraction was made to allow that exclusion, and then made it unnecessary, which is the part
@@ -526,7 +526,7 @@ fn record_unreadable_entry(summary: &mut LiveChatCompressionSummary) {
     );
 }
 
-/// Compresses every uncompressed live chat file in `dir`. Best effort: a failure on one file
+/// Compresses every uncompressed live chat file in `dir`. Best effort. A failure on one file
 /// is logged and counted, never aborting the whole pass.
 pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompressionSummary> {
     let mut summary = LiveChatCompressionSummary::default();
@@ -605,7 +605,7 @@ mod tests {
     /// decompressed the result to check it, which is what made this module hold the source, the
     /// archive and the restored copy alive at once, three copies of something that runs to
     /// hundreds of megabytes for a long stream. The production path streams now, and what is left
-    /// here is a different job: building a gzip fixture and reading one back, both on payloads
+    /// here is a different job. Building a gzip fixture and reading one back, both on payloads
     /// measured in kilobytes.
     fn gzip_compress(data: &[u8]) -> Vec<u8> {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
@@ -621,7 +621,7 @@ mod tests {
 
     /// The SHA-256 of `data`, computed by the module the content-addressed filenames already use.
     ///
-    /// Deliberately not `hash_while_copying` itself: a test that checked that function against
+    /// Deliberately not `hash_while_copying` itself. A test that checked that function against
     /// itself would pass for any hash at all. `utils::hash::file_hash` is an independent
     /// implementation with its own tests, so agreeing with it is a real assertion.
     fn independent_digest(data: &[u8]) -> String {
@@ -721,7 +721,7 @@ mod tests {
         let staged = fs::read(&temp).unwrap();
         assert!(is_gzip(&staged), "the staged file must be a gzip archive");
         assert_eq!(gzip_decompress(&staged), payload);
-        // The whole point of streaming: the archive is smaller than the source it never held whole.
+        // The whole point of streaming. The archive is smaller than the source it never held whole.
         assert!(staged.len() < payload.len());
 
         let _ = fs::remove_dir_all(&dir);
@@ -739,7 +739,7 @@ mod tests {
         verify_compressed_matches(&archive, &digest, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
             .expect("an archive that decompresses to the expected bytes must verify");
 
-        // The digest of *different* content, so the comparison has to be doing the work: inverting
+        // The digest of *different* content, so the comparison has to be doing the work. Inverting
         // it to `==` fails here, and dropping it fails the positive case above.
         let other = independent_digest(b"not the same replay");
         let error = verify_compressed_matches(&archive, &other, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)
@@ -780,7 +780,7 @@ mod tests {
     fn verification_accepts_a_payload_landing_exactly_on_the_read_ceiling() {
         // Both sides of the take, one byte apart. This is the test that caught the first version of
         // `verify_compressed_matches`, which copied the `+ 1` from `stream_reader_lines` without the
-        // counter that makes it mean something: with it, a payload one byte *over* the ceiling read
+        // counter that makes it mean something. With it, a payload one byte *over* the ceiling read
         // whole and verified, so the ceiling refused nothing at its own boundary.
         let dir = temp_dir("exact-read");
         fs::create_dir_all(&dir).unwrap();
@@ -803,8 +803,8 @@ mod tests {
 
     #[test]
     fn the_live_chat_decompression_ceiling_is_512_mib() {
-        // Pinned by value, not by re-deriving it from the same multiplication the constant uses:
-        // the ceiling is a decompression-bomb guard, and an arithmetic slip in it (512 + 1024 +
+        // Pinned by value, not by re-deriving it from the same multiplication the constant uses.
+        // The ceiling is a decompression-bomb guard, and an arithmetic slip in it (512 + 1024 +
         // 1024 is 2560 bytes, not 512 MiB) would either break every real replay or, the other way,
         // remove the bound, neither of which any behavioral test can afford to exercise at that
         // size. A literal is the only thing that catches it.
@@ -831,7 +831,7 @@ mod tests {
         let dir = temp_dir("stream");
         fs::create_dir_all(&dir).unwrap();
 
-        // Plain (legacy uncompressed) replay: streamed verbatim, one entry per line, blank lines
+        // Plain (legacy uncompressed) replay. Streamed verbatim, one entry per line, blank lines
         // preserved (the frontend skips them, exactly as it did on the whole-file text).
         let plain = dir.join("plain.json");
         fs::write(&plain, b"{\"a\":1}\n{\"b\":2}\n").unwrap();
@@ -841,7 +841,7 @@ mod tests {
             vec!["{\"a\":1}".to_string(), "{\"b\":2}".to_string()]
         );
 
-        // Gzip replay: transparently gunzipped while streaming, same result.
+        // Gzip replay. Transparently gunzipped while streaming, same result.
         let gz = dir.join("compressed.json");
         fs::write(&gz, gzip_compress(b"{\"a\":1}\n{\"b\":2}\n")).unwrap();
         let (lines, _) = collect_streamed_lines(&gz, 500).unwrap();
@@ -872,7 +872,7 @@ mod tests {
 
     #[test]
     fn stream_live_chat_lines_tells_a_missing_file_apart_from_a_corrupt_one() {
-        // These share nothing but the fact that they fail: a file the user moved out of the library
+        // These share nothing but the fact that they fail. A file the user moved out of the library
         // can be put back (LiveChatFileNotFound), while a corrupt archive cannot and only a backup
         // helps (LiveChatFileUnreadable). Keeping the two codes apart is what lets the frontend say
         // either instead of the generic "check the logs" fallback.
@@ -883,7 +883,7 @@ mod tests {
         let error = collect_streamed_lines(&missing, 500).unwrap_err();
         assert_eq!(error.code, AppErrorCode::LiveChatFileNotFound.as_str());
 
-        // Gzip magic bytes with a shredded body: present, readable, and not decompressible.
+        // Gzip magic bytes with a shredded body. Present, readable, and not decompressible.
         let corrupt = dir.join("corrupt.json.gz");
         let mut bytes = gzip_compress(b"{\"a\":1}");
         let tail = bytes.len() - 4;
@@ -898,7 +898,7 @@ mod tests {
 
     #[test]
     fn stream_reader_lines_decodes_a_garbled_line_lossily_and_keeps_the_rest() {
-        // A single non-UTF-8 line between two valid ones must not discard the whole replay: it is
+        // A single non-UTF-8 line between two valid ones must not discard the whole replay. It is
         // decoded lossily (U+FFFD) and streamed like any other, and the frontend parser then drops
         // just that line. This is the deliberate behavior change from the whole-file strict
         // `String::from_utf8`, matching the philosophy of `utils::io::read_lossy_line`.
@@ -921,7 +921,7 @@ mod tests {
 
     #[test]
     fn stream_reader_lines_rejects_a_stream_larger_than_the_ceiling() {
-        // The decompression-bomb guard: a stream whose decoded size exceeds the ceiling is aborted
+        // The decompression-bomb guard. A stream whose decoded size exceeds the ceiling is aborted
         // rather than buffered. Tested against a small in-memory reader with a small cap so no
         // multi-hundred-MB payload is needed. A line with no terminator also exercises the `.take`
         // bound (read_until cannot run away buffering the whole line).
@@ -943,7 +943,7 @@ mod tests {
 
     #[test]
     fn stream_reader_lines_accepts_a_stream_landing_exactly_on_the_ceiling() {
-        // Same boundary as the gzip ceiling above, and it was untested for the same reason: the
+        // Same boundary as the gzip ceiling above, and it was untested for the same reason. The
         // existing case sits far over the cap, so tightening `>` to `>=` (which would refuse a
         // stream of exactly the allowed size) was invisible. `a\nb\n` is four bytes, so a cap of
         // four is the exact boundary and a cap of three is one byte under it.
@@ -964,7 +964,7 @@ mod tests {
 
     #[test]
     fn list_live_chat_relative_paths_returns_files_and_skips_directories() {
-        // Two guards in one walk, and both were unpinned: the early return when `live_chat/` does
+        // Two guards in one walk, and both were unpinned. The early return when `live_chat/` does
         // not exist, and the per-entry skip of anything that is not a file. Dropping the `!` from
         // either inverts it (the first makes an existing directory report nothing, the second
         // makes it report its subdirectories and hide its files), and a library that silently
@@ -984,7 +984,7 @@ mod tests {
     #[test]
     fn list_live_chat_relative_paths_reports_nothing_when_the_directory_is_absent() {
         // The other side of the early return, so it is the *condition* that is pinned rather than
-        // just the populated path: a library with no live_chat/ yet is an empty list, not an error.
+        // just the populated path. A library with no live_chat/ yet is an empty list, not an error.
         let library = temp_dir("list-relative-missing");
         fs::create_dir_all(&library).unwrap();
 
@@ -1103,7 +1103,7 @@ mod tests {
 
     #[test]
     fn compress_existing_counts_a_file_it_could_not_compress_and_keeps_going() {
-        // The `failed` counter on the compression branch, which had nothing behind it: making one
+        // The `failed` counter on the compression branch, which had nothing behind it. Making one
         // file fail was assumed to need a permission trick no test can do portably, so the count
         // went unasserted and a mutation of it would have been invisible.
         //
@@ -1118,7 +1118,7 @@ mod tests {
         fs::write(&doomed, b"never compressed\n").unwrap();
         fs::create_dir_all(dir.join("blocked.live_chat.json.gztmp")).unwrap();
 
-        // A healthy sibling, because "best effort" is the other half of the claim: one file failing
+        // A healthy sibling, because "best effort" is the other half of the claim. One file failing
         // must not abort the pass or skip the files after it.
         fs::write(dir.join("fine.live_chat.json"), b"compressed\n").unwrap();
 
@@ -1129,7 +1129,7 @@ mod tests {
         assert_eq!(summary.scanned, 2);
         assert_eq!(summary.already_compressed, 0);
 
-        // The source is left exactly as it was: the staged write is what failed, and nothing
+        // The source is left exactly as it was. The staged write is what failed, and nothing
         // replaces the original until that write and its round-trip check have both succeeded.
         assert_eq!(fs::read(&doomed).unwrap(), b"never compressed\n");
 
@@ -1140,7 +1140,7 @@ mod tests {
     fn an_unreadable_directory_entry_is_counted_as_a_failure() {
         // The one counter in this pass that no portable test can reach through the real loop (a
         // `read_dir` entry the OS refuses to yield), so it is asserted directly instead. That is
-        // also why it lives in its own function: alone in there, the mutation gate can exclude it
+        // also why it lives in its own function. Alone in there, the mutation gate can exclude it
         // by name without dropping the four counters around it that tests do cover.
         let mut summary = LiveChatCompressionSummary::default();
 
@@ -1153,7 +1153,7 @@ mod tests {
             "each unreadable entry counts exactly once"
         );
 
-        // Only `failed` moves: an entry that never yielded was not scanned, compressed or skipped.
+        // Only `failed` moves. An entry that never yielded was not scanned, compressed or skipped.
         assert_eq!(summary.scanned, 0);
         assert_eq!(summary.compressed, 0);
         assert_eq!(summary.already_compressed, 0);
@@ -1164,7 +1164,7 @@ mod tests {
     //
     // The gate is a process-wide static, so these two tests share it and cannot assert an absolute
     // in-flight count the way the primitive's tests do (another test holding a permit would make
-    // that flaky). They assert what does not depend on the rest of the suite instead: a permit is
+    // that flaky). They assert what does not depend on the rest of the suite instead. A permit is
     // obtainable, and it is released on drop.
 
     #[tokio::test]
@@ -1193,7 +1193,7 @@ mod tests {
         //
         // What those tests already cover is the admit/refuse/release behaviour of the primitive.
         // What they cannot cover is which code *this* gate refuses with, and that is the half with a
-        // user-visible consequence: an uncatalogued code degrades in the renderer to "check the app
+        // user-visible consequence. An uncatalogued code degrades in the renderer to "check the app
         // log file" (src/constants/error-codes.test.ts pins the catalogue), which is the wrong
         // advice for someone whose only problem is that another replay is still loading.
         assert_eq!(
@@ -1203,6 +1203,6 @@ mod tests {
     }
 
     // The relationship between the two bounds is asserted where they are declared, in a `const`
-    // block, rather than by a test here: it is knowable at compile time, so a violated edit should
+    // block, rather than by a test here. It is knowable at compile time, so a violated edit should
     // fail the build instead of waiting for the suite.
 }

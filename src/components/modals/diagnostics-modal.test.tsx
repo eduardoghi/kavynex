@@ -283,7 +283,7 @@ describe("DiagnosticsModal", () => {
     });
 
     it("keeps the log folder button usable while diagnostics are refreshing", () => {
-        // The two actions have separate in-flight flags on purpose: reaching the log folder is most
+        // The two actions have separate in-flight flags on purpose. Reaching the log folder is most
         // useful exactly when a refresh is grinding or has just failed.
         const onOpenLogFolder = vi.fn();
 

@@ -70,7 +70,7 @@ pub(crate) fn fsync_file(path: &Path) -> AppResult<()> {
 /// even though the file's own data was already fsynced, so the file could vanish after a power
 /// loss. Shared by `copy_file_atomic` and by the db-backup / library-recovery marker writes and
 /// swaps, which need the same directory-entry durability for the files their crash recovery reads.
-/// Best effort: any failure is ignored.
+/// Best effort. Any failure is ignored.
 #[cfg(unix)]
 pub(crate) fn fsync_parent_dir(path: &Path) {
     if let Some(parent) = path.parent() {
@@ -85,7 +85,7 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
 /// `FlushFileBuffers`. The same operation `sync_all` performs for a file. This closes the same
 /// power-loss window on NTFS with write caching enabled that the Unix path closes; the previous
 /// no-op assumed NTFS never needed it, which is not something the code could demonstrate. Best
-/// effort: any failure degrades to the previous no-op behavior and is ignored.
+/// effort. Any failure degrades to the previous no-op behavior and is ignored.
 #[cfg(windows)]
 pub(crate) fn fsync_parent_dir(path: &Path) {
     use std::os::windows::ffi::OsStrExt;
@@ -217,7 +217,7 @@ const CANCELLABLE_COPY_CHUNK_BYTES: usize = 1024 * 1024;
 /// The fast path, and the one every caller but the media import takes. `fs::copy` hands the work to
 /// the platform (`copy_file_range`/`sendfile` on Linux, `CopyFileEx` on Windows), which is
 /// materially faster than moving the bytes through userspace, and it is also why it cannot be
-/// interrupted: it returns when the whole file has been copied and not before.
+/// interrupted. It returns when the whole file has been copied and not before.
 fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
     fs::copy(source, temp_destination).map(|_| ()).map_err(|e| {
         AppError::fs_error(
@@ -232,11 +232,11 @@ fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
 /// Copies `source` to `temp_destination` a chunk at a time, giving up when `cancel` is set.
 ///
 /// This is the trade [`copy_file_atomic_cancellable`] exists to make, and it is worth stating
-/// rather than leaving to be inferred: moving the bytes through userspace is slower than the
+/// rather than leaving to be inferred. Moving the bytes through userspace is slower than the
 /// platform copy above, and it is chosen anyway for the one call site where the file may be tens of
 /// gigabytes on a slow drive and the user needs a way out. Everywhere else keeps the fast path.
 ///
-/// Nothing is left behind on a cancel: the partial file lives at the caller's `.tmp-` path, which
+/// Nothing is left behind on a cancel. The partial file lives at the caller's `.tmp-` path, which
 /// the caller removes on any error, exactly as it does for a failed copy.
 fn copy_bytes_in_chunks(
     source: &Path,
@@ -296,7 +296,7 @@ fn copy_bytes_in_chunks(
 ///
 /// Every guard, the `.tmp-` staging path, the fsync before the rename, the partial-file cleanup on
 /// each failure branch and the destination-already-exists recovery live here and only here, so the
-/// cancellable variant differs from the plain one in exactly one thing: how the bytes are moved.
+/// cancellable variant differs from the plain one in exactly one thing. How the bytes are moved.
 /// Splitting it any other way would mean two copies of the logic that decides whether a half-written
 /// file can become the live one.
 fn copy_file_atomic_with(
@@ -411,7 +411,7 @@ pub fn copy_file_atomic(source: &Path, destination: &Path) -> AppResult<()> {
 
 /// Like [`copy_file_atomic`], but abandons the copy when `cancel` is set, leaving nothing behind.
 ///
-/// One caller: the local media import, which is the only copy in this app a user waits on and the
+/// One caller. The local media import, which is the only copy in this app a user waits on and the
 /// only one whose source can be tens of gigabytes. Passing `None` here is not the same as calling
 /// [`copy_file_atomic`] (it still takes the slower chunked path), so callers with no flag should
 /// use the plain function rather than this one with `None`.
@@ -425,7 +425,7 @@ pub fn copy_file_atomic_cancellable(
     })
 }
 
-/// Picks the copy the caller is entitled to: the chunked, interruptible one when a cancel flag was
+/// Picks the copy the caller is entitled to. The chunked, interruptible one when a cancel flag was
 /// offered, and the faster platform copy when it was not. Keeping the dispatch in one place is what
 /// lets the move path below take a flag without every non-cancelling caller paying for userspace
 /// buffering it has no use for.
@@ -448,7 +448,7 @@ pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
 /// identical-content check taken when the destination already exists. A caller that has just
 /// hashed `source` to derive a content-addressed destination name (the media import) can pass that
 /// hash here instead of paying for a second full-file hash of a possibly multi-GB file. All the
-/// safety of the plain variant is kept: the same-file guard, the size pre-check, and the hash of
+/// safety of the plain variant is kept. The same-file guard, the size pre-check, and the hash of
 /// the destination (so a corrupt destination whose bytes no longer match its name is still caught).
 pub fn move_or_copy_file_with_known_source_hash(
     source: &Path,
@@ -462,7 +462,7 @@ pub fn move_or_copy_file_with_known_source_hash(
 /// set.
 ///
 /// Only the cross-device branch can actually be interrupted, and that is the branch worth
-/// interrupting: a same-volume move is a `rename`, which is instant, while a move across volumes
+/// interrupting. A same-volume move is a `rename`, which is instant, while a move across volumes
 /// copies the whole file and is exactly as long as the Copy path. Both are reached from the same
 /// import, so the flag covers the mode the user chose either way.
 pub fn move_or_copy_file_cancellable(
@@ -580,7 +580,7 @@ fn move_or_copy_file_using(
 /// in favor of it. Returns the final path (unchanged in the overwhelmingly common matching case).
 ///
 /// This costs a second full-file read, so callers gate it on a genuinely fresh write, never the
-/// dedup/skip paths: the guarantee is worth one extra hash on a user-initiated import, not on
+/// dedup/skip paths. The guarantee is worth one extra hash on a user-initiated import, not on
 /// every no-op re-import of already-stored content.
 pub(crate) fn verify_content_addressed_write(
     written: &Path,
@@ -921,7 +921,7 @@ pub fn find_best_matching_file(
 
 /// True when a directory entry is a symbolic link, read from the entry's own type without
 /// following it. Recursive directory scans use this to refuse to descend into a symlinked
-/// directory: one pointing at an ancestor (or itself) would otherwise recurse forever, and the
+/// directory. One pointing at an ancestor (or itself) would otherwise recurse forever, and the
 /// library never creates symlinks of its own, so skipping any it finds loses nothing legitimate
 /// while making a hand-edited or cloud-synced library that contains one safe to walk.
 pub(crate) fn dir_entry_is_symlink(entry: &fs::DirEntry) -> bool {
@@ -935,7 +935,7 @@ pub(crate) fn dir_entry_is_symlink(entry: &fs::DirEntry) -> bool {
 /// (`symlink_metadata`, not `metadata`).
 ///
 /// The sibling of [`dir_entry_is_symlink`] for the paths that arrive one at a time, off a row,
-/// rather than from a directory walk: `absolute_path_from_relative` resolves those lexically, so a
+/// rather than from a directory walk. `absolute_path_from_relative` resolves those lexically, so a
 /// symlink planted under a managed directory would otherwise have its *target* read, hashed or
 /// handed to FFmpeg as if it were the library's own file. Every walker in this family already
 /// refuses to follow one; this lets the single-path readers apply the same rule. A path that cannot
@@ -984,7 +984,7 @@ pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> App
             )
         })?;
 
-        // Skip symlinks before any is_dir()/is_file() check (both follow the link): a symlinked
+        // Skip symlinks before any is_dir()/is_file() check (both follow the link). A symlinked
         // directory would let the recursion escape the tree or loop forever.
         if dir_entry_is_symlink(&entry) {
             continue;

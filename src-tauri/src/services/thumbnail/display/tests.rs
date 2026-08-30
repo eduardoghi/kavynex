@@ -24,7 +24,7 @@ fn derivative(name: &str, size_bytes: u64, age: Duration) -> CachedDerivative {
 #[test]
 fn the_resolve_slot_admits_one_caller_and_frees_on_drop() {
     // The whole contract, in the order that matters. This is the only test that touches the
-    // process-global slot, deliberately: a second one running in parallel would race it and the
+    // process-global slot, deliberately. A second one running in parallel would race it and the
     // failure would look like flakiness rather than like the shared static it is.
     let held = try_reserve_resolve_slot().expect("the first caller must get the slot");
 
@@ -46,7 +46,7 @@ fn the_resolve_slot_admits_one_caller_and_frees_on_drop() {
 
 #[test]
 fn a_refused_call_answers_every_path_as_retryable() {
-    // Retryable and not final: nothing was learned about these paths, so recording them as
+    // Retryable and not final. Nothing was learned about these paths, so recording them as
     // settled would strand cards a later call could resolve. The length has to match too. The
     // caller reads the answer by position against the paths it sent.
     let answers = all_retryable(3);
@@ -63,7 +63,7 @@ fn a_refused_call_answers_every_path_as_retryable() {
 fn a_refused_call_is_bounded_by_the_same_ceiling_as_a_resolved_one() {
     // This exit used to allocate straight from the caller's own count, which is the one thing
     // MAX_RESOLVED_PER_CALL exists to stop the module doing, and it sat in the file whose
-    // comments state that rule for every other bound. Answering short costs nothing: the caller
+    // comments state that rule for every other bound. Answering short costs nothing. The caller
     // reads by position and treats a missing answer exactly as BudgetSpent, i.e. as "ask again".
     assert_eq!(
         all_retryable(MAX_RESOLVED_PER_CALL * 10).len(),
@@ -97,7 +97,7 @@ fn both_ceilings_are_the_same_number() {
 
 #[test]
 fn a_cache_within_its_budget_is_never_touched() {
-    // The property the previous age sweep did not have, and the whole reason this replaced it: a
+    // The property the previous age sweep did not have, and the whole reason this replaced it. A
     // cache that fits keeps every entry no matter how old, so a thumbnail the grid has drawn for
     // a year is not discarded and re-encoded for having been written a week ago.
     let entries = vec![
@@ -110,7 +110,7 @@ fn a_cache_within_its_budget_is_never_touched() {
 
 #[test]
 fn a_cache_exactly_at_its_budget_is_still_within_it() {
-    // The boundary: `<=`, not `<`. Getting this wrong evicts on every sweep of a cache that
+    // The boundary. `<=`, not `<`. Getting this wrong evicts on every sweep of a cache that
     // fits perfectly, which is the failure mode of the rule being replaced.
     let entries = vec![derivative("a.jpg", 100, Duration::from_secs(0))];
 
@@ -119,7 +119,7 @@ fn a_cache_exactly_at_its_budget_is_still_within_it() {
 
 #[test]
 fn eviction_drops_the_oldest_entries_until_the_cache_fits() {
-    // 250 bytes against a 100-byte budget: 150 have to go, which the two oldest cover exactly.
+    // 250 bytes against a 100-byte budget. 150 have to go, which the two oldest cover exactly.
     // The newest must survive. It is the one the grid is most likely to ask for next.
     let entries = vec![
         derivative("newest.jpg", 100, Duration::from_secs(10)),
@@ -187,7 +187,7 @@ fn shared_media_page_size() -> usize {
 #[test]
 fn the_generation_budget_covers_a_full_page_of_the_grid() {
     // The two constants live on opposite sides of the IPC boundary and nothing else forces them
-    // to move together, which is how they came to disagree: a budget of 64 against a page of 100
+    // to move together, which is how they came to disagree. A budget of 64 against a page of 100
     // left 36 cards of a first-visited channel without a derivative, and (because the caller
     // re-asks only when its item list changes), a channel that fits in one page never got them.
     // A budget *above* the page size is fine (it only bounds a caller asking for more than a
@@ -213,7 +213,7 @@ fn the_generation_budget_covers_a_full_page_of_the_grid() {
 fn the_display_cache_budget_is_two_hundred_mebibytes() {
     // Spelled as the resolved byte count rather than as the same product the constant is
     // written with, so an arithmetic slip in that expression moves one side and not the other.
-    // Nothing else pinned the magnitude at all: every eviction test below passes its own
+    // Nothing else pinned the magnitude at all. Every eviction test below passes its own
     // `max_bytes`, so the constant was free to be any number, and a weekly mutation run duly
     // reported `*` swapped for `+` and for `/` as surviving. What that would cost is not
     // theoretical. The startup sweep trims the cache to this value, so a slip downward
@@ -238,7 +238,7 @@ fn a_request_is_truncated_only_when_the_ceiling_dropped_something() {
     ));
     assert!(!request_was_truncated(0, 0));
 
-    // A normal page, which is what every real call is: nothing dropped, so nothing said.
+    // A normal page, which is what every real call is. Nothing dropped, so nothing said.
     assert!(!request_was_truncated(64, 64));
 }
 
@@ -255,7 +255,7 @@ fn within_call_ceiling_passes_a_normal_page_through_untouched() {
 
 #[test]
 fn within_call_ceiling_truncates_an_oversized_request_at_the_boundary() {
-    // Both sides of the comparison, on the exact boundary: a request of exactly the ceiling is
+    // Both sides of the comparison, on the exact boundary. A request of exactly the ceiling is
     // fully served, and one entry more is truncated to the ceiling rather than to zero or to
     // one-off either way.
     let exact: Vec<String> = vec![String::new(); MAX_RESOLVED_PER_CALL];
@@ -282,7 +282,7 @@ fn within_call_ceiling_keeps_the_leading_entries_in_order() {
 
 #[test]
 fn display_cache_key_takes_the_content_hash_out_of_the_stored_name() {
-    // The whole reason a hit is cheap: the hash is already in the name the app wrote, so the key
+    // The whole reason a hit is cheap. The hash is already in the name the app wrote, so the key
     // costs a string split rather than a read of the very file the derivative exists to avoid
     // decoding.
     let hash = "a".repeat(64);
@@ -292,7 +292,7 @@ fn display_cache_key_takes_the_content_hash_out_of_the_stored_name() {
         Some(hash.clone())
     );
 
-    // The extension is not part of the key: the derivative is always THUMBNAIL_OUTPUT_FORMAT,
+    // The extension is not part of the key. The derivative is always THUMBNAIL_OUTPUT_FORMAT,
     // so the same content stored under two source encodings must resolve to one derivative
     // rather than two copies of an identical image.
     assert_eq!(
@@ -347,7 +347,7 @@ fn display_thumbnail_file_name_carries_the_format_and_the_width() {
         format!("abc-w{DISPLAY_THUMBNAIL_MAX_WIDTH}.{THUMBNAIL_OUTPUT_FORMAT}")
     );
 
-    // The width has to be in the name, because nothing revalidates a cached file's dimensions:
+    // The width has to be in the name, because nothing revalidates a cached file's dimensions.
     // is_usable_file asks only whether it exists and is non-empty, so a name that omitted the
     // width would keep serving the old size after DISPLAY_THUMBNAIL_MAX_WIDTH changed. Asserting
     // it as a substring (and not merely that the two names differ) is what pins the change as
@@ -377,7 +377,7 @@ fn display_thumbnail_args_scale_down_without_ever_upscaling() {
         ]
     );
 
-    // `min(max,iw)` and not a bare width: the two producers write at different sizes (a yt-dlp
+    // `min(max,iw)` and not a bare width. The two producers write at different sizes (a yt-dlp
     // maxresdefault at 1280 wide, an FFmpeg frame already capped at 640), and upscaling the
     // smaller one would cost disk and decode time to make it blurrier.
     let filter = &args[6];
@@ -403,7 +403,7 @@ fn the_source_path_is_passed_as_a_single_argument() {
 
 #[test]
 fn the_generation_budget_is_spent_one_slot_at_a_time_and_then_refuses() {
-    // Both directions of the accounting, which the caller cannot exercise: reaching the spend
+    // Both directions of the accounting, which the caller cannot exercise. Reaching the spend
     // needs a real FFmpeg run, so a budget that counted upward, divided instead of decremented,
     // or never hit its floor would be invisible from `resolve_one`.
     let mut generations_left = 2usize;
@@ -414,7 +414,7 @@ fn the_generation_budget_is_spent_one_slot_at_a_time_and_then_refuses() {
     assert_eq!(take_generation_slot(&mut generations_left), Some(()));
     assert_eq!(generations_left, 0);
 
-    // Exhausted: refuses without wrapping the counter, which on a usize would panic in debug
+    // Exhausted. Refuses without wrapping the counter, which on a usize would panic in debug
     // and hand out a near-infinite budget in release.
     assert_eq!(take_generation_slot(&mut generations_left), None);
     assert_eq!(generations_left, 0);
@@ -459,7 +459,7 @@ fn a_clock_that_did_not_advance_never_reports_the_budget_as_spent() {
 
 #[test]
 fn the_call_budget_leaves_room_for_more_than_one_generation() {
-    // The invariant that keeps the bound from silently disabling the feature: if the call budget
+    // The invariant that keeps the bound from silently disabling the feature. If the call budget
     // were at or below the per-process timeout, a single hung FFmpeg would consume the whole
     // call, every call, and no derivative would ever be produced again on that machine, with
     // nothing to show for it but a warning per page.
@@ -472,7 +472,7 @@ fn the_call_budget_leaves_room_for_more_than_one_generation() {
 
 #[test]
 fn a_call_that_is_out_of_time_reports_retryable_and_keeps_its_slots() {
-    // The bound this exists for, at the level it acts on. Retryable rather than final: the path
+    // The bound this exists for, at the level it acts on. Retryable rather than final. The path
     // is fine and the source is there, so a later call must still be free to resolve it, and
     // the slot must not be spent discovering that the call is over time, or a page arriving late
     // would burn its whole budget refusing entries.
@@ -513,7 +513,7 @@ fn a_call_that_is_out_of_time_reports_retryable_and_keeps_its_slots() {
 fn a_symlinked_source_is_unavailable_and_never_reaches_ffmpeg() {
     use std::os::unix::fs::symlink;
 
-    // Told apart from "no FFmpeg" by the budget: a regular file with the same inputs reaches the
+    // Told apart from "no FFmpeg" by the budget. A regular file with the same inputs reaches the
     // slot check and answers BudgetSpent when no slot is left, so Unavailable here means the
     // refusal happened before the FFmpeg step, not that the step failed.
     let dir = std::env::temp_dir().join(format!(
@@ -567,7 +567,7 @@ fn a_symlinked_source_is_unavailable_and_never_reaches_ffmpeg() {
 
 #[test]
 fn an_out_of_time_call_still_serves_what_is_already_cached() {
-    // The deliberate asymmetry: the budget bounds generations, not answers. A cache hit is one
+    // The deliberate asymmetry. The budget bounds generations, not answers. A cache hit is one
     // stat, so refusing it once the call is over time would make a warmed page fall back to the
     // full-size stored file for no reason. The same reasoning MAX_GENERATIONS_PER_CALL states,
     // applied to the clock.
@@ -608,7 +608,7 @@ fn a_zero_budget_refuses_before_it_can_underflow() {
 
 #[test]
 fn is_usable_file_rejects_a_zero_byte_cache_entry() {
-    // The case this exists for: a generation killed after creating its output leaves an empty
+    // The case this exists for. A generation killed after creating its output leaves an empty
     // file. Treating that as a hit would cache a permanently blank card that nothing ever
     // regenerates.
     let dir = std::env::temp_dir().join(format!(
@@ -652,7 +652,7 @@ fn a_refused_name_never_consumes_a_generation_slot() {
         fresh_call(),
     );
 
-    // Unavailable, not BudgetSpent: the name came off the row and will not change, so telling
+    // Unavailable, not BudgetSpent. The name came off the row and will not change, so telling
     // the caller to ask again would have it re-ask about this path on every page for the rest
     // of the session.
     assert_eq!(resolved, DisplayThumbnail::Unavailable);
@@ -664,7 +664,7 @@ fn a_refused_name_never_consumes_a_generation_slot() {
 #[test]
 fn an_exhausted_budget_is_reported_as_retryable_rather_than_final() {
     // The distinction this enum exists for, and the one case that is genuinely worth asking
-    // about again: the path is fine, the source is there, and the only reason there is no
+    // about again. The path is fine, the source is there, and the only reason there is no
     // derivative is that this call had no slots left.
     let dir = std::env::temp_dir().join(format!(
         "kavynex-display-budget-spent-{}",
@@ -699,7 +699,7 @@ fn a_missing_ffmpeg_is_final_and_never_spends_the_budget() {
     // Both halves matter. Final, because no entry in any later call can produce a derivative
     // without FFmpeg either, and marking it retryable is precisely what made a machine without
     // FFmpeg re-ask about its whole library on every page. And free, because the check now runs
-    // before the slot is taken: paying a slot per entry to rediscover the same missing binary
+    // before the slot is taken. Paying a slot per entry to rediscover the same missing binary
     // would exhaust the budget on nothing.
     let dir = std::env::temp_dir().join(format!(
         "kavynex-display-no-ffmpeg-{}",
@@ -709,7 +709,7 @@ fn a_missing_ffmpeg_is_final_and_never_spends_the_budget() {
 
     let hash = "f".repeat(64);
     let relative = format!("thumbnails/thumb_{hash}.jpg");
-    // Same trap as the budget test above: without a source at the resolved path this would
+    // Same trap as the budget test above. Without a source at the resolved path this would
     // return Unavailable for the wrong reason and pass while asserting nothing about FFmpeg.
     std::fs::create_dir_all(dir.join(LIBRARY_DIR_THUMBNAILS)).unwrap();
     std::fs::write(dir.join(&relative), b"\xff\xd8\xff").unwrap();
@@ -764,7 +764,7 @@ fn a_path_outside_the_thumbnails_directory_is_final() {
 
 #[test]
 fn only_budget_spent_invites_another_request() {
-    // The property the caller depends on, asserted over the whole enum rather than per case: it
+    // The property the caller depends on, asserted over the whole enum rather than per case. It
     // records everything that is not BudgetSpent and stops asking about it. A new variant that
     // is really "try later" has to be added to this list deliberately.
     let retryable = [
@@ -781,7 +781,7 @@ fn only_budget_spent_invites_another_request() {
 
 #[test]
 fn a_cached_derivative_is_returned_without_touching_the_library() {
-    // The hit path must not need the library at all: no containment check, no source stat, no
+    // The hit path must not need the library at all. No containment check, no source stat, no
     // FFmpeg. Passing a library path that does not exist and an ffmpeg that could never run is
     // what proves it, if either were consulted, this would return None.
     let dir = std::env::temp_dir().join(format!(
@@ -830,7 +830,7 @@ fn a_missing_source_yields_no_derivative_rather_than_an_error() {
         fresh_call(),
     );
 
-    // Final rather than retryable, which is a judgment worth stating: the file could come back
+    // Final rather than retryable, which is a judgment worth stating. The file could come back
     // (a drive remounted), but re-asking on every page will not be what brings it back, and a
     // fresh launch retries it anyway. Being wrong here costs one session of drawing the stored
     // thumbnail. Being wrong the other way costs the unbounded re-asking this change removes.

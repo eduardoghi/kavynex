@@ -3,11 +3,11 @@
 Why the code is shaped the way it is, for the cases where the shape is not obvious and reverting it
 would be an easy mistake to make.
 
-The rest of `docs/` describes what the app **is**: the schema it holds, the directories it writes,
-what it defends against, how a release is cut. Those documents are read to answer a question about
-the current system, so they are kept in the present tense, and anything in them that describes a
-state the app is no longer in is a maintenance cost with no reader. This directory is where that
-material goes instead.
+The rest of `docs/` describes what the app **is**, covering the schema it holds, the directories it
+writes, what it defends against, and how a release is cut. Those documents are read to answer a
+question about the current system, so they are kept in the present tense, and anything in them that
+describes a state the app is no longer in is a maintenance cost with no reader. This directory is
+where that material goes instead.
 
 ## What belongs here
 
@@ -40,8 +40,8 @@ why a shape was chosen over another, which the user never sees.
 ## Naming
 
 `YYYY-MM-DD-short-slug.md`, dated with the commit that made the change rather than with when the
-entry was written. The date is what makes an entry safe to read years later: it says which version
-of the codebase the alternative was rejected against.
+entry was written. The date is what makes an entry safe to read years later, because it says which
+version of the codebase the alternative was rejected against.
 
 ## Entries
 

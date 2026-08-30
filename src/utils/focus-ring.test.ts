@@ -17,7 +17,7 @@ describe("suppressFocusRingOnce", () => {
     });
 
     it("releases the mark on the next keydown", () => {
-        // The suppression covers the programmatic restore, never the user's own navigation: as soon
+        // The suppression covers the programmatic restore, never the user's own navigation. As soon
         // as they press a key on the restored card, the ring has to come back.
         const button = createButton();
         suppressFocusRingOnce(button);
@@ -43,7 +43,7 @@ describe("suppressFocusRingOnce", () => {
         suppressFocusRingOnce(button);
 
         button.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
-        // Re-marked by hand: if the listeners were still attached, this event would clear it again.
+        // Re-marked by hand. If the listeners were still attached, this event would clear it again.
         button.setAttribute(SUPPRESS_FOCUS_RING_ATTRIBUTE, "");
         button.dispatchEvent(new FocusEvent("blur"));
 
@@ -51,7 +51,7 @@ describe("suppressFocusRingOnce", () => {
     });
 
     it("re-arms cleanly when the same element is restored again", () => {
-        // Open the player from the same card twice: the second restore must suppress the ring just
+        // Open the player from the same card twice. The second restore must suppress the ring just
         // like the first, rather than being swallowed by leftover state.
         const button = createButton();
 

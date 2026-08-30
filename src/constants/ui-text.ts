@@ -86,7 +86,7 @@ export const UI_TEXT = {
             "The media indicates saved comments, but none were found in the local database.",
         fetchComments: "Fetch comments",
         // Shown instead of the Fetch button once a fetch has run and come back with nothing.
-        // Worded as what was observed rather than as a claim about the video: yt-dlp reports a
+        // Worded as what was observed rather than as a claim about the video. yt-dlp reports a
         // comment count and no separate "comments are off" flag, so telling a video with
         // comments disabled from one that simply has none would be a guess presented as fact.
         noneToSave:

@@ -4,13 +4,13 @@ import { parseLiveChatLine } from "./live-chat-parsing";
 // The parser's contract, driven directly rather than through the read path.
 //
 // `live-chat-service.test.ts` covers the same code from the other side, feeding whole files through
-// a mocked stream, and those tests stay: they are how the batching, the offset ordering and the
+// a mocked stream, and those tests stay. They are how the batching, the offset ordering and the
 // warn-and-continue behavior are pinned. What they cannot state is what *one line* is worth on its
 // own, which is the whole of this module's job, and driving it directly is why the parser was split
 // out of the service in the first place.
 //
 // Every case below is a line shape that arrives from yt-dlp rather than from this app, so the
-// property under test is always the same one: an input the parser does not recognize degrades to
+// property under test is always the same one. An input the parser does not recognize degrades to
 // nothing rather than throwing.
 
 function textMessageLine(renderer: Record<string, unknown>, offset = "0"): string {
@@ -50,7 +50,7 @@ describe("parseLiveChatLine", () => {
     });
 
     it("yields nothing for a well-formed line that carries no message", () => {
-        // Each of these is an ordinary record in a replay file, not a failure: a blank line between
+        // Each of these is an ordinary record in a replay file, not a failure. A blank line between
         // records, an object with no replay action, a heartbeat whose action list is empty, and an
         // action carrying a renderer this app does not display. All of them have to answer "no
         // messages" quietly. The caller counts what it *cannot* parse and warns about the total, so

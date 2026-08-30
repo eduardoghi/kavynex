@@ -7,7 +7,7 @@ import { useMemoObject } from "./use-memo-object";
 // or channel switch must not leave the previous target's data on screen). `invalidate` bumps
 // the id without starting a new request, so a reset/clear also discards anything in flight.
 //
-// It is a request-id guard, not a mutex: the newer call runs immediately; only the stale
+// It is a request-id guard, not a mutex. The newer call runs immediately; only the stale
 // response is dropped.
 export type RequestGuard = {
     begin: () => number;

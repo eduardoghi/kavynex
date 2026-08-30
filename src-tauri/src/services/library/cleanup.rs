@@ -1,6 +1,6 @@
 //! Atomic deletion of media/channel rows together with their on-disk artifacts.
 //!
-//! Deleting a media or a channel involves a referential-integrity rule: an artifact file
+//! Deleting a media or a channel involves a referential-integrity rule. An artifact file
 //! (media file, thumbnail, live chat replay) may be shared by other rows (the same
 //! thumbnail can back several videos or a channel avatar, and a live chat replay can back
 //! the same video added to several channels), so a file can only be removed from disk
@@ -58,7 +58,7 @@ pub struct DeletableArtifact {
     pub path: String,
 }
 
-/// What the committed transaction decided: which files became unreferenced (safe to
+/// What the committed transaction decided. Which files became unreferenced (safe to
 /// remove from disk) and which are still shared with surviving rows.
 #[derive(Debug, Default, Clone)]
 pub struct ArtifactCleanupPlan {
@@ -140,7 +140,7 @@ async fn plan_artifact(
 
 /// Deletes the media row and decides, within the same transaction, which of its artifact
 /// files became unreferenced. Returns `None` when the media does not exist (the operation
-/// is idempotent: nothing is deleted and no error is raised).
+/// is idempotent. Nothing is deleted and no error is raised).
 pub async fn delete_media_row_and_plan_cleanup(
     pool: &SqlitePool,
     media_id: i64,
@@ -320,7 +320,7 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
 /// media left its thumbnail readable in the cache directory until enough unrelated browsing pushed
 /// the cache past its ceiling.
 ///
-/// No reference counting of its own: the caller only reaches here for a path the deletion
+/// No reference counting of its own. The caller only reaches here for a path the deletion
 /// transaction already found unreferenced, and the derivative is keyed by that path's content hash,
 /// so two rows sharing a thumbnail share its derivative exactly as they share the file.
 ///
@@ -331,8 +331,8 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
 /// cache miss as an orphaned artifact.
 ///
 /// A derivative written under an older [`DISPLAY_THUMBNAIL_MAX_WIDTH`] is not matched, since the
-/// width is part of the name. That is the same self-invalidation the width is in the name for:
-/// nothing addresses those any more, and the size sweep is what reclaims them.
+/// width is part of the name. That is the same self-invalidation the width is in the name for.
+/// Nothing addresses those any more, and the size sweep is what reclaims them.
 fn drop_display_derivative(display_dir: Option<&Path>, relative_thumbnail_path: &str) {
     let Some(display_dir) = display_dir else {
         return;
@@ -346,7 +346,7 @@ fn drop_display_derivative(display_dir: Option<&Path>, relative_thumbnail_path: 
 }
 
 /// Removes the planned files from disk. Failures are collected in the report (and
-/// logged) instead of aborting: the rows are already gone, so the caller must always
+/// logged) instead of aborting. The rows are already gone, so the caller must always
 /// learn which files may have been left orphaned in the library.
 ///
 /// `display_dir` is the display-thumbnail cache, or `None` when it could not be resolved. It is a
@@ -373,7 +373,7 @@ pub fn remove_planned_artifacts_sync(
 
         match result {
             Ok(()) => {
-                // After the canonical file is gone, not before: the derivative is the cheaper of
+                // After the canonical file is gone, not before. The derivative is the cheaper of
                 // the two to lose, so a failure to unlink the thumbnail must not have already
                 // discarded the copy the grid can still draw from.
                 if artifact.kind == ArtifactKind::Thumbnail {
@@ -408,7 +408,7 @@ pub fn remove_planned_artifacts_sync(
 /// that became referenced again, shrinking the window to the microseconds between this recount and
 /// the unlink. It cannot close the window entirely (only a per-path lock spanning the count and
 /// the unlink could), but it catches the realistic case where the import landed while the removal
-/// was still being scheduled onto the blocking pool. Best effort: on any recount failure the
+/// was still being scheduled onto the blocking pool. Best effort. On any recount failure the
 /// committed decision is kept rather than leaking a file or wrongly sparing one.
 async fn drop_paths_referenced_again(pool: &SqlitePool, plan: &mut ArtifactCleanupPlan) {
     if plan.deletable.is_empty() {
@@ -467,7 +467,7 @@ async fn drop_paths_referenced_again(pool: &SqlitePool, plan: &mut ArtifactClean
     plan.deletable = still_deletable;
 }
 
-/// The report for a plan with nothing to delete: only the shared paths the planner already spared
+/// The report for a plan with nothing to delete. Only the shared paths the planner already spared
 /// are carried through. Pure so the field it populates stays under test. `execute_plan` itself
 /// needs a live `AppHandle` (the shared pool, the configured library) and cannot run under the
 /// unit-test harness.
@@ -479,7 +479,7 @@ fn report_for_nothing_deletable(plan: ArtifactCleanupPlan) -> ArtifactCleanupRep
 }
 
 /// The report for the case where the rows were already committed as deleted but the library
-/// directory cannot be resolved, so no planned file can be located: every deletable path is
+/// directory cannot be resolved, so no planned file can be located. Every deletable path is
 /// reported as failed (possibly orphaned) and the spared shared paths are carried through. Pure
 /// for the same reason as [`report_for_nothing_deletable`], so both fields it populates stay
 /// tested independently of the `AppHandle`-bound `execute_plan`.
@@ -500,7 +500,7 @@ fn report_for_unavailable_library(plan: ArtifactCleanupPlan) -> ArtifactCleanupR
 /// The lock is here, and not only around `cleanup_unreferenced_artifacts`, because the three
 /// callers below (a media delete, a channel delete, an avatar replace) unlink exactly the same
 /// content-addressed files a concurrent creation can be adopting, and for a while they held nothing
-/// but `drop_paths_referenced_again`. A recount is not exclusion: it answers "is this referenced
+/// but `drop_paths_referenced_again`. A recount is not exclusion. It answers "is this referenced
 /// *now*", and a creation that inserts a moment later makes that answer stale between the recount
 /// and the unlink. `docs/THREAT-MODEL.md` described the lock as closing this class while these three
 /// paths sat outside it, which is the asymmetry this closes.
@@ -522,7 +522,7 @@ async fn execute_plan<R: Runtime>(
 
 /// The body of [`execute_plan`], for a caller that already holds [`MEDIA_REGISTRATION_LOCK`].
 ///
-/// Exists for the same reason [`cleanup_unreferenced_artifacts_locked`] does: a creation's failure
+/// Exists for the same reason [`cleanup_unreferenced_artifacts_locked`] does. A creation's failure
 /// path cleans up while still inside its own critical section, so taking the lock a second time
 /// would deadlock.
 async fn execute_plan_locked<R: Runtime>(
@@ -541,7 +541,7 @@ async fn execute_plan_locked<R: Runtime>(
     // reporting on every path (including the library-unavailable one) exactly as it was.
     let library_dir = configured_library_dir(app).await;
 
-    // Re-check each planned unlink against the live database: a row inserted after the deletion
+    // Re-check each planned unlink against the live database. A row inserted after the deletion
     // committed (a concurrent import deduping onto the same content-addressed file) must spare it.
     if let Ok(pool) = shared_pool(app).await {
         drop_paths_referenced_again(&pool, &mut plan).await;
@@ -615,7 +615,7 @@ pub async fn delete_channel_with_artifacts<R: Runtime>(
 /// (the same video added to several channels, a thumbnail reused as a channel avatar), so a
 /// freshly prepared artifact can already back a registered row; such a path is kept.
 ///
-/// What the count and the unlink are serialized against: [`MEDIA_REGISTRATION_LOCK`]. A wrapping
+/// What the count and the unlink are serialized against. [`MEDIA_REGISTRATION_LOCK`]. A wrapping
 /// transaction cannot help (the unlink necessarily happens after any commit, since the filesystem
 /// cannot join a SQLite transaction), so the delete paths above are not a template to copy here.
 /// The lock is what closes it, and `services::media_creation` takes the same one around its own
@@ -624,11 +624,11 @@ pub async fn delete_channel_with_artifacts<R: Runtime>(
 ///
 /// This used to rest on the add-media modal being locked for the duration of one creation, i.e. on
 /// frontend behavior, which is the one thing the rest of this codebase refuses to depend on. It no
-/// longer does: the whole creation is a single backend call now, so the exclusion is a lock here
+/// longer does. The whole creation is a single backend call now, so the exclusion is a lock here
 /// rather than a flag in the renderer.
 ///
 /// The startup sweep (`services::pending_media`) keeps its own, separate guard on top, because the
-/// lock alone cannot answer its question: it refuses any marker registered as in flight by this
+/// lock alone cannot answer its question. It refuses any marker registered as in flight by this
 /// process or newer than the process itself (`pending_media::marker_is_sweepable`), since a creation
 /// that has written its artifacts but not yet reached `insert_media` is indistinguishable *by
 /// reference count* from one that died there.
@@ -662,11 +662,11 @@ async fn plan_unreferenced_artifacts(
 ///
 /// Both sides of the race this closes are short and rare, so one lock is enough and a map keyed by
 /// artifact path would only add a way to get the keying wrong. What it must *not* cover is the
-/// expensive half of a creation: the download and the import run outside it, so holding this never
+/// expensive half of a creation. The download and the import run outside it, so holding this never
 /// blocks anything a user waits on. `media_creation` takes it only around the marker, the duplicate
 /// check and the insert, which are milliseconds.
 ///
-/// A single static lock, like `db_backup`'s `BACKUP_IN_PROGRESS`: there is one library process-wide
+/// A single static lock, like `db_backup`'s `BACKUP_IN_PROGRESS`. There is one library process-wide
 /// and the lock holds no state a test needs to inject.
 static MEDIA_REGISTRATION_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -678,7 +678,7 @@ pub async fn media_registration_guard() -> tokio::sync::MutexGuard<'static, ()> 
 }
 
 /// Generic over the runtime for the same reason the `_locked` variant below already is, and the
-/// same reason `media_creation::register_prepared_media` was widened: the bare `AppHandle` alias is
+/// same reason `media_creation::register_prepared_media` was widened. The bare `AppHandle` alias is
 /// `AppHandle<Wry>`, which `tauri::test::mock_builder` cannot produce, so naming it here put every
 /// caller in the chain out of reach of a test. The startup sweep
 /// (`services::pending_media::sweep_pending_media_artifacts`) is the caller that needed it.
@@ -699,7 +699,7 @@ pub async fn cleanup_unreferenced_artifacts<R: Runtime>(
 /// It exists because the creation's own failure path has to clean up while still holding that lock.
 /// taking it a second time would deadlock, and releasing it first would reopen the window between
 /// the failed insert and the unlink. Every other caller goes through the public function above.
-/// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is: the bare
+/// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is. The bare
 /// `AppHandle` alias is `AppHandle<Wry>`, which no mock-runtime test can produce, and this is one of
 /// the steps inside the media-registration critical section a test has to be able to drive.
 pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
@@ -721,7 +721,7 @@ pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
 
     drop(conn);
 
-    // `_locked`, not `execute_plan`: this function's caller already holds
+    // `_locked`, not `execute_plan`. This function's caller already holds
     // MEDIA_REGISTRATION_LOCK, and taking it again would deadlock on the non-reentrant mutex.
     execute_plan_locked(app, plan).await
 }

@@ -56,7 +56,7 @@ type CommentsPanelProps = {
     // between registering the media and saving its comments) can be recovered where the absence is
     // noticed, rather than only from the header's "Refresh comments" button.
     canFetchComments?: boolean;
-    // What a fetch last concluded for this media. `hasComments` cannot answer this: it is derived
+    // What a fetch last concluded for this media. `hasComments` cannot answer this. It is derived
     // from the stored count, so 0 means both "nothing was ever fetched" and "a fetch ran and found
     // nothing", and the Fetch button used to be offered on both. A user could therefore re-run an
     // operation that could never return anything, with the screen unchanged each time.
@@ -84,7 +84,7 @@ export function CommentsPanel({
         COMMENT_SEARCH_DEBOUNCE_MS
     );
 
-    // Build the thread structure once per comment set, then sort separately: linking (the id map
+    // Build the thread structure once per comment set, then sort separately. Linking (the id map
     // and per-node cycle check) depends only on `comments`, so toggling the sort re-sorts without
     // re-linking the whole tree, which matters for media with a large saved comment history.
     const commentThreads = useMemo(() => buildCommentTree(comments), [comments]);
@@ -326,10 +326,10 @@ export function CommentsPanel({
                 {!isLoadingComments &&
                     filteredCommentTree.length > 0 &&
                     (normalizedCommentSearch ? (
-                        // Search: show every match, virtualized (no thread/reply caps).
+                        // Search. Show every match, virtualized (no thread/reply caps).
                         <CommentSearchResults rows={searchResultRows} shellBorder={shellBorder} />
                     ) : (
-                        // Browse: progressive disclosure, capped and revealed on demand.
+                        // Browse. Progressive disclosure, capped and revealed on demand.
                         <Stack gap="lg">
                             {visibleCommentTree.map((comment) => (
                                 <CommentItem

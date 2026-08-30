@@ -11,7 +11,7 @@
 //! first to do so; the rest follow when their own submodule is next touched, rather than as one
 //! large move of tests nobody is otherwise changing.
 //!
-//! `#[cfg(test)]` at the declaration and `pub(super)` here: this is scaffolding compiled only for
+//! `#[cfg(test)]` at the declaration and `pub(super)` here. This is scaffolding compiled only for
 //! tests and reachable only from inside `db_backup`.
 
 use std::path::{Path, PathBuf};
@@ -22,7 +22,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 /// A fresh, uniquely named directory under the system temp dir.
 ///
 /// The suffix comes from [`crate::utils::naming::unique_temp_suffix`] rather than from a raw
-/// timestamp: pid plus nanoseconds alone collides when two tests land in the same clock tick, which
+/// timestamp. Pid plus nanoseconds alone collides when two tests land in the same clock tick, which
 /// was a real intermittent failure on macOS that surfaced nowhere near its cause. `ci.yml`'s "Verify
 /// temp paths are built from the shared unique suffix" step enforces it.
 pub(super) fn temp_dir(label: &str) -> PathBuf {
@@ -34,7 +34,7 @@ pub(super) fn temp_dir(label: &str) -> PathBuf {
     dir
 }
 
-/// A minimal SQLite database holding one table and one row: enough for the tests that only need a
+/// A minimal SQLite database holding one table and one row. Enough for the tests that only need a
 /// file the backup machinery will treat as a real database.
 ///
 /// Deliberately not the app's schema. The tests that exercise import validation need the richer

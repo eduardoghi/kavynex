@@ -51,7 +51,7 @@ describe("liveChatItemKey", () => {
     });
 
     it("keeps the same key for a message with no id across the sliding window", () => {
-        // The point of the key: the visible window is a slice, so a message's index shifts as
+        // The point of the key. The visible window is a slice, so a message's index shifts as
         // playback advances even though it is the same object. A key derived from that index
         // changes underneath React, which tears the row down and rebuilds it instead of skipping
         // it. Discarding exactly the memoization LiveChatItem exists for.
@@ -64,7 +64,7 @@ describe("liveChatItemKey", () => {
     });
 
     it("gives two identical messages distinct keys", () => {
-        // Same author, same offset, same text: indistinguishable by content, so a content-derived
+        // Same author, same offset, same text. Indistinguishable by content, so a content-derived
         // key would collide and React would treat them as one row.
         const first = makeChatMessage();
         const second = makeChatMessage();
@@ -140,7 +140,7 @@ describe("LiveChatPanel", () => {
             />
         );
 
-        // Default (and steady-state playback): the log region politely announces each message as
+        // Default (and steady-state playback). The log region politely announces each message as
         // it scrolls in.
         expect(screen.getByRole("log", { name: "Live chat messages" })).toHaveAttribute(
             "aria-live",

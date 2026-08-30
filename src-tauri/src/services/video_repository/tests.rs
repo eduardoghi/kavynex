@@ -25,7 +25,7 @@ async fn schema_pool() -> SqlitePool {
 /// Each `list_media_page` sort category and the index that must serve its ORDER BY.
 ///
 /// Every category is pinned in *both* directions. Pinning one direction per category is not
-/// enough: a direction the clause reverses only partially (a mixed-direction ORDER BY) cannot
+/// enough. A direction the clause reverses only partially (a mixed-direction ORDER BY) cannot
 /// be served by walking a same-direction index forwards or backwards, so the two directions of
 /// one category are genuinely different plans. `publication_date desc` (the grid's default
 /// view) is exactly that case, and went unnoticed while only its `asc` twin was pinned.
@@ -66,7 +66,7 @@ async fn every_media_page_sort_is_served_by_an_index() {
             "EXPLAIN QUERY PLAN SELECT id FROM videos WHERE channel_id = 1 {order_by} LIMIT 60 OFFSET 0"
         );
 
-        // AssertSqlSafe: the only interpolated part is `resolve_order_by`'s return value,
+        // AssertSqlSafe. The only interpolated part is `resolve_order_by`'s return value,
         // which is a fixed &'static str chosen by a match, never caller input.
         let plan: Vec<String> =
             sqlx::query_as::<_, (i64, i64, i64, String)>(sqlx::AssertSqlSafe(sql))
@@ -84,12 +84,12 @@ async fn every_media_page_sort_is_served_by_an_index() {
             "{category} {direction} should use {expected_index}, plan was: {detail}"
         );
 
-        // Exactly one temp-B-tree form is acceptable: "... FOR LAST TERM OF ORDER BY", which
+        // Exactly one temp-B-tree form is acceptable. "... FOR LAST TERM OF ORDER BY", which
         // only breaks ties inside an already-ordered index walk. Every other form sorts rows
         // the index was supposed to have ordered. The blanket "FOR ORDER BY" (a full sort)
         // and, just as bad, "FOR LAST <n> TERMS OF ORDER BY", where only the leading terms are
         // served. Matching the benign form rather than blacklisting the bad ones is what keeps
-        // a new SQLite wording from silently passing: anything unrecognized fails loudly.
+        // a new SQLite wording from silently passing. Anything unrecognized fails loudly.
         for fragment in detail.split(" | ") {
             assert!(
                 !fragment.contains("USE TEMP B-TREE")
@@ -102,7 +102,7 @@ async fn every_media_page_sort_is_served_by_an_index() {
 }
 
 /// The media-comments read (`list_media_comments_by_media_id`) filters `video_id = ?` and sorts
-/// `id ASC`. Pin that it is served by `idx_video_comments_video_id` without a sort: the index
+/// `id ASC`. Pin that it is served by `idx_video_comments_video_id` without a sort. The index
 /// stores `(video_id, rowid)`, and `id` is the rowid alias, so a fixed `video_id` walks the
 /// matching rows already in `id` order. This mirrors the sort-index pin above for the other hot
 /// ordered read, so a dropped/renamed index or a reordered clause fails a test rather than
@@ -472,7 +472,7 @@ async fn insert_media_maps_a_duplicate_youtube_id_to_a_friendly_error() {
     .await
     .unwrap();
 
-    // Same channel + youtube_video_id but a different file_path: the file_path ON CONFLICT
+    // Same channel + youtube_video_id but a different file_path. The file_path ON CONFLICT
     // does not cover it, so it hits the youtube_video_id unique index and must surface as
     // the friendly domain error rather than a raw SQLite message.
     let error = insert_media(
@@ -520,12 +520,12 @@ async fn media_exists_for_channel_and_youtube_id_matches_channel_and_id() {
         .await
         .unwrap());
 
-    // Same youtube id but a different channel: not a duplicate for that channel.
+    // Same youtube id but a different channel. Not a duplicate for that channel.
     assert!(!media_exists_for_channel_and_youtube_id(&pool, 2, "yt1")
         .await
         .unwrap());
 
-    // Same channel but a different youtube id: not a duplicate.
+    // Same channel but a different youtube id. Not a duplicate.
     assert!(!media_exists_for_channel_and_youtube_id(&pool, 1, "yt2")
         .await
         .unwrap());
@@ -1196,7 +1196,7 @@ async fn stored_youtube_video_id(pool: &SqlitePool, media_id: i64) -> Option<Str
 async fn insert_media_stores_a_trimmed_youtube_video_id() {
     // A padded youtube id has to be stored trimmed, so the partial unique index and the id
     // lookup (both of which compare the column verbatim), see the same value. This also pins
-    // that the non-empty filter does not swallow a real id: without its `!`, every id would be
+    // that the non-empty filter does not swallow a real id. Without its `!`, every id would be
     // dropped to NULL instead of stored.
     let pool = create_test_pool().await;
 
@@ -1295,7 +1295,7 @@ async fn insert_media_rejects_an_empty_title() {
 
 #[tokio::test]
 async fn insert_media_rejects_a_media_type_the_schema_would_refuse() {
-    // The table's own CHECK would refuse this too, so what this buys is the message: a named
+    // The table's own CHECK would refuse this too, so what this buys is the message. A named
     // validation failure rather than a constraint violation. It is also the one field a yt-dlp
     // creation does not route through the request normalizer (the value comes off the download),
     // so before this check moved here, nothing but that CHECK stood behind it.

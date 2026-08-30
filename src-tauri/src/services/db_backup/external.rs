@@ -8,8 +8,8 @@
 
 use std::path::{Path, PathBuf};
 
-// The throttle interval comes from `snapshot` rather than being re-declared here, deliberately:
-// the mirror is throttled to the same once-a-day window as the local `.bak` snapshot, and two
+// The throttle interval comes from `snapshot` rather than being re-declared here, deliberately.
+// The mirror is throttled to the same once-a-day window as the local `.bak` snapshot, and two
 // constants would let that pair drift silently.
 use super::snapshot::BACKUP_MIN_INTERVAL_SECS;
 use super::{
@@ -24,7 +24,7 @@ pub(super) const EXTERNAL_BACKUP_FILE_NAME: &str = "kavynex-backup.db";
 pub(super) const EXTERNAL_BACKUP_ROTATED_GENERATIONS: usize = 2;
 
 /// Exports a consistent, self-contained snapshot of the database to a user-chosen path via
-/// `VACUUM INTO` (WAL-safe: the snapshot is always fully checkpointed, never combined with a
+/// `VACUUM INTO` (WAL-safe. The snapshot is always fully checkpointed, never combined with a
 /// live write-ahead log). Refuses to export a database that fails `quick_check` so a corrupt
 /// file is never handed out as a good backup.
 ///
@@ -76,7 +76,7 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
     let dest = dest_path.to_path_buf();
     run_blocking(move || {
         // rename overwrites an existing target atomically on both Windows and Unix, so the previous
-        // export is never pre-deleted: a rename that then fails (a locked file, an AV/indexer hold, a
+        // export is never pre-deleted. A rename that then fails (a locked file, an AV/indexer hold, a
         // removable/network destination going away) must not leave the user with neither the old
         // export nor the new one. This matches rotate_generations, which relies on the same overwrite.
         std::fs::rename(&staging_final, &dest).map_err(|error| {
@@ -114,7 +114,7 @@ pub(super) fn generation_external_backup_path(dir: &Path, generation: usize) -> 
 /// database is copied (the media files are far larger and live under the library directory, which
 /// the user backs up separately). Returns true when a fresh mirror was written.
 ///
-/// The directory must already exist: an external drive that is currently unplugged (or a network
+/// The directory must already exist. An external drive that is currently unplugged (or a network
 /// share that is offline) is skipped quietly rather than recreated, since a recreated folder at a
 /// path that now resolves to a different device would silently write the backup to the wrong
 /// place. `export_database` refuses a source that fails its integrity check, so a corrupt database
@@ -147,7 +147,7 @@ pub async fn mirror_database_to_external_dir(
             // A staged file with no promoted mirror beside it is the leftover of a failed
             // promotion below, and the rotation had already emptied generation 0 when it was
             // written, so it is the newest good copy, not scrap. Adopt it as the mirror before
-            // consulting the throttle: deleting it up front (as this function once did) combined
+            // consulting the throttle. Deleting it up front (as this function once did) combined
             // with a second failure of the same flaky target could leave the directory with no
             // current copy at all. A leftover next to an intact mirror needs no cleanup here.
             // export_database only ever replaces it atomically with a verified fresh export.
@@ -168,7 +168,7 @@ pub async fn mirror_database_to_external_dir(
     // Export to a fresh staging file inside the external directory first, so a failed export (a
     // drive pulled mid-write) never disturbs the mirror generations already there. Only once the
     // fresh copy is complete are the older generations rotated up and it is promoted into
-    // generation 0. This is stricter than backup_database's rotate-then-write, on purpose: an
+    // generation 0. This is stricter than backup_database's rotate-then-write, on purpose. An
     // external/removable target fails far more often than the app's own config volume.
     export_database(db_path, &staged).await?;
 
@@ -182,7 +182,7 @@ pub async fn mirror_database_to_external_dir(
 
         if let Err(error) = std::fs::rename(&staged, &current) {
             // Leave the freshly exported, quick-check-passed staged file in place rather than
-            // deleting it: rotate_generations above already emptied generation 0, so discarding the
+            // deleting it. rotate_generations above already emptied generation 0, so discarding the
             // replacement here would throw away the newest good copy on a failure of the exact
             // (removable/network) target this module is meant to be careful with. Nothing on the
             // restore path reads this file automatically (unlike backup_database's `.bak.tmp`,

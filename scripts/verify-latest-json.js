@@ -1,11 +1,11 @@
-// Release gate: fails when the updater manifest on the draft release does not offer a signed
+// Release gate. Fails when the updater manifest on the draft release does not offer a signed
 // artifact for every platform.
 //
 // The workflow's asset check proves latest.json is *present*, which is not the same as it being
 // complete. Each build leg merges its own entries into that one file on the release, so a leg that
 // uploaded its installer but lost the merge (a transient API error, two legs racing) leaves a
 // latest.json that parses fine and simply never offers an update to one platform. Nothing else
-// would notice: the file is there, the installers are there, and only users on the missing platform
+// would notice. The file is there, the installers are there, and only users on the missing platform
 // would quietly stop receiving updates.
 
 import { readFileSync } from "fs";
@@ -82,7 +82,7 @@ export function findLatestJsonProblems(manifest, expectedVersion, expectedUrlPre
                 `${platform}: url ${JSON.stringify(entry.url)} is not under ${expectedUrlPrefix}`
             );
         } else if (expectedUrlPrefix && !url.startsWith(`${expectedUrlPrefix}v${expectedVersion}/`)) {
-            // The repo prefix matches but the version segment does not: each build leg merges its
+            // The repo prefix matches but the version segment does not. Each build leg merges its
             // own platform entry into the one latest.json on the draft release, so a merge race or
             // partial failure could leave a platform pointing at a *previous* release's asset. That
             // asset keeps a valid minisign signature forever, so the client would accept it and

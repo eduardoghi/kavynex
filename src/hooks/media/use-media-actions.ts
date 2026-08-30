@@ -44,7 +44,7 @@ type UseMediaActionsReturn = {
     isDeletingMedia: boolean;
     commentsInFlight: ReadonlySet<number>;
     // The media ids currently being marked watched/unwatched, for the same reason commentsInFlight
-    // is per id rather than one shared flag: markAsWatched/markAsUnwatched are guarded by
+    // is per id rather than one shared flag. markAsWatched/markAsUnwatched are guarded by
     // usePerIdAsyncFlag (see runWatchedActionFor below), and a caller that renders a busy state for
     // one row must resolve it against that row's id, not "something is in flight".
     watchedActionInFlight: ReadonlySet<number>;
@@ -87,14 +87,14 @@ export function useMediaActions({
     }, [isDeletingMedia]);
 
     // Watched updates are guarded per media row, not by one shared flag. A single flag made the
-    // second of two quick toggles on *different* cards a silent no-op: useAsyncFlag's runWithFlag
+    // second of two quick toggles on *different* cards a silent no-op. useAsyncFlag's runWithFlag
     // returns undefined without throwing when it is already running, and no component renders a
     // busy state for it, so the click just vanished. Keying by media id keeps the re-entrancy
     // guard where it belongs (one row cannot be toggled twice concurrently), while leaving
     // independent rows independent.
     const { inFlight: watchedActionInFlight, runFor: runWatchedActionFor } = usePerIdAsyncFlag();
 
-    // Refreshing comments is per media for the same reason: the player's Back button is live while
+    // Refreshing comments is per media for the same reason. The player's Back button is live while
     // a refresh is in flight, so opening another media and refreshing it is an ordinary sequence,
     // and one shared flag silently dropped that second refresh. The button responded, the
     // comments stayed stale, and nothing said so.
@@ -320,7 +320,7 @@ export function useMediaActions({
         async (mediaId: number): Promise<void> => {
             // The comment backup was registered under this deterministic run id (see
             // media-service.refreshMediaComments), so cancelling it just signals that run. Best
-            // effort: if it already finished, cancelMediaDownload rejects with INVALID_RUN_ID (the
+            // effort. If it already finished, cancelMediaDownload rejects with INVALID_RUN_ID (the
             // registry no longer has this run), which is expected here and not surfaced to the
             // user. Any other failure means the cancel signal did not reach the still-running
             // backup. Quietly logging that (the old behavior) left the user believing Cancel
@@ -362,7 +362,7 @@ export function useMediaActions({
 
                     // The row is updated in place rather than reloaded, deliberately. A rename
                     // should not throw away the pages the user scrolled. What that costs is that
-                    // the loaded list and the backend's sorted set now disagree: every ORDER BY
+                    // the loaded list and the backend's sorted set now disagree. Every ORDER BY
                     // ties on `title_normalized`, so a rename moves the row in any sort category,
                     // not only the title one. Told about it, the pager gives back the one position
                     // that keeps the next page from starting past the row this edit displaced.

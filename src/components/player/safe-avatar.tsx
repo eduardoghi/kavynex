@@ -17,7 +17,7 @@ export function SafeAvatar({
     shellBorder,
     size,
 }: SafeAvatarProps): JSX.Element {
-    // The privacy gate lives here rather than at each call site (see remote-image.tsx): every
+    // The privacy gate lives here rather than at each call site (see remote-image.tsx). Every
     // caller passing an author thumbnail had to remember to consult the context first, which is a
     // convention a component added later can break without anything failing. Dropping the src here
     // means a caller cannot forget, and the context defaults to false so a SafeAvatar rendered
@@ -42,7 +42,7 @@ export function SafeAvatar({
             radius="xl"
             size={size}
             src={finalSrc}
-            // Decorative: the author name is always shown next to the avatar, so an empty alt
+            // Decorative. The author name is always shown next to the avatar, so an empty alt
             // keeps screen readers from announcing the image URL/filename as content. It has to
             // be Avatar's own `alt` prop: Mantine spreads `imageProps` first and then sets `alt`
             // from this prop, so an `alt` inside `imageProps` is overwritten (by undefined, which

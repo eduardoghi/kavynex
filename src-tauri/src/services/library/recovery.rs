@@ -34,13 +34,13 @@ pub fn commit_marker_path(config_dir: &Path) -> PathBuf {
 /// directory is removed. Returns the underlying I/O error so the migration can decide to keep
 /// the old directory when the marker cannot be persisted.
 ///
-/// `sync_all` matters here, exactly as it does for `db_backup`'s import marker: the window this
+/// `sync_all` matters here, exactly as it does for `db_backup`'s import marker. The window this
 /// guards is a crash moments after the write, and the very next step removes the old library
 /// directory. A marker still sitting in the OS write cache when the machine loses power would be
 /// gone on reboot while the old directory was already emptied. The recovery could not adopt the
 /// new path, and the library would look lost even though the copy at it is complete.
 ///
-/// `fsync_parent_dir` on top of that flushes the directory entry itself: on common Linux/Unix
+/// `fsync_parent_dir` on top of that flushes the directory entry itself. On common Linux/Unix
 /// filesystems a crash right after the create can lose the new entry even though the file's own
 /// bytes were fsynced, so the marker would be absent on reboot despite `sync_all` succeeding.
 pub fn write_commit_marker(marker_path: &Path, new_library_path: &str) -> std::io::Result<()> {
@@ -53,7 +53,7 @@ pub fn write_commit_marker(marker_path: &Path, new_library_path: &str) -> std::i
     Ok(())
 }
 
-/// Removes the commit marker. Best effort: a failure only leaves a stale marker that the next
+/// Removes the commit marker. Best effort. A failure only leaves a stale marker that the next
 /// evaluation will re-examine and drop.
 pub fn clear_commit_marker(marker_path: &Path) {
     let _ = std::fs::remove_file(marker_path);
@@ -72,7 +72,7 @@ fn read_commit_marker(marker_path: &Path) -> Option<String> {
 
 /// True when `dir` holds actual content in at least one of the app's managed subdirectories.
 ///
-/// Deliberately checks for a *file*, not merely the directory's existence: a migration whose
+/// Deliberately checks for a *file*, not merely the directory's existence. A migration whose
 /// `remove_dir_all` failed partway leaves a managed directory behind (possibly with a subset of
 /// its files), and an empty leftover shell must not read as a real library. This is what lets the
 /// recovery below tell a genuine copy from a half-removed remnant.
@@ -93,7 +93,7 @@ fn dir_contains_a_file(dir: &Path) -> bool {
         };
 
         for entry in entries.flatten() {
-            // Skip symlinks without following them: a symlinked directory cycle would loop here
+            // Skip symlinks without following them. A symlinked directory cycle would loop here
             // forever. The library never creates symlinks of its own, and a symlinked file must not
             // count as a real library file for the populated-library check either.
             if crate::services::filesystem::dir_entry_is_symlink(&entry) {
@@ -116,7 +116,7 @@ fn dir_contains_a_file(dir: &Path) -> bool {
 /// What to do with the commit marker for the currently stored library path.
 #[derive(Debug, PartialEq, Eq)]
 pub enum MarkerOutcome {
-    /// Adopt this path as the library path: the configured library lost its content but the
+    /// Adopt this path as the library path. The configured library lost its content but the
     /// marker points at a populated directory (a migration that was interrupted before the new
     /// path was persisted).
     Recover(String),
@@ -135,7 +135,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
 
     let stored = stored_library_path.trim();
 
-    // The app already points at the migration target: the migration completed and its new path
+    // The app already points at the migration target. The migration completed and its new path
     // was persisted, so the marker is stale.
     if !stored.is_empty() && paths_refer_to_same_location(stored, &new_path) {
         return MarkerOutcome::ClearStale;
@@ -156,7 +156,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
     MarkerOutcome::ClearStale
 }
 
-/// Reconciles the stored library path with the migration commit marker: if the configured
+/// Reconciles the stored library path with the migration commit marker. If the configured
 /// library lost its content but the marker points at a populated directory, the marker path is
 /// adopted so an interrupted migration does not look like a lost library. Every failure is logged
 /// and swallowed. Recovery must never keep the settings from being read. Runs on each settings
@@ -165,7 +165,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
 pub async fn reconcile_interrupted_migration(pool: &SqlitePool, config_dir: &Path) {
     let marker = commit_marker_path(config_dir);
 
-    // Common case: no interrupted migration, so a single stat and we are done.
+    // Common case. No interrupted migration, so a single stat and we are done.
     if !marker.exists() {
         return;
     }
@@ -218,7 +218,7 @@ mod tests {
     fn make_populated_library(dir: &Path) {
         let video_dir = dir.join("video");
         fs::create_dir_all(&video_dir).unwrap();
-        // A real library holds content, not just the managed directory: `is_populated_library`
+        // A real library holds content, not just the managed directory. `is_populated_library`
         // checks for a file so a half-removed shell does not read as populated.
         fs::write(video_dir.join("clip.mp4"), b"data").unwrap();
     }
@@ -279,7 +279,7 @@ mod tests {
     fn evaluate_recovery_clears_marker_when_stored_is_already_the_migration_target() {
         let base = unique_dir("already-target");
         let new = base.join("new");
-        // The app already points at the migration target: the migration completed and its new
+        // The app already points at the migration target. The migration completed and its new
         // path was persisted, so the marker is stale and there is nothing to recover.
         make_populated_library(&new);
 
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn evaluate_recovery_recovers_when_the_old_library_was_only_partially_removed() {
-        // The CRITICO regression: `remove_dir_all` failed partway, so the old library still holds
+        // The CRITICO regression. `remove_dir_all` failed partway, so the old library still holds
         // some content while the new location holds the complete copy. The old code trusted the
         // still-populated old directory and dropped the marker, stranding the good copy; recovery
         // must instead adopt the marker target, which the marker guarantees is a complete copy.
@@ -421,7 +421,7 @@ mod tests {
         let config_dir = base.join("config");
         let new = base.join("new");
         fs::create_dir_all(&config_dir).unwrap();
-        // The configured library already is the migration target: the migration completed and
+        // The configured library already is the migration target. The migration completed and
         // was persisted, so the marker is stale.
         make_populated_library(&new);
 

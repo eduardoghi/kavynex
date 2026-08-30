@@ -28,7 +28,7 @@ describe("getLibraryIntegrity", () => {
     });
 
     it("asks the backend for the whole check with nothing but the library path", async () => {
-        // The point of the command taking one argument: the renderer no longer reads every media
+        // The point of the command taking one argument. The renderer no longer reads every media
         // row to build three arrays of stored paths and send them back. A payload carrying any of
         // those again would mean the round trip came back.
         await getLibraryIntegrity("/library");
@@ -75,7 +75,7 @@ describe("getLibraryIntegrity", () => {
     });
 
     it("still calls through when the database has nothing to check", async () => {
-        // An empty target map is not a reason to skip: the library folder can hold orphan files
+        // An empty target map is not a reason to skip. The library folder can hold orphan files
         // no row references, and that half of the report is the one the rows cannot answer.
         invokeCommandMock.mockResolvedValueOnce(
             checkResult({

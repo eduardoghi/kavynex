@@ -1,6 +1,6 @@
 //! Restricts the *direct* thumbnail fetch to the image CDNs YouTube actually serves from.
 //!
-//! The sibling of `yt_dlp::url` on the other branch of the same command: that module gates the URL
+//! The sibling of `yt_dlp::url` on the other branch of the same command. That module gates the URL
 //! handed to yt-dlp's generic extractor, this one gates the URL the backend fetches over HTTP
 //! itself (`services::thumbnail::download::download_thumbnail_from_url_async`). Both are host
 //! allow-lists, and the lists deliberately differ. See [`ALLOWED_THUMBNAIL_IMAGE_HOSTS`].
@@ -14,18 +14,18 @@
 use http::Uri;
 
 /// The image CDNs the direct thumbnail fetch may reach. These mirror the `img-src` hosts in
-/// `tauri.conf.json`'s CSP: the webview is already only permitted to *render* images from them, so
+/// `tauri.conf.json`'s CSP. The webview is already only permitted to *render* images from them, so
 /// letting the backend *fetch* one from anywhere else served no flow this app has. The parity is
 /// pinned by `allowed_thumbnail_hosts_match_the_csp_img_src` below, in both directions, so the two
 /// lists cannot drift.
 ///
 /// This exists because the two halves of `download_thumbnail_from_url_async` used to treat the host
-/// differently: the yt-dlp fallback has always refused a non-YouTube URL (it hands the value to
+/// differently. The yt-dlp fallback has always refused a non-YouTube URL (it hands the value to
 /// yt-dlp's generic extractor, which runs with access to the user's browser cookies), while the
 /// direct-image branch accepted any *public* host. The SSRF guard kept that branch off internal
 /// addresses, but nothing kept it off the open internet, so a compromised frontend could use it as
 /// an outbound channel, encoding data in a path that still ends in `.jpg`. No legitimate flow ever
-/// supplied such a URL: the manual thumbnail control is a file picker (`utils/pick-image-file.ts`),
+/// supplied such a URL. The manual thumbnail control is a file picker (`utils/pick-image-file.ts`),
 /// and the only remote value that reaches the command is yt-dlp's own `thumbnail` metadata.
 ///
 /// Deliberately **not** `yt_dlp::url`'s `YOUTUBE_DOMAINS`, which gates the fallback. The thumbnails
@@ -91,7 +91,7 @@ mod tests {
     fn is_allowed_thumbnail_image_host_rejects_look_alikes_and_arbitrary_hosts() {
         // The suffix match requires a leading `.`, so a domain that merely *contains* or *ends
         // with the letters of* an allowed one is refused. The last two are the exfiltration shape
-        // this gate exists to close: a path that still ends in `.jpg` on a host of the caller's
+        // this gate exists to close. A path that still ends in `.jpg` on a host of the caller's
         // choosing.
         for value in [
             "https://ytimg.com.evil.example/abc.jpg",
@@ -113,7 +113,7 @@ mod tests {
     fn allowed_thumbnail_hosts_match_the_csp_img_src() {
         // The backend fetches an image only from hosts the webview is allowed to render one from,
         // so this list is a copy of the CSP's `img-src` hosts. A copy drifts, and the drift would
-        // be silent in both directions: a host added here but not to the CSP downloads a thumbnail
+        // be silent in both directions. A host added here but not to the CSP downloads a thumbnail
         // the grid then refuses to display, and one added to the CSP but not here is renderable and
         // undownloadable. Read the CSP as the source and assert every entry is covered.
         //
@@ -122,7 +122,7 @@ mod tests {
         // asymmetric. A host reaching only one of them renders a thumbnail under `pnpm tauri dev`
         // that a packaged build refuses, or the reverse. That is the same dev-versus-packaged
         // asymmetry `THREAT-MODEL.md` already records for the `asset:`/`http://asset.localhost`
-        // token pair, and the reason `--webview-check` exists at all: nothing in the normal loop
+        // token pair, and the reason `--webview-check` exists at all. Nothing in the normal loop
         // applies the packaged CSP, so a mistake in it is not observable until a release.
         let raw = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"));
         let config: serde_json::Value =
@@ -147,7 +147,7 @@ mod tests {
                 );
             }
 
-            // And the other direction: every https host the CSP names must be fetchable here, so a
+            // And the other direction. Every https host the CSP names must be fetchable here, so a
             // host added to the CSP alone fails this test instead of silently never downloading.
             for token in img_src.split_whitespace() {
                 let Some(host) = token.strip_prefix("https://") else {

@@ -27,7 +27,7 @@ import { logError } from "../utils/app-logger";
 describe("useAppBootstrap", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // Default: no backup available, so failures surface as errors unless a test says
+        // Default. No backup available, so failures surface as errors unless a test says
         // otherwise.
         vi.mocked(getDatabaseBackupStatus).mockResolvedValue({
             available: false,
@@ -74,7 +74,7 @@ describe("useAppBootstrap", () => {
     });
 
     it("advises updating instead of offering recovery when the schema is too new", async () => {
-        // A database created by a newer build fails to open but is not corrupt: the recovery
+        // A database created by a newer build fails to open but is not corrupt. The recovery
         // flow (which would restore an older backup) must be skipped in favor of a clear message.
         vi.mocked(ensureDatabaseReady).mockRejectedValueOnce({
             code: "DATABASE_SCHEMA_TOO_NEW",

@@ -2,7 +2,7 @@
 // Extracted so the release-gate logic (the Cargo.toml regex especially) can be unit-tested
 // instead of only ever running at release time, where a bad regex would silently pass.
 
-// Matches the [package] version line in Cargo.toml, scoped to the [package] table: the `[package]`
+// Matches the [package] version line in Cargo.toml, scoped to the [package] table. The `[package]`
 // header, then any lines up to (but not crossing into) the next `[section]` header via `[^[]*?`,
 // then the `version = "X.Y.Z"` line. Scoping it to that table (rather than a bare `^version`
 // anywhere) is what stops it reading or rewriting a dependency's own version line, including a

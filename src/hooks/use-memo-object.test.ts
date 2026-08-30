@@ -21,7 +21,7 @@ describe("useMemoObject", () => {
     });
 
     it("returns a new identity as soon as one value changes", () => {
-        // The other direction, and the one that makes the test above mean something: a hook that
+        // The other direction, and the one that makes the test above mean something. A hook that
         // simply returned the first object forever would satisfy the stability assertion and hand
         // every consumer stale data.
         const { result, rerender } = renderHook(
@@ -39,7 +39,7 @@ describe("useMemoObject", () => {
 
     it("compares values shallowly, so a rebuilt-but-equal object counts as a change", () => {
         // Stated as a test rather than left to the doc comment, because it is the helper's one sharp
-        // edge: the comparison is over the top-level values, so a nested literal rebuilt with equal
+        // edge. The comparison is over the top-level values, so a nested literal rebuilt with equal
         // contents is a *different* value and does break the identity. A caller that wants stability
         // across that has to memoize the nested value itself, which is why the codebase passes
         // already-stable callbacks and state slices here rather than fresh literals.
@@ -56,7 +56,7 @@ describe("useMemoObject", () => {
     });
 
     it("does not change identity when a value is replaced by an equal primitive", () => {
-        // The complement of the case above: primitives compare by value, so re-deriving the same
+        // The complement of the case above. Primitives compare by value, so re-deriving the same
         // string or number on each render is safe. This is what lets a controller pass a computed
         // count or a derived label straight through.
         const { result, rerender } = renderHook(

@@ -15,7 +15,7 @@
 //! overlap a library write.
 //!
 //! The gate guards no data (`RwLock<()>`), only ordering, so a prior panic must never wedge
-//! every future library operation: both helpers recover a poisoned lock rather than propagate
+//! every future library operation. Both helpers recover a poisoned lock rather than propagate
 //! it, mirroring `library::migration::migrate_library_directory_sync`'s own poison handling.
 //!
 //! IMPORTANT: only leaf filesystem functions take the read guard, and only for the extent of a
@@ -42,7 +42,7 @@ pub struct LibraryReadGuard {
 }
 
 // How many library read guards the current thread holds. The no-nesting rule means this never
-// exceeds 1: the acquire path debug-asserts it was 0 before incrementing, and the guard's Drop
+// exceeds 1. The acquire path debug-asserts it was 0 before incrementing, and the guard's Drop
 // decrements it. Debug/test builds only. A release build carries no counter and no Drop work.
 #[cfg(debug_assertions)]
 thread_local! {
@@ -134,7 +134,7 @@ mod tests {
         // The module's rule (a guarded function must never call another one while holding the
         // guard) is what keeps this gate from wedging the app, and it is enforced only by
         // convention. std::sync::RwLock makes no reentrancy guarantee and is write-preferring on
-        // most platforms: a second read acquired while a writer waits can block forever, and the
+        // most platforms. A second read acquired while a writer waits can block forever, and the
         // symptom (every library operation hangs) points nowhere near the nested call that caused
         // it. This pins the shape the real call sites rely on. A loop taking the guard once per
         // file, released between iterations, while a migration is trying to get in.
@@ -143,7 +143,7 @@ mod tests {
 
         let held = library_read_guard();
 
-        // A migration asks for the exclusive side and blocks: the reader above holds it.
+        // A migration asks for the exclusive side and blocks. The reader above holds it.
         let writer = thread::spawn(move || {
             let _ = started.send(());
             let _write = library_write_guard();
@@ -169,7 +169,7 @@ mod tests {
         sequential.join().unwrap();
     }
 
-    // Debug-only: the depth check is compiled out of a release build, so under `cargo test
+    // Debug-only. The depth check is compiled out of a release build, so under `cargo test
     // --release` a second same-thread read would simply succeed (no waiting writer here) and no
     // panic would occur. The whole test is gated to the builds where the assertion is live.
     #[cfg(debug_assertions)]

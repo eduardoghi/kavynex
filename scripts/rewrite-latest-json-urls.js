@@ -1,4 +1,4 @@
-// Release step: rewrites each platform entry in the updater manifest to the tagged release-download
+// Release step. Rewrites each platform entry in the updater manifest to the tagged release-download
 // URL, replacing the api.github.com asset URL tauri-action writes.
 //
 // The reason tauri-action writes that one is real. While a release is still a draft its tag is not
@@ -7,7 +7,7 @@
 // published. The asset API URL is stable across that transition, so it is the safe default for an
 // action that cannot know whether the draft will ever be published.
 //
-// For this project the tagged URL is the correct one regardless: the updater endpoint is
+// For this project the tagged URL is the correct one regardless. The updater endpoint is
 // `releases/latest/download/latest.json`, which only ever resolves to a *published* release, so no
 // user reaches this manifest while it is a draft. The api.github.com form would also work on a
 // public repository, but it moves the download onto a host with a 60-request/hour unauthenticated
@@ -37,7 +37,7 @@ export function assetIdFromUrl(url) {
 // Returns the manifest with every recognized platform URL rebuilt as `<prefix>v<version>/<asset>`,
 // plus the platforms whose URL matched no asset.
 //
-// An unmatched entry is deliberately left untouched rather than dropped or guessed at: whatever it
+// An unmatched entry is deliberately left untouched rather than dropped or guessed at. Whatever it
 // points to, `verify-latest-json.js` runs afterwards and rejects anything not under the expected
 // prefix. Removing it here would turn that loud failure into a platform that quietly stops
 // receiving updates. The exact outcome that gate exists to prevent.

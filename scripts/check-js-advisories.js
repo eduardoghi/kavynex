@@ -1,6 +1,6 @@
 // Fails when an npm dependency carries a known high/critical security advisory.
 //
-// This replaces `pnpm audit`, which stopped working entirely on 2026-07-15: npm retired the
+// This replaces `pnpm audit`, which stopped working entirely on 2026-07-15. npm retired the
 // legacy audit endpoints (`/-/npm/v1/security/audits` and `/-/npm/v1/security/audits/quick`) and
 // every pnpm release still calls them, so `pnpm audit` now exits non-zero with
 // ERR_PNPM_AUDIT_BAD_RESPONSE (HTTP 410) regardless of whether any advisory exists. Verified
@@ -24,7 +24,7 @@ import { execFileSync } from "node:child_process";
 const OSV_QUERY_BATCH_URL = "https://api.osv.dev/v1/querybatch";
 const OSV_VULN_URL = "https://api.osv.dev/v1/vulns";
 
-// Mirrors the `--audit-level high` the retired `pnpm audit` gate used: a low/moderate transitive
+// Mirrors the `--audit-level high` the retired `pnpm audit` gate used. A low/moderate transitive
 // finding should not block every push, and it never shipped in a release artifact anyway.
 const BLOCKING_SEVERITIES = new Set(["HIGH", "CRITICAL"]);
 
@@ -43,14 +43,14 @@ function readInstalledPackages(scope) {
     // `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to spawn
     // `.bat`/`.cmd` without one (CVE-2024-27980). CI runs on Linux and takes the shell-free path.
     //
-    // Note what the argv array does and does not buy on that Windows path: with `shell: true` Node
+    // Note what the argv array does and does not buy on that Windows path. With `shell: true` Node
     // concatenates the array into a command line rather than passing it through, which is what
     // DEP0190 warns about. The array is not an escaping mechanism there. What actually makes this
     // safe is that every argument below is a literal written in this file, not derived from a
-    // package name, a lockfile entry, or anything else outside it. Keep it that way: an argument
+    // package name, a lockfile entry, or anything else outside it. Keep it that way. An argument
     // built from external data would need the shim resolved and invoked directly instead.
     //
-    // `licenses list` is what enumerates the tree, as in check-js-licenses.js: it returns a flat,
+    // `licenses list` is what enumerates the tree, as in check-js-licenses.js. It returns a flat,
     // fully-resolved inventory of name+versions straight from the lockfile. `pnpm list` returns a
     // nested tree whose repeated subtrees are elided as `deduped`, which a scanner must not miss.
     const raw = execFileSync("pnpm", ["licenses", "list", scope, "--json"], {
@@ -180,7 +180,7 @@ const CVSS3_WEIGHTS = {
     PR_CHANGED: { N: 0.85, L: 0.68, H: 0.5 },
 };
 
-// CVSS 3.1 "roundup": round up to one decimal place without floating-point drift (spec appendix A).
+// CVSS 3.1 "roundup". Round up to one decimal place without floating-point drift (spec appendix A).
 function roundUpToOneDecimal(value) {
     const scaled = Math.round(value * 100000);
 
@@ -193,7 +193,7 @@ function roundUpToOneDecimal(value) {
 
 // Computes the CVSS 3.x base score from a vector string, or null when it is not a well-formed
 // CVSS:3.x base vector (a v2/v4 vector, a missing metric, an unknown metric value). Returning null
-// rather than guessing is deliberate: the caller then falls back to fail-closed "unknown" instead
+// rather than guessing is deliberate. The caller then falls back to fail-closed "unknown" instead
 // of silently treating an unparseable vector as harmless. Exported for tests.
 export function cvss3BaseScore(vector) {
     if (typeof vector !== "string" || !/^CVSS:3\.[01]\//.test(vector)) {
@@ -310,7 +310,7 @@ export function isBlockingAdvisory(vuln) {
         return true;
     }
 
-    // Fail closed: a live advisory whose severity could not be established (no database_specific
+    // Fail closed. A live advisory whose severity could not be established (no database_specific
     // label and no parseable CVSS vector) is not proven to be below the high/critical floor, so it
     // must not pass silently. That is the whole point of this gate, which states the same
     // fail-closed rule for a transport failure below. It surfaces for a human to classify in the PR
@@ -366,7 +366,7 @@ async function main() {
 // this file must not shell out to pnpm or reach the network). Mirrors check-js-licenses.js.
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
     main().catch((error) => {
-        // Never pass silently on a transport failure: a scanner that cannot reach its data source
+        // Never pass silently on a transport failure. A scanner that cannot reach its data source
         // has not cleared the tree, and treating that as success is how a gate quietly stops gating.
         console.error(`Advisory check could not complete: ${error.message}`);
         process.exit(1);

@@ -4,11 +4,11 @@ use crate::services::library::guard::ensure_configured_library_path;
 use crate::services::media_creation::{self, CreateMediaRequest, CreatedMedia};
 use crate::AppResult;
 
-/// Creates a media: produces its artifacts, records the crash marker, inserts the row and clears
+/// Creates a media. Produces its artifacts, records the crash marker, inserts the row and clears
 /// the marker, as one operation.
 ///
 /// One command rather than the seven the renderer used to chain, and that is the point rather than
-/// a tidy-up: the window in which artifacts exist with no row pointing at them no longer crosses the
+/// a tidy-up. The window in which artifacts exist with no row pointing at them no longer crosses the
 /// process boundary, and the exclusion that keeps two creations off the same content-addressed path
 /// is a lock in `library::cleanup` instead of the add-media modal refusing to open twice. See
 /// `services::media_creation` for the ordering and `docs/THREAT-MODEL.md` for what that changed about the
@@ -26,7 +26,7 @@ pub async fn create_media<R: Runtime>(
     media_creation::create_media_async(&app, request).await
 }
 
-// The rule this file holds, for a command added later: the IPC surface exposes an operation, not
+// The rule this file holds, for a command added later. The IPC surface exposes an operation, not
 // its steps. `services::pending_media`, `services::yt_dlp` and `services::library::media` hold the
 // steps of a media creation, and the backend is their only caller.
 //
@@ -34,7 +34,7 @@ pub async fn create_media<R: Runtime>(
 // the startup sweep acts on what it names, so a caller able to write one could name files it never
 // created and have the next launch reconcile them, while a caller able to clear one could drop the
 // record of a creation that really did die. The same argument, one step down, covers the download
-// and the import: both write into the library, so reaching either directly produces the
+// and the import. Both write into the library, so reaching either directly produces the
 // artifacts-with-no-row state this module exists to bound, with no marker behind it.
 //
 // See `docs/decisions/2026-07-30-ipc-exposes-operations-not-steps.md`.
@@ -46,9 +46,9 @@ pub async fn create_media<R: Runtime>(
 // `tauri::generate_handler!` for a mock app (no `CommandArg<'_, MockRuntime>` impl for it). The
 // services were generalized first; the commands followed, which is what the IPC test here rests on.
 //
-// The local-import end of the creation is the half that can run offline: a real temp library, a
+// The local-import end of the creation is the half that can run offline. A real temp library, a
 // real source file, a picked thumbnail (so nothing reaches FFmpeg), and the row lands in an in-memory
-// database. The yt-dlp end still cannot, for the reason `commands/yt_dlp.rs` gives: it spawns the
+// database. The yt-dlp end still cannot, for the reason `commands/yt_dlp.rs` gives. It spawns the
 // binary. What the sync test below pins on top is `library::media::import_media_file_sync` on its
 // own (content-addressed naming, copy vs move, reuse by hash), which is the step the command runs
 // once its guard passes.
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn create_media_command_imports_a_local_file_and_registers_the_row_over_ipc() {
-        // The whole operation the command exposes, end to end: the guard accepts the configured
+        // The whole operation the command exposes, end to end. The guard accepts the configured
         // library, the file is copied under its content-addressed name, the picked thumbnail is
         // persisted beside it, and the response carries the stored paths the renderer reads back.
         let root = unique_test_dir("ipc-create");
@@ -218,7 +218,7 @@ mod tests {
     fn create_media_command_refuses_a_network_thumbnail_source_over_ipc() {
         // The local thumbnail branch is where the UNC refusal was missing, and this is the command
         // that carries the value in. The media file is a real local file, so only the thumbnail can
-        // be what refuses the creation, and the refusal has to leave the library untouched: no
+        // be what refuses the creation, and the refusal has to leave the library untouched. No
         // media copied, no row, nothing for the crash-marker sweep to reconcile.
         let root = unique_test_dir("ipc-create-unc");
         let library = root.join("library");
@@ -311,7 +311,7 @@ mod tests {
     }
 
     // Locks down the content-addressing behavior the reference-counted cleanup depends
-    // on: two different source files with identical bytes converge on the same
+    // on. Two different source files with identical bytes converge on the same
     // destination path instead of being duplicated in the library.
     #[test]
     fn import_media_file_sync_reuses_existing_content_addressed_file() {
@@ -359,7 +359,7 @@ mod tests {
         let destination = library.join(&relative);
         assert!(destination.exists());
 
-        // A second, distinct file with identical content imported in Move mode: the destination
+        // A second, distinct file with identical content imported in Move mode. The destination
         // already exists, but the redundant source must still be removed to complete the move.
         let second = write_temp_file(&root.join("source"), "second.mp4", b"same-bytes");
         let second_relative = library::media::import_media_file_sync(

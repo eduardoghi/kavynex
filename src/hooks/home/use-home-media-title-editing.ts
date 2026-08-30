@@ -15,7 +15,7 @@ export type HomeMediaTitleEditing = {
     handleSaveMediaTitle: (item: MediaRow, title: string) => Promise<void>;
 };
 
-// Owns the edit-media-title modal flow: which media is open in the modal, the in-flight save state,
+// Owns the edit-media-title modal flow. Which media is open in the modal, the in-flight save state,
 // and the save itself (which closes the modal only after the rename succeeds, leaving it open with
 // the typed title on failure so the error surfaces without losing the edit). Lifted out of the Home
 // page component so this async orchestration lives in a hook rather than inline in the page body.
@@ -47,7 +47,7 @@ export function useHomeMediaTitleEditing({
         [editMediaTitle]
     );
 
-    // Reference-stable, per CONTRIBUTING.md's hook conventions: the identity only changes when a
+    // Reference-stable, per CONTRIBUTING.md's hook conventions. The identity only changes when a
     // field does, so a consumer that depends on the whole controller is not invalidated on every
     // render of the page that calls this.
     return useMemoObject({

@@ -5,15 +5,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// The process id separates this process's temp entries from another instance's; the
 /// high-resolution timestamp keeps them readable/orderable; and the monotonic counter guarantees
-/// uniqueness *within* the process regardless of timer resolution. The timestamp alone does not:
-/// two calls in the same clock tick (a coarse OS timer, or two threads racing) would otherwise
+/// uniqueness *within* the process regardless of timer resolution. The timestamp alone does not.
+/// Two calls in the same clock tick (a coarse OS timer, or two threads racing) would otherwise
 /// produce the same string, so the counter is what actually makes concurrent same-process callers
 /// collision-free. Shared by the download, thumbnail and atomic-file-replace paths, which all stage
 /// work under uniquely named temp entries.
 ///
 /// **Any test helper that builds a unique temporary path builds it from this too, whatever that
 /// helper is called.** Those helpers were originally hand-rolled from pid + nanos, and the missing
-/// counter was a real intermittent CI failure: two tests starting in the same tick got the same temp
+/// counter was a real intermittent CI failure. Two tests starting in the same tick got the same temp
 /// directory and one deleted the other's files, which surfaced on macOS (coarser timer) as a failure
 /// nowhere near its cause. The pattern was fixed in one helper and re-appeared by copy-paste in
 /// sixteen more, so the fix is to delegate here rather than to reproduce the three components.

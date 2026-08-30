@@ -85,7 +85,7 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
     Ok(())
 }
 
-/// Phase 1: copy all managed directories to the new location without touching the originals.
+/// Phase 1. Copy all managed directories to the new location without touching the originals.
 /// If any copy fails here, the old library is still fully intact and the app continues working
 /// normally against the old path.
 fn copy_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
@@ -116,8 +116,8 @@ fn copy_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppR
     Ok(())
 }
 
-/// Phase 2: all copies confirmed. Remove the old managed directories, then the old library
-/// directory itself if nothing unrelated is left in it. Best effort: a removal failure only
+/// Phase 2. All copies confirmed. Remove the old managed directories, then the old library
+/// directory itself if nothing unrelated is left in it. Best effort. A removal failure only
 /// leaves reclaimable disk behind, never lost data (the new location already holds a full copy).
 fn remove_old_library_contents(old_library_dir: &Path) {
     for dir_name in MANAGED_LIBRARY_DIRS {
@@ -127,7 +127,7 @@ fn remove_old_library_contents(old_library_dir: &Path) {
             // A partial failure here (a locked file, an AV scanner, a permission hiccup) leaves
             // the managed directory behind holding an unknown subset of its files. That is only
             // reclaimable disk (the new location already holds a full copy), but it must be
-            // logged rather than swallowed: the recovery path keys off the marker target being a
+            // logged rather than swallowed. The recovery path keys off the marker target being a
             // complete copy, not off the old directory looking empty, precisely so a leftover
             // like this cannot strand the good copy.
             if let Err(error) = fs::remove_dir_all(&source_dir) {
@@ -170,7 +170,7 @@ fn remove_old_library_contents(old_library_dir: &Path) {
 /// Runs the copy/remove phases with a durable commit marker written between them, so an
 /// interrupted migration (a crash after the copy but before the frontend persists the new
 /// library path) can be recovered on the next launch. When `commit_marker` is `Some` and the
-/// marker cannot be written, the old directory is deliberately left intact: reclaiming its disk
+/// marker cannot be written, the old directory is deliberately left intact. Reclaiming its disk
 /// is not worth removing the only path back to the library when recovery would be impossible.
 /// `None` (used by tests) keeps the plain copy-then-remove behavior.
 ///
@@ -321,7 +321,7 @@ pub fn migrate_library_directory_sync(
 
     ensure_destination_is_migratable(&canonical_new)?;
 
-    // Hold the exclusive library gate across the copy/remove phase: it drains any in-flight
+    // Hold the exclusive library gate across the copy/remove phase. It drains any in-flight
     // import/download/delete and blocks new ones, so a file can never be written into the old
     // directory in the window between it being copied to the new location and removed. Only the
     // destructive phase needs it; the validation above is read-only. See services/library/lock.
@@ -448,7 +448,7 @@ mod tests {
 
         fs::create_dir_all(old_root.join("video")).unwrap();
         fs::write(old_root.join("video").join("a.mp4"), b"video").unwrap();
-        // Not part of any managed directory: the migration never touches it, so it stays
+        // Not part of any managed directory. The migration never touches it, so it stays
         // behind and the old directory can no longer be removed.
         fs::write(old_root.join("notes.txt"), b"leftover notes").unwrap();
 
@@ -625,7 +625,7 @@ mod tests {
         fs::write(old_root.join("video").join("a.mp4"), b"video-data").unwrap();
         fs::write(old_root.join("video").join("b.mp4"), b"video-b").unwrap();
 
-        // Simulate a prior migration interrupted mid-copy: the destination already holds the
+        // Simulate a prior migration interrupted mid-copy. The destination already holds the
         // managed "video" dir with one file (identical content) and nothing unrelated.
         fs::create_dir_all(new_root.join("video")).unwrap();
         fs::write(new_root.join("video").join("a.mp4"), b"video-data").unwrap();
@@ -711,7 +711,7 @@ mod tests {
 
     #[test]
     fn ensure_destination_is_migratable_accepts_empty_managed_and_os_litter() {
-        // The three shapes a destination is allowed to have: empty, holding only the managed
+        // The three shapes a destination is allowed to have. Empty, holding only the managed
         // subdirectories a previous interrupted migration left, and holding only OS-generated
         // files the user did not put there.
         let empty = unique_test_dir("dest-empty");
@@ -732,7 +732,7 @@ mod tests {
     #[test]
     fn ensure_destination_is_migratable_rejects_a_directory_that_is_not_a_managed_one() {
         // The guard is `is_dir() && MANAGED_LIBRARY_DIRS.contains(name)`, and the conjunction is
-        // load-bearing: weakened to a disjunction, *any* subdirectory reads as managed, so a folder
+        // load-bearing. Weakened to a disjunction, *any* subdirectory reads as managed, so a folder
         // full of the user's own files would be accepted as a migration destination and the library
         // would be copied into it. The existing tests only ever placed managed directories or loose
         // files here, so nothing failed when that happened.
@@ -748,7 +748,7 @@ mod tests {
 
     #[test]
     fn ensure_destination_is_migratable_rejects_an_unrelated_file() {
-        // The other half of the same condition: a loose file that is not OS litter is user content,
+        // The other half of the same condition. A loose file that is not OS litter is user content,
         // even when it is *named* like a managed directory (`video` as a file, not a folder).
         let destination = unique_test_dir("dest-unrelated-file");
         fs::create_dir_all(&destination).unwrap();
@@ -829,7 +829,7 @@ mod tests {
         assert!(poisoning.is_err(), "the helper thread should have panicked");
         assert!(library_migration_lock().is_poisoned());
 
-        // The next migration must still succeed: the poison guards no real state, so it is
+        // The next migration must still succeed. The poison guards no real state, so it is
         // recovered instead of surfacing as a misleading "already running" error that would
         // wedge every future migration until the app restarts.
         let new_root = unique_test_dir("poison-recover");

@@ -29,14 +29,14 @@ export function useDiagnostics({
     const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
 
     const requestGuard = useRequestGuard();
-    // Its own flag rather than the shared `isLoadingDiagnostics`, which the Refresh button owns:
-    // opening the log folder loads no diagnostics, and reusing that flag would put the Refresh
+    // Its own flag rather than the shared `isLoadingDiagnostics`, which the Refresh button owns.
+    // Opening the log folder loads no diagnostics, and reusing that flag would put the Refresh
     // button into a loading state for an action that has nothing to do with it.
     const logDirectoryFlag = useAsyncFlag();
     // Separate from the flag above rather than shared, because the two are different actions and
     // sharing would let the log folder still opening block a file from being revealed. Nothing
     // renders a busy state for this one (its target is a link in a list, not a button), so the
-    // flag's whole job here is the re-entry guard inside `runWithFlag`: a double click would
+    // flag's whole job here is the re-entry guard inside `runWithFlag`. A double click would
     // otherwise spawn two file-manager windows onto the same file.
     const revealPathFlag = useAsyncFlag();
     const hasLoadedSinceOpenRef = useRef(false);
@@ -101,7 +101,7 @@ export function useDiagnostics({
         await loadDiagnostics();
     }, [importMode, libraryPath, loadDiagnostics]);
 
-    // No request guard, unlike the loaders above: this resolves to nothing and updates no state, so
+    // No request guard, unlike the loaders above. This resolves to nothing and updates no state, so
     // there is no stale response that could overwrite a newer one. The async flag is here to stop a
     // double click spawning two file-manager windows, which is the only way this misbehaves.
     const openLogDirectory = useCallback(async (): Promise<void> => {

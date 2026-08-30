@@ -47,7 +47,7 @@ export async function listYtDlpFormats(
         url: normalizedUrl,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),
-        // Optional: when set, the backend registers the run so cancelMediaDownload(runId) can abort
+        // Optional. When set, the backend registers the run so cancelMediaDownload(runId) can abort
         // a slow format probe instead of it running to the yt-dlp timeout.
         runId: normalizeRunId(runId),
     });
@@ -56,8 +56,8 @@ export async function listYtDlpFormats(
 // The download itself is no longer invoked from here. It is a step of a media creation, and that
 // whole sequence runs in the backend now (`create_media`), so exposing the step would let a caller
 // write a file into the library with no row and no crash marker behind it. The state the marker
-// exists to bound. What remains in this file are the calls that are genuinely their own operation:
-// listing formats, cancelling a run, and fetching comments for a media that already exists.
+// exists to bound. What remains in this file are the calls that are genuinely their own operation.
+// Listing formats, cancelling a run, and fetching comments for a media that already exists.
 
 export async function cancelMediaDownload(runId: string): Promise<void> {
     const normalizedRunId = runId.trim();
@@ -87,7 +87,7 @@ export async function fetchYouTubeComments(
         videoId: normalizedVideoId,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),
-        // Optional: when set, the backend registers the run so cancelMediaDownload(runId) can abort
+        // Optional. When set, the backend registers the run so cancelMediaDownload(runId) can abort
         // a comment backup (which can run for minutes) instead of it running to the yt-dlp timeout.
         runId: normalizeRunId(runId),
     });

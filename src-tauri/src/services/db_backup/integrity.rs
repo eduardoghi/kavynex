@@ -14,7 +14,7 @@ use super::{backup_error, is_recent, sibling};
 use crate::services::logger;
 use crate::AppResult;
 
-/// The outcome of a full `PRAGMA integrity_check`: whether the database is sound and, when it is
+/// The outcome of a full `PRAGMA integrity_check`. Whether the database is sound and, when it is
 /// not, what SQLite actually reported.
 #[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
@@ -30,7 +30,7 @@ pub struct DatabaseIntegrityReport {
 }
 
 /// A corrupt database can report a problem per damaged page, which is unbounded and useless past
-/// the first handful: the answer is the same either way ("restore from a backup"), and the point of
+/// the first handful. The answer is the same either way ("restore from a backup"), and the point of
 /// showing any of them is to say *what* is wrong, not to enumerate it. `pub(super)` so the parent
 /// module's test can assert the cap.
 pub(super) const MAX_INTEGRITY_PROBLEMS: usize = 20;
@@ -52,7 +52,7 @@ fn sqlite_error_code(error: &sqlx::Error) -> Option<String> {
 /// Runs a full `PRAGMA integrity_check`, a thorough (and slower) check than the `quick_check`
 /// used by the automatic health paths. User-triggered only, so the extra cost is fine.
 ///
-/// `fetch_all` rather than `fetch_one`: on a healthy database the pragma returns the single row
+/// `fetch_all` rather than `fetch_one`. On a healthy database the pragma returns the single row
 /// `ok`, but on a damaged one it returns *a row per problem found*. Reading only the first row
 /// threw away everything SQLite had to say about the damage, leaving the UI with a bare "there is
 /// a problem" and the user with nothing to act on or report.
@@ -66,7 +66,7 @@ pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIn
         // with SQLITE_CORRUPT instead of listing what is wrong. That is still an answer (the most
         // definitive one there is), so it must not surface as "the check could not run", which
         // reads like the tool broke rather than the database. Only this one code is treated this
-        // way: an IO error or a lock timeout says nothing about integrity and still propagates.
+        // way. An IO error or a lock timeout says nothing about integrity and still propagates.
         Err(error) => {
             if sqlite_error_code(&error).as_deref() == Some(SQLITE_CORRUPT_CODE) {
                 return Ok(DatabaseIntegrityReport {
@@ -110,7 +110,7 @@ pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIn
 }
 
 // How often the background full integrity check runs at most. The automatic paths (open, backup)
-// use `quick_check`, which is fast but shallow: a subtly damaged page can pass it and then be
+// use `quick_check`, which is fast but shallow. A subtly damaged page can pass it and then be
 // migrated over. A full `integrity_check` catches that, but it reads the whole database, which is
 // why it is deliberately not on the open path (see `services::database::build_pool_at`). This runs
 // it off the startup critical path instead, throttled to once a week so it never becomes a
@@ -122,7 +122,7 @@ pub(super) fn integrity_check_marker_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".integrity-checked")
 }
 
-/// Whether a background full integrity check is due: true when the marker is missing (never run)
+/// Whether a background full integrity check is due. true when the marker is missing (never run)
 /// or older than [`INTEGRITY_CHECK_MIN_INTERVAL_SECS`]. The marker's mtime records the last check
 /// that passed, so a database that keeps failing is re-checked every launch until it is repaired.
 pub fn integrity_check_is_due(db_path: &Path) -> bool {
@@ -133,7 +133,7 @@ pub fn integrity_check_is_due(db_path: &Path) -> bool {
 }
 
 /// Records that a full integrity check just passed, so [`integrity_check_is_due`] throttles the
-/// next one for a week. Best effort: a marker that cannot be written only means the check runs
+/// next one for a week. Best effort. A marker that cannot be written only means the check runs
 /// again next launch, which is harmless. Called only after a clean check, never after a failing
 /// one, so a damaged database stays flagged on every launch until it is restored.
 pub fn mark_integrity_check_passed(db_path: &Path) {
@@ -165,7 +165,7 @@ mod tests {
         let dir = temp_dir("integrity-due");
         let db = dir.join("kavynex.db");
 
-        // Never run: due.
+        // Never run. Due.
         assert!(integrity_check_is_due(&db));
 
         // After a clean check is recorded, the throttle suppresses the next one.
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn integrity_check_is_not_due_within_the_weekly_throttle_window() {
         // A marker aged three days is well inside the one-week throttle, so a background check is not
-        // due. Pins INTEGRITY_CHECK_MIN_INTERVAL_SECS = 7 * 24 * 60 * 60: any of its `*` operators
+        // due. Pins INTEGRITY_CHECK_MIN_INTERVAL_SECS = 7 * 24 * 60 * 60. Any of its `*` operators
         // mutated to `+`/`/` collapses the interval to a few seconds (or zero), which would make a
         // three-day-old marker read as due.
         let dir = temp_dir("integrity-throttle");
@@ -220,11 +220,11 @@ mod tests {
 
     #[tokio::test]
     async fn run_full_integrity_check_keeps_what_sqlite_reported_about_a_damaged_database() {
-        // The whole point of the change this pins: `PRAGMA integrity_check` answers with one row
+        // The whole point of the change this pins. `PRAGMA integrity_check` answers with one row
         // per problem, so reading a single row threw away everything SQLite had to say and left the
         // UI with a bare "there is a problem" and the user with nothing to act on.
         //
-        // The damage is real rather than simulated: an index page is overwritten with garbage while
+        // The damage is real rather than simulated. An index page is overwritten with garbage while
         // the file is closed, which leaves the database openable (the header and schema are intact)
         // but internally inconsistent, exactly the state this check exists to find, and the one
         // "not a database" never reaches because it fails at open instead.
@@ -232,7 +232,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let db = dir.join("kavynex.db");
 
-        // The real schema rather than the reduced `seed_kavynex_db` shape: this test is about what
+        // The real schema rather than the reduced `seed_kavynex_db` shape. This test is about what
         // `integrity_check` finds inside the file, so the indexes it walks have to be the real ones.
         {
             let options = SqliteConnectOptions::new()
@@ -298,8 +298,8 @@ mod tests {
 
         let report = run_full_integrity_check(&pool).await.unwrap();
 
-        // Damage this heavy is reported one of two ways depending on what SQLite manages to walk:
-        // a list of problems, or a flat SQLITE_CORRUPT on the pragma itself. Both are integrity
+        // Damage this heavy is reported one of two ways depending on what SQLite manages to walk.
+        // A list of problems, or a flat SQLITE_CORRUPT on the pragma itself. Both are integrity
         // answers and both have to arrive as one, never as "the check could not run", which reads
         // as the tool breaking rather than the database being broken.
         assert!(

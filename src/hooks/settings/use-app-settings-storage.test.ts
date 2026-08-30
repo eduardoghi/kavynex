@@ -37,7 +37,7 @@ describe("use-app-settings-storage", () => {
     });
 
     it("does not lose a concurrent update to a different setting", async () => {
-        // Model the real backend: the row holds all four values, a read returns what the last
+        // Model the real backend. The row holds all four values, a read returns what the last
         // write stored, and a write is not instant. Without serialization both updates below
         // read the same pre-change snapshot and the second write reverts the first one's field.
         // The two toggles this covers (Privacy and Application update) render in the same modal,
@@ -72,7 +72,7 @@ describe("use-app-settings-storage", () => {
             updateStoredCheckUpdatesOnStartup(true),
         ]);
 
-        // Both toggles must survive: neither may be reverted by the other's write.
+        // Both toggles must survive. Neither may be reverted by the other's write.
         expect(row.loadRemoteImages).toBe("true");
         expect(row.checkUpdatesOnStartup).toBe("true");
     });

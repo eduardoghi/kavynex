@@ -23,7 +23,7 @@ const file = (content) => ({ name: "test.rs", content });
 
 const command = (signature) => `#[tauri::command]\npub async fn ${signature} -> AppResult<()> {\n}\n`;
 
-// A stand-in for `CreateMediaRequest`, carrying the four shapes that matter: a path-named field, a
+// A stand-in for `CreateMediaRequest`, carrying the four shapes that matter. A path-named field, a
 // field whose name says nothing and is declared by the marker, the near-miss sibling that must stay
 // out, and an attribute between the comments and the field.
 const requestStruct = `
@@ -140,8 +140,8 @@ describe("isCrateStructType", () => {
 
     it("rejects anything that cannot be a bare struct name", () => {
         // A generic, a reference, a qualified path and a primitive are all types no `pub struct
-        // <name>` lookup should be attempted for. `String` is deliberately absent from this list:
-        // it matches the shape, and is rejected one step later by simply having no declaration in
+        // <name>` lookup should be attempted for. `String` is deliberately absent from this list.
+        // It matches the shape, and is rejected one step later by simply having no declaration in
         // the tree, which is what keeps this from needing a built-in list that would go stale.
         for (const type of [
             "State<'_, Db>",
@@ -170,7 +170,7 @@ describe("structPathFields", () => {
     });
 
     it("includes a field the marker declares even though its name says nothing", () => {
-        // This is the case a naming rule cannot reach: `source_value` is an absolute path for a
+        // This is the case a naming rule cannot reach. `source_value` is an absolute path for a
         // local import and a URL for a yt-dlp run, so the name is honest and still says nothing.
         expect(structPathFields("CreateMediaRequest", sources)).toContain("source_value");
     });
@@ -219,7 +219,7 @@ pub struct Documented {
     });
 
     it("returns nothing for a type with no declaration in the sources", () => {
-        // What makes `isCrateStructType` safe to leave permissive: `AppHandle` matches its shape
+        // What makes `isCrateStructType` safe to leave permissive. `AppHandle` matches its shape
         // and simply resolves to no fields.
         expect(structPathFields("AppHandle", sources)).toEqual([]);
     });
@@ -289,7 +289,7 @@ describe("extractPathTakingCommands", () => {
     });
 
     it("follows a struct-typed parameter into the paths it carries", () => {
-        // The blind spot this closes, and the one that mattered most: `create_media` groups its
+        // The blind spot this closes, and the one that mattered most. `create_media` groups its
         // whole request into one struct, so matching on parameter names alone reported the app's
         // largest write command as taking no path at all. It is not an exotic shape either. It is
         // the direction this codebase deliberately moved in when the seven media-creation commands
@@ -312,7 +312,7 @@ describe("extractPathTakingCommands", () => {
     });
 
     it("behaves as before when no struct sources are supplied", () => {
-        // The struct lookup is additive: a caller that passes none (every existing test, and the
+        // The struct lookup is additive. A caller that passes none (every existing test, and the
         // exported helpers' default) still gets exactly the name-matched surface.
         const source = command("create_media(app: AppHandle, request: CreateMediaRequest)");
 
@@ -352,7 +352,7 @@ describe("diffSurface", () => {
     });
 
     it("reports a path parameter added to a command already declared", () => {
-        // The case a name-only comparison misses: the command was already inventoried, and it just
+        // The case a name-only comparison misses. The command was already inventoried, and it just
         // grew a second caller-supplied path.
         const actual = [{ command: "existing", parameters: ["path", "library_path"] }];
         const result = diffSurface(actual, declared);
@@ -376,7 +376,7 @@ describe("formatSurface", () => {
     });
 
     it("carries an existing per-parameter classification through a regeneration", () => {
-        // Regenerating must not flatten a map into a single class: the two mean different things,
+        // Regenerating must not flatten a map into a single class. The two mean different things,
         // and a command whose paths answer to different rules is exactly the one worth keeping
         // precise.
         const declared = [
@@ -436,7 +436,7 @@ describe("stripTestModule", () => {
 
     it("does not truncate at a #[cfg(test)] that is not the test module", () => {
         // The direction that matters, and the reason the pattern requires `mod tests` rather than
-        // matching the attribute alone: `db_backup/mod.rs` carries `#[cfg(test)] use ...` partway up
+        // matching the attribute alone. `db_backup/mod.rs` carries `#[cfg(test)] use ...` partway up
         // the file, and truncating there would drop every call site below it. A false negative in a
         // gate whose whole job is to notice a missing guard.
         const source = `#[cfg(test)]\nuse submodule::helper;\n\nfn later() {\n    is_network_path(x);\n}\n`;
@@ -503,7 +503,7 @@ describe("verifyNetworkRefusalSites", () => {
     });
 
     it("fails when a new refusal site is added without declaring it", () => {
-        // The direction that closes the drift this check was written for: a guard added to a
+        // The direction that closes the drift this check was written for. A guard added to a
         // command has to reach docs/THREAT-MODEL.md's enumeration before it reaches this list.
         const sources = [
             {
@@ -518,7 +518,7 @@ describe("verifyNetworkRefusalSites", () => {
     });
 
     it("fails when a declared refusal site disappears", () => {
-        // The other direction, and the more dangerous one: a guard silently removed or renamed out
+        // The other direction, and the more dangerous one. A guard silently removed or renamed out
         // of a function must not leave the document describing a check that is no longer there.
         const sources = [
             { name: "services/x.rs", content: `fn gated() {\n    is_network_path(p);\n}\n` },
@@ -544,7 +544,7 @@ describe("the declared network-refusal sites", () => {
     });
 
     it("are spelled as a posix file path plus a function name", () => {
-        // The spelling has to be platform-independent: this list is compared against paths derived
+        // The spelling has to be platform-independent. This list is compared against paths derived
         // from a directory walk, and a Windows separator would make a local run and a Linux CI run
         // disagree about a list neither of them changed.
         for (const site of DECLARED_NETWORK_REFUSAL_SITES) {
@@ -583,7 +583,7 @@ describe("the declared inventory", () => {
 });
 
 describe("collectGuardProblems", () => {
-    // What this gate is for: a command can be in the inventory, correctly, and still have a path
+    // What this gate is for. A command can be in the inventory, correctly, and still have a path
     // nobody decided a rule for. Two commands shipped that way (the artifact cleanup and the
     // thumbnail delete), each confining a library-relative path to the library root instead of to a
     // managed subdirectory, and both passed the inventory check for years because listing a command
@@ -644,7 +644,7 @@ describe("collectGuardProblems", () => {
     });
 
     it("reports a map that has drifted from the parameters found in the code", () => {
-        // Both directions, because a signature change moves the classification either way: a
+        // Both directions, because a signature change moves the classification either way. A
         // renamed parameter leaves the old name stranded, and an added one leaves a path with no
         // rule. `parameters` comes from the parser rather than from the declaration precisely so
         // this can be noticed.

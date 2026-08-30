@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseBanDiagnostics, renderBansSummary } from "./summarize-cargo-deny-bans.js";
 
 // One `duplicate` diagnostic in the shape cargo-deny 0.20.2 actually emits, minus the `graphs`
-// field, which the real line carries (and which is enormous: the full dependency path to every
+// field, which the real line carries (and which is enormous. The full dependency path to every
 // occurrence) but which this script never reads. `message` is passed separately from `versions`
 // so a test can make the two disagree, which is how the "read the span, not the prose" contract
 // gets pinned.
@@ -73,7 +73,7 @@ describe("parseBanDiagnostics", () => {
     });
 
     it("reports no count at all when the output carries no summary diagnostic", () => {
-        // Distinct from a count of zero: one means "cargo-deny said the tree is clean", the other
+        // Distinct from a count of zero. One means "cargo-deny said the tree is clean", the other
         // means "this was not cargo-deny output". The renderer says different things about them.
         const { reportedWarnings } = parseBanDiagnostics(duplicate("base64", ["0.21.7", "0.22.1"]));
 
@@ -166,7 +166,7 @@ describe("renderBansSummary", () => {
     });
 
     it("says the output shape changed when warnings were reported but none could be read", () => {
-        // The other half of the same guard, and the likelier one: cargo-deny still runs and still
+        // The other half of the same guard, and the likelier one. cargo-deny still runs and still
         // warns, but `duplicate` was renamed or `labels` reshaped, so the parse yields nothing.
         const markdown = renderBansSummary({ duplicates: [], reportedWarnings: 38 });
 
@@ -228,7 +228,7 @@ describe("renderBansSummary", () => {
     });
 
     it("does not claim a count cargo-deny never gave when findings were read anyway", () => {
-        // A missing summary line with findings present is not worth a warning banner: the table is
+        // A missing summary line with findings present is not worth a warning banner. The table is
         // the answer, and there is no second number to reconcile it against.
         const markdown = renderBansSummary({
             duplicates: [{ name: "base64", versions: ["0.21.7", "0.22.1"] }],

@@ -98,7 +98,7 @@ export function useAppSettings({
     }, [prepareSettings]);
 
     // Authorize the asset protocol to read from the current library directory. Runs on
-    // startup and whenever the library path changes. Failures are non-fatal: media may
+    // startup and whenever the library path changes. Failures are non-fatal. Media may
     // not render, but nothing else breaks.
     useEffect(() => {
         const libraryPath = settings.libraryPath.trim();
@@ -123,14 +123,14 @@ export function useAppSettings({
             }
         });
 
-        // Best effort: move any live chat files still in the old app-data location into the
+        // Best effort. Move any live chat files still in the old app-data location into the
         // library so they travel with it and are covered by a library backup. Idempotent.
         void migrateLiveChatToLibrary().catch((error) => {
             logError("live-chat", "Failed to migrate live chat into the library.", error, {
                 libraryPath,
             });
         });
-        // `onError` joins the deps rather than being suppressed: it is `useErrorModal`'s
+        // `onError` joins the deps rather than being suppressed. It is `useErrorModal`'s
         // `showError`, a `useCallback(..., [])` that never changes identity, so listing it keeps the
         // array honest without making this effect re-run any more often than the library path does.
     }, [settings.libraryPath, onError]);

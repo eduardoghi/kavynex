@@ -42,7 +42,7 @@ const MAX_CONCURRENT_STANDALONE_RUNS: usize = 4;
 // use. Loading formats and comments for a video never approaches it.
 const MAX_STANDALONE_RUNS_IN_FLIGHT: usize = 32;
 
-// A single process-wide gate: there is one app, and unlike the pool it holds no state a test needs to
+// A single process-wide gate. There is one app, and unlike the pool it holds no state a test needs to
 // inject.
 static STANDALONE_RUN_SEMAPHORE: BoundedSemaphore = BoundedSemaphore::new(
     MAX_CONCURRENT_STANDALONE_RUNS,
@@ -50,7 +50,7 @@ static STANDALONE_RUN_SEMAPHORE: BoundedSemaphore = BoundedSemaphore::new(
 );
 // Cap on how much yt-dlp stdout is buffered. `--dump-single-json` (with `--write-comments`)
 // emits the whole payload as one line, so an extreme video could otherwise allocate GBs.
-// Generous: even very large comment sets fit well under this.
+// Generous. Even very large comment sets fit well under this.
 const MAX_YT_DLP_JSON_BYTES: u64 = 128 * 1024 * 1024; // 128 MiB
 
 // Cap on the stderr log lines kept from a metadata/comments/format run and handed to the frontend
@@ -120,7 +120,7 @@ pub fn sanitize_filename_component(value: &str) -> String {
         return "media".to_string();
     }
 
-    // A component made only of dots ('.', '..', ...) is path-significant: as a bare path segment it
+    // A component made only of dots ('.', '..', ...) is path-significant. As a bare path segment it
     // means the current/parent directory. Every current call site concatenates this into a longer
     // string rather than using it as a lone `Path` component, so no traversal is reachable today,
     // but returning it verbatim would make any future `dir.join(sanitize_filename_component(x))` a
@@ -252,8 +252,8 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
 
 /// Redacts a cookies file path from a yt-dlp log line before it can surface to the frontend.
 ///
-/// yt-dlp is run with `-v`, and its captured stdout/stderr reaches the frontend on two paths:
-/// as the `terminal_logs` of `list_yt_dlp_formats_async` on success, and as the error
+/// yt-dlp is run with `-v`, and its captured stdout/stderr reaches the frontend on two paths.
+/// As the `terminal_logs` of `list_yt_dlp_formats_async` on success, and as the error
 /// `details` built from `select_best_error_detail` on failure (which is also written to the
 /// file log). yt-dlp's verbose mode prints a `[debug] Command-line config: [...]` line that
 /// echoes the full argv verbatim, including the value passed to `--cookies`. That local
@@ -265,7 +265,7 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
 /// The match is not a bare substring compare. yt-dlp's argv echo prints the path verbatim, but
 /// another message could print it with the separators swapped (yt-dlp normalizes to `/` internally
 /// on Windows) or with a different ASCII casing (Windows paths are case-insensitive). Each of those
-/// full-path forms is redacted. The bare filename is deliberately left alone: it is generic
+/// full-path forms is redacted. The bare filename is deliberately left alone. It is generic
 /// ("cookies.txt"), appears in benign hint text, and does not reveal the user's profile layout. It
 /// is the directory portion that does.
 pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
@@ -276,7 +276,7 @@ pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&st
         return line.to_string();
     };
 
-    // The plausible representations of the same full path: verbatim, and with either separator
+    // The plausible representations of the same full path. Verbatim, and with either separator
     // convention. Case is handled by the ASCII-insensitive matcher below.
     let variants = [
         path.to_string(),
@@ -291,7 +291,7 @@ pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&st
     result
 }
 
-/// Sanitizes a yt-dlp `-v` log line before it reaches the frontend/file log: redacts the cookies
+/// Sanitizes a yt-dlp `-v` log line before it reaches the frontend/file log. Redacts the cookies
 /// file path (see [`redact_cookies_path_from_line`]), hides the profile and container of a
 /// `--cookies-from-browser` selector (a profile is often a path under the user's home directory,
 /// and the `[debug] Command-line config` echo prints the whole argv verbatim), and reduces the full
@@ -329,7 +329,7 @@ pub(crate) fn redact_sensitive_from_line(
 }
 
 /// Replaces every ASCII-case-insensitive occurrence of `needle` in `haystack`. Uses
-/// `to_ascii_lowercase`, which only folds ASCII `A-Z` and so is byte-length preserving: an offset
+/// `to_ascii_lowercase`, which only folds ASCII `A-Z` and so is byte-length preserving. An offset
 /// found in the lowercased copy indexes the original correctly even when the path carries non-ASCII
 /// bytes (a Unicode username), so this never slices a UTF-8 char boundary.
 fn replace_ascii_case_insensitive(haystack: &str, needle: &str, replacement: &str) -> String {
@@ -354,7 +354,7 @@ fn replace_ascii_case_insensitive(haystack: &str, needle: &str, replacement: &st
 
 /// Extracts the value passed to `--cookies` in an argv, so a failure `detail` built from
 /// yt-dlp's verbose output can have that local path redacted even though the caller only hands
-/// this function the fully-built args. `--cookies-from-browser` is not returned: it carries a
+/// this function the fully-built args. `--cookies-from-browser` is not returned. It carries a
 /// browser name, not a filesystem path.
 fn cookies_path_from_args(args: &[String]) -> Option<&str> {
     args.iter()
@@ -364,7 +364,7 @@ fn cookies_path_from_args(args: &[String]) -> Option<&str> {
 }
 
 /// Extracts the value passed to `--cookies-from-browser` in an argv, for the same reason as
-/// [`cookies_path_from_args`]: a profile in it can be a path under the user's home directory, and
+/// [`cookies_path_from_args`]. A profile in it can be a path under the user's home directory, and
 /// yt-dlp's verbose echo prints it back.
 fn cookies_browser_from_args(args: &[String]) -> Option<&str> {
     args.iter()
@@ -507,7 +507,7 @@ async fn run_yt_dlp_and_capture_json(
         let mut log_lines: Vec<String> = Vec::new();
 
         // stderr carries short log lines only (the JSON payload comes on stdout), so cap each line
-        // tightly: without it a single unterminated line could balloon far past the ring buffer's
+        // tightly. Without it a single unterminated line could balloon far past the ring buffer's
         // intended bound (see MAX_PROGRESS_LINE_BYTES).
         while let Some(line_value) =
             read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
@@ -545,7 +545,7 @@ async fn run_yt_dlp_and_capture_json(
             }
         },
         _ = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
-            // The caller signalled cancellation: kill the whole tree immediately instead of
+            // The caller signalled cancellation. Kill the whole tree immediately instead of
             // waiting out the remaining timeout (previously up to a minute of an unresponsive
             // "cancel"), and report it as a cancellation. Only ever reached when a cancel flag
             // is supplied (the download flow); other callers pass None, so this branch pends
@@ -581,7 +581,7 @@ async fn run_yt_dlp_and_capture_json(
         // written to the file log. yt-dlp's `-v` mode echoes the whole argv (the
         // `[debug] Command-line config: [...]` line), so besides the cookies path this line can
         // carry the full pasted URL with its playlist/tracking parameters. Redact both, matching the
-        // success path's terminal_logs redaction: the `--` separator means the URL is always the
+        // success path's terminal_logs redaction. The `--` separator means the URL is always the
         // last argument.
         let url = args.last().map(String::as_str).unwrap_or_default();
         let detail = redact_sensitive_from_line(

@@ -101,7 +101,7 @@ afterEach(() => {
 
 describe("runWebviewCheckIfRequested", () => {
     it("does nothing beyond the initial ask on a normal launch", async () => {
-        // The behavior that makes this safe to call unconditionally from main.tsx: the backend
+        // The behavior that makes this safe to call unconditionally from main.tsx. The backend
         // answers null, and not one probe runs. A regression here would put an image load and an
         // event subscription on every user's startup path.
         invokeCommandMock.mockResolvedValue(null);
@@ -127,7 +127,7 @@ describe("runWebviewCheckIfRequested", () => {
     });
 
     it("loads the asset through convertFileSrc rather than the raw path", async () => {
-        // The whole point of the asset probe: a raw filesystem path in an `<img>` proves nothing
+        // The whole point of the asset probe. A raw filesystem path in an `<img>` proves nothing
         // about the asset protocol or the CSP, which is what this is here to exercise.
         await runWebviewCheckIfRequested();
 
@@ -183,7 +183,7 @@ describe("runWebviewCheckIfRequested", () => {
     });
 
     it("reports an asset that neither loads nor errors once the probe times out", async () => {
-        // The case the timeout exists for: an `<img>` whose URL the asset protocol never answers
+        // The case the timeout exists for. An `<img>` whose URL the asset protocol never answers
         // fires no event at all, so without a deadline the check would hang until the backend
         // watchdog killed it. Losing the named failure this produces.
         stubImage("never");

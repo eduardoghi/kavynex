@@ -1,7 +1,7 @@
 // CI gate over the mapping between the commands `generate_handler!` registers and the code in
 // `src/` that actually calls them.
 //
-// Every other inventory in this repository is checked by something: the capability grants against
+// Every other inventory in this repository is checked by something. The capability grants against
 // the Tauri seam (verify-capability-surface.js), the path arguments against the rule each answers to
 // (verify-command-path-surface.js), the release asset names against the README
 // (verify-readme-asset-names.js). The registered command list was checked by nothing, and it drifted
@@ -13,17 +13,17 @@
 // to a UI at all. Both stayed registered for weeks, and one of them was *hardened* five days before
 // it was removed. See docs/decisions/2026-08-16-no-command-without-a-caller.md.
 //
-// Why that matters here rather than only as tidiness: docs/THREAT-MODEL.md measures the attack
+// Why that matters here rather than only as tidiness. docs/THREAT-MODEL.md measures the attack
 // surface by what a compromised renderer can invoke. Both of those unlink files. A guard on a
 // command nothing calls is a guard whose only job is to survive an attacker, which is the wrong
 // trade when deleting the command is free.
 //
 // What it proves and what it does not, stated exactly. It proves that the registered list, the
-// frontend's command-name constants and the wrapper functions cannot drift apart silently: a command
+// frontend's command-name constants and the wrapper functions cannot drift apart silently. A command
 // registered without a caller fails here, a constant naming an unregistered command fails here, and
 // a wrapper nobody calls fails here. It does NOT prove the call is ever *reached* at runtime (a
 // wrapper called only from a branch that never executes still passes), and it deliberately does not
-// try: reachability needs the whole render graph, and the failure this file exists for is a command
+// try. Reachability needs the whole render graph, and the failure this file exists for is a command
 // with no textual caller at all.
 //
 // Usage:
@@ -60,11 +60,11 @@ export function extractCommandConstants(constantsSource) {
 // The exported function that invokes `constant`, or `null` when nothing references it.
 //
 // The wrapper is found by locating the first `TAURI_COMMANDS.<constant>` outside the constants file
-// and taking the nearest `export function` above it. That is a heuristic and worth naming as one:
-// it assumes the invoke sits inside an exported function in the same file, which is the shape every
+// and taking the nearest `export function` above it. That is a heuristic and worth naming as one.
+// It assumes the invoke sits inside an exported function in the same file, which is the shape every
 // wrapper in this repository has (a repository module, a service module, or the two seam files).
 // A future wrapper that broke the assumption would be reported as unwrapped rather than silently
-// skipped, which is the safe direction: the gate complains about a real file instead of passing
+// skipped, which is the safe direction. The gate complains about a real file instead of passing
 // vacuously.
 export function findCommandWrapper(constant, sources) {
     const reference = `TAURI_COMMANDS.${constant}`;
@@ -82,7 +82,7 @@ export function findCommandWrapper(constant, sources) {
 
         return {
             file: name,
-            // `null` when the reference is not inside an exported function: the caller reports that
+            // `null` when the reference is not inside an exported function. The caller reports that
             // as its own failure rather than treating it as "no wrapper at all".
             fn: declarations.length > 0 ? declarations[declarations.length - 1][1] : null,
         };
@@ -91,12 +91,12 @@ export function findCommandWrapper(constant, sources) {
     return null;
 }
 
-// `content` with every re-export statement removed: `export { a, b } from "./x"` (single- or
+// `content` with every re-export statement removed. `export { a, b } from "./x"` (single- or
 // multi-line) and `export * from "./x"`.
 //
 // A re-export names a function without calling it. This gate counted one as a caller for as long as
 // `src/services/index.ts` existed, which is how `delete_thumbnail_file` stayed registered for six
-// weeks after its last real caller went: the barrel mentioned the wrapper, so the wrapper looked
+// weeks after its last real caller went. The barrel mentioned the wrapper, so the wrapper looked
 // used. A file that imports from a barrel and calls the function still mentions the name in its own
 // text, so dropping the barrel's lines costs a legitimate caller nothing.
 export function stripReExports(content) {
@@ -108,7 +108,7 @@ export function stripReExports(content) {
 // The files, other than the one that defines it, that name `fn` somewhere other than a re-export.
 //
 // A word-boundary match on the identifier, not an import parse. The question this answers is the
-// loose one on purpose: does anything at all mention this name in a position that could be a call.
+// loose one on purpose. Does anything at all mention this name in a position that could be a call.
 // A wrapper with zero such mentions anywhere is the defect; anything more is out of scope.
 export function findCallers(fn, definitionFile, sources) {
     const identifier = new RegExp(`\\b${fn}\\b`);
@@ -123,10 +123,10 @@ export function findCallers(fn, definitionFile, sources) {
 
 /**
  * Decides the gate from raw file contents, returning `{ ok, message }` rather than reading files or
- * exiting: the same shape as the sibling verify-* scripts, so every refusal branch is unit-testable.
+ * exiting. The same shape as the sibling verify-* scripts, so every refusal branch is unit-testable.
  *
  * `sources` is every non-test file under src/, each `{ name, content }`. Test files are excluded
- * deliberately: a wrapper whose only caller is its own unit test is exactly the state this gate is
+ * deliberately. A wrapper whose only caller is its own unit test is exactly the state this gate is
  * meant to report, and counting the test as a caller would make it pass.
  */
 export function verifyCommandSurfaceIsUsed({ handlerSource, constantsSource, sources }) {

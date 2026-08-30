@@ -17,7 +17,7 @@ pub const ALLOWED_VIDEO_EXTENSIONS: [&str; 13] = [
 /// Every extension a local import may carry, video and audio together.
 ///
 /// Declared as lists rather than only spelled out inside the predicate below for the same reason
-/// [`ALLOWED_THUMBNAIL_EXTENSIONS`] is: the message a rejected file produces has to be built from
+/// [`ALLOWED_THUMBNAIL_EXTENSIONS`] is. The message a rejected file produces has to be built from
 /// the same source that rejected it. The thumbnail pair had already drifted once (`gif` accepted
 /// while the message named six formats), and this is the larger list of the two. What the user is
 /// told here is the only place the app ever says which files it takes.
@@ -54,7 +54,7 @@ pub fn allowed_media_extensions_label() -> String {
     allowed_media_extensions().join(", ")
 }
 
-/// The image extensions a thumbnail may use. Raster formats only: `svg` is deliberately absent
+/// The image extensions a thumbnail may use. Raster formats only. `svg` is deliberately absent
 /// because it can carry script and must never be authorized for the asset protocol.
 ///
 /// Declared as a list rather than only spelled out inside the predicate below so the message shown
@@ -87,7 +87,7 @@ pub fn codec_is_present(codec: &Option<String>) -> bool {
 
 /// Renders a byte count as a human-readable size (`0 B`, `10 B`, `1.00 KB`, `2.34 GB`).
 ///
-/// Shared rather than defined per caller: the settings dialog shows the library size and the
+/// Shared rather than defined per caller. The settings dialog shows the library size and the
 /// database size next to each other, and two formatters that rounded or spelled units differently
 /// would read as a bug in the numbers rather than as a formatting difference. Whole bytes below
 /// 1 KB, two decimals above it.
@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn is_allowed_media_extension_accepts_every_listed_format() {
         // Driven off the constants rather than a second hand-written list, matching the thumbnail
-        // test below: a format added to either list is covered here without anyone remembering to
+        // test below. A format added to either list is covered here without anyone remembering to
         // extend this.
         for ext in allowed_media_extensions() {
             assert!(is_allowed_media_extension(ext), "should allow {ext}");
@@ -226,7 +226,7 @@ mod tests {
 
     #[test]
     fn allowed_thumbnail_extensions_label_names_every_accepted_format() {
-        // What makes the rejection message unable to drift from the predicate again: the label has
+        // What makes the rejection message unable to drift from the predicate again. The label has
         // to mention each extension the predicate accepts, so adding one without it appearing here
         // fails rather than silently telling the user a shorter list.
         let label = allowed_thumbnail_extensions_label();
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn normalize_yt_dlp_upload_date_needs_both_halves_of_its_guard() {
         // Every value rejected above fails the length check *and* the digit check at once, so it
-        // cannot tell an `||` from an `&&`: both spellings reject it. These two fail exactly one
+        // cannot tell an `||` from an `&&`. Both spellings reject it. These two fail exactly one
         // half each, which is the only arrangement where the two disagree.
         //
         // Eight characters, not all digits. With the guard weakened to `&&` this is accepted and

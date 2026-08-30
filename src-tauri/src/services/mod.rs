@@ -24,7 +24,7 @@ pub mod pending_media;
 pub mod process_registry;
 pub mod ssrf_guard;
 // `temp_cleanup` rather than `cleanup`, because `library::cleanup` already owns that name for a
-// different job: this one sweeps the disposable cache directories, that one reference-counts and
+// different job. This one sweeps the disposable cache directories, that one reference-counts and
 // unlinks the user's media. docs/ARCHITECTURE.md used to resolve the collision by convention (reach
 // a family sibling through `super::`, everything else by full path), which worked but left the two
 // distinguishable only by how they were imported. Naming them apart makes a call site say which is

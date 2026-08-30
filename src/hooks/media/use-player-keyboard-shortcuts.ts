@@ -42,7 +42,7 @@ export function usePlayerKeyboardShortcuts(
                     // interrupts the pending play(), which rejects with AbortError. That is the
                     // shortcut working, not a failure. Left unhandled it reached the
                     // unhandledrejection listener, which logs a *fatal* error to the rolling file
-                    // log: an ordinary double-tap would dilute the one log that survives a webview
+                    // log. An ordinary double-tap would dilute the one log that survives a webview
                     // crash and lands in bug reports. Anything else still surfaces.
                     if (!(error instanceof DOMException) || error.name !== "AbortError") {
                         throw error;

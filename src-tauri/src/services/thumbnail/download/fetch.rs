@@ -1,6 +1,6 @@
 //! Fetching a thumbnail over HTTP, and everything that constrains what comes back.
 //!
-//! The outbound half of the thumbnail download: the SSRF guard, the DNS resolver the client dials
+//! The outbound half of the thumbnail download. The SSRF guard, the DNS resolver the client dials
 //! through, the manual redirect loop, and the checks on the response (size cap, content type,
 //! magic bytes). It is separate from the yt-dlp process next to it in `process.rs` because the two
 //! share no machinery, and separate from the orchestration in `super` because these are the checks
@@ -101,12 +101,12 @@ pub(super) fn looks_like_supported_image(bytes: &[u8]) -> bool {
         return true;
     }
 
-    // WEBP: a RIFF container with a "WEBP" fourCC at offset 8.
+    // WEBP. A RIFF container with a "WEBP" fourCC at offset 8.
     if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
         return true;
     }
 
-    // AVIF: an ISOBMFF `ftyp` box (offset 4) whose brand (offset 8) is avif/avis.
+    // AVIF. An ISOBMFF `ftyp` box (offset 4) whose brand (offset 8) is avif/avis.
     if bytes.len() >= 12
         && &bytes[4..8] == b"ftyp"
         && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
@@ -169,7 +169,7 @@ pub(super) async fn assert_url_host_is_public(uri: &Uri) -> AppResult<()> {
 /// every private/loopback/reserved address before returning, so the connection can only ever dial
 /// a public IP. Because HttpConnector dials exactly what this resolver returns, the address that is
 /// validated *is* the address that is dialed, which is what `assert_url_host_is_public`, running as
-/// a separate pre-connection check, cannot guarantee on its own: between that check and the
+/// a separate pre-connection check, cannot guarantee on its own. Between that check and the
 /// connector's own resolution an attacker controlling the host's DNS could rebind a public answer to
 /// an internal one. Pinning resolution here closes that window. The pre-check is still run first for
 /// a clear early error and because HttpConnector skips the resolver for an IP-literal host (which the
@@ -215,7 +215,7 @@ impl Service<Name> for PublicOnlyResolver {
 /// single `timeout_secs` deadline, so a slow-drip server cannot stall it under the size cap.
 ///
 /// This uses a hand-rolled hyper client on purpose, rather than `reqwest` (which is already in
-/// the tree transitively via the updater plugin). The reason is the redirect loop below: it
+/// the tree transitively via the updater plugin). The reason is the redirect loop below. It
 /// follows redirects *manually* so it can re-run the SSRF guard (`assert_url_host_is_public`,
 /// which rejects a host resolving to a private/loopback/link-local/reserved address), on the
 /// initial URL **and on every redirect target**. A client that follows redirects automatically
@@ -231,7 +231,7 @@ impl Service<Name> for PublicOnlyResolver {
 /// request and the body; it makes no redirect decision of its own, which is what lets that decision
 /// be mutation-tested while the network code around it cannot be.
 ///
-/// That host gate is per hop and not only per fetch, which it was not at first: the caller checks
+/// That host gate is per hop and not only per fetch, which it was not at first. The caller checks
 /// where the fetch *starts*, so a `302` out of an allowed CDN used to be followed anywhere public.
 /// Everything else here constrains the *response* (the size cap, the content type, the magic-byte
 /// sniff) and the SSRF guard constrains the *address*; none of the four stops the request itself
@@ -254,7 +254,7 @@ pub(super) async fn http_get_image(
                 format!("failed to initialize TLS: {e}"),
             )
         })?
-        // `https_only()`, not `https_or_http()`: every other control here constrains the
+        // `https_only()`, not `https_or_http()`. Every other control here constrains the
         // destination or the response, none of them the transport, so a cleartext hop out of an
         // allowed CDN satisfied all of them (see `redirect::next_hop` for what that let through).
         //
@@ -308,7 +308,7 @@ pub(super) async fn http_get_image(
                     .get(http::header::LOCATION)
                     .and_then(|value| value.to_str().ok());
 
-                // The host gate travels with the hop, not only with the initial URL: the caller
+                // The host gate travels with the hop, not only with the initial URL. The caller
                 // gates where the fetch *starts*, and without this a single 302 out of an allowed
                 // CDN carried it to any public host. `next_hop` owns that decision so it can be
                 // mutation-tested; see its doc comment.
@@ -344,7 +344,7 @@ pub(super) async fn http_get_image(
             return Ok((status, headers, buffer));
         }
 
-        // Unreachable: the loop's last iteration passes `hops_used == MAX_REDIRECT_HOPS`, which
+        // Unreachable. The loop's last iteration passes `hops_used == MAX_REDIRECT_HOPS`, which
         // `next_hop` refuses with this same message before it can fall through here. It stays
         // because the `for` above is a backstop rather than the bound, and a backstop needs a value
         // to return if it ever does fire.
@@ -427,7 +427,7 @@ mod tests {
             // Not an image path.
             ("https://cdn.example/document.txt", None),
             ("https://cdn.example/no-extension", None),
-            // Not http(s): the scheme gate returns None before any extension is considered, so the
+            // Not http(s). The scheme gate returns None before any extension is considered, so the
             // yt-dlp fallback (which re-validates the host) handles it instead of the direct fetch.
             ("ftp://cdn.example/pic.png", None),
             ("file:///pic.png", None),
@@ -480,7 +480,7 @@ mod tests {
 
     #[tokio::test]
     async fn http_get_image_refuses_an_internal_address_without_dialing_it() {
-        // The composition, not the pieces: the guard and the resolver each have their own test
+        // The composition, not the pieces. The guard and the resolver each have their own test
         // above, and this is the only one that proves `http_get_image` actually runs them. A
         // refactor that dropped the call from the loop would leave both of those passing.
         //

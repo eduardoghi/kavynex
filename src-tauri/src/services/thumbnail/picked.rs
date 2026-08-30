@@ -2,7 +2,7 @@
 //! under.
 //!
 //! Pure, and a module of its own, for the reason `ssrf_guard.rs`, `thumbnail/url.rs` and
-//! `yt_dlp/download/redaction.rs` each became one: this is security logic worth putting under the
+//! `yt_dlp/download/redaction.rs` each became one. This is security logic worth putting under the
 //! mutation gate (`src-tauri/.cargo/mutants.toml`), and its previous home cannot be. `thumbnail/temp.rs`
 //! spawns FFmpeg and drains its pipes, which a measured pass showed produces fifteen mutants no unit
 //! test can kill. A deadline comparison, a byte cap on a pipe, the exit-status checks. Adding that
@@ -12,7 +12,7 @@
 //! What lives here is exactly that decision. The staging itself (`stage_manual_thumbnail_sync`)
 //! stays next door with the filesystem work it does.
 //!
-//! Measured before the glob entry was added (2026-07-30, `--in-place --no-config --file`): 8
+//! Measured before the glob entry was added (2026-07-30, `--in-place --no-config --file`). 8
 //! mutants, 4 caught, 4 unviable, 0 missed. The same pass over the whole of `temp.rs` reported 86
 //! mutants with 15 missed, all of them in the FFmpeg and pipe-draining code, which is the
 //! measurement that decided this extraction rather than a widened glob.
@@ -26,14 +26,14 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// Validates an image the user picked from the file dialog, before anything stats or reads it.
 ///
 /// The network refusal comes first and is the reason this is its own validator rather than a reuse
-/// of `temp.rs`'s `validate_source_media_path`: this path arrives raw over IPC, and on Windows merely
+/// of `temp.rs`'s `validate_source_media_path`. This path arrives raw over IPC, and on Windows merely
 /// `is_file()`-ing `\\host\share\x.png` authenticates to `host` over SMB and hands it the user's NTLM
 /// hash. Every sibling that takes a caller-supplied path already refuses one
 /// (`library::resolve_path_inside_library`, `validate_source_media_path`, `db_backup`'s import and
 /// export gates, `yt_dlp::cookies::normalize_cookies_path`); the asset-scope grant this replaced was
 /// the last one that did not.
 ///
-/// The extension gate is the same one the preview needs anyway: only an image is worth staging, and
+/// The extension gate is the same one the preview needs anyway. Only an image is worth staging, and
 /// refusing anything else here means the copy that follows can never be pointed at an arbitrary file.
 pub(crate) fn validate_picked_thumbnail_path(path: &str) -> AppResult<PathBuf> {
     let trimmed = path.trim();
@@ -83,7 +83,7 @@ pub(crate) fn validate_picked_thumbnail_path(path: &str) -> AppResult<PathBuf> {
 /// downstream derives the stored name from this one.
 ///
 /// Content-addressed like everything else here, which is what makes picking the same image twice
-/// free: the second stage finds the file already there.
+/// free. The second stage finds the file already there.
 pub(crate) fn staged_thumbnail_file_name(source_hash: &str, extension: &str) -> String {
     format!("picked_{source_hash}.{extension}")
 }
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn a_network_location_is_rejected() {
         // The check the asset-scope grant this replaced did not have, and the reason it matters more
-        // here than anywhere else: this path arrives raw over IPC, and on Windows `is_file()` alone
+        // here than anywhere else. This path arrives raw over IPC, and on Windows `is_file()` alone
         // on a UNC share authenticates to that host over SMB and leaks the user's NTLM hash. Every
         // spelling Windows resolves to a share is covered, and each carries a valid image extension
         // so only the network check can be what rejects it.
@@ -168,7 +168,7 @@ mod tests {
             let file = dir.join(name);
             fs::write(&file, b"\x89PNG\r\n").unwrap();
 
-            // Padded input: the returned path is what the copy will read, so it has to be the
+            // Padded input. The returned path is what the copy will read, so it has to be the
             // trimmed one. The same single-path invariant the database export/import gates pin.
             let padded = format!("   {}   ", file.to_string_lossy());
             let accepted = validate_picked_thumbnail_path(&padded)

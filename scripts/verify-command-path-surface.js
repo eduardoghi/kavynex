@@ -1,11 +1,11 @@
-// CI gate over the two halves of the cross-cutting path rule: the set of `#[tauri::command]`s that
+// CI gate over the two halves of the cross-cutting path rule. The set of `#[tauri::command]`s that
 // accept a path from the caller, and the set of functions that refuse a network location before
 // touching one. Either changing without its declared inventory below being updated fails the run.
 //
 // The second half was added after the first proved to cover less than it read as covering. The
 // command inventory answers "which commands take a path". `docs/THREAT-MODEL.md` also enumerates
 // *which functions apply the refusal*, and that second list is what a review of a new command is
-// checked against. Nothing held it: an audit found one enforcement site missing from the document
+// checked against. Nothing held it. An audit found one enforcement site missing from the document
 // and another command stat-ing a caller-supplied path with no refusal at all, while this gate
 // passed, because both were, correctly, in the command inventory.
 //
@@ -13,11 +13,11 @@
 // refuses a UNC / network location before any filesystem call touches it, and the library-relative
 // and library-root paths go through `utils::path` / `services::library::guard` rather than being
 // trusted. The document then names the commands that satisfy it. Prose cannot hold that list in sync with
-// the code, and it did not: an audit found the documented list had drifted from the call sites, and
+// the code, and it did not. An audit found the documented list had drifted from the call sites, and
 // three commands were trusting a caller-supplied `library_path` on a premise no caller relied on.
 //
 // What this check does and does not prove is worth being exact about, because a gate that overstates
-// itself is worse than none. It does NOT verify that a command applies the right guard: that needs
+// itself is worse than none. It does NOT verify that a command applies the right guard. That needs
 // the call chain, which a parser over one file cannot follow, and a check that guessed would hand
 // out false confidence on exactly the surface it exists to protect. What it does is make the surface
 // impossible to grow silently. Adding a command that takes a path (or adding a path parameter to an
@@ -132,7 +132,7 @@ export function parameterType(parameter) {
     return parameter.slice(colonAt + 1).trim();
 }
 
-// True for a type that could name a struct declared in this crate: a bare PascalCase identifier,
+// True for a type that could name a struct declared in this crate. A bare PascalCase identifier,
 // with no generic argument, reference or path qualifier.
 //
 // Deliberately permissive, because it decides only whether to *look* for a declaration. A type
@@ -153,12 +153,12 @@ export function isCrateStructType(type) {
 // Renaming the field to `source_path` would make the name lie in the other mode and would churn the
 // generated TypeScript binding.
 //
-// So the author states it instead. Removing the marker is not a way to quietly shrink the surface:
-// it changes what this script reports, which fails the diff against the declared inventory below.
+// So the author states it instead. Removing the marker is not a way to quietly shrink the surface.
+// It changes what this script reports, which fails the diff against the declared inventory below.
 //
 // Anchored to the start of the comment and requiring the colon, rather than tested with a bare
 // `includes`. A loose substring test is not a style preference here. It was wrong, and this
-// script's own name is what made it wrong: any comment that points a reader at
+// script's own name is what made it wrong. Any comment that points a reader at
 // `verify-command-path-surface.js` contains the marker text, so prose *explaining* the convention
 // silently applied it to whatever field it sat above. Found by removing the real marker and
 // watching the gate still pass. Same substring trap `isPathParameter` is deliberately written to
@@ -171,7 +171,7 @@ const PATH_SURFACE_MARKER = /^\/\/+\s*path-surface\s*:/;
 // that groups its request into one struct (the shape this codebase deliberately moved toward, since
 // `docs/THREAT-MODEL.md` states that the IPC surface exposes an operation rather than its steps),
 // puts every one of those paths behind a parameter named something like `request`, which no
-// name-based rule can see. `create_media(app, request: CreateMediaRequest)` is that case: it carries
+// name-based rule can see. `create_media(app, request: CreateMediaRequest)` is that case. It carries
 // four caller-supplied paths and was reported as taking none.
 //
 // Returns an empty list for a type with no declaration in the sources, which is what makes
@@ -332,7 +332,7 @@ export function extractPathTakingCommands(source, structSources = []) {
 // the `--print` output are stable regardless of file or declaration order.
 //
 // `structSources` are searched for the declaration of a struct-typed parameter. They are a separate
-// argument from `files` because the two sets differ: the commands live in `commands/`, while the
+// argument from `files` because the two sets differ. The commands live in `commands/`, while the
 // request struct one of them takes is declared beside the service that consumes it
 // (`services/media_creation.rs`).
 export function collectPathSurface(files, structSources = []) {
@@ -348,7 +348,7 @@ export function collectPathSurface(files, structSources = []) {
 // `declared` is consulted only to carry an existing classification through a regeneration. The
 // parser cannot infer a guard class from a signature (that is the whole reason the class is written
 // by hand), so a command it has never seen is emitted with a placeholder that fails the check until
-// someone replaces it. That is deliberate: pasting `--print` output must not be a way to make the
+// someone replaces it. That is deliberate. Pasting `--print` output must not be a way to make the
 // gate green without deciding anything.
 export function formatSurface(surface, declared = DECLARED_PATH_SURFACE) {
     const byCommand = new Map(declared.map((entry) => [entry.command, entry]));
@@ -465,7 +465,7 @@ export function collectGuardProblems(actual, declared = DECLARED_PATH_SURFACE) {
 // exists in a test (or a comment inside one quoting the call) is not read as production code.
 //
 // Anchored to `#[cfg(test)]` *followed by* `mod tests`, not to `#[cfg(test)]` alone. That
-// distinction is load-bearing rather than pedantic: `db_backup/mod.rs` carries `#[cfg(test)] use
+// distinction is load-bearing rather than pedantic. `db_backup/mod.rs` carries `#[cfg(test)] use
 // submodule::{...}` lines partway up the file, and truncating there would silently drop everything
 // below, which in a security gate is a false negative, the one direction that must not happen.
 export function stripTestModule(source) {
@@ -480,7 +480,7 @@ export function stripTestModule(source) {
 // This is the second half of what this script gates, and it exists because the first half does not
 // cover it. `DECLARED_PATH_SURFACE` answers "which commands take a path from the caller". It says
 // nothing about which functions refuse a UNC before touching one, and that second list is the one
-// `docs/THREAT-MODEL.md` enumerates and a review is actually checked against. It drifted: an audit
+// `docs/THREAT-MODEL.md` enumerates and a review is actually checked against. It drifted. An audit
 // found `thumbnail::picked::validate_picked_thumbnail_path` applying the rule while the document
 // did not list it, and `thumbnail::temp::validate_temporary_thumbnail_delete_path` stat-ing a
 // caller-supplied path with no refusal at all. The exact failure the prose list is meant to make
@@ -533,11 +533,12 @@ export function collectNetworkRefusalSites(sources) {
 
 // The declared enforcement sites for the network-path rule, matching the list
 // `docs/THREAT-MODEL.md` enumerates under "Path safety". Adding a call to `is_network_path`
-// anywhere in the backend fails this check until both lists learn about it, which is the point:
-// the document is what a review of a new command is checked against, and prose kept in sync by
+// anywhere in the backend fails this check until both lists learn about it, which is the point.
+// The document is what a review of a new command is checked against, and prose kept in sync by
 // discipline alone is what already drifted once.
 //
-// Regenerate with: node scripts/verify-command-path-surface.js --print
+// Regenerate with:
+//     node scripts/verify-command-path-surface.js --print
 export const DECLARED_NETWORK_REFUSAL_SITES = [
     "commands/database.rs::prepare_export_destination",
     "commands/database.rs::prepare_import_source",
@@ -558,7 +559,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
 // This list used to live only in that document, on the stated grounds that duplicating it here
 // would give this file a second job it could not keep honest. That reasoning was right about the
 // job and wrong about the cost of not doing it. Naming the class is not a second job, because
-// nothing here verifies it: the check below is that every path *has* a class and that the class
+// nothing here verifies it. The check below is that every path *has* a class and that the class
 // names a real parameter, not that the code implements it. What it buys is a thinking step at the
 // only moment anyone is guaranteed to be looking, which is the moment CI refuses the diff.
 //
@@ -576,7 +577,7 @@ const GUARD_CLASSES = {
     // A library-relative path required to name one of MANAGED_LIBRARY_DIRS.
     "managed-relative": "utils/path.rs::ensure_managed_library_relative_path / _in_managed_dir",
     // Confined to the library root by canonical containment, and deliberately no further. Only for
-    // an operation where reaching a non-managed file is harmless: today that is the read-only
+    // an operation where reaching a non-managed file is harmless. Today that is the read-only
     // reveal in the file manager, which writes and deletes nothing.
     "library-confined": "services/library/mod.rs::resolve_path_inside_library",
     // An absolute path confined to an app cache subdirectory rather than to the library.
@@ -594,14 +595,15 @@ const GUARD_CLASSES = {
 // class of rule each of those paths answers to. `guard` is a single class when every path in the
 // command shares one, or a per-parameter map when they differ.
 //
-// What the check enforces about `guard`: that it is present, that every class name is one of the
+// What the check enforces about `guard`. That it is present, that every class name is one of the
 // above, and that a per-parameter map names exactly the parameters found in the code. What it
 // deliberately does not enforce is that the command implements the class, which needs the call
 // chain (see the header). The guards sit at three different depths today (in the command file, one
 // hop into a service, and at the write boundary deep inside one), so a textual check would report
 // confidently and be wrong, which is worse on this surface than reporting nothing.
 //
-// Regenerate with: node scripts/verify-command-path-surface.js --print
+// Regenerate with:
+//     node scripts/verify-command-path-surface.js --print
 export const DECLARED_PATH_SURFACE = [
     { command: "check_library_integrity", parameters: ["library_path"], guard: "configured-library" },
     { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"], guard: { source_value: "user-picked", thumbnail_source_path: "user-picked", library_path: "configured-library", cookies_path: "user-picked" } },

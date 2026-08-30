@@ -33,7 +33,7 @@ in this codebase applies before touching the filesystem; the replacement refuses
 
 ## Where the rule lives now
 
-On `stage_manual_thumbnail`'s doc comment: the copy is what keeps the preview out of the asset
+On `stage_manual_thumbnail`'s doc comment. The copy is what keeps the preview out of the asset
 scope, and a per-file grant is the shape that command deliberately does not have.
 [`../THREAT-MODEL.md`](../THREAT-MODEL.md)'s asset-protocol section states the resulting property,
 that exactly one command widens the scope at runtime and it is checked against the persisted library

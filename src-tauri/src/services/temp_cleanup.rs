@@ -110,7 +110,7 @@ fn cleanup_dir_children(dir: &Path, max_age: Duration) -> AppResult<CleanupSumma
 /// Trims the display-thumbnail cache to its size budget, dropping the oldest derivatives first.
 ///
 /// Kept apart from [`cleanup_dir_children`] because the two answer different questions. That one
-/// asks "is this entry stale?", which is the right question for the three scratch directories: an
+/// asks "is this entry stale?", which is the right question for the three scratch directories. An
 /// old entry there is state from an operation that already finished. This cache holds *derived*
 /// data. Each entry is regenerable, but only by spawning FFmpeg, and reading a cached one is a
 /// `stat` that renews nothing. Asking the age question of it therefore discarded the entries the
@@ -155,7 +155,7 @@ fn cleanup_display_cache(dir: &Path, max_bytes: u64) -> AppResult<CleanupSummary
 
         // An entry whose metadata cannot be read is left in place and left out of the total, so an
         // unreadable file can neither be evicted nor push a readable one out. Same direction as
-        // every other uncertain case in this tree: refusing to act costs a sweep, acting on a wrong
+        // every other uncertain case in this tree. Refusing to act costs a sweep, acting on a wrong
         // answer costs a file.
         let Ok(metadata) = fs::metadata(&path) else {
             continue;
@@ -223,7 +223,7 @@ pub fn cleanup_stale_temp_files_sync<R: Runtime>(app: &AppHandle<R>) -> AppResul
 }
 
 /// True for a filename produced by the atomic-write helpers as scratch and left behind if the
-/// process died mid-operation: the copy temp (`.<name>.tmp-<suffix>`, `filesystem.rs`), the
+/// process died mid-operation, covering the copy temp (`.<name>.tmp-<suffix>`, `filesystem.rs`), the
 /// replace backup (`.<name>.backup-<suffix>`, `filesystem.rs`), the migration staging name
 /// (`<stem>.migrated-<suffix>[.<ext>]`, `filesystem.rs`), and the live-chat gzip temp
 /// (`<name>.gztmp`, `live_chat_storage.rs`). None of these infixes/suffixes ever appears in a
@@ -321,7 +321,7 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
             continue;
         }
 
-        // A replace-backup whose live destination is missing is not reclaimable scratch: it can
+        // A replace-backup whose live destination is missing is not reclaimable scratch. It can
         // be the sole surviving copy of that file after a failed replace/restore (see
         // filesystem.rs::replace_file_safely). Keep it so the file can still be recovered by
         // hand, rather than turning a transient replace failure into permanent data loss a week
@@ -556,7 +556,7 @@ mod tests {
 
     #[test]
     fn the_display_cache_is_trimmed_to_its_budget_oldest_first() {
-        // Over budget, so it is trimmed rather than emptied: the newest entry survives because the
+        // Over budget, so it is trimmed rather than emptied. The newest entry survives because the
         // older ones already covered the overage.
         let dir = unique_test_dir("display-trim");
         fs::create_dir_all(&dir).unwrap();
@@ -568,7 +568,7 @@ mod tests {
         set_modified(&oldest, SystemTime::now() - Duration::from_secs(600));
         set_modified(&newest, SystemTime::now());
 
-        // 160 bytes against a 100-byte budget: 60 have to go, which the oldest entry covers alone.
+        // 160 bytes against a 100-byte budget. 60 have to go, which the oldest entry covers alone.
         let summary = cleanup_display_cache(&dir, 100).unwrap();
 
         assert_eq!(summary.removed_entries, 1);
@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn the_display_cache_sweep_is_a_noop_for_a_missing_directory() {
-        // The first launch after an install, and every launch on a machine without FFmpeg: the
+        // The first launch after an install, and every launch on a machine without FFmpeg. The
         // directory is only created when a derivative is first written.
         let dir = unique_test_dir("display-missing");
 
@@ -622,7 +622,7 @@ mod tests {
         let backup = dir.join(".video.mp4.backup-1-2");
         fs::write(&backup, b"original bytes").unwrap();
 
-        // No live `video.mp4` next to it: the backup may be the only surviving copy.
+        // No live `video.mp4` next to it. The backup may be the only surviving copy.
         assert!(!replace_backup_target_present(&backup));
 
         // Once the live file exists, the backup is genuinely redundant.
@@ -704,8 +704,8 @@ mod tests {
     #[test]
     fn cleanup_library_leftovers_waits_for_a_migration_to_release_the_library() {
         // The sweep unlinks inside the library, so it has to queue behind a migration's write
-        // guard like every other library unlink does. Same shape as the lock module's own test:
-        // hold the write side, start the sweep on another thread, and assert it reports nothing
+        // guard like every other library unlink does. Same shape as the lock module's own test.
+        // Hold the write side, start the sweep on another thread, and assert it reports nothing
         // until the write side is released.
         let root = unique_test_dir("leftovers-guard");
         let video_dir = root.join("video");
@@ -766,7 +766,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let max_age = Duration::from_secs(60);
 
-        // A symlink whose target does not exist: `fs::metadata` (which follows symlinks)
+        // A symlink whose target does not exist. `fs::metadata` (which follows symlinks)
         // fails on it, so `entry_modified_time` returns None. This must not abort the sweep
         // of the remaining entries.
         symlink(dir.join("does-not-exist"), dir.join("dangling")).unwrap();

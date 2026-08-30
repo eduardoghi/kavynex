@@ -39,7 +39,7 @@ describe("validateIpcResult", () => {
 
     it("throws a generic app error and logs the detail on a malformed payload", () => {
         const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-        // Wrong type for a required field: the kind of shape surprise the seam exists to catch.
+        // Wrong type for a required field. The kind of shape surprise the seam exists to catch.
         const malformed = { ...validChannel, id: "not-a-number" } as unknown as never;
 
         let thrown: AppErrorShape | undefined;
@@ -75,7 +75,7 @@ describe("validateIpcResult", () => {
 });
 
 // The diagnostic line a rejected payload leaves behind, and the only record of *which* field was
-// wrong: the user is shown a generic message by design, so a bug report about this is the log line.
+// wrong. The user is shown a generic message by design, so a bug report about this is the log line.
 // Nothing above reaches it (both callers hand the result to `console.error` and nothing else), so
 // every part of it survived a mutation pass while the polarity decisions around it were killed.
 // These assert the exact output rather than that it is non-empty, which is what makes the joins and
@@ -134,7 +134,7 @@ describe("describeIssues", () => {
     });
 
     it("describes a single issue with no separator", () => {
-        // The boundary of the join: one issue must not carry a trailing or leading separator into
+        // The boundary of the join. One issue must not carry a trailing or leading separator into
         // the log line.
         const described = describeIssues(issuesFrom(z.object({ a: z.string() }), { a: 1 }));
 

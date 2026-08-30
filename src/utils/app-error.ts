@@ -126,7 +126,7 @@ function extractNestedError(value: unknown): AppErrorShape | null {
 // A user-facing error authored on the frontend. Extends the native Error (so it keeps a stack
 // trace and satisfies `instanceof Error` / vitest's `toThrow`) while carrying the dedicated
 // CLIENT_ERROR code, which `parseAppError` reads back off the instance. That code is what keeps
-// the message from colliding with the backend's deliberately-suppressed APP_ERROR: a
+// the message from colliding with the backend's deliberately-suppressed APP_ERROR. A
 // `ClientError`'s message is resolved and shown verbatim by `resolveFriendlyMessage`, whereas a
 // raw runtime Error (a TypeError, a library throw) stays APP_ERROR and degrades to the generic
 // message. Throw this (instead of a bare `new Error(...)`), for any message meant for the user.

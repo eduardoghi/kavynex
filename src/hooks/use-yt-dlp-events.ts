@@ -20,12 +20,12 @@ import { advanceYtDlpProgress, type YtDlpProgress } from "../services/yt-dlp-pro
 export type YtDlpLogLevel = DownloadLogLevel;
 
 // One terminal line plus a stable, monotonic id assigned when the line is first appended. The id
-// is what the terminal keys its rows on: the scrollback is trimmed from the front at
+// is what the terminal keys its rows on. The scrollback is trimmed from the front at
 // MAX_YT_DLP_LOG_LINES, which shifts every array index, so an index-derived key would change
 // underneath React and remount the whole 500-row scrollback on each new line past the cap. A per-line
 // id never changes once assigned, so React reuses each row and only the genuinely new one mounts.
 //
-// `level` is the backend's own classification, carried through rather than re-derived: the log
+// `level` is the backend's own classification, carried through rather than re-derived. The log
 // event already validates it (`ipc-schemas.ts`), and the terminal used to ignore it and sniff the
 // text for an `ERROR:` prefix instead.
 export type YtDlpLogLine = { id: number; text: string; level: YtDlpLogLevel };
@@ -34,7 +34,7 @@ type UseYtDlpEventsReturn = {
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     // How far the run has got, or null when nothing has reported a stage yet. Derived from the same
-    // lines the terminal shows, so it needs no second event: the information was always arriving,
+    // lines the terminal shows, so it needs no second event. The information was always arriving,
     // it just had nowhere to be read except a scrolling wall of text.
     ytDlpProgress: YtDlpProgress | null;
     currentRunIdRef: React.RefObject<string>;
@@ -134,7 +134,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const currentRunIdRef = useRef("");
 
     // The level is a required first argument rather than one defaulting to "info", because every
-    // caller genuinely knows it: a backend line carries its own, and an app-generated one is a
+    // caller genuinely knows it. A backend line carries its own, and an app-generated one is a
     // deliberate choice. A default would let the interesting cases (a failure notice, a warning)
     // fall back to "info" by omission, which is the bug this replaced.
     const appendLogs = useCallback(
@@ -143,7 +143,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
             setYtDlpLogs((current) => appendProcessedLogs(current, chunks, level));
 
-            // Folded outside the log updater rather than inside it: a state updater has to stay
+            // Folded outside the log updater rather than inside it. A state updater has to stay
             // pure (StrictMode runs it twice), and a second setState there would be a side effect
             // in a reducer. Reading the same chunks twice is free next to that.
             setYtDlpProgress((current) =>
@@ -214,7 +214,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     // useCallback([]); finalizeRun only depends on it), so this effect runs on mount and cleans up on
     // unmount, never re-running in between. React always runs the cleanup before re-running an effect
     // (including StrictMode's mount/unmount/mount in dev), and `isDisposed` plus the unlisteners list
-    // are what make that safe: a listener whose async registration resolves after disposal is
+    // are what make that safe. A listener whose async registration resolves after disposal is
     // unlistened immediately, so no duplicate registration outlives a remount.
     useEffect(() => {
         let isDisposed = false;

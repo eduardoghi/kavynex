@@ -14,7 +14,7 @@ type DiagnosticsPhysicalIntegritySectionProps = {
     libraryPath: string;
 };
 
-// What `stat` can say about the library against the database: present, missing, orphaned,
+// What `stat` can say about the library against the database. Present, missing, orphaned,
 // invalid, and the one corruption a size reveals (a zero-length file). The deep check that reads
 // every byte sits at the foot of the section, user-triggered, because it costs what it costs.
 export function DiagnosticsPhysicalIntegritySection({

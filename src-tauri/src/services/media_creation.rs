@@ -1,20 +1,20 @@
 //! Creating a media, end to end, as one backend operation.
 //!
-//! Adding a media is not one step: the artifacts have to be produced (a yt-dlp download or a local
+//! Adding a media is not one step. The artifacts have to be produced (a yt-dlp download or a local
 //! import, plus a thumbnail and possibly a live chat replay), and only then can the row that points
 //! at them be inserted. Between those two points the files sit in the library with nothing
 //! referencing them, and that window is what everything here is shaped around.
 //!
-//! What deliberately stayed in the renderer is everything *after* the row lands: the comment backup,
+//! What deliberately stayed in the renderer is everything *after* the row lands. The comment backup,
 //! the live-chat notice, the duration probe. None of them is inside the window (the media is
 //! registered and safe by then), and the duration probe in particular reads the file through a
 //! `<video>` element, which is a webview capability rather than something to reimplement over
-//! FFmpeg. It also has to stay outside the window: the probe resolves on `loadedmetadata` or
+//! FFmpeg. It also has to stay outside the window. The probe resolves on `loadedmetadata` or
 //! `error` and carries no timeout, so a source that fires neither would hang a creation that still
 //! had its marker on disk.
 //!
 //! The ordering inside [`create_media_async`] is load-bearing in two places, and both are the same
-//! rule stated twice: never record something that is not true yet. The marker is written *after* the
+//! rule stated twice. Never record something that is not true yet. The marker is written *after* the
 //! artifacts exist, because a marker naming files that were never created would hand the startup
 //! sweep paths to reconcile that no run ever wrote. And the marker is cleared *after* the row lands
 //! or the cleanup has run, because clearing it earlier would drop the record precisely while it is
@@ -52,7 +52,7 @@ pub enum MediaSourceMode {
 ///
 /// Deliberately the same field set the frontend already assembled for its own orchestration, so the
 /// move is a change of *who runs the steps* rather than of what the user is asked for. Every value
-/// here is caller-supplied and none is trusted: `library_path` is checked against the persisted
+/// here is caller-supplied and none is trusted. `library_path` is checked against the persisted
 /// settings by the command layer, the title and media type go through the shared validators, and
 /// every produced path is re-checked as a managed library-relative path before it reaches a row.
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]
@@ -96,7 +96,7 @@ pub struct CreateMediaRequest {
 /// The registered media, as the caller needs to see it.
 ///
 /// Carries the stored paths rather than only the id because the steps that stay in the renderer
-/// need them: the duration probe reads `file_path`/`media_type`, the comment backup reads
+/// need them. The duration probe reads `file_path`/`media_type`, the comment backup reads
 /// `youtube_video_id`, and the live-chat notice reads whether a replay was actually saved.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
@@ -129,7 +129,7 @@ pub(crate) struct PreparedArtifacts {
 /// path.
 ///
 /// Pure and separate from the resolving, because the classification is the part with a security
-/// consequence and no I/O: an absolute path is handed to the persist step, a URL to the downloader
+/// consequence and no I/O. An absolute path is handed to the persist step, a URL to the downloader
 /// (whose own host allow-list then applies), and a value that is already a managed `thumbnails/...`
 /// path is taken as-is rather than re-persisted. Reading a remote URL as a local path, or the
 /// reverse, is exactly the confusion worth pinning with a test rather than inferring from a chain of
@@ -155,7 +155,7 @@ fn is_remote_url(value: &str) -> bool {
 /// True for an absolute path in either platform's spelling.
 ///
 /// Both are recognized regardless of the host platform, matching the frontend predicate this
-/// replaced: the value can come from a database row written on another machine (an imported
+/// replaced. The value can come from a database row written on another machine (an imported
 /// library), so a Windows path reaching a Linux build must still be classified as a path rather
 /// than falling through to the managed branch.
 fn is_absolute_file_path(value: &str) -> bool {
@@ -237,7 +237,7 @@ pub(crate) fn normalize_create_media_request(
     let yt_dlp_run_id = request.yt_dlp_run_id.trim().to_string();
     let yt_dlp_format_id = request.yt_dlp_format_id.trim().to_string();
 
-    // Only checked for a yt-dlp source: a local import legitimately carries neither, and demanding
+    // Only checked for a yt-dlp source. A local import legitimately carries neither, and demanding
     // them there would reject every local add. The values themselves are validated again, by
     // character class, in `yt_dlp::download::command` before they reach an argv.
     if request.source_mode == MediaSourceMode::YtDlp {
@@ -348,12 +348,12 @@ async fn generate_and_store_thumbnail<R: Runtime>(
 /// releases the registry entry when the import ends.
 ///
 /// `None` means this import simply is not cancellable, which is the correct answer for three
-/// distinct cases and deliberately not distinguished between them: no run id was sent (an older
+/// distinct cases and deliberately not distinguished between them. No run id was sent (an older
 /// frontend, or any caller that has no Cancel button to offer), the id is not well-formed
 /// (`is_valid_run_id`, the same rule a download's id has to satisfy), or the registry refused it.
 /// None of the three is a reason to refuse a file the user asked to import.
 ///
-/// The guard is returned rather than dropped here: dropping it would release the entry immediately
+/// The guard is returned rather than dropped here. Dropping it would release the entry immediately
 /// and the flag would then belong to a run `cancel_media_download` can no longer find, which is
 /// exactly the shape of a Cancel button that silently does nothing.
 fn local_import_cancellation(
@@ -378,7 +378,7 @@ fn local_import_cancellation(
     }
 }
 
-/// Produces the artifacts for a local import: the thumbnail first, then the media file.
+/// Produces the artifacts for a local import. The thumbnail first, then the media file.
 ///
 /// That order is required rather than incidental. A `move` import removes the source once it is in
 /// the library, and the thumbnail for a file with no supplied one is generated *from that source*.
@@ -399,7 +399,7 @@ async fn prepare_local_artifacts<R: Runtime>(
                 Ok(path) => Some(path),
                 // An audio file without embedded cover art is the ordinary case, not a failure, so
                 // it imports without a thumbnail. A video that cannot produce one is treated the
-                // same way: the media is what the user asked for, and the card falls back to its
+                // same way. The media is what the user asked for, and the card falls back to its
                 // no-thumbnail rendering.
                 Err(error) => {
                     logger::warn(
@@ -423,7 +423,7 @@ async fn prepare_local_artifacts<R: Runtime>(
     // the same registry so the cancel command has one meaning rather than two.
     //
     // A registration that fails degrades to an uncancellable import rather than failing the add.
-    // The two ways it can fail say why: a duplicate id means this run is already registered, and a
+    // The two ways it can fail say why. A duplicate id means this run is already registered, and a
     // full registry means the caller is flooding run ids, neither is a reason to refuse a file the
     // user asked to import, and losing the Cancel button is the proportionate consequence.
     let cancellation = local_import_cancellation(&request.yt_dlp_run_id);
@@ -450,7 +450,7 @@ async fn prepare_local_artifacts<R: Runtime>(
         Err(error) => {
             // The thumbnail is already in the library and nothing will ever point at it, so hand it
             // to the reference-counted cleanup rather than leaving it behind. Reference-counted
-            // because it is content-addressed: the same image may already back a registered row.
+            // because it is content-addressed. The same image may already back a registered row.
             cleanup_artifacts_best_effort(app, None, thumbnail_path, None).await;
 
             return Err(error);
@@ -474,7 +474,7 @@ async fn prepare_local_artifacts<R: Runtime>(
 /// not exist here at all, but if it does, it is now referenced by nothing and belongs to the
 /// reference-counted cleanup.
 ///
-/// Pure, and extracted, because the comparison decides an *unlink*: inverted, this discards the
+/// Pure, and extracted, because the comparison decides an *unlink*. Inverted, this discards the
 /// thumbnail that was actually stored and keeps the one nothing points at, which surfaces as a card
 /// whose image is gone and no error anywhere. The caller needs an `AppHandle`, so that inversion
 /// could not be reached by a test until the decision moved here.
@@ -493,7 +493,7 @@ pub(crate) fn fetched_thumbnail_to_discard(
 
 /// Resolves the thumbnail for a completed yt-dlp download.
 ///
-/// Three cases, in the order they are decided: a thumbnail the user supplied wins over the one
+/// Three cases, in the order they are decided. A thumbnail the user supplied wins over the one
 /// yt-dlp fetched, the fetched one is used when there is no supplied one, and a bare URL from the
 /// metadata is the last resort. The first case is the one with a loose end. The run is told to skip
 /// its own thumbnail when a manual one is supplied, so a fetched file should not exist, but if one
@@ -608,7 +608,7 @@ pub(crate) fn nothing_to_clean_up(
 /// error the user needs to see. What is left behind in that case is an unreferenced file, which
 /// Diagnostics reports. The recoverable outcome.
 ///
-/// Shared by both wrappers below rather than written twice: the two differ only in which cleanup
+/// Shared by both wrappers below rather than written twice. The two differ only in which cleanup
 /// they call (one holds the registration lock, one takes it), and duplicating the reporting would
 /// duplicate a `warn` whose only observable effect is the log line.
 fn report_cleanup_outcome(outcome: AppResult<library::cleanup::ArtifactCleanupReport>) {
@@ -695,7 +695,7 @@ fn ensure_managed_prepared_paths(prepared: &PreparedArtifacts) -> AppResult<()> 
 
 /// Writes the crash marker for artifacts that exist but have no row yet.
 ///
-/// Best effort, exactly as it was when the renderer called it: the artifacts are already in the
+/// Best effort, exactly as it was when the renderer called it. The artifacts are already in the
 /// library and the user asked for them, so failing to record the recovery hint is strictly better
 /// than failing the creation over it. What is lost when it fails is one launch's automatic
 /// reconciliation, and Diagnostics still reports the files.
@@ -749,7 +749,7 @@ async fn clear_marker_best_effort<R: Runtime>(app: &AppHandle<R>, marker: Option
 /// Registers prepared artifacts as a media row.
 ///
 /// This is the critical section, and the whole of it runs under
-/// [`library::cleanup::media_registration_guard`]: from before the marker is written until after the
+/// [`library::cleanup::media_registration_guard`]. From before the marker is written until after the
 /// row lands (or its artifacts have been cleaned up). Holding it here is what keeps a concurrent
 /// reference-counted cleanup from observing these artifacts as unreferenced in the one window where
 /// they truly are. The window a second creation resolving to the same content-addressed path would
@@ -758,7 +758,7 @@ async fn clear_marker_best_effort<R: Runtime>(app: &AppHandle<R>, marker: Option
 /// It is deliberately short. The download and the import happen before it, so nothing a user waits
 /// on is serialized by this lock; what is inside is a marker write, one query and one insert.
 /// Generic over the runtime, and `pub(crate)` rather than private, because this is the half of a
-/// creation a test can actually drive: `AppHandle` alone is `AppHandle<Wry>`, and
+/// creation a test can actually drive. `AppHandle` alone is `AppHandle<Wry>`, and
 /// `tauri::test::mock_builder` produces a `MockRuntime` app, so naming the bare alias anywhere in
 /// this chain put the ordering below out of reach of every test in the crate.
 ///
@@ -806,15 +806,15 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
 
 /// The existence re-check, the duplicate check and the insert.
 ///
-/// The pre-insert lookup exists for its message rather than for correctness: `(channel_id,
+/// The pre-insert lookup exists for its message rather than for correctness. `(channel_id,
 /// file_path)` is unique in the schema, so a duplicate would be refused either way, just as a
 /// constraint violation rather than as "this media is already registered for the selected channel".
 ///
 /// The existence re-check is the one that is about correctness, and it is here rather than in
 /// `prepare_*` precisely because it has to run **inside** the critical section. The artifacts land
 /// before [`register_prepared_media`] takes the lock, so a concurrent delete unlinking a
-/// content-addressed file this creation is adopting is not excluded by the lock and cannot be:
-/// covering that window would mean holding the lock across a download, which the lock's own
+/// content-addressed file this creation is adopting is not excluded by the lock and cannot be.
+/// Covering that window would mean holding the lock across a download, which the lock's own
 /// documentation rules out. `library::cleanup::execute_plan` now takes the same lock, so nothing can
 /// unlink between this check and the insert below. What the earlier window can still cost is
 /// therefore a refused creation, never a row pointing at a file that is gone.
@@ -855,7 +855,7 @@ async fn insert_prepared_media<R: Runtime>(
         &prepared.media_type,
         prepared.youtube_video_id.as_deref(),
         prepared.published_at.as_deref(),
-        // Left unset on purpose: the duration is probed by the renderer once the row exists, through
+        // Left unset on purpose. The duration is probed by the renderer once the row exists, through
         // the media element that can actually decode the file, and written back with
         // `update_media_duration`. Probing it here would mean an FFmpeg run per import, and probing
         // it *before* the insert (which is where it used to happen), put an un-timeout-ed promise
@@ -873,7 +873,7 @@ async fn insert_prepared_media<R: Runtime>(
 /// saves a whole download. The guarantee is the partial unique index on
 /// `(channel_id, youtube_video_id)`. This is the difference between failing now and failing
 /// after a gigabyte.
-/// True when the pre-check applies: a yt-dlp source whose video id was resolved up front.
+/// True when the pre-check applies. A yt-dlp source whose video id was resolved up front.
 ///
 /// Pure, and extracted, because inverting the mode comparison is silent in both directions. A local
 /// import would run a query that always answers "no" (it carries no video id), and a re-added
@@ -903,7 +903,7 @@ async fn ensure_youtube_media_is_new<R: Runtime>(
     Ok(())
 }
 
-/// Creates a media: produces its artifacts, records the crash marker, inserts the row, clears the
+/// Creates a media. Produces its artifacts, records the crash marker, inserts the row, clears the
 /// marker.
 ///
 /// `library_path` is verified against the persisted settings by the command layer before this runs,

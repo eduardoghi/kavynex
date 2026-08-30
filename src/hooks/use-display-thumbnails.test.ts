@@ -26,7 +26,7 @@ function resolvedAll(entries: Record<string, string>): DisplayThumbnailResolutio
     };
 }
 
-/** A resolution where nothing resolved and nothing was settled: every path is worth asking again. */
+/** A resolution where nothing resolved and nothing was settled. Every path is worth asking again. */
 function retryable(): DisplayThumbnailResolution {
     return { displayPaths: new Map(), settledPaths: new Set() };
 }
@@ -42,7 +42,7 @@ describe("useDisplayThumbnails", () => {
     });
 
     it("starts empty so the first paint uses the stored thumbnails", () => {
-        // The point of the hook is that nothing waits on it: the grid renders immediately with what
+        // The point of the hook is that nothing waits on it. The grid renders immediately with what
         // it already had, and derivatives arrive afterwards.
         vi.mocked(resolveDisplayThumbnails).mockResolvedValue(retryable());
 
@@ -68,7 +68,7 @@ describe("useDisplayThumbnails", () => {
     });
 
     it("keeps earlier pages resolved when a new page is appended", async () => {
-        // The regression this guards is visible and ugly: the grid paginates, so replacing the map
+        // The regression this guards is visible and ugly. The grid paginates, so replacing the map
         // per page would swap every already-resolved card back to its full-size thumbnail mid-scroll
         // (the opposite of what the hook is for).
         vi.mocked(resolveDisplayThumbnails)
@@ -146,7 +146,7 @@ describe("useDisplayThumbnails", () => {
     });
 
     it("asks again about a path the backend left unsettled", async () => {
-        // The retryable miss, and it has to stay retryable: the backend caps how many derivatives one
+        // The retryable miss, and it has to stay retryable. The backend caps how many derivatives one
         // call may generate, so a page whose misses hit that ceiling only ever gets them by being
         // asked a second time. Skipping on "was requested" rather than on "was settled" would strand
         // those cards on the stored file forever.
@@ -181,7 +181,7 @@ describe("useDisplayThumbnails", () => {
         // page of a channel has no later append behind it. Without a timer of its own, that page
         // would keep decoding full-resolution stored files for the rest of the session.
         //
-        // Fake timers here rather than a real wait: the delay is the behavior under test, so the
+        // Fake timers here rather than a real wait. The delay is the behavior under test, so the
         // test should assert it fires rather than sleep for it.
         vi.useFakeTimers({ shouldAdvanceTime: true });
 

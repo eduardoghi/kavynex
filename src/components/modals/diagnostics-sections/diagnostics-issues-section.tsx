@@ -5,11 +5,11 @@ import type { DiagnosticsIssue, DiagnosticsMediaTarget } from "../../../types/di
 type DiagnosticsIssuesSectionProps = {
     issues: DiagnosticsIssue[];
     // When given, example paths that map to an existing media row become clickable and jump to
-    // that media in the library (used for "missing media": the file is gone but the row remains).
+    // that media in the library (used for "missing media". The file is gone but the row remains).
     onOpenMedia?: (target: DiagnosticsMediaTarget) => void;
     // When given, example paths of an issue whose files are on disk (`examplesAreOnDisk`) become
     // clickable and reveal the file in the OS file manager. This is the other half of the report
-    // being read-only: it names unreferenced and corrupt files and never removes them, so the file
+    // being read-only. It names unreferenced and corrupt files and never removes them, so the file
     // manager is where the user acts, and a content-addressed name is not one to retype.
     onRevealPath?: (path: string) => void;
 };
@@ -153,7 +153,7 @@ export function DiagnosticsIssuesSection({
                                                 }
 
                                                 // Gated on the issue rather than on this example
-                                                // lacking a media target: a missing thumbnail also
+                                                // lacking a media target. A missing thumbnail also
                                                 // has no target, and revealing a file that is not
                                                 // there would fail every time. See
                                                 // `examplesAreOnDisk`.

@@ -2,7 +2,7 @@
 //
 // `invokeCommand` (tauri-client.ts) is typed against `TauriCommandReturns`, and the ts-rs bindings
 // plus the CI "generated bindings are up to date" check keep those types in lockstep with the Rust
-// structs. That is a *compile-time* guarantee: it proves the code was built against the right shape,
+// structs. That is a *compile-time* guarantee. It proves the code was built against the right shape,
 // not that a given response actually has it at runtime. These schemas add the runtime half. Each
 // structured response is parsed against a zod schema mirroring its type, so a malformed payload
 // (a backend bug, a shape surprise on an edge case) fails loudly at the seam with a clear message
@@ -256,7 +256,7 @@ const databaseIntegrityReportSchema = z.object({
     truncated: z.boolean(),
 });
 
-// A discriminated union rather than a nullable string: the caller re-asks about every path it has
+// A discriminated union rather than a nullable string. The caller re-asks about every path it has
 // not settled, so "no derivative" has to say whether asking again could change the answer. Discarding
 // that here would put the distinction back at the seam where the backend cannot be consulted.
 const displayThumbnailSchema = z.discriminatedUnion("kind", [
@@ -305,11 +305,11 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
         migrateLibraryDirectoryResultSchema satisfies z.ZodType<MigrateLibraryDirectoryResult>,
     list_live_chat_files: z.array(z.string()),
     // The registered media. Worth validating rather than trusting even though it comes straight
-    // back from a command this app wrote: the caller feeds `filePath`/`mediaType` to the duration
+    // back from a command this app wrote. The caller feeds `filePath`/`mediaType` to the duration
     // probe and `youtubeVideoId` to the comment backup, so a wrong shape here would surface two
     // steps later as a probe against nothing or a comment fetch for the wrong video.
     create_media: createdMediaSchema satisfies z.ZodType<CreatedMedia>,
-    // Positional: entry i answers requested path i, so a shorter or reordered array would silently
+    // Positional. Entry i answers requested path i, so a shorter or reordered array would silently
     // map a derivative onto the wrong media. The array shape is what this pins; the caller zips it
     // back against the paths it sent.
     resolve_display_thumbnails: z.array(
@@ -336,7 +336,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
 
 // Schemas for the payloads the backend pushes over `listen`/`Channel` (yt-dlp progress, the live
 // chat stream). These cross the same IPC boundary as command results but travel as fire-and-forget
-// events, so `invokeCommand`'s validation never sees them: without these, a backend bug that
+// events, so `invokeCommand`'s validation never sees them. Without these, a backend bug that
 // changed an event's shape (a `run_id` becoming a number, a batch line that is not a string) would
 // flow into a handler as the wrong shape rather than being caught at the seam. Typed
 // `z.ZodType<TheEvent>` like the command schemas, so a schema that drifts from its generated type is
@@ -377,7 +377,7 @@ const databaseIntegrityFailedEventSchema = z.object({
 
 export type DatabaseIntegrityFailedEvent = z.infer<typeof databaseIntegrityFailedEventSchema>;
 
-// Payload of the pending-media-abandoned event: how many crashed media creations the startup sweep
+// Payload of the pending-media-abandoned event. How many crashed media creations the startup sweep
 // gave up on. Frontend-owned like the one above, and deliberately just a count. The paths are
 // library-relative names a banner cannot act on, and Diagnostics is what names them.
 const pendingMediaAbandonedEventSchema = z.object({
@@ -396,7 +396,7 @@ export const IPC_EVENT_SCHEMAS = {
     pendingMediaAbandoned: pendingMediaAbandonedEventSchema,
 } as const;
 
-// The streamed live chat protocol on the `Channel`: a run of `batch` events carrying raw JSON
+// The streamed live chat protocol on the `Channel`. A run of `batch` events carrying raw JSON
 // lines, ended by a single `done`. The `satisfies` check ties this schema to the generated
 // LiveChatStreamEvent binding, so a change to the Rust enum (commands/live_chat.rs) fails to
 // compile here instead of silently desyncing the wire shape.
@@ -407,7 +407,7 @@ export const liveChatStreamEventSchema = z.union([
 
 export type { LiveChatStreamEvent };
 
-// The deep library verification's channel: a run of `progress` messages, ended by a single `done`
+// The deep library verification's channel. A run of `progress` messages, ended by a single `done`
 // carrying the report. Tied to the generated ContentVerificationEvent binding by the `satisfies`
 // below, for the same reason as the live chat one above.
 const contentVerificationReportSchema = z.object({
@@ -431,7 +431,7 @@ export type { ContentVerificationEvent, ContentVerificationReport };
 
 // Validates an event/channel payload against `schema`. Returns the parsed value on success, or
 // `null` on a mismatch after logging the specific fields that failed. Unlike `validateIpcResult`
-// this never throws: an event is fire-and-forget with no caller to reject to, so a malformed
+// this never throws. An event is fire-and-forget with no caller to reject to, so a malformed
 // payload is dropped (and logged for a bug report) rather than propagated into a handler.
 export function parseEventPayload<TSchema extends z.ZodTypeAny>(
     schema: TSchema,
@@ -456,7 +456,7 @@ export function parseEventPayload<TSchema extends z.ZodTypeAny>(
 // this produces. A mutation pass over this file reported every one of its parts surviving (the
 // `(root)` fallback, the `.` path join, the `: ` between path and message, the `; ` between issues)
 // while the polarity decisions around it were killed. That asymmetry is the argument for pinning it
-// rather than accepting it: this string is the whole of what a malformed payload leaves behind. The
+// rather than accepting it. This string is the whole of what a malformed payload leaves behind. The
 // user sees a generic message by design, so a bug report is the log line, and a log line that says
 // "the backend sent something wrong" without saying *which field* costs the one detail the report
 // was worth making. Same reasoning, and the same shape, as the argv redaction gated on the Rust side.
@@ -471,7 +471,7 @@ export function describeIssues(error: z.ZodError): string {
 
 // Validates a command's result against its registered schema, if any. Returns the parsed value
 // (unknown keys stripped) on success. On a mismatch it logs the specific fields that failed and
-// throws a generic AppErrorShape: a malformed backend response is an internal contract violation,
+// throws a generic AppErrorShape. A malformed backend response is an internal contract violation,
 // not something the user can act on, so it degrades to the generic friendly message (APP_ERROR)
 // rather than surfacing zod's technical detail, while the detail stays in the console for a bug
 // report. A command with no schema returns its result untouched.

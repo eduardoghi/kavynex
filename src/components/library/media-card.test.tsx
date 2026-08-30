@@ -29,7 +29,7 @@ vi.mock("../../utils/media-utils", async () => {
 
 describe("MediaCard", () => {
     it("draws the display-sized copy when one has been resolved", () => {
-        // The whole payoff of the derivative cache: the card has to actually point at the smaller
+        // The whole payoff of the derivative cache. The card has to actually point at the smaller
         // file, not merely receive it. A webview decodes an image at its natural size, so rendering
         // the stored 1280x720 file into a 280px card costs the full bitmap either way.
         renderWithMantine(
@@ -50,7 +50,7 @@ describe("MediaCard", () => {
     });
 
     it("falls back to the stored thumbnail when no display copy was resolved", () => {
-        // Absent is the ordinary state, not an error one: it is what every card shows on first paint
+        // Absent is the ordinary state, not an error one. It is what every card shows on first paint
         // and what it keeps showing when a derivative cannot be produced (no FFmpeg on the machine,
         // a thumbnail the app did not write). The card must render exactly as it did before the
         // cache existed.
@@ -153,7 +153,7 @@ describe("MediaCard", () => {
     it("drops the active glow once the media is no longer the active one", () => {
         // The card that opened the player kept its violet glow after the player closed, on every
         // card the user had ever opened. The cause was the inactive box-shadow being invalid CSS
-        // (light-dark() around whole shadows rather than around their colors): assigning an invalid
+        // (light-dark() around whole shadows rather than around their colors). Assigning an invalid
         // value to an inline style is ignored, so the previous (active, violet), value stayed put.
         // Both the badge and the border reset correctly, which is why the state looked half-applied.
         const media = createMedia({ title: "Video A" });
@@ -220,7 +220,7 @@ describe("MediaCard", () => {
             />
         );
 
-        // Absent rather than "false": an aria-current="false" is still announced by some
+        // Absent rather than "false". An aria-current="false" is still announced by some
         // readers, and the wrapper already drops the attribute for that reason.
         expect(screen.getByRole("button", { name: "Open Video A" })).not.toHaveAttribute(
             "aria-current"
@@ -288,7 +288,7 @@ describe("MediaCard", () => {
 
         // There is no watched badge on the thumbnail any more. The card's own green says it,
         // and a pill there covered the corner of the image the user scans by. So the assertion
-        // is on the accessible name, which is where the state moved: it is the only remaining
+        // is on the accessible name, which is where the state moved. It is the only remaining
         // non-visual statement of it, and dropping it would leave watched invisible to a screen
         // reader rather than merely unbadged.
         expect(

@@ -1,4 +1,4 @@
-// CI gate: fails when the Node version pinned in .nvmrc and the `node-version:` values declared in
+// CI gate. Fails when the Node version pinned in .nvmrc and the `node-version:` values declared in
 // the GitHub workflows disagree, so a bump that touches one but not the others can never silently
 // build/test against a different Node than local development uses. The app version already has
 // verify-release-version.js for exactly this reason; this closes the equivalent gap for the Node

@@ -23,7 +23,7 @@ describe("describeViolations", () => {
     });
 
     it("names the rule, its help text and every node it matched", () => {
-        // The failure message is the whole point of the helper: a report that says "1 violation"
+        // The failure message is the whole point of the helper. A report that says "1 violation"
         // sends whoever hit it to the axe docs, while this one says which rule and which element.
         const formatted = describeViolations([
             violation("button-name", "Buttons must have discernible text", [

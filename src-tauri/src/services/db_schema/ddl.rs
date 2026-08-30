@@ -110,7 +110,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // migration identity and its dedicated idempotency test (a standalone cleanup, not part of
     // removing that caller), and it still fits any future newest-first-only listing.
     //
-    // MEASURED DEAD (2026-08-16), confirming the paragraph above rather than adding to it: it is
+    // MEASURED DEAD (2026-08-16), confirming the paragraph above rather than adding to it. It is
     // chosen by nothing the backend issues. It is also the most entangled of the dead ones, since
     // `index_introduced_in` in the tests maps it to v8 so `seed_database_at_version` can rebuild a
     // faithful pre-v9 database. That map is why removal costs more here than anywhere else.
@@ -123,20 +123,20 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // order when the leading terms match term for term, so `duration` and `publication_date`
     // must index the same COALESCE/CASE *expressions* the clause sorts on. A plain index on
     // duration_seconds or published_at is never used by those queries. Measured with EXPLAIN
-    // QUERY PLAN: without these, every one of these sorts falls back to idx_videos_channel_id
+    // QUERY PLAN. Without these, every one of these sorts falls back to idx_videos_channel_id
     // and re-sorts the channel's whole matching set on each page.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_title_id ON videos(channel_id, created_at DESC, title_normalized DESC, id DESC)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_comments_count ON videos(channel_id, comments_count, title_normalized)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_duration ON videos(channel_id, COALESCE(duration_seconds, 0), title_normalized)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_ordered ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END), (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END), title_normalized)"),
-    // `publication_date` needs a second index because its two directions are not mirror images:
+    // `publication_date` needs a second index because its two directions are not mirror images.
     // desc keeps the dated-first group key ASC and the title tie-break ASC while reversing only
     // the date. SQLite can walk an index forwards or backwards, but not partly each way, so the
     // all-ASC index above serves only the leading group key for desc and sorts the remaining
     // three terms, and desc is the grid's default view, i.e. the hottest query in the app.
     // The term directions here mirror that clause exactly.
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_desc ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) DESC, title_normalized ASC)"),
-    // MEASURED DEAD (2026-08-16): never chosen. `channels.youtube_handle` is declared UNIQUE, so
+    // MEASURED DEAD (2026-08-16). Never chosen. `channels.youtube_handle` is declared UNIQUE, so
     // SQLite already maintains `sqlite_autoindex_channels_1` on exactly this column, and the handle
     // lookup uses that one. This is a duplicate of an index the table definition creates for free.
     ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
@@ -151,14 +151,14 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_file_path ON videos(file_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_live_chat_file_path ON videos(live_chat_file_path)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)"),
-    // MEASURED DEAD (2026-08-16): none of the six below is chosen by any statement the backend
+    // MEASURED DEAD (2026-08-16). None of the six below is chosen by any statement the backend
     // issues. The first three would each serve a standalone lookup and there is none, because every
     // query reaching those columns is scoped by `channel_id` first, so a `idx_videos_channel_*`
     // composite above wins. The last three index booleans (cardinality 2). The only statements
     // touching them are `get_media_repository_stats`, a full scan of `SUM(CASE ...)` with no WHERE,
     // and the migration repairs, whose `<> 0` is not selective either.
     //
-    // Left in place rather than dropped, deliberately: the cost is write amplification on a table
+    // Left in place rather than dropped, deliberately. The cost is write amplification on a table
     // this app inserts into a handful of rows at a time, and the removal is a schema migration plus
     // surgery on the version-history map and migration-identity tests below. Bad trade. If a
     // library-wide search (not scoped to a channel) ever arrives, it will want a *composite* tuned
@@ -167,7 +167,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // the planner production runs.
     //
     // What should send someone back to that measurement, because "a handful of rows at a time" is a
-    // premise the trade rests on rather than a property of the schema: a batched write path (a
+    // premise the trade rests on rather than a property of the schema. A batched write path (a
     // per-channel download queue, a folder import), or the first `apply_table_rebuilds` on this
     // table. The rebuild recreates the indexes of every table it dropped by walking this list
     // (rebuild.rs), so it would build all seven of the dead ones on `videos` over the whole library,
@@ -180,30 +180,30 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)"),
     ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)"),
     // NOT dead, despite never appearing in a query plan, and the distinction matters because a
-    // reader cleaning up on plan evidence alone would drop it. It is UNIQUE: it exists to enforce
+    // reader cleaning up on plan evidence alone would drop it. It is UNIQUE. It exists to enforce
     // "one row per (channel, youtube video id)", not to be chosen. It goes unused for lookups
     // because it is partial, and SQLite only uses a partial index when the query's WHERE proves the
     // index's. `youtube_video_id = ?` does not prove the `TRIM(...) <> ''`. So the duplicate
     // pre-check falls back to idx_videos_channel_id, and the constraint still holds.
     ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_youtube_video_id_unique ON videos(channel_id, youtube_video_id) WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''"),
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)"),
-    // MEASURED DEAD (2026-08-16): the backend never looks a comment up by its parent. The reply
+    // MEASURED DEAD (2026-08-16). The backend never looks a comment up by its parent. The reply
     // threads are rebuilt in the renderer (src/components/player/comment-tree.ts) from the flat list
     // the `video_id` query returns. Same trade as the group above for why it stays.
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)"),
-    // Used, though not by any runtime query: v10's comment dedup walks it
+    // Used, though not by any runtime query. v10's comment dedup walks it
     // (SEARCH video_comments USING COVERING INDEX idx_video_comments_comment_id), and that migration
     // runs on any database old enough to need it.
     ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)"),
 ];
 
 // The partial UNIQUE index enforcing "no duplicate (video_id, comment_id)". Deliberately kept OUT
-// of INDEX_DDLS: unlike every other index there, building it can fail on real data. A database
+// of INDEX_DDLS. Unlike every other index there, building it can fail on real data. A database
 // created before this invariant lived in the schema (v10) may already hold a duplicate the unique
 // build rejects, so it must be created only by apply_migration_10 (which collapses duplicates
 // first), and never by the baseline / index-only loops that run before v10. apply_baseline_schema's
 // loop runs for every legacy database (user_version below the baseline), so keeping this index in
-// INDEX_DDLS made the baseline try to build it against un-deduped rows: the build failed, the whole
+// INDEX_DDLS made the baseline try to build it against un-deduped rows. The build failed, the whole
 // baseline transaction rolled back, and the database was left permanently unopenable, with the
 // migration meant to dedupe it never reached. Partial so the many replies yt-dlp leaves without an
 // id (comment_id NULL/blank) stay legitimately distinct rows, mirroring
@@ -213,7 +213,7 @@ pub(super) const COMMENT_UNIQUE_INDEX_TABLE: &str = "video_comments";
 pub(super) const COMMENT_UNIQUE_INDEX_DDL: &str = "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''";
 
 // Every trigger, paired with the table it belongs to (same shape as INDEX_DDLS). These backport
-// the videos live-chat CHECK to databases whose `videos` table predates it: a table created by an
+// the videos live-chat CHECK to databases whose `videos` table predates it. A table created by an
 // older app version already exists, so the CHECK in VIDEOS_TABLE_DDL never reaches it (CREATE TABLE
 // IF NOT EXISTS is a no-op and SQLite has no ALTER TABLE ADD CONSTRAINT), and rebuilding the main
 // table just to add a CHECK is not worth its risk. A BEFORE INSERT/UPDATE trigger enforces the same
@@ -241,11 +241,11 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
         END",
     ),
     // title_normalized is the accent/case-folded copy of `title` that the library search matches
-    // against and the title sort orders by. A NULL there is invisible rather than loud: `LIKE`
+    // against and the title sort orders by. A NULL there is invisible rather than loud. `LIKE`
     // never matches it, so the media silently disappears from every title search while still
     // sitting in the library. insert_media and update_media_title both derive it from the same
     // title, so the write path cannot produce a NULL. These keep an out-of-band writer from
-    // introducing one. The column itself stays nullable: it is added to pre-v11 databases by
+    // introducing one. The column itself stays nullable. It is added to pre-v11 databases by
     // ALTER TABLE, which cannot add a NOT NULL column without inventing a default for the rows
     // already there, and v11 is what backfills them.
     (
@@ -303,8 +303,8 @@ pub(super) const VIDEOS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     // Nullable and backfilled by migration v11 (SQLite cannot accent-fold in SQL, so the
     // backfill is computed in Rust), populated on every insert/title-update thereafter.
     ("title_normalized", "TEXT"),
-    // Added by v15. Defaults to 'unknown' for every existing row, which is the honest value:
-    // nothing recorded whether a fetch had run, so the app cannot claim one did. v15 promotes
+    // Added by v15. Defaults to 'unknown' for every existing row, which is the honest value.
+    // Nothing recorded whether a fetch had run, so the app cannot claim one did. v15 promotes
     // the rows that do carry evidence.
     (
         "comments_state",

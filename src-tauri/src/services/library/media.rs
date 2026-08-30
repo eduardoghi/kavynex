@@ -44,7 +44,7 @@ pub fn import_media_file_sync(
 /// file from a slow external drive had none of that, and the add-media modal stays locked while it
 /// runs, so the only exit was killing the app, which the crash marker then had to clean up after.
 ///
-/// The flag is polled at three places, which between them cover the whole of the wall clock: before
+/// The flag is polled at three places, which between them cover the whole of the wall clock. Before
 /// any work starts, throughout the hash (a full read pass over the source, and the *first* long
 /// step), and throughout the copy. What is deliberately not interruptible is the small tail after
 /// the bytes are in place (the fsync, the rename, the post-write verification), because
@@ -96,7 +96,7 @@ pub fn import_media_file_cancellable_sync(
     let ext = extension_from_path(&source);
 
     if !is_allowed_media_extension(&ext) {
-        // The accepted list travels in `details` rather than in the message: the frontend shows a
+        // The accepted list travels in `details` rather than in the message. The frontend shows a
         // catalogued sentence for this code and appends `details` after it, so this is what puts
         // the answer ("which files does it take, then?") in front of the user instead of leaving
         // it in the log.
@@ -166,7 +166,7 @@ pub fn import_media_file_cancellable_sync(
             }
         }
         ImportMode::Move => {
-            // Always go through the move helper, even when the destination already exists: it
+            // Always go through the move helper, even when the destination already exists. It
             // no-ops if the source already IS the destination, and otherwise removes the
             // (identical-by-hash) redundant source. Skipping on "destination exists" would leave
             // the source behind, so a Move would not actually free it. Pass the hash we already
@@ -389,7 +389,7 @@ mod tests {
 
     #[test]
     fn a_cancelled_import_puts_nothing_in_the_library_and_keeps_the_source() {
-        // Both modes, because the consequence of getting Move wrong is not recoverable: a cancel
+        // Both modes, because the consequence of getting Move wrong is not recoverable. A cancel
         // that removed the source without landing the destination would delete the user's file to
         // honour a request to *not* import it. Copy is asserted alongside it so the shared refusal
         // cannot be weakened for one mode only.

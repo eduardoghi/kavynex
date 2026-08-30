@@ -1,4 +1,4 @@
-//! The deep library check: re-reading every stored artifact and comparing its content against the
+//! The deep library check. re-reading every stored artifact and comparing its content against the
 //! hash its own filename declares.
 //!
 //! Separate from `integrity.rs`, which answers a different question. That one asks whether the
@@ -7,7 +7,7 @@
 //! `corrupt` was only a zero-length file, which is the one corruption that shows up in a `stat`.
 //!
 //! Everything else it could not see. A bad sector inside a 2 GB video, a truncated copy, a
-//! cloud-sync placeholder standing in for content that was evicted: all of them keep their size and
+//! cloud-sync placeholder standing in for content that was evicted. All of them keep their size and
 //! pass. On an external drive, which is where a large library tends to live, that is the failure
 //! that actually happens, and this app exists so a video that has since been removed from YouTube
 //! is still watchable years later. A check that reports such a library as healthy is worse than no
@@ -34,7 +34,7 @@ const MAX_EXAMPLES: usize = 5;
 /// The prefixes the content-addressed writers use, with the subtree each belongs to.
 ///
 /// `media.rs` writes `media_<hash>.<ext>` under `video/` or `audio/`, and `thumbnail/persist.rs`
-/// writes `thumb_<hash>.<ext>` under `thumbnails/`. Live chat replays are deliberately absent: they
+/// writes `thumb_<hash>.<ext>` under `thumbnails/`. Live chat replays are deliberately absent. They
 /// are named after the yt-dlp output file rather than after their content, so there is no digest in
 /// the name to compare against and claiming to have verified them would be a lie.
 const CONTENT_ADDRESSED_PREFIXES: [&str; 2] = ["media_", "thumb_"];
@@ -42,7 +42,7 @@ const CONTENT_ADDRESSED_PREFIXES: [&str; 2] = ["media_", "thumb_"];
 /// The hash a content-addressed filename declares, or `None` when the name declares none.
 ///
 /// `None` is a real answer rather than a failure, and keeping the two apart is the whole reason this
-/// is a separate function. A library can hold files this app did not name: one written before the
+/// is a separate function. A library can hold files this app did not name. One written before the
 /// content-addressed layout, one restored from a backup by hand, one whose name a sync client
 /// mangled. There is nothing to compare those against, so they are reported as unverifiable and
 /// counted separately. Treating them as corrupt would make the first honest run of this check
@@ -105,7 +105,7 @@ pub struct ContentVerificationReport {
 /// Whether a verification is running, and whether it has been asked to stop.
 ///
 /// Two flags rather than one, because they answer different questions and only one of them is
-/// allowed to be sticky. `RUNNING` is what makes this a single-run operation: a second request is
+/// allowed to be sticky. `RUNNING` is what makes this a single-run operation. A second request is
 /// refused rather than queued, which matters because the work is bounded only by the size of the
 /// library and two concurrent sweeps would read every byte twice while competing for the same
 /// disk. `CANCELLED` is the stop signal, and it is reset when a run begins so a cancel left over
@@ -116,7 +116,7 @@ static VERIFICATION_CANCELLED: AtomicBool = AtomicBool::new(false);
 /// Held for the length of one verification; releases the single-run slot on drop.
 ///
 /// A guard rather than a matched pair of calls, for the reason every other guard in this crate
-/// exists: the run has several exits (a refused library path, a channel that went away, a
+/// exists. The run has several exits (a refused library path, a channel that went away, a
 /// cancellation, a normal finish) and one of them forgetting to release would leave the feature
 /// permanently unavailable until the app restarts, with nothing to point at.
 pub(crate) struct VerificationRunGuard;
@@ -140,7 +140,7 @@ pub(crate) fn try_begin_verification() -> Option<VerificationRunGuard> {
     Some(VerificationRunGuard)
 }
 
-/// Asks the running verification to stop. A no-op when none is running: the flag is reset by the
+/// Asks the running verification to stop. A no-op when none is running. The flag is reset by the
 /// next run that begins, so a stray cancel cannot stop it.
 pub fn request_verification_cancel() {
     VERIFICATION_CANCELLED.store(true, Ordering::SeqCst);
@@ -151,8 +151,8 @@ pub(crate) fn verification_cancel_flag() -> &'static AtomicBool {
     &VERIFICATION_CANCELLED
 }
 
-/// How a verification reports back to the frontend: a run of `progress` events, then one `done`
-/// carrying the report. Same shape and same reason as `LiveChatStreamEvent`: the frontend resolves
+/// How a verification reports back to the frontend. A run of `progress` events, then one `done`
+/// carrying the report. Same shape and same reason as `LiveChatStreamEvent`. The frontend resolves
 /// on `done` rather than on the command returning, because channel messages and the invoke response
 /// travel independently.
 #[derive(Clone, Serialize, ts_rs::TS)]
@@ -174,7 +174,7 @@ pub enum ContentVerificationEvent {
 ///
 /// `relative_path` is confined to `subtree` by `absolute_path_from_relative` before anything is
 /// opened, so this cannot be pointed outside the managed layout even by a hand-edited row. A path
-/// that fails that confinement is `Unverifiable` rather than an error: it is a row `integrity.rs`
+/// that fails that confinement is `Unverifiable` rather than an error. It is a row `integrity.rs`
 /// already reports as invalid, and failing the whole sweep over one bad row would be the wrong
 /// trade for a check whose value is covering everything else.
 pub(crate) fn verify_stored_file(
@@ -198,7 +198,7 @@ pub(crate) fn verify_stored_file(
     // The confinement above is lexical, and every directory walk in this family refuses a symlink
     // rather than following it. A row naming one planted under `video/` would otherwise have its
     // target hashed and reported on (Verified, even, if the target happened to match) as though it
-    // were the library's file. Unverifiable, like a path that fails confinement: this is not a
+    // were the library's file. Unverifiable, like a path that fails confinement. This is not a
     // corrupt artifact, it is not an artifact of this app at all.
     if crate::services::filesystem::path_is_symlink(&absolute) {
         return ContentVerification::Unverifiable;
@@ -219,7 +219,7 @@ pub(crate) fn verify_stored_file(
     }
 }
 
-/// One artifact to verify: its stored path and which subtree it lives in.
+/// One artifact to verify, with its stored path and which subtree it lives in.
 pub(crate) struct VerifiableArtifact {
     pub(crate) relative_path: String,
     pub(crate) subtree: ManagedSubtree,
@@ -256,12 +256,12 @@ fn record(report: &mut ContentVerificationReport, path: &str, outcome: ContentVe
 /// Verifies every artifact in `artifacts`, reporting progress through `on_progress` as it goes.
 ///
 /// The cancel flag is checked before each file rather than only between batches, because one file
-/// can be several gigabytes: a check that only looked between files would leave Cancel unresponsive
+/// can be several gigabytes. A check that only looked between files would leave Cancel unresponsive
 /// for exactly as long as the slowest item takes, which on the libraries this is written for is
 /// minutes. `file_hash_cancellable` carries the same flag into the read loop, so a cancel lands
 /// inside a large file too.
 ///
-/// `on_progress` is called with (checked so far, total). Its failure stops the run: the only caller
+/// `on_progress` is called with (checked so far, total). Its failure stops the run. The only caller
 /// emits on an IPC channel, and a channel that has gone away means the window that asked is gone.
 pub(crate) fn verify_library_content_sync<F>(
     library_dir: &Path,
@@ -288,7 +288,7 @@ where
             cancel,
         );
 
-        // Re-checked after the hash rather than only before it: a cancel that landed mid-read comes
+        // Re-checked after the hash rather than only before it. A cancel that landed mid-read comes
         // back as Unreadable, and recording that would leave a cancelled run reporting unreadable
         // files it never actually failed to read.
         if is_cancelled(cancel) {
@@ -419,7 +419,7 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         // The target matches the digest in the link's name, so following the link would report
-        // Verified, which is exactly the answer a planted link must not get: it would vouch for
+        // Verified, which is exactly the answer a planted link must not get. It would vouch for
         // bytes that live outside the library as if they were the artifact the row names.
         let content = b"media bytes";
         let library = unique_dir("symlink");
@@ -444,7 +444,7 @@ mod tests {
 
     #[test]
     fn a_file_whose_bytes_changed_under_its_name_is_corrupt() {
-        // The failure this whole module exists for, and the one the cheap check cannot see: the
+        // The failure this whole module exists for, and the one the cheap check cannot see. The
         // file is present and its size is unchanged, so `stat` reports nothing wrong.
         let (library, relative) = library_with_media("corrupt", b"media bytes");
         let absolute = library.join(&relative);
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn a_zero_length_file_is_corrupt_rather_than_merely_present() {
-        // The one case the cheap check already catches, asserted here too: this check must not be
+        // The one case the cheap check already catches, asserted here too. This check must not be
         // weaker than the one it supplements.
         let (library, relative) = library_with_media("hollow", b"media bytes");
         fs::write(library.join(&relative), b"").unwrap();
@@ -561,7 +561,7 @@ mod tests {
     #[test]
     fn a_cancelled_sweep_stops_and_says_it_was_partial() {
         // The flag is what keeps a partial run from being read as a clean bill of health, which is
-        // the one way this check could do harm: reporting "no problems" over files it never opened.
+        // the one way this check could do harm. Reporting "no problems" over files it never opened.
         let (library, relative) = library_with_media("cancel", b"media bytes");
         let artifacts = [media(&relative), media(&relative), media(&relative)];
 
@@ -600,7 +600,7 @@ mod tests {
     #[test]
     fn a_second_verification_is_refused_rather_than_queued() {
         let _serialized = verification_state_lock();
-        // The bound that matters for this operation: the work is proportional to the size of the
+        // The bound that matters for this operation. The work is proportional to the size of the
         // library, so two concurrent sweeps would read every byte twice while competing for the
         // same disk. A refusal the caller can report ("one is already running") beats a queue the
         // user cannot see.
@@ -644,7 +644,7 @@ mod tests {
         assert!(verification_cancel_flag().load(Ordering::SeqCst));
 
         drop(guard);
-        // Left set on purpose: the flag is cleared by the next run that begins, not by the end of
+        // Left set on purpose. The flag is cleared by the next run that begins, not by the end of
         // this one, which is what keeps the reset in one place.
         assert!(verification_cancel_flag().load(Ordering::SeqCst));
 
@@ -670,7 +670,7 @@ mod tests {
     #[test]
     fn every_example_list_is_capped_while_its_count_stays_complete() {
         // `record` is the one place the report grows, and it does two things that fail in opposite
-        // directions: it counts every outcome, and it keeps a bounded sample of the paths. A cap
+        // directions. It counts every outcome, and it keeps a bounded sample of the paths. A cap
         // that reached the count would under-report corruption to the user; a cap missing from the
         // list would put every corrupt path in a library-sized report onto the IPC boundary.
         //
@@ -705,7 +705,7 @@ mod tests {
                 count, over_cap,
                 "{outcome:?} counts every file in its category"
             );
-            // Exactly the cap, not merely "at most": `<=` in the guard keeps one more than the
+            // Exactly the cap, not merely "at most". `<=` in the guard keeps one more than the
             // constant says, which is the off-by-one neither count above can reveal.
             assert_eq!(
                 examples.len(),

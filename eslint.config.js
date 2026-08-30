@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
-// defineConfig (eslint/config) rather than tseslint.config(): the latter's variadic overload is
+// defineConfig (eslint/config) rather than tseslint.config(). The latter's variadic overload is
 // deprecated, and this config never used its `extends` sugar (it spreads tseslint.configs.recommended
 // inline), so the two are equivalent here.
 export default defineConfig(
@@ -16,7 +16,7 @@ export default defineConfig(
             "src-tauri/**",
             "src/types/generated/**",
             // Stryker's working copies of the whole tree, and the report it writes. Both are
-            // gitignored, which is not the same thing: eslint reads this list, not .gitignore, and
+            // gitignored, which is not the same thing. Eslint reads this list, not .gitignore, and
             // `pnpm lint` is `eslint .`. A run that finishes cleans its sandboxes up, so this is
             // invisible until one is interrupted, and then each surviving sandbox is a full second
             // copy of src/ and scripts/, linted as if it were source. Two of them turned `pnpm lint`
@@ -51,14 +51,14 @@ export default defineConfig(
             "no-undef": "off",
             "@typescript-eslint/no-unused-vars": "off",
 
-            // The point of adding ESLint: enforce React's hook rules that tsc cannot see.
+            // The point of adding ESLint. Enforce React's hook rules that tsc cannot see.
             "react-hooks/rules-of-hooks": "error",
             "react-hooks/exhaustive-deps": "error",
 
             // Catch unhandled async work. The codebase already marks fire-and-forget with a
             // `void` prefix and try/catch; these lock that discipline in so a future unawaited
             // promise (a lost error, an out-of-order write) fails lint instead of slipping by.
-            // `checksVoidReturn.attributes` is off: an async React event handler (e.g.
+            // `checksVoidReturn.attributes` is off. An async React event handler (e.g.
             // `onClick={doAsync}`) is a deliberate, safe pattern here (rejections are caught by
             // the global handler), not the misuse this rule targets.
             "@typescript-eslint/no-floating-promises": "error",
@@ -68,7 +68,7 @@ export default defineConfig(
             ],
 
             // The threat model (docs/THREAT-MODEL.md) rests on YouTube-derived text (titles, comments, live
-            // chat, author names), never being rendered as raw HTML: it is always React children,
+            // chat, author names), never being rendered as raw HTML. It is always React children,
             // so React's escaping neutralizes it, which is what keeps the relaxed
             // `style-src 'unsafe-inline'` acceptable (there is no injection sink for it to abuse).
             // Nothing enforced that mechanically, so a future dangerouslySetInnerHTML, a direct
@@ -91,7 +91,7 @@ export default defineConfig(
                 },
             ],
 
-            // Keep every Tauri touchpoint inside the src/lib seam (docs/ARCHITECTURE.md):
+            // Keep every Tauri touchpoint inside the src/lib seam (docs/ARCHITECTURE.md).
             // tauri-client.ts wraps the IPC commands/events with consistent error normalization
             // (invokeCommand/invokeVoid/listenTauri), and tauri-platform.ts re-exports the
             // platform capabilities (dialogs, opener, process, updater, app version,
@@ -116,7 +116,7 @@ export default defineConfig(
         },
     },
     {
-        // The two seam modules are the only files allowed to import @tauri-apps: tauri-client.ts
+        // The two seam modules are the only files allowed to import @tauri-apps. tauri-client.ts
         // wraps the raw IPC primitives, tauri-platform.ts re-exports the platform capabilities.
         files: ["src/lib/tauri-client.ts", "src/lib/tauri-platform.ts"],
         rules: {
@@ -137,7 +137,7 @@ export default defineConfig(
         },
     },
     {
-        // Release/build helper scripts: plain ESM run by Node, not the browser bundle.
+        // Release/build helper scripts. Plain ESM run by Node, not the browser bundle.
         files: ["scripts/**/*.js"],
         languageOptions: {
             globals: {
@@ -148,7 +148,7 @@ export default defineConfig(
     {
         // Build/tooling config, which is run by Node rather than bundled. These were ignored
         // outright until now, which is the reason this block exists rather than the config files
-        // simply inheriting: an ignore is invisible, so `eslint .` reported success on a tree it
+        // simply inheriting. An ignore is invisible, so `eslint .` reported success on a tree it
         // was not reading four files of. Only the `.cjs` one strictly needs these globals today
         // (`module.exports`, which `no-undef` flags; typescript-eslint disables that rule for the
         // `.ts` ones), but the whole group is named so a `process.env` added to any of them does

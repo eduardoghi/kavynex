@@ -38,7 +38,7 @@ function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
 
 describe("buildCommentTree", () => {
     it("keeps comments visible when their parent chain loops", () => {
-        // Two comments naming each other as parent: neither is a root, so a single attach pass
+        // Two comments naming each other as parent. Neither is a root, so a single attach pass
         // builds an island nothing reaches and both vanish from the UI. Silently, while
         // comments_count still counts them. Malformed data is the only way in, which is why this
         // cannot rely on the data being well formed.
@@ -55,7 +55,7 @@ describe("buildCommentTree", () => {
     });
 
     it("keeps a comment whose chain leads into a cycle it is not part of", () => {
-        // A "tadpole": the tail comment (t) points into a b<->c cycle. Every node on that walk
+        // A "tadpole". The tail comment (t) points into a b<->c cycle. Every node on that walk
         // shares the same "never reaches a root" outcome, which the memoized cycle check must
         // resolve identically whether the walk starts at t, b or c, so t, like b and c, surfaces
         // at the top level rather than being lost inside the island.
@@ -237,7 +237,7 @@ describe("flattenCommentTree", () => {
 
         const rows = flattenCommentTree(tree);
 
-        // Pre-order: each subtree is fully emitted before the next sibling, and depth increases by
+        // Pre-order. Each subtree is fully emitted before the next sibling, and depth increases by
         // one per level.
         expect(rows.map((row) => [row.node.comment_id, row.level])).toEqual([
             ["c1", 0],
@@ -278,7 +278,7 @@ describe("countCommentsInTree", () => {
 
     it("excludes context-only parents retained by filterCommentTree from the count", () => {
         // Only c2 matches "reply"; c1 is retained solely as thread context and must not be
-        // counted as a search result (the bug: a search that surfaced one match used to report
+        // counted as a search result (the bug. A search that surfaced one match used to report
         // "Showing 2 results").
         const tree = buildCommentTree(
             [

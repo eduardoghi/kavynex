@@ -114,7 +114,7 @@ export function compareComments(
 /// Attaching a node whose chain loops (a comment naming itself as its parent, or two naming each
 /// other) builds an island that no root reaches, so those comments render nowhere at all. Silently,
 /// and while still being counted in `comments_count`. The data would have to be malformed for that
-/// to happen, which is exactly why it must not depend on the data being well formed: the cost of
+/// to happen, which is exactly why it must not depend on the data being well formed. The cost of
 /// being wrong is a comment that exists in the library and cannot be seen.
 function chainEndsAtARoot(
     node: CommentTreeNode,
@@ -302,8 +302,8 @@ export type FlatCommentRow = {
 };
 
 // Flattens a comment tree into a pre-order linear list, tagging each node with its depth. The
-// search view renders this (rather than a recursive component tree) so it can virtualize the rows:
-// a broad query that matches thousands of comments then only ever mounts the handful in the
+// search view renders this (rather than a recursive component tree) so it can virtualize the rows.
+// A broad query that matches thousands of comments then only ever mounts the handful in the
 // viewport, instead of building the whole matching subtree at once. Depth is carried so each row can
 // still be indented to show the reply hierarchy.
 export function flattenCommentTree(nodes: CommentTreeNode[], level = 0): FlatCommentRow[] {

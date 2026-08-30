@@ -6,7 +6,7 @@ export type MediaPreparationState = {
     isLoadingYtDlpFormats: boolean;
 };
 
-// Read-only busy predicate for UI guards. This is not a mutual-exclusion primitive: the
+// Read-only busy predicate for UI guards. This is not a mutual-exclusion primitive. The
 // actual reentrancy protection lives in each operation's useAsyncFlag.
 export function isMediaOperationBusy(state: MediaPreparationState): boolean {
     return (

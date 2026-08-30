@@ -12,10 +12,10 @@ pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
 
 /// The container every thumbnail this app produces is written in.
 ///
-/// Both producers read it: the yt-dlp download normalizes to it with `--convert-thumbnails` and
+/// Both producers read it. The yt-dlp download normalizes to it with `--convert-thumbnails` and
 /// then looks the written file up by it (`services/thumbnail/download.rs`), and the local-import
 /// FFmpeg preview names its output with it (`services/thumbnail/temp.rs`). It lives here rather
-/// than in either module because it is one decision, and it was made in only one of them: the
+/// than in either module because it is one decision, and it was made in only one of them. The
 /// download switched to JPEG while the local import kept writing lossless PNG, so a library that
 /// mixes both sources ended up holding both formats for the same kind of content, and the size
 /// win the switch was made for applied to half the paths.
@@ -45,7 +45,7 @@ pub const TEMP_DIR_YT_DLP: &str = "yt-dlp-temp";
 pub const TEMP_DIR_YT_DLP_THUMB: &str = "yt-dlp-thumb-temp";
 
 // Holds the display-sized copies of the library's thumbnails (see services/thumbnail/display.rs).
-// Derived and disposable: every entry is regenerable from the canonical file in the library, is
+// Derived and disposable. Every entry is regenerable from the canonical file in the library, is
 // addressed by that file's own content hash, and is swept with the rest of the cache directory.
 pub const TEMP_DIR_THUMB_DISPLAY: &str = "thumb-display";
 
@@ -57,7 +57,7 @@ pub const TEMP_DIR_PENDING_MEDIA: &str = "pending-media";
 /// The cache subdirectories whose files the webview actually renders, and therefore the only ones
 /// the asset protocol is authorized to serve (`commands::security::managed_cache_scope_dirs`).
 ///
-/// Both are drawn through `convertFileSrc`: `thumbs-temp/` holds the preview shown before a
+/// Both are drawn through `convertFileSrc`. `thumbs-temp/` holds the preview shown before a
 /// thumbnail is committed to the library, and `thumb-display/` the display-sized derivatives the
 /// grid draws. The other cache subdirectories are backend-only. `yt-dlp-temp/` and
 /// `yt-dlp-thumb-temp/` are scratch whose output is moved into the library before any path reaches
@@ -68,7 +68,7 @@ pub const TEMP_DIR_PENDING_MEDIA: &str = "pending-media";
 /// directory (`app_log_dir()`) and of the WebView2 profile (`EBWebView/`), so a recursive grant of
 /// the root hands the renderer a tree it has no reason to reach. That is the same mistake
 /// [`MANAGED_LIBRARY_DIRS`] exists to avoid for the user's library, and it is avoided here the same
-/// way: name the subdirectories, never the parent.
+/// way. Name the subdirectories, never the parent.
 pub const WEBVIEW_READABLE_CACHE_DIRS: [&str; 2] = [TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY];
 
 pub const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
@@ -78,13 +78,13 @@ pub const EVENT_YT_DLP_CANCELLED: &str = "yt-dlp-cancelled";
 pub const EVENT_YT_DLP_TERMINAL: &str = "yt-dlp-terminal";
 
 // Emitted when the background full integrity check finds the database may be corrupt, so the
-// frontend can surface it proactively instead of leaving it buried in the log file. Payload:
-// `{ "problems": [..] }`.
+// frontend can surface it proactively instead of leaving it buried in the log file. The payload
+// is `{ "problems": [..] }`.
 pub const EVENT_DATABASE_INTEGRITY_FAILED: &str = "database-integrity-failed";
 
 // Emitted when the startup sweep gives up on one or more pending-media markers, i.e. when a crashed
-// creation's artifacts have failed to reconcile enough times to stop being retried. Payload:
-// `{ "abandoned": <count> }`. It exists for the same reason as the event above: the outcome is disk
+// creation's artifacts have failed to reconcile enough times to stop being retried. Payload.
+// `{ "abandoned": <count> }`. It exists for the same reason as the event above. The outcome is disk
 // the user is paying for and a concrete next step (Diagnostics reports the files as unreferenced),
 // and without this the only record of it is a log line nobody opens. See services/pending_media.rs.
 pub const EVENT_PENDING_MEDIA_ABANDONED: &str = "pending-media-abandoned";

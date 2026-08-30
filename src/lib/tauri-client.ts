@@ -1,4 +1,4 @@
-// The single IPC seam: the only module that calls into our own Rust backend, wrapping Tauri's
+// The single IPC seam. The only module that calls into our own Rust backend, wrapping Tauri's
 // `invoke`/`listen` with consistent error normalization (parseAppError). Tauri's *platform*
 // capabilities (dialogs, opener, process, updater, app version, asset URLs) live in the sibling
 // `tauri-platform.ts`. Between them these two modules are the only files allowed to import
@@ -60,7 +60,7 @@ export async function invokeVoid(
 // keeps only the compact parsed messages). `onLines` runs for each batch as it arrives.
 //
 // The promise resolves only after the backend's terminal `done` message, not merely when the
-// command returns: channel messages and the invoke response travel independently, so resolving on
+// command returns. Channel messages and the invoke response travel independently, so resolving on
 // the command return could race the last in-flight batch and drop its lines. It rejects (normalized
 // through invokeCommand's parseAppError) if the read fails, in which case the caller discards any
 // partial batches it already accumulated.
@@ -104,7 +104,7 @@ export async function streamLiveChatFile(
 // Runs the deep library verification, reporting progress through `onProgress` and resolving with
 // the report the backend sends on its terminal `done` message.
 //
-// The same two-phase shape as streamLiveChatFile, and for the same reason: channel messages and the
+// The same two-phase shape as streamLiveChatFile, and for the same reason. Channel messages and the
 // invoke response travel independently, so resolving when the command returns could race the last
 // in-flight message. Here that would drop the report itself, since `done` is what carries it.
 //
@@ -153,7 +153,7 @@ export async function streamLibraryVerification(
 
     await invokeCommand(TAURI_COMMANDS.VERIFY_LIBRARY_CONTENT, { libraryPath, onProgress: channel });
 
-    // Awaited after the invoke, not instead of it: channel messages and the invoke response travel
+    // Awaited after the invoke, not instead of it. Channel messages and the invoke response travel
     // independently, so resolving on the return could race the `done` that carries the report.
     return await done;
 }

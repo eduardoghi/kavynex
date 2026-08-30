@@ -13,7 +13,7 @@ import {
 
 type ChangeListener = (event: MediaQueryListEvent) => void;
 
-// A matchMedia stub the test can drive: `matches` is what the OS reports, and `fire` flips it the
+// A matchMedia stub the test can drive. `matches` is what the OS reports, and `fire` flips it the
 // way a live change to the system preference would, through the listener the provider registered.
 function installMatchMedia(initialMatches: boolean) {
     let matches = initialMatches;

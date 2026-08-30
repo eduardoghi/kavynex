@@ -1,7 +1,7 @@
 export const TAURI_COMMANDS = {
     CHECK_EXTERNAL_TOOLS: "check_external_tools",
     LOG_FRONTEND_ERROR: "log_frontend_error",
-    // Takes no arguments, deliberately: the backend resolves the log directory from `app_log_dir()`
+    // Takes no arguments, deliberately. The backend resolves the log directory from `app_log_dir()`
     // so there is no path for a caller to redirect. See src-tauri/src/commands/logging.rs.
     OPEN_LOG_DIRECTORY: "open_log_directory",
 

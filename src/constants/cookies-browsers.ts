@@ -72,7 +72,7 @@ export function parseCookiesBrowserSelector(value: string): CookiesBrowserSelect
         return null;
     }
 
-    // The split order mirrors yt-dlp's own regex: the container after the first `::`, the profile
+    // The split order mirrors yt-dlp's own regex. The container after the first `::`, the profile
     // after the first `:` before it (a Windows path in the profile keeps its drive colon, since only
     // the first one separates), and the keyring after a `+` in the browser part.
     const [head, rawContainer] = splitOnce(trimmed, "::");
@@ -103,7 +103,7 @@ export function parseCookiesBrowserSelector(value: string): CookiesBrowserSelect
 
     const container = rawContainer === null ? null : rawContainer.trim();
 
-    // A container that itself starts with `:` is the `firefox:::x` shape: yt-dlp parses it, as a
+    // A container that itself starts with `:` is the `firefox:::x` shape. yt-dlp parses it, as a
     // container literally named `:x`, but nothing a user means is spelled that way.
     if (container !== null && (!isSafeSelectorComponent(container) || container.startsWith(":"))) {
         return null;
@@ -148,7 +148,7 @@ export function normalizeCookiesBrowser(value: string | null | undefined): strin
 /**
  * Builds the selector the form sends from the browser combo and the optional profile field.
  *
- * The profile field is appended after the browser: a plain value becomes `browser:value`, and a
+ * The profile field is appended after the browser. A plain value becomes `browser:value`, and a
  * value the user starts with `+` (a keyring, `+gnomekeyring:Default`) is appended as typed so the
  * one field can express the whole grammar without a second control for the rare case. "manual" is
  * not a browser and composes to nothing, as does an empty browser.
@@ -173,7 +173,7 @@ export function composeCookiesBrowserSelector(browser: string, profile: string):
 }
 
 /**
- * The form of a selector that may be shown in the terminal preview or written to a log: the
+ * The form of a selector that may be shown in the terminal preview or written to a log. The
  * browser and keyring kept, the profile and container replaced. A profile is often a path under
  * the user's home directory, and both the terminal and the log are pasted into bug reports. A value
  * that does not parse is fully replaced. Mirrors `redact_cookies_browser_selector` on the backend.

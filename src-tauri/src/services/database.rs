@@ -32,7 +32,7 @@ pub struct Db {
     // Serializes opening the pool against the restore-from-backup flow. Restore renames the
     // database file (and its -wal/-shm sidecars) out from under any concurrent open, so it holds
     // this lock for its whole run and pool opening waits on it. Only ever contended on the one-time
-    // open: once the pool is cached, `pool()` returns it below without taking the lock.
+    // open. Once the pool is cached, `pool()` returns it below without taking the lock.
     open_lock: Mutex<()>,
 }
 
@@ -50,7 +50,7 @@ impl Db {
     /// Returns the shared pool, opening (and migrating) it on first use. The returned
     /// `SqlitePool` is a cheap `Arc` clone, so callers hold it by value.
     pub async fn pool(&self) -> AppResult<SqlitePool> {
-        // Steady state: the pool is already open, so return it without taking the open lock (which
+        // Steady state. The pool is already open, so return it without taking the open lock (which
         // only guards the one-time open against a concurrent restore-from-backup).
         if let Some(pool) = self.pool.get() {
             return Ok(pool.clone());
@@ -68,7 +68,7 @@ impl Db {
     /// Acquires the lock that serializes pool opening, for the restore-from-backup flow. Held for
     /// the whole restore so no concurrent command can open (and thereby create/rename) the database
     /// file while the restore renames it underneath. The caller must re-check [`Db::is_initialized`]
-    /// while holding the returned guard: the pool may have opened between the caller's first check
+    /// while holding the returned guard. The pool may have opened between the caller's first check
     /// and acquiring the lock.
     pub async fn restore_guard(&self) -> tokio::sync::MutexGuard<'_, ()> {
         self.open_lock.lock().await
@@ -148,7 +148,7 @@ struct SettingSpec {
     normalize: fn(&str) -> AppResult<String>,
 }
 
-/// The normalizer for a setting whose value the app does not constrain: a path, a flag already
+/// The normalizer for a setting whose value the app does not constrain. A path, a flag already
 /// rendered by the caller. Stored as given.
 fn store_as_given(value: &str) -> AppResult<String> {
     Ok(value.to_string())
@@ -167,7 +167,7 @@ const SETTINGS: &[SettingSpec] = &[
         key: LIBRARY_PATH_KEY,
         load: |settings, value| settings.library_path = Some(value),
         store: |settings| settings.library_path.as_deref(),
-        // Deliberately unconstrained here: it is re-derived and canonicalized downstream
+        // Deliberately unconstrained here. It is re-derived and canonicalized downstream
         // (library::guard, ensure_library_dir), gated at the command boundary by
         // validate_settings_library_path, and an empty value is the valid "not configured yet"
         // state.
@@ -190,7 +190,7 @@ const SETTINGS: &[SettingSpec] = &[
         load: |settings, value| settings.external_backup_dir = Some(value),
         store: |settings| settings.external_backup_dir.as_deref(),
         // Validated at the command boundary (set_external_backup_dir), which is also the only
-        // writer: the whole-row write below leaves this field `None` and therefore skips the key.
+        // writer. The whole-row write below leaves this field `None` and therefore skips the key.
         normalize: store_as_given,
     },
 ];
@@ -268,7 +268,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
     // migration or corruption can be rolled back). When one is pending, snapshot
     // synchronously before opening the pool. Otherwise, defer the daily snapshot to a
     // background task so a normal launch is never blocked by a VACUUM of a large database.
-    // Best effort either way: a backup failure must not stop the app from opening.
+    // Best effort either way. A backup failure must not stop the app from opening.
     let migration_pending = crate::services::db_backup::is_schema_migration_pending(path).await;
 
     if migration_pending {
@@ -276,7 +276,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         // running one over a corrupt file risks amplifying the damage, and the pre-migration
         // snapshot below is skipped precisely when the source is unhealthy (backup_database bails on
         // a failed quick_check), so it cannot be relied on to roll the migration back afterwards.
-        // When the file exists but fails quick_check, stop here: the frontend's startup recovery
+        // When the file exists but fails quick_check, stop here. The frontend's startup recovery
         // then offers to restore from the last healthy backup (see use-app-bootstrap.ts) instead of
         // migrating over a bad file. A missing file (first run) is not a database yet, so it is
         // exempt. A subtly damaged file that still passes the fast quick_check is not caught here
@@ -293,7 +293,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         // backup failure must block the migration rather than proceed unprotected. A throttled or
         // skipped backup returns Ok(false). A recent snapshot already predates this migration, so
         // that case is fine. Only an Err (disk full, permission denied, a failed VACUUM) is fatal.
-        // A brand-new database (first run, no file yet) never reaches here as an Err either:
+        // A brand-new database (first run, no file yet) never reaches here as an Err either.
         // backup_database returns Ok(false) immediately when the file is missing, so first-run setup
         // is not blocked. The frontend's startup recovery flow handles this AppError the same way it
         // handles the quick_check gate above, by offering a restore from the last healthy backup.
@@ -325,7 +325,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         .await
         .map_err(|error| db_error("failed to open app database", error))?;
 
-    // The schema is owned by the backend: create/migrate it as part of pool
+    // The schema is owned by the backend. create/migrate it as part of pool
     // initialization so it is ready before any query runs.
     crate::services::db_schema::ensure_schema(&pool).await?;
 
@@ -352,7 +352,7 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
 /// that only hold an `AppHandle` do not each need to reach into managed state. The returned pool
 /// is a cheap `Arc` clone.
 ///
-/// Generic over the runtime rather than tied to `AppHandle<Wry>`. That is not a style preference:
+/// Generic over the runtime rather than tied to `AppHandle<Wry>`. That is not a style preference.
 /// `AppHandle` alone resolves to the real runtime, and `tauri::test::mock_builder` produces an
 /// `App<MockRuntime>`, so every function in a chain that names the bare alias is unreachable from a
 /// test, which is what kept the media-creation orchestration untested. `try_state` is available on
@@ -386,7 +386,7 @@ pub fn is_pool_initialized<R: Runtime>(app: &AppHandle<R>) -> bool {
 /// checkpoints on its own every ~1000 pages. What this buys is a small `-wal` sidecar between
 /// sessions. A session of light, sporadic writes never crosses the automatic threshold, so without
 /// an explicit checkpoint the sidecar can sit at a few MB indefinitely, which the size reported in
-/// Settings > Database includes. Best effort: `TRUNCATE` waits for readers, but at exit there are
+/// Settings > Database includes. Best effort. `TRUNCATE` waits for readers, but at exit there are
 /// none, and a failure costs nothing but the sidecar staying as it was.
 pub async fn checkpoint_wal(pool: &SqlitePool) -> AppResult<()> {
     sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -403,7 +403,7 @@ const EXIT_CHECKPOINT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// [`checkpoint_wal`] for the app-exit path, which is synchronous. Does nothing when the pool was
 /// never opened (a session that never touched the database has no log to fold), and never opens
-/// it: the point of exit is to stop, not to start.
+/// it. The point of exit is to stop, not to start.
 pub fn checkpoint_wal_blocking<R: Runtime>(app: &AppHandle<R>) {
     let Some(db) = app.try_state::<Db>() else {
         return;
@@ -437,7 +437,7 @@ pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAp
     // Every row, with no `IN (?, ?, ...)` filter. The filter used to be the thing that had to
     // grow a placeholder per setting, and building that list dynamically would mean handing sqlx
     // a non-literal SQL string, which it refuses outright (`SqlSafeStr`), correctly, since that
-    // is the shape injection arrives in. Selecting the whole table sidesteps both: it is a
+    // is the shape injection arrives in. Selecting the whole table sidesteps both. It is a
     // handful of rows on a local database, the dispatch below already ignores a key it does not
     // recognize, and adding a setting now touches the query not at all.
     let rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM app_settings")
@@ -479,7 +479,7 @@ where
 /// Accepts only the two supported import modes. The UI only ever sends these, so any other
 /// value comes from a bug or a compromised frontend and is rejected rather than persisted.
 /// otherwise a later read would surface a nonsensical mode in the settings UI. `library_path`
-/// is intentionally left free-form: it is re-derived and canonicalized downstream
+/// is intentionally left free-form. It is re-derived and canonicalized downstream
 /// (`library::guard`, `ensure_library_dir`), and an empty value is the valid "not configured
 /// yet" state.
 fn validate_import_mode(value: &str) -> AppResult<&str> {
@@ -597,7 +597,7 @@ mod tests {
     }
 
     /// The four keys the settings form owns, shaped the way `commands::settings` builds them.
-    /// `external_backup_dir` stays `None` here for the same reason it does there: it has its own
+    /// `external_backup_dir` stays `None` here for the same reason it does there. It has its own
     /// command, and a `None` field is skipped rather than cleared.
     fn form_settings(
         import_mode: &str,
@@ -735,7 +735,7 @@ mod tests {
     #[tokio::test]
     async fn a_none_field_leaves_its_key_alone_instead_of_clearing_it() {
         // The property the whole-row write depends on, and the reason it takes a struct of
-        // options rather than a value per key: the settings form owns four of the five keys, so
+        // options rather than a value per key. The settings form owns four of the five keys, so
         // saving it must not touch `external_backup_dir`. Writing every field unconditionally
         // would turn every save of the Settings modal into a silent "external backup off".
         let pool = create_test_pool().await;
@@ -762,14 +762,14 @@ mod tests {
 
     #[test]
     fn each_spec_entry_loads_and_stores_its_own_distinct_field() {
-        // The failure this table makes possible: a copy-pasted entry whose `load` writes one field
+        // The failure this table makes possible. A copy-pasted entry whose `load` writes one field
         // while its `store` reads another, or two entries sharing a field. Neither shows up as a
         // round-trip failure. The value still comes back, just under the wrong key, which surfaces
         // as one setting silently taking another's value.
         //
         // Loading a single entry and requiring every *other* entry to still read None is what
         // catches both, and it covers a setting added later without needing its own assertion.
-        // Deliberately not routed through the pool: `import_mode`'s normalizer rejects anything
+        // Deliberately not routed through the pool. `import_mode`'s normalizer rejects anything
         // outside its closed set, so a generic value per entry cannot be written, and the pairing
         // this asserts is a property of the table rather than of the SQL.
         for spec in SETTINGS {
@@ -841,7 +841,7 @@ mod tests {
         // db_error attaches the raw driver text as `details` for diagnostics, but under the
         // APP_ERROR code the frontend resolves the message to a generic string and never surfaces
         // `details` (see src/utils/user-friendly-error.ts, which has tests pinning that). This
-        // pins the backend half of that contract: db_error must keep emitting APP_ERROR, so a raw
+        // pins the backend half of that contract. db_error must keep emitting APP_ERROR, so a raw
         // SQLite message can never reach the user verbatim as the primary error text.
         let error = db_error(
             "failed to insert media",

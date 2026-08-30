@@ -6,7 +6,7 @@ import { createMedia } from "../test/factories/media";
 import { renderWithMantine } from "../test/test-utils";
 import { UI_TEXT } from "../constants/ui-text";
 
-// Home is presentation plus wiring: every hook it composes and every section it renders has a
+// Home is presentation plus wiring. Every hook it composes and every section it renders has a
 // test of its own. What nothing else pins is the page itself, which is why the children are
 // replaced with stubs that record the props they were handed. A stub that rendered the real
 // component would re-test the component; a stub that records the props tests the page.
@@ -104,7 +104,7 @@ const channel = { id: 7, name: "Channel", youtube_handle: "@channel", avatar_pat
 const item = createMedia({ id: 42, channel_id: 7, title: "Clip" });
 
 // Only the fields Home reads are given real values; everything else is the minimum that keeps
-// the stubbed children satisfied. The cast is deliberate: building every nested controller in
+// the stubbed children satisfied. The cast is deliberate. Building every nested controller in
 // full would be a page of mocks for fields the page never touches, and the children that would
 // read them are stubs.
 function controller(overrides: {
@@ -310,7 +310,7 @@ describe("Home", () => {
         expect(screen.getByTestId("library-section")).toBeInTheDocument();
         withChannel.unmount();
 
-        // The panel flag alone is not enough: the section is keyed by the selected channel, so a
+        // The panel flag alone is not enough. The section is keyed by the selected channel, so a
         // panel asked to show with no channel behind it renders nothing rather than crashing on
         // `selectedChannel.id`.
         vi.mocked(useHomeController).mockReturnValue(
@@ -358,7 +358,7 @@ describe("Home", () => {
     });
 
     it("keeps the rest of the page when the player subtree crashes", () => {
-        // The reason the player sits inside its own boundary: it renders the least controllable
+        // The reason the player sits inside its own boundary. It renders the least controllable
         // data in the app. A crash there has to degrade to the boundary's card, with the sidebar
         // and the library still mounted, and offer the close action rather than taking the app
         // down to the root boundary.

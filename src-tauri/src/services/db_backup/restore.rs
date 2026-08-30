@@ -4,7 +4,7 @@
 //! in the parent and what stayed there with them.
 //!
 //! Two orderings here are load-bearing rather than incidental, and both are stated where they
-//! happen: the chosen snapshot is staged and only then renamed into place, so a failure never
+//! happen. The chosen snapshot is staged and only then renamed into place, so a failure never
 //! leaves the app with no database at all; and the corrupt database is moved under a scratch name
 //! *before* the `.corrupt` generations are rotated, so a rename that fails cannot cost a generation
 //! it has nothing to put back.
@@ -38,7 +38,7 @@ pub(super) fn generation_corrupt_path(db_path: &Path, generation: usize) -> Path
 }
 
 /// Shifts the corrupt snapshots up a generation so a second restore does not discard the
-/// evidence from the first. Fewer generations are kept than for `.bak`: each one is a full copy
+/// evidence from the first. Fewer generations are kept than for `.bak`. Each one is a full copy
 /// of a database that is already known to be broken, so this bounds the disk they can occupy
 /// while still leaving repeated corruption diagnosable.
 pub(super) fn rotate_corrupt_snapshots(db_path: &Path) {
@@ -60,10 +60,10 @@ pub(super) fn restore_staging_path(db_path: &Path) -> PathBuf {
 /// That window is only two renames wide, but if the process dies inside it the database file is
 /// simply absent, and the pool opens with `create_if_missing(true)`, so the next launch would
 /// create a fresh, empty one and present an empty library while the user's data sits untouched in
-/// `.restore.tmp` (and `.corrupt`) right next to it. Nothing would say so: the app would look like
+/// `.restore.tmp` (and `.corrupt`) right next to it. Nothing would say so. The app would look like
 /// a first run. Recoverable by hand, but only by someone who knows to look.
 ///
-/// Deliberately narrow: it acts only when the database is missing *and* a staging file is present,
+/// Deliberately narrow. It acts only when the database is missing *and* a staging file is present,
 /// which is exactly the interrupted state. A normal launch has a database and never reaches the
 /// rename. Runs at startup before the pool can open, and before any pending import is applied, so
 /// an import staged on top of a restore still sets the restored database aside as its undo
@@ -114,7 +114,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
             continue;
         }
 
-        // Refuse a backup whose schema is newer than this build supports: restoring it would only
+        // Refuse a backup whose schema is newer than this build supports. Restoring it would only
         // "succeed" for `ensure_schema` to reject it on the next open (DatabaseSchemaTooNew),
         // leaving the app unable to start. Catching it here fails the restore itself with a clear
         // message. A backup written by this or an older build always passes.
@@ -167,7 +167,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     }
 
     // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than
-    // overwrite: a second restore (the restored database degraded again) would otherwise discard
+    // overwrite. A second restore (the restored database degraded again) would otherwise discard
     // the first failure's evidence, which is exactly the case where repeated corruption most
     // needs diagnosing.
     //

@@ -103,12 +103,12 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     // one of the background tasks that open the pool by themselves. The recovery modal is the only
     // place a restore is offered, so there is nothing else the user could have been trying to do.
     // This used to read "Restart Kavynex and try the restore again", which is the opposite of the
-    // right action: the database is working, and restoring would replace it with an older snapshot.
+    // right action. The database is working, and restoring would replace it with an older snapshot.
     [DATABASE_ALREADY_OPEN_ERROR_CODE]:
         "The database recovered on its own and is working normally, so there is nothing to restore. Close this dialog and keep using Kavynex. Your data is intact.",
 
     // Catalogued even though the add-media flow routes it to the neutral notice channel before it
-    // reaches here: a cancel raised on any other path (a future batch import, a retry) must still
+    // reaches here. A cancel raised on any other path (a future batch import, a retry) must still
     // read as the outcome the user chose rather than as a failure.
     [MEDIA_IMPORT_CANCELLED_ERROR_CODE]:
         "Import cancelled. Nothing was added to your library and the original file was left where it was.",
@@ -139,7 +139,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [INVALID_SOURCE_MEDIA_ERROR_CODE]: "Select a valid media file.",
     [SOURCE_MEDIA_NOT_FOUND_ERROR_CODE]: "The selected media file was not found.",
     // The likeliest failure of the most-used flow, and it is entirely the user's to fix. The
-    // accepted formats are not repeated here: the backend sends them in the error's `details`
+    // accepted formats are not repeated here. The backend sends them in the error's `details`
     // (utils/format.rs's allowed_media_extensions_label), which is appended after this line, so the
     // list the user reads is always the list that rejected the file.
     [UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE]:
@@ -148,7 +148,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "The saved live chat file is missing from the library folder. It may have been moved or deleted outside Kavynex.",
     [LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE]:
         "The saved live chat file could not be read. It looks damaged, but the video itself is unaffected.",
-    // Deliberately says nothing is wrong, because nothing is: the read was refused for load, and the
+    // Deliberately says nothing is wrong, because nothing is. The read was refused for load, and the
     // two neighbouring live chat messages both describe a file the user has to go and fix. Retrying
     // is the whole action here, so it is the whole message.
     [TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE]:
@@ -213,7 +213,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "This download is already running. Wait for it to finish, or cancel it first.",
 
     // Every one of these ends by saying the saved comments survived, because that is what the user
-    // needs to know and cannot tell from the failure alone. It is true by construction: the refresh
+    // needs to know and cannot tell from the failure alone. It is true by construction. The refresh
     // fetches first and only replaces what is stored once the fetch succeeded.
     [YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE]:
         "The comment download took too long and was interrupted. Your saved comments were kept.",
@@ -225,7 +225,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "yt-dlp returned comment data Kavynex could not read. Your saved comments were kept.",
     [YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE]:
         "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Your saved comments were kept.",
-    // Refused before yt-dlp is even started: the stored id is not an 11-character YouTube id. Only
+    // Refused before yt-dlp is even started. The stored id is not an 11-character YouTube id. Only
     // reachable for a row that did not come from this app's own add flow (an imported database, a
     // hand-edited row), which is why it names the id rather than the network.
     [INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE]:
@@ -242,7 +242,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "The selected file path is outside the allowed library folder.",
 
     [READ_DIR_FAILED_ERROR_CODE]: "Could not read the selected folder.",
-    // The one code whose generic fallback is actively wrong: it ends by telling the user to check
+    // The one code whose generic fallback is actively wrong. It ends by telling the user to check
     // the app log file, and this is the failure to open the folder holding it.
     [LOG_DIRECTORY_OPEN_FAILED_ERROR_CODE]:
         "Kavynex could not open the log folder. Diagnostics shows its path, so it can still be opened by hand.",

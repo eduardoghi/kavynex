@@ -76,8 +76,9 @@ Repository consistency (plain Node, no install needed. CI runs all five on every
 - `node scripts/verify-node-version.js`: fails when the Node version in `.nvmrc` and the
   `node-version:` values in the workflows disagree.
 - `node scripts/verify-command-path-surface.js`: fails when either half of the cross-cutting path
-  rule no longer matches its declared inventory: the set of `#[tauri::command]`s taking a path from
-  the caller, and the set of functions calling `is_network_path` to refuse a network location.
+  rule no longer matches its declared inventory, which is the set of `#[tauri::command]`s taking a
+  path from the caller and the set of functions calling `is_network_path` to refuse a network
+  location.
   Adding such a command (or a path parameter to an existing one) is meant to stop here, so the new
   path gets classified under `docs/THREAT-MODEL.md`'s cross-cutting path rule rather than slipping
   in unexamined; adding or removing a guard stops here too, so that document's table of enforcement
@@ -85,14 +86,14 @@ Repository consistency (plain Node, no install needed. CI runs all five on every
   inventories once the document is right.
 
   What it does not check is that the class a path is declared under is the one the code applies to
-  it, which needs the call chain. So the rule that goes with the inventory is: **a command that
+  it, which needs the call chain. So the inventory comes with a rule. **A command that
   takes a path from the caller (or a path parameter added to one that exists) comes with a test
   that sends a UNC spelling through it and asserts the refusal.** `\\host\share\x`, `//host/share/x`
   and `\\?\UNC\host\share\x` at least, the error code pinned, and the assertion that nothing was
   touched before the refusal (the library directory not created, say). The IPC harness in
   `commands/test_ipc.rs` drives the real command; `commands/database.rs`, `commands/thumbnail.rs`
   and `commands/media.rs` have the shape to copy. The reason this is a rule and not a habit is
-  `persist_thumbnail_file`: it sat in the inventory, correctly classified, with the document naming
+  `persist_thumbnail_file`. It sat in the inventory, correctly classified, with the document naming
   a guard it did not have, through two audits. The test is the only one of the three that would
   have gone red.
 - `node scripts/verify-capability-surface.js`: fails when the Tauri APIs the two seam files import
@@ -109,7 +110,7 @@ on every push:
 
 - `node scripts/verify-mutants-exclusions.js <cargo mutants --list output>`: fails when an
   `exclude_re` entry in `src-tauri/.cargo/mutants.toml` matches no mutant. Such an entry is silent
-  in both directions: the mutant it suppressed comes back and reddens the weekly run for a reason
+  in both directions. The mutant it suppressed comes back and reddens the weekly run for a reason
   unrelated to the tests, or the function it named was renamed and its real mutant is now
   unexcluded and unnoticed among the survivors. Two entries had already died that way before this
   existed, both after a pure extraction moved the code they named. To run it locally:
@@ -121,16 +122,16 @@ on every push:
   node scripts/verify-mutants-exclusions.js /tmp/mutants.txt
   ```
 
-  `--no-config` is required: a listing that applied the config would already have removed every
-  mutant the exclusions name, so every pattern would read as dead. It also drops `examine_globs`,
+  `--no-config` is required, because a listing that applied the config would already have removed
+  every mutant the exclusions name, so every pattern would read as dead. It also drops `examine_globs`,
   which is why the scope is passed back in from that same list via `--file-args`.
 
 A fifth needs a real release to check against, so it runs in `release.yml`'s `checksums` job:
 
 - `node scripts/verify-readme-asset-names.js <file with one asset name per line>`: fails when
-  `README.md`'s download list and the assets a release carries disagree, in either direction: a
-  name the README offers that is not there, or an installer the release ships that the README never
-  mentions. Both have already happened (see `docs/RELEASING.md`). To run it against a published
+  `README.md`'s download list and the assets a release carries disagree, in either direction. Either
+  a name the README offers that is not there, or an installer the release ships that the README
+  never mentions. Both have already happened (see `docs/RELEASING.md`). To run it against a published
   release:
 
   ```bash
@@ -153,11 +154,11 @@ Two tools, for two kinds of commit, and neither is a substitute for the other:
   git blame -w -C -C -C -- src-tauri/src/services/db_schema/tests.rs
   ```
 
-  Verified against that commit: with `-w -C -C -C` every line lands on the commit that wrote the
-  test; without them, on the move.
+  Verified against that commit. With `-w -C -C -C` every line lands on the commit that wrote the
+  test, and without them, on the move.
 
 - **Lines reformatted in place** (a mass `cargo fmt`, a renamed identifier across a file). For
-  those, `.git-blame-ignore-revs` is the right tool: list the hash there and, once per clone,
+  those, `.git-blame-ignore-revs` is the right tool. List the hash there and, once per clone,
 
   ```bash
   git config blame.ignoreRevsFile .git-blame-ignore-revs
@@ -184,7 +185,7 @@ to fail the build if the checked-in bindings are stale. Never hand-edit a file u
 
 ### Field naming on IPC types
 
-A **new** type crossing the IPC boundary uses camelCase field names on the wire: put
+A **new** type crossing the IPC boundary uses camelCase field names on the wire, so put
 `#[serde(rename_all = "camelCase")]` on the struct/enum so the generated TypeScript reads
 naturally on the frontend (`StoredAppSettingsPayload` and `MediaPageQuery` are the reference
 examples). Do not mix per-field `#[serde(rename = ...)]` with unrenamed siblings on the same
@@ -206,7 +207,7 @@ just slower. The failure mode is extra renders, not a crash, which is exactly wh
 drift in unnoticed.
 
 **Where a new hook goes** is the same question the backend answers in `docs/ARCHITECTURE.md`, with
-the same rule: a feature family that outgrew a shared filename prefix becomes a directory, and
+the same rule. A feature family that outgrew a shared filename prefix becomes a directory, and
 everything else stays flat. Today that is `home/`, `media/`, `channels/` and `settings/`. Put a new
 hook in the family it belongs to if one exists; leave it at the root otherwise, including when it
 would be the second or third of a prefix that has not grown into a directory yet. A hook with no
@@ -285,10 +286,10 @@ authoritative version; what follows is what to expect a red run to be about:
   refusing a unicode dash where a plain `-` belongs, if a test needs one of those characters as
   data, spell it as a `\uXXXX` escape rather than pasting it.
 - **Frontend tests (Windows, macOS)**: the same suite on the other two platforms. It is jsdom
-  but not fully platform-independent: date formatting varies with the runner's ICU.
+  but not fully platform-independent, since date formatting varies with the runner's ICU.
 - **Rust (Linux, Windows, macOS)**: `fmt --check`, `clippy -D warnings` and `cargo test` on
   each platform. Three further steps are Ubuntu-only, since they read the tree as text and are
-  platform-independent: the TS-bindings-freshness check, and two greps that are easy to trip
+  platform-independent. They are the TS-bindings-freshness check and two greps that are easy to trip
   without knowing they exist. A temporary path must come from
   `utils::naming::unique_temp_suffix` rather than a raw `as_nanos()`, and a path logged near a
   `logger::` call must go through `services::logger::redact_path` rather than `Path::display()`
@@ -300,6 +301,6 @@ authoritative version; what follows is what to expect a red run to be about:
 - **Workflow lint**: `actionlint` over the workflow YAML, including shellcheck on every
   `run:` block.
 
-Mutation testing is *not* on this path: it runs weekly (`mutation.yml`), Stryker over the
+Mutation testing is *not* on this path. It runs weekly (`mutation.yml`), Stryker over the
 frontend and cargo-mutants over the Rust modules in `src-tauri/.cargo/mutants.toml`'s
 `examine_globs`, sharded so no leg runs toward its timeout.

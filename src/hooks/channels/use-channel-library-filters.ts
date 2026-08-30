@@ -80,7 +80,7 @@ export function useChannelLibraryFilters({
     // section is only remounted when the *channel* changes. Jumping to a media in the already
     // selected channel while a filter excluded it left the grid paging to the end of the list and
     // giving up silently. No scroll, no highlight, no message. Clear the selections so the target
-    // is in the result set. Sort is left alone: ordering cannot exclude a row.
+    // is in the result set. Sort is left alone. Ordering cannot exclude a row.
     useEffect(() => {
         if (focusMediaId === null) {
             return;

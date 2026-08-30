@@ -3,13 +3,13 @@
 //! The library media list filters and sorts by title in the database now (server-side
 //! pagination), so the title needs a form that compares without regard to accents or case.
 //! `normalize_search_text` is applied to two things by the SAME function, which is what keeps
-//! the search correct: the value stored in `videos.title_normalized` (written by
+//! the search correct. The value stored in `videos.title_normalized` (written by
 //! `insert_media`/`update_media_title` and backfilled by the schema migration), and the raw
 //! search term the frontend sends. Because both sides go through this one function, a query for
 //! "jose" matches a stored "José" without the frontend and backend having to agree on a shared
 //! normalization spec.
 //!
-//! It mirrors the frontend's original `normalizeText` (`src/utils/media-library-filters.ts`):
+//! It mirrors the frontend's original `normalizeText` (`src/utils/media-library-filters.ts`).
 //! NFD-decompose, drop combining diacritical marks (U+0300..=U+036F), collapse whitespace runs
 //! to a single space, trim, and lowercase.
 
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn a_stored_title_and_its_search_term_normalize_equal() {
-        // The whole point: the stored column and the search term go through the same function,
+        // The whole point. The stored column and the search term go through the same function,
         // so a plain-ASCII query matches an accented stored title.
         let stored = normalize_search_text("Café com Pão");
         let query = normalize_search_text("cafe com pao");

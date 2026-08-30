@@ -70,7 +70,7 @@ describe("useLibraryVerification", () => {
 
     it("keeps a cancelled run's report rather than treating it as a failure", async () => {
         // The backend answers a cancel with a normal report carrying `cancelled: true`, and the
-        // distinction matters: a partial result is not an error, and it is also not a clean bill of
+        // distinction matters. A partial result is not an error, and it is also not a clean bill of
         // health. The hook has to hand both facts to the UI.
         verifyMock.mockResolvedValue(report({ checked: 1, verified: 1, cancelled: true }));
 
@@ -136,7 +136,7 @@ describe("useLibraryVerification", () => {
 
     it("asks the backend to stop and swallows a failed cancel", async () => {
         // A failed cancel is worth a log line and not an error dialog stacked on top of a check that
-        // is still working: the run either stops or finishes, and either way the report is what the
+        // is still working. The run either stops or finishes, and either way the report is what the
         // user sees.
         cancelMock.mockRejectedValue(new Error("nope"));
 

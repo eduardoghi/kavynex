@@ -83,7 +83,7 @@ describe("composeCookiesBrowserSelector", () => {
     });
 
     it("appends a keyring value that starts with + as typed", () => {
-        // The one field covers the whole grammar: a user on Linux who needs the keyring types
+        // The one field covers the whole grammar. A user on Linux who needs the keyring types
         // `+gnomekeyring:Default` and the browser is joined to it without a second separator.
         expect(composeCookiesBrowserSelector("chromium", "+gnomekeyring:Default")).toBe(
             "chromium+gnomekeyring:Default"

@@ -118,7 +118,7 @@ async fn run_and_capture_kills_the_child_and_reports_cancellation_when_flagged()
         ("sleep", vec!["30".to_string()])
     };
 
-    // Flag already set: the cancel branch wins immediately and the long-running child is
+    // Flag already set. The cancel branch wins immediately and the long-running child is
     // killed instead of the call blocking for the full timeout.
     let cancel = Arc::new(AtomicBool::new(true));
 
@@ -407,7 +407,7 @@ fn real_yt_dlp_metadata_deserializes_with_every_field_the_app_reads() {
     let metadata = parse_real_metadata();
 
     // Named individually rather than asserted as a whole, because the failure this catches is
-    // one field going quiet: serde maps an absent or renamed key to None on every one of these,
+    // one field going quiet. Serde maps an absent or renamed key to None on every one of these,
     // so a blanket "it parsed" assertion would pass while the value the app depends on vanished.
     assert_eq!(metadata.id.as_deref(), Some("jNQXAC9IVRw"));
     assert_eq!(metadata.title.as_deref(), Some("Me at the zoo"));
@@ -425,7 +425,7 @@ fn real_yt_dlp_metadata_deserializes_with_every_field_the_app_reads() {
 
 #[test]
 fn real_yt_dlp_metadata_normalizes_to_what_a_creation_stores() {
-    // The other half: not just that the fields parse, but that the values the row is built from
+    // The other half. Not just that the fields parse, but that the values the row is built from
     // come out right. `upload_date` is the one that transforms (yt-dlp's compact YYYYMMDD into
     // the ISO date the schema holds), and `youtube_video_id` is derived from the extractor
     // rather than read, so both are asserted against real input rather than a crafted string.
@@ -510,7 +510,7 @@ fn real_yt_dlp_output_omits_comments_and_the_model_tolerates_it() {
 /// the same contract.
 ///
 /// Ignored by default because it needs the network and a real `yt-dlp` on PATH, neither of
-/// which a unit-test run may assume. Not because it spawns a process: the yt-dlp
+/// which a unit-test run may assume. Not because it spawns a process. The yt-dlp
 /// process-kill/timeout/cancel tests in this file used to be `#[ignore]`d for that reason and no
 /// longer are, since the hang was specific to the ubuntu-22.04 runner (see the note beside
 /// `release.yml`'s "Run Rust tests" step). Run it deliberately:
@@ -563,7 +563,7 @@ fn live_yt_dlp_output_still_matches_the_committed_fixture() {
     assert_eq!(live.was_live, fixture.was_live);
 
     // The shape assertions, which are the ones that catch an upstream move. Deliberately not
-    // compared field-for-field against the fixture: format lists and comment totals change on
+    // compared field-for-field against the fixture. Format lists and comment totals change on
     // their own, so equality there would cry wolf. What must hold is that the values are still
     // there and still typed the way the app reads them.
     assert!(live.comment_count.is_some());
@@ -594,11 +594,11 @@ fn empty_comments_are_incomplete_only_when_a_positive_count_is_reported() {
     // Video reports comments but none came back -> extraction is incomplete (a failure).
     assert!(comments_extraction_looks_incomplete(Some(42), 0));
 
-    // Genuinely zero, or comments disabled (None): not incomplete.
+    // Genuinely zero, or comments disabled (None). Not incomplete.
     assert!(!comments_extraction_looks_incomplete(Some(0), 0));
     assert!(!comments_extraction_looks_incomplete(None, 0));
 
-    // Any comments were retrieved: never incomplete, regardless of the reported total.
+    // Any comments were retrieved. Never incomplete, regardless of the reported total.
     assert!(!comments_extraction_looks_incomplete(Some(42), 10));
     assert!(!comments_extraction_looks_incomplete(None, 5));
 }

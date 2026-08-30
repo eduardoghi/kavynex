@@ -16,7 +16,7 @@ describe("useHasBeenTrue", () => {
     });
 
     it("turns true on the render where the value is true", () => {
-        // Not on the render after it: the render that opens a modal is the one that has to mount
+        // Not on the render after it. The render that opens a modal is the one that has to mount
         // it, so a latch that lagged by one commit would leave the first open showing nothing.
         const { result } = renderHook(({ value }) => useHasBeenTrue(value), {
             initialProps: { value: true },
@@ -26,8 +26,8 @@ describe("useHasBeenTrue", () => {
     });
 
     it("stays true after the value goes false again", () => {
-        // The whole reason this is not `{opened && ...}`. Closing a modal must not unmount it:
-        // that cuts its own exit transition, so it vanishes instead of fading, and discards a
+        // The whole reason this is not `{opened && ...}`. Closing a modal must not unmount it.
+        // That cuts its own exit transition, so it vanishes instead of fading, and discards a
         // chunk that is already loaded.
         const { result, rerender } = renderHook(({ value }) => useHasBeenTrue(value), {
             initialProps: { value: false },

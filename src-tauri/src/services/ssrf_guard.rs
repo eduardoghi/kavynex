@@ -7,7 +7,7 @@
 //! the address that is dialed.
 //!
 //! The tunnel-embedded-IPv4 decoders (6to4/NAT64/Teredo) are separate functions purely so their bit
-//! arithmetic can be pinned by exact-value tests: a classification-only test misses a swapped
+//! arithmetic can be pinned by exact-value tests. A classification-only test misses a swapped
 //! shift/mask/XOR whenever the wrong octet still lands in the same allow/deny band, which is exactly
 //! how those operator mutations survived before this split.
 
@@ -71,7 +71,7 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
     // an IPv4 address in the low 32 bits of ::/96. to_ipv4() returns it (and returns None for a
     // real global IPv6), so ::7f00:1 (= ::127.0.0.1) is judged by the same IPv4 rules rather than
     // slipping through as "some public v6". This also subsumes IPv6 loopback (::1) and unspecified
-    // (::): both sit in ::/96, so to_ipv4() returns them here and is_disallowed_ipv4 rejects them.
+    // (::). Both sit in ::/96, so to_ipv4() returns them here and is_disallowed_ipv4 rejects them.
     // which is why the final classification below does not test is_loopback()/is_unspecified()
     // again (doing so would only add an unkillable equivalent branch).
     if let Some(compatible) = addr.to_ipv4() {
@@ -122,8 +122,8 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
         || (first_segment & 0xffc0) == 0xfe80 // fe80::/10 link local
 }
 
-/// Rejects addresses that must never be fetched from a user-provided URL: loopback, private,
-/// link-local (incl. cloud metadata 169.254.169.254), multicast and reserved, including the same
+/// Rejects addresses that must never be fetched from a user-provided URL, meaning loopback,
+/// private, link-local (incl. cloud metadata 169.254.169.254), multicast and reserved, including the same
 /// ranges reached through an IPv4-mapped, IPv4-compatible, 6to4, NAT64 or Teredo IPv6 address.
 pub(crate) fn is_disallowed_ip(ip: &IpAddr) -> bool {
     match ip {
@@ -144,8 +144,8 @@ mod tests {
     fn embedded_tunnel_decoders_extract_every_octet() {
         // A source address whose four octets are all distinct and non-trivial (0x12.0x34.0x56.0x78),
         // so any swapped shift or mask (and, for Teredo, a swapped XOR), changes the decoded
-        // address and fails an exact-equality assertion. A classification-only test would miss these:
-        // many octet values map to the same allow/deny verdict (e.g. any 127.x is loopback), which is
+        // address and fails an exact-equality assertion. A classification-only test would miss these.
+        // Many octet values map to the same allow/deny verdict (e.g. any 127.x is loopback), which is
         // exactly why the operator mutations here survived until this decode was pinned by value.
         let target = Ipv4Addr::new(0x12, 0x34, 0x56, 0x78);
 
@@ -157,7 +157,7 @@ mod tests {
         let nat64 = [0x0064, 0xff9b, 0, 0, 0, 0, 0x1234, 0x5678];
         assert_eq!(embedded_nat64_ipv4(&nat64), target);
 
-        // Teredo carries it in segments 6 and 7, XOR-obfuscated with all-ones:
+        // Teredo carries it in segments 6 and 7, XOR-obfuscated with all-ones.
         // 0x12345678 ^ 0xffffffff = 0xedcba987.
         let teredo = [0x2001, 0x0000, 0, 0, 0, 0, 0xedcb, 0xa987];
         assert_eq!(embedded_teredo_ipv4(&teredo), target);
@@ -190,7 +190,7 @@ mod tests {
             "2002:7f00:0001::", // 6to4 wrapping 127.0.0.1 (loopback)
             "2002:c0a8:0001::", // 6to4 wrapping 192.168.0.1 (private)
             // 6to4/nat64/teredo wrapping 172.16.5.4, whose second octet (16) is what places it in
-            // 172.16.0.0/12: pins the embedded-address byte extraction, since corrupting that octet
+            // 172.16.0.0/12. Pins the embedded-address byte extraction, since corrupting that octet
             // (e.g. masking it to 255) would push the embedded IP out of the private range and let
             // the tunnelled address through.
             "2002:ac10:0504::",         // 6to4 wrapping 172.16.5.4 (private)
@@ -219,7 +219,7 @@ mod tests {
             "142.250.72.238",
             // Public addresses that sit just outside a named range, so each range check has to
             // require its full condition rather than a single octet. These pin the AND/OR structure
-            // of is_disallowed_ipv4 (a weakened `&&`/`||` would misclassify one of them):
+            // of is_disallowed_ipv4 (a weakened `&&`/`||` would misclassify one of them).
             "8.100.0.1", // second octet in the CGNAT 64..=127 window but first octet is not 100
             "100.0.0.1", // first octet 100 but second octet outside the CGNAT window
             "192.0.1.1", // starts 192.0 but third octet is not 0, so not 192.0.0.0/24
@@ -233,7 +233,7 @@ mod tests {
             // not be decoded as Teredo. Pins the `segments[0] == 0x2001 && segments[1] == 0x0000`
             // conjunction. A weakened `&&` would treat it as Teredo and re-check a bogus embedded IP.
             "2001:4860:4860::8888",
-            // teredo wrapping the public 8.8.8.8 stays allowed: f7f7:f7f7 = 0x08080808 ^ all-ones.
+            // teredo wrapping the public 8.8.8.8 stays allowed. f7f7:f7f7 = 0x08080808 ^ all-ones.
             "2001:0:0:0:0:0:f7f7:f7f7",
         ] {
             assert!(

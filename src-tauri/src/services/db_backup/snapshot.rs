@@ -1,15 +1,15 @@
-//! The automatic `.bak` snapshot family: taking one, rotating the generations, and reporting on
+//! The automatic `.bak` snapshot family. Taking one, rotating the generations, and reporting on
 //! what is there.
 //!
 //! Split out of `mod.rs` alongside `restore.rs`, which was the largest file in the tree and held
 //! three independent machines (this one, the restore, and the marker-driven import), plus every
-//! test for all of them. What stayed behind is what more than one of them needs: the scratch pool,
+//! test for all of them. What stayed behind is what more than one of them needs. The scratch pool,
 //! the health check, the sibling-path helper, the generation rotation, and
 //! `managed_database_paths`, which is the map of *every* file this module owns and therefore
 //! belongs to none of the three.
 //!
 //! The tests stay in the parent's `mod tests` as well, matching how `integrity.rs`, `external.rs`
-//! and `import.rs` were split before this: they share fixtures (`temp_dir`, `seed_db`,
+//! and `import.rs` were split before this. They share fixtures (`temp_dir`, `seed_db`,
 //! `memory_pool`) and, more to the point, most of them exercise a snapshot and a restore
 //! *together*, which is the behavior worth pinning and would have to be duplicated or arbitrarily
 //! assigned if the tests were split along the same line as the code.
@@ -51,7 +51,7 @@ pub(super) fn generation_backup_path(db_path: &Path, generation: usize) -> PathB
 }
 
 /// Shifts the rotated backup generations up by one so a fresh snapshot can be promoted into
-/// `.bak`: `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`.
+/// `.bak`. `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`.
 fn rotate_backups(db_path: &Path) {
     rotate_generations(db_path, BACKUP_ROTATED_GENERATIONS, generation_backup_path);
 }
@@ -70,7 +70,7 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         return Ok(false);
     }
 
-    // Wait for any in-flight backup rather than skipping: once it releases the lock it has already
+    // Wait for any in-flight backup rather than skipping. Once it releases the lock it has already
     // refreshed `.bak`, so the is_recent() check below then sees it and this caller returns early
     // without a redundant second vacuum. Waiting (not try_lock) is what makes that de-dup work.
     let _guard = BACKUP_IN_PROGRESS.lock().await;
@@ -141,7 +141,7 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
 /// `.bak.tmp` is included last. `backup_database` snapshots into it and only renames it into
 /// `.bak` once the `VACUUM INTO` succeeds, so a run that died in that window leaves a complete,
 /// already-health-checked snapshot sitting there that nothing else would ever look at. It goes
-/// last, not first, even though it is the freshest: a run that instead died *during* the vacuum
+/// last, not first, even though it is the freshest. A run that instead died *during* the vacuum
 /// leaves a partial file under the same name, and there is no way to tell the two apart here.
 /// Every caller re-runs `quick_check` on the candidate it picks, which is what makes offering
 /// this safe. A torn file is rejected there, and a healthy one is only reached when no real
@@ -182,7 +182,7 @@ pub struct DatabaseBackupStatus {
 /// backed up can therefore take gigabytes there with nothing saying so.
 pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {
     let total_bytes = total_size_bytes(&managed_database_paths(db_path));
-    // Resolved once: backup_candidates stats every generation, and the two fields below both read
+    // Resolved once. backup_candidates stats every generation, and the two fields below both read
     // the same newest one.
     let newest_backup = backup_candidates(db_path).into_iter().next();
 

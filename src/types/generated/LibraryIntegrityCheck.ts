@@ -3,11 +3,11 @@ import type { DiagnosticsMediaTarget } from "./DiagnosticsMediaTarget";
 import type { LibraryIntegrityReport } from "./LibraryIntegrityReport";
 
 /**
- * What the integrity command answers with: the disk-versus-database report, plus the media row
+ * What the integrity command answers with. The disk-versus-database report, plus the media row
  * behind each *reported* path.
  *
  * The two are returned together rather than as two commands because they are one question asked
- * of one snapshot of the database. Resolving the targets here is also what keeps this cheap: the
+ * of one snapshot of the database. Resolving the targets here is also what keeps this cheap. The
  * report caps every example list at five entries, so the map holds at most a handful of rows no
  * matter how large the library is. The renderer used to build it by pulling every media row over
  * IPC and sending three arrays of every stored path back, which made an operation whose output is

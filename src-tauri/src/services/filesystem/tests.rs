@@ -73,7 +73,7 @@ fn the_cancellable_copy_produces_the_same_file_as_the_plain_one() {
     // The chunked loop replaces `fs::copy` on this path, so it has to be byte-for-byte
     // equivalent. A content-addressed name is a hash of these bytes, so a copy that dropped or
     // duplicated a chunk would store a file under a name that no longer describes it, and every
-    // later lookup by hash would miss it. Sized past one chunk on purpose: a single-chunk file
+    // later lookup by hash would miss it. Sized past one chunk on purpose. A single-chunk file
     // would pass even if the loop only ever ran once.
     let dir = unique_test_dir();
     std::fs::create_dir_all(&dir).unwrap();
@@ -104,7 +104,7 @@ fn the_cancellable_copy_produces_the_same_file_as_the_plain_one() {
 }
 
 fn unique_test_dir() -> PathBuf {
-    // Via unique_temp_suffix rather than pid + nanos: that pair is not collision-proof, because
+    // Via unique_temp_suffix rather than pid + nanos. That pair is not collision-proof, because
     // tests run concurrently and share the pid, so two calls landing in the same nanosecond (more
     // likely on a coarser macOS timer) would get the same directory and clobber each other's
     // files. A real intermittent CI failure. The suffix's monotonic counter is what makes every
@@ -206,7 +206,7 @@ fn copy_directory_contents_does_not_follow_a_symlink_cycle() {
     fs::create_dir_all(&nested).unwrap();
     fs::write(source.join("real.txt"), b"data").unwrap();
 
-    // A symlink inside the tree pointing back at its own root: following it would recurse
+    // A symlink inside the tree pointing back at its own root. Following it would recurse
     // forever. Without the symlink guard this call would overflow the stack rather than return.
     symlink(&source, nested.join("loop")).unwrap();
 
@@ -231,7 +231,7 @@ fn leftover_backup_names(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-// The guard these three functions exist for: a destination that already holds *different*
+// The guard these three functions exist for. A destination that already holds *different*
 // bytes is someone else's file, and must come back as an error with the file untouched. Only
 // the identical-content path may proceed. A flipped comparison here would not fail loudly
 // (it would silently overwrite a file in the user's library), so each test asserts the
@@ -273,7 +273,7 @@ fn move_or_copy_file_rejects_a_destination_holding_different_content() {
 
     assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
     assert_eq!(fs::read(&destination).unwrap(), b"an existing user file");
-    // A move that refused to happen must leave the source in place: removing it here would
+    // A move that refused to happen must leave the source in place. Removing it here would
     // destroy the only copy of the file the caller asked to move.
     assert!(
         source.exists(),
@@ -327,7 +327,7 @@ fn replace_file_safely_overwrites_an_existing_destination_and_leaves_no_backup()
 #[cfg(unix)]
 #[test]
 fn replace_file_safely_restores_the_original_when_the_replace_fails() {
-    // The branch that justifies the backup dance existing at all: the destination has already
+    // The branch that justifies the backup dance existing at all. The destination has already
     // been renamed aside when the replace fails, so without the restore the user is left with
     // no file at all where their data used to be.
     //
@@ -356,7 +356,7 @@ fn replace_file_safely_restores_the_original_when_the_replace_fails() {
 
     // The original error is reported, not a restore failure.
     assert_eq!(error.code, AppErrorCode::FileMoveFailed.as_str());
-    // What actually matters: the destination is back, byte for byte, and no backup is orphaned.
+    // What actually matters. The destination is back, byte for byte, and no backup is orphaned.
     assert_eq!(fs::read(&destination).unwrap(), b"the original file");
     assert_eq!(
         leftover_backup_names(&destination_dir),
@@ -442,7 +442,7 @@ fn find_best_matching_file_prefers_the_extension_over_a_newer_non_preferred_file
 
 #[test]
 fn matching_helpers_ignore_a_prefix_named_subdirectory() {
-    // A subdirectory whose name starts with the prefix is not a "matching file": the filters
+    // A subdirectory whose name starts with the prefix is not a "matching file". The filters
     // pair starts_with(prefix) with is_file(). The directory is made *newer* than the file, so
     // a filter that dropped the is_file() half (matching the directory too) would return or
     // count it. Each helper must still resolve to the file.
@@ -505,16 +505,16 @@ fn find_unique_matching_file_distinguishes_none_one_and_many() {
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).unwrap();
 
-    // None: the catalogued not-found code, not a silent success.
+    // None. The catalogued not-found code, not a silent success.
     let none = find_unique_matching_file(&dir, "only_").unwrap_err();
     assert_eq!(none.code, AppErrorCode::MatchingFileNotFound.as_str());
 
-    // Exactly one: returned.
+    // Exactly one match, which is returned.
     let one = dir.join("only_1.txt");
     fs::write(&one, b"1").unwrap();
     assert_eq!(find_unique_matching_file(&dir, "only_").unwrap(), one);
 
-    // Two: the distinct multiple-match error, never a quiet pick of one.
+    // Two. The distinct multiple-match error, never a quiet pick of one.
     fs::write(dir.join("only_2.txt"), b"2").unwrap();
     let many = find_unique_matching_file(&dir, "only_").unwrap_err();
     assert_eq!(many.code, AppErrorCode::MultipleMatchingFilesFound.as_str());
@@ -746,7 +746,7 @@ fn move_or_copy_file_removes_source_when_destination_has_same_content() {
     fs::write(&source, b"same bytes").unwrap();
     fs::write(&destination, b"same bytes").unwrap();
 
-    // Distinct paths with identical content: the source is a redundant duplicate and is
+    // Distinct paths with identical content. The source is a redundant duplicate and is
     // removed, leaving the destination intact.
     move_or_copy_file(&source, &destination).unwrap();
 

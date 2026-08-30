@@ -42,7 +42,7 @@ describe("usePerIdAsyncFlag", () => {
     });
 
     it("lets a different id run while one is still in flight", async () => {
-        // This is the whole reason the hook exists rather than reusing `useAsyncFlag`: a shared
+        // This is the whole reason the hook exists rather than reusing `useAsyncFlag`. A shared
         // boolean would swallow the second row's action, and the user cannot tell a swallowed
         // action apart from one that worked.
         const held = deferredTask();
@@ -69,7 +69,7 @@ describe("usePerIdAsyncFlag", () => {
     });
 
     it("ignores a second call for an id that is already in flight", async () => {
-        // The guard reads a ref rather than the state for exactly this: two calls landing in the
+        // The guard reads a ref rather than the state for exactly this. Two calls landing in the
         // same tick would both see the pre-update state and both get through.
         const held = deferredTask();
         const duplicate = vi.fn(async () => {});
@@ -92,7 +92,7 @@ describe("usePerIdAsyncFlag", () => {
     });
 
     it("refuses a duplicate started in the same tick, before any state has been committed", async () => {
-        // The stronger form of the case above, and the one a state-based guard fails: both calls are
+        // The stronger form of the case above, and the one a state-based guard fails. Both calls are
         // made synchronously, so no render has run in between and the state set is still empty when
         // the second one checks.
         const first = vi.fn(async () => {});

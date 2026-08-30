@@ -8,7 +8,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 pub(crate) const SCHEMA_VERSION: i64 = 15;
 
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
-/// It stays fixed even as `SCHEMA_VERSION` grows: every database created before
+/// It stays fixed even as `SCHEMA_VERSION` grows. Every database created before
 /// versioned migrations existed sits at `user_version <= 6`, so the baseline runs
 /// exactly once to bring it here, and real migrations take over from 8 onward.
 const BASELINE_SCHEMA_VERSION: i64 = 7;
@@ -74,7 +74,7 @@ async fn set_user_version(conn: &mut SqliteConnection, version: i64) -> AppResul
 /// Whether a database stamped `current` still needs the migration that stamps `target`.
 ///
 /// The rule is one comparison, and it was written out at each of the eight guards below until the
-/// mutation gate made the cost of that visible: nine identical `current_version < N` expressions
+/// mutation gate made the cost of that visible. Nine identical `current_version < N` expressions
 /// generate nine mutants with the same description, so they cannot be told apart by anything but a
 /// line number. Three of them are equivalent (skipping v8, v9 or v11 changes nothing, because a
 /// later migration re-runs the whole `INDEX_DDLS` list and v13 redoes v11's backfill), and with the
@@ -82,15 +82,15 @@ async fn set_user_version(conn: &mut SqliteConnection, version: i64) -> AppResul
 /// catch a real skipped migration. Naming the rule once gives it one mutant, which can be reasoned
 /// about (and excluded, if it turns out equivalent) on its own terms.
 ///
-/// The `>` refusal above is deliberately not routed through this: it decides whether the database
+/// The `>` refusal above is deliberately not routed through this. It decides whether the database
 /// is openable at all, which is a different question from which migrations are outstanding.
 fn needs_migration(current: i64, target: i64) -> bool {
     current < target
 }
 
 /// Brings the database up to `SCHEMA_VERSION`, applying only the migrations the
-/// on-disk `user_version` is missing. Idempotent and safe to run on every startup:
-/// a database already at `SCHEMA_VERSION` is left untouched. Runs as part of the
+/// on-disk `user_version` is missing. Idempotent and safe to run on every startup.
+/// A database already at `SCHEMA_VERSION` is left untouched. Runs as part of the
 /// shared pool initialization, so it completes before any query executes.
 ///
 /// `user_version` is authoritative. Each migration runs in its own transaction that
@@ -102,7 +102,7 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     let current_version = read_user_version(pool).await?;
 
     if current_version > SCHEMA_VERSION {
-        // Distinct code (not the generic db_error): the frontend must tell "this build is too
+        // Distinct code (not the generic db_error). The frontend must tell "this build is too
         // old to open a newer database" apart from real corruption, so it can advise updating
         // instead of offering a destructive restore-from-backup.
         return Err(AppError::from_code_with_details(
@@ -114,57 +114,57 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         ));
     }
 
-    // Baseline (versions 0..=6 -> 7): the idempotent reconcile that predates versioned
+    // Baseline (versions 0..=6 -> 7). The idempotent reconcile that predates versioned
     // migrations. Every legacy and fresh database goes through this exactly once.
     if needs_migration(current_version, BASELINE_SCHEMA_VERSION) {
         apply_baseline_schema(pool).await?;
     }
 
-    // v8: adds idx_videos_channel_created_id. Additive, so it just runs the index DDLs.
+    // v8. Adds idx_videos_channel_created_id. Additive, so it just runs the index DDLs.
     if needs_migration(current_version, 8) {
         apply_migration_8(pool).await?;
     }
 
-    // v9: adds idx_videos_file_path and idx_videos_live_chat_file_path. Additive, so it just
+    // v9. Adds idx_videos_file_path and idx_videos_live_chat_file_path. Additive, so it just
     // runs the index DDLs.
     if needs_migration(current_version, 9) {
         apply_migration_9(pool).await?;
     }
 
-    // v10: adds the partial unique index on (video_id, comment_id). A pre-v10 database could in
+    // v10. Adds the partial unique index on (video_id, comment_id). A pre-v10 database could in
     // principle already hold a duplicate the index would reject, so this migration first collapses
     // any duplicate comment rows and only then builds the index (see apply_migration_10).
     if needs_migration(current_version, 10) {
         apply_migration_10(pool).await?;
     }
 
-    // v11: adds the `title_normalized` column (accent/case-folded title) plus its index, and
-    // backfills the column for existing rows. Not index-only: the backfill is computed in Rust
+    // v11. Adds the `title_normalized` column (accent/case-folded title) plus its index, and
+    // backfills the column for existing rows. Not index-only. The backfill is computed in Rust
     // because SQLite cannot accent-fold in SQL (see apply_migration_11).
     if needs_migration(current_version, 11) {
         apply_migration_11(pool).await?;
     }
 
-    // v12: adds the per-sort-category indexes for `list_media_page`.
+    // v12. Adds the per-sort-category indexes for `list_media_page`.
     if needs_migration(current_version, 12) {
         apply_migration_12(pool).await?;
     }
 
-    // v13: enforces the videos live-chat invariant on databases whose table predates the CHECK.
+    // v13. Enforces the videos live-chat invariant on databases whose table predates the CHECK.
     // Repairs any already-inconsistent row, then adds the enforcement triggers. Not index-only,
     // but still additive (no table rebuild). See apply_migration_13.
     if needs_migration(current_version, 13) {
         apply_migration_13(pool).await?;
     }
 
-    // v14: enforces the comment-body length ceiling on databases whose video_comments table predates
+    // v14. Enforces the comment-body length ceiling on databases whose video_comments table predates
     // the CHECK. Truncates any already-over-length row, then adds the enforcement triggers. Additive
     // (no table rebuild), same shape as v13. See apply_migration_14.
     if needs_migration(current_version, 14) {
         apply_migration_14(pool).await?;
     }
 
-    // v15: adds `videos.comments_state`, which records what a comment fetch concluded rather than
+    // v15. Adds `videos.comments_state`, which records what a comment fetch concluded rather than
     // only how many comments were stored. Additive, plus a one-off promotion of the rows that carry
     // evidence of a fetch. See apply_migration_15.
     if needs_migration(current_version, 15) {
@@ -175,7 +175,7 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     // user_version inside its own transaction, so a crash leaves the database fully at the
     // old or the new version). An additive migration (a new column or index) runs the
     // guarded ALTER/CREATE like `apply_migration_8`. Enforcing a new invariant on an existing
-    // table can often stay additive too: `apply_migration_13` backports the videos live-chat
+    // table can often stay additive too. `apply_migration_13` backports the videos live-chat
     // CHECK with a trigger rather than a rebuild. A change that genuinely rewrites the table (a
     // column type, dropping a column, replacing a UNIQUE) cannot be expressed with
     // `ALTER TABLE ADD COLUMN` or a trigger, so it rebuilds the affected table with

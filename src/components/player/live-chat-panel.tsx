@@ -60,7 +60,7 @@ type LiveChatItemProps = {
 // The visible window is a slice of the parsed array, so a message keeps its object identity as it
 // slides through, but its *index* shifts on every advance, and an index-based key makes React tear
 // down and rebuild a row that merely moved, throwing away exactly the memoization LiveChatItem
-// exists for. Content is not a usable key either: two identical messages from the same author at
+// exists for. Content is not a usable key either. Two identical messages from the same author at
 // the same offset are indistinguishable, and duplicate keys are their own bug. Identity is the one
 // thing here that is both stable and unique, so hang the key off the object itself. The WeakMap
 // lets a message be collected with the parsed array it came from. Used both as the virtualizer's
@@ -90,7 +90,7 @@ export function liveChatItemKey(message: LiveChatMessageItem): string {
 // revealed message without mounting its visual row. The visual list is virtualized, so most rows
 // are not in the DOM and an aria-live region over them would (a) miss messages that arrive outside
 // the rendered window and (b) re-announce rows as the virtualizer recycles their nodes on scroll.
-// Announcing a single derived string sidesteps both. Mirrors what a sighted viewer reads: the
+// Announcing a single derived string sidesteps both. Mirrors what a sighted viewer reads. The
 // author, the paid amount when present, and the message text.
 export function liveChatAnnouncement(message: LiveChatMessageItem): string {
     const detail = [message.amount_text, message.message_text]
@@ -101,7 +101,7 @@ export function liveChatAnnouncement(message: LiveChatMessageItem): string {
 }
 
 // Dispatches a live chat message to the component for its kind. Memoized so a sliding visible
-// window only renders the newly added rows: existing rows keep the same `message` reference and
+// window only renders the newly added rows. Existing rows keep the same `message` reference and
 // are skipped by the shallow prop comparison.
 const LiveChatItem = memo(function LiveChatItem({
     message,

@@ -47,7 +47,7 @@ describe("media-download-service", () => {
         });
     });
 
-    // The download itself is no longer invoked from this module: it is a step of a media creation,
+    // The download itself is no longer invoked from this module. It is a step of a media creation,
     // and the backend owns that sequence now (`create_media`). Its argument validation moved with
     // it, into `media_creation::normalize_create_media_request`, which is tested there.
 

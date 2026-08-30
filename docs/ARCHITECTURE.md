@@ -1,6 +1,6 @@
 # Architecture
 
-Kavynex is a Tauri v2 desktop app: a Rust backend (`src-tauri/`) that owns the database,
+Kavynex is a Tauri v2 desktop app, a Rust backend (`src-tauri/`) that owns the database,
 the filesystem, and every external process (yt-dlp, FFmpeg), and a React 19 + TypeScript
 frontend (`src/`) that renders the UI and never touches the filesystem or the database
 directly. The two sides talk over Tauri's IPC (`invoke`/`emit`), never anything else.
@@ -44,7 +44,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   scales:
 
   - **A file that outgrew itself becomes a directory of the same name**, with the coupled
-    core in `mod.rs` and the separable part split off: `db_schema/` (`ddl.rs`,
+    core in `mod.rs` and the separable part split off, so `db_schema/` (`ddl.rs`,
     `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`snapshot.rs`,
     `restore.rs`, `integrity.rs`,
     `external.rs`, `import.rs`), `video_repository/` (`media_page.rs`) and
@@ -73,7 +73,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   site chose to spell them. It is `services::temp_cleanup` now, so the names carry the distinction
   and the convention above is back to being about readability alone.
 
-  What stays a flat file is a concern with no family: `database.rs`, `binaries.rs`,
+  What stays a flat file is a concern with no family, so `database.rs`, `binaries.rs`,
   `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `filesystem.rs`, `live_chat_storage.rs`,
   `media_comments.rs`, `media_creation.rs`, `pending_media.rs`, `process_registry.rs`,
   `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
@@ -82,7 +82,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   move is the rule above read backwards. It lived inside `library/` while the "reveal a media file"
   flow was its only caller, which made it look like a library concern. Resolving
   `explorer.exe`/`open`/`xdg-open` and spawning it is not one. A second caller (the Diagnostics
-  "Open log folder" button, `commands/logging.rs`) made the mis-homing cost something real: leaving
+  "Open log folder" button, `commands/logging.rs`) made the mis-homing cost something real. Leaving
   it there meant either a cross-family import or a second copy of the three per-platform spawn
   branches. What stayed behind in `library/` is the part that *is* a library concern, the
   containment check. See `docs/THREAT-MODEL.md` for why that split is the security-relevant half.
@@ -110,7 +110,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     boundary calls, including the control-character and length rules. Under the mutation gate
     (`src-tauri/.cargo/mutants.toml`), and its handle *shape* rule is asserted against
     `shared/youtube-handle-cases.json` so it cannot drift from the frontend's copy. Note the split
-    that follows from that: the shape lives in `is_valid_youtube_handle`, which the shared fixture
+    that follows from that. The shape lives in `is_valid_youtube_handle`, which the shared fixture
     pins, while the control-character and length rules sit beside it in
     `ensure_valid_youtube_handle`, matching how the name and title validators are already built.
     They are not part of the shared contract because they are not part of the shape, and folding
@@ -129,7 +129,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   `std::fs` for the filesystem, and `std::process::Command` / `tokio::process::Command` to
   run yt-dlp and FFmpeg (resolved via `services/binaries.rs`).
 
-`src-tauri/src/lib.rs` wires all of this together: it registers the plugins (below), registers
+`src-tauri/src/lib.rs` wires all of this together. It registers the plugins (below), registers
 every command in `invoke_handler(tauri::generate_handler![...])`, and in `setup()` initializes the
 file logger, applies any staged database import before the connection pool opens, authorizes
 the cache directory in the asset-protocol scope, and spawns a background cleanup of stale
@@ -147,7 +147,7 @@ Registering it after a plugin that can fail or block would leave that window ope
 stated here as well as in the code comment because a plugin list reads as an unordered set.
 
 Four of the six are the ones the frontend actually calls, and each has a matching grant in
-`src-tauri/capabilities/`: `tauri-plugin-process` (relaunch after an update),
+`src-tauri/capabilities/`, so `tauri-plugin-process` (relaunch after an update),
 `tauri-plugin-updater`, `tauri-plugin-opener` (YouTube links) and `tauri-plugin-dialog` (the file
 and folder pickers). The remaining two (`tauri-plugin-single-instance` and
 `tauri-plugin-window-state`, which persists the window's size and position across launches) do
@@ -198,18 +198,18 @@ src/lib/tauri-client.ts  ->  @tauri-apps/api  ->  IPC  ->  Rust commands
 system opener, process relaunch, the updater, the app version, `convertFileSrc`), so those
 never reach a component either. See "The Tauri boundary" below.)
 
-- **Components** (`src/components/`) are presentation: they receive data and callbacks as
+- **Components** (`src/components/`) are presentation. They receive data and callbacks as
   props and render Mantine/React UI. They never call `invoke()` and never import
   `@tauri-apps` directly, only the two seam modules under `src/lib/` do.
 - **Hooks** (`src/hooks/`) hold UI state and orchestration. `useHomeController`
-  (`src/hooks/home/use-home-controller.tsx`) is the composition root for the main `Home` page:
-  it wires together `useErrorModal`, `useAppBootstrap`, `useAppSettings`, `useChannels`,
+  (`src/hooks/home/use-home-controller.tsx`) is the composition root for the main `Home` page.
+  It wires together `useErrorModal`, `useAppBootstrap`, `useAppSettings`, `useChannels`,
   `useMediaLibrary`, `useDiagnostics`, and a handful of `useHome*` hooks that derive
   view/panel state and actions from those slices, then returns a single `HomeController`
   object consumed by `src/pages/Home.tsx`.
 
   The **same rule that decides a backend directory decides one here**, and it is worth saying so
-  rather than leaving the two trees looking like they were organized by different people: a feature
+  rather than leaving the two trees looking like they were organized by different people. A feature
   family that outgrew a shared filename prefix becomes a directory. `use-home-*` had reached ten
   siblings, `use-media-*` eight, so they are `home/` and `media/` now, and `channels/` and
   `settings/` group the two families whose members describe one concern under more than one prefix
@@ -243,17 +243,17 @@ never reach a component either. See "The Tauri boundary" below.)
   `src/repositories/media-repository.ts`) are the thin, typed layer directly over a
   database-backed Tauri command (`listChannels`, `insertChannel`,
   `deleteChannelWithArtifacts`, etc.), one function per command, no business logic.
-- **`src/lib/tauri-client.ts`** is the IPC boundary: `invokeCommand`/`invokeVoid` wrap
+- **`src/lib/tauri-client.ts`** is the IPC boundary, where `invokeCommand`/`invokeVoid` wrap
   `@tauri-apps/api/core`'s `invoke()` (normalizing thrown errors through `parseAppError`)
   and `listenTauri` wraps `@tauri-apps/api/event`'s `listen()`. Every repository and
   IPC-calling service goes through these functions. Use `invokeCommand` when the command
   returns a value and `invokeVoid` when it does not; the command name is typed as
   `TauriCommandName`, so it must come from the `TAURI_COMMANDS` map rather than a literal.
 - **`src/lib/tauri-platform.ts`** is the sibling seam for Tauri's *platform* capabilities:
-  everything that is not a call into our own Rust backend: `openFileDialog`/`saveFileDialog`
+  everything that is not a call into our own Rust backend, so `openFileDialog`/`saveFileDialog`
   (plugin-dialog), `openUrl` (plugin-opener), `relaunch` (plugin-process),
   `checkForAppUpdate` plus the `Update` type (plugin-updater), `getVersion`, and
-  `convertFileSrc`. These are deliberate re-exports rather than wrappers: each keeps the
+  `convertFileSrc`. These are deliberate re-exports rather than wrappers, and each keeps the
   plugin's exact signature, so routing a caller through the seam is a pure import change.
   Error normalization stays with the IPC seam, which is where `AppError` is produced.
 
@@ -266,7 +266,7 @@ way, through `listenTauri`.
 
 `src/lib/tauri-client.ts` and `src/lib/tauri-platform.ts` are the **only** two files that
 import `@tauri-apps` at all, and that is enforced by `eslint.config.js`'s
-`no-restricted-imports` rule rather than by code review. The point is not tidiness: it keeps
+`no-restricted-imports` rule rather than by code review. The point is not tidiness. It keeps
 "which Tauri capabilities does this app actually use?" (the question every review against
 `src-tauri/capabilities/` has to answer), a two-file read instead of a tree-wide grep that
 any new caller could silently invalidate. A test that needs to stub a Tauri call mocks the
@@ -276,21 +276,21 @@ seam module (`vi.mock("../lib/tauri-platform", ...)`), never the `@tauri-apps` p
 
 The layering above says where a kind of code lives; it does not say what actually happens when
 a user clicks something. These three flows are the ones worth tracing before changing anything
-around them: each spans several hooks, crosses the IPC boundary more than once, and has an
+around them. Each spans several hooks, crosses the IPC boundary more than once, and has an
 ordering that is load-bearing rather than incidental. Everything else in the app is a variation
 on one of them.
 
 ### Adding media
 
-Entry point: the add-media modal, driven by `useAddMediaWorkflow` (`src/hooks/`), which
+The entry point is the add-media modal, driven by `useAddMediaWorkflow` (`src/hooks/`), which
 `useMediaLibrary` composes. The modal has two source modes, and they diverge only in how the
 artifacts are produced.
 
 **The yt-dlp pre-step.** Pasting a URL and loading formats runs
 `useYtDlpFormatLoader.loadYtDlpFormats()`, which calls `list_yt_dlp_formats`. A metadata-only
 yt-dlp run, no download. It returns the available formats, a suggested title, and
-`resolvedYoutubeVideoId`. That last one is why the pre-step matters beyond picking a quality:
-knowing the video id *before* downloading is what lets the duplicate check below fail fast
+`resolvedYoutubeVideoId`. That last one is why the pre-step matters beyond picking a quality.
+Knowing the video id *before* downloading is what lets the duplicate check below fail fast
 instead of after fetching a whole file. The loader goes through `useRequestGuard`, so a slow
 response for a URL the user has since changed cannot repopulate the selection that feeds the
 real download command.
@@ -300,7 +300,7 @@ inside `useAsyncFlag`, whose ref is set before any `await`, two synchronous invo
 never both pass, so a double click cannot start two downloads. For a yt-dlp source it generates
 the run id and opens the terminal session before calling into the service layer.
 
-`createMedia` (`src/services/media-service.ts`) is a thin wrapper from there: it normalizes the form
+`createMedia` (`src/services/media-service.ts`) is a thin wrapper from there. It normalizes the form
 through `validateCreateMediaInput` and hands the whole request to one command, `create_media`. The
 ordering lives on the other side, in `services/media_creation.rs`:
 
@@ -315,18 +315,18 @@ ordering lives on the other side, in `services/media_creation.rs`:
    inside it cleans the artifacts up (reference-counted, so a path a registered row shares is kept)
    while still holding the lock.
 
-Steps 3 and 4 are in that order and not the other way round: a marker written before the artifacts
+Steps 3 and 4 are in that order and not the other way round, because a marker written before the artifacts
 exist would name files that were never created. And the marker is cleared *after* the row lands or
 the cleanup has run, never before, because until then it is the only record of what is on disk.
 
 **Why one command.** This was seven IPC calls until the transaction moved. Two things came with the
-move, and `THREAT-MODEL.md` covers both: the artifacts-without-a-row window no longer crosses the process
+move, and `THREAT-MODEL.md` covers both. The artifacts-without-a-row window no longer crosses the process
 boundary, and the exclusion against a concurrent reference-counted cleanup is a backend lock rather
 than the modal refusing to open twice. The individual steps (`import_media_file`,
 `download_media_from_url`, the two crash-marker commands, ...) were removed from the IPC surface at
 the same time. A command exposes an operation, not its steps.
 
-**What stayed in the renderer**, deliberately, is everything that runs *after* the row lands: the
+**What stayed in the renderer**, deliberately, is everything that runs *after* the row lands, so the
 duration probe (`readMediaDurationInSeconds`, which needs a media element the backend does not have,
 written back through `update_media_duration`), the comment backup, and the live-chat notice. None of
 them can strand an artifact, because the media is already registered when they run.
@@ -342,7 +342,7 @@ than the error modal. The user got the outcome they clicked for.
 **The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
 `isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is
 now UX only, closing the modal mid-run would discard a terminal the user is watching. It used to be
-more than that: `THREAT-MODEL.md` recorded it as the one guarantee in that document resting on frontend
+more than that. `THREAT-MODEL.md` recorded it as the one guarantee in that document resting on frontend
 behavior, because it was what kept two creations from racing the reference-counted cleanup. The lock
 in `library::cleanup` holds that property now, so a queue or a batch import is a UX question rather
 than a correctness one.
@@ -365,7 +365,7 @@ Entry point: Settings > Library folder. `useHomeController` overrides the settin
 6. No current library (first-time setup) -> `changed: true` with no migration to run.
 7. Otherwise `migrateLibraryDirectory(old, new)`.
 
-Backend side (`commands/library.rs`): the *old* path is the one verified against persisted
+On the backend side (`commands/library.rs`), the *old* path is the one verified against persisted
 settings, since that is the directory the migration removes; a destination inside the app
 config directory is refused; a commit marker is written next to the database before the old
 directory goes, so a crash mid-move is self-healed by `reconcile_interrupted_migration` on the
@@ -373,7 +373,7 @@ next `get_app_settings`; and once the move succeeds the old directory's asset-sc
 revoked.
 
 Back in the frontend, `updateStoredLibraryPath` persists **before** `setSettings` exposes the
-new value. That order is required, not stylistic: the state change is what fires
+new value. That order is required, not stylistic. The state change is what fires
 `useAppSettings`'s effect calling `registerLibraryAssetScope`, and the backend validates that
 request against the persisted library path. Persisting second would make a legitimate
 registration fail.
@@ -393,7 +393,7 @@ before the pool can open. A pending import has to set the *restored* database as
 undo snapshot, not the one the interrupted restore left behind.
 
 The frontend's part is `useAppBootstrap`, whose effect calls `ensureDatabaseReady()`. That
-resolves to `db.pool()`, i.e. `build_pool_at`: the `quick_check` gate when a migration is
+resolves to `db.pool()`, i.e. `build_pool_at`, covering the `quick_check` gate when a migration is
 pending, the pre-migration snapshot, the open, and `ensure_schema`. So a failure here can mean
 corruption, a failed migration, or a database this build refuses.
 
@@ -410,7 +410,7 @@ open, and holds the open lock for the whole restore so nothing can create the fi
 it) and then reloads the window, so the app re-initializes against the restored database rather
 than continuing on the half-loaded state the failed startup left.
 
-One related path does not go through this hook: `useDatabaseIntegrityAlert` subscribes to
+One related path does not go through this hook. `useDatabaseIntegrityAlert` subscribes to
 `database-integrity-failed`, which the background weekly full `integrity_check` emits when it
 finds damage a `quick_check` passed. That is a warning pointing at Settings > Database, not a
 recovery flow. The database opened fine.

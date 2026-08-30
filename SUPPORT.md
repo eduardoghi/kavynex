@@ -17,8 +17,8 @@ hit, with the resolution rather than a pointer to one:
 - **"Kavynex reports a corrupted database"**: handled automatically on the next launch, from the
   most recent healthy snapshot. Nothing is silently discarded.
 
-The in-app **Diagnostics** dialog answers a lot on its own: the resolved paths and versions of
-yt-dlp and FFmpeg (or the exact reason each failed its health check), the library folder in use,
+The in-app **Diagnostics** dialog answers a lot on its own, showing the resolved paths and versions
+of yt-dlp and FFmpeg (or the exact reason each failed its health check), the library folder in use,
 and a reconciliation of the database against the files on disk.
 
 ## Where to report
@@ -52,12 +52,12 @@ The three that decide whether a report is actionable:
 
 ### Read the log before pasting it
 
-Kavynex redacts what it can: cookie values are never recorded, a cookies *file* path is redacted,
+Kavynex redacts what it can. Cookie values are never recorded, a cookies *file* path is redacted,
 and a successful download logs only a reduced video reference rather than the URL you pasted.
 
-What it cannot redact away: log lines carry local file paths, and a run that **fails** also records
-yt-dlp's own verbose output, which can include the full URL. So the log does reveal which videos
-you fetched, and on Windows a path embeds your account name.
+Some things it cannot redact away. Log lines carry local file paths, and a run that **fails** also
+records yt-dlp's own verbose output, which can include the full URL. So the log does reveal which
+videos you fetched, and on Windows a path embeds your account name.
 
 Paste the lines around the failure rather than the whole file, and read them through first. If
 something in them is sensitive, say so in the issue instead of posting it. A description of the

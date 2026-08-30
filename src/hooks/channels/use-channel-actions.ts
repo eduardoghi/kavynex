@@ -86,7 +86,7 @@ export function useChannelActions({
     const { isRunning: isEditingChannel, runWithFlag: runEditChannel } = useAsyncFlag();
 
     // A request-id guard (not a mutex) so a rapid library switch supersedes the previous
-    // load: the newer call runs immediately and the stale response is discarded instead of
+    // load. The newer call runs immediately and the stale response is discarded instead of
     // leaving the old library's channels on screen.
     const loadChannels = useCallback(async (): Promise<void> => {
         const requestId = loadRequestGuard.begin();

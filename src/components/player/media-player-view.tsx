@@ -16,8 +16,8 @@ import { usePlayerKeyboardShortcuts } from "../../hooks/media/use-player-keyboar
 import { CommentsPanel } from "./comments-panel";
 // Only a media with a backed-up live chat renders this, so the replay panel and everything under it
 // stay out of the first-paint bundle for every library that has none, and out of the player itself
-// until one is opened. Unlike the two lazy modals in `home-modals.tsx` this needs no mount latch:
-// the caller already renders it behind `hasLiveChat`, so a static import here is what would have
+// until one is opened. Unlike the two lazy modals in `home-modals.tsx` this needs no mount latch.
+// The caller already renders it behind `hasLiveChat`, so a static import here is what would have
 // pulled the chunk in eagerly.
 const LiveChatReplay = lazy(() =>
     import("./live-chat-replay").then((module) => ({ default: module.LiveChatReplay }))
@@ -86,7 +86,7 @@ export function MediaPlayerView({
 
         return () => {
             if (previouslyFocused?.isConnected) {
-                // Restore focus to the originating card, but suppress the focus-visible ring: a
+                // Restore focus to the originating card, but suppress the focus-visible ring. A
                 // programmatic restore would otherwise flash the keyboard focus outline on the card
                 // even for a mouse user who never saw one, which reads as a stray violet highlight.
                 // Keyboard navigation still shows the ring normally on the next key press.
@@ -103,12 +103,12 @@ export function MediaPlayerView({
         };
     }, []);
 
-    // Each concern the player owns lives in its own hook: watch-position persistence, loading the
+    // Each concern the player owns lives in its own hook. watch-position persistence, loading the
     // saved comments and live chat replay, and the global keyboard shortcuts. This component is
     // left to compose them and render.
     // Watching a media to the end is what marks it watched. Without this the only way to mark one
     // was the header button, so finishing a video left a stored position at its very end, and
-    // reopening it resumed there: a second of playback and the end again, which reads as a broken
+    // reopening it resumed there. A second of playback and the end again, which reads as a broken
     // file rather than as a video already seen.
     useMediaProgressPersistence(media, playerElement, onSaveProgress, onMarkWatched);
     const {
@@ -155,7 +155,7 @@ export function MediaPlayerView({
     const kavynexCreatedLabel = formatCreatedAt(media?.created_at);
     const hasComments = Boolean(media?.has_comments);
     const isLive = Boolean(media?.is_live);
-    // Stricter than the grid card's plain `has_live_chat`, and deliberately so: this same value
+    // Stricter than the grid card's plain `has_live_chat`, and deliberately so. This same value
     // decides whether the replay panel below is rendered at all, so the header badge promises
     // exactly what the player can actually show.
     const hasLiveChat = Boolean(media?.has_live_chat && media?.live_chat_file_path?.trim());

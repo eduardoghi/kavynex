@@ -211,7 +211,7 @@ export function useAddMediaForm({
             // stageManualThumbnail for why granting it was the worse option). The staged copy is
             // byte-identical, so persisting from it stores exactly the same file.
             //
-            // A failure falls back to the picked path: the preview will not render, but the
+            // A failure falls back to the picked path. The preview will not render, but the
             // selection still stands and the import still persists the right image. That is the
             // same non-fatal shape the grant had, for the same reason. A missing preview must not
             // block adding media.
@@ -240,7 +240,7 @@ export function useAddMediaForm({
         return normalizeSelectedPath(selection);
     }, []);
 
-    // Invalidating the resolved yt-dlp formats and clearing the terminal always go together: any
+    // Invalidating the resolved yt-dlp formats and clearing the terminal always go together. Any
     // change to an input that affects the fetched result (the URL, cookies, the source mode) makes
     // the previously loaded formats stale. Kept as one callback so the many call sites below cannot
     // drift. A site doing one reset but forgetting the other was the duplication this removes.
@@ -351,7 +351,7 @@ export function useAddMediaForm({
         (value: string): void => {
             // Stored as typed (trimmed only when composed) so the field does not fight the cursor
             // over a trailing space while the user is still writing. The loaded formats go stale
-            // for the same reason a browser change invalidates them: the cookies decide what
+            // for the same reason a browser change invalidates them. The cookies decide what
             // YouTube answers.
             setCookiesBrowserProfileState(value);
             resetYtDlpSelectionState();
@@ -369,7 +369,7 @@ export function useAddMediaForm({
 
     const loadYtDlpFormats = useCallback(async (): Promise<void> => {
         try {
-            // The same refusal the submit applies: the service layer would drop an invalid
+            // The same refusal the submit applies. The service layer would drop an invalid
             // selector and probe without cookies, and the formats that came back would not be the
             // ones the chosen profile can see.
             if (hasInvalidCookiesBrowserSelector(cookiesBrowser, cookiesBrowserProfile)) {
@@ -378,7 +378,7 @@ export function useAddMediaForm({
 
             await loadYtDlpFormatsFromLoader();
         } catch (error) {
-            // The profile is deliberately not in the details: it is often a path under the
+            // The profile is deliberately not in the details. It is often a path under the
             // user's home directory, and this context reaches the file log.
             reportError("add-media-form", "Failed to load yt-dlp formats.", error, {
                 mediaUrl: mediaUrl.trim(),

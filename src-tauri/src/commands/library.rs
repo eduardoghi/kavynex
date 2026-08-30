@@ -21,7 +21,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// asset scope; nothing removed the old one after a migration. Since the scope is a set of
 /// glob patterns where a forbid always wins over an allow, forbidding the old directory here
 /// closes the window where any file that later lands in it would still be readable through
-/// `convertFileSrc` for the rest of the session. Best effort: a failure only leaves the stale
+/// `convertFileSrc` for the rest of the session. Best effort. A failure only leaves the stale
 /// grant in place (the pre-existing behavior) and must not fail the migration itself.
 fn revoke_directory_from_asset_scope<R: Runtime>(app: &AppHandle<R>, dir: &str) {
     // A forbid is permanent for the rest of the session (Tauri's scope checks the forbidden
@@ -80,7 +80,7 @@ pub async fn migrate_library_directory<R: Runtime>(
 
     // The migration removes the managed subdirectories of `old_library_path` after
     // copying, so the verified path is the old library (the one the user actually
-    // configured). The settings still hold the old path at this point: the frontend only
+    // configured). The settings still hold the old path at this point. The frontend only
     // persists the new one after the migration succeeds. To survive a crash in that window,
     // the migration records the new path in a commit marker next to the database just before
     // it removes the old directory; get_app_settings adopts it if the app restarts still
@@ -100,7 +100,7 @@ pub async fn migrate_library_directory<R: Runtime>(
     }
 
     // Refuse to move the library into (or under) the app config directory, where the database and
-    // its backups live: it would nest the managed library tree with the database and defeat the
+    // its backups live. It would nest the managed library tree with the database and defeat the
     // "backups off the library volume" intent. Checked before any copy/remove runs. set_app_settings
     // enforces the same on the persistence path; this covers the destructive move flow.
     if let Some(config_dir) = config_dir.as_deref() {
@@ -141,7 +141,7 @@ pub async fn migrate_library_directory<R: Runtime>(
 /// `library_path` arrives over IPC but is verified against the persisted setting before anything
 /// is read, like every other command that takes one. It used to be trusted on its own, documented
 /// as a first-party-webview concession so the settings UI could preview a folder before it was
-/// saved, but no caller ever did that: the settings modal and the diagnostics summary both pass
+/// saved, but no caller ever did that. The settings modal and the diagnostics summary both pass
 /// `settings.libraryPath`, which is the persisted value, and the folder-change flow
 /// (`use-cases/change-library-path.ts`) previews a candidate with `is_directory_empty` instead.
 /// The concession bought nothing and cost the one rule the whole backend rests on.
@@ -161,7 +161,7 @@ pub async fn get_library_summary(
 /// Reveals a path inside the configured library in the OS file manager.
 ///
 /// Verified against the persisted setting for the reason given on `get_library_summary`, and with
-/// one of its own: `resolve_path_inside_library` confines `path` to `library_path`, so a caller
+/// one of its own. `resolve_path_inside_library` confines `path` to `library_path`, so a caller
 /// that supplies *both* makes that containment check self-referential. Passing a drive root as
 /// each would satisfy it trivially. The guard is what makes the containment mean something. A
 /// missing `library_path` is rejected here rather than deeper in, so the failure names the real
@@ -185,7 +185,7 @@ pub async fn open_path_in_system(
 /// Compares the database's stored paths against the files in the configured library.
 ///
 /// Verified against the persisted setting for the reason given on `get_library_summary`. This one
-/// mattered most of the three: the report carries up to five *real filenames* per category
+/// mattered most of the three. The report carries up to five *real filenames* per category
 /// (`orphan_media_examples` and friends), collected by walking `<library_path>/video`, `/audio`,
 /// `/thumbnails` and `/live_chat`. With the path trusted, that made this command a directory
 /// enumerator for any such tree on disk. The names are worth reporting (Diagnostics shows the
@@ -197,13 +197,13 @@ pub async fn open_path_in_system(
 /// category), cost time and memory proportional to the whole library, in both directions, on a
 /// round trip that existed only because the resolution lived on the wrong side. The pool is open
 /// here and the rows are two queries away, so nothing was gained by asking. It also removed this
-/// command's one unbounded input: those vectors arrived from IPC with no ceiling, the only
+/// command's one unbounded input. Those vectors arrived from IPC with no ceiling, the only
 /// caller-supplied value in the backend without one.
 ///
 /// The guard runs before the rows are read, keeping the check-then-act order every other library
 /// command follows. It is applied directly rather than through
 /// `verify_library_path_then_blocking_in_pool`, whose whole point is coupling the check to the
-/// work: the reference read sits between the two and is async, so it cannot go inside that
+/// work. The reference read sits between the two and is async, so it cannot go inside that
 /// helper's blocking closure. What holds the guard here instead is
 /// `check_library_integrity_command_rejects_a_path_that_is_not_the_configured_library`, the
 /// IPC-level test that pins the refusal.
@@ -236,10 +236,10 @@ pub async fn check_library_integrity(
 /// the library.** That check answers whether the database and the directory agree and does it from
 /// `stat`, which is why it can run whenever Diagnostics opens; the only corruption a `stat` reveals
 /// is a zero-length file. This one catches the corruption that actually happens to a large library
-/// on an external drive: a bad sector inside a file whose size never changed, a truncated copy, a
+/// on an external drive. A bad sector inside a file whose size never changed, a truncated copy, a
 /// cloud-sync placeholder. See `services::library::verification`.
 ///
-/// Only one runs at a time (`try_begin_verification`), refused rather than queued: the work is
+/// Only one runs at a time (`try_begin_verification`), refused rather than queued. The work is
 /// proportional to the size of the library, so a second concurrent sweep would read every byte
 /// twice while competing for the same disk.
 ///
@@ -333,7 +333,7 @@ pub async fn verify_library_content(
 
 /// Asks a running library verification to stop.
 ///
-/// Takes no arguments, and that is deliberate rather than an omission: only one verification runs at
+/// Takes no arguments, and that is deliberate rather than an omission. Only one verification runs at
 /// a time, so there is no run to name and therefore nothing for a caller to point at the wrong one.
 /// A cancel arriving when nothing is running is a no-op, because the flag is cleared by the next run
 /// that begins rather than by this one.
@@ -383,7 +383,7 @@ mod tests {
         db
     }
 
-    /// Seeds the rows `check_library_integrity` now reads for itself: one channel with an avatar,
+    /// Seeds the rows `check_library_integrity` now reads for itself. One channel with an avatar,
     /// one healthy media, one whose file is gone, and a replay path.
     ///
     /// Written through the repository rather than through commands, matching how the other IPC
@@ -396,7 +396,7 @@ mod tests {
                 &pool,
                 "Channel",
                 "@channel",
-                // An avatar under thumbnails/ that no media row references: it must not be
+                // An avatar under thumbnails/ that no media row references. It must not be
                 // reported as an orphan, which is the case the avatar query exists for.
                 Some("thumbnails/avatar_1.jpg"),
             )
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn check_library_integrity_command_reads_the_stored_paths_itself() {
-        // The command takes only `libraryPath` now: the three path arrays it used to be handed
+        // The command takes only `libraryPath` now. The three path arrays it used to be handed
         // are read from the pool here instead. Seeding rows and then asserting the counts is what
         // proves that, since a command that still expected them would report nothing checked.
         let library = unique_test_dir("command-integrity");
@@ -643,7 +643,7 @@ mod tests {
     }
 
     // The three commands below take a `library_path` over IPC and verify it against the persisted
-    // setting. Each one is pinned separately rather than through a shared loop: they differ in
+    // setting. Each one is pinned separately rather than through a shared loop. They differ in
     // what a trusted path would have bought an attacker, and the report one of them returns is the
     // reason this matters at all.
 
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn check_library_integrity_command_rejects_a_path_that_is_not_the_configured_library() {
-        // The one that mattered most: the report carries up to five real filenames per category,
+        // The one that mattered most. The report carries up to five real filenames per category,
         // so a trusted `library_path` made this a directory enumerator for any tree holding a
         // `video/`, `audio/`, `thumbnails/` or `live_chat/` subdirectory. The planted file below is
         // what such a call would have named back; the guard has to refuse before the walk runs.

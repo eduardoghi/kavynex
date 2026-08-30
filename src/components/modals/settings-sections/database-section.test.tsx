@@ -56,7 +56,7 @@ describe("DatabaseSection", () => {
         // rather than deriving its own from totalBytes, two formatters would drift.
         expect(screen.getByText("2.25 GB")).toBeInTheDocument();
         expect(screen.getByText(/on this disk/i)).toBeInTheDocument();
-        // Only the date part is asserted: the exact rendering is locale/timezone dependent, and
+        // Only the date part is asserted. The exact rendering is locale/timezone dependent, and
         // pinning the whole string would make this fail on a runner in another timezone.
         expect(screen.getByText(/last automatic backup: .*2026/i)).toBeInTheDocument();
     });

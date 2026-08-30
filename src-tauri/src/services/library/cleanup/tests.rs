@@ -67,7 +67,7 @@ fn paths(artifacts: &[DeletableArtifact]) -> Vec<&str> {
 
 #[tokio::test]
 async fn drop_paths_referenced_again_spares_a_path_referenced_after_the_commit() {
-    // Simulate the race: a plan decided a file was unreferenced, then a concurrent import
+    // Simulate the race. A plan decided a file was unreferenced, then a concurrent import
     // inserted a row pointing at the same content-addressed path before the unlink ran.
     let pool = create_test_pool().await;
     let channel_id = insert_channel(&pool, "@race", None).await;
@@ -109,13 +109,13 @@ async fn drop_paths_referenced_again_keeps_a_genuinely_unreferenced_path() {
 
 #[tokio::test]
 async fn execute_plan_waits_for_a_media_registration_holding_the_lock() {
-    // The regression this pins: the three delete paths reached this function with no exclusion
+    // The regression this pins. The three delete paths reached this function with no exclusion
     // against a creation at all, relying on `drop_paths_referenced_again` above and nothing
     // else. A recount is not exclusion. It answers "is this referenced *now*", and a creation
     // that inserts a moment later makes that answer stale between the recount and the unlink,
     // which is the window that strands a row on a file that has been removed.
     //
-    // An empty plan is enough, and is the point: what is under test is that the lock is taken
+    // An empty plan is enough, and is the point. What is under test is that the lock is taken
     // *before* any work is delegated, not what the work then does. A plan with real artifacts
     // would need a library on disk and prove nothing extra about the ordering.
     use tauri::test::{mock_builder, mock_context, noop_assets};
@@ -136,7 +136,7 @@ async fn execute_plan_waits_for_a_media_registration_holding_the_lock() {
 
     drop(guard);
 
-    // Generously bounded rather than tight: the lock is a process-wide static, so another test
+    // Generously bounded rather than tight. The lock is a process-wide static, so another test
     // in this binary can take it between the release above and this await. The assertion is
     // that the cleanup proceeds at all, not how quickly.
     let report = tokio::time::timeout(std::time::Duration::from_secs(10), cleanup)
@@ -458,7 +458,7 @@ async fn replace_avatar_plan_deletes_previous_when_unreferenced() {
 async fn replace_avatar_plan_keeps_previous_when_used_as_a_video_thumbnail() {
     let pool = create_test_pool().await;
     let channel_id = insert_channel(&pool, "@one", Some("thumbnails/shared.jpg")).await;
-    // The avatar file is also a video's thumbnail: replacing the avatar must not delete
+    // The avatar file is also a video's thumbnail. Replacing the avatar must not delete
     // it. This is the reference the old frontend-only count ignored.
     insert_media(
         &pool,
@@ -541,7 +541,7 @@ fn remove_planned_artifacts_deletes_files_and_reports_missing_as_deleted() {
     fs::create_dir_all(library.join("live_chat")).unwrap();
     fs::write(library.join("video/a.mp4"), b"media").unwrap();
     fs::write(library.join("live_chat/a.json.gz"), b"chat").unwrap();
-    // thumbnails/a.jpg intentionally does not exist: deletion of a missing file is a
+    // thumbnails/a.jpg intentionally does not exist. Deletion of a missing file is a
     // no-op success, matching the individual delete services.
 
     let plan = ArtifactCleanupPlan {
@@ -737,7 +737,7 @@ fn an_unresolvable_display_cache_does_not_fail_the_removal() {
 
 #[test]
 fn report_for_nothing_deletable_carries_the_shared_paths_through() {
-    // execute_plan's empty-plan early return: nothing is deleted, but the paths the planner
+    // execute_plan's empty-plan early return. Nothing is deleted, but the paths the planner
     // spared as still-shared must survive into the report rather than being dropped.
     let plan = ArtifactCleanupPlan {
         deletable: Vec::new(),
@@ -753,7 +753,7 @@ fn report_for_nothing_deletable_carries_the_shared_paths_through() {
 
 #[test]
 fn report_for_unavailable_library_marks_every_deletable_as_failed() {
-    // execute_plan's library-unavailable branch: the rows are already committed as deleted but
+    // execute_plan's library-unavailable branch. The rows are already committed as deleted but
     // no file can be located, so every planned unlink is reported failed (possibly orphaned)
     // while the spared shared paths still carry through.
     let plan = ArtifactCleanupPlan {

@@ -130,7 +130,7 @@ export function AddMediaModal({
 
     const modalLock = useModalLock(isModalLocked, onClose);
 
-    // Probed while the modal is open rather than on every launch: it spawns both binaries, and the
+    // Probed while the modal is open rather than on every launch. It spawns both binaries, and the
     // answer only matters to someone who is about to import something.
     const { missingTools } = useExternalToolsAvailability(opened, sourceMode);
 
@@ -151,7 +151,7 @@ export function AddMediaModal({
         // the parent as ISO, and an incomplete date (e.g. while deleting a digit) normalizes to
         // "", so depending on formattedPublishedAt here would wipe the partial text mid-edit.
         setPublishedAtInput(formattedPublishedAt);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: seed only when the modal re-opens or the source mode changes, not on each keystroke
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional. Seed only when the modal re-opens or the source mode changes, not on each keystroke
     }, [opened, sourceMode]);
 
     const handleSubmit = (): void => {
@@ -170,9 +170,9 @@ export function AddMediaModal({
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
-            // Sized off the viewport like the diagnostics modal rather than pinned to a fixed 760px:
-            // on a large window that cap left most of the screen empty while the body scrolled, and
-            // this form has two elements that genuinely want the width: the format option
+            // Sized off the viewport like the diagnostics modal rather than pinned to a fixed 760px.
+            // On a large window that cap left most of the screen empty while the body scrolled, and
+            // this form has two elements that genuinely want the width. The format option
             // ("Merged · 1080p · MP4 · AVC (H.264) · 2638.3 kbps · HTTPS · 1.43 GB") and the terminal's
             // yt-dlp command line, both of which wrapped at 760px. Kept under diagnostics' 1200px
             // because the rest is short inputs, which look stretched past roughly this width.

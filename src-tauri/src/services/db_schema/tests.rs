@@ -17,7 +17,7 @@ async fn memory_pool() -> SqlitePool {
 #[test]
 fn the_database_doc_names_the_current_schema_version() {
     // docs/DATABASE.md states the version in prose ("`SCHEMA_VERSION` (currently `N`)"), and
-    // prose kept in step by discipline alone drifted once: it said 14 for the whole life of v15.
+    // prose kept in step by discipline alone drifted once. It said 14 for the whole life of v15.
     // Pinning the literal here makes the bump a one-line doc edit that CI refuses to forget.
     let doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/DATABASE.md"));
     let marker = "`SCHEMA_VERSION` (currently `";
@@ -66,7 +66,7 @@ async fn videos_check_rejects_a_live_chat_flag_without_a_path() {
         .await
         .unwrap();
 
-    // Flag set with no stored path: the state insert_media can never produce and the library
+    // Flag set with no stored path. The state insert_media can never produce and the library
     // diagnostics used to only count is now refused by the schema itself.
     let rejected = sqlx::query(
         "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, has_live_chat, live_chat_file_path) \
@@ -99,7 +99,7 @@ async fn videos_check_rejects_a_live_chat_flag_without_a_path() {
 #[test]
 fn video_comments_text_check_literal_matches_the_app_cap() {
     // The DDL and the migration both hardcode the ceiling (a CHECK/trigger literal cannot
-    // interpolate a Rust constant), so pin them against the app-side truncation cap here: if one
+    // interpolate a Rust constant), so pin them against the app-side truncation cap here. If one
     // moves without the other, the schema and the write path would silently disagree.
     let cap = crate::services::media_comments::MAX_COMMENT_TEXT_CHARS;
     assert_eq!(cap, 16_000);
@@ -151,7 +151,7 @@ async fn video_comments_check_rejects_over_length_text() {
 
 #[tokio::test]
 async fn introspection_helpers_see_the_videos_constraints() {
-    // Backs the import-validation helpers against the real schema: the (channel_id, file_path)
+    // Backs the import-validation helpers against the real schema. The (channel_id, file_path)
     // unique key comes from a table-level UNIQUE constraint (an auto-index, not a named
     // CREATE UNIQUE INDEX), so this also pins that the auto-index form is detected.
     let pool = memory_pool().await;
@@ -193,7 +193,7 @@ async fn introspection_helpers_see_the_videos_constraints() {
 async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_database() {
     let pool = memory_pool().await;
 
-    // A videos table as an older app version left it: the live-chat columns are present but
+    // A videos table as an older app version left it. The live-chat columns are present but
     // there is no CHECK and no trigger. Stamped at v12 so ensure_schema runs migration_13 (and
     // then the additive migration_14) over this hand-built table (baseline and 8..12 are skipped
     // for current_version >= their targets), which is exactly the pre-CHECK database migration_13
@@ -279,7 +279,7 @@ async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_data
         .unwrap();
     assert_eq!(ok_flag, 1);
 
-    // The other half of this migration: the table above predates `title_normalized`, so the
+    // The other half of this migration. The table above predates `title_normalized`, so the
     // column is added and every existing row is backfilled with the same normalizer the search
     // term goes through. This is not covered by v11's backfill (only a database below v11 ever
     // runs v11, and this one is stamped at v12), and a NULL here fails silently, leaving the
@@ -328,7 +328,7 @@ async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_data
     .await
     .expect("a consistent insert must still succeed");
 
-    // The second invariant this migration fences, for the same reason: repairing the existing
+    // The second invariant this migration fences, for the same reason. Repairing the existing
     // rows is worthless if the next write can put a NULL straight back.
     let rejected_null_insert = sqlx::query(
         "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type) \
@@ -359,7 +359,7 @@ async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_data
 /// stamped 7..=10 by the build of its day carries every other additive column and not that one.
 /// exactly the shape whose `CREATE INDEX ... ON videos(title_normalized)` used to fail. Below
 /// the baseline (0..=6) none of the additive columns are there either, since the baseline is
-/// what adds them. Column types are kept loose on purpose: this models what an older build
+/// what adds them. Column types are kept loose on purpose. This models what an older build
 /// actually wrote, not what the current DDL declares.
 async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     let has_additive_columns = version >= BASELINE_SCHEMA_VERSION;
@@ -484,7 +484,7 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     // The indexes a real database of this era carries. Seeding none at all (which this used to
     // do) makes the fixture a shape no build ever produced, and hides a skipped index migration
     // behind a database that never had the index either. A database below the baseline is the
-    // one case that legitimately has none: `apply_baseline_schema` is what first creates them.
+    // one case that legitimately has none. `apply_baseline_schema` is what first creates them.
     if version >= BASELINE_SCHEMA_VERSION {
         for &(_, ddl) in INDEX_DDLS {
             if index_introduced_in(ddl_object_name(ddl)) <= version {
@@ -497,7 +497,7 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     }
 
     // Same for the triggers, whose era is read off the table each one guards rather than its
-    // name: v13 backported the two `videos` row invariants, v14 the `video_comments` body-length
+    // name. v13 backported the two `videos` row invariants, v14 the `video_comments` body-length
     // ceiling. A database below v13 has none, which is exactly what those migrations are for.
     for &(table, ddl) in TRIGGER_DDLS {
         if trigger_introduced_in(table) <= version {
@@ -516,7 +516,7 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     .unwrap();
 }
 
-/// The schema version that first created the triggers on each table: v13 backported the two
+/// The schema version that first created the triggers on each table. v13 backported the two
 /// `videos` row invariants, v14 the `video_comments` body-length ceiling.
 fn trigger_introduced_in(table: &str) -> i64 {
     match table {
@@ -536,7 +536,7 @@ fn ddl_object_name(ddl: &str) -> &str {
 /// The schema version that first created each index. Anything not named here predates versioned
 /// migrations, so `apply_baseline_schema` creates it and every database from v7 up has it.
 ///
-/// This exists because `INDEX_DDLS` is the *current* list with no history in it: the baseline and
+/// This exists because `INDEX_DDLS` is the *current* list with no history in it. The baseline and
 /// the index-only migrations all re-run the whole list, so the code cannot say which index
 /// belonged to which era. Without that, `seed_database_at_version` cannot produce a faithful v8
 /// database (one that really is missing v9's indexes), and the migration test below could not
@@ -560,7 +560,7 @@ fn index_introduced_in(name: &str) -> i64 {
 fn needs_migration_is_outstanding_only_below_the_target() {
     // A database below the target still owes that migration; one already at it does not, which
     // is what keeps ensure_schema a no-op on an up-to-date database. The at-the-target case is
-    // the boundary the whole rule turns on: re-running is harmless (every migration is
+    // the boundary the whole rule turns on. re-running is harmless (every migration is
     // idempotent) but it is still work nobody asked for, on every startup.
     assert!(needs_migration(7, 8));
     assert!(!needs_migration(8, 8));
@@ -586,13 +586,13 @@ async fn the_migration_fixture_still_models_a_database_missing_each_additive_col
     // on, and it exists because that fixture is the one thing in this file that can stop
     // covering something without anything turning red.
     //
-    // The failure it guards is specific and has already shipped once in its other half: an index
+    // The failure it guards is specific and has already shipped once in its other half. An index
     // in INDEX_DDLS names a column that only a later migration adds, and the index-only
     // migrations (v8/v9/v12) re-run the whole list, so they reach it on a database that does not
     // have the column yet. `ensure_videos_additive_columns` is what makes that work, and it is
     // called first in every one of those paths for exactly this reason.
     //
-    // That direction is already caught loudly: breaking it (a column added to VIDEOS_TABLE_DDL
+    // That direction is already caught loudly. Breaking it (a column added to VIDEOS_TABLE_DDL
     // and indexed, but left out of VIDEOS_ADDITIVE_COLUMNS) fails seven tests here with
     // "no such column", the matrix below among them. Verified by doing it.
     //
@@ -603,14 +603,14 @@ async fn the_migration_fixture_still_models_a_database_missing_each_additive_col
     // depend on is never exercised against a table missing the column again. The suite gets
     // quieter while covering less, which is the shape of regression that survives.
     //
-    // So the property asserted is coverage, not correctness: for each additive column there has
+    // So the property asserted is coverage, not correctness. For each additive column there has
     // to be at least one seeded version whose `videos` table does not have it.
     //
     // The range starts at 0 rather than at the baseline, and that is the point rather than a
     // convenience. Three of the five columns (`is_live`, `has_live_chat`,
     // `live_chat_file_path`) arrive *with* `apply_baseline_schema`, so a v7 database legitimately
     // carries them and the only era that can be missing them is below the baseline. That path
-    // exercises the same guarded ALTER: the baseline calls `ensure_videos_additive_columns`
+    // exercises the same guarded ALTER. The baseline calls `ensure_videos_additive_columns`
     // before its own INDEX_DDLS loop, for the same reason v8/v9/v12 do.
     for (column, _) in VIDEOS_ADDITIVE_COLUMNS {
         let mut missing_at = Vec::new();
@@ -640,14 +640,14 @@ async fn the_migration_fixture_still_models_a_database_missing_each_additive_col
 
 #[tokio::test]
 async fn every_historical_version_migrates_to_the_current_schema() {
-    // The gap this closes: the individual migration tests below each start from one chosen
+    // The gap this closes. The individual migration tests below each start from one chosen
     // version (v5 via the real fixture, v6, v9, v12), so the versions nobody picked were never
     // exercised as a *starting point* at all. That is precisely how the v8..v10 failure shipped.
     // those migrations run the whole INDEX_DDLS list, which indexes a column v11 is what adds,
     // and no test ever started at 7, 8 or 10. Rather than add one test per version as each bug is
     // found, drive every version the app has ever stamped through the full chain.
     //
-    // Deliberately covers 0..=SCHEMA_VERSION inclusive: the top of the range asserts that a
+    // Deliberately covers 0..=SCHEMA_VERSION inclusive. The top of the range asserts that a
     // database already at head is left alone, which is the idempotence the startup path relies on.
     for from_version in 0..=SCHEMA_VERSION {
         let pool = memory_pool().await;
@@ -664,13 +664,13 @@ async fn every_historical_version_migrates_to_the_current_schema() {
         );
 
         // Reaching head is not the same as arriving complete, and the version stamp cannot tell
-        // the two apart: each migration stamps its own version, so one that is skipped entirely
+        // the two apart. Each migration stamps its own version, so one that is skipped entirely
         // still ends at SCHEMA_VERSION because the later ones carry the number past it. The data
         // assertions below cannot tell either. They read rows, not the objects that make those
         // rows queryable. So assert the schema itself.
         //
         // This is the v8..v10 failure seen from the other side, and it is what the seed above
-        // had to become faithful for: a v11 database really is missing the five sort indexes v12
+        // had to become faithful for. A v11 database really is missing the five sort indexes v12
         // adds, so if migration 12 is skipped, nothing else puts them there.
         for &(_, ddl) in INDEX_DDLS {
             let name = ddl_object_name(ddl);
@@ -727,7 +727,7 @@ async fn every_historical_version_migrates_to_the_current_schema() {
 #[tokio::test]
 async fn migrates_a_v9_database_that_predates_title_normalized() {
     // Reproduces the real upgrade failure a database stamped at v9 by a build that predated the
-    // v11 `title_normalized` column hits: ensure_schema skips the baseline (9 >= 7) and the
+    // v11 `title_normalized` column hits. ensure_schema skips the baseline (9 >= 7) and the
     // v8/v9 migrations, so the column is never added before apply_migration_10 runs the full
     // INDEX_DDLS, which includes indexes ON title_normalized. Without the additive-column guard
     // in that loop the CREATE INDEX fails with "no such column: title_normalized" and the
@@ -839,7 +839,7 @@ async fn ensure_schema_drops_legacy_live_chat_messages_table() {
 
 // ---- Real old-database migration fixture ----
 //
-// The test above builds a synthetic legacy table in memory. This pair goes further: it
+// The test above builds a synthetic legacy table in memory. This pair goes further. It
 // migrates a committed, opaque `.sqlite` file produced from the exact schema and data a
 // real v1.0.0 / v1.1.0 install has on disk (both shipped `user_version = 5`, with the
 // now-legacy `video_live_chat_messages` table). Because the migration test never restates
@@ -1018,7 +1018,7 @@ async fn regenerate_v1_migration_fixture() {
             (1, 1, 'c1', NULL, 'Alice', 'Top comment', 10, 1, 1, '2026-02-01 09:30:00'),
             (2, 1, 'c2', 'c1', 'Bob', 'A reply', 2, 0, 0, '2026-02-01 09:31:00'),
             (3, 1, 'c3', NULL, 'Carol', 'Another top comment', 0, 0, 0, '2026-02-01 09:32:00');",
-        // Legacy live chat rows: the current baseline drops this whole table.
+        // Legacy live chat rows. The current baseline drops this whole table.
         "INSERT INTO video_live_chat_messages
             (id, video_id, message_id, message_offset_ms, author_name, message_text, created_at)
          VALUES
@@ -1056,7 +1056,7 @@ async fn migrates_a_real_v1_database_to_the_current_schema() {
 
     let pool = open_file_pool(&working, false).await;
 
-    // Precondition: this really is an old (v5) database with the legacy table and its data.
+    // Precondition. This really is an old (v5) database with the legacy table and its data.
     assert_eq!(read_user_version(&pool).await.unwrap(), 5);
     assert!(object_exists(&pool, "table", "video_live_chat_messages").await);
 
@@ -1408,7 +1408,7 @@ async fn migration_8_adds_the_channel_created_index_to_a_pre_v8_database() {
     .unwrap();
     assert_eq!(fresh.0, 1);
 
-    // Simulate a database left by v7: drop the v8 index and roll the marker back.
+    // Simulate a database left by v7. Drop the v8 index and roll the marker back.
     sqlx::query("DROP INDEX idx_videos_channel_created_id")
         .execute(&pool)
         .await
@@ -1455,7 +1455,7 @@ async fn migration_9_adds_the_delete_path_indexes_to_a_pre_v9_database() {
         assert_eq!(count, 1, "fresh database should already have {index}");
     }
 
-    // Simulate a database left by v8: drop the v9 indexes and roll the marker back.
+    // Simulate a database left by v8. Drop the v9 indexes and roll the marker back.
     sqlx::query("DROP INDEX idx_videos_file_path")
         .execute(&pool)
         .await
@@ -1507,7 +1507,7 @@ async fn migration_10_adds_the_comment_unique_index_to_a_pre_v10_database() {
     .unwrap();
     assert_eq!(fresh, 1);
 
-    // Simulate a database left by v9: drop the v10 index and roll the marker back.
+    // Simulate a database left by v9. Drop the v10 index and roll the marker back.
     sqlx::query("DROP INDEX idx_video_comments_video_comment_unique")
         .execute(&pool)
         .await
@@ -1608,7 +1608,7 @@ async fn migration_10_collapses_pre_existing_duplicate_comments_before_indexing(
 #[tokio::test]
 async fn ensure_schema_recovers_a_legacy_database_with_duplicate_comments() {
     // Regression for the baseline path (the CRITICAL that migration_10_collapses_... does not
-    // cover: that test seeds the duplicate at user_version 9, so only apply_migration_10 runs).
+    // cover. That test seeds the duplicate at user_version 9, so only apply_migration_10 runs).
     // A pre-versioned database (user_version below the baseline) that already holds a duplicate
     // (video_id, comment_id) pair must still open. When the unique index lived in the shared
     // INDEX_DDLS array, apply_baseline_schema (which runs for every such database), tried to
@@ -1617,7 +1617,7 @@ async fn ensure_schema_recovers_a_legacy_database_with_duplicate_comments() {
     // dedupe never reached.
     let pool = memory_pool().await;
 
-    // A legacy schema as an old app version would leave it: the four core tables, no unique
+    // A legacy schema as an old app version would leave it. The four core tables, no unique
     // index on video_comments yet, and no versioned marker (user_version stays 0).
     sqlx::query(
         "CREATE TABLE channels (
@@ -1690,7 +1690,7 @@ async fn ensure_schema_recovers_a_legacy_database_with_duplicate_comments() {
     .execute(&pool)
     .await
     .unwrap();
-    // Two rows sharing (video_id, comment_id): exactly what a pre-v10 database could hold.
+    // Two rows sharing (video_id, comment_id). Exactly what a pre-v10 database could hold.
     sqlx::query(
         "INSERT INTO video_comments (id, video_id, comment_id, author_name, text)
          VALUES (1, 1, 'c1', 'A', 'first'), (2, 1, 'c1', 'A', 'dup')",
@@ -1781,7 +1781,7 @@ async fn an_unrestored_rebuild_connection_is_discarded_instead_of_returned_to_th
     // and handing it back to the pool would silently give the next consumer a connection on
     // which every ON DELETE CASCADE is inert. RebuildConnection's Drop detaches it instead.
     //
-    // Asserted through the pool rather than by inspecting the guard: with max_connections(1) a
+    // Asserted through the pool rather than by inspecting the guard. With max_connections(1) a
     // detached connection forces the pool to open a fresh one, which picks up foreign_keys from
     // the connect options, so the observable difference between detaching and not is exactly
     // the PRAGMA the next consumer sees.
@@ -1810,7 +1810,7 @@ async fn an_unrestored_rebuild_connection_is_discarded_instead_of_returned_to_th
 
 #[tokio::test]
 async fn a_restored_rebuild_connection_goes_back_to_the_pool() {
-    // The other half of the guard: on the normal path the restore has run, so the connection is
+    // The other half of the guard. On the normal path the restore has run, so the connection is
     // reusable and detaching it would throw away a live connection on every rebuild. Pinning
     // both directions is what makes the Drop impl's condition meaningful rather than "always
     // detach", which would also satisfy the test above.
@@ -1819,7 +1819,7 @@ async fn a_restored_rebuild_connection_goes_back_to_the_pool() {
     let mut conn = pool.acquire().await.unwrap();
     // A table created on this connection is only visible through the *same* in-memory
     // connection, so finding it afterwards proves the pool handed the very same one back.
-    // Created on the held connection, not through the pool: max_connections is 1, so a pool
+    // Created on the held connection, not through the pool. max_connections is 1, so a pool
     // query here would wait on the connection this test is holding.
     sqlx::query("CREATE TABLE returned_marker (id INTEGER PRIMARY KEY)")
         .execute(&mut *conn)
@@ -2017,7 +2017,7 @@ async fn rebuilding_videos_puts_its_triggers_and_indexes_back() {
     .await
     .unwrap();
 
-    // The same shape the schema already declares, under a staging name: this rebuild changes
+    // The same shape the schema already declares, under a staging name. This rebuild changes
     // nothing about the table, so anything that differs afterwards was lost by the rebuild
     // itself rather than by the new definition.
     let new_ddl = VIDEOS_TABLE_DDL.replace(
@@ -2107,7 +2107,7 @@ async fn apply_table_rebuilds_rejects_data_that_violates_the_new_constraint() {
         carried_columns: "id, name",
     };
 
-    // The copy step fails the CHECK, so the whole migration rolls back: the original
+    // The copy step fails the CHECK, so the whole migration rolls back. The original
     // table is untouched and the version is not bumped.
     assert!(
         apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), 8)

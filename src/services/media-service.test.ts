@@ -129,7 +129,7 @@ describe("media-service", () => {
 
         await expect(createMedia(input)).resolves.toEqual({ id: 55 });
 
-        // Every field the creation needs, and nothing this side invented: `downloadComments` stays
+        // Every field the creation needs, and nothing this side invented. `downloadComments` stays
         // here because the comment backup runs after the row lands, not inside the creation.
         expect(createMediaInBackend).toHaveBeenCalledWith({
             channelId: 10,
@@ -266,7 +266,7 @@ describe("media-service", () => {
 
         await createMedia(input);
 
-        // The video id comes off the created media rather than the request: for a yt-dlp source the
+        // The video id comes off the created media rather than the request. For a yt-dlp source the
         // backend resolved it from the download, which is the authoritative one.
         expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", null, null);
         expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(55, [fetchedComment]);
@@ -316,7 +316,7 @@ describe("media-service", () => {
         expect(messages).toEqual([
             "Registering media in local library...",
             "Media registered successfully.",
-            "Skipping comments: disabled by user.",
+            "Skipping comments because the user disabled them.",
             "Live chat replay saved successfully.",
         ]);
     });
@@ -434,7 +434,7 @@ describe("media-service", () => {
         // But it does have to be recorded. Returning without telling the backend anything left the
         // media indistinguishable from one nothing had ever been fetched for, so the player kept
         // offering a Fetch button and the user could re-run a refresh that could never return
-        // anything. The two assertions belong together: the outcome is written *and* the comments
+        // anything. The two assertions belong together. The outcome is written *and* the comments
         // are not, which is exactly why this is a separate command rather than an empty replace.
         expect(markMediaCommentsAbsentInBackend).toHaveBeenCalledWith(10);
     });

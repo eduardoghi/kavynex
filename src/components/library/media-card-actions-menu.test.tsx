@@ -71,7 +71,7 @@ describe("MediaCardActionsMenu", () => {
 
     it("hides the YouTube action for media with no YouTube source", async () => {
         // A locally imported file has no youtube_video_id, so there is nothing to open. Hidden
-        // rather than disabled: the contract is that an action that cannot apply is not listed.
+        // rather than disabled. The contract is that an action that cannot apply is not listed.
         renderMenu({ media: createMedia({ title: "Video A", youtube_video_id: null }) });
 
         openMenu();

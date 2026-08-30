@@ -2,11 +2,11 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand } from "../lib/tauri-client";
 import type { DiagnosticsMediaTarget, LibraryIntegrityReport } from "../types/diagnostics";
 
-// Result of the library-integrity check: the raw report plus a lookup from a stored media file
+// Result of the library-integrity check. The raw report plus a lookup from a stored media file
 // path to the media row it belongs to, so the diagnostics UI can turn a "missing media" path into
 // a jump-to-the-media action.
 //
-// Both halves come from one command now. This module used to assemble them here: it pulled every
+// Both halves come from one command now. This module used to assemble them here. It pulled every
 // media row over IPC, built three arrays holding every stored path, and sent those back to the
 // backend, which had the same rows two queries away the whole time. That made a check whose output
 // is capped at five examples per category cost time and memory proportional to the entire library,
@@ -58,7 +58,7 @@ export async function getLibraryIntegrity(
         return { report: createEmptyLibraryIntegrityReport(), mediaByPath: {} };
     }
 
-    // Always call through, even when the database holds no rows: the library folder may still
+    // Always call through, even when the database holds no rows. The library folder may still
     // hold orphan files nothing references, which is the half of the report the rows cannot
     // answer.
     const check = await invokeCommand(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY, {

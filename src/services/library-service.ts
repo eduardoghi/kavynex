@@ -14,7 +14,7 @@ export type { LibrarySummaryInfo };
  * Re-reads every content-addressed file in the library and checks it against the hash in its own
  * name, calling `onProgress` as it goes and resolving with the report.
  *
- * Long by nature: it reads every byte the library holds, which is why the caller drives a progress
+ * Long by nature. It reads every byte the library holds, which is why the caller drives a progress
  * bar and offers `cancelLibraryVerification` rather than showing a spinner. Only one runs at a time;
  * a second call is refused by the backend rather than queued.
  */
@@ -185,8 +185,8 @@ export async function openFileLocation(path: string, libraryPath: string): Promi
     });
 }
 
-// Opens the app's log directory in the OS file manager. Unlike the two above it passes no path:
-// the backend resolves it from `app_log_dir()`, which is what makes the command safe without a
+// Opens the app's log directory in the OS file manager. Unlike the two above it passes no path.
+// The backend resolves it from `app_log_dir()`, which is what makes the command safe without a
 // containment check (see src-tauri/src/commands/logging.rs). There is nothing here to normalize or
 // reject, so this is a direct call rather than a validating wrapper.
 export async function openLogDirectory(): Promise<void> {

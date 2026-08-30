@@ -1,8 +1,8 @@
 //! Validates that a user-provided URL targets YouTube before it is handed to yt-dlp with
 //! access to the user's browser cookies.
 //!
-//! The app only backs up YouTube, so restricting the host closes a defense-in-depth gap:
-//! without it, a compromised frontend could point yt-dlp (and the loaded cookies) at an
+//! The app only backs up YouTube, so restricting the host closes a defense-in-depth gap.
+//! Without it, a compromised frontend could point yt-dlp (and the loaded cookies) at an
 //! arbitrary site. The UI only ever sends YouTube URLs, so this loses no real functionality.
 
 use http::Uri;
@@ -17,7 +17,7 @@ fn is_allowed_youtube_host(host: &str) -> bool {
         .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
 }
 
-/// Builds a privacy-reduced reference to a YouTube URL for the file log: the canonical video id
+/// Builds a privacy-reduced reference to a YouTube URL for the file log. The canonical video id
 /// when it can be extracted, otherwise the host and path alone. The full URL a user pastes can
 /// carry extra query parameters (playlist ids, referral/tracking params, timestamps) beyond the
 /// video itself; logging just `host?v=<id>` (or `youtu.be/<id>`) keeps the log useful for
@@ -29,7 +29,7 @@ pub fn youtube_ref_for_log(url: &str) -> String {
 
     let host = uri.host().unwrap_or("").to_ascii_lowercase();
 
-    // youtu.be/<id>: the id is the first path segment.
+    // youtu.be/<id>. The id is the first path segment.
     if host == "youtu.be" || host.ends_with(".youtu.be") {
         if let Some(id) = uri.path().trim_start_matches('/').split('/').next() {
             if !id.is_empty() {
@@ -38,7 +38,7 @@ pub fn youtube_ref_for_log(url: &str) -> String {
         }
     }
 
-    // youtube.com/watch?v=<id>: pull only the `v` parameter, dropping any other query params.
+    // youtube.com/watch?v=<id>. Pull only the `v` parameter, dropping any other query params.
     if let Some(query) = uri.query() {
         for pair in query.split('&') {
             if let Some(value) = pair.strip_prefix("v=") {
@@ -49,7 +49,7 @@ pub fn youtube_ref_for_log(url: &str) -> String {
         }
     }
 
-    // Fallback (channel pages, other forms): host + path, never the query string.
+    // Fallback (channel pages, other forms). Host + path, never the query string.
     format!("{host}{}", uri.path())
 }
 
@@ -115,12 +115,12 @@ mod tests {
             youtube_ref_for_log("https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s"),
             "www.youtube.com?v=abc123"
         );
-        // youtu.be short links: the id is the path.
+        // youtu.be short links. The id is the path.
         assert_eq!(
             youtube_ref_for_log("https://youtu.be/xyz789?si=track"),
             "youtu.be/xyz789"
         );
-        // Channel/other forms: host + path, never a query string.
+        // Channel/other forms. Host + path, never a query string.
         assert_eq!(
             youtube_ref_for_log("https://www.youtube.com/@channel"),
             "www.youtube.com/@channel"

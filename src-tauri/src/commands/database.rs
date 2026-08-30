@@ -75,12 +75,12 @@ fn destination_is_inside_dir(destination: &Path, protected_dir: &Path) -> bool {
 /// written to.
 ///
 /// Extracted from `export_database` as a pure function (the caller resolves `config_dir` from the
-/// `AppHandle` first) so the ordering it enforces is unit-testable without a live app: trim once,
+/// `AppHandle` first) so the ordering it enforces is unit-testable without a live app. Trim once,
 /// then the extension gate, then the network-location refusal, then the app-config-dir containment
 /// refusal. All against the *same* trimmed path, and the returned `PathBuf` is that same path. The
 /// network check has to precede the containment one because that one canonicalizes (see below).
 /// That single-path invariant is the
-/// point: the earlier inline version gated the extension/containment on the trimmed path while the
+/// point. The earlier inline version gated the extension/containment on the trimmed path while the
 /// write used the raw one, so a padded destination could be validated on one path and written to
 /// another. A validate-here/act-there gap in a function whose whole job is to gate a destructive
 /// overwrite.
@@ -90,7 +90,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
     validate_export_destination(trimmed)?;
 
     // Refuse a network destination before anything touches it. Two things follow from a UNC path
-    // here, and the write is the worse one: `destination_is_inside_dir` below canonicalizes the
+    // here, and the write is the worse one. `destination_is_inside_dir` below canonicalizes the
     // destination's parent, and on Windows that alone authenticates to the host over SMB and hands
     // it the user's NTLM hash, and then the export writes the whole database (every channel,
     // title, comment and stored local path) to a host the caller chose. The mirror in
@@ -106,7 +106,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
     }
 
     // Refuse an export aimed inside the app's own config directory, where the live database and
-    // every backup generation live: replacing one of those with an export is a data-loss path the
+    // every backup generation live. Replacing one of those with an export is a data-loss path the
     // shared `.db` extension would otherwise let through (see destination_is_inside_dir).
     if destination_is_inside_dir(Path::new(trimmed), config_dir) {
         return Err(AppError::from_code(
@@ -119,7 +119,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
 }
 
 /// Validates the caller-provided import source and returns the exact path the staging copy must
-/// read. The mirror image of [`prepare_export_destination`] on the way in: the import replaces the
+/// read. The mirror image of [`prepare_export_destination`] on the way in. The import replaces the
 /// live database on the next startup, so its *input* deserves the same gate its output already had.
 ///
 /// Two things are enforced, each closing a gap the export side never had:
@@ -136,7 +136,7 @@ fn prepare_export_destination(destination_path: &str, config_dir: &Path) -> AppR
 ///   mistyped or hostile path into a clear refusal instead of an "is this a valid SQLite file?"
 ///   probe of an arbitrary path on disk.
 ///
-/// It lives here rather than inside `stage_database_import` on purpose: the undo path
+/// It lives here rather than inside `stage_database_import` on purpose. The undo path
 /// (`db_backup::stage_database_import_undo`) reuses that function with the `.pre-import` snapshot,
 /// whose extension this gate would reject. Keeping the gate on the caller-facing command leaves the
 /// undo (whose source the backend wrote itself and never took from IPC), untouched.
@@ -186,7 +186,7 @@ fn prepare_import_source(source_path: &str) -> AppResult<PathBuf> {
 /// afterwards.
 ///
 /// The old message said "restart the app before restoring from backup", which is the wrong
-/// instruction in that state: restoring would replace a working database with an older snapshot,
+/// instruction in that state. Restoring would replace a working database with an older snapshot,
 /// and the user who followed it would restart, find the app opening normally, and have no idea
 /// whether anything was restored. Refusing is correct, and telling them there is nothing to
 /// restore is the honest way to say so.
@@ -238,7 +238,7 @@ pub async fn restore_database_from_backup<R: Runtime>(app: AppHandle<R>) -> AppR
 
     // Hold the open lock for the whole restore so no concurrent command can open the pool (which
     // creates/renames the database file), while the restore renames it underneath. The
-    // already-open check is re-done under the lock: the pool may have opened between the frontend's
+    // already-open check is re-done under the lock. The pool may have opened between the frontend's
     // recovery entry and this command acquiring the lock.
     let _open_guard = db.restore_guard().await;
 
@@ -256,7 +256,7 @@ pub async fn export_database<R: Runtime>(
     app: AppHandle<R>,
     destination_path: String,
 ) -> AppResult<()> {
-    // The AppHandle-bound half: resolve the app config directory the containment guard needs. The
+    // The AppHandle-bound half. Resolve the app config directory the containment guard needs. The
     // validation ordering and the single-path invariant then live in the pure
     // prepare_export_destination (unit-tested), which returns the exact path the write uses.
     let config_dir = app.path().app_config_dir().map_err(|error| {
@@ -449,7 +449,7 @@ mod tests {
         std::fs::create_dir_all(&outside_dir).unwrap();
 
         let destination = outside_dir.join("backup.db");
-        // Padded input: the returned path must be the *trimmed* destination. This pins the
+        // Padded input. The returned path must be the *trimmed* destination. This pins the
         // single-path invariant (the guard and the write both act on exactly this path), so the
         // validate-here/act-there regression (gate the trimmed path, write the raw one) stays dead.
         let padded = format!("   {}   ", destination.to_string_lossy());
@@ -467,7 +467,7 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
 
         // A .db target directly inside the config dir passes the extension gate but must still be
-        // refused: it could clobber the live kavynex.db or one of its backup generations.
+        // refused. It could clobber the live kavynex.db or one of its backup generations.
         let inside = config_dir.join("kavynex.db.bak");
         let error = prepare_export_destination(&inside.to_string_lossy(), &config_dir).unwrap_err();
         assert_eq!(error.code, AppErrorCode::InvalidTargetPath.as_str());
@@ -480,7 +480,7 @@ mod tests {
         // The export writes the whole database to this path, so a share here is both the NTLM leak
         // the import gate closes and an exfiltration of every row. Every spelling Windows resolves
         // to a share is covered, and each carries a valid `.db` extension so only the network check
-        // can be what rejects it. The config dir is deliberately a path that does not exist: the
+        // can be what rejects it. The config dir is deliberately a path that does not exist. The
         // refusal has to come before `destination_is_inside_dir` canonicalizes anything.
         let config_dir = unique_dir("net");
 
@@ -541,7 +541,7 @@ mod tests {
     fn prepare_import_source_returns_the_trimmed_path_for_every_database_extension() {
         for name in ["backup.db", "backup.sqlite", "backup.sqlite3", "BACKUP.DB"] {
             let source = unique_dir("import").join(name);
-            // Padded input: the returned path must be the *trimmed* source, so the guard and the
+            // Padded input. The returned path must be the *trimmed* source, so the guard and the
             // read act on one value. The same single-path invariant the export side pins.
             let padded = format!("   {}   ", source.to_string_lossy());
 
@@ -596,7 +596,7 @@ mod tests {
     fn prepare_import_source_rejects_the_undo_snapshot_the_command_never_sees() {
         // The undo path (db_backup::stage_database_import_undo) reuses stage_database_import with
         // the `.pre-import` snapshot, whose extension this gate rejects. That is exactly why the
-        // gate lives on the command rather than inside stage_database_import: putting it there
+        // gate lives on the command rather than inside stage_database_import. Putting it there
         // would have broken the undo silently. This pins the incompatibility, so a later move of
         // the check into the service layer fails here instead of at a user's next undo.
         let snapshot = unique_dir("undo").join("kavynex.db.pre-import");

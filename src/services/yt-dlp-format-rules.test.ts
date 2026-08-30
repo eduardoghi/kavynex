@@ -193,7 +193,7 @@ describe("inferSelectedMediaType", () => {
 // The backend has its own copy of this rule (is_valid_format_id in
 // src-tauri/src/services/yt_dlp/download/mod.rs) that rejects a malformed format id regardless of
 // what this client check lets through. The two are independent implementations that must agree on
-// every id: buildMergedFormats builds the `<video>+<audio>` selector, and if the two rules drifted a
+// every id. buildMergedFormats builds the `<video>+<audio>` selector, and if the two rules drifted a
 // selector this side produced could come back as a raw backend error instead of the resolved
 // download. Both sides assert against the same shared fixture so a divergence fails a test here (and
 // the mirrored one in yt_dlp/download/mod.rs) rather than reaching a user. Add a case to

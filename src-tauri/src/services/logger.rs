@@ -36,7 +36,7 @@ fn backup_path(path: &Path) -> PathBuf {
     path.with_file_name(format!("{name}.1"))
 }
 
-/// Keeps a single rolled-over backup: when the log passes the size limit it is renamed to
+/// Keeps a single rolled-over backup. When the log passes the size limit it is renamed to
 /// `<name>.1` (replacing any previous backup) and a fresh log is started.
 fn rotate_if_needed(path: &Path, max_bytes: u64) {
     let Ok(metadata) = fs::metadata(path) else {
@@ -57,12 +57,12 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
 /// the OS username/profile. Mirrors the redaction the yt-dlp paths already receive
 /// (services::yt_dlp::download::redact_paths_value).
 ///
-/// Splits on both `/` and `\` on every platform: a path can come from a library synced from
+/// Splits on both `/` and `\` on every platform. A path can come from a library synced from
 /// Windows even when running on Unix, where `\` is not a separator and `Path::file_name` would
 /// otherwise return the whole string unredacted. Falls back to `<path>` when no final
 /// component remains (e.g. a root).
 ///
-/// The cost of that is worth stating, because it is a real one rather than a theoretical one: on
+/// The cost of that is worth stating, because it is a real one rather than a theoretical one. On
 /// Unix `\` is an ordinary filename character, so a file legitimately named `my\clip.mp4` is
 /// logged as `clip.mp4`. That is over-redaction, which is the direction this function is allowed
 /// to be wrong in. The alternative is a platform-conditional split that leaves a Windows-synced
@@ -113,14 +113,14 @@ fn write(level: &str, scope: &str, message: &str) {
     // The file write (rotation check + append under a mutex) is blocking disk I/O. When this
     // runs inside the async runtime (which is most log calls, since services log from async
     // commands and background tasks), hand it to the blocking pool so a log line never stalls
-    // a Tokio worker thread on a slow disk. Fire-and-forget is acceptable: logging is
+    // a Tokio worker thread on a slow disk. Fire-and-forget is acceptable. Logging is
     // best-effort and every line carries its own timestamp, so a slight reordering between
     // concurrent writers is harmless. Outside the runtime (Tauri's synchronous setup hook, the
     // app-exit sweep, tests) there is nothing to offload to, so write inline.
     match tokio::runtime::Handle::try_current() {
         Ok(_) => {
             let path = path.clone();
-            // Detach the handle: this is fire-and-forget, and dropping a spawn_blocking handle
+            // Detach the handle. This is fire-and-forget, and dropping a spawn_blocking handle
             // does not cancel the already-running write.
             drop(tauri::async_runtime::spawn_blocking(move || {
                 append_line_locked(&path, &line)
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn redact_path_treats_a_backslash_as_a_separator_even_where_it_is_a_valid_name_character() {
         // The accepted cost of splitting on both separators everywhere, pinned so it reads as a
-        // decision rather than as an oversight: on Unix this name is one file, and it is redacted
+        // decision rather than as an oversight. On Unix this name is one file, and it is redacted
         // as though it were two segments. Over-redaction is the direction this is allowed to be
         // wrong in, making the split platform-conditional would leave a Windows-synced path whole
         // on Unix, which is the username leak the function exists to prevent. A change that

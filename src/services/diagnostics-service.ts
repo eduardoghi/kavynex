@@ -48,7 +48,7 @@ function defaultExternalToolsStatus(): ExternalToolsStatus {
             path: "",
             version: "",
             healthy: false,
-            // No version was read at all, so there is no release date to age: an unhealthy tool
+            // No version was read at all, so there is no release date to age. An unhealthy tool
             // has its own issue to report and must not also be called out as merely outdated.
             release_age_days: null,
         },
@@ -121,7 +121,7 @@ function defaultLibraryIntegrity(): LibraryIntegrityReport {
 }
 
 // Live chat integrity is a projection of the single backend library-integrity check (the only
-// side that can stat the files), rather than a separate pass: this is what gives live chat the
+// side that can stat the files), rather than a separate pass. This is what gives live chat the
 // same missing/corrupt/orphan detection media and thumbnails get.
 function deriveLiveChatIntegrity(report: LibraryIntegrityReport): LiveChatIntegrityReport {
     return {
@@ -135,11 +135,11 @@ function deriveLiveChatIntegrity(report: LibraryIntegrityReport): LiveChatIntegr
     };
 }
 
-// One entry per check: the code and label a failure is reported under, and how the check runs.
+// One entry per check. The code and label a failure is reported under, and how the check runs.
 // These used to be three lists kept in step by position (the labels here, the calls passed to
 // `Promise.allSettled`, and the destructuring of its results), which is the shape where a check
 // added to one list and not the others turns into the wrong label on a failure and the wrong
-// value in a field, with nothing failing. Everything now derives from this one table: the runs
+// value in a field, with nothing failing. Everything now derives from this one table. The runs
 // are read off it, the results come back keyed by the same names, and the failure report reads
 // the label of the entry whose run rejected. The library path is bound here, once, because two
 // of the checks take it and a runner that takes no argument is what lets `settleAll` stay typed.
@@ -184,7 +184,7 @@ type DiagnosticCheckKey = keyof DiagnosticChecks;
 
 // The settled result of every check, under the same key as its entry in the table, and typed as
 // what that entry's `run` resolves to. The whole point of keying rather than destructuring a
-// positional array: a result cannot land in the wrong field because there is no position.
+// positional array. A result cannot land in the wrong field because there is no position.
 type SettledChecks = {
     [K in DiagnosticCheckKey]: PromiseSettledResult<Awaited<ReturnType<DiagnosticChecks[K]["run"]>>>;
 };
@@ -192,7 +192,7 @@ type SettledChecks = {
 // `Promise.allSettled` over the table's runners, re-keyed. Every check runs regardless of how the
 // others end (a rejected check is a warning issue below, never a failed report), which is what
 // allSettled is for. The assertion is the price of allSettled returning
-// `PromiseSettledResult<unknown>[]` for a heterogeneous input: each result is put back under the
+// `PromiseSettledResult<unknown>[]` for a heterogeneous input. Each result is put back under the
 // key whose runner produced it, at the same index it came out, so it states that one-to-one
 // mapping rather than guessing at a type.
 async function settleAll(checks: DiagnosticChecks): Promise<SettledChecks> {

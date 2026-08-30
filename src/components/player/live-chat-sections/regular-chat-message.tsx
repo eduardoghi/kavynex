@@ -25,7 +25,7 @@ export function RegularChatMessage({
     const isMember = message.author_badges.some((badge) => badge.type === "member");
     const isVerified = message.author_badges.some((badge) => badge.type === "verified");
 
-    // YouTube colors the whole name by role: owner gets a highlight box, moderator blue,
+    // YouTube colors the whole name by role. Owner gets a highlight box, moderator blue,
     // member green, everyone else the default text color.
     const roleColor = isModerator
         ? MODERATOR_NAME_COLOR

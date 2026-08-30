@@ -1,4 +1,4 @@
-//! The versioned schema migrations themselves: the baseline reconcile that every pre-versioning
+//! The versioned schema migrations themselves. The baseline reconcile that every pre-versioning
 //! database goes through once, and one `apply_migration_*` per version above it. Split out of
 //! `mod.rs` so the dispatcher there (`ensure_schema`) reads as a list of version guards while the
 //! SQL work each version performs lives here.
@@ -29,7 +29,7 @@ async fn ensure_videos_additive_columns(conn: &mut SqliteConnection) -> AppResul
     Ok(())
 }
 
-/// Applies an additive, index-only migration: re-runs every index DDL (all guarded with
+/// Applies an additive, index-only migration. re-runs every index DDL (all guarded with
 /// `IF NOT EXISTS`, so pre-existing indexes are untouched and only the ones this version adds
 /// are created) and stamps `target_version`, both in the same transaction so a crash leaves
 /// the database fully at the old or the new version.
@@ -62,20 +62,20 @@ async fn apply_index_only_migration(pool: &SqlitePool, target_version: i64) -> A
     Ok(())
 }
 
-/// v8: creates `idx_videos_channel_created_id`. Additive, so it reaches databases created
+/// v8. Creates `idx_videos_channel_created_id`. Additive, so it reaches databases created
 /// before v8 by re-running the guarded index DDLs.
 pub(super) async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 8).await
 }
 
-/// v9: creates `idx_videos_file_path` and `idx_videos_live_chat_file_path`, which keep the
+/// v9. Creates `idx_videos_file_path` and `idx_videos_live_chat_file_path`, which keep the
 /// per-artifact reference-count lookups run on delete off a full table scan. Additive, so it
 /// reaches databases created before v9 by re-running the guarded index DDLs.
 pub(super) async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 9).await
 }
 
-/// v12: creates the four `list_media_page` sort indexes (`idx_videos_channel_created_title_id`,
+/// v12. Creates the four `list_media_page` sort indexes (`idx_videos_channel_created_title_id`,
 /// `idx_videos_channel_comments_count`, `idx_videos_channel_duration`,
 /// `idx_videos_channel_published_ordered`). Additive, so it reaches databases created before v12
 /// by re-running the guarded index DDLs.
@@ -83,7 +83,7 @@ pub(super) async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 12).await
 }
 
-/// v13: brings the videos row invariants to databases whose `videos` table predates them. The
+/// v13. Brings the videos row invariants to databases whose `videos` table predates them. The
 /// live-chat one (has_live_chat set implies a stored live_chat_file_path) and the
 /// title_normalized one (never NULL).
 ///
@@ -94,7 +94,7 @@ pub(super) async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
 /// reject future violations. A plain `CREATE TRIGGER` on the existing table, touching no row
 /// content.
 ///
-/// Neither repair destroys anything: the live-chat one only clears `has_live_chat` where no path is
+/// Neither repair destroys anything. The live-chat one only clears `has_live_chat` where no path is
 /// stored (correcting a flag to match the absent file), and the title one only computes a value for
 /// rows that have none. Both must run before the triggers, which fire only on new writes and would
 /// otherwise leave a pre-existing bad row in place, and, worse for the title one, would then
@@ -106,7 +106,7 @@ pub(super) async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
         .await
         .map_err(|error| db_error("failed to begin schema migration", error))?;
 
-    // Correct any row that predates the invariant: the flag says a live chat exists but no path is
+    // Correct any row that predates the invariant. The flag says a live chat exists but no path is
     // stored, so the truth is there is none. Clears only the flag, never a path or the row.
     sqlx::query(
         "UPDATE videos SET has_live_chat = 0 \
@@ -123,7 +123,7 @@ pub(super) async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
     // with "no such column" instead of being repaired. Idempotent, exactly as in v11.
     ensure_videos_additive_columns(&mut tx).await?;
 
-    // v11 backfilled title_normalized, but only databases below v11 ever run it: a row that arrived
+    // v11 backfilled title_normalized, but only databases below v11 ever run it. A row that arrived
     // with a NULL afterwards (an imported database, an out-of-band writer) is never reached again
     // and stays invisible to every title search. Sweep those up once here, before the trigger below
     // starts refusing them.
@@ -154,14 +154,14 @@ pub(super) async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// v14: brings the comment-body length ceiling to databases whose `video_comments` table predates
+/// v14. Brings the comment-body length ceiling to databases whose `video_comments` table predates
 /// it. Such a table already exists, so the `CHECK` added to VIDEO_COMMENTS_TABLE_DDL never reached it
 /// (CREATE TABLE IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table without
 /// rebuilding it). Rather than rebuild the comments table just to add a CHECK, this truncates any row
 /// that already exceeds the ceiling and installs BEFORE INSERT/UPDATE triggers that reject future
 /// ones (the same additive strategy as v13.
 ///
-/// The truncation is non-destructive beyond the overflow itself: it keeps the first
+/// The truncation is non-destructive beyond the overflow itself. It keeps the first
 /// `MAX_COMMENT_TEXT_CHARS` characters (`substr` uses character semantics on a TEXT value), the same
 /// cap the app's own write path already applies (media_comments::truncate_to_chars), so a comment
 /// stored by the app is never affected), only an out-of-band/oversized row is. It must run before the
@@ -207,18 +207,18 @@ pub(super) async fn apply_migration_14(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// v15: adds `videos.comments_state` and promotes the rows that already carry evidence of a
+/// v15. Adds `videos.comments_state` and promotes the rows that already carry evidence of a
 /// comment fetch.
 ///
-/// The column records what a fetch *concluded*, which `has_comments`/`comments_count` cannot say:
-/// both are derived from the number of rows stored, so 0 means "nothing was ever fetched" and "a
+/// The column records what a fetch *concluded*, which `has_comments`/`comments_count` cannot say.
+/// Both are derived from the number of rows stored, so 0 means "nothing was ever fetched" and "a
 /// fetch ran and found nothing to store" alike. The first is not a final answer and the second is,
 /// and the player offered its Fetch button on both, so a user could re-run an operation that could
 /// never return anything.
 ///
 /// The backfill is deliberately one-directional. A row with stored comments is promoted to
 /// `available`, because the count is proof a fetch ran and returned something. A row with none is
-/// left at `unknown`, which is the honest value: nothing before this column recorded whether a
+/// left at `unknown`, which is the honest value. Nothing before this column recorded whether a
 /// fetch had been attempted, so the app cannot claim one was. Those rows settle themselves the
 /// first time the user refreshes them.
 ///
@@ -238,7 +238,7 @@ pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
     // old enough to predate that column therefore reaches here without it, and the UPDATE would
     // fail the whole migration with "no such column" instead of adding the new one. Ask first.
     //
-    // Skipping the promotion on such a database is not a loss: with no stored count there is no
+    // Skipping the promotion on such a database is not a loss. With no stored count there is no
     // evidence a fetch ever ran, so every row keeping the `unknown` default is the honest outcome,
     // which is the same answer the backfill reaches for a row with no comments anyway. The same
     // shape of guard v13 applies before it reads `title_normalized`.
@@ -260,10 +260,10 @@ pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// v10: creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
+/// v10. Creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
 /// (video_id, comment_id)" invariant out of application code (media_comments::
 /// dedupe_comments_by_id) and into the schema. Unlike the index-only migrations above it cannot
-/// blindly run the DDLs: a database created before this index could in principle hold a duplicate
+/// blindly run the DDLs. A database created before this index could in principle hold a duplicate
 /// that would fail the unique build. So it first collapses any duplicate rows to the lowest id,
 /// then runs the guarded index DDLs, both in one transaction so a crash leaves the database fully
 /// at the old or the new version. The single write path (replace_media_comments) already dedups
@@ -278,7 +278,7 @@ pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
     // (video_id, comment_id, id) so the one-time cleanup answers MIN(id) per group from the index
     // instead of full-scanning and sorting video_comments, which, on a user with a large comment
     // history, would otherwise make this startup migration noticeably slow. The real partial unique
-    // index cannot stand in for it here: it is created below (COMMENT_UNIQUE_INDEX_DDL) only after
+    // index cannot stand in for it here. It is created below (COMMENT_UNIQUE_INDEX_DDL) only after
     // the duplicates it would reject are gone. It lives outside INDEX_DDLS precisely so the baseline
     // loop, which runs before this migration, never attempts it against un-deduped data. The temp
     // index is dropped again before the real index is built.
@@ -340,7 +340,7 @@ pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// v11: adds the `title_normalized` column and its index, and backfills the column for every
+/// v11. Adds the `title_normalized` column and its index, and backfills the column for every
 /// existing row.
 ///
 /// `title_normalized` is the accent/case-folded copy of `title` the paginated library list
@@ -354,7 +354,7 @@ pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
 ///
 /// Shared by v11, which introduces the column, and v13, which sweeps up any row that arrived with a
 /// NULL after v11 had already run (an imported database, an out-of-band writer) and would otherwise
-/// never be reached: `ensure_schema` only runs the migrations above the stored version, so a
+/// never be reached. `ensure_schema` only runs the migrations above the stored version, so a
 /// database stamped at v11 or later is never backfilled again.
 ///
 /// SQLite has no accent folding of its own, so the value is computed in Rust with the same
@@ -434,7 +434,7 @@ async fn backfill_missing_title_normalized(conn: &mut SqliteConnection) -> AppRe
     Ok(rows.len())
 }
 
-/// v11: adds the `title_normalized` column and its index, and backfills the column for every
+/// v11. Adds the `title_normalized` column and its index, and backfills the column for every
 /// existing row.
 ///
 /// `title_normalized` is the accent/case-folded copy of `title` the paginated library list searches

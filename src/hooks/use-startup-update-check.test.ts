@@ -29,7 +29,7 @@ describe("useStartupUpdateCheck", () => {
 
         renderHook(() => useStartupUpdateCheck({ enabled: false, onUpdateAvailable }));
 
-        // Off by default: a launch makes no update request until the user opts in.
+        // Off by default. A launch makes no update request until the user opts in.
         expect(checkAppUpdateMock).not.toHaveBeenCalled();
         expect(onUpdateAvailable).not.toHaveBeenCalled();
     });
@@ -86,7 +86,7 @@ describe("useStartupUpdateCheck", () => {
 
         renderHook(() => useStartupUpdateCheck({ enabled: true, onUpdateAvailable }));
 
-        // A failed passive check must never interrupt startup: it is logged and stays quiet.
+        // A failed passive check must never interrupt startup. It is logged and stays quiet.
         await waitFor(() => expect(logErrorMock).toHaveBeenCalledTimes(1));
         expect(onUpdateAvailable).not.toHaveBeenCalled();
     });

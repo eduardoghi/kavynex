@@ -164,7 +164,7 @@ describe("AddMediaModal", () => {
     });
 
     it("keeps a partially edited publication date instead of wiping it mid-edit", () => {
-        // Model the real controlled flow: the parent stores the published date and feeds it
+        // Model the real controlled flow. The parent stores the published date and feeds it
         // back, so an incomplete date (which normalizes to "") round-trips into the modal.
         const base = createDefaultProps();
 
@@ -220,7 +220,7 @@ describe("AddMediaModal", () => {
     });
 
     it("warns about a missing tool before anything is filled in", async () => {
-        // Composed with the real hook rather than a stubbed warning: what this pins is the wiring,
+        // Composed with the real hook rather than a stubbed warning. What this pins is the wiring,
         // which is the half that can silently come undone while both pieces keep passing their own
         // tests.
         vi.mocked(getExternalToolsStatus).mockResolvedValueOnce({
@@ -244,8 +244,8 @@ describe("AddMediaModal", () => {
     });
 
     it("has no detectable accessibility violations in each source mode", async () => {
-        // Both modes, because they render different form sections and the labelling is per-section:
-        // the local mode has the file picker and the import-mode radio group, the yt-dlp mode has
+        // Both modes, because they render different form sections and the labelling is per-section.
+        // The local mode has the file picker and the import-mode radio group, the yt-dlp mode has
         // the URL field, the format picker and the terminal. A missing label on either is a form
         // control a screen reader cannot name, which is the whole failure this catches.
         for (const sourceMode of ["local", "yt-dlp"] as const) {

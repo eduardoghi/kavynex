@@ -109,7 +109,7 @@ export const ChannelListItem = memo(function ChannelListItem({
                     radius="xl"
                     size={44}
                     src={avatarSrc || undefined}
-                    // Decorative: the channel name is the next thing in the row, so the image adds
+                    // Decorative. The channel name is the next thing in the row, so the image adds
                     // nothing a screen reader should repeat. Mantine sets the <img> alt from this
                     // prop, and without it the image has no alt at all, which axe flags.
                     alt=""

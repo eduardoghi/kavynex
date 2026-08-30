@@ -308,7 +308,7 @@ describe("useHomePlayerActions", () => {
         });
 
         it("does not report in flight when another media's toggle is running", () => {
-            // Same reasoning as isRefreshingComments: the header buttons render `loading` from
+            // Same reasoning as isRefreshingComments. The header buttons render `loading` from
             // this, so a shared flag would leave the media on screen looking busy (and its own
             // toggle disabled) for a toggle left running on a media the user navigated away from.
             const activeMedia = createMediaRow({ id: 7 });

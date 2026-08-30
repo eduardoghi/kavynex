@@ -12,7 +12,7 @@ fn has_txt_extension(path: &Path) -> bool {
 
 /// The two first-line prefixes a Netscape cookie file may carry.
 ///
-/// Taken from what yt-dlp actually accepts rather than from the spec: it loads the file through
+/// Taken from what yt-dlp actually accepts rather than from the spec. It loads the file through
 /// Python's `http.cookiejar.MozillaCookieJar`, whose magic is `#( Netscape)? HTTP Cookie File`
 /// matched at the start of the first line. Verified against yt-dlp 2026.07.04, which accepts these
 /// two (and anything appended after them on the same line) and rejects `#Netscape...` without the
@@ -34,7 +34,7 @@ const COOKIE_HEADER_PROBE_BYTES: usize = 64;
 /// as unstable elsewhere, which is the same reasoning `services::binaries` uses to refuse `.bat`
 /// shims outright instead of trusting the compiler's BatBadBut fix to hold across every build.
 ///
-/// Reading the header here moves the guarantee back to this side of the boundary: a `.txt` that is
+/// Reading the header here moves the guarantee back to this side of the boundary. A `.txt` that is
 /// not a cookie jar is refused before its path can reach an argv, so nothing can overwrite it. A
 /// real cookie file is unaffected, because this is the same header yt-dlp itself requires.
 fn has_cookie_file_header(path: &Path) -> bool {
@@ -136,7 +136,7 @@ const MAX_COOKIES_BROWSER_SELECTOR_CHARS: usize = 512;
 ///
 /// Only the browser used to be accepted, as a bare name, which left anyone with more than one
 /// Firefox profile (or a Chromium whose keyring yt-dlp does not guess right) unable to use the
-/// option at all: yt-dlp would read the default profile, find no session, and the download failed
+/// option at all. yt-dlp would read the default profile, find no session, and the download failed
 /// with nothing saying why. The grammar here is yt-dlp's own (`--cookies-from-browser` in its
 /// README), validated part by part so the value that reaches the argv is still one this side chose
 /// to allow. The browser and the keyring are allow-listed; the profile and the container are free
@@ -150,7 +150,7 @@ pub(crate) struct CookiesBrowserSelector {
 }
 
 impl CookiesBrowserSelector {
-    /// The value handed to yt-dlp: browser and keyring lowercased, whitespace around the separators
+    /// The value handed to yt-dlp. Browser and keyring lowercased, whitespace around the separators
     /// dropped, profile and container exactly as typed (profile names are case-sensitive on Linux).
     pub(crate) fn to_argument(&self) -> String {
         let mut value = self.browser.clone();
@@ -197,7 +197,7 @@ impl CookiesBrowserSelector {
     }
 }
 
-/// True for a profile or container value that may travel as part of one argv element: non-empty,
+/// True for a profile or container value that may travel as part of one argv element. non-empty,
 /// not something yt-dlp's option parser could read as a flag, and free of control characters (a
 /// newline would also forge a line in the file log, where the redacted form is written).
 fn is_safe_selector_component(value: &str) -> bool {
@@ -207,7 +207,7 @@ fn is_safe_selector_component(value: &str) -> bool {
 /// Parses `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, or `None` for anything that is not a
 /// selector this app will hand to yt-dlp.
 ///
-/// The split order mirrors yt-dlp's own regex: the container comes after the first `::`, the
+/// The split order mirrors yt-dlp's own regex. The container comes after the first `::`, the
 /// profile after the first `:` before it (a Windows path in the profile keeps its drive colon,
 /// since only the first one separates), and the keyring after a `+` in the browser part.
 /// Whitespace around each separator is dropped, as yt-dlp does.
@@ -262,7 +262,7 @@ pub(crate) fn parse_cookies_browser_selector(value: &str) -> Option<CookiesBrows
     }
 
     if let Some(container) = container {
-        // A container that itself starts with `:` is the `firefox:::x` shape: yt-dlp parses it, as
+        // A container that itself starts with `:` is the `firefox:::x` shape. yt-dlp parses it, as
         // a container literally named `:x`, but nothing a user means is spelled that way, and
         // accepting it would make the selector's meaning depend on how many colons were typed.
         if !is_safe_selector_component(container) || container.starts_with(':') {
@@ -280,7 +280,7 @@ pub(crate) fn parse_cookies_browser_selector(value: &str) -> Option<CookiesBrows
 
 /// Normalizes a caller-supplied `--cookies-from-browser` value to the form handed to yt-dlp, or
 /// `None` when it is not one this app allows (see [`parse_cookies_browser_selector`]). An invalid
-/// value is dropped rather than raised, matching [`normalize_cookies_path`]: the run proceeds
+/// value is dropped rather than raised, matching [`normalize_cookies_path`]. The run proceeds
 /// without cookies, and the frontend validates the same grammar before the round trip so a user
 /// typing an unusable profile is told there rather than here.
 pub fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
@@ -288,7 +288,7 @@ pub fn normalize_cookies_browser(value: Option<&str>) -> Option<String> {
 }
 
 /// The form of a `--cookies-from-browser` value that may be written to a log or shown in the
-/// in-app terminal: the browser and keyring kept, the profile and container replaced. A value
+/// in-app terminal. The browser and keyring kept, the profile and container replaced. A value
 /// that does not parse is fully replaced, since nothing about it is known to be safe to show.
 pub fn redact_cookies_browser_selector(value: &str) -> String {
     match parse_cookies_browser_selector(value) {
@@ -302,7 +302,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    /// `file_name` goes last, and has to: callers pass a real file name (`cookies.txt`,
+    /// `file_name` goes last, and has to. Callers pass a real file name (`cookies.txt`,
     /// `cookies.dat`, `cookies.TXT`) because the function under test gates on the `.txt`
     /// extension, so anything appended after it would strip the extension the assertion depends on.
     fn unique_temp_path(file_name: &str) -> std::path::PathBuf {
@@ -350,7 +350,7 @@ mod tests {
     fn normalize_cookies_browser_matches_the_shared_fixture() {
         // The frontend composes the selector from the browser combo and the profile field and
         // validates it with its own copy of this grammar (src/constants/cookies-browsers.ts), so
-        // both sides assert the same cases: a value the frontend lets through must be one the
+        // both sides assert the same cases. A value the frontend lets through must be one the
         // backend hands to yt-dlp, and in the exact same spelling, or the user is silently
         // downloading without cookies after being told the profile was accepted.
         let raw = include_str!(concat!(
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn redact_cookies_browser_selector_keeps_the_tool_and_hides_the_profile() {
-        // A bare browser (the common case) reads back unchanged: it names a tool and nothing about
+        // A bare browser (the common case) reads back unchanged. It names a tool and nothing about
         // the user. A profile is a path or a name the user chose, so it goes, with the separator
         // kept so the line still says a profile was set. The keyring is a backend name and stays.
         assert_eq!(redact_cookies_browser_selector("firefox"), "firefox");
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn append_auth_args_passes_a_full_selector_through_normalized() {
-        // The whole point of the grammar: the profile the user typed has to reach yt-dlp, in the
+        // The whole point of the grammar. The profile the user typed has to reach yt-dlp, in the
         // spelling yt-dlp reads, as the single argument after the flag.
         let mut args: Vec<String> = Vec::new();
         append_auth_args(&mut args, Some(" Firefox : default-release :: Work "), None);
@@ -475,7 +475,7 @@ mod tests {
         );
 
         // And a selector the grammar refuses adds nothing, rather than a bare browser it was not
-        // asked for: reading the wrong profile is the failure this exists to prevent.
+        // asked for. Reading the wrong profile is the failure this exists to prevent.
         let mut refused: Vec<String> = Vec::new();
         append_auth_args(&mut refused, Some("firefox:-x"), None);
         assert!(refused.is_empty());
@@ -523,19 +523,19 @@ mod tests {
     #[test]
     fn normalize_cookies_path_rejects_a_txt_that_is_not_a_cookie_jar() {
         // The point of the header check, and the reason the extension gate is not enough on its
-        // own: yt-dlp rewrites the whole file it is handed through `--cookies`, so accepting any
+        // own. yt-dlp rewrites the whole file it is handed through `--cookies`, so accepting any
         // `.txt` left "this note is not destroyed" resting on yt-dlp's parser refusing it first.
         // The file's content is what must decide, and it must decide before the path can reach an
         // argv.
         for content in [
             &b"MY IMPORTANT NOTES\nline two\n"[..],
-            // A cookie *data* line with no header: this is the near-miss most likely to appear by
+            // A cookie *data* line with no header. This is the near-miss most likely to appear by
             // hand, and yt-dlp refuses it too.
             b".youtube.com\tTRUE\t/\tTRUE\t0\tPREF\thl=en\n",
-            // Header present but not first: a comment ahead of it is refused by yt-dlp, so
+            // Header present but not first. A comment ahead of it is refused by yt-dlp, so
             // accepting it here would hand over a path that then fails to load anyway.
             b"# Exported by some extension\n# Netscape HTTP Cookie File\n",
-            // Header spellings yt-dlp rejects: no space after the hash, and a lowercased form.
+            // Header spellings yt-dlp rejects. No space after the hash, and a lowercased form.
             b"#Netscape HTTP Cookie File\n",
             b"# netscape http cookie file\n",
             // Empty file: nothing to match, and nothing worth overwriting either, but the answer
@@ -559,15 +559,15 @@ mod tests {
     #[test]
     fn normalize_cookies_path_accepts_every_header_yt_dlp_accepts() {
         // The other direction, and the one that keeps this check from being a regression for a
-        // user with a real cookies file. These are the spellings yt-dlp 2026.07.04 loads:
-        // both magic forms, and either one with anything appended on the same line. Rejecting a
+        // user with a real cookies file. These are the spellings yt-dlp 2026.07.04 loads.
+        // Both magic forms, and either one with anything appended on the same line. Rejecting a
         // legitimate export would surface as "the cookies option silently does nothing".
         for content in [
             &b"# Netscape HTTP Cookie File\n"[..],
             b"# HTTP Cookie File\n",
             b"# Netscape HTTP Cookie File\n# This file is generated by yt-dlp.  Do not edit.\n",
             b"# Netscape HTTP Cookie File extra words here\n",
-            // No trailing newline at all: the header is the whole file.
+            // No trailing newline at all. The header is the whole file.
             b"# Netscape HTTP Cookie File",
         ] {
             let file = unique_temp_path("real-jar.txt");
@@ -605,7 +605,7 @@ mod tests {
 
     #[test]
     fn append_auth_args_drops_a_txt_that_is_not_a_cookie_jar() {
-        // The refusal has to reach the argv builder, not just the normalizer: what must never
+        // The refusal has to reach the argv builder, not just the normalizer. What must never
         // happen is `--cookies <path to the user's notes>` being spawned, because that is the
         // moment the file gets overwritten.
         let file = unique_temp_path("notes.txt");
@@ -624,7 +624,7 @@ mod tests {
         append_auth_args(&mut only_notes, None, Some(file.to_str().unwrap()));
         assert!(only_notes.is_empty());
 
-        // The file is still there, untouched: nothing in this flow could have handed it over.
+        // The file is still there, untouched. Nothing in this flow could have handed it over.
         assert_eq!(fs::read(&file).unwrap(), b"MY IMPORTANT NOTES\n");
 
         let _ = fs::remove_file(&file);
@@ -632,7 +632,7 @@ mod tests {
 
     #[test]
     fn normalize_cookies_path_rejects_a_network_location() {
-        // A UNC path must be refused before `is_file()` stats it: on Windows that alone
+        // A UNC path must be refused before `is_file()` stats it. On Windows that alone
         // authenticates to the host over SMB and leaks the user's NTLM hash. Every spelling
         // Windows resolves to a share is covered, including the mixed separators a literal
         // `\\` prefix match would miss. The `.txt` extension is deliberately correct on each
@@ -655,7 +655,7 @@ mod tests {
 
     #[test]
     fn append_auth_args_drops_a_network_cookies_path_and_falls_back_to_the_browser() {
-        // The refusal above must reach the argv builder: a rejected cookies file leaves
+        // The refusal above must reach the argv builder. A rejected cookies file leaves
         // `--cookies` off entirely rather than passing the UNC through to yt-dlp, and the
         // browser source (which normally loses the precedence contest) takes over.
         let mut args: Vec<String> = Vec::new();

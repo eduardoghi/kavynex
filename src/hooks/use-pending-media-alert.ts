@@ -6,13 +6,13 @@ import { formatCount } from "../utils/pluralize";
 import { logError } from "../utils/app-logger";
 
 type UsePendingMediaAlertOptions = {
-    // Surfaces the notice to the user. A notice and not an error: nothing is broken and nothing was
+    // Surfaces the notice to the user. A notice and not an error. Nothing is broken and nothing was
     // lost. Some files are simply taking up space with no library entry behind them.
     onArtifactsAbandoned: (message: string) => void;
 };
 
 // The user-facing message for artifacts the startup sweep stopped retrying. Written for someone who
-// has never heard of a "pending media marker": what it means to them is disk space in use with
+// has never heard of a "pending media marker". What it means to them is disk space in use with
 // nothing pointing at it, and one place to go about it.
 //
 // It names the file manager rather than stopping at Diagnostics, because Diagnostics reports and

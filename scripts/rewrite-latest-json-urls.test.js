@@ -8,7 +8,7 @@ const VERSION = "1.2.0";
 
 const apiUrl = (id) => `https://api.github.com/repos/eduardoghi/kavynex/releases/assets/${id}`;
 
-// The six platforms verify-latest-json.js requires, as tauri-action leaves them on a draft: every
+// The six platforms verify-latest-json.js requires, as tauri-action leaves them on a draft. Every
 // url is the api.github.com asset endpoint rather than the tagged download url.
 function draftManifest() {
     return {
@@ -64,7 +64,7 @@ describe("rewriteManifestUrls", () => {
     });
 
     it("produces a manifest the verification gate accepts", () => {
-        // The property that matters: the rewrite exists to satisfy verify-latest-json.js, so assert
+        // The property that matters. The rewrite exists to satisfy verify-latest-json.js, so assert
         // against that script rather than against a url string this test wrote itself. Both derive
         // the prefix from the same endpoint, so a change to either one is caught here.
         const prefix = releaseDownloadPrefix(ENDPOINT);

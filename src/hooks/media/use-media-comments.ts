@@ -29,7 +29,7 @@ export function useMediaComments(
         let cancelled = false;
 
         async function loadComments(): Promise<void> {
-            // A refresh is in flight (isRefreshingComments true): its own indicator covers the UI,
+            // A refresh is in flight (isRefreshingComments true). Its own indicator covers the UI,
             // and reloading now would only re-read the pre-refresh rows. Skip until it completes.
             // the flip back to false re-runs this effect and loads the freshly written comments.
             // This is what keeps the effect from firing a redundant fetch on the refresh's rising

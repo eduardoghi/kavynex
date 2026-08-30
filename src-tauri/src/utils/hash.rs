@@ -14,16 +14,16 @@ const HASH_CHUNK_BYTES: usize = 8192;
 /// through. A tee that hashes what it copies.
 ///
 /// Written as one traversal rather than a hash pass plus a copy pass because its caller has a file
-/// it would otherwise read twice: `services::live_chat_storage` compresses a replay into a staged
+/// it would otherwise read twice. `services::live_chat_storage` compresses a replay into a staged
 /// archive and then proves that archive decompresses back to the source's exact bytes. The
 /// compression side hands this a gzip encoder, the verification side hands it [`std::io::sink`]
 /// because it wants the digest alone, and neither ever holds more than one chunk. That bound is the
-/// point: a replay of a long stream runs to hundreds of megabytes, and that module used to keep
+/// point. A replay of a long stream runs to hundreds of megabytes, and that module used to keep
 /// three copies of one alive at once.
 ///
 /// It lives here rather than beside its caller for the reason its shape makes obvious. It is a
 /// hashing primitive, and [`file_hash_cancellable`] below is the same loop with a cancel flag. There
-/// is a second consequence worth stating plainly rather than discovering later: `live_chat_storage`
+/// is a second consequence worth stating plainly rather than discovering later. `live_chat_storage`
 /// is inside the mutation gate (`src-tauri/.cargo/mutants.toml`) and this file is not, so the loop's
 /// `read == 0` mutant is not exercised there. That mutant is a genuine one (inverting the EOF check
 /// spins forever on an empty reader), and it is caught here by
@@ -85,7 +85,7 @@ pub(crate) fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
 ///
 /// The flag is read once per 8 KiB chunk, which is frequent enough that a cancel is felt as
 /// immediate and cheap enough not to matter next to the read itself. Nothing is written here, so
-/// there is nothing to undo: the function simply stops and reports the cancellation.
+/// there is nothing to undo. The function simply stops and reports the cancellation.
 pub fn file_hash_cancellable(path: &Path, cancel: Option<&AtomicBool>) -> AppResult<String> {
     if !path.exists() {
         return Err(AppError::from_code(
@@ -139,7 +139,7 @@ pub fn file_hash_cancellable(path: &Path, cancel: Option<&AtomicBool>) -> AppRes
     Ok(hex_digest(hasher))
 }
 
-/// Hashes a file with no cancellation. The shape every caller but the media import wants: the
+/// Hashes a file with no cancellation. The shape every caller but the media import wants. The
 /// backup staging copies, the content-addressed thumbnail names and the duplicate checks all run on
 /// files small enough, or on paths short enough, that there is nothing to interrupt.
 pub fn file_hash(path: &Path) -> AppResult<String> {
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn hashing_a_stream_distinguishes_payloads_that_differ_by_one_byte() {
         // The digest is what `live_chat_storage`'s verification compares, so it has to depend on
-        // the content: a helper returning a constant would satisfy one vector test by coincidence
+        // the content. A helper returning a constant would satisfy one vector test by coincidence
         // but cannot satisfy this at the same time.
         let first = vec![7u8; 64];
         let mut second = first.clone();
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn file_hash_cancellable_gives_up_when_the_flag_is_already_set() {
-        // The direction that matters for a multi-gigabyte source: a flag set before the call must
+        // The direction that matters for a multi-gigabyte source. A flag set before the call must
         // stop it without reading the file at all, so a cancel that lands while the import is
         // queued is honoured rather than paying for a full read pass first.
         let path = std::env::temp_dir().join(format!(
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn file_hash_cancellable_with_an_unset_flag_matches_the_plain_hash() {
-        // The other direction, and the one a wrongly-placed check breaks silently: an import that
+        // The other direction, and the one a wrongly-placed check breaks silently. An import that
         // was never cancelled has to produce the same content address as before, or every file
         // already in the library stops being found by name.
         let path = std::env::temp_dir().join(format!(

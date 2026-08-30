@@ -2,7 +2,7 @@
 //! persisted in the application settings.
 //!
 //! Commands that create or delete files inside the library receive the library path from
-//! the frontend for convenience, but that value must never be trusted on its own: a
+//! the frontend for convenience, but that value must never be trusted on its own. A
 //! compromised frontend could otherwise point a destructive command (delete a media
 //! file, remove a migrated directory tree) at an arbitrary location on disk. Every
 //! mutating command re-derives the expected directory from the persisted settings and
@@ -24,7 +24,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// thumbnails and live chat files all live under it, so commands never take the base
 /// directory from the caller. A compromised frontend cannot redirect reads/writes to an
 /// arbitrary location.
-/// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is: the bare
+/// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is. The bare
 /// `AppHandle` alias is the real runtime, which a mock-runtime test cannot produce.
 pub async fn configured_library_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     let pool = shared_pool(app).await?;
@@ -64,7 +64,7 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
     // hostile IPC path. When the library itself is on a share (a supported configuration), the
     // same hostile caller could name another host, and refusing only "network against local"
     // would let that reach canonicalize and authenticate to it before the canonical compare said
-    // no. So the host and share are compared textually first: the user's own share keeps working,
+    // no. So the host and share are compared textually first. The user's own share keeps working,
     // and a different one is refused without any filesystem call.
     if is_network_path(requested) {
         if !is_network_path(configured) {
@@ -97,7 +97,7 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
 /// The frontend always persists the library path before invoking any command that
 /// mutates the library (settings are written before the library path state that drives
 /// those commands changes), so a legitimate request always matches. Library migration
-/// relies on the same invariant from the other side: the settings still hold the old
+/// relies on the same invariant from the other side. The settings still hold the old
 /// path while the migration runs, and the new path is only persisted after the
 /// migration succeeds.
 pub async fn ensure_configured_library_path<R: Runtime>(
@@ -113,7 +113,7 @@ pub async fn ensure_configured_library_path<R: Runtime>(
 /// This is the real implementation; the `AppHandle` version above only resolves the shared pool
 /// and delegates. The split exists so a command can run the guard while taking `State<'_, Db>`
 /// instead of an `AppHandle` at all (the pool-only commands do). It also predates the day the
-/// `AppHandle` version became generic over `R: Runtime`: a bare `AppHandle` parameter resolved to
+/// `AppHandle` version became generic over `R: Runtime`. A bare `AppHandle` parameter resolved to
 /// the concrete `AppHandle<Wry>`, which no mock-runtime test could produce, so a command taking one
 /// could not be driven through a real IPC round trip. Both shapes are registerable now, and a
 /// command picks whichever matches what else it needs from the app.
@@ -173,7 +173,7 @@ pub async fn ensure_configured_library_path_in_pool(
 /// blocking thread with the verified path handed back to it.
 ///
 /// This exists so a command that mutates the library through a caller-provided path cannot
-/// run its filesystem work without the guard passing first: coupling the check with execution
+/// run its filesystem work without the guard passing first. Coupling the check with execution
 /// here makes the check impossible to forget by construction, which is exactly the omission
 /// that would turn a "delete a file inside the library" command into an arbitrary-file
 /// primitive. `f` receives the same (verified) path so it does not need to capture a second
@@ -192,7 +192,7 @@ where
 }
 
 /// [`verify_library_path_then_blocking`] against a pool the caller already holds, for the same
-/// reason [`ensure_configured_library_path_in_pool`] exists: it lets a command keep `State<'_, Db>`
+/// reason [`ensure_configured_library_path_in_pool`] exists. It lets a command keep `State<'_, Db>`
 /// and stay drivable through a real IPC round trip.
 ///
 /// The coupling is the point here too. These are read-only commands, so the risk they carry is not
@@ -250,7 +250,7 @@ mod tests {
         pool
     }
 
-    /// The combination the two halves of this module are only tested apart: a library the app
+    /// The combination the two halves of this module are only tested apart. A library the app
     /// cannot see (an external disk that is not plugged in, the state a user is most likely to be
     /// in right after restoring a database) still has to be *usable* through the guard.
     ///
@@ -291,7 +291,7 @@ mod tests {
         let pool = pool_with_library_path(&offline_str).await;
 
         for requested in [
-            // A sibling whose name merely starts with the configured one: the case a `starts_with`
+            // A sibling whose name merely starts with the configured one. The case a `starts_with`
             // comparison would wave through.
             format!("{offline_str}-evil"),
             format!("{offline_str}/nested"),
@@ -310,7 +310,7 @@ mod tests {
 
     /// A library that *is* reachable takes the canonical path rather than the string fallback, so
     /// the two spellings of one directory agree. Asserted through the pool for the same reason as
-    /// above: this is the normal case, and if it regressed the app would be unusable outright.
+    /// above. This is the normal case, and if it regressed the app would be unusable outright.
     #[tokio::test]
     async fn a_reachable_library_matches_through_canonicalization() {
         let library = unique_test_dir("reachable-library");
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn same_location_rejects_sibling_with_prefixed_name() {
-        // Guards against a naive string `starts_with` style comparison: "library-evil"
+        // Guards against a naive string `starts_with` style comparison. "library-evil"
         // must never be treated as the same location as "library".
         let base = unique_test_dir("prefix");
         let library = base.join("library");
@@ -410,7 +410,7 @@ mod tests {
         // The configured library lives on a share. A hostile caller naming a different host (or a
         // different share on the same host) must be refused before canonicalize, which on Windows
         // would authenticate to that host. This is the case the "network against local" refusal
-        // alone did not cover: with both sides network, it fell straight through to canonicalize.
+        // alone did not cover. With both sides network, it fell straight through to canonicalize.
         let configured = r"\\nas\videos";
 
         for requested in [
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn same_location_matches_two_identical_network_paths() {
-        // A library the user deliberately put on a share must still match itself: the network-path
+        // A library the user deliberately put on a share must still match itself. The network-path
         // guard only rejects a network `requested` aimed at a *local* configured library (the
         // NTLM-leak vector), never a genuinely network-hosted one. Without this case the guard's
         // `!is_network_path(configured)` condition is only ever exercised against a local library,

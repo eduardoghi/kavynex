@@ -2,12 +2,12 @@
 // `src-tauri/capabilities/` grants.
 //
 // `docs/THREAT-MODEL.md` states that the grant list is "the exact list the app uses, not a preset",
-// and that the seam rule is what makes that auditable: `src/lib/tauri-client.ts` and
+// and that the seam rule is what makes that auditable. `src/lib/tauri-client.ts` and
 // `src/lib/tauri-platform.ts` are the only files allowed to import `@tauri-apps` (enforced by
 // eslint), so the used surface is a two-file read. That is true, and it was still held by nothing
 // but someone remembering to do the read.
 //
-// The failure it leaves open is the one that document describes: a new Tauri API added to a seam
+// The failure it leaves open is the one that document describes. A new Tauri API added to a seam
 // without its permission surfaces "on the first click a user makes". Nothing before this ran the
 // ACL. `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
 // `--smoke-test` exits inside `setup()`. `--webview-check` (release.yml) closes the runtime half for
@@ -21,7 +21,7 @@
 // What it proves and what it does not, stated exactly, because a gate that overstates itself is
 // worse than none. It does NOT prove a granted permission works at runtime. That needs the ACL,
 // which only the renderer evaluates. What it proves is that the two lists cannot drift apart
-// silently: a binding added to a seam fails here until its permission is decided, a permission
+// silently. A binding added to a seam fails here until its permission is decided, a permission
 // granted for nothing fails here too, and an entry naming an API that no longer exists cannot rot
 // in place. The over-grant direction is not hypothetical. The list started as the scaffolded
 // `core:default`, which expanded to 92 individual permissions, and stayed that way through four
@@ -36,19 +36,19 @@ import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 // The two files eslint permits to import `@tauri-apps`, relative to the repository root. Hard-coded
-// rather than discovered: that is the point of the rule, and a scan that found a third file would be
+// rather than discovered. That is the point of the rule, and a scan that found a third file would be
 // reporting an eslint violation this script has no business re-deciding.
 const SEAM_FILES = ["src/lib/tauri-client.ts", "src/lib/tauri-platform.ts"];
 
 // Which permissions each Tauri API the seams import requires.
 //
-// Hand-declared, and it has to be: `getVersion` needs `core:app:allow-version` because of what the
+// Hand-declared, and it has to be. `getVersion` needs `core:app:allow-version` because of what the
 // binding does, which no syntax reveals. The same shape, and the same reasoning, as
 // `DECLARED_PATH_SURFACE` in verify-command-path-surface.js. The value is not that the script knows
 // the mapping, it is that adding a binding without deciding its entry fails the run.
 //
 // An empty `permissions` array is a real answer, not a placeholder, and the three that carry one are
-// the cases `docs/THREAT-MODEL.md` calls out explicitly: `convertFileSrc` builds a URL string in the
+// the cases `docs/THREAT-MODEL.md` calls out explicitly. `convertFileSrc` builds a URL string in the
 // renderer, `Channel` is part of the IPC mechanism rather than a command, and `invoke` reaches this
 // app's own `#[tauri::command]`s, which the ACL does not gate at all (which is exactly why the Rust
 // command layer, not the ACL, is the trust boundary that document is about).
@@ -75,7 +75,7 @@ export const DECLARED_CAPABILITY_SURFACE = [
 // Every value binding a file imports or re-exports from an `@tauri-apps` module, with the module it
 // came from.
 //
-// Type-only bindings are skipped: `type Update`, `type Event` and `type UnlistenFn` are erased at
+// Type-only bindings are skipped. `type Update`, `type Event` and `type UnlistenFn` are erased at
 // compile time and call nothing, so requiring a permission entry for them would be requiring one for
 // a name that never reaches the ACL. A binding renamed on the way out (`open as openFileDialog`) is
 // recorded under its *original* name, which is what the permission is about. The alias is a
@@ -108,7 +108,7 @@ export function extractTauriBindings(sourceContent) {
 // Every permission identifier granted across the capability files, deduplicated.
 //
 // A grant is either a bare identifier string or an object carrying a scope (`opener:allow-open-url`
-// with its three allowed URLs). Only the identifier is read here: whether that scope is *right* is a
+// with its three allowed URLs). Only the identifier is read here. Whether that scope is *right* is a
 // judgment this gate deliberately does not make, and the URL list is pinned separately by the
 // threat-model review.
 export function extractGrantedPermissions(capabilitySources) {
@@ -131,7 +131,7 @@ export function extractGrantedPermissions(capabilitySources) {
 
 // Whether `identifier` names a permission (or a plugin's default set) that actually exists.
 //
-// The last `:` splits the plugin key from the permission name, which is what makes both shapes work:
+// The last `:` splits the plugin key from the permission name, which is what makes both shapes work.
 // `core:app:allow-version` is the `allow-version` permission of the `core:app` plugin, and
 // `updater:default` is the `updater` plugin's default set, which lives under `default_permission`
 // rather than in the `permissions` map, so it needs its own branch.
@@ -159,7 +159,7 @@ export function permissionExists(identifier, aclManifest) {
 
 /**
  * Decides the gate from the raw file contents, returning `{ ok, message }` rather than reading files
- * or exiting itself: the same shape as the other verify-* scripts, so every refusal branch is
+ * or exiting itself. The same shape as the other verify-* scripts, so every refusal branch is
  * unit-testable.
  *
  * `aclManifest` is optional. It is `src-tauri/gen/schemas/acl-manifests.json`, which `tauri build`

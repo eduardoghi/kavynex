@@ -119,7 +119,7 @@ export function useMediaLibrary({
     );
 
     // Reconcile the progress stashed during playback into the media list once the player closes
-    // (activeMedia clears): one array rebuild on close instead of one per periodic save. A
+    // (activeMedia clears). One array rebuild on close instead of one per periodic save. A
     // watched item is skipped so a late flush never undoes the zeroed position marking-watched
     // applied.
     useEffect(() => {

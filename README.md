@@ -28,7 +28,7 @@ It was built to preserve the channels I follow, and it is what I use for that.
 - Mark media watched or unwatched
 - Resume where you stopped
 - Reconcile the database against the files on disk with the built-in diagnostics
-- Everything stays local: nothing is uploaded, and loading remote images is off by default
+- Everything stays local, so nothing is uploaded, and loading remote images is off by default
 
 ## Requirements
 
@@ -53,7 +53,7 @@ Prebuilt installers and packages are available on the latest GitHub release:
 
 ### Windows
 
-Download the installer matching your processor: `arm64` for a Windows on ARM device (Snapdragon
+Download the installer matching your processor, `arm64` for a Windows on ARM device (Snapdragon
 and similar), `x64` for everything else:
 
 - `kavynex_*_x64-setup.exe`
@@ -99,7 +99,7 @@ download is authentic:
 
   A successful check confirms the file was built by this repository's release workflow.
 
-Both apply from v1.2.0 onward: the checksum and provenance steps were added to the release
+Both apply from v1.2.0 onward. The checksum and provenance steps were added to the release
 workflow after v1.1.1 was published, so v1.1.1 and earlier have neither, and `gh attestation
 verify` will report *no attestation* for those installers rather than a failure to trust.
 

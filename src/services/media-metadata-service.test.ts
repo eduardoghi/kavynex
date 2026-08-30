@@ -7,7 +7,7 @@ vi.mock("../utils/media-utils", () => ({
 import { readMediaDurationInSeconds } from "./media-metadata-service";
 import { fileSrcFromStoredPath } from "../utils/media-utils";
 
-// A minimal stand-in for the HTMLMediaElement the service creates: the test drives its metadata /
+// A minimal stand-in for the HTMLMediaElement the service creates. The test drives its metadata /
 // error events by hand (jsdom never fires them for a src that loads nothing) and inspects the
 // cleanup calls. Every media element the service creates in a test is captured in `created`.
 type StubMedia = {
@@ -105,7 +105,7 @@ describe("readMediaDurationInSeconds", () => {
     });
 
     it("gives up with null when the element never reports, instead of staying pending", async () => {
-        // The case that used to hang createMedia: no `loadedmetadata`, no `error`, nothing. The
+        // The case that used to hang createMedia. No `loadedmetadata`, no `error`, nothing. The
         // probe has to settle on its own, and clean the element up as it does on any other exit.
         vi.useFakeTimers();
 

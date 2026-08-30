@@ -65,7 +65,7 @@ describe("useExternalToolsAvailability", () => {
 
         const { result } = renderHook(() => useExternalToolsAvailability(true, "yt-dlp"));
 
-        // Nothing is claimed before the answer arrives: an import form that flashed "yt-dlp was
+        // Nothing is claimed before the answer arrives. An import form that flashed "yt-dlp was
         // not found" on every open would be worse than saying nothing.
         expect(result.current.missingTools).toEqual([]);
 

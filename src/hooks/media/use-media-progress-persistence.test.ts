@@ -70,7 +70,7 @@ describe("useMediaProgressPersistence", () => {
         onSave.mockClear();
 
         // A fresh callback identity (the real hook chain rebuilds these) must not trigger the
-        // unmount-only save: re-running that cleanup mid-session was the bug this guards against.
+        // unmount-only save. re-running that cleanup mid-session was the bug this guards against.
         const nextSave = vi.fn<SaveProgress>();
         rerender({ save: nextSave });
 
@@ -126,7 +126,7 @@ describe("useMediaProgressPersistence", () => {
         const onCompleted = vi.fn();
 
         // The media prop keeps its unwatched value, standing in for the window before the write
-        // lands and re-renders: the guard cannot rely on watched_at alone.
+        // lands and re-renders. The guard cannot rely on watched_at alone.
         renderHook(() =>
             useMediaProgressPersistence(createMedia({ id: 7 }), element, onSave, onCompleted)
         );
@@ -143,7 +143,7 @@ describe("useMediaProgressPersistence", () => {
         const watched = videoElementAt(600);
         const onCompleted = vi.fn();
 
-        // Already watched: nothing to mark, and persistProgress drops the save on its own.
+        // Already watched. Nothing to mark, and persistProgress drops the save on its own.
         const { unmount } = renderHook(() =>
             useMediaProgressPersistence(
                 createMedia({ id: 7, watched_at: "2026-01-01T00:00:00.000Z" }),
@@ -160,7 +160,7 @@ describe("useMediaProgressPersistence", () => {
         expect(onCompleted).not.toHaveBeenCalled();
         unmount();
 
-        // No callback at all: ending still has to persist the position, which is what every
+        // No callback at all. Ending still has to persist the position, which is what every
         // caller that does not pass one relies on.
         const element = videoElementAt(600);
 

@@ -13,7 +13,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Payload of the [`EVENT_DATABASE_INTEGRITY_FAILED`](crate::constants::EVENT_DATABASE_INTEGRITY_FAILED)
-/// event: the list of problems the background full integrity check reported. Frontend-owned contract
+/// event. The list of problems the background full integrity check reported. Frontend-owned contract
 /// (validated there with a zod schema), so it is a plain serde struct rather than a ts-rs-exported
 /// type. The frontend only needs the shape, not a generated binding.
 #[derive(Clone, serde::Serialize)]
@@ -40,7 +40,7 @@ const INITIAL_BACKUP_DELAY_SECS: u64 = 60;
 // happens, never how often.
 const INTEGRITY_CHECK_STARTUP_DELAY_SECS: u64 = 120;
 
-// Delay before the pending-media sweep runs. Shorter than the integrity check's: it opens the same
+// Delay before the pending-media sweep runs. Shorter than the integrity check's. It opens the same
 // pool but does far less work, and an artifact stranded by a crashed creation is disk the user is
 // paying for until it is reconciled. Still off the first-render path.
 const PENDING_MEDIA_SWEEP_DELAY_SECS: u64 = 30;
@@ -69,7 +69,7 @@ fn spawn_startup_cleanup(app_handle: AppHandle) {
 
 /// Sweeps the configured library directory for atomic-write leftovers (`.tmp-`/`.backup-`/
 /// `.migrated-` scratch files a crashed copy/replace/migrate left behind). Kept separate from
-/// `spawn_startup_cleanup`, which only reaches the disposable cache directories: the library path
+/// `spawn_startup_cleanup`, which only reaches the disposable cache directories. The library path
 /// lives in the settings row, so it must be read from the pool first. A missing/unconfigured
 /// library (first run) is not an error. There is simply nothing to sweep yet. Failures are
 /// logged and never affect startup.
@@ -78,7 +78,7 @@ fn spawn_startup_library_cleanup(app_handle: AppHandle) {
         let library_dir = match services::library::guard::configured_library_dir(&app_handle).await
         {
             Ok(library_dir) => library_dir,
-            // No library configured yet, or the settings could not be read: nothing to sweep.
+            // No library configured yet, or the settings could not be read. Nothing to sweep.
             Err(_) => return,
         };
 
@@ -111,7 +111,7 @@ fn spawn_startup_library_cleanup(app_handle: AppHandle) {
 
 /// Reads the configured external backup directory (Settings > Database) and, when one is set,
 /// mirrors the database into it so a disk failure that takes the app config directory does not take
-/// every snapshot with it. Best effort: any failure is logged and never stops the periodic loop. An
+/// every snapshot with it. Best effort. Any failure is logged and never stops the periodic loop. An
 /// empty or absent setting means the feature is off and is silent.
 async fn run_external_database_backup(app_handle: &AppHandle, db_path: &Path) {
     // The setting lives in the database, so reading it opens the shared pool if it is not open yet.
@@ -161,7 +161,7 @@ async fn run_external_database_backup(app_handle: &AppHandle, db_path: &Path) {
 /// clean result the throttle marker is refreshed. On a failing one it is deliberately not, so a
 /// damaged database is re-checked every launch, and the failure is logged prominently (with a
 /// pointer to the Settings > Database restore) rather than left for the user to discover via the
-/// manual Diagnostics check. Best effort throughout: any failure to run the check never affects
+/// manual Diagnostics check. Best effort throughout. Any failure to run the check never affects
 /// the app.
 fn spawn_startup_integrity_check(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -182,7 +182,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
             return;
         }
 
-        // Opening the shared pool here is safe: a database too damaged to open (or one failing
+        // Opening the shared pool here is safe. A database too damaged to open (or one failing
         // quick_check with a migration pending) fails the open, which the startup recovery flow
         // already surfaces. This check is for the subtler damage that opens cleanly.
         let pool = match services::database::shared_pool(&app_handle).await {
@@ -213,7 +213,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
 
                 // Push it to the frontend too, so the user is told proactively (a banner pointing at
                 // Settings > Database) instead of the failure only living in the log file. Fire and
-                // forget: an emit failure (no window yet) must not affect anything, and the log line
+                // forget. An emit failure (no window yet) must not affect anything, and the log line
                 // above already recorded the problem regardless.
                 let _ = app_handle.emit(
                     crate::constants::EVENT_DATABASE_INTEGRITY_FAILED,
@@ -235,7 +235,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
 /// that *fails*. Nothing there can run when the process is gone, so a marker left on disk is what
 /// records the intent (see `services::pending_media`).
 ///
-/// Runs after a short delay rather than inline with setup: it needs the database pool, and the
+/// Runs after a short delay rather than inline with setup. It needs the database pool, and the
 /// deletion decision it delegates to reference-counts every path against the rows, so an artifact
 /// that did get registered is kept. Best effort. Any failure is logged and never affects startup.
 fn spawn_pending_media_sweep(app_handle: AppHandle) {
@@ -293,13 +293,13 @@ fn spawn_periodic_backup(app_handle: AppHandle) {
     });
 }
 
-/// The flag that turns a launch into a startup self-check: run the whole of `setup()` and exit 0
+/// The flag that turns a launch into a startup self-check. Run the whole of `setup()` and exit 0
 /// without ever entering the event loop. See [`is_smoke_test_run`].
 const SMOKE_TEST_FLAG: &str = "--smoke-test";
 
 /// How long a `--webview-check` run waits for the renderer to report before giving up.
 ///
-/// The whole point of the watchdog is that a webview which never loads reports *nothing*: there is
+/// The whole point of the watchdog is that a webview which never loads reports *nothing*. There is
 /// no error to catch and no callback to fail, so without a deadline the run would hang until the
 /// job timeout and say nothing about why. Generous enough for a cold start on a CI runner under
 /// Xvfb (where the first WebKit initialization is by far the slowest part), and far below the
@@ -310,7 +310,7 @@ const WEBVIEW_CHECK_TIMEOUT_SECS: u64 = 90;
 ///
 /// Only the *absence* of a report is handled here. Every reported outcome, pass or fail, exits
 /// through `commands::webview_check::report_webview_check`, which is why this task does nothing but
-/// sleep: reaching the end of the sleep means the renderer never got far enough to call anything,
+/// sleep. Reaching the end of the sleep means the renderer never got far enough to call anything,
 /// which is exactly the failure the check was added for (a bundle the webview refuses, a CSP that
 /// blocks the entry script, a window that never opens).
 fn spawn_webview_check_watchdog() {
@@ -350,7 +350,7 @@ fn is_smoke_test_run(args: impl IntoIterator<Item = String>) -> bool {
 /// What to tell the user when the platform's webview runtime is the thing that is missing.
 ///
 /// Each platform names the component it actually has to install, because that is the whole value
-/// of the message: the failure the runtime reports for a missing WebView2 is a COM registration
+/// of the message. The failure the runtime reports for a missing WebView2 is a COM registration
 /// error, which says nothing a user can act on. macOS is absent on purpose. WKWebView is part of
 /// the OS there, so a build failure on macOS is never this.
 #[cfg(windows)]
@@ -367,7 +367,7 @@ const MISSING_WEBVIEW_HELP: &str = "Kavynex renders its interface with WebKitGTK
 /// The message a failed `Builder::build` should show, given whether the webview runtime resolved.
 ///
 /// Pure so both branches can be asserted, since the caller terminates the process. The technical
-/// detail is kept in the friendly branch rather than replaced: it is what a bug report needs, and
+/// detail is kept in the friendly branch rather than replaced. It is what a bug report needs, and
 /// dropping it would trade one unhelpful message for another.
 #[cfg(any(windows, target_os = "linux"))]
 fn startup_failure_message(build_error: &str, webview_available: bool) -> String {
@@ -442,7 +442,7 @@ fn show_startup_error_dialog(_message: &str) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // Must be the first plugin registered: a second launch is redirected here instead of
+        // Must be the first plugin registered. A second launch is redirected here instead of
         // opening a second instance, which would otherwise open a second SqlitePool onto the
         // same database and duplicate the per-process download registry.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -466,7 +466,7 @@ pub fn run() {
 
             services::logger::info("app", "application setup started");
 
-            // Pin the launch instant while it is still accurate: the pending-media sweep refuses to
+            // Pin the launch instant while it is still accurate. The pending-media sweep refuses to
             // consume any marker that is not older than it, and that cutoff has to be the real start
             // of the process rather than whenever the sweep first asked (see
             // services::pending_media::pin_process_start).
@@ -523,7 +523,7 @@ pub fn run() {
             // Authorize the two cache subdirectories the webview renders from (the temporary
             // thumbnail preview and the display-sized thumbnail derivatives), in the asset
             // protocol scope, so both can be loaded via convertFileSrc. Only those two are
-            // granted, never the cache root: on Windows the root is also the parent of the log
+            // granted, never the cache root. On Windows the root is also the parent of the log
             // directory and of the WebView2 profile (see WEBVIEW_READABLE_CACHE_DIRS). The
             // library directory is authorized at runtime once the stored library path is known
             // (see register_library_asset_scope).
@@ -546,12 +546,12 @@ pub fn run() {
             spawn_periodic_backup(app_handle);
             services::logger::info("app", "application setup finished");
 
-            // Startup self-check (see is_smoke_test_run): everything above this line has run, so
+            // Startup self-check (see is_smoke_test_run). Everything above this line has run, so
             // the process loaded, the runtime and every plugin initialized, the database path
             // resolved and any staged import applied. That is the whole of what a release can
             // verify without a human, and it is exactly what no other gate covers.
             //
-            // `std::process::exit` rather than `AppHandle::exit`, matching fail_startup above: the
+            // `std::process::exit` rather than `AppHandle::exit`, matching fail_startup above. The
             // event loop has not started yet, so there is nothing to unwind and an unconditional
             // exit keeps the check's outcome unambiguous. The process either reaches this line
             // and returns 0, or it does not.
@@ -560,7 +560,7 @@ pub fn run() {
                 std::process::exit(0);
             }
 
-            // The deeper self-check, and the one this exit is the boundary of: everything past
+            // The deeper self-check, and the one this exit is the boundary of. Everything past
             // this line (the window opening, the frontend bundle loading, the packaged CSP, and
             // every permission in `capabilities/`) is unreachable from `--smoke-test` by
             // construction. `--webview-check` lets the launch continue normally and has the
@@ -638,7 +638,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|error| {
-            // Asking the runtime rather than pattern-matching the error text: a missing WebView2
+            // Asking the runtime rather than pattern-matching the error text. A missing WebView2
             // surfaces as a COM registration failure whose wording belongs to Windows, not to us,
             // and `webview_version()` answers the same question directly.
             fail_startup(&startup_failure_message(
@@ -724,7 +724,7 @@ mod tests {
     #[test]
     fn a_normal_launch_is_not_a_smoke_test() {
         // The consequence of a false positive here is an app that exits instead of opening, so a
-        // near-miss must not match: no prefix, no substring, no bare word.
+        // near-miss must not match. No prefix, no substring, no bare word.
         assert!(!is_smoke_test_run(args(&["kavynex"])));
         assert!(!is_smoke_test_run(args(&["kavynex", "--smoke-test-mode"])));
         assert!(!is_smoke_test_run(args(&["kavynex", "smoke-test"])));

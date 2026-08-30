@@ -13,7 +13,7 @@ describe("parseMotionPreference", () => {
     });
 
     it("falls back to system for anything else", () => {
-        // A missing key, a hand-edited entry, a value another build spelled differently: all of
+        // A missing key, a hand-edited entry, a value another build spelled differently. All of
         // them read as "follow the operating system", the one answer that cannot be wrong.
         for (const raw of [null, undefined, "", "on", "off", "REDUCE", 1, {}]) {
             expect(parseMotionPreference(raw)).toBe("system");

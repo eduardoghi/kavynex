@@ -7,7 +7,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Upper bound (in Unicode scalar values) on a stored comment body. yt-dlp comment text is bounded
 /// in practice (YouTube caps a comment at ~10k characters), so a value past this is a malformed or
-/// adversarial response. The text is truncated rather than the whole batch rejected: a comment
+/// adversarial response. The text is truncated rather than the whole batch rejected. A comment
 /// backup is bulk, best-effort data, and losing every other comment over one oversized entry would
 /// be the worse failure. The database also enforces this ceiling now (a `CHECK` on fresh installs, a
 /// trigger on ones whose table predates it (see db_schema), so an out-of-band writer cannot store
@@ -22,7 +22,7 @@ pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 /// that holds the SQLite write lock until it commits, so a renderer sending millions of rows would
 /// hold every other command (they wait up to the busy timeout and then fail) and grow the database
 /// by hundreds of megabytes, with nothing refusing it. Refused rather than truncated, unlike the
-/// body: a body cut at a character boundary loses the tail of one comment, while silently dropping
+/// body. A body cut at a character boundary loses the tail of one comment, while silently dropping
 /// comments from a backup is the kind of loss the user only finds when they go looking for one.
 /// The limit sits far above what a real fetch delivers (yt-dlp's comment run is itself bounded by
 /// its timeout and by `MAX_YT_DLP_JSON_BYTES`), so it only ever trips on a caller that is not the
@@ -31,7 +31,7 @@ pub(crate) const MAX_COMMENTS_PER_MEDIA: usize = 100_000;
 
 /// The states this code *writes* to `videos.comments_state`.
 ///
-/// The column has a third value, `unknown`, and it is deliberately not here: it is the column's
+/// The column has a third value, `unknown`, and it is deliberately not here. It is the column's
 /// DEFAULT, produced by SQLite when a row is inserted, and nothing in this crate ever writes it
 /// back. That is a property worth having rather than an omission. The state only moves forward,
 /// from "nobody has asked" to an answer, so no write path can quietly undo a recorded outcome and
@@ -39,7 +39,7 @@ pub(crate) const MAX_COMMENTS_PER_MEDIA: usize = 100_000;
 ///
 /// **Two answers, not three, and the missing one is deliberate too.** The obvious third is a
 /// `disabled` distinct from `none`, so the player could say the author turned comments off. yt-dlp
-/// does not report that: its metadata carries `comment_count: Option<i64>` and no separate flag, so
+/// does not report that. Its metadata carries `comment_count: Option<i64>` and no separate flag, so
 /// telling a video with comments switched off from one that simply has none would rest on reading
 /// an absent field as an intention. That inference is usually right and is not something to store
 /// in a column and then show a user as fact. Both are also the same answer to the only question the
@@ -48,7 +48,7 @@ pub(crate) const MAX_COMMENTS_PER_MEDIA: usize = 100_000;
 pub(crate) enum CommentsState {
     /// A fetch ran and stored comments.
     Available,
-    /// A fetch ran and there was nothing to store. A final answer: fetching again cannot help.
+    /// A fetch ran and there was nothing to store. A final answer. Fetching again cannot help.
     ///
     /// Reached only after a *successful* fetch. A fetch that failed, or one the metadata says was
     /// incomplete (`comments_extraction_looks_incomplete`), errors before any of this, so a
@@ -139,14 +139,14 @@ struct PreparedComment {
 /// Dedupes the payload, drops comments whose text is blank, and normalizes every field into the
 /// Records that a comment fetch found nothing, without touching the comments already stored.
 ///
-/// The manual refresh needs this and `replace_media_comments` cannot serve it: that one deletes the
+/// The manual refresh needs this and `replace_media_comments` cannot serve it. That one deletes the
 /// existing rows before inserting, so calling it with an empty payload would wipe a backup because
 /// a later fetch came back empty, which is the opposite of what this app is for. The refresh
 /// therefore returns early on an empty result and leaves the stored comments alone. What it could
 /// not do before was record that it had *asked*, so the media stayed `unknown` and the user could
 /// re-run a fetch that could never return anything.
 ///
-/// The `comments_count = 0` guard is what makes it safe to call blind: a media that does have
+/// The `comments_count = 0` guard is what makes it safe to call blind. A media that does have
 /// stored comments keeps its `available` state, so an empty refresh of a video whose comments were
 /// removed from YouTube never downgrades the backup this app exists to keep.
 pub async fn mark_media_comments_absent(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
@@ -227,7 +227,7 @@ pub async fn replace_media_comments(
         ));
     }
 
-    // Checked before the transaction opens, on the raw count rather than after dedup: the cost
+    // Checked before the transaction opens, on the raw count rather than after dedup. The cost
     // being bounded is what the caller handed over, and a vector this large has already been
     // materialized by the time it gets here.
     if comments.len() > MAX_COMMENTS_PER_MEDIA {
@@ -307,7 +307,7 @@ async fn replace_media_comments_in_pool(
         .bind(i64::try_from(inserted_count).unwrap_or(i64::MAX))
         // Reaching here means a fetch ran and succeeded, so zero stored comments is a final answer
         // rather than the absence of an attempt. That is the whole distinction the column exists
-        // for: `has_comments = 0` alone cannot tell the two apart, and the player offered its Fetch
+        // for. `has_comments = 0` alone cannot tell the two apart, and the player offered its Fetch
         // button on both.
         .bind(
             if inserted_count > 0 {
@@ -330,7 +330,7 @@ async fn replace_media_comments_in_pool(
             // With no comments to insert, the video_comments foreign key that maps a vanished media
             // row to MediaNotFound never fires (the insert loop is skipped), so a media deleted
             // concurrently while its zero-length comment fetch was finishing is detected here
-            // instead: the UPDATE matched no row. Roll back and report it, mirroring the non-empty
+            // instead. The UPDATE matched no row. Roll back and report it, mirroring the non-empty
             // path's foreign-key handling below.
             if updated_rows == 0 {
                 let _ = tx.rollback().await;
@@ -356,7 +356,7 @@ async fn replace_media_comments_in_pool(
                 ));
             }
 
-            // The video_comments.video_id foreign key no longer resolves: the media row was
+            // The video_comments.video_id foreign key no longer resolves. The media row was
             // removed (e.g. deleted concurrently while a yt-dlp comment fetch was finishing).
             // Map it to a friendly code instead of a raw SQLite foreign-key constraint error,
             // mirroring insert_media's channel_id handling (video_repository.rs).
@@ -469,7 +469,7 @@ mod tests {
     fn truncate_to_chars_caps_only_over_length_values() {
         assert_eq!(truncate_to_chars("short", 16_000), "short");
         assert_eq!(truncate_to_chars("abcdef", 3), "abc");
-        // On a character boundary, not a byte one: a 4-scalar multi-byte string capped at 2 keeps
+        // On a character boundary, not a byte one. A 4-scalar multi-byte string capped at 2 keeps
         // two whole characters rather than slicing one in half.
         assert_eq!(
             truncate_to_chars("\u{e9}\u{e9}\u{e9}\u{e9}", 2),
@@ -510,7 +510,7 @@ mod tests {
     #[tokio::test]
     async fn replace_media_comments_refuses_a_payload_past_the_count_ceiling() {
         // One over the ceiling is refused before anything is written, and the refusal leaves the
-        // stored comments alone: this is a replace, so an accepted oversized payload would first
+        // stored comments alone. This is a replace, so an accepted oversized payload would first
         // delete the backup it then failed to rewrite.
         let pool = create_test_pool().await;
 
@@ -623,7 +623,7 @@ mod tests {
         // button for an operation that could never return anything.
         let pool = create_test_pool().await;
 
-        // Spelled as a literal because `CommentsState` deliberately does not name it: `unknown`
+        // Spelled as a literal because `CommentsState` deliberately does not name it. `unknown`
         // is the column's DEFAULT and nothing in this crate writes it, which is what keeps the
         // state from ever moving backwards.
         assert_eq!(
@@ -652,7 +652,7 @@ mod tests {
 
     #[tokio::test]
     async fn marking_comments_absent_records_the_outcome_without_deleting_anything() {
-        // What the manual refresh needs: it returns early on an empty result so a later fetch coming
+        // What the manual refresh needs. It returns early on an empty result so a later fetch coming
         // back empty can never wipe a saved backup, and this is how it records that it asked.
         let pool = create_test_pool().await;
 
@@ -765,7 +765,7 @@ mod tests {
     async fn replace_media_comments_keeps_the_real_comment_behind_a_blank_duplicate_id() {
         let pool = create_test_pool().await;
 
-        // Two entries share comment_id "c1": the first is blank, the second has real content. The
+        // Two entries share comment_id "c1". The first is blank, the second has real content. The
         // blank one must not win the dedup and then be dropped, silently losing the real comment.
         let inserted = replace_media_comments_in_pool(
             &pool,

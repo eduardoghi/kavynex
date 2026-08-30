@@ -2,7 +2,7 @@
 
 export type MediaRow = { id: number, channel_id: number, title: string, file_path: string, thumbnail_path: string | null, media_type: "video" | "audio", youtube_video_id: string | null, watched_at: string | null, published_at: string | null, duration_seconds: number | null, progress_seconds: number, has_comments: number, comments_count: number, 
 /**
- * What a comment fetch last concluded: `unknown`, `none` or `available`. See
+ * What a comment fetch last concluded. `unknown`, `none` or `available`. See
  * `media_comments::CommentsState`; the CHECK on the column keeps it to those three, and
  * the player reads it to decide whether offering a Fetch button would be honest.
  */

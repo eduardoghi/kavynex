@@ -7,7 +7,7 @@ import type {
     DiagnosticsOverviewStatus,
 } from "../types/diagnostics";
 
-// How old a yt-dlp release has to be before the diagnostics mention it. Deliberately generous:
+// How old a yt-dlp release has to be before the diagnostics mention it. Deliberately generous.
 // yt-dlp ships very often, so a stricter threshold would nag about a version that still works,
 // and this only ever suggests an update. It never blocks a download.
 const YT_DLP_STALE_AFTER_DAYS = 60;
@@ -28,13 +28,13 @@ export function sortDiagnosticsIssues(issues: DiagnosticsIssue[]): DiagnosticsIs
 
 // The issues whose example paths name a file that is really sitting in the library, which is what
 // makes "reveal this in the file manager" a working action rather than a guaranteed failure. Both
-// families qualify by definition, because both are produced by walking the library directory: an
+// families qualify by definition, because both are produced by walking the library directory. An
 // orphan is a file with no row behind it, and a corrupt one is a file whose bytes disagree with the
 // hash its own name declares.
 //
 // The rest are deliberately absent, and the reason differs. The MISSING_* issues name a path taken
 // from a database row whose file is gone, so there is nothing to show. INVALID_PATH_REFERENCES is
-// stronger still: those paths are absolute or point outside the library, which
+// stronger still. Those paths are absolute or point outside the library, which
 // `resolve_path_inside_library` refuses on the backend by design, so a reveal would not merely fail,
 // it would be asking the app to do the one thing that guard exists to prevent.
 //
@@ -89,7 +89,7 @@ export function buildDiagnosticsIssues(
 
     // A "missing media" path is a media row whose file vanished on disk. The row still exists,
     // so it can be opened in the library. Resolve each such path to its media so the UI can jump
-    // to it (keyed like the integrity service builds the map: trimmed, forward slashes).
+    // to it (keyed like the integrity service builds the map, trimmed and forward-slashed).
     const resolveMissingMedia = (path: string): DiagnosticsMediaTarget | undefined =>
         mediaByPath[path.trim().replace(/\\/g, "/")];
 
@@ -120,7 +120,7 @@ export function buildDiagnosticsIssues(
     // in the terminal panel, which says nothing about the copy on their PATH being old, so the
     // app looks broken when it is not. The backend reports the age (yt-dlp versions are dates);
     // deciding when an age is worth mentioning is a diagnostics rule, so it lives here with the
-    // rest of them. Informational rather than a warning: an old yt-dlp often still works fine, and
+    // rest of them. Informational rather than a warning. An old yt-dlp often still works fine, and
     // this must not read as "something is wrong" when nothing is.
     const ytDlpAgeDays = input.externalTools.yt_dlp.release_age_days;
 

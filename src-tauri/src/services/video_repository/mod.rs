@@ -37,7 +37,7 @@ pub struct MediaRow {
     pub has_comments: i64,
     #[ts(type = "number")]
     pub comments_count: i64,
-    /// What a comment fetch last concluded: `unknown`, `none` or `available`. See
+    /// What a comment fetch last concluded. `unknown`, `none` or `available`. See
     /// `media_comments::CommentsState`; the CHECK on the column keeps it to those three, and
     /// the player reads it to decide whether offering a Fetch button would be honest.
     #[ts(type = "\"unknown\" | \"none\" | \"available\"")]
@@ -50,7 +50,7 @@ pub struct MediaRow {
     pub created_at: String,
 }
 
-// i64 columns are annotated as `number`: the Tauri IPC layer serializes them as JSON
+// i64 columns are annotated as `number`. The Tauri IPC layer serializes them as JSON
 // numbers, so the runtime value is a JS `number` rather than the `bigint` ts-rs emits by
 // default.
 #[derive(Debug, Serialize, sqlx::FromRow, TS)]
@@ -115,7 +115,7 @@ pub struct MediaRepositoryStats {
 
 /// The stored paths of one media row, plus what a reported path needs to resolve back to it.
 ///
-/// Backend-only, and deliberately not `ts(export)`ed: it used to cross the IPC boundary so the
+/// Backend-only, and deliberately not `ts(export)`ed. It used to cross the IPC boundary so the
 /// renderer could assemble the integrity check's inputs, and that resolution now happens in
 /// `library::integrity` on this side. Nothing in `src/` names this shape any more. What the
 /// frontend receives is `LibraryIntegrityCheck`, which is bounded by what the report named.
@@ -170,13 +170,13 @@ const MAX_MEDIA_PAGE_LIMIT: i64 = 500;
 
 /// Upper bound on the search term length. The only caller is the app's own frontend, but the
 /// backend is the trust boundary (the same reason the import mode and download inputs are validated
-/// server-side), so the term that becomes a LIKE pattern is bounded here too: an unbounded term
+/// server-side), so the term that becomes a LIKE pattern is bounded here too. An unbounded term
 /// would let a compromised frontend drive a pathologically long scan. Generous. Real titles, which
 /// this searches, are far shorter.
 const MAX_SEARCH_TERM_CHARS: usize = 200;
 
 /// Upper bound on how many comments a single media loads at once. Comments are threaded on the
-/// client, which needs them all in one shot, so this is not a page size but a defensive ceiling: a
+/// client, which needs them all in one shot, so this is not a page size but a defensive ceiling. A
 /// video with a pathologically large comment backup would otherwise pull every row into memory,
 /// across IPC, and through client-side validation and tree-building on the main thread. The earliest
 /// rows are kept (ORDER BY id ASC); the frontend compares the loaded count against the stored
@@ -229,7 +229,7 @@ pub async fn find_media_by_channel_and_file_path(
     .map_err(|error| db_error("failed to find media by file path", error))
 }
 
-/// Cheap pre-check for the yt-dlp (URL) add flow: whether `channel_id` already has a media row
+/// Cheap pre-check for the yt-dlp (URL) add flow. Whether `channel_id` already has a media row
 /// for `youtube_video_id`, mirroring the "non-empty trimmed id" semantics of the unique partial
 /// index `idx_videos_channel_youtube_video_id_unique`. Letting the caller run this before
 /// downloading the video avoids downloading the whole file only to have `insert_media` fail on
@@ -265,7 +265,7 @@ pub async fn media_exists_for_channel_and_youtube_id(
 /// Inserts a media row and returns its id, or returns the id of the existing row when the same
 /// `(channel_id, file_path)` is already registered.
 ///
-/// This is an idempotent "add", NOT an upsert of the row's contents: on an existing
+/// This is an idempotent "add", NOT an upsert of the row's contents. On an existing
 /// `(channel_id, file_path)` the `ON CONFLICT DO UPDATE` is a deliberate no-op (see the comment
 /// on the statement below), so re-adding the same file keeps the previously stored `title`,
 /// `thumbnail_path`, `duration_seconds`, etc. untouched. A caller that needs to change an
@@ -276,14 +276,14 @@ pub async fn media_exists_for_channel_and_youtube_id(
 ///
 /// The validation below used to live one layer up, in the `insert_media` Tauri command, which made
 /// it a property of *arriving over IPC* rather than of writing a row. That was the wrong place for
-/// it twice over: the command has since been removed from the IPC surface (a media is created
+/// it twice over. The command has since been removed from the IPC surface (a media is created
 /// through `create_media`, which exposes an operation rather than its steps), and the remaining
 /// caller (`services::media_creation`) would then have been trusted to have done it itself.
-/// It mostly had, but not entirely: the `media_type` a yt-dlp download reports is the download's
+/// It mostly had, but not entirely. The `media_type` a yt-dlp download reports is the download's
 /// own, never the normalized request's, so it reached the row with nothing but the table's `CHECK`
 /// behind it.
 ///
-/// So the rule the rest of the backend follows applies here too: every write boundary calls the
+/// So the rule the rest of the backend follows applies here too. Every write boundary calls the
 /// shared validators. The paths must be managed and library-relative, because the deletion path acts
 /// on whatever a row holds; the text fields are validated and stored trimmed, because the partial
 /// unique index on `youtube_video_id` compares the stored column verbatim and a padded value would
@@ -315,7 +315,7 @@ pub async fn insert_media(
         ensure_managed_library_relative_path(path)?;
     }
 
-    // A blank youtube id is "no id": stored as an empty string it would sit in the partial unique
+    // A blank youtube id is "no id". Stored as an empty string it would sit in the partial unique
     // index as a *present* value and collide with the next blank one, which is the opposite of what
     // that index is for.
     let title = title.trim();
@@ -331,7 +331,7 @@ pub async fn insert_media(
 
     // `RETURNING id` on the insert yields the row id atomically, whether the row was freshly
     // inserted or already existed. The conflict target uses a no-op `DO UPDATE` (rather than
-    // `DO NOTHING`) precisely so `RETURNING` still fires on an existing (channel_id, file_path):
+    // `DO NOTHING`) precisely so `RETURNING` still fires on an existing (channel_id, file_path).
     // `DO NOTHING` suppresses `RETURNING`, which would otherwise force a separate `SELECT` and
     // reopen a TOCTOU window (a concurrent delete between the insert and the lookup would make
     // the row vanish and the function wrongly report "nothing inserted").
@@ -361,7 +361,7 @@ pub async fn insert_media(
     .map_err(|error| {
         // The (channel_id, file_path) conflict is absorbed by the no-op ON CONFLICT DO UPDATE
         // above, so a surfacing unique violation is expected to be the (channel_id,
-        // youtube_video_id) index: the same YouTube video already registered for this channel under
+        // youtube_video_id) index. The same YouTube video already registered for this channel under
         // a different path. Confirm that from the failing constraint's own message rather than
         // assuming it. The previous code mapped *any* unique violation to this error, so a unique
         // constraint added to `videos` later (see db_schema::INDEX_DDLS) would have been mislabeled
@@ -378,7 +378,7 @@ pub async fn insert_media(
             );
         }
 
-        // The channel_id foreign key no longer resolves: the channel was removed (e.g. deleted
+        // The channel_id foreign key no longer resolves. The channel was removed (e.g. deleted
         // concurrently while this download was finishing). Map it to a friendly code instead of
         // a raw SQLite foreign-key constraint error.
         if is_foreign_key_violation(&error) {
@@ -451,14 +451,14 @@ pub async fn mark_media_as_unwatched(pool: &SqlitePool, media_id: i64) -> AppRes
 
 /// Writes the duration a media was measured at, once its row exists.
 ///
-/// Split from the insert because the measurement is: the renderer probes the file through a media
+/// Split from the insert because the measurement is. The renderer probes the file through a media
 /// element after `create_media` returns, since that decoder is a webview capability and running one
 /// FFmpeg per import to re-derive a number the player already knows would be the wrong trade. The
 /// column is nullable, so a row simply carries no duration until this lands, and carries none
 /// forever if the probe cannot read the file, which is the pre-existing behavior for an unreadable
 /// or exotic container.
 ///
-/// Idempotent, and deliberately not an error when it matches no row: the media may have been deleted
+/// Idempotent, and deliberately not an error when it matches no row. The media may have been deleted
 /// between the insert and the probe settling, which is a harmless no-op rather than a failure worth
 /// surfacing to someone who has already moved on.
 pub async fn update_media_duration(
@@ -481,7 +481,7 @@ pub async fn update_media_progress(
     media_id: i64,
     progress_seconds: i64,
 ) -> AppResult<()> {
-    // Deliberately idempotent. A zero-row result is expected here, not an error: the watched
+    // Deliberately idempotent. A zero-row result is expected here, not an error. The watched
     // guard means a watched media matches no row (progress is not tracked once watched), and
     // saving progress for a since-deleted media is a harmless no-op. This is unlike the
     // title/unwatched updates above, where zero rows means the media id is unknown.

@@ -75,8 +75,8 @@ export function useYtDlpFormatLoader({
         requestGuard.invalidate();
 
         // If a backend probe is actually running (URL changed or the modal closed mid-load), cancel
-        // it so yt-dlp is stopped promptly instead of running to its metadata timeout. Best effort:
-        // the run may have already finished (cancelMediaDownload then rejects with "not active"),
+        // it so yt-dlp is stopped promptly instead of running to its metadata timeout. Best effort.
+        // The run may have already finished (cancelMediaDownload then rejects with "not active"),
         // which is harmless here.
         if (isLoadingRef.current) {
             void cancelMediaDownload(FORMAT_LOADER_RUN_ID).catch(() => undefined);

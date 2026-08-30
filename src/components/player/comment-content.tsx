@@ -24,7 +24,7 @@ type CommentContentProps = {
     actions?: ReactNode;
 };
 
-// The presentational body of a single comment: avatar, author line, text and like count, plus an
+// The presentational body of a single comment. Avatar, author line, text and like count, plus an
 // optional trailing action. Deliberately stateless and non-recursive so it can back both the
 // recursive browse tree (`CommentItem`) and the flat, virtualized search list
 // (`CommentSearchResults`) without either owning the other's layout.

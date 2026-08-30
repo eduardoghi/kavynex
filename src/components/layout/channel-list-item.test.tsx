@@ -113,7 +113,7 @@ describe("ChannelListItem", () => {
         fireEvent.click(await screen.findByRole("menuitem", { name }));
 
         expect(props[handler]).toHaveBeenCalledWith(props.channel);
-        // Choosing from the menu must not also select the channel: the menu sits above the
+        // Choosing from the menu must not also select the channel. The menu sits above the
         // stretched button and stops the click from reaching it.
         expect(props.onSelectChannel).not.toHaveBeenCalled();
     });

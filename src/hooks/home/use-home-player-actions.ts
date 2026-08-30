@@ -30,7 +30,7 @@ type UseHomePlayerActionsOptions = {
     // Cancels an in-flight comment backup for a media id (see use-media-actions); the player adapts
     // it to the active media so the header's Cancel targets the media on screen.
     cancelRefreshComments: (mediaId: number) => Promise<void>;
-    // The ids being refreshed, not a shared "something is refreshing" flag: the player resolves it
+    // The ids being refreshed, not a shared "something is refreshing" flag. The player resolves it
     // against the media it is showing, so a refresh left running on a media the user navigated away
     // from cannot mark this one busy. That matters beyond the label. The button renders `loading`
     // from it, and Mantine disables a loading button, so a shared flag would block the refresh of
@@ -104,7 +104,7 @@ export function useHomePlayerActions({
     const cancelActiveComments = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        // Explicit undefined check, not truthiness: media id 0 is a valid row id.
+        // Explicit undefined check, not truthiness. Media id 0 is a valid row id.
         if (activeId === undefined) {
             return;
         }
@@ -115,7 +115,7 @@ export function useHomePlayerActions({
     const markActiveAsWatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        // Explicit undefined check, not truthiness: a media id of 0 is a valid row id and must
+        // Explicit undefined check, not truthiness. A media id of 0 is a valid row id and must
         // not be treated as "no active media".
         if (activeId === undefined) {
             return;
@@ -131,7 +131,7 @@ export function useHomePlayerActions({
     const markActiveAsUnwatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        // Explicit undefined check, not truthiness: a media id of 0 is a valid row id and must
+        // Explicit undefined check, not truthiness. A media id of 0 is a valid row id and must
         // not be treated as "no active media".
         if (activeId === undefined) {
             return;
@@ -174,7 +174,7 @@ export function useHomePlayerActions({
         // Resolved against the media on screen, so a refresh still running on one the user
         // navigated away from does not report this one as busy.
         isRefreshingComments: activeMedia ? commentsInFlight.has(activeMedia.id) : false,
-        // Same resolution as isRefreshingComments: a watched/unwatched toggle left running on a
+        // Same resolution as isRefreshingComments. A watched/unwatched toggle left running on a
         // media the user navigated away from must not mark the one on screen busy.
         isUpdatingWatchedStatus: activeMedia
             ? watchedActionInFlight.has(activeMedia.id)

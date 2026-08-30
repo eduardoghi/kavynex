@@ -4,7 +4,7 @@
  * The registered media, as the caller needs to see it.
  *
  * Carries the stored paths rather than only the id because the steps that stay in the renderer
- * need them: the duration probe reads `file_path`/`media_type`, the comment backup reads
+ * need them. The duration probe reads `file_path`/`media_type`, the comment backup reads
  * `youtube_video_id`, and the live-chat notice reads whether a replay was actually saved.
  */
 export type CreatedMedia = { id: number, filePath: string, thumbnailPath: string | null, mediaType: "video" | "audio", youtubeVideoId: string | null, liveChatFilePath: string | null, isLive: boolean, };

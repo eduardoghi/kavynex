@@ -12,7 +12,7 @@ export function normalizeNonEmptyUniquePaths(
 }
 
 /**
- * Whether `path` is a filesystem/volume root: a location with no parent directory, rather
+ * Whether `path` is a filesystem/volume root. A location with no parent directory, rather
  * than a normal folder. Accepting a root as the library folder would make the asset:// scope
  * recursive over the whole drive, so callers must reject it before accepting the selection.
  * Handles POSIX roots ("/"), Windows drive roots ("C:", "C:\", "\\?\C:\"), and UNC share
@@ -37,7 +37,7 @@ export function isFilesystemRootPath(path: string): boolean {
         return true;
     }
 
-    // UNC share root: "\\server\share" (no further path segment after the share name).
+    // UNC share root. "\\server\share" (no further path segment after the share name).
     if (/^\\\\[^\\]+\\[^\\]+$/.test(stripped)) {
         return true;
     }

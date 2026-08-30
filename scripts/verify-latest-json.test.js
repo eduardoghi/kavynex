@@ -80,7 +80,7 @@ describe("findLatestJsonProblems", () => {
     });
 
     it("flags a platform pointing at a prior release's asset (right repo, wrong version segment)", () => {
-        // A stale entry from v1.1.0 merged into this v1.2.0 release: correct repo prefix and a
+        // A stale entry from v1.1.0 merged into this v1.2.0 release. Correct repo prefix and a
         // still-valid signature, but the URL's version segment is the old one. The top-level
         // version reads correct, so only a per-entry version check catches it, without which the
         // updater would serve the old, validly-signed binary under the new version number.

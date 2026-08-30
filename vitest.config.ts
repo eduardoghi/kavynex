@@ -21,7 +21,7 @@ export default defineConfig({
             reportsDirectory: resolve(rootDir, "coverage"),
             // Enforced only when coverage runs (pnpm test:coverage / CI), so the plain
             // `pnpm test` loop stays fast. These floors sit well below the current numbers
-            // on purpose: they catch a large coverage regression without making routine
+            // on purpose. They catch a large coverage regression without making routine
             // changes brittle. Mutation testing (pnpm test:mutation) remains the
             // higher-signal quality gate; this is a coarse backstop, not a substitute.
             thresholds: {

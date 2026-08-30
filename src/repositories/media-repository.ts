@@ -23,7 +23,7 @@ export async function listMediaPage(
 // pre-check, download or import, crash marker, duplicate check, insert, clear marker), because the
 // backend owns that sequence now. See src-tauri/src/services/media_creation.rs.
 //
-// The request is passed as one named object for the reason the old `insertMedia` input was: it
+// The request is passed as one named object for the reason the old `insertMedia` input was. It
 // carries four `string | null` fields in a row, and a positional list would let two of them be
 // swapped at the call site with the mistake showing up only as wrong data in the database.
 export async function createMedia(request: CreateMediaRequest): Promise<CreatedMedia> {
@@ -58,7 +58,7 @@ export async function updateMediaProgress(
 }
 
 // Records the duration measured for an already-created media. Separate from `createMedia` because
-// the measurement is: the probe decodes the file through a media element, which only the webview
+// the measurement is. The probe decodes the file through a media element, which only the webview
 // can do, so it runs here once the row exists rather than inside the creation.
 export async function updateMediaDuration(
     mediaId: number,

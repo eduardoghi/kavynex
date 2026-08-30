@@ -71,7 +71,7 @@ describe("parseReadmeAssetPatterns", () => {
     it("skips the inline-code kavynex names that are not assets", () => {
         // The README mentions these elsewhere (the corrupt-database and logging sections), and
         // neither is a download. Requiring the `*` is the whole rule that separates them, so both
-        // directions of it are pinned: without it these would be reported as names the release does
+        // directions of it are pinned. Without it these would be reported as names the release does
         // not carry, on every release, forever.
         const patterns = parseReadmeAssetPatterns(
             readme(
@@ -121,8 +121,8 @@ describe("patternToRegExp", () => {
     });
 
     it("does not let the star swallow a different suffix", () => {
-        // `[^\s]+` is greedy, so this pins that the literal tail after the star still has to match:
-        // the macOS updater bundle shares this name's prefix up to the architecture.
+        // `[^\s]+` is greedy, so this pins that the literal tail after the star still has to match.
+        // The macOS updater bundle shares this name's prefix up to the architecture.
         expect(patternToRegExp("kavynex_*_x64.dmg").test("kavynex_1.2.0_x64.app.tar.gz")).toBe(
             false
         );
@@ -152,7 +152,7 @@ describe("isInstallerAsset", () => {
     });
 
     it("excludes the assets a release carries for a machine rather than a reader", () => {
-        // The `.app.tar.gz` pair is the one worth being explicit about: it is the macOS *updater*
+        // The `.app.tar.gz` pair is the one worth being explicit about. It is the macOS *updater*
         // bundle, so the README correctly never offers it as a download, and counting it as an
         // installer would make this gate demand a link that should not exist.
         for (const assetName of [
@@ -181,7 +181,7 @@ describe("findUnmatchedPatterns", () => {
     });
 
     it("reports a name whose bundler renamed it", () => {
-        // The v1.2.0 failure in miniature: the macOS `.app.tar.gz` names gained a version between
+        // The v1.2.0 failure in miniature. The macOS `.app.tar.gz` names gained a version between
         // releases, so a README written against the old shape named a file that was not there.
         expect(
             findUnmatchedPatterns(
@@ -203,7 +203,7 @@ describe("findUndocumentedInstallers", () => {
     });
 
     it("reports an architecture the release ships and the README never mentions", () => {
-        // Exactly what happened when Windows-on-ARM and Linux aarch64 first shipped in v1.2.0: the
+        // Exactly what happened when Windows-on-ARM and Linux aarch64 first shipped in v1.2.0. The
         // assets were on the release page and the README listed only the x64 pair.
         expect(
             findUndocumentedInstallers(
@@ -254,7 +254,7 @@ describe("verifyReadmeAssetNames", () => {
     });
 
     it("accepts the checked-in README against the assets v1.2.0 published", () => {
-        // The one test that pins the state of the repository rather than the logic: it is what
+        // The one test that pins the state of the repository rather than the logic. It is what
         // would have failed while the README still listed only the x64 installers, and it is what a
         // reader should look at first if this gate ever turns red on a real release.
         const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");

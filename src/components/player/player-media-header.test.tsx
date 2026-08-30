@@ -82,7 +82,7 @@ describe("PlayerMediaHeader", () => {
     });
 
     it("shows loading feedback on the watched/unwatched buttons while a toggle is in flight", () => {
-        // Mirrors the Refresh comments button's loading pattern (isRefreshingComments): before
+        // Mirrors the Refresh comments button's loading pattern (isRefreshingComments). Before
         // this, clicking Mark as watched/unwatched gave no visual feedback while the request was
         // in flight.
         const { unmount } = renderWithMantine(
@@ -189,7 +189,7 @@ describe("PlayerMediaHeader", () => {
 });
 
 // The player header is the densest cluster of icon-only controls in the app, so its controls are
-// the ones most dependent on an accessible name: they have no visible text to fall back on.
+// the ones most dependent on an accessible name. They have no visible text to fall back on.
 //
 // Both kinds of check run here and neither replaces the other. The axe pass catches the class (a
 // control that ends up with no accessible name at all, whichever way it happened), while the
@@ -198,7 +198,7 @@ describe("PlayerMediaHeader", () => {
 //
 // This block used to claim the project could not run axe at all, because axe-core is MPL-2.0 and
 // that license is not in the allow-list in scripts/check-js-licenses.js. Both halves are true and
-// the conclusion was not: that gate reads `pnpm licenses list --prod`, and axe-core is a dev
+// the conclusion was not. That gate reads `pnpm licenses list --prod`, and axe-core is a dev
 // dependency, so it is never in the tree the gate inspects. It was already installed and already
 // running on five other screens. Written down because the note read as a constraint, and the screen
 // it kept out of the pass is the one this file opens by calling the densest in the app.
@@ -224,7 +224,7 @@ describe("PlayerMediaHeader accessibility", () => {
             />
         );
 
-        // Icon-only controls: their aria-label is the only accessible name they have.
+        // Icon-only controls. Their aria-label is the only accessible name they have.
         expect(screen.getByRole("button", { name: "Back to library" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Keyboard shortcuts" })).toBeInTheDocument();
 
@@ -234,7 +234,7 @@ describe("PlayerMediaHeader accessibility", () => {
         // names are pinned by the two tests that click them, which is the only way to check them
         // here anyway, since the dropdown does not stay queryable across two assertions.
 
-        // Text controls: their label is their accessible name.
+        // Text controls. Their label is their accessible name.
         expect(screen.getByRole("button", { name: "Mark as watched" })).toBeInTheDocument();
         expect(
             screen.getByRole("button", { name: "Open source on YouTube" })
@@ -371,11 +371,11 @@ describe("PlayerMediaHeader accessibility", () => {
     });
 
     it("passes an axe sweep with every control rendered", async () => {
-        // Rendered in its fullest state on purpose: `canOpenInYoutube` and the two overflow actions
+        // Rendered in its fullest state on purpose. `canOpenInYoutube` and the two overflow actions
         // are what put the most controls on screen, and a sweep over the sparse state would skip
         // exactly the buttons this file exists to watch.
         //
-        // What it cannot answer is what `src/test/axe.ts` already records: colour contrast needs
+        // What it cannot answer is what `src/test/axe.ts` already records. Colour contrast needs
         // computed styles and focus order needs a real layout, and jsdom has neither. So this is a
         // check on structure and naming, not a claim that the header is accessible.
         const { container } = renderWithMantine(

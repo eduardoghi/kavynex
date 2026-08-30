@@ -2,8 +2,8 @@
 import type { ContentVerificationReport } from "./ContentVerificationReport";
 
 /**
- * How a verification reports back to the frontend: a run of `progress` events, then one `done`
- * carrying the report. Same shape and same reason as `LiveChatStreamEvent`: the frontend resolves
+ * How a verification reports back to the frontend. A run of `progress` events, then one `done`
+ * carrying the report. Same shape and same reason as `LiveChatStreamEvent`. The frontend resolves
  * on `done` rather than on the command returning, because channel messages and the invoke response
  * travel independently.
  */

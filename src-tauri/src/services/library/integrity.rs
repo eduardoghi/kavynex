@@ -12,7 +12,7 @@ use crate::AppResult;
 /// How many example paths the report carries per category (missing, corrupt, invalid, orphan).
 ///
 /// The counts in the report are complete; these are the sample the dialog shows next to each one.
-/// The cap is what keeps the report a fixed size: a library with fifty thousand orphans would
+/// The cap is what keeps the report a fixed size. A library with fifty thousand orphans would
 /// otherwise send fifty thousand strings over IPC to fill a list nobody scrolls.
 ///
 /// Named rather than spelled `5` at each of the four sites, which is what it was. Not because four
@@ -20,7 +20,7 @@ use crate::AppResult;
 /// reported all four as separate survivors and an edit to any one of them would read as deliberate.
 ///
 /// `verification.rs` declares its own constant of the same value, and the duplication is the
-/// intended shape rather than a missed extraction: the two cap different reports, so either could
+/// intended shape rather than a missed extraction. The two cap different reports, so either could
 /// move without the other, while the value is deliberately kept equal so the two Diagnostics
 /// sections show samples of the same size. Sharing one constant would make that agreement a
 /// constraint instead of a choice.
@@ -90,11 +90,11 @@ pub struct DiagnosticsMediaTarget {
     pub media_id: i64,
 }
 
-/// What the integrity command answers with: the disk-versus-database report, plus the media row
+/// What the integrity command answers with. The disk-versus-database report, plus the media row
 /// behind each *reported* path.
 ///
 /// The two are returned together rather than as two commands because they are one question asked
-/// of one snapshot of the database. Resolving the targets here is also what keeps this cheap: the
+/// of one snapshot of the database. Resolving the targets here is also what keeps this cheap. The
 /// report caps every example list at five entries, so the map holds at most a handful of rows no
 /// matter how large the library is. The renderer used to build it by pulling every media row over
 /// IPC and sending three arrays of every stored path back, which made an operation whose output is
@@ -121,7 +121,7 @@ pub(crate) struct ExpectedLibraryPaths {
 /// avatars.
 ///
 /// Pure, and separate from the check, because the one decision in it has a user-visible cost and
-/// no I/O: the avatars belong in the *thumbnail* set. They live under `thumbnails/` but are
+/// no I/O. The avatars belong in the *thumbnail* set. They live under `thumbnails/` but are
 /// referenced by the channels table, so dropping them here turns every avatar that is not also a
 /// media thumbnail into a reported orphan. A file Diagnostics then invites the user to delete
 /// while the app is still drawing it in the sidebar.
@@ -154,12 +154,12 @@ fn normalize_path_key(path: &str) -> String {
 
 /// Builds the target map for the paths the report actually named.
 ///
-/// Only the media examples are resolved, and only the two categories the UI offers a jump for: a
+/// Only the media examples are resolved, and only the two categories the UI offers a jump for. A
 /// missing or corrupt media file still has its row, so it can be opened in the library. An orphan
 /// has no row by definition, and a thumbnail or live chat path is not something to navigate to.
 ///
 /// Pure, and extracted, because the alternative (resolving every reference) is what this change
-/// exists to stop, and the failure mode of getting the key wrong is silent: the path renders
+/// exists to stop, and the failure mode of getting the key wrong is silent. The path renders
 /// without a jump action and nothing reports why.
 pub(crate) fn media_targets_for_report(
     report: &LibraryIntegrityReport,
@@ -209,7 +209,7 @@ struct PathCheckOutcome {
     corrupt: usize,
     corrupt_examples: Vec<String>,
     /// Stored paths that are neither checked nor missing because they are malformed for a
-    /// library-relative reference: absolute, or escaping via `..`, or resolving outside the
+    /// library-relative reference. Absolute, or escaping via `..`, or resolving outside the
     /// library. The database is supposed to only hold managed relative paths, so these are a
     /// real anomaly (corruption, legacy data, tampering) and are surfaced rather than dropped.
     invalid: usize,
@@ -258,7 +258,7 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
 
         // A stored reference is expected to be a managed relative path. A `..` traversal or a
         // path that resolves outside the library is malformed (corruption, legacy or tampered
-        // data): count it as an anomaly so the diagnostics surface it instead of hiding it.
+        // data). Count it as an anomaly so the diagnostics surface it instead of hiding it.
         let escapes_via_parent = candidate.components().any(|c| c == Component::ParentDir);
         let resolved_path = resolve_stored_path(&canonical_library, &stored_path);
         let resolves_outside = !resolved_path.starts_with(&canonical_library);
@@ -332,7 +332,7 @@ fn list_files_relative(dir: &Path, root: &Path) -> Vec<String> {
         };
 
         for entry in entries.flatten() {
-            // Skip symlinks without following them: a symlinked directory pointing at an ancestor
+            // Skip symlinks without following them. A symlinked directory pointing at an ancestor
             // would push its own subtree back onto the stack forever (a DoS reachable through
             // check_library_integrity). The library never creates symlinks of its own.
             if dir_entry_is_symlink(&entry) {
@@ -564,7 +564,7 @@ mod tests {
 
     #[test]
     fn only_the_reported_media_paths_get_a_target() {
-        // The property this whole change rests on: the map is bounded by what the report named,
+        // The property this whole change rests on. The map is bounded by what the report named,
         // not by the size of the library. Resolving every reference is what it replaced.
         let references = vec![
             reference(1, 10, "video/gone.mp4", None, None),
@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn a_clean_report_resolves_no_targets_at_all() {
-        // The common case, and the one that must not walk the references: nothing was reported,
+        // The common case, and the one that must not walk the references. Nothing was reported,
         // so there is nothing to look up.
         let references = vec![reference(1, 10, "video/a.mp4", None, None)];
 
@@ -832,7 +832,7 @@ mod tests {
 
         let outcome = collect_missing_paths(&library, vec![outside]);
 
-        // A stale absolute path resolves outside the library: it is an anomaly, not something
+        // A stale absolute path resolves outside the library. It is an anomaly, not something
         // to silently drop.
         assert_eq!(outcome.checked, 0);
         assert_eq!(outcome.missing, 0);
@@ -911,7 +911,7 @@ mod tests {
     #[test]
     fn every_example_list_is_capped_while_its_count_stays_complete() {
         // The report's counts are the answer; the example lists are a sample of each. Both halves
-        // are asserted here because they fail in opposite directions: a cap applied to the count
+        // are asserted here because they fail in opposite directions. A cap applied to the count
         // would under-report the damage, and a cap missing from the list would put every path in a
         // library-sized report onto the IPC boundary.
         //
@@ -944,7 +944,7 @@ mod tests {
         assert_eq!(outcome.corrupt, over_cap, "every hollow file is counted");
         assert_eq!(outcome.invalid, over_cap, "every escaping path is counted");
 
-        // Exactly the cap, not merely "at most": `<=` in the guard stores one more than the
+        // Exactly the cap, not merely "at most". `<=` in the guard stores one more than the
         // constant says, which is the off-by-one no count above can reveal.
         assert_eq!(outcome.missing_examples.len(), MAX_EXAMPLES);
         assert_eq!(outcome.corrupt_examples.len(), MAX_EXAMPLES);
@@ -956,7 +956,7 @@ mod tests {
     #[test]
     fn the_orphan_example_list_is_capped_while_its_count_stays_complete() {
         // The fourth copy of the cap above, on the one list built from what is on disk rather than
-        // from what the database stored. Same two directions asserted for the same reason: the
+        // from what the database stored. Same two directions asserted for the same reason. The
         // count is what tells the user how much is there, and the list is what crosses IPC.
         let library = unique_test_dir("orphan-cap");
         fs::create_dir_all(library.join("video")).unwrap();

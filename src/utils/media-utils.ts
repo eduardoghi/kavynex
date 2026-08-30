@@ -116,7 +116,7 @@ export function fileSrcFromPath(path: string | null): string | null {
 }
 
 // Whether a media item counts as watched. The rule lives in one place so the handful of call sites
-// that need it (cards, player, progress persistence, home actions) cannot drift: a whitespace-only
+// that need it (cards, player, progress persistence, home actions) cannot drift. A whitespace-only
 // `watched_at` is treated as unwatched, since a real ISO timestamp is the only "watched" marker the
 // backend writes. Accepts a structural shape so it works with both a full MediaRow and the player's
 // nullable active-media value.
@@ -127,7 +127,7 @@ export function isMediaWatched(
 }
 
 // How close to the end a saved position has to be for the media to count as finished rather than
-// as somewhere to resume. Generous on purpose: `ended` is what marks a row watched, and a position
+// as somewhere to resume. Generous on purpose. `ended` is what marks a row watched, and a position
 // saved a few seconds short of it means the user stopped at the credits, not that they want to be
 // dropped there.
 export const RESUME_COMPLETION_TOLERANCE_SECONDS = 5;

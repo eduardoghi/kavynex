@@ -6,11 +6,11 @@
  *
  * This distinction is the whole reason the answer is not an `Option<String>`. There are five ways
  * an entry ends up without a derivative and only one of them is worth retrying, but the caller
- * could not tell them apart: it received `null` for a page whose generation budget ran out and
+ * could not tell them apart. It received `null` for a page whose generation budget ran out and
  * `null` for a name this app did not write, so it had to pick one behavior for both. It picked
  * retry, which is correct for the first and wrong for every other, and being wrong there is not
  * harmless. The caller asks about every loaded row, so a path that can never be resolved comes back
- * on every page append, forever: on a machine without FFmpeg, or a library holding rows written
+ * on every page append, forever. On a machine without FFmpeg, or a library holding rows written
  * before thumbnails were content-addressed, that restores exactly the quadratic growth
  * `useDisplayThumbnails` was built to remove, and past
  * [`MAX_RESOLVED_PER_CALL`] it also logs a truncation warning per page whose text says no

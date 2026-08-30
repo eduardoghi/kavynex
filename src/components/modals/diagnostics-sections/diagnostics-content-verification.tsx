@@ -35,7 +35,7 @@ function ExampleList({ title, paths }: { title: string; paths: string[] }): JSX.
 
 // What a finished run means, in one sentence, before any of the detail below it.
 //
-// The cancelled case is called out first and deliberately: a partial run that found nothing must
+// The cancelled case is called out first and deliberately. A partial run that found nothing must
 // never read as "your library is fine", which is the one way this check could do harm.
 function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element {
     if (report.cancelled) {
@@ -72,7 +72,7 @@ function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element
 }
 
 /**
- * The deep library check: re-reads every stored file and compares it against the hash in its name.
+ * The deep library check. re-reads every stored file and compares it against the hash in its name.
  *
  * Separate from the rest of Diagnostics, and behind a button, because it costs a full read of the
  * library. The summary above it is built from `stat` and opens instantly; this one can take as long

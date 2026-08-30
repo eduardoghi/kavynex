@@ -5,7 +5,7 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// A concurrency gate that bounds both how many callers run at once *and* how many may be waiting to
-/// run. A bare `tokio::Semaphore` bounds only the former: `acquire()` enqueues an unbounded number of
+/// run. A bare `tokio::Semaphore` bounds only the former. `acquire()` enqueues an unbounded number of
 /// waiters, so a caller firing the guarded operation in a tight loop (a buggy or compromised frontend
 /// issuing a yt-dlp IPC command with fresh run ids) can pile up an arbitrarily deep backlog ahead of
 /// a later, legitimate request. Starving it even though only a couple of operations ever run

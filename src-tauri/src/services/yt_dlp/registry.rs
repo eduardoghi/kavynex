@@ -12,7 +12,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// cancellable-metadata IPC command in a loop) from piling an unbounded backlog ahead of a real
 /// request. Set well above the concurrency cap and any realistic interactive use, so it only trips on
 /// abuse; standalone metadata/comment fetches that opt into cancellation share this registry too.
-/// `pub(crate)` because `yt_dlp::download` passes it as its permit gate's in-flight ceiling: the
+/// `pub(crate)` because `yt_dlp::download` passes it as its permit gate's in-flight ceiling. The
 /// registry entry is taken before that gate is awaited, so this is already the depth of the queue
 /// behind it, and naming the same constant twice would let the two drift into disagreeing about a
 /// bound only one of them enforces.
@@ -197,7 +197,7 @@ mod tests {
 
         {
             let _guard = DownloadRunReleaseGuard::new(run_id);
-            // The run is still active while the guard is alive: re-registering must fail.
+            // The run is still active while the guard is alive. re-registering must fail.
             assert!(register_download_run(run_id).is_err());
         }
 

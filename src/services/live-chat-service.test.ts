@@ -20,7 +20,7 @@ vi.mock("../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-// Simulate the backend streaming the whole replay: the file's lines are delivered as a single
+// Simulate the backend streaming the whole replay. The file's lines are delivered as a single
 // batch to the parse callback, exactly as streamLiveChatFile would deliver them over the channel.
 function mockFile(content: string): void {
     vi.mocked(streamLiveChatFile).mockImplementation(async (_relativePath, onLines) => {
@@ -540,7 +540,7 @@ describe("getActiveLiveChatPin", () => {
     });
 
     it("keeps returning a pin set far more than the visible window ago", () => {
-        // The regression this guards: a pin at the very start, then 400 later messages (double the
+        // The regression this guards. A pin at the very start, then 400 later messages (double the
         // 200-message visible window). The pin has long scrolled out of the visible slice, but it
         // is still the active pin and must not disappear.
         const messages = [

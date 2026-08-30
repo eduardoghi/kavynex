@@ -34,7 +34,7 @@ export const LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE = "LIVE_CHAT_FILE_NOT_FOUND" as
 export const LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE = "LIVE_CHAT_FILE_UNREADABLE" as const;
 // The replay read refused by its concurrency gate, which is about load rather than about the file.
 // so it sits with the other two rather than with them being reused for it. The distinction reaches
-// the user: the other two mean the replay is gone or damaged, this one means to try again shortly.
+// the user. The other two mean the replay is gone or damaged, this one means to try again shortly.
 export const TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE =
     "TOO_MANY_CONCURRENT_LIVE_CHAT_READS" as const;
 export const INVALID_SOURCE_THUMBNAIL_ERROR_CODE = "INVALID_SOURCE_THUMBNAIL" as const;
@@ -56,7 +56,7 @@ export const YT_DLP_THUMBNAIL_FAILED_ERROR_CODE = "YT_DLP_THUMBNAIL_FAILED" as c
 export const YT_DLP_METADATA_FAILED_ERROR_CODE = "YT_DLP_METADATA_FAILED" as const;
 // The two remaining metadata failures of the paste-a-URL flow. Their comment-fetch counterparts
 // (YT_DLP_COMMENTS_EXEC_FAILED / _PARSE_FAILED) were catalogued and these were not, which left the
-// app's hottest path answering with the generic line for the two causes a user can act on: a yt-dlp
+// app's hottest path answering with the generic line for the two causes a user can act on. A yt-dlp
 // that cannot be started, and one too old to read what YouTube now returns.
 export const YT_DLP_METADATA_EXEC_FAILED_ERROR_CODE = "YT_DLP_METADATA_EXEC_FAILED" as const;
 export const YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE = "YT_DLP_METADATA_PARSE_FAILED" as const;
@@ -93,7 +93,7 @@ export const YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE = "YT_DLP_COMMENTS_INCOMPLETE
 export const UNSUPPORTED_MEDIA_EXTENSION_ERROR_CODE = "UNSUPPORTED_MEDIA_EXTENSION" as const;
 
 // A local import the user stopped. Deliberately its own code rather than reusing
-// YT_DLP_DOWNLOAD_CANCELLED: the two are routed identically (both are the outcome the user asked
+// YT_DLP_DOWNLOAD_CANCELLED. The two are routed identically (both are the outcome the user asked
 // for, so both go to the neutral notice channel rather than the error modal), but they are
 // different operations, and a yt-dlp code appearing after a file import would be a lie in the log.
 export const MEDIA_IMPORT_CANCELLED_ERROR_CODE = "MEDIA_IMPORT_CANCELLED" as const;
@@ -112,7 +112,7 @@ export const INVALID_LIBRARY_MIGRATION_ERROR_CODE = "INVALID_LIBRARY_MIGRATION" 
 // refusal with no message of its own.
 export const LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE =
     "LIBRARY_MIGRATION_ALREADY_RUNNING" as const;
-// The deep library verification is single-run: a second request is refused rather than queued,
+// The deep library verification is single-run. A second request is refused rather than queued,
 // because the work is proportional to the size of the library and two sweeps would read every
 // byte twice while competing for the same disk. Nothing is wrong and the action is to wait, the
 // same shape as LIBRARY_MIGRATION_ALREADY_RUNNING above.
@@ -150,7 +150,7 @@ type FrontendOnlyErrorCode =
     | typeof INVALID_YOUTUBE_COMMENTS_PAYLOAD_ERROR_CODE
     | typeof YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE;
 
-// Compile-time link to the Rust AppErrorCode enum (the ts-rs-generated union): every known code
+// Compile-time link to the Rust AppErrorCode enum (the ts-rs-generated union). Every known code
 // must be either a member of that union or an explicitly-declared frontend-only code. Renaming or
 // removing a Rust variant the frontend still lists here then fails `tsc` instead of silently
 // leaving a dead `error.code === X` comparison.

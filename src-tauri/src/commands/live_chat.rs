@@ -16,7 +16,7 @@ use crate::utils::path::{
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
-/// How a streamed live chat replay reaches the frontend: a run of `batch` events, each carrying a
+/// How a streamed live chat replay reaches the frontend. A run of `batch` events, each carrying a
 /// slice of raw JSON lines, terminated by a single `done` event. The frontend resolves its read
 /// only on `done`, never merely when the command returns. Channel messages and the invoke
 /// response travel independently, so resolving on the return could race the last in-flight batch.
@@ -37,7 +37,7 @@ pub enum LiveChatStreamEvent {
 /// command needs and the IPC mock cannot host.
 ///
 /// Two containment checks run before the file is touched, matching the sibling media/thumbnail
-/// paths: the relative path is scoped to the `live_chat/` subtree (so this command cannot be
+/// paths. The relative path is scoped to the `live_chat/` subtree (so this command cannot be
 /// repointed at a video/audio/thumbnail file), and `ensure_existing_path_inside_dir` re-resolves
 /// symlinks and re-checks containment (`absolute_path_from_relative` only rejects `..`/absolute
 /// components lexically, so an intermediate symlink component pointing outside the library would
@@ -70,7 +70,7 @@ pub async fn stream_live_chat_file<R: Runtime>(
     let library_dir = configured_library_dir(&app).await?;
 
     // Bind the permit for the whole read (see live_chat_storage::acquire_read_permit). Binding it
-    // (rather than writing `acquire_read_permit().await?;`) is the load-bearing part: a temporary
+    // (rather than writing `acquire_read_permit().await?;`) is the load-bearing part. A temporary
     // dropped at the end of its own statement would release the slot before `run_blocking` even
     // starts, leaving a gate that admits everyone and a counter that is always zero. It is taken
     // after the library guard so a request for a path that is not the configured library is refused
@@ -80,7 +80,7 @@ pub async fn stream_live_chat_file<R: Runtime>(
     // Deliberately does NOT take library::lock::library_read_guard(), unlike delete/migrate above.
     // That gate serializes writes and deletes against a migration's copy/remove phase, because
     // only those can lose data (a file written into the old tree between copy and remove). A pure
-    // read cannot: the worst a concurrent migration does to it is move the file mid-read, which
+    // read cannot. The worst a concurrent migration does to it is move the file mid-read, which
     // surfaces as a LiveChatFileUnreadable error, never corruption. Holding a read guard for the
     // whole streamed read would instead block a migration for the entire duration of a (possibly
     // large) replay, which is worse than the transient error it would prevent. See services::library::lock.
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn live_chat_stream_event_serializes_to_the_shape_the_frontend_expects() {
-        // The wire contract the tests mock away: this must match the LiveChatStreamEvent union in
+        // The wire contract the tests mock away. This must match the LiveChatStreamEvent union in
         // lib/tauri-client.ts exactly, or the frontend's channel handler would misread every batch.
         let batch = serde_json::to_value(LiveChatStreamEvent::Batch {
             lines: vec!["a".to_string(), "b".to_string()],
@@ -227,8 +227,8 @@ mod tests {
 
     #[test]
     fn stream_live_chat_relative_sync_rejects_a_non_live_chat_managed_path() {
-        // A path inside the library but outside live_chat/ (a real media file) must be rejected:
-        // the command must not double as a reader for arbitrary library files.
+        // A path inside the library but outside live_chat/ (a real media file) must be rejected.
+        // The command must not double as a reader for arbitrary library files.
         let library = unique_library_dir("read-scope");
         fs::create_dir_all(library.join("video")).unwrap();
         fs::write(library.join("video").join("media.mp4"), b"data").unwrap();

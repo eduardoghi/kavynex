@@ -42,7 +42,7 @@ describe("MediaPlayerView", () => {
     });
 
     it("passes the live and chat replay state through to the header", async () => {
-        // The regression this pins was in the wiring, not the header: the header rendered both
+        // The regression this pins was in the wiring, not the header. The header rendered both
         // badges correctly all along, but MediaPlayerView never passed the props, so they silently
         // defaulted to false and neither badge ever appeared. A header-only test cannot see that.
         renderWithMantine(
@@ -89,7 +89,7 @@ describe("MediaPlayerView", () => {
     // than over the grid or the sidebar. The default 5s is what it exceeded; this is well clear of
     // the measured time rather than just above it.
     it("has no detectable accessibility violations", { timeout: 30_000 }, async () => {
-        // The largest surface in the app and the one with the most controls: transport buttons, the
+        // The largest surface in the app and the one with the most controls. Transport buttons, the
         // header actions, the comments panel and the chat replay all render into one subtree. Its
         // aria-live regions are also the ones deliberately decoupled from the lists they describe
         // (virtualization breaks aria-live over a sliding window), which is the kind of structure a
@@ -118,7 +118,7 @@ describe("MediaPlayerView", () => {
     });
 
     it("does not show a chat replay panel when the media has no live chat file", () => {
-        // `has_live_chat` alone is not enough: the replay panel needs the file path, so with an
+        // `has_live_chat` alone is not enough. The replay panel needs the file path, so with an
         // empty path the media is still marked LIVE but no chat panel is shown.
         renderWithMantine(
             <MediaPlayerView

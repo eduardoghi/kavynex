@@ -4,7 +4,7 @@ import type { YtDlpPhase, YtDlpProgress } from "../../../services/yt-dlp-progres
 // What each stage is called on screen. A `Record` over the union rather than a conditional chain, so
 // a phase added in `yt-dlp-progress.ts` fails to compile here instead of rendering as a blank label.
 //
-// Worded for someone who has never read yt-dlp's output, which is the whole point of this bar: the
+// Worded for someone who has never read yt-dlp's output, which is the whole point of this bar. The
 // terminal below already shows `[Merger] Merging formats into "..."` verbatim, and that line is the
 // one users read as the app having frozen.
 const PHASE_LABEL: Record<YtDlpPhase, string> = {
@@ -24,7 +24,7 @@ type YtDlpProgressBarProps = {
 /**
  * The download's progress, above the terminal.
  *
- * Nothing here is new information: every value comes from lines the terminal was already printing.
+ * Nothing here is new information. Every value comes from lines the terminal was already printing.
  * What it adds is a reading of them that does not require knowing yt-dlp, and it matters most in the
  * stage that has no percentage. A merge writes one line and then works silently for minutes on a
  * large file, so the honest rendering of that is a bar that says it is still working rather than a
@@ -34,8 +34,8 @@ export function YtDlpProgressBar({
     progress,
     isRunning,
 }: YtDlpProgressBarProps): JSX.Element | null {
-    // Nothing to show before the first stage line arrives, and nothing to show once the run ends:
-    // a bar left on screen after a finished or cancelled run reports a state that is over.
+    // Nothing to show before the first stage line arrives, and nothing to show once the run ends.
+    // A bar left on screen after a finished or cancelled run reports a state that is over.
     if (!isRunning || !progress) {
         return null;
     }

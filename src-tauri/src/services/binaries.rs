@@ -26,7 +26,7 @@ fn is_executable_file(path: &Path) -> bool {
 }
 
 /// True for a PATHEXT entry that names a batch shim (`.bat`/`.cmd`). Launching one routes through
-/// `cmd.exe`, which historically reopened argument injection (CVE-2024-24576, "BatBadBut"): even
+/// `cmd.exe`, which historically reopened argument injection (CVE-2024-24576, "BatBadBut"). Even
 /// with the process spawned as an argv array, `cmd.exe` re-parses the command line. yt-dlp and
 /// ffmpeg both ship as real executables, so a `.bat`/`.cmd` on PATH is an unusual wrapper worth
 /// refusing outright rather than trusting the compiler's argument-quoting fix to hold on every
@@ -45,7 +45,7 @@ fn is_executable_file(path: &Path) -> bool {
 /// Resolves the first of `candidates` that names an executable in a directory listed in `PATH`.
 ///
 /// `pub(crate)` rather than private because it is the project's one hardened executable lookup and
-/// yt-dlp/ffmpeg are not its only callers: `library::open_path_in_system_sync` resolves the Linux
+/// yt-dlp/ffmpeg are not its only callers. `library::open_path_in_system_sync` resolves the Linux
 /// file manager (`xdg-open`) through it too, so that spawn follows the same no-working-directory
 /// rule instead of handing a bare name to the OS search order. See `resolve_from_path_var` for what
 /// the rule actually is.
@@ -179,7 +179,7 @@ pub fn resolve_ffmpeg_binary<R: Runtime>(app: &AppHandle<R>) -> AppResult<String
 
 /// Parses the release date out of a yt-dlp version string.
 ///
-/// yt-dlp versions are dates: `2026.07.01` for a stable release, with a trailing build counter on
+/// yt-dlp versions are dates. `2026.07.01` for a stable release, with a trailing build counter on
 /// a nightly/master build (`2026.07.01.123456`). Anything that is not a plausible date (ffmpeg's
 /// `N-124716-g054dffd133-win64-gpl`, a distro-patched string, an empty read), yields `None` rather
 /// than a guess, since a wrong date here would show the user a warning about nothing.
@@ -201,7 +201,7 @@ fn parse_release_date(version: &str) -> Option<NaiveDate> {
 
 /// Days between the release `version` names and `today`, or `None` when the version does not
 /// encode a date. A version dated in the future (a clock skewed backwards, a nightly built
-/// elsewhere) reports 0 rather than a negative age: the tool is not stale, which is all the caller
+/// elsewhere) reports 0 rather than a negative age. The tool is not stale, which is all the caller
 /// asks about.
 fn release_age_days(version: &str, today: NaiveDate) -> Option<u32> {
     let released = parse_release_date(version)?;
@@ -433,7 +433,7 @@ mod tests {
         ))
     }
 
-    // The security guarantee: only directories explicitly listed in PATH are searched. A
+    // The security guarantee. Only directories explicitly listed in PATH are searched. A
     // binary that exists somewhere not on PATH (the process CWD being the case that matters)
     // must never be resolved.
     #[test]
@@ -515,7 +515,7 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 7, 16).unwrap();
 
         for version in [
-            // ffmpeg's own version line: must never be mistaken for a date.
+            // ffmpeg's own version line. Must never be mistaken for a date.
             "ffmpeg version N-124716-g054dffd133-win64-gpl",
             "N-124716-g054dffd133",
             // Numeric but not a date. The shape a naive parser would happily accept.
@@ -559,7 +559,7 @@ mod tests {
         assert_eq!(result, bin_dir.to_string_lossy());
     }
 
-    // A shell that prints one line and exits: stands in for a healthy `yt-dlp --version`.
+    // A shell that prints one line and exits. Stands in for a healthy `yt-dlp --version`.
     #[cfg(windows)]
     fn print_line_command() -> (&'static str, Vec<&'static str>) {
         ("cmd", vec!["/C", "echo tool 1.2.3"])
@@ -570,7 +570,7 @@ mod tests {
         ("sh", vec!["-c", "printf 'tool 1.2.3\\n'"])
     }
 
-    // A command that runs far longer than any health-check timeout: stands in for a hung binary
+    // A command that runs far longer than any health-check timeout. Stands in for a hung binary
     // (a wedged executable, or a `.cmd`/`.bat` shim that blocks). Killed by the timeout below.
     #[cfg(windows)]
     fn hang_command() -> (&'static str, Vec<&'static str>) {
@@ -582,7 +582,7 @@ mod tests {
         ("sh", vec!["-c", "sleep 60"])
     }
 
-    // A command that exits non-zero writing only to stderr: stands in for a binary that failed
+    // A command that exits non-zero writing only to stderr. Stands in for a binary that failed
     // its health check with a diagnostic message. Used to pin that the failure detail surfaces the
     // child's stderr rather than a generic fallback.
     #[cfg(windows)]
@@ -595,7 +595,7 @@ mod tests {
         ("sh", vec!["-c", "echo boom 1>&2; exit 1"])
     }
 
-    // A command that exits non-zero writing only to stdout (empty stderr): exercises the fallback
+    // A command that exits non-zero writing only to stdout (empty stderr). Exercises the fallback
     // from stderr to stdout in the failure-detail selection.
     #[cfg(windows)]
     fn fail_with_stdout_command() -> (&'static str, Vec<&'static str>) {

@@ -3,7 +3,7 @@
 // This is a reporter, not a gate. `src-tauri/deny.toml` sets `multiple-versions = "warn"`
 // deliberately (duplicate versions in a transitive tree this size are ordinary and not worth
 // failing a build over), and what that setting's own comment promises is that they are surfaced
-// "so the bloat/audit surface stays visible". That part was not true: the warnings went to the log
+// "so the bloat/audit surface stays visible". That part was not true. The warnings went to the log
 // of a job that passes, and nobody opens the log of a green job. This turns them into a number on
 // the run's summary page, which is where the promise is actually kept.
 //
@@ -51,7 +51,7 @@ function readDuplicateCrate(fields) {
 //
 // Returns the duplicate-version findings, cargo-deny's own warning count from its trailing
 // `summary` diagnostic, and how many lines could not be parsed as JSON at all. The last two exist
-// for the same reason and it is the important one: if a future cargo-deny renames the `duplicate`
+// for the same reason and it is the important one. If a future cargo-deny renames the `duplicate`
 // code or reshapes `labels`, the parse here yields nothing, and a summary built from that alone
 // would read "every crate resolves to a single version". Good news that is not true, in a report
 // whose whole value is being believed at a glance. Carrying the tool's own count lets the renderer
@@ -141,7 +141,7 @@ export function renderBansSummary({ duplicates, reportedWarnings = null, unparse
         return lines.join("\n");
     }
 
-    // What a duplicate actually costs is the entries beyond the first, not the crate count: five
+    // What a duplicate actually costs is the entries beyond the first, not the crate count. Five
     // versions of one crate is four times the compile and audit surface of two versions of it.
     const extraEntries = duplicates.reduce(
         (total, { versions }) => total + versions.length - 1,

@@ -56,7 +56,7 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
             )
         })?;
 
-        // Skip symlinks without following them: entry.metadata() below follows the link, so a
+        // Skip symlinks without following them. entry.metadata() below follows the link, so a
         // symlinked directory pointing at an ancestor would recurse forever (a DoS reachable
         // through get_library_summary). The library never creates symlinks of its own.
         if dir_entry_is_symlink(&entry) {
@@ -120,7 +120,7 @@ fn count_files_in_directory(path: &Path) -> AppResult<u64> {
             )
         })?;
 
-        // Skip symlinks without following them (see calculate_directory_size): a symlinked
+        // Skip symlinks without following them (see calculate_directory_size). A symlinked
         // directory cycle would otherwise loop forever here too.
         if dir_entry_is_symlink(&entry) {
             continue;

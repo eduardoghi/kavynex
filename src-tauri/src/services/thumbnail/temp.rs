@@ -22,7 +22,7 @@ fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<Path
     let trimmed = path.trim();
 
     // Refuse a UNC/network location before the `exists()` below, for the reason the whole
-    // cross-cutting rule exists: on Windows, merely stat-ing `\\host\share\...` makes the OS
+    // cross-cutting rule exists. On Windows, merely stat-ing `\\host\share\...` makes the OS
     // authenticate to `host` over SMB and hand it the user's NTLM hash. The caller's path reaches
     // this function raw over IPC, and the containment check the delete itself runs
     // (`ensure_existing_path_inside_dir` against `thumbs-temp/`) happens *after* the stat, so it
@@ -54,7 +54,7 @@ fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<Path
 fn validate_source_media_path(path: &str) -> AppResult<PathBuf> {
     let trimmed = path.trim();
 
-    // Reject a UNC/network source before any filesystem call touches it: this command takes a
+    // Reject a UNC/network source before any filesystem call touches it. This command takes a
     // caller-supplied path (the pre-import preview needs to reach a file the user picked anywhere on
     // disk), so a compromised frontend could otherwise hand it `\\host\share\...` and make merely
     // stat-ing it trigger an SMB/NTLM handshake that leaks the user's hash to `host`. Mirrors the
@@ -85,7 +85,7 @@ fn validate_source_media_path(path: &str) -> AppResult<PathBuf> {
     let ext = extension_from_path(&source_path);
 
     if !is_allowed_media_extension(&ext) {
-        // Same shape as the import gate in library/media.rs: the accepted list goes in `details`,
+        // Same shape as the import gate in library/media.rs. The accepted list goes in `details`,
         // which is what the frontend appends after the catalogued message.
         return Err(AppError::from_code_with_details(
             AppErrorCode::UnsupportedMediaExtension,
@@ -140,7 +140,7 @@ const MAX_FFMPEG_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 /// (yt-dlp download/metadata/thumbnail, the health check) already bounds its child this way.
 const FFMPEG_THUMBNAIL_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// How often the bounded wait re-checks for exit: short enough to fire promptly once the deadline
+/// How often the bounded wait re-checks for exit. Short enough to fire promptly once the deadline
 /// passes, long enough not to busy-spin the blocking-pool thread. Matches binaries.rs's health check.
 const FFMPEG_THUMBNAIL_POLL: Duration = Duration::from_millis(50);
 
@@ -167,7 +167,7 @@ fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize) -> Vec<u8
 
 fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::process::Output> {
     hide_console(&mut command);
-    // Put the child in its own process group so the timeout below can tree-kill it: ffmpeg does not
+    // Put the child in its own process group so the timeout below can tree-kill it. ffmpeg does not
     // normally spawn children, but this matches the group-then-kill discipline every other call site
     // uses and covers any helper it does spawn.
     configure_process_group_blocking(&mut command);
@@ -202,7 +202,7 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
         None => Vec::new(),
     });
 
-    // Bounded wait: poll `try_wait` until the child exits or the deadline passes, killing the whole
+    // Bounded wait. Poll `try_wait` until the child exits or the deadline passes, killing the whole
     // tree on timeout so a wedged ffmpeg cannot hang this thread forever.
     let deadline = Instant::now() + FFMPEG_THUMBNAIL_TIMEOUT;
     let timed_out = loop {
@@ -253,7 +253,7 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
     })
 }
 
-/// The scale filter both generators share: fit the thumbnail to 640px wide, never upscaling a
+/// The scale filter both generators share. Fit the thumbnail to 640px wide, never upscaling a
 /// smaller source, and let the height follow the aspect ratio.
 const THUMBNAIL_SCALE_FILTER: &str = "scale='min(640,iw)':-1";
 
@@ -261,7 +261,7 @@ const THUMBNAIL_SCALE_FILTER: &str = "scale='min(640,iw)':-1";
 /// carrying the container both thumbnail producers share ([`THUMBNAIL_OUTPUT_FORMAT`]).
 ///
 /// Pure, and separate from the generator, so the format can be asserted without an `AppHandle` or
-/// an ffmpeg on the machine. That matters more than it looks: this path wrote lossless PNG for a
+/// an ffmpeg on the machine. That matters more than it looks. This path wrote lossless PNG for a
 /// while after the download path had moved to JPEG, and nothing failed. The divergence was only
 /// visible as a library holding both formats for the same kind of content. The extension is also
 /// what ffmpeg picks its encoder from, so the name and the bytes written cannot disagree.
@@ -269,7 +269,7 @@ fn temporary_thumbnail_file_name(source_hash: &str) -> String {
     format!("thumb_{source_hash}.{THUMBNAIL_OUTPUT_FORMAT}")
 }
 
-/// Builds the ffmpeg argv for a video thumbnail: seek slightly past the start (a frame at exactly
+/// Builds the ffmpeg argv for a video thumbnail. Seek slightly past the start (a frame at exactly
 /// 0 is often black or missing on some encodes) and take a single scaled frame.
 ///
 /// Extracted as a pure function, like `yt_dlp::download::build_download_command_args`, so the argv
@@ -393,13 +393,13 @@ pub fn generate_temporary_thumbnail_sync<R: Runtime>(
 /// (`commands::security::register_cache_asset_scope`), so a staged copy is renderable through
 /// `convertFileSrc` with no per-file grant at all, which matters because Tauri's asset scope has no
 /// way to withdraw a grant, so per-file grants accumulated for the lifetime of the session and the
-/// obvious cleanup (forbid the file when the preview is discarded) is worse than the disease: a
+/// obvious cleanup (forbid the file when the preview is discarded) is worse than the disease. A
 /// forbid outranks every later allow, so picking the same image for a second media would silently
 /// render nothing.
 ///
 /// The copy is byte-identical, so the content hash the persist step computes is unchanged and the
 /// file that eventually lands in the library is exactly what it was before. Staging also gives the
-/// picked image the same lifecycle every generated preview already has: it is swept by age, and the
+/// picked image the same lifecycle every generated preview already has. It is swept by age, and the
 /// frontend deletes it through the existing `delete_temporary_thumbnail`.
 pub fn stage_manual_thumbnail_sync<R: Runtime>(
     app: &AppHandle<R>,
@@ -412,7 +412,7 @@ pub fn stage_manual_thumbnail_sync<R: Runtime>(
     let hash = file_hash(&source_path)?;
     let staged = thumbs_dir.join(super::picked::staged_thumbnail_file_name(&hash, &extension));
 
-    // Already staged: the same image picked again, in this session or a previous one whose sweep has
+    // Already staged. The same image picked again, in this session or a previous one whose sweep has
     // not run yet. Content-addressed, so the existing file is the same bytes by construction.
     if staged.is_file() {
         return Ok(staged.to_string_lossy().to_string());
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn validate_temporary_thumbnail_delete_path_refuses_a_network_location_before_stating_it() {
-        // The refusal has to come before the `exists()`, not after it: the delete's own containment
+        // The refusal has to come before the `exists()`, not after it. The delete's own containment
         // check runs later and would refuse the operation, but by then the stat has already made
         // Windows authenticate to the named host over SMB (which is the whole cost this guard
         // exists to avoid, and the reason the rule is stated as "before any filesystem call".
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn both_thumbnail_producers_name_their_output_with_the_shared_format() {
-        // The two producers each choose an output container, and they diverged once: the yt-dlp
+        // The two producers each choose an output container, and they diverged once. The yt-dlp
         // download moved to JPEG while this path kept writing lossless PNG, so a library fed from
         // both sources held both formats for the same kind of content and the size win applied to
         // half the paths. Reading the shared constant is what makes it one decision; asserting the
@@ -578,7 +578,7 @@ mod tests {
             ]
         );
 
-        // An audio file has no timeline to seek into, so -ss must not appear: with it, ffmpeg
+        // An audio file has no timeline to seek into, so -ss must not appear. With it, ffmpeg
         // reports no frames for a cover-art stream and a working thumbnail turns into a
         // "does not have an embedded thumbnail" error.
         assert!(!args.iter().any(|arg| arg == "-ss"));
@@ -631,7 +631,7 @@ mod tests {
     #[test]
     fn ensure_generated_thumbnail_exists_rejects_and_removes_a_zero_byte_file() {
         // ffmpeg can exit 0 having written nothing. Without this guard the empty file would be
-        // returned as a valid preview and, worse, cached: generate_temporary_thumbnail_sync
+        // returned as a valid preview and, worse, cached. generate_temporary_thumbnail_sync
         // short-circuits on an existing out_thumbnail, so the blank result would stick for that source
         // until the temp dir is swept.
         let dir = unique_test_dir();

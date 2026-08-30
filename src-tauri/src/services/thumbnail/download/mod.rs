@@ -1,9 +1,9 @@
 //! Downloading a thumbnail or a channel avatar into the library.
 //!
 //! This module orchestrates the three flows (a direct image URL, a media's thumbnail taken from
-//! yt-dlp metadata, and a channel avatar) and owns what they share: resolving the library
+//! yt-dlp metadata, and a channel avatar) and owns what they share. Resolving the library
 //! directory, the temp directory each run writes into, and persisting the result. The two ways
-//! bytes actually arrive live next to it, because they have nothing in common with each other:
+//! bytes actually arrive live next to it, because they have nothing in common with each other.
 //! `fetch` goes over the network and owns every check on where a request may go, and `process`
 //! runs yt-dlp and owns the process tree that comes with it.
 
@@ -55,7 +55,7 @@ async fn persist_thumbnail_from_source_async(
 }
 
 /// Shared tail for the yt-dlp thumbnail flows (generic fallback, pre-download media thumbnail,
-/// channel avatar): fails on a non-zero exit, locates the PNG yt-dlp wrote under
+/// channel avatar). Fails on a non-zero exit, locates the PNG yt-dlp wrote under
 /// `file_name_prefix`, and persists it into the library (content-addressed). `subject`
 /// distinguishes a `"thumbnail"` from a `"channel avatar"` in the error text, keeping the exact
 /// messages the three call sites used before they were unified.
@@ -92,7 +92,7 @@ async fn finalize_thumbnail_download(
 /// Turns a stored/typed channel handle into the URL yt-dlp is asked to extract from.
 ///
 /// Every exit goes through `is_allowed_youtube_url`, including the branches that *build* the URL
-/// rather than receive one. That single gate is the point rather than a formality: the pasted-URL
+/// rather than receive one. That single gate is the point rather than a formality. The pasted-URL
 /// branch was checked and the four constructed branches were not, on the reasonable grounds that a
 /// literal `https://www.youtube.com/` prefix fixes the authority. It does, but that is a property of
 /// string formatting rather than a check, nothing asserted it, and the value reaching this function
@@ -101,7 +101,7 @@ async fn finalize_thumbnail_download(
 /// gate on that path. The rule the rest of the backend states, that every URL handed to yt-dlp
 /// passes the host allow-list, now holds here by construction instead of by argument.
 ///
-/// One consequence worth naming: a handle that cannot be parsed as a URI at all (an embedded space,
+/// One consequence worth naming. A handle that cannot be parsed as a URI at all (an embedded space,
 /// a control character, a stray `[`) is now refused here instead of being handed to yt-dlp to fail
 /// on. Real handles are unaffected. YouTube's own `@name`, `c/` and `user/` forms carry none of
 /// those, and the refusal is the clearer of the two failures.
@@ -214,7 +214,7 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
             })?;
 
             // Cleartext is refused here rather than by `direct_image_extension` returning None,
-            // which is the tempting place for it and the wrong one: that function decides which of
+            // which is the tempting place for it and the wrong one. That function decides which of
             // the two branches handles a URL, so a None would route `http://cdn/x.jpg` into the
             // yt-dlp fallback, which refuses it for a different reason ("must be a YouTube URL")
             // and points whoever reads the error at the wrong list. The scheme is a policy about
@@ -297,7 +297,7 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
         }
 
         // The direct-image path above runs through http_get_image's SSRF guard. This yt-dlp
-        // fallback has none, so validate the host here too: reject URLs that resolve to
+        // fallback has none, so validate the host here too. Reject URLs that resolve to
         // loopback/private/link-local/reserved addresses before handing the URL to yt-dlp.
         let fallback_uri: Uri = normalized_url.parse().map_err(|e| {
             AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
@@ -376,7 +376,7 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
     }
     .await;
 
-    // Small (an image or two), but still filesystem IO on a possibly slow disk: offload the
+    // Small (an image or two), but still filesystem IO on a possibly slow disk. Offload the
     // recursive removal to the blocking pool like the download temp-dir cleanup does.
     let _ = run_blocking(move || {
         let _ = fs::remove_dir_all(&thumb_temp_dir);
@@ -487,7 +487,7 @@ pub async fn download_thumbnail_for_media_async<R: Runtime>(
     }
     .await;
 
-    // Small (an image or two), but still filesystem IO on a possibly slow disk: offload the
+    // Small (an image or two), but still filesystem IO on a possibly slow disk. Offload the
     // recursive removal to the blocking pool like the download temp-dir cleanup does.
     let _ = run_blocking(move || {
         let _ = fs::remove_dir_all(&thumb_temp_dir);
@@ -553,7 +553,7 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
     }
     .await;
 
-    // Small (an image or two), but still filesystem IO on a possibly slow disk: offload the
+    // Small (an image or two), but still filesystem IO on a possibly slow disk. Offload the
     // recursive removal to the blocking pool like the download temp-dir cleanup does.
     let _ = run_blocking(move || {
         let _ = fs::remove_dir_all(&thumb_temp_dir);
@@ -628,7 +628,7 @@ mod tests {
     fn every_built_url_passes_the_host_allow_list() {
         // The gate this function's exit now goes through, asserted over the four branches that
         // *construct* a URL rather than receive one. Those were unchecked, on the grounds that the
-        // literal prefix fixes the authority, and nothing said so. This is what says so: whatever a
+        // literal prefix fixes the authority, and nothing said so. This is what says so. Whatever a
         // branch builds, the host allow-list is what lets it out. Covers the shapes a caller could
         // use to try to steer the authority (a leading slash, a userinfo `@`, a protocol-relative
         // prefix, a backslash), all of which stay on www.youtube.com as path or query.
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn normalize_channel_handle_refuses_a_handle_that_cannot_form_a_uri() {
-        // The behavior change the single gate brings: a handle carrying a character no URI may hold
+        // The behavior change the single gate brings. A handle carrying a character no URI may hold
         // fails to parse, so the allow-list refuses it here rather than yt-dlp failing on it later.
         // No real YouTube handle looks like this, and a clear refusal beats a confusing extractor
         // error. Named so the trade is visible if a legitimate handle ever lands in this class.

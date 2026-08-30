@@ -7,7 +7,7 @@ seven*), completed by `303f072` on 2026-07-31.
 
 `create_media` (`src-tauri/src/commands/media.rs`) is one command. It produces the artifacts,
 records the crash marker, inserts the row and clears the marker, and `services::media_creation`
-holds the ordering. The steps are internal: nothing in `src/` can run one of them on its own.
+holds the ordering. The steps are internal, so nothing in `src/` can run one of them on its own.
 
 ## What it did before
 
@@ -58,11 +58,11 @@ moved down into `video_repository::insert_media` rather than being deleted with 
 
 The distinction matters. As a command-layer check it was a property of *arriving over IPC*, which
 left `media_creation`, the one remaining caller, trusted to have validated on its own. It mostly
-had, with one gap: the `media_type` a yt-dlp creation stores is the download's own value and never
+had, with one gap. The `media_type` a yt-dlp creation stores is the download's own value and never
 passes through `normalize_create_media_request`, so nothing but the table's `CHECK` stood behind it.
 At the repository it is a property of writing a row, which is what every caller does.
 
 ## Where the rule lives now
 
-As a comment on `commands/media.rs`, at the file the rule was established for, stated forward: the
+As a comment on `commands/media.rs`, at the file the rule was established for, stated forward. The
 IPC surface exposes an operation, not its steps.

@@ -21,7 +21,7 @@ function describeError(error: unknown): string {
 
 // Logs to the console (devtools) and forwards the error to the backend log file, which is
 // the only sink that survives a webview crash and can land in a bug report. Persisting is
-// best-effort: a failure here must never throw, or the handlers below would loop.
+// best-effort. A failure here must never throw, or the handlers below would loop.
 export function reportFatalError(scope: string, message: string, error: unknown): void {
     logError(scope, message, error);
 

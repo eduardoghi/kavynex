@@ -14,16 +14,16 @@ type UsePerIdAsyncFlagReturn = {
  * rows.
  *
  * The counterpart of `useAsyncFlag`, which guards with one shared boolean. That is the right shape
- * for something there is only ever one of (the Add Media submit), and the wrong one here: its
+ * for something there is only ever one of (the Add Media submit), and the wrong one here. Its
  * `runWithFlag` returns undefined without throwing when it is already running, so a second call
  * simply vanishes. When the action belongs to a *row*, that turns "act on A, then act on B" into a
  * silent no-op for B, which the user cannot tell apart from it having worked.
  *
- * Keying by id keeps the guard where it belongs: the same row cannot be acted on twice at once:
- * while leaving independent rows independent.
+ * Keying by id keeps the guard where it belongs. The same row cannot be acted on twice at once.
+ * While leaving independent rows independent.
  */
 export function usePerIdAsyncFlag(): UsePerIdAsyncFlagReturn {
-    // The ref is what the guard reads: state alone would let two calls in the same tick both see
+    // The ref is what the guard reads. State alone would let two calls in the same tick both see
     // the pre-update value and get through. The state exists only so a component can render the
     // busy set.
     const inFlightRef = useRef<Set<number>>(new Set());

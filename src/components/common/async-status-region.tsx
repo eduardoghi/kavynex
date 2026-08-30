@@ -8,7 +8,7 @@ type AsyncStatusRegionProps = {
     children?: ReactNode;
 };
 
-// The shared loading/error shell for the comments and live chat panels: a polite ARIA status
+// The shared loading/error shell for the comments and live chat panels. A polite ARIA status
 // region that shows a spinner while `loading`, the `error` text (in the alert colour) once a load
 // has failed, and otherwise whatever settled-state content the panel passes as children (its own
 // empty/filtered messages, which stay panel-specific). Extracted so the a11y attributes and the

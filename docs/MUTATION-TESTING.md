@@ -2,12 +2,12 @@
 
 `cargo-mutants` rewrites the logic of the modules in scope (an inverted `starts_with`, a dropped
 `!`, an off-by-one, a swapped return) and fails when the suite still passes. That answers a question
-line coverage cannot: whether the tests over this code actually kill a logic mutant, or merely
-execute the line. Coverage on these files was already high before any of them was gated.
+line coverage cannot, which is whether the tests over this code actually kill a logic mutant or
+merely execute the line. Coverage on these files was already high before any of them was gated.
 
 The configuration is `src-tauri/.cargo/mutants.toml`. It holds the scope, the exclusions and a one
-line reason for each. This document holds the rest: the procedure for widening the scope, the
-measured pass behind every entry, and the reasoning behind every exclusion. The two are meant to be
+line reason for each. This document holds the rest, meaning the procedure for widening the scope,
+the measured pass behind every entry, and the reasoning behind every exclusion. The two are meant to be
 read together, with the config answering "what is gated" and this answering "why".
 
 The frontend counterpart is Stryker (`stryker.config.json`), which mutates `src/` only.
@@ -18,7 +18,7 @@ The frontend counterpart is Stryker (`stryker.config.json`), which mutates `src/
 cargo mutants --manifest-path src-tauri/Cargo.toml
 ```
 
-`--in-place` is required to run it against this repository at all: the copy mode leaves the
+`--in-place` is required to run it against this repository at all, because the copy mode leaves the
 repo-root `../shared` parity fixture behind (see `.github/workflows/mutation.yml`).
 
 CI runs it on a weekly schedule (`.github/workflows/mutation.yml`). A surviving mutant makes
@@ -39,8 +39,8 @@ The scope is not "every file". It is the modules whose regression cost is highes
 CI time budget. A file joins it the same way every current entry did:
 
 1. Measure it on its own with the command above.
-2. Triage every survivor. A survivor is one of four things: a real gap, an equivalent mutant, a
-   boundary a unit test cannot pin, or a body compiled only on another platform.
+2. Triage every survivor. A survivor is one of four things, either a real gap, an equivalent
+   mutant, a boundary a unit test cannot pin, or a body compiled only on another platform.
 3. **Kill the real gaps with tests before adding the glob**, so the entry goes in green rather than
    red.
 4. Add the glob, and add this file a row recording the pass.
@@ -52,8 +52,8 @@ found defects that were live in shipped code.
 
 **An unkillable mutant is often a type that collapsed two decisions into one value.**
 `thumbnail::display::take_generation_slot` returned `None` both when the budget was exhausted and
-when FFmpeg had failed, so `delete !` on its caller was genuinely unkillable: both branches led to
-the same value. `resolve_one` returns `DisplayThumbnail` now, so an exhausted budget answers
+when FFmpeg had failed, so `delete !` on its caller was genuinely unkillable, with both branches
+leading to the same value. `resolve_one` returns `DisplayThumbnail` now, so an exhausted budget answers
 `BudgetSpent` and every other miss answers `Unavailable`, and the mutant dies to an ordinary test.
 Look for this before writing an exclusion.
 
@@ -66,7 +66,7 @@ fail on every platform, with no permissions involved). It went in with no exclus
 ### Exclusions go stale silently, which is why they are gated
 
 Two entries in this file died without anything noticing, both after a pure extraction renamed the
-mutant they matched: `replace < with <= in is_recent` (the comparison became `duration_is_recent`)
+mutant they matched, `replace < with <= in is_recent` (the comparison became `duration_is_recent`)
 and `in ensure_schema` (the guard became `needs_migration`). The second is the instructive one. The
 mutant it named was live for days, and the next scheduled run would have reported it as a survivor
 with nothing to suggest the entry rather than the tests had gone stale.
@@ -115,7 +115,7 @@ command above.
 ### The whole crate was measured once, and that is why the scope is still not "every file"
 
 **2026-08-24.** Everything outside `examine_globs` was measured in one pass (1504 mutants, sharded
-across two worktrees, about four hours each): **265 survivors, 389 caught, 844 unviable.** The three
+across two worktrees, about four hours each), giving **265 survivors, 389 caught, 844 unviable.** The three
 files in the row above came out of it. The rest is recorded here so the question "why not just gate
 the whole crate?" has a measured answer instead of an opinion.
 
@@ -129,14 +129,14 @@ the whole crate?" has a measured answer instead of an opinion.
 | `commands/*.rs` | 12 | Command glue over services that are themselves in scope. |
 | everything else | 28 | Single survivors spread thin, all of the same kinds. |
 
-Two conclusions worth keeping. **The gate is not missing a module that carries real decisions**: the
+Two conclusions worth keeping. **The gate is not missing a module that carries real decisions.** The
 one file that did (`utils/io.rs`) is in it now, and the pure logic elsewhere had already been pulled
 out into files the gate covers, which is the extraction habit paying off rather than an accident.
-And **a survivor count is not a quality signal on its own**: 265 of them here describe how much of
-this crate is glue around a process, a handle or a socket, not how weak its tests are.
+And **a survivor count is not a quality signal on its own.** The 265 here describe how much of this
+crate is glue around a process, a handle or a socket, not how weak its tests are.
 
 `models/yt_dlp.rs::ImportMode::as_str` is the one survivor deliberately left alone rather than
-gated: two mutants, one caller, and what it decides is the word a log line uses. A test module for
+gated, with two mutants, one caller, and what it decides being the word a log line uses. A test module for
 it would be the "a directory per pair" mistake in another form.
 
 ### What the `media_page.rs` pass did not establish
@@ -156,7 +156,7 @@ of the undetected regression this gate looks for. The directory glob stays a glo
 keeps a future submodule split in scope with nothing to remember), so the one file that should not be
 in it is named in `exclude_globs` instead.
 
-**Not measured**, and stated as such rather than left to read like the rows above: cargo-mutants may
+**Not measured**, and stated as such rather than left to read like the rows above. cargo-mutants may
 already skip it by following the `cfg(test)` on the module declaration. A redundant exclusion costs
 nothing; the reverse would put unkillable noise in a weekly run. Drop it if a `--list` ever shows it
 was never needed.
@@ -164,7 +164,7 @@ was never needed.
 ## Exclusions
 
 Every entry in `exclude_re`, by the reason it is there. What stays in scope regardless is the
-security logic itself: `sanitize_relative_path_strict`, `ensure_managed_library_relative_path` and
+security logic itself, meaning `sanitize_relative_path_strict`, `ensure_managed_library_relative_path` and
 the containment helpers, `is_allowed_youtube_url` / `is_allowed_youtube_host`, and
 `paths_refer_to_same_location`.
 
@@ -205,7 +205,7 @@ deterministic test can arrange.
 ### Mutants the suite catches, but only as a hang
 
 A category of one file so far, and the distinction it draws is worth keeping separate from the two
-above: these are **not** survivors and **not** equivalent. The suite does detect them. It just has
+above. These are **not** survivors and **not** equivalent. The suite does detect them. It just has
 no way to say so, because the mutation stops a reader consuming what it read, so
 `yt_dlp::metadata`'s `while let Some(line) = read_lossy_line(..)` never terminates. cargo-mutants
 waits out the 300-second deadline and reports a timeout, which fails the weekly run for a reason

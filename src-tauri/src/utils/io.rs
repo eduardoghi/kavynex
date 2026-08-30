@@ -28,7 +28,7 @@ pub const MAX_PROGRESS_LINE_BYTES: usize = 64 * 1024; // 64 KiB
 /// The trailing `\n`, and a `\r` before it, are stripped. Returns `None` at end of stream or
 /// on a genuine I/O error. `buf` is reused across calls to avoid a per-line allocation.
 ///
-/// A line longer than `MAX_LINE_BYTES` is truncated rather than buffered without limit: bytes
+/// A line longer than `MAX_LINE_BYTES` is truncated rather than buffered without limit. Bytes
 /// past the cap are still consumed from `reader` (so the next call resumes at the following
 /// line) but are not appended to `buf`.
 pub async fn read_lossy_line<R>(reader: &mut R, buf: &mut Vec<u8>) -> Option<String>
@@ -161,7 +161,7 @@ mod tests {
             .unwrap();
         assert_eq!(line, "0123");
 
-        // The stream stays in sync: the next line reads normally past the truncated one.
+        // The stream stays in sync. The next line reads normally past the truncated one.
         let next = read_lossy_line_capped(&mut reader, &mut buf, 4)
             .await
             .unwrap();
@@ -193,7 +193,7 @@ mod tests {
     // docs/MUTATION-TESTING.md as the lesson this test applies.
     #[tokio::test]
     async fn a_line_spanning_several_chunks_is_capped_at_the_cap_not_past_it() {
-        // Four-byte chunks against a six-byte cap: the second chunk straddles it, so `take` is
+        // Four-byte chunks against a six-byte cap. The second chunk straddles it, so `take` is
         // computed with `buf.len() == 4` rather than 0.
         let data = b"0123456789ABCDEF\nafter\n".to_vec();
         let mut reader = BufReader::with_capacity(4, &data[..]);
@@ -221,7 +221,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_terminator_arriving_after_the_cap_is_reached_does_not_reopen_it() {
-        // The sibling of the test above for the *newline* branch: the chunk carrying the `\n` is
+        // The sibling of the test above for the *newline* branch. The chunk carrying the `\n` is
         // the one measured against a non-empty buffer, so it pins the second copy of the same
         // arithmetic. Six-byte cap, and the newline lands in the second four-byte chunk.
         let data = b"0123456\n".to_vec();
@@ -237,7 +237,7 @@ mod tests {
     }
 
     // The two ceilings are load-bearing numbers rather than round decoration, and nothing else
-    // reads them back: `MAX_LINE_BYTES` has to stay clear of the 128 MiB JSON payload
+    // reads them back. `MAX_LINE_BYTES` has to stay clear of the 128 MiB JSON payload
     // `--dump-single-json` legitimately emits (truncating that corrupts the parse), while
     // `MAX_PROGRESS_LINE_BYTES` is multiplied by a ring buffer's length, so an arithmetic slip
     // there is a memory bound moving by orders of magnitude. Same reasoning as
@@ -247,7 +247,7 @@ mod tests {
         assert_eq!(MAX_LINE_BYTES, 268_435_456);
         assert_eq!(MAX_PROGRESS_LINE_BYTES, 65_536);
 
-        // A `const` block rather than a plain assert: both sides are constants, so this is decided
+        // A `const` block rather than a plain assert. Both sides are constants, so this is decided
         // at compile time and fails the build rather than a test run, which is the earlier of the
         // two places to learn that the general cap dropped below the JSON payload yt-dlp may
         // legitimately emit. (A bare `assert!` over constants is what clippy refuses here.)
