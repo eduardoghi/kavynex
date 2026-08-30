@@ -10,10 +10,11 @@ type UseStartupUpdateCheckOptions = {
     onUpdateAvailable: (message: string) => void;
 };
 
-// Runs a single passive update check once the user has opted in, and shows a non-intrusive notice
-// if a newer version is available. It fires at most once per app session (a ref guards against
-// re-runs) and contacts the update endpoint only when `enabled` is true. The app's default is
-// off, so a launch makes no update request unless the user turned this on.
+// Runs a single passive update check and shows a non-intrusive notice if a newer version is
+// available. It fires at most once per app session (a ref guards against re-runs) and contacts the
+// update endpoint only when `enabled` is true. The app's default is on (see
+// normalizeCheckUpdatesOnStartup, which owns that rule), so a launch checks unless the user turned
+// it off in Settings. This hook holds no opinion about that. It reads the resolved flag.
 export function useStartupUpdateCheck({
     enabled,
     onUpdateAvailable,

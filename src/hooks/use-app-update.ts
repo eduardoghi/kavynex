@@ -48,7 +48,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
     // (app-update-service.ts). The Settings button disables itself while a check runs, but that is a
     // promise about Mantine having re-rendered before the next click lands rather than about state,
     // and it says nothing at all about the second reader of this hook. useStartupUpdateCheck fires
-    // its own check on launch, so an opt-in startup check and a user clicking "Check update" can
+    // its own check on launch, so the startup check and a user clicking "Check update" can
     // genuinely overlap. Without this, whichever resolves last wins, which for a startup check that
     // hangs near its timeout means a stale answer landing on top of the one the user asked for.
     const checkGuard = useRequestGuard();

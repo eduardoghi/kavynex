@@ -29,7 +29,8 @@ describe("useStartupUpdateCheck", () => {
 
         renderHook(() => useStartupUpdateCheck({ enabled: false, onUpdateAvailable }));
 
-        // Off by default. A launch makes no update request until the user opts in.
+        // The startup check is on by default, so this pins the other direction. A user who turned
+        // it off in Settings gets no update request at launch.
         expect(checkAppUpdateMock).not.toHaveBeenCalled();
         expect(onUpdateAvailable).not.toHaveBeenCalled();
     });

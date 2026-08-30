@@ -51,8 +51,8 @@ export function useHomeController(): HomeController {
         onError: errorState.showError,
     });
 
-    // Opt-in passive update check. When enabled (Settings > Application update), checks once on
-    // startup and surfaces a non-intrusive notice if a newer version exists. Off by default.
+    // Passive update check. Checks once on startup and surfaces a non-intrusive notice if a newer
+    // version exists. On by default, and turned off under Settings > Application update.
     useStartupUpdateCheck({
         enabled: settingsState.settings.checkUpdatesOnStartup,
         onUpdateAvailable: errorState.showNotice,

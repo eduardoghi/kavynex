@@ -11,12 +11,14 @@ report a vulnerability, see [`SECURITY.md`](../SECURITY.md).
 
 The updater (`tauri-plugin-updater`) checks a fixed HTTPS endpoint on GitHub
 (`https://github.com/eduardoghi/kavynex/releases/latest/download/latest.json`,
-`tauri.conf.json`). By default this happens only when the user opens Settings and explicitly
-asks it to check. There is no automatic/background check. A single passive check on startup
-is available as an **opt-in** setting (Settings > Application update,
-`check_updates_on_startup`), off by default, so the app contacts the endpoint on launch only
-after the user turns it on; when it does, an available update is surfaced as a non-intrusive
-notice, never auto-downloaded. Downloaded update artifacts are verified against a minisign
+`tauri.conf.json`). Kavynex runs a single passive check on startup, and that setting (Settings >
+Application update, `check_updates_on_startup`) is **on by default**. Only the latest release
+receives fixes, so this check is the path by which one reaches a user, and a default that never
+contacted the endpoint left that path unused for anyone who never went looking for the toggle.
+Storing `"false"` turns it off and is the only value that does, so an absent key (a database
+written before this became the default) reads as on. Settings also offers a check on demand.
+What a check produces is a non-intrusive notice. The update is never auto-downloaded and never
+installed without the user starting it. Downloaded update artifacts are verified against a minisign
 public key embedded in `tauri.conf.json` before being installed; the matching private key is
 held by the release workflow's GitHub secrets and never checked into the repository.
 

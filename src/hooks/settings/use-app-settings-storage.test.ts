@@ -82,7 +82,7 @@ describe("use-app-settings-storage", () => {
             importMode: "copy",
             libraryPath: "",
             loadRemoteImages: false,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
     });
@@ -100,7 +100,7 @@ describe("use-app-settings-storage", () => {
             importMode: "copy",
             libraryPath: "",
             loadRemoteImages: false,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
 
@@ -120,7 +120,7 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/library",
             loadRemoteImages: false,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
     });
@@ -138,7 +138,7 @@ describe("use-app-settings-storage", () => {
             importMode: "copy",
             libraryPath: "/library",
             loadRemoteImages: false,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
     });
@@ -154,7 +154,7 @@ describe("use-app-settings-storage", () => {
 
         await expect(loadStoredSettings()).resolves.toMatchObject({
             loadRemoteImages: true,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
     });
@@ -171,8 +171,44 @@ describe("use-app-settings-storage", () => {
 
             await expect(loadStoredSettings()).resolves.toMatchObject({
                 loadRemoteImages: false,
-                checkUpdatesOnStartup: false,
+                checkUpdatesOnStartup: true,
                 externalBackupDir: "",
+            });
+        }
+    });
+
+    it("keeps the startup update check on unless it was explicitly turned off", async () => {
+        // The one opt-out setting here, and the mirror image of the remote-images rule right
+        // above, which is why it gets its own test rather than riding along on the fixtures of
+        // tests about something else. Those cover it incidentally and would keep passing if the
+        // rule became `value === "true"` again for a stored value none of them exercises.
+        //
+        // The `null` case is the one with a consequence beyond a fresh install. Every database
+        // written before this default flipped has the key absent, so this row is what decides that
+        // an existing library starts checking for updates rather than staying silently on an old
+        // version. The `"false"` case is the other half. A user who opted out has to keep that,
+        // or the flip would reach past the installs that never decided and overrule the ones that
+        // did.
+        for (const [stored, expected] of [
+            [null, true],
+            ["false", false],
+            ["true", true],
+            // Not "false" is on, so a value nothing writes today (a hand-edited row, an older
+            // spelling) fails safe toward being told about a security fix.
+            ["", true],
+            ["0", true],
+            ["no", true],
+        ] as const) {
+            vi.mocked(getStoredAppSettings).mockResolvedValue({
+                importMode: null,
+                libraryPath: null,
+                loadRemoteImages: null,
+                checkUpdatesOnStartup: stored,
+                externalBackupDir: null,
+            });
+
+            await expect(loadStoredSettings()).resolves.toMatchObject({
+                checkUpdatesOnStartup: expected,
             });
         }
     });
@@ -216,11 +252,11 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/library",
             loadRemoteImages: false,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false, false);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false, true);
     });
 
     it("updates only library path preserving current import mode and remote images", async () => {
@@ -238,11 +274,11 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/new-library",
             loadRemoteImages: false,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/new-library", false, false);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/new-library", false, true);
     });
 
     it("updates only the remote images preference preserving the other settings", async () => {
@@ -260,11 +296,11 @@ describe("use-app-settings-storage", () => {
             importMode: "move",
             libraryPath: "/library",
             loadRemoteImages: false,
-            checkUpdatesOnStartup: false,
+            checkUpdatesOnStartup: true,
             externalBackupDir: "",
         });
 
-        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false, false);
+        expect(setStoredAppSettings).toHaveBeenCalledWith("move", "/library", false, true);
     });
 
     it("updates only the startup update-check preference preserving the other settings", async () => {

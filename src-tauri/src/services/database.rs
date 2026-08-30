@@ -118,9 +118,13 @@ pub struct StoredAppSettings {
     // "true"/"false" (absent means never set). Controls whether the webview loads remote
     // comment/live-chat author avatars and custom emojis from Google's CDNs.
     pub load_remote_images: Option<String>,
-    // "true"/"false" (absent means never set). When "true" the app runs one passive update check
-    // on startup. Off by default, so the app contacts the update endpoint only when explicitly
-    // asked, preserving the manual-only privacy stance unless the user opts in.
+    // "true"/"false" (absent means never set). Controls the one passive update check the app runs
+    // on startup. Unlike `load_remote_images` above, this is opt-out: the frontend reads an absent
+    // key as on, so only an explicit "false" disables it (see normalizeCheckUpdatesOnStartup in
+    // use-app-settings-storage.ts, which owns that rule). Only the latest release gets fixes, and
+    // the updater is how one reaches a user, so a default that never contacted the endpoint left
+    // that delivery path unused for anyone who did not go looking for it. What it enables is a
+    // check that shows a notice, never an install.
     pub check_updates_on_startup: Option<String>,
     // Absolute path of a user-chosen external directory the database is mirrored into once a day
     // (absent/empty means the feature is off). Kept off-volume from the app config directory so a

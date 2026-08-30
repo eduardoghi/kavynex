@@ -63,7 +63,7 @@ export function AppUpdateSection({
                     // click lands, which is a promise about timing rather than about state.
                     // What makes overlapping checks safe is `useRequestGuard` inside
                     // useAppUpdate, which also covers the overlap this button cannot see,
-                    // between a user check and the opt-in startup one.
+                    // between a user check and the startup one.
                     disabled={
                         appUpdateStatus === "checking" || appUpdateStatus === "downloading"
                     }

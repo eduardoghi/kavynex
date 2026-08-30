@@ -134,7 +134,7 @@ describe("useAppUpdate", () => {
 
     it("lets the newest check win when two overlap and the older one resolves last", async () => {
         // The overlap this guards is not the double click the Settings button already disables. It
-        // is a user-driven check racing the opt-in startup one (useStartupUpdateCheck), which the
+        // is a user-driven check racing the startup one (useStartupUpdateCheck), which the
         // button cannot see. Resolving the *first* call last is the ordering that made the stale
         // answer win before the guard existed.
         let resolveFirst: (value: null) => void = () => {};

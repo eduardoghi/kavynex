@@ -17,10 +17,14 @@ activity Kavynex initiates is:
 
 - yt-dlp/FFmpeg downloading the video, audio, thumbnail, comments, or live chat data you
   explicitly requested, directly from YouTube.
-- A check against the GitHub releases endpoint for a newer version. This is manual by
-  default (only when you open Settings and click "Check update"). You can additionally
-  opt in, under **Settings -> Application update**, to one passive check on startup;
-  it is off by default, so the app contacts the update endpoint only when you ask.
+- A check against the GitHub releases endpoint for a newer version. Kavynex runs one such check
+  on startup, and it is the only setting on this page that is **on by default**. The reason is
+  that only the latest release receives fixes (see `SECURITY.md`), so this check is how a
+  security fix reaches you, and a default that never contacted the endpoint left that path
+  unused for anyone who never went looking for the toggle. Turn it off under
+  **Settings -> Application update**, where you can also check on demand with "Check update".
+  The check only shows a notice. Nothing is downloaded or installed unless you start the update
+  yourself.
 - When viewing a saved video's comments or live chat, the player can load each comment/chat
   author's avatar and any custom emojis or super-sticker images on demand from Google's
   image servers (the same CDNs YouTube uses). This is **off by default**, so unless you enable

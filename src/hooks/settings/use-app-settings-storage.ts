@@ -9,7 +9,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     importMode: "copy",
     libraryPath: "",
     loadRemoteImages: false,
-    checkUpdatesOnStartup: false,
+    checkUpdatesOnStartup: true,
     externalBackupDir: "",
 };
 
@@ -39,10 +39,25 @@ function normalizeLoadRemoteImages(value: string | null | undefined): boolean {
     return value === "true";
 }
 
-// The startup update check is opt-in too. Only an explicit "true" enables it, so the app
-// contacts the update endpoint on startup only after the user turns it on in Settings.
+// The startup update check is the one opt-*out* setting here, and the asymmetry with
+// `loadRemoteImages` right above is deliberate rather than an oversight.
+//
+// Only the latest release gets fixes (SECURITY.md), and the in-app updater is how one reaches a
+// user. While this was opt-in, a user who installed once and never opened Settings stayed on a
+// vulnerable version indefinitely with nothing telling them so, which made the security policy
+// promise a delivery path the default configuration did not provide.
+//
+// What it enables is a *check* that shows a notice, never an install. `installAppUpdate` stays a
+// separate action the user starts from Settings, so nothing is downloaded or applied on its own.
+// The cost is one unauthenticated request to the GitHub releases endpoint per launch, against an
+// app that already reaches YouTube throughout normal use.
+//
+// An explicit "false" is the only thing that turns it off, so a user who opts out keeps that
+// decision. An absent key (an older database, a fresh install) reads as on, which means flipping
+// this default also turned it on for existing installs that never touched the toggle. That was the
+// intent rather than a side effect of the rewrite. See docs/PRIVACY.md.
 function normalizeCheckUpdatesOnStartup(value: string | null | undefined): boolean {
-    return value === "true";
+    return value !== "false";
 }
 
 // An absent key (older databases, a fresh install) or a blank value means the external backup is
