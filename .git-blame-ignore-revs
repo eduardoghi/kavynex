@@ -6,3 +6,6 @@
 # GitHub's blame view reads this file on its own. This does not reach lines that changed file (a
 # module moved out to its own file): for those use `git blame -w -C -C -C`, see CONTRIBUTING.md,
 # which is why the tests.rs move (da2fb821) is not listed here.
+
+# style: use four-space indentation in the root config files
+5a95e6a40316f36dee2b5bac8548e0943432b06b
