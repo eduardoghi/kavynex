@@ -474,6 +474,13 @@ async fn run_yt_dlp_and_capture_json(
     // yt-dlp can spawn an ffmpeg child (e.g. `-x`/`--convert-*`); put it in its own process
     // group so a timeout can terminate the whole tree, not just the direct child.
     crate::utils::process::configure_process_group(&mut command);
+    // A metadata-only run writes nothing the app keeps, so it has no directory of its own to
+    // start in. The default keeps it out of wherever the app was launched from (see
+    // utils::process::pin_working_dir_async).
+    crate::utils::process::pin_working_dir_async(
+        &mut command,
+        &crate::utils::process::default_child_working_dir(),
+    );
 
     let mut child = command
         .spawn()

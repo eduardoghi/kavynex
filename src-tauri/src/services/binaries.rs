@@ -258,6 +258,12 @@ fn run_command_capturing_first_line_within(
         .stderr(Stdio::piped());
     hide_console(&mut command);
     crate::utils::process::configure_process_group_blocking(&mut command);
+    // A `--version` probe has no directory of its own. The default keeps it out of wherever the
+    // app was launched from (see utils::process::pin_working_dir).
+    crate::utils::process::pin_working_dir(
+        &mut command,
+        &crate::utils::process::default_child_working_dir(),
+    );
 
     let mut child = command.spawn().map_err(|e| {
         AppError::from_code(

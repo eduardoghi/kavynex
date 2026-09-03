@@ -357,6 +357,9 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
 
         let mut command = Command::new(&yt_dlp);
         command.args(&args);
+        // Starts in the thumbnail scratch directory the output goes to rather than wherever the
+        // app was launched from (see utils::process::pin_working_dir_async).
+        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
         let output = run_thumbnail_yt_dlp_with_timeout(
             command,
             "yt-dlp thumbnail download timed out",
@@ -466,6 +469,9 @@ pub async fn download_thumbnail_for_media_async<R: Runtime>(
 
         let mut command = Command::new(&yt_dlp);
         command.args(&args);
+        // Starts in the thumbnail scratch directory the output goes to rather than wherever the
+        // app was launched from (see utils::process::pin_working_dir_async).
+        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
 
         let output = run_thumbnail_yt_dlp_with_timeout(
             command,
@@ -534,6 +540,9 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
 
         let mut command = Command::new(&yt_dlp);
         command.args(&args);
+        // Starts in the thumbnail scratch directory the output goes to rather than wherever the
+        // app was launched from (see utils::process::pin_working_dir_async).
+        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
         let output = run_thumbnail_yt_dlp_with_timeout(
             command,
             "yt-dlp channel avatar download timed out",

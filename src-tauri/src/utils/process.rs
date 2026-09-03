@@ -102,6 +102,37 @@ pub fn configure_process_group_blocking(command: &mut std::process::Command) {
 #[cfg(not(unix))]
 pub fn configure_process_group_blocking(_command: &mut std::process::Command) {}
 
+/// Pins where an async child starts, so it never inherits the app's own working directory.
+///
+/// Every yt-dlp and FFmpeg spawn gets one of these. The binary itself is resolved through PATH
+/// alone (`services::binaries`), which closes the working-directory hijack for the *executable*.
+/// What it does not close is the child's own library search. On Windows the directory a process
+/// starts in is on the DLL search path of that process, after its own directory and the system
+/// ones, and yt-dlp's PyInstaller bootloader and FFmpeg both probe for optional libraries that a
+/// given machine may not have. A probe that misses everywhere else falls through to the working
+/// directory. Nothing chooses that directory for the app. A shortcut hands it whatever the shell
+/// had, and a portable copy run from a Downloads folder starts there, which is the one directory
+/// on the machine that a downloaded file can be waiting in.
+///
+/// The directory pinned is one the app owns for the run when there is one (the run's temp
+/// directory, the cache folder the output goes to) and [`default_child_working_dir`] otherwise.
+/// Every path the app passes to a child is absolute, so the change is invisible to its work.
+pub fn pin_working_dir_async(command: &mut tokio::process::Command, dir: &std::path::Path) {
+    command.current_dir(dir);
+}
+
+/// Synchronous counterpart to [`pin_working_dir_async`], for a blocking [`std::process::Command`].
+pub fn pin_working_dir(command: &mut std::process::Command, dir: &std::path::Path) {
+    command.current_dir(dir);
+}
+
+/// Where a child starts when the caller has no directory of its own for the run (the version
+/// health checks, the metadata-only yt-dlp runs). The process temp directory is per user, always
+/// exists, and is not a place a launcher chooses, which is all the pin above needs from it.
+pub fn default_child_working_dir() -> std::path::PathBuf {
+    std::env::temp_dir()
+}
+
 /// Kills a spawned child *and* every descendant it created, asynchronously. `yt-dlp` routinely
 /// spawns an `ffmpeg` child (merges, `--convert-thumbnails`), and killing only the direct
 /// child (`Child::kill`/`kill_on_drop`) leaves that grandchild running. On Windows this uses
@@ -293,6 +324,46 @@ mod tests {
     fn was_killed_by_sigkill(status: std::process::ExitStatus) -> bool {
         use std::os::unix::process::ExitStatusExt;
         status.signal() == Some(libc::SIGKILL)
+    }
+
+    #[test]
+    fn a_pinned_working_directory_is_where_the_child_starts() {
+        // A real child printing its own working directory, because the property is about what
+        // the OS hands the process, not about a field on the builder. Canonicalized on both sides,
+        // since Windows prints the drive-letter form and macOS resolves /var to /private/var.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-cwd-test-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).expect("create the pinned directory");
+
+        #[cfg(windows)]
+        let mut command = {
+            let mut command = std::process::Command::new("cmd");
+            command.args(["/C", "cd"]);
+            command
+        };
+        #[cfg(not(windows))]
+        let mut command = std::process::Command::new("pwd");
+
+        pin_working_dir(&mut command, &dir);
+
+        let output = command.output().expect("run the child");
+        let printed = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        assert_eq!(
+            std::fs::canonicalize(&printed).expect("the printed directory exists"),
+            std::fs::canonicalize(&dir).expect("the pinned directory exists")
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_default_child_working_directory_exists() {
+        // `current_dir` on a missing directory fails the spawn, so the fallback has to be a
+        // directory that is there on every machine without the app creating it.
+        assert!(default_child_working_dir().is_dir());
     }
 
     // Spawns a real child. The whole point of the syscall version is that it no longer depends on a

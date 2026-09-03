@@ -14,7 +14,8 @@ use crate::utils::format::{
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path, is_network_path};
 use crate::utils::process::{
-    configure_process_group_blocking, hide_console, kill_process_tree_blocking, read_process_error,
+    configure_process_group_blocking, default_child_working_dir, hide_console,
+    kill_process_tree_blocking, pin_working_dir, read_process_error,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -309,6 +310,15 @@ fn build_audio_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<S
     ]
 }
 
+/// Where an FFmpeg preview child starts: the cache directory its output goes to, which the app
+/// owns, rather than wherever the app was launched from (see `utils::process::pin_working_dir`).
+fn ffmpeg_working_dir(out_thumbnail: &Path) -> PathBuf {
+    out_thumbnail
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(default_child_working_dir)
+}
+
 fn generate_video_temporary_thumbnail(
     ffmpeg: &str,
     source_path: &Path,
@@ -316,6 +326,7 @@ fn generate_video_temporary_thumbnail(
 ) -> AppResult<()> {
     let mut command = std::process::Command::new(ffmpeg);
     command.args(build_video_thumbnail_args(source_path, out_thumbnail));
+    pin_working_dir(&mut command, &ffmpeg_working_dir(out_thumbnail));
 
     let output = run_tracked_ffmpeg(command)?;
 
@@ -341,6 +352,7 @@ fn generate_audio_embedded_temporary_thumbnail(
 ) -> AppResult<()> {
     let mut command = std::process::Command::new(ffmpeg);
     command.args(build_audio_thumbnail_args(source_path, out_thumbnail));
+    pin_working_dir(&mut command, &ffmpeg_working_dir(out_thumbnail));
 
     let output = run_tracked_ffmpeg(command)?;
 

@@ -687,6 +687,9 @@ pub async fn download_media_from_url_async<R: Runtime>(
         let mut command = Command::new(&yt_dlp);
         crate::utils::process::configure_process_group(&mut command);
         hide_console_async(&mut command);
+        // Starts in the run's own temp directory rather than wherever the app was launched from
+        // (see utils::process::pin_working_dir_async).
+        crate::utils::process::pin_working_dir_async(&mut command, &temp_dir);
         // If stdout/stderr capture fails below and the `?` returns early, the Child must not
         // be left running detached; mirrors the kill_on_drop used by every sibling yt-dlp
         // spawn (yt_dlp/metadata.rs, thumbnail/download.rs).

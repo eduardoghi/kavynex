@@ -472,6 +472,13 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
     hide_console(&mut command);
     // Own process group so the timeout below can tree-kill it, matching every other call site.
     configure_process_group_blocking(&mut command);
+    // Starts in the cache directory the derivative goes to rather than wherever the app was
+    // launched from (see utils::process::pin_working_dir).
+    let working_dir = out_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(crate::utils::process::default_child_working_dir);
+    crate::utils::process::pin_working_dir(&mut command, &working_dir);
 
     let Ok(mut child) = command.spawn() else {
         return false;
