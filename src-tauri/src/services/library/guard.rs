@@ -71,13 +71,8 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
             return false;
         }
 
-        match (
-            network_share_prefix(requested),
-            network_share_prefix(configured),
-        ) {
-            (Some(requested_share), Some(configured_share))
-                if requested_share == configured_share => {}
-            _ => return false,
+        if !network_paths_name_the_same_share(requested, configured) {
+            return false;
         }
     }
 
@@ -89,6 +84,28 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
             canonical_requested == canonical_configured
         }
         _ => requested == configured,
+    }
+}
+
+/// True when two network paths name the same `\\host\share`, compared textually
+/// (`utils::path::network_share_prefix`, so case and separator spelling do not matter) and
+/// therefore without any filesystem call. A side that is not a network path, or names a host
+/// with no share, never matches.
+///
+/// Split out of [`paths_refer_to_same_location`] so this decision can be asserted on its own.
+/// Inside that function its "different share" outcome is indistinguishable from what the
+/// canonicalize fallback returns anyway (both UNC paths fail to resolve on the test runner and
+/// the strings differ), so a mutant that weakened the comparison to `true` survived the gate
+/// while silently letting a hostile share reach `canonicalize`, which is the SMB handshake the
+/// check exists to avoid. The property that matters is *which* branch refuses, and only the
+/// return value here can say.
+pub(crate) fn network_paths_name_the_same_share(requested: &str, configured: &str) -> bool {
+    match (
+        network_share_prefix(requested),
+        network_share_prefix(configured),
+    ) {
+        (Some(requested_share), Some(configured_share)) => requested_share == configured_share,
+        _ => false,
     }
 }
 
@@ -432,18 +449,63 @@ mod tests {
     #[test]
     fn same_location_lets_the_network_library_through_however_its_share_is_spelled() {
         // The share-prefix compare is case-insensitive and separator-agnostic, so the user's own
-        // share is never refused over spelling. Asserted on the prefix rather than through
-        // `paths_refer_to_same_location`, because past the prefix check the other spellings go to
+        // share is never refused over spelling. Asserted on the share decision rather than through
+        // `paths_refer_to_same_location`, because past that check the other spellings go to
         // canonicalize, which on Windows would try to reach a host named `nas` from the test.
         let configured = r"\\nas\videos";
 
-        for requested in [r"\\NAS\Videos", "//nas/videos", r"\\?\UNC\nas\videos\"] {
-            assert_eq!(
-                network_share_prefix(requested),
-                network_share_prefix(configured),
-                "the prefix compare must accept the library's own share: {requested}"
+        for requested in [
+            r"\\NAS\Videos",
+            "//nas/videos",
+            r"\\?\UNC\nas\videos\",
+            r"/\nas\videos\2024\clip.mp4",
+        ] {
+            assert!(
+                network_paths_name_the_same_share(requested, configured),
+                "the share compare must accept the library's own share: {requested}"
             );
         }
+    }
+
+    #[test]
+    fn a_different_share_is_refused_by_the_share_compare_itself() {
+        // The other direction of the test above, and the one the gate needs. Through
+        // `paths_refer_to_same_location` a different share is refused either way: the share check
+        // says no, and if it said yes the canonicalize fallback would say no for the same input,
+        // since neither UNC resolves on the runner and the strings differ. So a weakened compare
+        // (`true` in place of `requested_share == configured_share`) survived while letting the
+        // hostile share reach canonicalize, which on Windows authenticates to that host. Only the
+        // share decision's own return value can tell the two apart.
+        let configured = r"\\nas\videos";
+
+        for requested in [
+            r"\\evil\videos",
+            r"\\nas\other",
+            r"\\evil\share\videos",
+            "//evil/videos",
+            r"\\?\UNC\evil\videos",
+            // A host with no share has no prefix to compare, and must not match by default.
+            r"\\nas",
+            r"\\nas\",
+            // Neither side being a network path is not a match either, whatever the strings say.
+            r"C:\nas\videos",
+            "",
+        ] {
+            assert!(
+                !network_paths_name_the_same_share(requested, configured),
+                "a different share must be refused: {requested}"
+            );
+        }
+
+        // Symmetric: a configured library with no share prefix matches nothing.
+        assert!(!network_paths_name_the_same_share(
+            r"\\nas\videos",
+            r"\\nas"
+        ));
+        assert!(!network_paths_name_the_same_share(
+            r"\\nas\videos",
+            r"D:\videos"
+        ));
     }
 
     #[test]

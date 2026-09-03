@@ -73,7 +73,7 @@ additional_cargo_args = ["--locked"]
 #
 # What stays in scope regardless is the security logic itself: sanitize_relative_path_strict,
 # ensure_managed_library_relative_path and the containment helpers, is_allowed_youtube_url /
-# is_allowed_youtube_host, and paths_refer_to_same_location.
+# is_allowed_youtube_host, paths_refer_to_same_location and network_paths_name_the_same_share.
 exclude_re = [
     # Equivalent: gates only a logger::warn naming the leftovers; the removal already happened.
     'delete ! in remove_old_library_contents',
@@ -149,6 +149,11 @@ exclude_re = [
     # line of each branch are NOT excluded, and are what the two chunked-reader tests were written
     # to kill.
     'replace < with <= in read_lossy_line_capped',
+    # Equivalent: the same shape a third time, on the cookie-header probe. With `<=`, the extra
+    # iteration reads into `probe[filled..]` when `filled` equals the buffer length, an empty
+    # slice, which `read` answers with Ok(0) and the loop breaks on. Same bytes, same header check.
+    # The `+=` siblings on the next line are NOT excluded.
+    'replace < with <= in has_cookie_file_header',
     # Detected only as a hang, which cargo-mutants reports as a timeout rather than a kill. Each of
     # these stops the reader consuming what it just read, so `yt_dlp::metadata`'s
     # `while let Some(line) = read_lossy_line(..)` never terminates and the whole run sits until the

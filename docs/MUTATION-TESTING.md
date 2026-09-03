@@ -165,8 +165,8 @@ was never needed.
 
 Every entry in `exclude_re`, by the reason it is there. What stays in scope regardless is the
 security logic itself, meaning `sanitize_relative_path_strict`, `ensure_managed_library_relative_path` and
-the containment helpers, `is_allowed_youtube_url` / `is_allowed_youtube_host`, and
-`paths_refer_to_same_location`.
+the containment helpers, `is_allowed_youtube_url` / `is_allowed_youtube_host`,
+`paths_refer_to_same_location` and `network_paths_name_the_same_share`.
 
 ### Equivalent mutants
 
@@ -176,6 +176,7 @@ No input distinguishes the mutated code from the original, so no test can kill i
 |---|---|
 | `replace < with <= in read_drain_capped_async` | The extra iteration `<=` admits is the one where `buffer.len()` equals `max_bytes`, and there `max_bytes - buffer.len()` is 0, so the `extend_from_slice` copies nothing. Same buffer, same drain. Its sibling on the next line (the `-` to `+`) is a real mutant and is deliberately left in scope. |
 | `replace < with <= in read_lossy_line_capped` | The same argument as the entry above, for the same shape in `utils/io.rs`, and it covers both branches (the one that found a newline and the one that did not). Their `-` to `+` siblings are likewise left in scope, and are killed by the two tests that read through a small-capacity `BufReader` so a chunk straddles the cap. |
+| `replace < with <= in has_cookie_file_header` | The third copy of the shape, on the 64-byte probe that decides whether a `.txt` is a cookie jar. With `<=`, the extra iteration reads into `probe[filled..]` with `filled` already at the buffer length, an empty slice, which `read` answers with `Ok(0)` and the loop breaks on. Same bytes reach the header check. Surfaced by the 2026-08-31 weekly run, whose other survivor was real (see the `library/guard.rs` row above). The `+=` siblings on the next line stay in scope. |
 | `delete ! in remove_old_library_contents` | The guard decides only whether a `logger::warn` naming the leftover entries is emitted. The removal has already happened and the list is the value being reported. Precise rather than broad: the only other mutant in that function reads differently and is caught. |
 | `report_cleanup_outcome` | Writes a `logger::warn` and does nothing else. The cleanup has already run and its outcome is the report being matched on. The bare name covers both the `with ()` mutant and the `failed_paths` guard mutants, which are the same argument twice. |
 | `replace \|\| with && in paths_refer_to_same_location` | With `&&`, one empty input still returns false: `canonicalize("")` always errors and an empty string never equals a non-empty one, so the fallback compare yields the same false. |
