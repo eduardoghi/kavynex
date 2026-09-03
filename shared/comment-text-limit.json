@@ -1,0 +1,4 @@
+{
+    "_comment": "The most characters a saved comment keeps. The backend cuts a longer body at this many scalar values when it stores it (MAX_COMMENT_TEXT_CHARS in src-tauri/src/services/media_comments.rs) and records nothing about having done so, so what tells the player a comment was cut is its length reaching this number (MAX_COMMENT_TEXT_CHARS in src/constants/comment-text.ts, read by isCommentTextTruncated). YouTube caps a comment at 10,000 characters, which is why a body at the ceiling can only be one the backend cut. Both sides assert against this file, because the two constants have to move together and nothing else forces that. A frontend number above the backend's would never mark anything, and one below it would mark comments that arrived whole.",
+    "maxCommentTextChars": 16000
+}

@@ -96,6 +96,9 @@ export const UI_TEXT = {
         creator: "Creator",
         pinned: "Pinned",
         edited: "edited",
+        // Shown under a comment whose body the backend cut at its ceiling when it was saved. The
+        // ceiling itself is appended by the component from the shared constant.
+        truncatedNote: "Truncated when it was saved",
         hideReplies: "Hide replies",
         reply: "reply",
         replies: "replies",

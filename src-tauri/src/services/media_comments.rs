@@ -379,6 +379,28 @@ mod tests {
 
     use super::*;
 
+    /// The ceiling both sides assert against. The player marks a stored comment as truncated by
+    /// its length reaching this number (`isCommentTextTruncated` in
+    /// `src/components/player/comment-tree.ts`), so the two constants have to move together, and
+    /// the fixture is what holds them to it.
+    fn shared_comment_text_limit() -> usize {
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/comment-text-limit.json"
+        ));
+        let fixture: serde_json::Value =
+            serde_json::from_str(raw).expect("the shared fixture must be valid JSON");
+
+        fixture["maxCommentTextChars"]
+            .as_u64()
+            .expect("maxCommentTextChars must be a number") as usize
+    }
+
+    #[test]
+    fn the_comment_text_ceiling_matches_the_shared_fixture() {
+        assert_eq!(MAX_COMMENT_TEXT_CHARS, shared_comment_text_limit());
+    }
+
     async fn create_test_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)

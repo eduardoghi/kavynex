@@ -430,6 +430,29 @@ describe("CommentsPanel", () => {
         expect(screen.queryByText(UI_TEXT.comments.noneToSave)).not.toBeInTheDocument();
     });
 
+    it("says so under a comment the backend cut at its ceiling, and nowhere else", () => {
+        // A body at the ceiling is the only signal there is. The backend truncates and records
+        // nothing, and YouTube's own cap is well below, so the length is the evidence. The note
+        // carries the number so the reader knows what "truncated" meant.
+        renderWithMantine(
+            <RemoteImagesProvider value={false}>
+                <CommentsPanel
+                    {...baseProps}
+                    comments={[
+                        comment({ id: 1, comment_id: "cut", text: "a".repeat(16_000) }),
+                        comment({ id: 2, comment_id: "whole", text: "short" }),
+                    ]}
+                    hasComments
+                    commentsCount={2}
+                />
+            </RemoteImagesProvider>
+        );
+
+        expect(
+            screen.getAllByText("Truncated when it was saved (16,000 characters)")
+        ).toHaveLength(1);
+    });
+
     it("has no detectable accessibility violations, populated and in the empty state", async () => {
         // axe schedules its own work on timers, so it hangs under the fake clock the rest of this
         // file runs on. Real timers for this test only.

@@ -1,12 +1,21 @@
 import { type CSSProperties, type ReactNode } from "react";
 import { Anchor, Badge, Group, Stack, Text } from "@mantine/core";
 import { ThumbsUp } from "lucide-react";
+import { MAX_COMMENT_TEXT_CHARS } from "../../constants/comment-text";
 import { UI_TEXT } from "../../constants/ui-text";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { activateOnEnterOrSpace } from "../../utils/keyboard";
 import { SafeAvatar } from "./safe-avatar";
-import { formatCommentPublishedAt, type CommentTreeNode } from "./comment-tree";
+import {
+    formatCommentPublishedAt,
+    isCommentTextTruncated,
+    type CommentTreeNode,
+} from "./comment-tree";
+
+// The note under a comment the backend cut at its ceiling. One string, so a test can assert the
+// exact line and the number is formatted once.
+const TRUNCATED_NOTE = `${UI_TEXT.comments.truncatedNote} (${MAX_COMMENT_TEXT_CHARS.toLocaleString("en-US")} characters)`;
 
 const COMMENT_TEXT_STYLE: CSSProperties = {
     whiteSpace: "pre-wrap",
@@ -96,6 +105,12 @@ export function CommentContent({
                 <Text size="sm" style={COMMENT_TEXT_STYLE}>
                     {comment.text}
                 </Text>
+
+                {isCommentTextTruncated(comment.text) && (
+                    <Text size="xs" c="dimmed" fs="italic">
+                        {TRUNCATED_NOTE}
+                    </Text>
+                )}
 
                 <Group gap="lg">
                     {comment.like_count > 0 && (

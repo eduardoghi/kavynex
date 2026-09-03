@@ -1,7 +1,28 @@
 // Pure comment-thread logic (tree building, sorting, filtering, timestamp parsing) shared by
 // the comments panel. Kept free of React so it can be unit-tested in isolation.
 import type { MediaCommentRow } from "../../types/media";
+import { MAX_COMMENT_TEXT_CHARS } from "../../constants/comment-text";
 import { formatPublishedDate } from "../../utils/media-utils";
+
+// True when a stored comment body is at the backend's ceiling, which is the only way it can be
+// that long. YouTube caps a comment at 10,000 characters, so a body at 16,000 is one the backend
+// cut when it saved it, not one that arrived that size. Counted in scalar values, the unit the
+// backend cuts on, so a body full of emoji is measured the way it was truncated rather than in
+// UTF-16 units, where `length` would call it truncated at half the ceiling.
+export function isCommentTextTruncated(text: string): boolean {
+    let count = 0;
+    const scalars = text[Symbol.iterator]();
+
+    while (!scalars.next().done) {
+        count += 1;
+
+        if (count >= MAX_COMMENT_TEXT_CHARS) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 export type CommentTreeNode = MediaCommentRow & {
     replies: CommentTreeNode[];

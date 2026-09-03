@@ -1,16 +1,49 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MediaCommentRow } from "../../types/media";
+import { MAX_COMMENT_TEXT_CHARS } from "../../constants/comment-text";
 import {
     buildCommentTree,
     countCommentsInTree,
     filterCommentTree,
     flattenCommentTree,
     formatCommentPublishedAt,
+    isCommentTextTruncated,
     matchesCommentSearch,
     normalizeSearchValue,
     parseCommentTimestamp,
     sortCommentTree,
 } from "./comment-tree";
+
+describe("isCommentTextTruncated", () => {
+    it("uses the ceiling the backend cuts at", () => {
+        // Resolved from the repo root (vitest's cwd), like the other shared-fixture readers. The
+        // backend pins its constant against the same file, so a change on either side that forgot
+        // the other fails one of the two.
+        const fixture = JSON.parse(
+            readFileSync(resolve(process.cwd(), "shared/comment-text-limit.json"), "utf-8")
+        ) as { maxCommentTextChars: number };
+
+        expect(MAX_COMMENT_TEXT_CHARS).toBe(fixture.maxCommentTextChars);
+    });
+
+    it("flags a body at the ceiling and not one under it", () => {
+        expect(isCommentTextTruncated("a".repeat(MAX_COMMENT_TEXT_CHARS - 1))).toBe(false);
+        expect(isCommentTextTruncated("a".repeat(MAX_COMMENT_TEXT_CHARS))).toBe(true);
+        expect(isCommentTextTruncated("")).toBe(false);
+    });
+
+    it("counts scalar values, the unit the backend cuts on, not UTF-16 units", () => {
+        // An astral character is two UTF-16 units, so `length` reaches the ceiling at half the
+        // characters. The backend counts chars(), and so must this, or a comment of 8,000 emoji
+        // would be marked as cut when it arrived whole.
+        const emoji = "\u{1F600}";
+
+        expect(isCommentTextTruncated(emoji.repeat(MAX_COMMENT_TEXT_CHARS - 1))).toBe(false);
+        expect(isCommentTextTruncated(emoji.repeat(MAX_COMMENT_TEXT_CHARS))).toBe(true);
+    });
+});
 
 function comment(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
     return {
