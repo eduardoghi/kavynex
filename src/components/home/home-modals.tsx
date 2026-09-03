@@ -6,6 +6,7 @@ import { ConfirmDeleteModal } from "../modals/confirm-delete-modal";
 import { CreateChannelModal } from "../modals/create-channel-modal";
 import { ErrorModal } from "../modals/error-modal";
 import { useHasBeenTrue } from "../../hooks/use-has-been-true";
+import { describeChannelDeletion } from "./channel-deletion-copy";
 
 // The two heaviest modals, and the two the app can run a whole session without opening. Settings
 // pulls in its five sections (the database export/import/restore flow among them) and Diagnostics
@@ -156,7 +157,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         Delete channel <b>{channels.channelToDelete?.name ?? "this channel"}</b>?
                     </>
                 }
-                description="This permanently deletes all of this channel's saved videos, audio, thumbnails and live chat replays from disk, and removes its comments. This cannot be undone."
+                description={describeChannelDeletion(channels.channelToDeleteMediaCount)}
             />
 
             {settingsWasOpened ? (

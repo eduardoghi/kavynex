@@ -102,6 +102,7 @@ function createChannels(): ChannelsController {
         isEditingChannel: false,
         confirmDeleteChannelOpen: true,
         channelToDelete: null,
+        channelToDeleteMediaCount: null,
         isLoadingChannels: false,
         isCreatingChannel: false,
         isDeletingChannel: false,
@@ -308,6 +309,21 @@ describe("HomeModals", () => {
         expect(
             screen.getByText(
                 "This permanently deletes all of this channel's saved videos, audio, thumbnails and live chat replays from disk, and removes its comments. This cannot be undone."
+            )
+        ).toBeInTheDocument();
+    });
+
+    it("says how many files the channel deletion takes once the count is known", () => {
+        // The count arrives after the confirmation opens (see useChannels.requestDeleteChannel).
+        // The generic line above is what shows until then; this is what replaces it.
+        const props = createProps();
+        props.channels = { ...props.channels, channelToDeleteMediaCount: 27 };
+
+        renderWithMantine(<HomeModals {...props} />);
+
+        expect(
+            screen.getByText(
+                "This permanently deletes all 27 of the channel's saved videos and audio files, their thumbnails and live chat replays from disk, and removes their comments. This cannot be undone."
             )
         ).toBeInTheDocument();
     });

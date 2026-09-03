@@ -146,6 +146,7 @@ const mockChannelsState = {
 
     confirmDeleteChannelOpen: false,
     channelToDelete: null,
+    channelToDeleteMediaCount: null,
 
     isLoadingChannels: false,
     isCreatingChannel: false,

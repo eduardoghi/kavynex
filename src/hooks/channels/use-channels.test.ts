@@ -11,11 +11,23 @@ vi.mock("./use-channel-actions", () => ({
     useChannelActions: vi.fn(),
 }));
 
+vi.mock("../../services/media-service", () => ({
+    listChannelMediaPage: vi.fn(),
+}));
+
+vi.mock("../../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
+
 import { openFileDialog } from "../../lib/tauri-platform";
+import { listChannelMediaPage } from "../../services/media-service";
+import { logError } from "../../utils/app-logger";
 import { useChannelActions } from "./use-channel-actions";
 
 const mockedUseChannelActions = vi.mocked(useChannelActions);
 const mockedOpen = vi.mocked(openFileDialog);
+const mockedListChannelMediaPage = vi.mocked(listChannelMediaPage);
+const mockedLogError = vi.mocked(logError);
 
 const channelA = {
     id: 10,
@@ -33,6 +45,7 @@ describe("useChannels", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockedListChannelMediaPage.mockResolvedValue({ items: [], total: 0 });
 
         mockedUseChannelActions.mockImplementation((options) => {
             return {
@@ -221,6 +234,100 @@ describe("useChannels", () => {
 
         expect(result.current.confirmDeleteChannelOpen).toBe(true);
         expect(result.current.channelToDelete).toEqual(channelA);
+    });
+
+    it("counts the channel's media for the confirmation, through the paged query", async () => {
+        mockedListChannelMediaPage.mockResolvedValue({ items: [], total: 27 });
+
+        const { result } = renderHook(() =>
+            useChannels({
+                libraryPath: "/library",
+                onError: vi.fn(),
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteChannel(channelA);
+        });
+
+        // Opens at once, on the generic wording, without waiting for the number.
+        expect(result.current.confirmDeleteChannelOpen).toBe(true);
+        expect(result.current.channelToDeleteMediaCount).toBeNull();
+
+        await waitFor(() => {
+            expect(result.current.channelToDeleteMediaCount).toBe(27);
+        });
+
+        // One row under no filter. The total that comes back with it is the count.
+        expect(mockedListChannelMediaPage).toHaveBeenCalledWith(
+            channelA.id,
+            expect.objectContaining({ limit: 1, offset: 0, search: "" })
+        );
+    });
+
+    it("drops a count that answers for a channel no longer awaiting confirmation", async () => {
+        const channelB = { ...channelA, id: 11, name: "Canal B" };
+        let resolveFirst: (page: { items: never[]; total: number }) => void = () => {};
+
+        mockedListChannelMediaPage
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveFirst = resolve;
+                    })
+            )
+            .mockResolvedValueOnce({ items: [], total: 3 });
+
+        const { result } = renderHook(() =>
+            useChannels({
+                libraryPath: "/library",
+                onError: vi.fn(),
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteChannel(channelA);
+        });
+        act(() => {
+            result.current.requestDeleteChannel(channelB);
+        });
+
+        await waitFor(() => {
+            expect(result.current.channelToDeleteMediaCount).toBe(3);
+        });
+
+        // The first channel's count lands late. It belongs to a confirmation that is no longer
+        // open and must not be shown under the second channel's name.
+        await act(async () => {
+            resolveFirst({ items: [], total: 99 });
+        });
+
+        expect(result.current.channelToDelete).toEqual(channelB);
+        expect(result.current.channelToDeleteMediaCount).toBe(3);
+    });
+
+    it("keeps the confirmation open on its generic wording when the count fails", async () => {
+        mockedListChannelMediaPage.mockRejectedValue(new Error("pool closed"));
+
+        const { result } = renderHook(() =>
+            useChannels({
+                libraryPath: "/library",
+                onError: vi.fn(),
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteChannel(channelA);
+        });
+
+        await waitFor(() => {
+            expect(mockedLogError).toHaveBeenCalledTimes(1);
+        });
+
+        // A count is a description of scale, not a guard. Its failure is logged and the delete
+        // stays available.
+        expect(result.current.confirmDeleteChannelOpen).toBe(true);
+        expect(result.current.channelToDeleteMediaCount).toBeNull();
     });
 
     it("closes delete modal when not deleting", () => {

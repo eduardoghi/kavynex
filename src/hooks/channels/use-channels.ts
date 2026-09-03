@@ -1,11 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Channel, ChannelAvatarMode } from "../../types/media";
+import { listChannelMediaPage } from "../../services/media-service";
+import { logError } from "../../utils/app-logger";
 import { findSelectedChannel } from "../../utils/controller-helpers";
 import { pickImageFilePath } from "../../utils/pick-image-file";
 import { useChannelActions } from "./use-channel-actions";
 import { useCreateChannelForm } from "./use-create-channel-form";
 import { useEditChannelForm } from "./use-edit-channel-form";
 import { useMemoObject } from "../use-memo-object";
+import { useRequestGuard } from "../use-request-guard";
+
+// The query behind the count the delete confirmation shows. The paged media query returns the
+// channel's total alongside the page, so asking it for one row under no filter is a count, through
+// a command the app already calls, rather than a command of its own for one number.
+const COUNT_ONLY_QUERY: Parameters<typeof listChannelMediaPage>[1] = {
+    mediaType: "all",
+    watched: "all",
+    publication: "all",
+    search: "",
+    sortCategory: "added_date",
+    sortDirection: "desc",
+    limit: 1,
+    offset: 0,
+};
 
 type UseChannelsOptions = {
     libraryPath: string;
@@ -44,6 +61,10 @@ export type ChannelsController = {
 
     confirmDeleteChannelOpen: boolean;
     channelToDelete: Channel | null;
+    // How many media the channel awaiting confirmation holds, for the confirmation to name the
+    // scale of what goes. `null` until the count arrives, and left `null` if it fails, in which case
+    // the confirmation keeps its generic wording. Never a condition on the delete itself.
+    channelToDeleteMediaCount: number | null;
 
     isLoadingChannels: boolean;
     isCreatingChannel: boolean;
@@ -76,7 +97,14 @@ export function useChannels({
 
     const [confirmDeleteChannelOpen, setConfirmDeleteChannelOpen] = useState(false);
     const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null);
+    const [channelToDeleteMediaCount, setChannelToDeleteMediaCount] = useState<number | null>(
+        null
+    );
     const [updatingChannelAvatarId, setUpdatingChannelAvatarId] = useState<number | null>(null);
+
+    // Latest wins over the count query. A second delete request before the first count answers
+    // must not land the first channel's number under the second channel's name.
+    const deleteCountGuard = useRequestGuard();
 
     const createForm = useCreateChannelForm({ onError });
     const editForm = useEditChannelForm();
@@ -178,10 +206,33 @@ export function useChannels({
         resetEditChannelForm,
     ]);
 
-    const requestDeleteChannel = useCallback((channel: Channel): void => {
-        setChannelToDelete(channel);
-        setConfirmDeleteChannelOpen(true);
-    }, []);
+    const requestDeleteChannel = useCallback(
+        (channel: Channel): void => {
+            setChannelToDelete(channel);
+            setChannelToDeleteMediaCount(null);
+            setConfirmDeleteChannelOpen(true);
+
+            // The confirmation opens at once, on its generic wording, and the count lands under
+            // it when the query answers. A failure is logged and leaves the wording generic; the
+            // delete never waits on this number and never depends on it.
+            const requestId = deleteCountGuard.begin();
+
+            void (async () => {
+                try {
+                    const page = await listChannelMediaPage(channel.id, COUNT_ONLY_QUERY);
+
+                    if (deleteCountGuard.isCurrent(requestId)) {
+                        setChannelToDeleteMediaCount(page.total);
+                    }
+                } catch (error) {
+                    logError("channels", "Failed to count the media of the channel to delete.", error, {
+                        channelId: channel.id,
+                    });
+                }
+            })();
+        },
+        [deleteCountGuard]
+    );
 
     const updateChannelAvatarFromFile = useCallback(
         async (channel: Channel): Promise<void> => {
@@ -219,9 +270,11 @@ export function useChannels({
             return;
         }
 
+        deleteCountGuard.invalidate();
         setConfirmDeleteChannelOpen(false);
         setChannelToDelete(null);
-    }, [channelActions.isDeletingChannel]);
+        setChannelToDeleteMediaCount(null);
+    }, [channelActions.isDeletingChannel, deleteCountGuard]);
 
     useEffect(() => {
         if (hasLoadedInitialRef.current) {
@@ -241,6 +294,7 @@ export function useChannels({
         setSelectedChannelId(null);
         setChannels([]);
         setChannelToDelete(null);
+        setChannelToDeleteMediaCount(null);
         setConfirmDeleteChannelOpen(false);
         setUpdatingChannelAvatarId(null);
         resetCreateChannelForm();
@@ -312,6 +366,7 @@ export function useChannels({
 
         confirmDeleteChannelOpen,
         channelToDelete,
+        channelToDeleteMediaCount,
 
         isLoadingChannels,
         isCreatingChannel,

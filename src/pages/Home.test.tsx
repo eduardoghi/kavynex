@@ -130,6 +130,7 @@ function controller(overrides: {
             selectedChannel,
             isLoadingChannels: false,
             channelToDelete: null,
+            channelToDeleteMediaCount: null,
             updatingChannelAvatarId: null,
             setCreateChannelOpen,
             setSelectedChannelId,
