@@ -237,6 +237,24 @@ next to the database as `kavynex.db.corrupt` rather than deleted, so it can stil
 live. If the library ever looks incomplete after a restore, run Diagnostics to reconcile the
 database against the files on disk.
 
+## Windows: the uninstaller asks whether to delete the database and its backups
+
+The uninstaller's first page has a **Delete the application data** checkbox. It is unticked by
+default, and unticked it removes the app alone. Ticked, it removes the app's config and cache
+directories, and that is not the small thing the label suggests. The config directory holds the
+database and every automatic backup of it, so the channels, titles, watched state and every saved
+comment go together. Kavynex asks once more at that point, saying exactly that, and **No** keeps the
+data while the uninstall continues. The library folder (media, thumbnails, live chat replays) is
+never touched either way, whichever answer you give.
+
+If the data has already been deleted, the automatic backups went with it, because they sit next to
+the database. What survives is an external backup, if one was configured under Settings > Database
+before the uninstall. Reinstall Kavynex, then Settings > Database > **Import database** and pick the
+`kavynex-backup.db` from that folder. Without one, the media files in the library are intact but
+the comments saved with them are gone, and for a video that is no longer on YouTube they cannot be
+fetched again. That is the case the external backup setting exists for, and why `PRIVACY.md` says to
+turn it on early.
+
 ## "Open file location" or "Open folder" does not do quite what you expect
 
 Both buttons hand the path to your operating system's own file manager, and the three

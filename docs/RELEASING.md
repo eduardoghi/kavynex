@@ -120,6 +120,14 @@ published, and because the updater half of the list does not behave realisticall
 - [ ] **`updater:default`, the check half**: Settings > Application update > **Check for updates**
       returns an answer. "Kavynex is already up to date" counts. What matters is that it answers
       rather than failing, since an ACL refusal surfaces as an error.
+- [ ] **The uninstaller's second confirmation** (Windows, `-setup.exe` only): uninstall the draft
+      build with **Delete the application data** ticked. A dialog naming the database and its backups
+      must appear before anything is removed. Answer **No**, and check that `%APPDATA%\com.kavynex.app`
+      is still there afterwards. Not a grant, but it lives in this list for the same reason the grants
+      do. `src-tauri/windows/hooks.nsh` reads two variables of tauri-bundler's NSIS template, and a
+      template change that keeps them declared while moving where they are set would compile fine and
+      never prompt. That is the failure a tauri-cli bump can introduce, and this is the only place it
+      is caught.
 
 `updater:default` is a preset, and it is worth knowing what the item above does and does not prove.
 The set grants four permissions (`allow-check`, `allow-download`, `allow-install`,

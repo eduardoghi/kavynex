@@ -76,7 +76,18 @@ but the one disk. It is worth turning on early rather than after the fact, becau
 the half that cannot be re-fetched. Your media files can be downloaded again, but the comments and
 live chat you saved for a video that has since been removed from YouTube cannot.
 
-Uninstalling removes the app, not your data, by design, since the library is usually the point.
+Uninstalling removes the app and leaves your data where it is, with one exception you have to opt
+into. The Windows `-setup.exe` uninstaller offers a **Delete the application data** checkbox. Ticked,
+it removes the config and cache directories, which means the database *and every automatic backup
+of it*, since the `.bak` generations live next to the database. Kavynex asks once more before that
+happens, naming what goes, and answering **No** keeps the data while the app is still removed. That
+second question exists because it went wrong once. The `.msi` has no such option, and on macOS and
+Linux uninstalling is deleting the bundle or the package, which never reaches the data. The library
+folder is not touched by any of them, so the media files survive, but the comments saved with them
+do not, and without the database Kavynex cannot tell which video each file belongs to. If you had
+the external backup above turned on, its `kavynex-backup.db` can be brought back through Settings >
+Database > Import.
+
 To remove everything, delete the library folder plus the three app directories (config, cache and
 logs). The Diagnostics dialog shows the resolved library folder; `DIRECTORIES.md` lists the
 per-OS paths of the other three and what each one holds. Note that the config directory is the one

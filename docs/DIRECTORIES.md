@@ -82,6 +82,14 @@ them with it. Every generation, not just the newest. The seven `.bak` files and 
 are siblings of `kavynex.db`, so the rotation buys nothing against losing the disk. It is depth
 against corruption, not against hardware.
 
+Nor against the uninstaller, which is the third way this directory goes and the one no rotation
+can answer. On Windows, the NSIS uninstaller's **Delete the application data** checkbox removes both
+`%APPDATA%\com.kavynex.app` and `%LOCALAPPDATA%\com.kavynex.app`, so the database and all seven
+generations go in one click. The checkbox is tauri-bundler's, not something this project added, and
+its label names none of the above. `src-tauri/windows/hooks.nsh` puts a second confirmation in front
+of it that does, and answering No keeps the directory while the app is still removed. The `.msi` has
+no such option. `PRIVACY.md` states the consequence for the user.
+
 **The external backup is what addresses that, and it is off unless you turn it on.** There is no
 default folder and nothing prompts for one, so a fresh install has no off-volume copy at all, which
 is worth stating plainly because the paragraph above otherwise reads as though the problem were
