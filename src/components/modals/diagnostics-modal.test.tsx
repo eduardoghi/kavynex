@@ -1,6 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DiagnosticsModal } from "./diagnostics-modal";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { renderWithMantine } from "../../test/test-utils";
 import type { DiagnosticsSummary } from "../../types/diagnostics";
 
@@ -301,5 +302,38 @@ describe("DiagnosticsModal", () => {
         fireEvent.click(screen.getByRole("button", { name: "Open log folder" }));
 
         expect(onOpenLogFolder).toHaveBeenCalledTimes(1);
+    });
+
+    it("has no detectable accessibility violations, loading and with a full summary", async () => {
+        // The full summary is the state with every control the dialog has (reload, the log folder
+        // button, the per-issue reveal and jump-to-media links), so that is where a missing name
+        // would hide. The loading state is the other shape the dialog takes. Scanned from
+        // document.body because the dialog lives in a portal beside the render container (see
+        // src/test/axe.ts).
+        const states = [
+            { label: "loading", loading: true, summary: null },
+            { label: "summary", loading: false, summary: createSummary() },
+        ] as const;
+
+        for (const state of states) {
+            const { unmount } = renderWithMantine(
+                <DiagnosticsModal
+                    opened
+                    onClose={vi.fn()}
+                    onReload={vi.fn()}
+                    loading={state.loading}
+                    summary={state.summary}
+                    onOpenMedia={vi.fn()}
+                    onRevealPath={vi.fn()}
+                    onOpenLogFolder={vi.fn()}
+                />
+            );
+
+            const violations = await findAccessibilityViolations(document.body);
+
+            expect(describeViolations(violations), `state: ${state.label}`).toBe("");
+
+            unmount();
+        }
     });
 });

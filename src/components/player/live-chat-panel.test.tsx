@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LiveChatPanel, liveChatAnnouncement, liveChatItemKey } from "./live-chat-panel";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
 import { RemoteImagesProvider } from "./remote-images-context";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { renderWithMantine } from "../../test/test-utils";
 
 // The virtualized inline list only mounts rows near the viewport, and jsdom has no layout, so the
@@ -259,5 +260,87 @@ describe("LiveChatPanel", () => {
 
         // Gone with the tile and the subtitle.
         expect(screen.queryByText("1 visible")).not.toBeInTheDocument();
+    });
+
+    it("has no detectable accessibility violations with every row kind, and when empty", async () => {
+        // One of each row the panel can draw (a plain message with badges, a super chat, a super
+        // sticker, a membership, and an active pin banner), with remote images on so the avatar and
+        // sticker <img>s are in the tree and their names are checked. Then the empty state.
+        const messages: LiveChatMessageItem[] = [
+            makeChatMessage({
+                message_id: "m1",
+                author_badges: [{ type: "moderator", label: "Moderator" }],
+                author_thumbnail: "https://yt3.ggpht.com/avatar.jpg",
+                timestamp_text: "0:01",
+            }),
+            makeChatMessage({
+                message_id: "m2",
+                kind: "superchat",
+                author_name: "Buyer",
+                amount_text: "$5.00",
+                message_text: "thanks",
+                message_parts: [{ type: "text", text: "thanks" }],
+                superchat_body_color: "#ffca28",
+                superchat_text_color: "#000000",
+            }),
+            makeChatMessage({
+                message_id: "m3",
+                kind: "sticker",
+                author_name: "Sticker buyer",
+                amount_text: "$2.00",
+                message_text: "",
+                message_parts: [],
+                sticker_image_url: "https://lh3.googleusercontent.com/sticker.png",
+            }),
+            makeChatMessage({
+                message_id: "m4",
+                kind: "membership",
+                author_name: "New member",
+                message_text: "Welcome!",
+                message_parts: [{ type: "text", text: "Welcome!" }],
+            }),
+        ];
+        const pin = makeChatMessage({
+            message_id: "pin",
+            kind: "pinned",
+            author_name: "Host",
+            message_text: "Pinned note",
+            message_parts: [{ type: "text", text: "Pinned note" }],
+            pinned_header: "Pinned by Host",
+        });
+
+        const populated = renderWithMantine(
+            <RemoteImagesProvider value={true}>
+                <LiveChatPanel
+                    liveChatMessages={[pin, ...messages]}
+                    visibleLiveChatMessages={messages}
+                    activePin={pin}
+                    isLoadingLiveChat={false}
+                    shellBorder="rgba(255,255,255,0.1)"
+                />
+            </RemoteImagesProvider>
+        );
+
+        expect(
+            describeViolations(await findAccessibilityViolations(populated.container)),
+            "populated"
+        ).toBe("");
+
+        populated.unmount();
+
+        const empty = renderWithMantine(
+            <LiveChatPanel
+                liveChatMessages={[]}
+                visibleLiveChatMessages={[]}
+                activePin={null}
+                isLoadingLiveChat={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        expect(
+            describeViolations(await findAccessibilityViolations(empty.container)),
+            "empty"
+        ).toBe("");
     });
 });

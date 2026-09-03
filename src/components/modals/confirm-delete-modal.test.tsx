@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConfirmDeleteModal } from "./confirm-delete-modal";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { renderWithMantine } from "../../test/test-utils";
 
 describe("ConfirmDeleteModal", () => {
@@ -111,5 +112,25 @@ describe("ConfirmDeleteModal", () => {
 
         expect(cancelButton).toHaveAttribute("data-autofocus");
         await waitFor(() => expect(cancelButton).toHaveFocus());
+    });
+
+    it("has no detectable accessibility violations", async () => {
+        // Scanned from document.body, not the render container. Mantine mounts the dialog in a
+        // portal beside the container, so a scan rooted there covers an empty wrapper and passes
+        // for nothing (see src/test/axe.ts).
+        renderWithMantine(
+            <ConfirmDeleteModal
+                opened
+                onClose={vi.fn()}
+                onConfirm={vi.fn()}
+                title="Delete item"
+                message="Are you sure?"
+                description="This action cannot be undone."
+            />
+        );
+
+        const violations = await findAccessibilityViolations(document.body);
+
+        expect(describeViolations(violations)).toBe("");
     });
 });

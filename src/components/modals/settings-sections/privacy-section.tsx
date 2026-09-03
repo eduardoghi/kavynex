@@ -14,7 +14,7 @@ export function PrivacySection({
         <Stack gap="xs">
             <Group gap="sm">
                 <Shield size={18} />
-                <Title order={4}>Privacy</Title>
+                <Title order={3} size="h4">Privacy</Title>
             </Group>
 
             <Switch

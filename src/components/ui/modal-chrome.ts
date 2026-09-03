@@ -4,9 +4,14 @@ import { rem } from "@mantine/core";
 /**
  * Title styling for the app's larger modals, passed through `styles.title`.
  *
- * A screen's own name was rendering at about the size of the `Title order={4}` headings inside it,
- * so nothing said which was the page and which were its parts. Same family as those headings, a
- * step up in size and weight.
+ * A screen's own name was rendering at about the size of the section headings inside it, so
+ * nothing said which was the page and which were its parts. Same family as those headings, a step
+ * up in size and weight.
+ *
+ * Those section headings are `<Title order={3} size="h4">`. Mantine renders a modal's title as an
+ * `h2`, so the sections under it are `h3` for the outline, sized as `h4` for the look they had when
+ * they were `h4` outright. The old tag skipped a level, which axe reports (`heading-order`) and a
+ * screen reader's heading navigation exposes as a section with no parent.
  */
 export const MODAL_TITLE_STYLE: CSSProperties = {
     fontFamily: "var(--mantine-font-family-headings)",

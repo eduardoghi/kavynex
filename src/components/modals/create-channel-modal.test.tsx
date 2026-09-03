@@ -1,6 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CreateChannelModal } from "./create-channel-modal";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { renderWithMantine } from "../../test/test-utils";
 
 describe("CreateChannelModal", () => {
@@ -263,5 +264,37 @@ describe("CreateChannelModal", () => {
         );
 
         expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument();
+    });
+
+    it("has no detectable accessibility violations in each avatar mode", async () => {
+        // Each mode renders a different row under the avatar radio group (nothing, the file picker
+        // with a picked file, the handle-derived download), so the labelling is per-mode. Scanned
+        // from document.body because the dialog lives in a portal beside the render container (see
+        // src/test/axe.ts).
+        for (const avatarMode of ["none", "manual", "youtube"] as const) {
+            const { unmount } = renderWithMantine(
+                <CreateChannelModal
+                    opened
+                    onClose={vi.fn()}
+                    channelName="Canal A"
+                    youtubeHandle="@canala"
+                    avatarMode={avatarMode}
+                    avatarPath={avatarMode === "manual" ? "/home/ademe/avatar.png" : ""}
+                    loading={false}
+                    onChangeChannelName={vi.fn()}
+                    onChangeYoutubeHandle={vi.fn()}
+                    onChangeAvatarMode={vi.fn()}
+                    onPickAvatar={vi.fn()}
+                    onClearAvatar={vi.fn()}
+                    onCreate={vi.fn()}
+                />
+            );
+
+            const violations = await findAccessibilityViolations(document.body);
+
+            expect(describeViolations(violations), `avatar mode: ${avatarMode}`).toBe("");
+
+            unmount();
+        }
     });
 });

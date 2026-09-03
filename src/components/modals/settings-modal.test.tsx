@@ -344,7 +344,7 @@ describe("SettingsModal", () => {
             thumbnail_files: 4,
         });
 
-        const { container } = renderWithMantine(
+        renderWithMantine(
             <SettingsModal
                 opened
                 onClose={vi.fn()}
@@ -374,7 +374,10 @@ describe("SettingsModal", () => {
             expect(screen.getByText("1 KB")).toBeInTheDocument();
         });
 
-        const violations = await findAccessibilityViolations(container);
+        // Scanned from document.body, not the render container. The dialog is mounted in a portal
+        // beside the container, so the scan this ran on `container` for a while covered an empty
+        // wrapper and passed for nothing (see src/test/axe.ts).
+        const violations = await findAccessibilityViolations(document.body);
 
         expect(describeViolations(violations)).toBe("");
     });

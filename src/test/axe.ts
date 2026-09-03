@@ -13,6 +13,13 @@
 // dropped them. They are also blind to the things jsdom has no answer for. Colour contrast needs
 // real computed styles, and focus order needs a real layout. Neither is asserted here, and neither
 // should be read as covered.
+//
+// Where to root the scan. For a component rendered inline, the `container` Testing Library returns
+// is the tree. For a Mantine `Modal` (or anything else that portals), it is not. The dialog is
+// mounted in a portal *beside* that container, under `document.body`, so a scan rooted at the
+// container covers an empty wrapper and reports no violations for nothing. Two modal checks ran that
+// way for weeks and passed. For a modal, scan `document.body`. Testing Library unmounts between
+// tests, so the body holds only what the current test rendered.
 import axe, { type AxeResults, type RunOptions } from "axe-core";
 
 // Rules that cannot produce a meaningful verdict in jsdom, so leaving them on would report

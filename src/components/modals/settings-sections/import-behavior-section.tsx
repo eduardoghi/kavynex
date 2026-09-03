@@ -20,7 +20,7 @@ export function ImportBehaviorSection({
         <Stack gap="xs">
             <Group gap="sm">
                 <Settings2 size={18} />
-                <Title order={4}>Import behavior</Title>
+                <Title order={3} size="h4">Import behavior</Title>
             </Group>
 
             <Radio.Group

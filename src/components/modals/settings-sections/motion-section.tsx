@@ -19,7 +19,7 @@ export function MotionSection({
         <Stack gap="xs">
             <Group gap="sm">
                 <Accessibility size={18} />
-                <Title order={4}>Motion</Title>
+                <Title order={3} size="h4">Motion</Title>
             </Group>
 
             <Text size="sm" c="dimmed">

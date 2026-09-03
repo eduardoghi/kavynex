@@ -2,7 +2,7 @@ import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mant
 import { FolderOpen, RefreshCcw } from "lucide-react";
 import type { DiagnosticsMediaTarget, DiagnosticsSummary } from "../../types/diagnostics";
 import { AppButton } from "../ui/app-button";
-import { MODAL_TITLE_STYLE } from "../ui/modal-chrome";
+import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 import { DiagnosticsIssuesSection } from "./diagnostics-sections/diagnostics-issues-section";
 import { DiagnosticsSummarySections } from "./diagnostics-sections/diagnostics-summary-sections";
 
@@ -45,6 +45,12 @@ export function DiagnosticsModal({
             centered
             size="min(1200px, 96vw)"
             overlayProps={{ blur: 6 }}
+            // Mantine's header close button is an icon with no text, so without this it has no
+            // accessible name. Same shape as the settings and import modals.
+            closeButtonProps={{
+                "aria-label": "Close diagnostics",
+                style: MODAL_CLOSE_BUTTON_STYLE,
+            }}
             styles={{
                 content: {
                     height: "min(90vh, 980px)",

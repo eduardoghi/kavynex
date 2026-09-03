@@ -121,7 +121,7 @@ export function DiagnosticsIssuesSection({
             }}
         >
             <Stack gap="sm">
-                <Title order={4}>Issues</Title>
+                <Title order={3} size="h4">Issues</Title>
 
 
                 {issues.map((issue, index) => (

@@ -1,6 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ErrorModal } from "./error-modal";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { renderWithMantine } from "../../test/test-utils";
 
 describe("ErrorModal", () => {
@@ -79,5 +80,27 @@ describe("ErrorModal", () => {
                     content.includes("Line 3")
             )
         ).toBeInTheDocument();
+    });
+
+    it("has no detectable accessibility violations in either variant", async () => {
+        // Both variants, since they differ in the badge and the heading and each is the only thing
+        // naming the dialog to a screen reader. Scanned from document.body because the dialog lives
+        // in a portal beside the render container (see src/test/axe.ts).
+        for (const variant of ["error", "notice"] as const) {
+            const { unmount } = renderWithMantine(
+                <ErrorModal
+                    opened
+                    onClose={vi.fn()}
+                    variant={variant}
+                    message="Something to read"
+                />
+            );
+
+            const violations = await findAccessibilityViolations(document.body);
+
+            expect(describeViolations(violations), `variant: ${variant}`).toBe("");
+
+            unmount();
+        }
     });
 });

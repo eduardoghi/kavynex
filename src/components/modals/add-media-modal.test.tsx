@@ -248,10 +248,14 @@ describe("AddMediaModal", () => {
         // The local mode has the file picker and the import-mode radio group, the yt-dlp mode has
         // the URL field, the format picker and the terminal. A missing label on either is a form
         // control a screen reader cannot name, which is the whole failure this catches.
+        //
+        // Scanned from document.body, not the render container. The dialog is mounted in a portal
+        // beside the container, so the scan this ran on `container` for a while covered an empty
+        // wrapper and passed for nothing (see src/test/axe.ts).
         for (const sourceMode of ["local", "yt-dlp"] as const) {
-            const { container, unmount } = renderAddMediaModal({ sourceMode });
+            const { unmount } = renderAddMediaModal({ sourceMode });
 
-            const violations = await findAccessibilityViolations(container);
+            const violations = await findAccessibilityViolations(document.body);
 
             expect(describeViolations(violations), `source mode: ${sourceMode}`).toBe("");
 

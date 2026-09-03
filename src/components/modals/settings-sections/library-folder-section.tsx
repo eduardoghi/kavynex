@@ -52,7 +52,7 @@ export function LibraryFolderSection({
         <Stack gap="xs">
             <Group gap="sm">
                 <HardDrive size={18} />
-                <Title order={4}>Library folder</Title>
+                <Title order={3} size="h4">Library folder</Title>
             </Group>
 
             <TextInput

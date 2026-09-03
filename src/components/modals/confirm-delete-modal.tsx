@@ -2,6 +2,7 @@ import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useModalLock } from "../../hooks/use-modal-lock";
+import { MODAL_CLOSE_BUTTON_STYLE } from "../ui/modal-chrome";
 
 type ConfirmDeleteModalProps = {
     opened: boolean;
@@ -41,6 +42,10 @@ export function ConfirmDeleteModal({
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
+            // Mantine's header close button is an icon with no text, so without this it has no
+            // accessible name. The label is "Close" rather than a variant of the confirm/cancel
+            // pair below it, which is what the footer already offers under their own names.
+            closeButtonProps={{ "aria-label": "Close", style: MODAL_CLOSE_BUTTON_STYLE }}
             {...modalLock}
         >
             <form

@@ -2,6 +2,7 @@ import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentsPanel } from "./comments-panel";
 import { RemoteImagesProvider } from "./remote-images-context";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { renderWithMantine } from "../../test/test-utils";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
@@ -428,4 +429,76 @@ describe("CommentsPanel", () => {
         expect(screen.getByText("The saved comments could not be read.")).toBeInTheDocument();
         expect(screen.queryByText(UI_TEXT.comments.noneToSave)).not.toBeInTheDocument();
     });
+
+    it("has no detectable accessibility violations, populated and in the empty state", async () => {
+        // axe schedules its own work on timers, so it hangs under the fake clock the rest of this
+        // file runs on. Real timers for this test only.
+        vi.useRealTimers();
+
+        // Populated one past the browse cap, with a reply thread on the first comment, so the sort
+        // select, the search field, the per-comment controls and the load-more button are all in
+        // the tree. Then the empty state that offers the fetch, which is the other set of controls
+        // this panel has. Kept small on purpose: axe over a hundred comment rows in jsdom ran past
+        // the test timeout, and the rows are all the same shape.
+        const threads = Array.from({ length: 31 }, (_, index) =>
+            comment({
+                id: index + 1,
+                comment_id: `c${index}`,
+                author_name: `Author ${index}`,
+                text: `Thread ${index}`,
+                like_count: index,
+                is_pinned: index === 0 ? 1 : 0,
+                reply_count: index === 0 ? 2 : 0,
+            })
+        ).concat(
+            [1, 2].map((n) =>
+                comment({
+                    id: 100 + n,
+                    comment_id: `c0-r${n}`,
+                    parent_comment_id: "c0",
+                    author_name: `Replier ${n}`,
+                    text: `Reply ${n}`,
+                })
+            )
+        );
+
+        const populated = renderWithMantine(
+            <RemoteImagesProvider value={false}>
+                <CommentsPanel
+                    {...baseProps}
+                    comments={threads}
+                    hasComments
+                    commentsCount={threads.length}
+                    commentsState="available"
+                    canFetchComments
+                    onFetchComments={vi.fn()}
+                />
+            </RemoteImagesProvider>
+        );
+
+        expect(
+            describeViolations(await findAccessibilityViolations(populated.container)),
+            "populated"
+        ).toBe("");
+
+        populated.unmount();
+
+        const empty = renderWithMantine(
+            <RemoteImagesProvider value={false}>
+                <CommentsPanel
+                    {...baseProps}
+                    comments={[]}
+                    hasComments={false}
+                    commentsState="unknown"
+                    canFetchComments
+                    onFetchComments={vi.fn()}
+                />
+            </RemoteImagesProvider>
+        );
+
+        expect(
+            describeViolations(await findAccessibilityViolations(empty.container)),
+            "empty"
+        ).toBe("");
+    }, 15_000);
 });

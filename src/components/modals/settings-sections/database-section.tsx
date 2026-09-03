@@ -61,7 +61,7 @@ export function DatabaseSection({
         <Stack gap="xs">
             <Group gap="sm">
                 <Database size={18} />
-                <Title order={4}>Database</Title>
+                <Title order={3} size="h4">Database</Title>
             </Group>
 
             <Text size="sm" c="dimmed">
@@ -205,7 +205,7 @@ export function DatabaseSection({
 
             <Group gap="sm">
                 <FolderClock size={18} />
-                <Title order={4}>External database backup</Title>
+                <Title order={3} size="h4">External database backup</Title>
             </Group>
 
             <Text size="sm" c="dimmed">

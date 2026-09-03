@@ -30,7 +30,7 @@ export function AppUpdateSection({
         <Stack gap="xs">
             <Group gap="sm">
                 <RefreshCcw size={18} />
-                <Title order={4}>Application update</Title>
+                <Title order={3} size="h4">Application update</Title>
             </Group>
 
             {/* No card around this, matching every other settings section. The note in

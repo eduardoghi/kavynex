@@ -36,7 +36,7 @@ export function SectionHeading({ icon, title }: SectionHeadingProps): JSX.Elemen
                 </Box>
             )}
 
-            <Title order={4}>{title}</Title>
+            <Title order={3} size="h4">{title}</Title>
         </Group>
     );
 }
