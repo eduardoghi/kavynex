@@ -22,6 +22,26 @@ function isTypingTarget(target: EventTarget | null): boolean {
 // re-subscribing per media. Shortcuts are suppressed while typing in a form field or while a
 // modal is open on top of the player. Extracted from MediaPlayerView to keep the (sizeable)
 // keyboard wiring out of the component body.
+//
+// The listener is registered in the **capture** phase, and that is load-bearing. The player is a
+// `<video controls>`, and clicking its picture focuses it. A focused Chromium media element has
+// keyboard handling of its own (Space toggles play, left/right seek by one percent of the duration,
+// up/down step the volume by 0.05), which runs at the target *before* a bubble-phase listener on the
+// document sees anything and decides whether to skip itself by whether the event is already
+// defaultPrevented by then. So with a bubbling listener both ran: Space toggled twice and did
+// nothing, a right arrow moved 5s plus the native percent, up moved the volume by 0.10, and holding
+// an arrow scrubbed at the native step while this hook ignored the repeats. Measured on a headless
+// Edge 152 (the WebView2 engine) with trusted key events over CDP, against a bubble listener that
+// prevented the default: every native action still happened. In capture, none did. So a
+// preventDefault here reaches the native handler in time, and it is issued on every key this hook
+// owns, repeats included, so holding a key is inert everywhere rather than native-only while the
+// player has focus.
+//
+// What this does not reach, measured in the same pass, is keyboard focus tabbed *into* the native
+// controls (the play button, the mute button, the volume slider). A key pressed there never
+// arrives at the document in either phase, so the control handles it alone, the way it did before,
+// and nothing doubles up there either. The case this fixes is the host element itself having focus,
+// which is what a click on the picture leaves behind.
 export function usePlayerKeyboardShortcuts(
     playerElementRef: RefObject<HTMLMediaElement | null>
 ): void {
@@ -55,11 +75,60 @@ export function usePlayerKeyboardShortcuts(
             element.pause();
         };
 
-        const handleKeyDown = (event: KeyboardEvent): void => {
-            if (event.repeat) {
-                return;
-            }
+        // The action a key maps to, or null when the key is not one of ours. Resolved before
+        // anything is prevented, so a key this hook does not own keeps its default everywhere.
+        const actionFor = (code: string, element: HTMLMediaElement): (() => void) | null => {
+            switch (code) {
+                case "Space":
+                    return () => {
+                        void togglePlayback();
+                    };
+                case "ArrowLeft":
+                    return () => {
+                        element.currentTime = Math.max(0, element.currentTime - 5);
+                    };
+                case "ArrowRight":
+                    return () => {
+                        if (Number.isFinite(element.duration)) {
+                            element.currentTime = Math.min(
+                                element.duration,
+                                element.currentTime + 5
+                            );
+                        }
+                    };
+                case "ArrowUp":
+                    // Raising the volume also unmutes, matching how a raised volume implies the
+                    // user wants to hear it (and how the native/YouTube players behave).
+                    return () => {
+                        element.muted = false;
+                        element.volume = Math.min(1, element.volume + 0.05);
+                    };
+                case "ArrowDown":
+                    return () => {
+                        element.volume = Math.max(0, element.volume - 0.05);
+                    };
+                case "KeyM":
+                    return () => {
+                        element.muted = !element.muted;
+                    };
+                case "KeyF":
+                    if (!(element instanceof HTMLVideoElement)) {
+                        return null;
+                    }
 
+                    return () => {
+                        if (document.fullscreenElement) {
+                            void document.exitFullscreen();
+                        } else {
+                            void element.requestFullscreen();
+                        }
+                    };
+                default:
+                    return null;
+            }
+        };
+
+        const handleKeyDown = (event: KeyboardEvent): void => {
             if (event.ctrlKey || event.metaKey || event.altKey) {
                 return;
             }
@@ -80,53 +149,27 @@ export function usePlayerKeyboardShortcuts(
                 return;
             }
 
-            switch (event.code) {
-                case "Space":
-                    event.preventDefault();
-                    void togglePlayback();
-                    break;
-                case "ArrowLeft":
-                    event.preventDefault();
-                    element.currentTime = Math.max(0, element.currentTime - 5);
-                    break;
-                case "ArrowRight":
-                    event.preventDefault();
-                    if (Number.isFinite(element.duration)) {
-                        element.currentTime = Math.min(element.duration, element.currentTime + 5);
-                    }
-                    break;
-                case "ArrowUp":
-                    // Raising the volume also unmutes, matching how a raised volume implies the
-                    // user wants to hear it (and how the native/YouTube players behave).
-                    event.preventDefault();
-                    element.muted = false;
-                    element.volume = Math.min(1, element.volume + 0.05);
-                    break;
-                case "ArrowDown":
-                    event.preventDefault();
-                    element.volume = Math.max(0, element.volume - 0.05);
-                    break;
-                case "KeyM":
-                    event.preventDefault();
-                    element.muted = !element.muted;
-                    break;
-                case "KeyF":
-                    if (element instanceof HTMLVideoElement) {
-                        event.preventDefault();
-                        if (document.fullscreenElement) {
-                            void document.exitFullscreen();
-                        } else {
-                            void element.requestFullscreen();
-                        }
-                    }
-                    break;
+            const action = actionFor(event.code, element);
+
+            if (!action) {
+                return;
             }
+
+            // Claimed before the repeat check on purpose. See the capture note above: the native
+            // handler would otherwise act on every repeat this hook declines to.
+            event.preventDefault();
+
+            if (event.repeat) {
+                return;
+            }
+
+            action();
         };
 
-        document.addEventListener("keydown", handleKeyDown);
+        document.addEventListener("keydown", handleKeyDown, true);
 
         return () => {
-            document.removeEventListener("keydown", handleKeyDown);
+            document.removeEventListener("keydown", handleKeyDown, true);
         };
     }, [playerElementRef]);
 }

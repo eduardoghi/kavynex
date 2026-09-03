@@ -124,4 +124,82 @@ describe("usePlayerKeyboardShortcuts", () => {
 
         input.remove();
     });
+
+    // The three below pin the capture-phase subscription and what it is for. A real
+    // `<video controls>` that has focus handles Space and the arrows itself, at the target, and
+    // skips that only when the event is already defaultPrevented by the time it looks. jsdom has
+    // no media controls, so what can be asserted here is the mechanism: the listener runs in
+    // capture, it prevents the default on the player element itself, and it keeps preventing on
+    // repeats it otherwise ignores. The end-to-end effect (one toggle, a 5s seek, a 0.05 volume
+    // step, with the player element focused) was measured in a Chromium build with trusted key
+    // events; see the hook's comment.
+    it("subscribes in the capture phase, so it runs before the player's own handling", () => {
+        const addSpy = vi.spyOn(document, "addEventListener");
+        const removeSpy = vi.spyOn(document, "removeEventListener");
+        const player = createPlayer();
+        const { unmount } = renderWithPlayer(player);
+
+        const subscription = addSpy.mock.calls.find(([type]) => type === "keydown");
+        expect(subscription?.[2]).toBe(true);
+
+        unmount();
+
+        const removal = removeSpy.mock.calls.find(([type]) => type === "keydown");
+        expect(removal?.[2]).toBe(true);
+    });
+
+    it("claims a shortcut pressed on the focused player element before the browser acts on it", () => {
+        const video = document.createElement("video");
+        document.body.appendChild(video);
+        const ref = { current: video };
+        Object.defineProperty(video, "duration", { value: 60, configurable: true });
+        renderHook(() => usePlayerKeyboardShortcuts(ref));
+
+        const seek = new KeyboardEvent("keydown", {
+            code: "ArrowRight",
+            bubbles: true,
+            cancelable: true,
+        });
+        video.dispatchEvent(seek);
+
+        // Both halves. The default is prevented (which is what stops the native percent-of-duration
+        // seek) and the hook's own 5s seek happened instead.
+        expect(seek.defaultPrevented).toBe(true);
+        expect(video.currentTime).toBe(5);
+
+        // A key the hook does not own keeps its default, wherever it lands.
+        const unowned = new KeyboardEvent("keydown", {
+            code: "KeyK",
+            bubbles: true,
+            cancelable: true,
+        });
+        video.dispatchEvent(unowned);
+        expect(unowned.defaultPrevented).toBe(false);
+
+        video.remove();
+    });
+
+    it("prevents the default on a held key without repeating the action", () => {
+        const video = document.createElement("video");
+        document.body.appendChild(video);
+        const ref = { current: video };
+        Object.defineProperty(video, "duration", { value: 60, configurable: true });
+        renderHook(() => usePlayerKeyboardShortcuts(ref));
+
+        const repeat = new KeyboardEvent("keydown", {
+            code: "ArrowRight",
+            bubbles: true,
+            cancelable: true,
+            repeat: true,
+        });
+        video.dispatchEvent(repeat);
+
+        // Ignoring the repeat is the existing behavior. Preventing it anyway is what keeps the
+        // native handler from scrubbing on every repeat while the player has focus, so a held
+        // arrow does the same thing whichever element has focus, which is nothing.
+        expect(repeat.defaultPrevented).toBe(true);
+        expect(video.currentTime).toBe(0);
+
+        video.remove();
+    });
 });
