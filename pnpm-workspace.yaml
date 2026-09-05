@@ -41,9 +41,20 @@ overrides:
     # was to raise this floor by one patch. A pin at 3.1.4 would have held the tree *at* the newly
     # vulnerable version, with the override reading as though the package were handled.
     #
-    # Raising the floor is still a manual step, though: the range permits 3.1.5 but the lockfile keeps
-    # whatever it resolved, so `pnpm install` had to be re-run for it to move. The range is what makes
-    # that a one-line change instead of a decision.
+    # Raising the floor is still a manual step, though: the range permits a later patch but the
+    # lockfile keeps whatever it resolved, so `pnpm install` has to be re-run for it to move. The
+    # range is what makes that a one-line change instead of a decision.
     #
-    # REMOVE WHEN: ajv's own range floors fast-uri at 3.1.5 or later.
-    fast-uri: ">=3.1.5 <4"
+    # It then happened a third time, and this entry is the record of that. Four more advisories
+    # landed on the same package, all fixed in 3.1.6. GHSA-5jgf-p345-68v8 and GHSA-jqff-g426-hqxp
+    # are host confusion again, through skipped IDN canonicalization and through percent-encoded
+    # scheme normalization. GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf are SSRF, through a
+    # malformed IPv6 literal and through a repeated hostname. The `>=3.1.5` range already permitted
+    # the fix while the lockfile still sat on 3.1.5, which is the manual step above being exactly as
+    # manual as it warned.
+    #
+    # Three rounds on one package is itself information. If a fourth arrives, the question worth
+    # asking is whether Stryker's ajv dependency is worth carrying, not whether to raise this again.
+    #
+    # REMOVE WHEN: ajv's own range floors fast-uri at 3.1.6 or later.
+    fast-uri: ">=3.1.6 <4"
