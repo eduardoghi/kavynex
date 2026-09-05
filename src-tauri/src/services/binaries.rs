@@ -7,6 +7,7 @@ use chrono::{NaiveDate, Utc};
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::models::yt_dlp::{ExternalToolHealth, ExternalToolsStatus};
+use crate::services::logger;
 use crate::utils::process::hide_console;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -42,7 +43,50 @@ fn is_executable_file(path: &Path) -> bool {
     path.is_file()
 }
 
-/// Resolves the first of `candidates` that names an executable in a directory listed in `PATH`.
+/// Directories searched after `PATH`, for the platform whose GUI processes do not get the user's.
+///
+/// A macOS app launched from Finder inherits launchd's environment rather than the login shell's,
+/// so `/opt/homebrew/bin` is absent from `PATH` even though `which yt-dlp` finds it in Terminal.
+/// That is where Homebrew installs on Apple Silicon, and Homebrew is how a Mac user installs these
+/// tools, so the default experience was the app reporting yt-dlp missing while it was correctly
+/// installed. The README's "ensure it is available in your system PATH" was true and still did not
+/// help, which is the worst shape an instruction can take.
+///
+/// Written as absolute literals rather than read from the environment, which is what keeps the one
+/// property `resolve_from_path_var` exists for. The process working directory is still never
+/// searched. The three entries are the bin directories the macOS package managers own (Homebrew on
+/// Apple Silicon, Homebrew on Intel, MacPorts).
+///
+/// Empty on every other platform, and deliberately not a `cfg` on the call site. Windows GUI
+/// processes inherit the system PATH and Linux packages install into `/usr/bin`, so neither needs
+/// this, and an empty slice makes the fallback a no-op there without a second code path.
+#[cfg(target_os = "macos")]
+pub(crate) const WELL_KNOWN_BIN_DIRS: [&str; 3] =
+    ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin"];
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) const WELL_KNOWN_BIN_DIRS: [&str; 0] = [];
+
+/// Resolves the first of `candidates` that names an executable in one of `dirs`.
+///
+/// Split from the `PATH` search so the fallback can be driven by a test with a temporary directory,
+/// rather than depending on what happens to be installed on the machine running the suite.
+fn resolve_from_dirs(dirs: &[&str], candidates: &[&str]) -> Option<String> {
+    for candidate in candidates {
+        for dir in dirs {
+            let candidate_path = Path::new(dir).join(candidate);
+
+            if is_executable_file(&candidate_path) {
+                return Some(candidate_path.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    None
+}
+
+/// Resolves the first of `candidates` that names an executable in a directory listed in `PATH`,
+/// falling back to [`WELL_KNOWN_BIN_DIRS`].
 ///
 /// `pub(crate)` rather than private because it is the project's one hardened executable lookup and
 /// yt-dlp/ffmpeg are not its only callers. `library::open_path_in_system_sync` resolves the Linux
@@ -50,8 +94,17 @@ fn is_executable_file(path: &Path) -> bool {
 /// rule instead of handing a bare name to the OS search order. See `resolve_from_path_var` for what
 /// the rule actually is.
 pub(crate) fn resolve_from_path(candidates: &[&str]) -> Option<String> {
-    let path_var = std::env::var_os("PATH")?;
-    resolve_from_path_var(&path_var, candidates)
+    // Deliberately not `let path_var = std::env::var_os("PATH")?`. A GUI process can be handed no
+    // PATH at all, and that `?` returned before the fallback below was ever tried, so the lookup
+    // searched nothing rather than searching less. The absent-PATH case is exactly the one the
+    // fallback exists for, so it must not be the one that skips it.
+    if let Some(path_var) = std::env::var_os("PATH") {
+        if let Some(found_path) = resolve_from_path_var(&path_var, candidates) {
+            return Some(found_path);
+        }
+    }
+
+    resolve_from_dirs(&WELL_KNOWN_BIN_DIRS, candidates)
 }
 
 #[cfg(windows)]
@@ -144,7 +197,45 @@ fn resolve_binary_from_candidates<R: Runtime>(
         }
     }
 
+    // Say where it looked. Until this line, a failed resolution left no record at all, so a user
+    // reporting "I installed it with Homebrew and the app says it is missing" had a log file that
+    // was silent about the one fact that explains it. That is the report this project asks for in
+    // the README, and it could not carry the answer.
+    //
+    // The PATH itself is not written out, only how many directories it held. The value contains the
+    // user's home directory, and the count already separates the case that matters (an environment
+    // with no PATH, or one without the package manager's bin directory) from a populated one.
+    logger::warn(
+        "binaries",
+        format!(
+            "could not resolve {}: PATH held {} director(ies), the fallback list held {}, and the tools folder ({}) does not contain it either",
+            candidates.join(" or "),
+            path_directory_count(),
+            describe_well_known_dirs(),
+            logger::redact_path(&tools_dir),
+        ),
+    );
+
     Err(AppError::from_code(error_code, error_message))
+}
+
+/// How many directories `PATH` currently lists, or 0 when it is unset. The count alone, never the
+/// value, since the value carries the user's home directory into a log that gets pasted into public
+/// bug reports.
+fn path_directory_count() -> usize {
+    std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).count())
+        .unwrap_or(0)
+}
+
+/// The fallback directories, rendered for the log line above. These are compile-time literals
+/// rather than anything derived from the user's environment, so they are safe to print in full.
+fn describe_well_known_dirs() -> String {
+    if WELL_KNOWN_BIN_DIRS.is_empty() {
+        return "nothing (this platform needs no fallback)".to_string();
+    }
+
+    WELL_KNOWN_BIN_DIRS.join(", ")
 }
 
 pub fn resolve_yt_dlp_binary<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
@@ -437,6 +528,113 @@ mod tests {
             "kavynex-binaries-{tag}-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    #[test]
+    fn well_known_bin_dirs_are_absolute_paths() {
+        // The security property the fallback must not cost. `resolve_from_path_var` exists to keep
+        // the process working directory out of the search, and a relative entry here would hand it
+        // straight back, since `Path::new("bin").join(candidate)` resolves against the CWD. Every
+        // entry has to be rooted. Vacuously true on the platforms with an empty list, which is the
+        // correct reading rather than a gap.
+        for dir in WELL_KNOWN_BIN_DIRS {
+            assert!(
+                Path::new(dir).is_absolute(),
+                "{dir} must be absolute or it reintroduces the working-directory search"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_macos_fallback_covers_homebrew_on_both_architectures() {
+        // The whole reason the list exists. Apple Silicon Homebrew installs into /opt/homebrew/bin,
+        // which launchd's PATH does not carry, so a Mac user who installed yt-dlp the normal way
+        // got "not found" from an app that simply could not see it. The Intel location is here for
+        // the same reason on an older machine.
+        assert!(WELL_KNOWN_BIN_DIRS.contains(&"/opt/homebrew/bin"));
+        assert!(WELL_KNOWN_BIN_DIRS.contains(&"/usr/local/bin"));
+    }
+
+    #[test]
+    fn resolve_from_dirs_finds_a_candidate_and_reports_none_when_absent() {
+        let base = unique_dir("fallback");
+        let present = base.join("present");
+        let empty = base.join("empty");
+        std::fs::create_dir_all(&present).unwrap();
+        std::fs::create_dir_all(&empty).unwrap();
+
+        let name = if cfg!(windows) {
+            "kavynex-fallback-tool.exe"
+        } else {
+            "kavynex-fallback-tool"
+        };
+        make_executable(&present.join(name));
+
+        let present_dir = present.to_string_lossy().to_string();
+        let empty_dir = empty.to_string_lossy().to_string();
+
+        // Found when the directory holding it is listed.
+        let found = resolve_from_dirs(&[&present_dir], &[name]).expect("should resolve");
+        assert!(Path::new(&found).ends_with(name));
+
+        // A directory that does not hold it resolves nothing, which is what makes the fallback a
+        // search rather than a guess at a path.
+        assert!(resolve_from_dirs(&[&empty_dir], &[name]).is_none());
+
+        // And an empty directory list is a no-op, the shape every non-macOS platform runs.
+        assert!(resolve_from_dirs(&[], &[name]).is_none());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn resolve_from_dirs_prefers_the_earlier_candidate_over_the_earlier_directory() {
+        // Candidate order is the outer loop, matching `resolve_from_path_var`. On Windows the
+        // candidate list is ["yt-dlp.exe", "yt-dlp"], and a `.exe` further down the directory list
+        // must still win over an extensionless file earlier in it.
+        let base = unique_dir("fallback-order");
+        let first = base.join("first");
+        let second = base.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+
+        make_executable(&first.join("kavynex-second-choice"));
+        make_executable(&second.join("kavynex-first-choice"));
+
+        let first_dir = first.to_string_lossy().to_string();
+        let second_dir = second.to_string_lossy().to_string();
+
+        let found = resolve_from_dirs(
+            &[&first_dir, &second_dir],
+            &["kavynex-first-choice", "kavynex-second-choice"],
+        )
+        .expect("should resolve");
+
+        assert!(
+            Path::new(&found).ends_with("kavynex-first-choice"),
+            "the first candidate wins even when it sits in a later directory, got {found}"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_fallback_description_names_the_directories_it_will_search() {
+        // The log line this feeds is the only record a bug report carries of where the lookup
+        // looked, so an empty or constant string there would defeat the point of adding it.
+        let described = describe_well_known_dirs();
+
+        if WELL_KNOWN_BIN_DIRS.is_empty() {
+            assert!(described.contains("no fallback"));
+        } else {
+            for dir in WELL_KNOWN_BIN_DIRS {
+                assert!(
+                    described.contains(dir),
+                    "{dir} should appear in {described}"
+                );
+            }
+        }
     }
 
     // The security guarantee. Only directories explicitly listed in PATH are searched. A
