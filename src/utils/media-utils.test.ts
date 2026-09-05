@@ -14,6 +14,7 @@ import {
     isMediaWatched,
     isThumbnailFile,
     joinNormalizedPath,
+    mediaSrcFromAbsolutePath,
     mediaTypeFromFile,
     resolveStoredPath,
     RESUME_COMPLETION_TOLERANCE_SECONDS,
@@ -22,8 +23,14 @@ import {
     stripWindowsExtendedPrefix,
 } from "./media-utils";
 
+// Honors the protocol argument, unlike the earlier fixed-`asset:` mock. Media and thumbnails now
+// resolve through different schemes, and a mock that ignored the second argument would return the
+// same string for both, so a regression sending the media back through the asset protocol (the one
+// that truncates range responses) would pass unnoticed.
 vi.mock("../lib/tauri-platform", () => ({
-    convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
+    convertFileSrc: vi.fn(
+        (path: string, protocol = "asset") => `${protocol}://localhost/${path}`
+    ),
 }));
 
 const convertFileSrcMock = vi.mocked(convertFileSrc);
@@ -300,6 +307,38 @@ describe("media-utils", () => {
                 "asset://localhost/C:/a/b.mp4"
             );
             expect(convertFileSrcMock).toHaveBeenCalledWith("C:/a/b.mp4");
+        });
+    });
+
+    describe("mediaSrcFromAbsolutePath", () => {
+        it("returns an empty string for null, empty or whitespace-only paths", () => {
+            expect(mediaSrcFromAbsolutePath(null)).toBe("");
+            expect(mediaSrcFromAbsolutePath("")).toBe("");
+            expect(mediaSrcFromAbsolutePath("   ")).toBe("");
+        });
+
+        it("resolves through the app's own scheme rather than the asset protocol", () => {
+            // The whole reason this function exists next to `fileSrcFromAbsolutePath`. Tauri's
+            // asset protocol truncates every range response to 1 MB, and the Apple media stack
+            // abandons the track rather than asking for the rest, so a long recording will not
+            // play through it. Asserting the scheme is what keeps the media from drifting back
+            // onto it, since both functions otherwise look interchangeable at a call site.
+            expect(mediaSrcFromAbsolutePath("  C:\\a\\b.mp4  ")).toBe(
+                "kvxmedia://localhost/C:/a/b.mp4"
+            );
+        });
+
+        it("passes the protocol to convertFileSrc rather than building the URL itself", () => {
+            // Not cosmetic. The scheme reaches the webview as `kvxmedia://localhost/...` on macOS
+            // and Linux but as `http://kvxmedia.localhost/...` on Windows, and `convertFileSrc` is
+            // what knows which. A hand-built string would work on macOS and silently break on
+            // Windows, where the asset protocol had been working all along.
+            mediaSrcFromAbsolutePath("/library/video/a.mp4");
+
+            expect(convertFileSrcMock).toHaveBeenCalledWith(
+                "/library/video/a.mp4",
+                "kvxmedia"
+            );
         });
 
         it("strips the UNC extended-length prefix before converting", () => {

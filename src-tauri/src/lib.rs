@@ -455,6 +455,15 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // The player's media source. Registered alongside (not instead of) the asset protocol,
+        // which still serves thumbnails: those are small enough that its 1 MB range cap never
+        // bites, and leaving them there keeps this handler to the one case that needed it. See
+        // services::media_protocol for why a long recording cannot be served through `asset:` on
+        // Apple platforms, and for the guard it reuses rather than reimplements.
+        .register_uri_scheme_protocol(
+            services::media_protocol::MEDIA_URI_SCHEME,
+            services::media_protocol::handle,
+        )
         .setup(|app| {
             let app_handle = app.handle().clone();
 

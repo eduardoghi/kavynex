@@ -12,6 +12,13 @@ vi.mock("../../utils/media-utils", () => ({
         return `${libraryPath}/${storedPath}`;
     }),
     fileSrcFromAbsolutePath: vi.fn((path: string | null) => (path ? `file://${path}` : "")),
+    // Distinct from the one above on purpose. The media file and the thumbnail resolve through
+    // different schemes now (the app's own protocol for media, the asset protocol for the
+    // thumbnail), so a mock that returned the same shape for both would let a regression that
+    // sent the media back through `asset:` pass unnoticed.
+    mediaSrcFromAbsolutePath: vi.fn((path: string | null) =>
+        path ? `kvxmedia://localhost${path}` : ""
+    ),
     // Mirrors the real helper's trimmed semantics so the "whitespace-only watched_at" test stays
     // meaningful under the mock.
     isMediaWatched: (media: { watched_at: string | null } | null | undefined) =>
@@ -100,7 +107,10 @@ describe("useMediaPlayer", () => {
         expect(result.current.viewMode).toBe("player");
         expect(result.current.activeMedia).toEqual(media);
         expect(result.current.activeIsAudio).toBe(false);
-        expect(result.current.activeSrc).toBe("file:///library/video/a.mp4");
+        // Two different schemes, and the pairing is the point. The media file goes through the
+        // app's own protocol because Tauri's asset protocol truncates range responses; the
+        // thumbnail stays on the asset protocol because it is far too small for that to matter.
+        expect(result.current.activeSrc).toBe("kvxmedia://localhost/library/video/a.mp4");
         expect(result.current.activeThumbSrc).toBe("file:///library/thumbnails/a.jpg");
         expect(result.current.activeYoutubeUrl).toBe("https://www.youtube.com/watch?v=abc123");
         expect(result.current.canOpenInYoutube).toBe(true);
@@ -131,7 +141,7 @@ describe("useMediaPlayer", () => {
 
         expect(result.current.viewMode).toBe("player");
         expect(result.current.activeIsAudio).toBe(true);
-        expect(result.current.activeSrc).toBe("file:///library/audio/a.mp3");
+        expect(result.current.activeSrc).toBe("kvxmedia://localhost/library/audio/a.mp3");
         expect(result.current.activeThumbSrc).toBe("");
         expect(result.current.canOpenInYoutube).toBe(false);
         expect(result.current.activeIsWatched).toBe(true);

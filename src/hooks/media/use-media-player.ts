@@ -1,6 +1,11 @@
 import { useCallback, useState } from "react";
 import type { MediaRow, ViewMode } from "../../types/media";
-import { resolveStoredPath, fileSrcFromAbsolutePath, isMediaWatched } from "../../utils/media-utils";
+import {
+    resolveStoredPath,
+    fileSrcFromAbsolutePath,
+    mediaSrcFromAbsolutePath,
+    isMediaWatched,
+} from "../../utils/media-utils";
 import { buildYoutubeWatchUrl } from "../../utils/youtube";
 import { openExternalUrl } from "../../services/library-service";
 import { logError } from "../../utils/app-logger";
@@ -43,7 +48,10 @@ export function useMediaPlayer({
     // identity unchanged. Per-field memoization of a primitive would only cache the compute, not
     // affect what any consumer observes, so it is left out to keep the derivations uniform.
     const activeIsAudio = activeMedia?.media_type === "audio";
-    const activeSrc = fileSrcFromAbsolutePath(
+    // The media file goes through the app's own scheme, not the asset protocol. The thumbnail below
+    // stays on the asset protocol on purpose: only the media is large enough for Tauri's 1 MB range
+    // cap to matter. See `mediaSrcFromAbsolutePath`.
+    const activeSrc = mediaSrcFromAbsolutePath(
         resolveStoredPath(activeMedia?.file_path ?? null, libraryPath)
     );
     const activeThumbSrc = fileSrcFromAbsolutePath(

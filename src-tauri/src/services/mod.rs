@@ -20,6 +20,10 @@ pub mod live_chat_storage;
 pub mod logger;
 pub mod media_comments;
 pub mod media_creation;
+// Serves the library's media to the player. Separate from Tauri's `asset:` protocol, and only
+// because that one truncates every range response to 1 MB, which the Apple media stack does not
+// recover from on a long recording. See the module docs for the measurement.
+pub mod media_protocol;
 pub mod pending_media;
 pub mod process_registry;
 pub mod ssrf_guard;

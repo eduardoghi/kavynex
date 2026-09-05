@@ -181,6 +181,37 @@ export function resolveStoredPath(
     return joinNormalizedPath(libraryPath, normalizedStoredPath);
 }
 
+// The scheme `services/media_protocol.rs` registers. It reaches the webview as
+// `kvxmedia://localhost/...` on macOS and Linux and as `http://kvxmedia.localhost/...` on Windows,
+// which is why the CSP lists both spellings under `media-src`.
+const MEDIA_SCHEME = "kvxmedia";
+
+/**
+ * Builds the URL the player's `<video>`/`<audio>` reads from.
+ *
+ * Deliberately not `convertFileSrc`. That returns an `asset:` URL, and Tauri's asset protocol
+ * truncates every range response to 1 MB, which the Apple media stack does not recover from once a
+ * recording's metadata grows past a few megabytes. A 47 MB file fails there while a 571 MB one
+ * plays, so it tracks the frame count rather than the byte size, and an archived livestream is
+ * exactly the shape that trips it. See `services/media_protocol.rs` for the measurement.
+ *
+ * Thumbnails deliberately stay on `convertFileSrc`. They are far too small for that cap to bite, and
+ * leaving them there keeps this second scheme serving only the case that needed it.
+ */
+export function mediaSrcFromAbsolutePath(path: string | null): string {
+    const normalized = path?.trim() ?? "";
+
+    if (!normalized) {
+        return "";
+    }
+
+    // `convertFileSrc` with a protocol argument rather than a hand-built URL. The scheme reaches
+    // the webview differently per platform (`kvxmedia://localhost/...` on macOS and Linux,
+    // `http://kvxmedia.localhost/...` on Windows), and this is the function that knows which.
+    // Building the string here would work on macOS and silently break on Windows.
+    return convertFileSrc(toAssetPath(normalized), MEDIA_SCHEME);
+}
+
 export function fileSrcFromAbsolutePath(path: string | null): string {
     const normalized = path?.trim() ?? "";
 
