@@ -1,6 +1,6 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeVoid } from "../lib/tauri-client";
-import { logError } from "./app-logger";
+import { logError, setLogSink } from "./app-logger";
 
 function describeError(error: unknown): string {
     if (error instanceof Error) {
@@ -44,6 +44,20 @@ export function installGlobalErrorHandlers(): void {
     }
 
     installed = true;
+
+    // Route every `logWarn`/`logError` in the app to the backend log file as well as the console.
+    // This lives here rather than inside app-logger so that module never imports the IPC seam,
+    // which would close an import cycle through ipc-schemas. See `setLogSink`.
+    setLogSink((level, scope, line) => {
+        void invokeVoid(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
+            scope,
+            message: `[${level}] ${line}`,
+        }).catch(() => {
+            // Deliberately empty, and it must stay that way. Reporting this failure through
+            // `logError` would re-enter this sink and turn a backend that is refusing the command
+            // into an unbounded stream of IPC calls. The console already has the original line.
+        });
+    });
 
     window.addEventListener("error", (event) => {
         reportFatalError(

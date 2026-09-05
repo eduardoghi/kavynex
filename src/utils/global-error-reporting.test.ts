@@ -8,10 +8,11 @@ vi.mock("../lib/tauri-client", () => ({
 
 vi.mock("./app-logger", () => ({
     logError: vi.fn(),
+    setLogSink: vi.fn(),
 }));
 
 import { invokeVoid } from "../lib/tauri-client";
-import { logError } from "./app-logger";
+import { logError, setLogSink } from "./app-logger";
 
 describe("reportFatalError", () => {
     beforeEach(() => {
@@ -143,6 +144,38 @@ describe("installGlobalErrorHandlers", () => {
             "Unhandled promise rejection reached the window.",
             "denied"
         );
+
+        // The other half of what this function installs, asserted here rather than in its own test
+        // because `installed` makes the setup a one-shot: a second test calling it again would get
+        // a no-op and read the registrations as missing.
+        //
+        // Every `logWarn`/`logError` in the app used to stop at the devtools console, which a
+        // packaged build never opens, so a caught-and-logged failure left nothing in the file the
+        // README asks a bug report to carry. The sink is what closes that, and it lives here rather
+        // than inside app-logger so that module never imports the IPC seam.
+        expect(setLogSink).toHaveBeenCalledTimes(1);
+
+        const sink = vi.mocked(setLogSink).mock.calls[0]![0] as (
+            level: "info" | "warn" | "error",
+            scope: string,
+            line: string
+        ) => void;
+
+        vi.mocked(invokeVoid).mockResolvedValue(undefined);
+        sink("warn", "library", "could not resolve yt-dlp");
+
+        expect(invokeVoid).toHaveBeenCalledWith(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
+            scope: "library",
+            message: "[warn] could not resolve yt-dlp",
+        });
+
+        // The failure path has to stay silent. Reporting it through `logError` would re-enter this
+        // same sink, so a backend refusing the command would turn one lost line into an unbounded
+        // stream of IPC calls. The rejection is swallowed and nothing further is logged.
+        vi.mocked(logError).mockClear();
+        vi.mocked(invokeVoid).mockRejectedValue(new Error("ipc refused"));
+
+        expect(() => sink("error", "scope", "line")).not.toThrow();
 
         addEventListenerSpy.mockRestore();
     });

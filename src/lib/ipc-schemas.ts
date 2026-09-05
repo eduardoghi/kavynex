@@ -26,6 +26,7 @@ import { APP_ERROR_CODE } from "../constants/error-codes";
 import type { TauriCommandName } from "../constants/tauri-commands";
 import type { TauriCommandReturns } from "./tauri-command-returns";
 import type { AppErrorShape } from "../utils/app-error";
+import { logError } from "../utils/app-logger";
 
 import type {
     Channel,
@@ -444,7 +445,9 @@ export function parseEventPayload<TSchema extends z.ZodTypeAny>(
         return parsed.data;
     }
 
-    console.error(`Invalid IPC event payload for "${source}": ${describeIssues(parsed.error)}`);
+    logError("ipc", `Invalid IPC event payload for "${source}"`, undefined, {
+        issues: describeIssues(parsed.error),
+    });
     return null;
 }
 
@@ -452,7 +455,7 @@ export function parseEventPayload<TSchema extends z.ZodTypeAny>(
 // prettifier so the message shape stays stable across zod point releases.
 //
 // Exported for its tests rather than for a caller, and that is the point. Both functions above hand
-// their result to `console.error` and nothing else, so nothing an assertion can reach observes what
+// their result to `logError` and nothing else, so nothing an assertion can reach observes what
 // this produces. A mutation pass over this file reported every one of its parts surviving (the
 // `(root)` fallback, the `.` path join, the `: ` between path and message, the `; ` between issues)
 // while the polarity decisions around it were killed. That asymmetry is the argument for pinning it
@@ -491,9 +494,9 @@ export function validateIpcResult<K extends TauriCommandName>(
         return parsed.data as TauriCommandReturns[K];
     }
 
-    console.error(
-        `Invalid IPC response for "${command}": ${describeIssues(parsed.error)}`
-    );
+    logError("ipc", `Invalid IPC response for "${command}"`, undefined, {
+        issues: describeIssues(parsed.error),
+    });
 
     const shape: AppErrorShape = {
         code: APP_ERROR_CODE,
