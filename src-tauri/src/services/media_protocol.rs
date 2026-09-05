@@ -52,6 +52,24 @@
 //! play, or a Tauri release that raises its own `MAX_LEN`, which would make this module removable.
 //! The tolerance above is two data points and an extrapolation, not a documented contract.
 //!
+//! # Verified
+//!
+//! Against a `pnpm tauri dev` build on macOS 26.6.1 (M4), importing the same files the boundary
+//! above was measured with. Both failure modes are gone and the case that already worked still
+//! does, which is what would catch a regression in this path rather than only its absence:
+//!
+//! | `moov`  | before                         | after |
+//! |---------|--------------------------------|-------|
+//! | 2.5 MB  | plays                          | plays |
+//! | 4.9 MB  | audio plays, video stays black | plays |
+//! | 7.3 MB  | fails                          | plays |
+//! | 9.0 MB  | fails                          | plays |
+//!
+//! Not yet exercised through a packaged `pnpm tauri build`, where the CSP is the one Tauri injects
+//! rather than `devCsp`. Both list the scheme, so the difference is expected to be nil, but it is
+//! untested. Linux is untested outright: WebKitGTK routes media through GStreamer rather than
+//! AVFoundation, so nothing measured here transfers to it.
+//!
 //! # What guards it
 //!
 //! Nothing new. The handler asks the asset-protocol scope whether the path is allowed, which is the
