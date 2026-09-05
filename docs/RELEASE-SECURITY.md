@@ -83,6 +83,27 @@ certificate is a recurring cost that is hard to justify here. In practice this m
   all; it relies on the minisign signature described above, which is independent of OS
   code-signing.
 
+### The macOS bundle is ad-hoc signed, which is not the same as unsigned
+
+`bundle.macOS.signingIdentity` is `"-"` in `tauri.conf.json`, which makes the build run a real
+`codesign` pass with no identity. That costs nothing and needs no Apple account, so it is not in
+tension with the decision above. What is being declined is a Developer ID certificate and
+notarization, which is what removes the warning. An ad-hoc signature does not remove it.
+
+The distinction is worth stating because there are three levels here, not two, and this project sat
+on the wrong one until v1.5.0 without meaning to. A bundle with **no** seal, a bundle sealed
+ad-hoc, and a bundle signed with a recognized identity are three different things to Gatekeeper.
+Through v1.5.0 the `.app` carried only the signature the linker adds to the executable itself:
+`codesign -dv` reported `adhoc,linker-signed` with `Info.plist=not bound` and no special slots, so
+the bundle as a whole was unsealed.
+
+That is what made macOS report **"kavynex is damaged and can't be opened"** rather than the milder
+"unidentified developer". The harsher wording reads as a corrupt download, sends the user to check
+a file that is perfectly fine, and appears not to offer the **Open Anyway** button that the gentler
+path does. Sealing the bundle is free and is expected to move it to the milder message. That last
+step has not been verified on a build carrying the setting, so `TROUBLESHOOTING.md` still documents
+the terminal route as the reliable one.
+
 ## When these three controls started applying
 
 `SHA256SUMS.txt` and the provenance attestation were both added to the release workflow after

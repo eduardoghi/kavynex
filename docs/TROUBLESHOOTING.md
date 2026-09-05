@@ -44,9 +44,15 @@ and try again.
 
 Neither message means the download is corrupt. Kavynex's installers are not code-signed (see
 [`RELEASE-SECURITY.md`](RELEASE-SECURITY.md) for why), so macOS quarantines the app on first launch
-and reports it in whichever of those two ways your version prefers. The "damaged" wording is the one
-a genuinely broken bundle gets too, which is exactly why this belongs here. It reads as a failed
-download rather than as the expected first run of an unsigned app.
+and refuses it. The "damaged" wording is the one a genuinely broken bundle gets too, which is
+exactly why this belongs here. It reads as a failed download rather than as the expected first run
+of an unsigned app.
+
+Which of the two you get is not a property of your macOS version, which this page claimed until it
+was checked on a real machine. It follows from the bundle's signature. An app signed with an
+identity macOS does not recognize is "unidentified developer"; one whose bundle seal does not
+validate at all is "damaged". Releases up to v1.5.0 carried only the signature the linker adds to
+the executable, with the bundle itself unsealed, which is why they report the harsher of the two.
 
 Confirm the file is authentic *before* clearing the quarantine, since that is the check Gatekeeper
 is standing in for:
@@ -58,17 +64,26 @@ gh attestation verify kavynex_*_aarch64.dmg --repo eduardoghi/kavynex
 (Or compare its hash against `SHA256SUMS.txt` on the release page. Both apply from v1.2.0 onward;
 see the README's "Verifying a download".)
 
-Then drag the app into Applications and let it open, either way:
+Then drag the app into Applications and clear the quarantine attribute:
 
-- **Without a terminal.** Try to open the app once, so macOS records the block. Then open System
-  Settings > Privacy & Security, scroll to the Security section, and click **Open Anyway** next to
-  the line naming kavynex. On macOS 15 and later this is the only route, since Apple removed the
-  Control-click > Open bypass earlier versions offered.
-- **With a terminal.** Clear the quarantine attribute directly:
+```bash
+xattr -dr com.apple.quarantine /Applications/kavynex.app
+```
 
-  ```bash
-  xattr -dr com.apple.quarantine /Applications/kavynex.app
-  ```
+This is the route that is confirmed to work, tested on macOS 26.6.1 against the v1.5.0 build, which
+is why it is listed first rather than as the fallback it used to be.
+
+There is a route without a terminal, and it is worth knowing what is uncertain about it. Try to open
+the app once so macOS records the block, then open System Settings > Privacy & Security, scroll to
+the **bottom** of the page, and look for an **Open Anyway** button on a line naming kavynex. The
+entry appears only after a blocked launch and expires after roughly an hour. On the machine this was
+tested on, no such section appeared for the "damaged" case, which is consistent with that button
+belonging to the "unidentified developer" path. Whether it ever appears for "damaged" is not
+established, so treat the terminal command as the reliable one.
+
+(Apple did remove the Control-click > Open bypass that older macOS versions offered, so that is not
+an option either. This page previously called System Settings "the only route" on the strength of
+that removal, while giving a terminal command directly underneath it. Both halves cannot be true.)
 
 Either one is a once-per-install step. An update installed through Settings > Application update
 does not bring it back, because that artifact is fetched by Kavynex itself rather than by a browser, so
