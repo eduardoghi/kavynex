@@ -40,22 +40,24 @@ most up-to-date Windows 10 installs already have it. If the window fails to open
 blank, install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 and try again.
 
-## macOS: "kavynex is damaged and can't be opened", or "unidentified developer"
+## macOS: "kavynex is damaged and can't be opened", or "Apple could not verify"
 
 Neither message means the download is corrupt. Kavynex's installers are not code-signed (see
 [`RELEASE-SECURITY.md`](RELEASE-SECURITY.md) for why), so macOS quarantines the app on first launch
-and refuses it. The "damaged" wording is the one a genuinely broken bundle gets too, which is
-exactly why this belongs here. It reads as a failed download rather than as the expected first run
-of an unsigned app.
+and refuses it.
 
-Which of the two you get is not a property of your macOS version, which this page claimed until it
-was checked on a real machine. It follows from the bundle's signature. An app signed with an
-identity macOS does not recognize is "unidentified developer"; one whose bundle seal does not
-validate at all is "damaged". Releases up to v1.5.0 carried only the signature the linker adds to
-the executable, with the bundle itself unsealed, which is why they report the harsher of the two.
+Which of the two you get follows from the bundle's signature, not from your macOS version, which
+this page claimed until it was checked on a real machine. Releases through v1.5.0 carried only the
+signature the linker adds to the executable, with the bundle itself unsealed, and got the harsher
+"damaged" wording, the one a genuinely broken bundle gets too. **From v1.6.0 the bundle is sealed
+with an ad-hoc signature**, and macOS says instead that it could not verify the app is free of
+malware. Both were seen on macOS 26.6.1, on the same machine, against the two builds.
 
-Confirm the file is authentic *before* clearing the quarantine, since that is the check Gatekeeper
-is standing in for:
+The difference is not only wording. Only the sealed build offers a route that does not need a
+terminal.
+
+Confirm the file is authentic *before* letting it run, since that is the check Gatekeeper is
+standing in for:
 
 ```bash
 gh attestation verify kavynex_*_aarch64.dmg --repo eduardoghi/kavynex
@@ -64,26 +66,31 @@ gh attestation verify kavynex_*_aarch64.dmg --repo eduardoghi/kavynex
 (Or compare its hash against `SHA256SUMS.txt` on the release page. Both apply from v1.2.0 onward;
 see the README's "Verifying a download".)
 
-Then drag the app into Applications and clear the quarantine attribute:
+### From System Settings, v1.6.0 and later
+
+1. Try to open the app once so macOS records the block, and dismiss the dialog with **Done**.
+2. Open System Settings > Privacy & Security and scroll to the **Security** heading, just below
+   "Allow applications from". A line reads *"kavynex" was blocked to protect your Mac*, with an
+   **Open Anyway** button beside it.
+3. A second dialog asks again. **Its highlighted button is "Move to Bin"**, so pressing Return
+   there deletes the app. Click **Open Anyway**.
+4. Authenticate as an administrator.
+
+The entry appears only after a blocked launch and expires after roughly an hour. If it is not
+there, try opening the app again first.
+
+### From a terminal, any version
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/kavynex.app
 ```
 
-This is the route that is confirmed to work, tested on macOS 26.6.1 against the v1.5.0 build, which
-is why it is listed first rather than as the fallback it used to be.
+This works whichever message you got, and it is the only route on v1.5.0 and earlier, where no
+Open Anyway entry appears at all.
 
-There is a route without a terminal, and it is worth knowing what is uncertain about it. Try to open
-the app once so macOS records the block, then open System Settings > Privacy & Security, scroll to
-the **bottom** of the page, and look for an **Open Anyway** button on a line naming kavynex. The
-entry appears only after a blocked launch and expires after roughly an hour. On the machine this was
-tested on, no such section appeared for the "damaged" case, which is consistent with that button
-belonging to the "unidentified developer" path. Whether it ever appears for "damaged" is not
-established, so treat the terminal command as the reliable one.
-
-(Apple did remove the Control-click > Open bypass that older macOS versions offered, so that is not
-an option either. This page previously called System Settings "the only route" on the strength of
-that removal, while giving a terminal command directly underneath it. Both halves cannot be true.)
+(Apple removed the Control-click > Open bypass that older macOS versions offered, so that is not an
+option either. This page once called System Settings "the only route" while printing a terminal
+command directly underneath it. Both halves could not be true.)
 
 Either one is a once-per-install step. An update installed through Settings > Application update
 does not bring it back, because that artifact is fetched by Kavynex itself rather than by a browser, so

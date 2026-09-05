@@ -97,12 +97,16 @@ Through v1.5.0 the `.app` carried only the signature the linker adds to the exec
 `codesign -dv` reported `adhoc,linker-signed` with `Info.plist=not bound` and no special slots, so
 the bundle as a whole was unsealed.
 
-That is what made macOS report **"kavynex is damaged and can't be opened"** rather than the milder
-"unidentified developer". The harsher wording reads as a corrupt download, sends the user to check
-a file that is perfectly fine, and appears not to offer the **Open Anyway** button that the gentler
-path does. Sealing the bundle is free and is expected to move it to the milder message. That last
-step has not been verified on a build carrying the setting, so `TROUBLESHOOTING.md` still documents
-the terminal route as the reliable one.
+That is what made macOS report **"kavynex is damaged and can't be opened"**, wording that reads as
+a corrupt download and sends the user to check a file that is perfectly fine.
+
+Sealing the bundle moved it, and v1.6.0 is the first release where that was measured rather than
+predicted. On macOS 26.6.1 the sealed build says it **could not verify kavynex is free of
+malware**, and offers an **Open Anyway** button under System Settings > Privacy & Security that the
+"damaged" case on the same machine never showed. Clicking it asks once more, with "Move to Bin" as
+the highlighted button, and then for an administrator password, so the route exists without being
+short. "Unidentified developer" is the older phrasing for this path and is not what current macOS
+shows, which matters when matching a user's report against `TROUBLESHOOTING.md`.
 
 ## When these three controls started applying
 
