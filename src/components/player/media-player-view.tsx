@@ -14,6 +14,19 @@ import { useMediaComments } from "../../hooks/media/use-media-comments";
 import { useMediaLiveChat } from "../../hooks/media/use-media-live-chat";
 import { usePlayerKeyboardShortcuts } from "../../hooks/media/use-player-keyboard-shortcuts";
 import { CommentsPanel } from "./comments-panel";
+// Above this, a failed playback gets a third possible cause named alongside the two the webview
+// cannot tell apart. On macOS (and, untested, Linux) the asset protocol truncates every range
+// response to 1 MB, which the Apple media stack does not recover from once a recording's metadata
+// grows past a few megabytes. The measured boundary was between 30 and 60 minutes at 60 fps, so
+// this sits below the failing case and above the known-good one.
+//
+// It is a proxy, and knowingly a loose one. What actually decides the failure is the frame count
+// rather than the duration, and the renderer does not know the frame rate: a long recording at a
+// low rate plays fine. That costs nothing, because this line is only ever shown after playback has
+// already failed, so a false positive adds a possibility to a list rather than a warning to a
+// working player.
+const LONG_RECORDING_SECONDS = 45 * 60;
+
 // Only a media with a backed-up live chat renders this, so the replay panel and everything under it
 // stay out of the first-paint bundle for every library that has none, and out of the player itself
 // until one is opened. Unlike the two lazy modals in `home-modals.tsx` this needs no mount latch.
@@ -151,6 +164,9 @@ export function MediaPlayerView({
     }, []);
 
     const canPlay = Boolean(media && mediaSrc);
+    // Only ever read once playback has already failed, to name a third cause the two above cannot
+    // cover. See LONG_RECORDING_SECONDS.
+    const isLongRecording = (media?.duration_seconds ?? 0) >= LONG_RECORDING_SECONDS;
     const publishedLabel = formatPublishedDate(media?.published_at);
     const kavynexCreatedLabel = formatCreatedAt(media?.created_at);
     const hasComments = Boolean(media?.has_comments);
@@ -316,6 +332,14 @@ export function MediaPlayerView({
                                 the library expects it. Open its location to check. A file that is
                                 there will usually play in another app.
                             </Text>
+
+                            {isLongRecording && (
+                                <Text size="sm">
+                                    This is a long recording, and on macOS and Linux the built-in
+                                    player currently fails on those regardless of the file being
+                                    fine. Opening it in another app is the way to watch it for now.
+                                </Text>
+                            )}
 
                             {onOpenFileLocation && (
                                 <Group>
