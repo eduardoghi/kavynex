@@ -199,6 +199,17 @@ jobs:
         name: Rust mutation testing (shard ${{ strategy.job-index }})
         # Pinned like the job above and ci.yml's rust job. See those comments.
         runs-on: ubuntu-26.04
+        outputs:
+            # How many shards this run expected, for the alert job to compare against how many
+            # actually uploaded an artifact. Read from `strategy.job-total` rather than written
+            # down, so it stays the length of the matrix list and does not become the second place
+            # the shard count is spelled, which the matrix comment above exists to prevent.
+            #
+            # Every shard writes the same value and the last one wins, which is what makes a matrix
+            # output usable here at all. A shard that loses its runner writes nothing, so this comes
+            # back empty only when no shard survived, and the alert job reads that as no verdict,
+            # which is what it is.
+            shard-total: ${{ strategy.job-total }}
         strategy:
             # One shard failing must not cancel the others: each covers a distinct slice of the
             # mutant list, so the surviving shards still produce a usable verdict for their slice.
@@ -459,6 +470,7 @@ jobs:
                   VERIFY_EXCLUSIONS_RESULT: ${{ needs.verify-exclusions.result }}
                   RUST_MUTATION_RESULT: ${{ needs.rust-mutation.result }}
                   STRYKER_VERDICT: ${{ needs.mutation.outputs.verdict }}
+                  SHARD_TOTAL: ${{ needs.rust-mutation.outputs.shard-total }}
               run: |
                   # A run that produced a verdict and a run that never got to one are different
                   # problems with different owners, and collapsing them into one issue title was
@@ -479,9 +491,41 @@ jobs:
                   # that *cancelled*, not failed), or Stryker aborted before reporting a score (a
                   # dry-run timeout is the observed case. See the classification step above).
                   NO_VERDICT=""
+                  SILENT_SHARDS=""
 
                   if [ "$MUTATION_RESULT" = "cancelled" ] || [ "$RUST_MUTATION_RESULT" = "cancelled" ]; then
                       NO_VERDICT="yes"
+                  fi
+
+                  # A shard that loses its runner mid-step is marked *failed*, not cancelled, so the
+                  # timeout branch above never caught it and every one of them was reported as "a
+                  # mutant survived". That is the wrong owner for the wrong problem, and it is not
+                  # rare. Two shards per run went that way across four consecutive runs on
+                  # 2026-09-20, which is what #55 tracks.
+                  #
+                  # The artifact is what tells the two apart, and it is a fact rather than an
+                  # inference. A shard that finishes uploads mutants.out whether its slice was clean
+                  # or not, because that upload is `if: always()`. A shard whose runner disappears
+                  # runs no further step at all, so it uploads nothing. Fewer artifacts than shards
+                  # therefore means a slice went unexamined, and nothing about the tests changed.
+                  #
+                  # Counted through the API rather than by downloading them, since only the names
+                  # matter. An empty shard-total means no shard survived to report the matrix
+                  # length, which is itself the strongest case of this.
+                  #
+                  # The names are listed and counted once, rather than counted inside the jq filter.
+                  # `--paginate` runs the filter per page, so a `| length` there would emit one
+                  # number per page and the comparison below would be handed several. Today's run
+                  # has eight artifacts against a hundred per page, so that would have worked and
+                  # kept working until it silently did not.
+                  UPLOADED=$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100"                       --paginate --jq '.artifacts[].name'                       | grep -c '^cargo-mutants-output-shard-' || true)
+
+                  if [ -z "$SHARD_TOTAL" ]; then
+                      NO_VERDICT="yes"
+                      SILENT_SHARDS="every shard"
+                  elif [ "$UPLOADED" -lt "$SHARD_TOTAL" ]; then
+                      NO_VERDICT="yes"
+                      SILENT_SHARDS="$((SHARD_TOTAL - UPLOADED)) of $SHARD_TOTAL shards"
                   fi
 
                   # A cancelled exclusion check is the case that job was split out to make visible:
@@ -500,7 +544,17 @@ jobs:
                       BODY="The weekly scheduled mutation run found an exclude_re entry in src-tauri/.cargo/mutants.toml that matches nothing. That is silent in both directions: either the mutant it suppressed is back and will redden this run for a reason unrelated to the tests, or the function it named was renamed and its real mutant is now unexcluded and unnoticed among the survivors. The run log lists the dead patterns; fix or delete them in mutants.toml: $RUN_URL"
                   elif [ -n "$NO_VERDICT" ]; then
                       TITLE="Scheduled mutation testing produced no verdict"
-                      BODY="The weekly scheduled mutation testing run ended without a mutation score. Either a job was killed by its timeout-minutes (which GitHub reports as cancelled rather than failed) or Stryker aborted before reporting: a dry-run timeout is the case this has happened for. This is not a loss of test strength; the gate stopped answering, which reads as green until someone looks. Fix the run itself by adding a shard, or raising dryRunTimeoutMinutes in stryker.config.json: $RUN_URL"
+                      HEAD="The weekly scheduled mutation testing run ended without a full verdict. This is not a loss of test strength; the gate stopped answering, which reads as green until someone looks. Fix the run itself rather than the tests: $RUN_URL"
+
+                      # printf rather than a multi-line shell string, because the continuation lines
+                      # of one would start at column 0 and leave this step's YAML block scalar.
+                      if [ -n "$SILENT_SHARDS" ]; then
+                          TAIL="$SILENT_SHARDS uploaded no cargo-mutants output, so that slice of the mutant list was never examined and nothing here says the tests got weaker. A shard that finishes uploads its mutants.out either way, so a missing artifact means the shard did not finish. The usual cause is the runner disappearing mid-run, which GitHub reports as a failed job rather than a cancelled one, and which takes the job log with it. See #55."
+                      else
+                          TAIL="Either a job was killed by its timeout-minutes (which GitHub reports as cancelled rather than failed) or Stryker aborted before reporting a score, the observed case being a dry-run timeout. Add a shard, or raise dryRunTimeoutMinutes in stryker.config.json."
+                      fi
+
+                      BODY=$(printf '%s\n\n%s' "$HEAD" "$TAIL")
                   else
                       TITLE="Scheduled mutation testing failed"
                       BODY="The weekly scheduled mutation testing run reported a verdict and it was red: a mutant survived, or the score fell under thresholds.break. Read the uploaded report (Stryker HTML, or the failing shard's mutants.out/missed.txt) and shore up the affected tests: $RUN_URL"
