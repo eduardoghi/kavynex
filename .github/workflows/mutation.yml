@@ -244,18 +244,31 @@ jobs:
                 # once. Read the slowest leg, and read it from a run rather than from the last
                 # estimate written down here. Adding a sixth shard on the projection would have cost
                 # a runner every Monday to solve a problem the measurement says does not exist yet.
-                shard: [1, 2, 3, 4, 5]
+                #
+                # 2026-09-20, and this time the measurement says it does. On run 34843621572 the
+                # legs were 48, 85, 86, 89 and 90 minutes. The 48 is a runner that lost its host, so
+                # the four real ones are 85 to 90, and the 90 is shard 1 killed by the ceiling,
+                # having produced no verdict for its slice. The 89 finished with 58 seconds to
+                # spare. Three of five legs inside five minutes of the ceiling is the condition the
+                # entry above describes and the 2026-08-16 entry declined to act on early.
+                #
+                # Six rather than more. Five legs at ~87 spread over six is ~72, which is 18 minutes
+                # of headroom, and that is the same margin the 2026-08-16 entry measured and judged
+                # sufficient. Re-read the slowest leg after this run rather than trusting the
+                # arithmetic, which is the whole point of the paragraph above.
+                shard: [1, 2, 3, 4, 5, 6]
         # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
         # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
         # was killed at 2h00m having produced no verdict: the two runs before it took ~56 minutes.
-        # The scope is 1549 mutants today (`cargo mutants --list | wc -l`, which applies the config
-        # and so counts what a run actually mutates), so a fifth of it plus one baseline build sits
+        # The scope is 1694 mutants today (`cargo mutants --list | wc -l`, which applies the config
+        # and so counts what a run actually mutates), so a sixth of it plus one baseline build sits
         # well inside this, and the ceiling stays low enough to be a real signal rather than a number
         # nothing ever approaches. When a leg starts creeping toward it, add a shard rather than
-        # minutes. See the matrix above, including the 2026-08-16 entry on when not to.
+        # minutes. See the matrix above, including the 2026-08-16 entry on when not to and the
+        # 2026-09-20 one on when to.
         #
         # The same command with `--no-config`, i.e. over the whole crate rather than the gated files,
-        # reports 3292. That is a rough sense of how much of the tree this gate covers and an input to
+        # reports 3418. That is a rough sense of how much of the tree this gate covers and an input to
         # nothing here, so it is refreshed rather than investigated, but note it said 1634 when this
         # line was last touched on 2026-08-02, and a gap that wide is the crate growing rather than
         # the same scope re-counting. Do not read a small movement into it next time.
