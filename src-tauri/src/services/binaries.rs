@@ -210,7 +210,7 @@ fn resolve_binary_from_candidates<R: Runtime>(
         format!(
             "could not resolve {}: PATH held {} director(ies), the fallback list held {}, and the tools folder ({}) does not contain it either",
             candidates.join(" or "),
-            path_directory_count(),
+            path_directory_count(std::env::var_os("PATH").as_deref()),
             describe_well_known_dirs(),
             logger::redact_path(&tools_dir),
         ),
@@ -219,12 +219,16 @@ fn resolve_binary_from_candidates<R: Runtime>(
     Err(AppError::from_code(error_code, error_message))
 }
 
-/// How many directories `PATH` currently lists, or 0 when it is unset. The count alone, never the
-/// value, since the value carries the user's home directory into a log that gets pasted into public
-/// bug reports.
-fn path_directory_count() -> usize {
-    std::env::var_os("PATH")
-        .map(|value| std::env::split_paths(&value).count())
+/// How many directories `path_var` lists, or 0 when it is `None`. The count alone, never the value,
+/// since the value carries the user's home directory into a log that gets pasted into public bug
+/// reports.
+///
+/// Takes the value rather than reading `PATH` itself, the same way `resolve_from_path_var` does.
+/// Reading the environment in here would leave the count decided by whatever the test process
+/// happens to hold, so neither the unset case nor a specific count could be asserted.
+fn path_directory_count(path_var: Option<&OsStr>) -> usize {
+    path_var
+        .map(|value| std::env::split_paths(value).count())
         .unwrap_or(0)
 }
 
@@ -617,6 +621,22 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_path_count_reports_the_directories_without_the_value() {
+        // The whole point of logging a count instead of the PATH is that the number still separates
+        // the cases a bug report needs to tell apart. A constant would read as a real answer while
+        // saying nothing, so both ends are pinned, the unset PATH and a populated one.
+        assert_eq!(path_directory_count(None), 0);
+
+        let one = std::env::join_paths([OsStr::new("/one")]).unwrap();
+        assert_eq!(path_directory_count(Some(&one)), 1);
+
+        let three =
+            std::env::join_paths([OsStr::new("/one"), OsStr::new("/two"), OsStr::new("/three")])
+                .unwrap();
+        assert_eq!(path_directory_count(Some(&three)), 3);
     }
 
     #[test]
