@@ -93,10 +93,16 @@ pub const MEDIA_URI_SCHEME: &str = "kvxmedia";
 const MAX_RANGE_BYTES: u64 = 16 * 1024 * 1024;
 
 // The number is the whole point of this module, so the floor is enforced rather than remembered.
-// Tauri's asset protocol caps at `1000 * 1024`, which is the value measured to fail, so anything at
-// or below it reintroduces exactly the bug this exists to avoid. Checked at compile time because
-// both sides are constants; a runtime assertion on them would be dead weight.
-const _: () = assert!(MAX_RANGE_BYTES > 1000 * 1024);
+// Checked at compile time because both sides are constants, and a runtime assertion on them would
+// be dead weight.
+//
+// The floor is the smallest cap measured to play (4 MiB), not the value measured to fail
+// (`1000 * 1024`, Tauri's own). Written against the failing value first, it turned out to accept
+// anything a rounding error above it. Mutation testing replaced the constant with 1064960, four
+// percent over that floor and four times under the smallest measured pass, and the assertion held.
+// A guard that admits a value which reproduces the bug it guards against is not one, and the table
+// in the module docs had the right number in it the whole time.
+const _: () = assert!(MAX_RANGE_BYTES >= 4 * 1024 * 1024);
 
 /// Decodes the `%XX` escapes `encodeURI` puts in the path.
 ///
