@@ -256,6 +256,27 @@ jobs:
                 # of headroom, and that is the same margin the 2026-08-16 entry measured and judged
                 # sufficient. Re-read the slowest leg after this run rather than trusting the
                 # arithmetic, which is the whole point of the paragraph above.
+
+                # It worked, and the legs came back at 62, 63, 71, 72, 73 and 75 minutes. What it
+                # did not fix, because it was never the same problem, is that shards lose their
+                # runners partway through. "The runner has received a shutdown signal" ended two
+                # shards in each of four consecutive runs, and both shards of a two-shard re-run,
+                # at 33, 36, 37, 75, 80 and 81 minutes. Exactly two per run whether the matrix held
+                # five or six, which reshuffled every slice, so it is not one bad mutant.
+                #
+                # Disk and memory were measured and are not it. A sampler inside the run step, over
+                # 142 samples of a passing leg, never saw available disk leave the 89 to 90 GB band
+                # against a 145 GB volume (`target/` peaks around 2.1 GB) or available memory drop
+                # under 13 GB of 16. The repository is public, so Actions minutes are unbounded and
+                # a spending limit is not it either. The sampling was removed after that, because a
+                # failing shard's log is destroyed along with its runner, `BlobNotFound` on every
+                # attempt, so the measurement can never reach the case worth measuring.
+                #
+                # The cost is not a slower run. A lost shard yields no artifact and no verdict for
+                # its slice, and every remaining step is skipped despite the upload's `if: always()`,
+                # so a real surviving mutant can exist only in a raw job log. That happened on
+                # 2026-09-07. Tracked separately rather than here, since nothing about the shard
+                # count addresses it.
                 shard: [1, 2, 3, 4, 5, 6]
         # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
         # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
@@ -366,63 +387,12 @@ jobs:
             # file, so slicing would hand one shard a run of db_backup mutants and another a run of
             # cheap pure-function ones. Interleaving keeps the three legs about the same length.
             # `--no-shuffle` still applies, and now orders each shard's own slice deterministically.
-            # The sampling below is TEMPORARY, added 2026-09-20 to find out why shards lose their
-            # runners. Remove it once it has answered, and record the answer where the shard count
-            # is reasoned about above.
-            #
-            # Four of eight shard attempts on run 35525489156 ended with "the runner has received a
-            # shutdown signal" partway through, at 33, 36, 37 and 81 minutes. The job is marked
-            # failed, the step never receives a conclusion, and the upload below is skipped along
-            # with every other step despite its `if: always()`, so the slice produces neither an
-            # artifact nor a verdict. On 2026-09-07 that cost a real surviving mutant, which
-            # survives today only in a raw job log because the upload never ran.
-            #
-            # It has outlasted a change of shard count, which reshuffled every slice, so it is not
-            # one mutant in one slice. Disk and memory are the two guesses worth measuring before
-            # anything is changed on their account.
-            #
-            # The sampler lives in the same step as the run, and that placement is the point
-            # rather than tidiness. A background process started in an earlier step survives, but
-            # its stdout belongs to the step that started it, and that step has already closed, so
-            # the samples would go nowhere. A post-step cannot help either, since nothing after the
-            # kill runs at all.
-            #
-            # 30s rather than a minute, because the only useful sample is the last one before the
-            # kill and a coarser interval leaves more unmeasured time between it and the death.
-            #
-            # The exit code is carried across the cleanup by hand. cargo-mutants exits 2 when a
-            # mutant survives, and letting the trailing `df` decide the step's status would turn
-            # every surviving mutant into a pass, which is the one outcome this gate exists to
-            # report.
             - name: Run Rust mutation testing
-              run: |
-                  (
-                      while true; do
-                          echo "SAMPLE $(date -u +%H:%M:%S) disk_avail=$(df -BM --output=avail / | tail -1 | tr -d ' ') mem_avail=$(free -m | awk '/^Mem:/ {print $7}')MB"
-                          sleep 30
-                      done
-                  ) &
-                  SAMPLER=$!
-
-                  echo "Before the run:"
-                  df -h /
-                  free -h
-
-                  set +e
-                  cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle                       --timeout 300                       --sharding round-robin                       --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
-                  STATUS=$?
-                  set -e
-
-                  kill "$SAMPLER" 2>/dev/null || true
-
-                  # Reaching this at all means the runner survived the run, so the absence of this
-                  # block in a failed shard's log is itself the measurement.
-                  echo "After the run:"
-                  df -h /
-                  free -h
-                  du -sh src-tauri/target 2>/dev/null || true
-
-                  exit "$STATUS"
+              run: >
+                  cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle
+                  --timeout 300
+                  --sharding round-robin
+                  --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
 
             # Same reasoning as the Stryker upload above, and it matters more here: a cargo-mutants
             # run rebuilds and tests the tree once per mutant, so reproducing one locally to find out
