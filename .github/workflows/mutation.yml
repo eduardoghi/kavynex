@@ -366,12 +366,63 @@ jobs:
             # file, so slicing would hand one shard a run of db_backup mutants and another a run of
             # cheap pure-function ones. Interleaving keeps the three legs about the same length.
             # `--no-shuffle` still applies, and now orders each shard's own slice deterministically.
+            # The sampling below is TEMPORARY, added 2026-09-20 to find out why shards lose their
+            # runners. Remove it once it has answered, and record the answer where the shard count
+            # is reasoned about above.
+            #
+            # Four of eight shard attempts on run 35525489156 ended with "the runner has received a
+            # shutdown signal" partway through, at 33, 36, 37 and 81 minutes. The job is marked
+            # failed, the step never receives a conclusion, and the upload below is skipped along
+            # with every other step despite its `if: always()`, so the slice produces neither an
+            # artifact nor a verdict. On 2026-09-07 that cost a real surviving mutant, which
+            # survives today only in a raw job log because the upload never ran.
+            #
+            # It has outlasted a change of shard count, which reshuffled every slice, so it is not
+            # one mutant in one slice. Disk and memory are the two guesses worth measuring before
+            # anything is changed on their account.
+            #
+            # The sampler lives in the same step as the run, and that placement is the point
+            # rather than tidiness. A background process started in an earlier step survives, but
+            # its stdout belongs to the step that started it, and that step has already closed, so
+            # the samples would go nowhere. A post-step cannot help either, since nothing after the
+            # kill runs at all.
+            #
+            # 30s rather than a minute, because the only useful sample is the last one before the
+            # kill and a coarser interval leaves more unmeasured time between it and the death.
+            #
+            # The exit code is carried across the cleanup by hand. cargo-mutants exits 2 when a
+            # mutant survives, and letting the trailing `df` decide the step's status would turn
+            # every surviving mutant into a pass, which is the one outcome this gate exists to
+            # report.
             - name: Run Rust mutation testing
-              run: >
-                  cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle
-                  --timeout 300
-                  --sharding round-robin
-                  --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
+              run: |
+                  (
+                      while true; do
+                          echo "SAMPLE $(date -u +%H:%M:%S) disk_avail=$(df -BM --output=avail / | tail -1 | tr -d ' ') mem_avail=$(free -m | awk '/^Mem:/ {print $7}')MB"
+                          sleep 30
+                      done
+                  ) &
+                  SAMPLER=$!
+
+                  echo "Before the run:"
+                  df -h /
+                  free -h
+
+                  set +e
+                  cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle                       --timeout 300                       --sharding round-robin                       --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
+                  STATUS=$?
+                  set -e
+
+                  kill "$SAMPLER" 2>/dev/null || true
+
+                  # Reaching this at all means the runner survived the run, so the absence of this
+                  # block in a failed shard's log is itself the measurement.
+                  echo "After the run:"
+                  df -h /
+                  free -h
+                  du -sh src-tauri/target 2>/dev/null || true
+
+                  exit "$STATUS"
 
             # Same reasoning as the Stryker upload above, and it matters more here: a cargo-mutants
             # run rebuilds and tests the tree once per mutant, so reproducing one locally to find out
