@@ -24,6 +24,7 @@ examine_globs = [
     "src/services/video_repository/media_page.rs",
     "src/services/live_chat_storage.rs",
     "src/services/thumbnail/redirect.rs",
+    "src/services/media_protocol.rs",
     "src/services/library/migration.rs",
     "src/services/media_creation.rs",
     "src/services/thumbnail/picked.rs",
@@ -204,4 +205,19 @@ exclude_re = [
     # so only the work is wasted. The `== N` direction is deliberately NOT excluded: that one skips a
     # migration outright, and it survived undetected until 2026-07-28. See the doc.
     'replace < with <= in needs_migration',
+    # AppHandle glue. `handle` takes a UriSchemeContext, which only Tauri constructs when it
+    # dispatches a request, so the function cannot be called at all from a unit test. Everything it
+    # decides was pulled out into functions that can be (percent_decode, parse_byte_range,
+    # clamp_range, media_content_type, status_for_open_error, byte_count, empty_response), and those
+    # stay in scope. What is left here is the assembly.
+    'replace handle -> Response<Vec<u8>>',
+    # AppHandle glue, and the one concession worth naming rather than burying. This is the `!` on
+    # the authorization check, so the mutant serves every path the scope refuses. It is excluded
+    # because reaching it needs a live scope on a live handle, not because it does not matter. The
+    # guard it inverts is `asset_protocol_scope().is_allowed`, which this module calls precisely so
+    # there is no second implementation to test. The set it consults is the one
+    # register_library_asset_scope grants and revokes, and commands/security.rs is in scope and
+    # tested for that. If that delegation ever becomes a local reimplementation, this entry must go
+    # with it.
+    'delete ! in handle',
 ]
