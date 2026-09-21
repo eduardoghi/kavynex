@@ -451,9 +451,8 @@ jobs:
         timeout-minutes: 10
         permissions:
             issues: write
-            # For the re-run below. `gh run rerun` writes through the Actions API, and nothing
-            # else in this job needs it.
-            actions: write
+            # Reading the run's own artifact list to tell a silent shard from a real survivor.
+            actions: read
         steps:
             - name: Open or update the tracking issue
               env:
@@ -558,9 +557,14 @@ jobs:
                   # Bounded by run_attempt, which GitHub increments on each re-run, so the ceiling
                   # holds without any state of our own. When it is reached the issue is opened as
                   # before, now describing a run that tried and still could not answer.
+                  #
+                  # The re-run itself is not triggered here, and the first version of this did try.
+                  # A run cannot be re-run from inside itself: this job is part of the run, so the
+                  # run is still in progress when it would ask, and the API refuses. `retry-mutation.yml`
+                  # does it on `workflow_run`, once the run has actually completed. All this does is
+                  # stay quiet so the retry gets its turn before an issue is opened.
                   if [ -n "$SILENT_SHARDS" ] && [ "$VERIFY_EXCLUSIONS_RESULT" != "failure" ]                       && [ "$RUN_ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
-                      echo "$SILENT_SHARDS did not report. Attempt $RUN_ATTEMPT of $MAX_ATTEMPTS, re-running the failed jobs."
-                      gh run rerun "$GITHUB_RUN_ID" --failed
+                      echo "$SILENT_SHARDS did not report. Attempt $RUN_ATTEMPT of $MAX_ATTEMPTS, so retry-mutation.yml will re-run the failed jobs and no issue is opened yet."
                       exit 0
                   fi
 

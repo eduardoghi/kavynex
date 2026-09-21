@@ -1,0 +1,92 @@
+name: retry-mutation
+
+# Re-runs the mutation shards that never reported, once the run they belong to has finished.
+#
+# This exists as its own workflow rather than a job inside mutation.yml because a run cannot be
+# re-run from inside itself. The first attempt at this put `gh run rerun` in that workflow's alert
+# job, which is part of the run, so the run was still in progress when it asked and the API refuses.
+# `workflow_run` fires after the run completes, which is the only point the call is accepted.
+#
+# What it is for is in mutation.yml, next to the shard count, and in issue #55. In short, a shard
+# that loses its runner uploads no cargo-mutants output, so its slice of the mutant list goes
+# unexamined, and on 2026-09-21 that was three of six shards. Nothing in this repository causes it,
+# and every avenue reachable from inside the job has been measured and ruled out, so the remaining
+# move is to make the loss recoverable instead of fatal.
+on:
+    workflow_run:
+        workflows: [mutation]
+        types: [completed]
+
+permissions:
+    contents: read
+
+jobs:
+    retry:
+        name: Re-run the shards that did not report
+        # Only a failed run has anything to retry. A cancelled one was stopped by a person, and
+        # re-running that would take the decision back off them.
+        if: github.event.workflow_run.conclusion == 'failure'
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            # `gh run rerun` writes through the Actions API. Nothing else here needs it.
+            actions: write
+        steps:
+            - name: Re-run the failed jobs when a slice went unexamined
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  # No checkout step, so `gh` cannot read the repository from a git remote.
+                  GH_REPO: ${{ github.repository }}
+                  RUN_ID: ${{ github.event.workflow_run.id }}
+                  RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+                  # Three attempts total. High enough to clear the observed rate, which has been
+                  # two or three shards of six, and low enough that a genuinely broken run stops
+                  # costing an hour of runner every time it is asked again.
+                  MAX_ATTEMPTS: "3"
+              run: |
+                  if [ "$RUN_ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+                      echo "Attempt $RUN_ATTEMPT of $MAX_ATTEMPTS already. Leaving it to the tracking issue."
+                      exit 0
+                  fi
+
+                  # The same test mutation.yml's alert job makes, derived here rather than passed
+                  # across, since a job output does not cross a workflow boundary. Both numbers come
+                  # from the run itself, so they cannot drift from the matrix the way a written-down
+                  # shard count would.
+                  #
+                  # A shard that reaches the end uploads mutants.out whether its slice was clean or
+                  # not, because that upload is `if: always()`. A shard whose runner disappears runs
+                  # no further step, so it uploads nothing. Fewer artifacts than shards means a slice
+                  # went unexamined, and that is a fact about what was tested rather than a reading
+                  # of a job status.
+                  #
+                  # Names are listed and counted once rather than counted inside the jq filter,
+                  # because `--paginate` runs that filter per page and would hand the comparison
+                  # several numbers.
+                  TOTAL=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+                      --paginate --jq '.jobs[].name' \
+                      | grep -c 'Rust mutation testing (shard' || true)
+
+                  UPLOADED=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts?per_page=100" \
+                      --paginate --jq '.artifacts[].name' \
+                      | grep -c '^cargo-mutants-output-shard-' || true)
+
+                  echo "$UPLOADED of $TOTAL shards uploaded output on attempt $RUN_ATTEMPT."
+
+                  # A run where no shard job exists at all failed somewhere else entirely, and
+                  # re-running it would be guessing.
+                  if [ "$TOTAL" -eq 0 ]; then
+                      echo "No shard jobs in this run. Nothing here to retry."
+                      exit 0
+                  fi
+
+                  # Deliberately narrow, and the narrowness is the point. A surviving mutant is a
+                  # finding, and re-running a finding until it goes away is how a gate becomes a
+                  # coin flip. Only the case where slices produced no answer at all is retried.
+                  if [ "$UPLOADED" -ge "$TOTAL" ]; then
+                      echo "Every shard reported, so this run failed on its merits. Not retrying."
+                      exit 0
+                  fi
+
+                  echo "Re-running the failed jobs of run $RUN_ID."
+                  gh run rerun "$RUN_ID" --failed
