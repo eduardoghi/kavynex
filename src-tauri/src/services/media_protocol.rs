@@ -237,6 +237,32 @@ pub(crate) fn media_content_type(path: &Path) -> &'static str {
     }
 }
 
+/// The status a failed `File::open` should answer with.
+///
+/// A missing file and an unreadable one are different answers to the caller. The library can name
+/// a file that was deleted outside the app, which is a 404 the player reports as such, while a
+/// permission or I/O error is this process failing and belongs in the 500 band. Its own function
+/// rather than a match arm inside `handle`, which needs a `UriSchemeContext` no unit test can
+/// build, so the decision is asserted on its own return value.
+fn status_for_open_error(kind: std::io::ErrorKind) -> StatusCode {
+    if kind == std::io::ErrorKind::NotFound {
+        StatusCode::NOT_FOUND
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+/// How many bytes an inclusive `start..=end` pair covers.
+///
+/// Separated for the same reason as the status above, and it carries the arithmetic the module docs
+/// single out. This number sizes the body while `start` and `end` go into `Content-Range`, so an
+/// off-by-one here is a response whose header and body disagree, which a media stack reads as
+/// corrupt rather than short. Callers pass a pair `clamp_range` produced, where `end >= start`
+/// always holds.
+fn byte_count(start: u64, end: u64) -> u64 {
+    end + 1 - start
+}
+
 fn empty_response(status: StatusCode) -> Response<Vec<u8>> {
     Response::builder()
         .status(status)
@@ -284,10 +310,7 @@ pub fn handle<R: Runtime>(
 
     let mut file = match File::open(file_path) {
         Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return empty_response(StatusCode::NOT_FOUND)
-        }
-        Err(_) => return empty_response(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(error) => return empty_response(status_for_open_error(error.kind())),
     };
 
     let len = match file.metadata() {
@@ -311,7 +334,7 @@ pub fn handle<R: Runtime>(
         None => clamp_range(0, len.saturating_sub(1), len, MAX_RANGE_BYTES),
     };
 
-    let count = end + 1 - start;
+    let count = byte_count(start, end);
 
     let mut body = vec![0_u8; count as usize];
 
@@ -363,6 +386,14 @@ mod tests {
         assert_eq!(percent_decode("video/100%.mp4"), "video/100%.mp4");
         assert_eq!(percent_decode("video/%zz.mp4"), "video/%zz.mp4");
         assert_eq!(percent_decode("%"), "%");
+
+        // A `%` with only one byte behind it, ending the string. The bounds test that keeps this
+        // from reading past the end is off by one in the direction that panics rather than the one
+        // that misdecodes, so it is pinned with a case that would index out of bounds if it slipped.
+        // The renderer will not produce this, which is the reason to test it. The path arrives from
+        // the webview and nothing on the way promises it is well formed.
+        assert_eq!(percent_decode("%4"), "%4");
+        assert_eq!(percent_decode("video/100%4"), "video/100%4");
     }
 
     #[test]
@@ -380,6 +411,10 @@ mod tests {
         );
         // Whitespace around the spec is tolerated.
         assert_eq!(parse_byte_range("  bytes=0-9  ", 4096), Some((0, 9)));
+        // One byte, where start and end name the same offset. Legal per RFC 9110 and the boundary
+        // the inverted-range check sits on, so refusing it would be a plausible off-by-one.
+        assert_eq!(parse_byte_range("bytes=100-100", 4096), Some((100, 100)));
+        assert_eq!(parse_byte_range("bytes=0-0", 4096), Some((0, 0)));
     }
 
     #[test]
@@ -437,6 +472,24 @@ mod tests {
         assert_eq!(media_content_type(Path::new("audio/a.m4a")), "audio/mp4");
         assert_eq!(media_content_type(Path::new("audio/a.opus")), "audio/ogg");
         assert_eq!(media_content_type(Path::new("video/a.webm")), "video/webm");
+
+        // The rest of the table. Each arm is its own decision and an absent one falls through to
+        // the octet-stream default, which the media stack reads as "do not try", so a dropped arm
+        // is a file that stops playing rather than a wrong guess.
+        assert_eq!(
+            media_content_type(Path::new("video/a.mkv")),
+            "video/x-matroska"
+        );
+        assert_eq!(
+            media_content_type(Path::new("video/a.mov")),
+            "video/quicktime"
+        );
+        assert_eq!(media_content_type(Path::new("video/a.m4v")), "video/mp4");
+        assert_eq!(media_content_type(Path::new("audio/a.mp3")), "audio/mpeg");
+        assert_eq!(media_content_type(Path::new("audio/a.ogg")), "audio/ogg");
+        assert_eq!(media_content_type(Path::new("audio/a.flac")), "audio/flac");
+        assert_eq!(media_content_type(Path::new("audio/a.wav")), "audio/wav");
+        assert_eq!(media_content_type(Path::new("audio/a.aac")), "audio/aac");
     }
 
     #[test]
@@ -452,6 +505,65 @@ mod tests {
             media_content_type(Path::new("video/noextension")),
             "application/octet-stream"
         );
+    }
+
+    #[test]
+    fn empty_response_carries_the_status_and_no_body() {
+        // Every refusal in `handle` goes out through this, and the status is the entire message.
+        // A body-less 200 would read to the media element as a zero-length file that loaded fine,
+        // which is the one answer worse than any of these.
+        for status in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::FORBIDDEN,
+            StatusCode::NOT_FOUND,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ] {
+            let response = empty_response(status);
+
+            assert_eq!(response.status(), status);
+            assert!(response.body().is_empty());
+        }
+    }
+
+    #[test]
+    fn status_for_open_error_separates_a_missing_file_from_a_broken_one() {
+        // The library can name a file deleted outside the app, and the player reports that
+        // honestly. Everything else is this process failing, and answering 404 for it would send
+        // the user looking for a file that is sitting right there.
+        assert_eq!(
+            status_for_open_error(std::io::ErrorKind::NotFound),
+            StatusCode::NOT_FOUND
+        );
+
+        for kind in [
+            std::io::ErrorKind::PermissionDenied,
+            std::io::ErrorKind::InvalidInput,
+            std::io::ErrorKind::Other,
+        ] {
+            assert_eq!(
+                status_for_open_error(kind),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "{kind:?} is this process failing, not a missing file"
+            );
+        }
+    }
+
+    #[test]
+    fn byte_count_matches_the_pair_content_range_will_advertise() {
+        // The count sizes the body and the pair goes in the header, so these two have to agree
+        // exactly. A response whose header and body disagree by one byte reads as corrupt, not as
+        // short, which is a worse failure than serving less.
+        assert_eq!(byte_count(0, 0), 1);
+        assert_eq!(byte_count(0, 1023), 1024);
+        assert_eq!(byte_count(100, 100), 1);
+        assert_eq!(byte_count(4096, 8191), 4096);
+
+        // Against what clamp_range actually hands it, which is the only caller.
+        let (start, end) = clamp_range(0, 100_000_000, 200_000_000, 16 * 1024 * 1024);
+        assert_eq!(byte_count(start, end), 16 * 1024 * 1024);
+
+        let (start, end) = clamp_range(10, 13, 1000, 16);
+        assert_eq!(byte_count(start, end), 4);
     }
 
     // The cap's floor is pinned at compile time next to the constant itself (`const _: () =
