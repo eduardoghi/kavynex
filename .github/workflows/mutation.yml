@@ -451,6 +451,9 @@ jobs:
         timeout-minutes: 10
         permissions:
             issues: write
+            # For the re-run below. `gh run rerun` writes through the Actions API, and nothing
+            # else in this job needs it.
+            actions: write
         steps:
             - name: Open or update the tracking issue
               env:
@@ -472,6 +475,8 @@ jobs:
                   RUST_MUTATION_RESULT: ${{ needs.rust-mutation.result }}
                   STRYKER_VERDICT: ${{ needs.mutation.outputs.verdict }}
                   SHARD_TOTAL: ${{ needs.rust-mutation.outputs.shard-total }}
+                  RUN_ATTEMPT: ${{ github.run_attempt }}
+                  MAX_ATTEMPTS: "3"
               run: |
                   # A run that produced a verdict and a run that never got to one are different
                   # problems with different owners, and collapsing them into one issue title was
@@ -540,6 +545,25 @@ jobs:
                       NO_VERDICT="yes"
                   fi
 
+                  # A silent shard is worth one more try before it becomes an issue, because the
+                  # cause is the runner disappearing rather than anything in this repository, and
+                  # the artifacts of the shards that did report survive a re-run, so the second
+                  # attempt only pays for the slices still missing.
+                  #
+                  # Deliberately narrow. This fires only when the classification above says slices
+                  # went unexamined. A surviving mutant is a finding, and re-running one until it
+                  # goes away is how a gate is turned into a coin flip, so that path falls through
+                  # to the issue below untouched. A dead exclusion likewise.
+                  #
+                  # Bounded by run_attempt, which GitHub increments on each re-run, so the ceiling
+                  # holds without any state of our own. When it is reached the issue is opened as
+                  # before, now describing a run that tried and still could not answer.
+                  if [ -n "$SILENT_SHARDS" ] && [ "$VERIFY_EXCLUSIONS_RESULT" != "failure" ]                       && [ "$RUN_ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+                      echo "$SILENT_SHARDS did not report. Attempt $RUN_ATTEMPT of $MAX_ATTEMPTS, re-running the failed jobs."
+                      gh run rerun "$GITHUB_RUN_ID" --failed
+                      exit 0
+                  fi
+
                   if [ "$VERIFY_EXCLUSIONS_RESULT" = "failure" ]; then
                       TITLE="A mutants.toml exclusion no longer names a real mutant"
                       BODY="The weekly scheduled mutation run found an exclude_re entry in src-tauri/.cargo/mutants.toml that matches nothing. That is silent in both directions: either the mutant it suppressed is back and will redden this run for a reason unrelated to the tests, or the function it named was renamed and its real mutant is now unexcluded and unnoticed among the survivors. The run log lists the dead patterns; fix or delete them in mutants.toml: $RUN_URL"
@@ -550,7 +574,7 @@ jobs:
                       # printf rather than a multi-line shell string, because the continuation lines
                       # of one would start at column 0 and leave this step's YAML block scalar.
                       if [ -n "$SILENT_SHARDS" ]; then
-                          TAIL="$SILENT_SHARDS uploaded no cargo-mutants output, so that slice of the mutant list was never examined and nothing here says the tests got weaker. A shard that finishes uploads its mutants.out either way, so a missing artifact means the shard did not finish. The usual cause is the runner disappearing mid-run, which GitHub reports as a failed job rather than a cancelled one, and which takes the job log with it. See #55."
+                          TAIL="$SILENT_SHARDS uploaded no cargo-mutants output, so that slice of the mutant list was never examined and nothing here says the tests got weaker. A shard that finishes uploads its mutants.out either way, so a missing artifact means the shard did not finish. The usual cause is the runner disappearing mid-run, which GitHub reports as a failed job rather than a cancelled one, and which takes the job log with it. The failed jobs were re-run automatically and it still came to this after $RUN_ATTEMPT attempts. See #55."
                       else
                           TAIL="Either a job was killed by its timeout-minutes (which GitHub reports as cancelled rather than failed) or Stryker aborted before reporting a score, the observed case being a dry-run timeout. Add a shard, or raise dryRunTimeoutMinutes in stryker.config.json."
                       fi
