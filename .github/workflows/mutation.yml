@@ -399,10 +399,19 @@ jobs:
             # file, so slicing would hand one shard a run of db_backup mutants and another a run of
             # cheap pure-function ones. Interleaving keeps the three legs about the same length.
             # `--no-shuffle` still applies, and now orders each shard's own slice deterministically.
+            #
+            # `--caught` and `--unviable` print every mutant as it finishes rather than only the
+            # survivors, which by default is all this step says. That silence is what made a lost
+            # runner undiagnosable. Shards 2, 3 and 5 died in all three attempts of run
+            # 35672965327 at near-identical minutes, which points at one mutant per slice rather
+            # than at the host, and a log that stops after the last *finished* mutant names it,
+            # since cargo-mutants tests one at a time in a fixed order and the next one in the
+            # slice is the one that was running. A few hundred lines per shard is the cost.
             - name: Run Rust mutation testing
               run: >
                   cargo mutants --manifest-path src-tauri/Cargo.toml --in-place --no-shuffle
                   --timeout 300
+                  --caught --unviable
                   --sharding round-robin
                   --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
 
