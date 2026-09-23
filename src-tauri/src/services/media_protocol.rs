@@ -111,27 +111,36 @@ const _: () = assert!(MAX_RANGE_BYTES >= 4 * 1024 * 1024);
 /// escapes are passed through verbatim instead of dropped, so a filename containing a literal `%`
 /// resolves to itself rather than to a different, possibly existing, path.
 pub(crate) fn percent_decode(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut index = 0;
+    let mut out: Vec<u8> = Vec::with_capacity(value.len());
+    let mut rest = value.as_bytes();
 
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let high = (bytes[index + 1] as char).to_digit(16);
-            let low = (bytes[index + 2] as char).to_digit(16);
-
-            if let (Some(high), Some(low)) = (high, low) {
-                out.push((high * 16 + low) as u8);
-                index += 3;
-                continue;
+    // Walks the input by slicing rather than by index arithmetic, so every pass consumes at least
+    // one byte by construction and nothing can stall the loop. That is the reason, not style. The
+    // index version advanced with `+= 1` and `+= 3`, and mutated to `*= 1` or `-= 3` it pushed the
+    // same bytes into `out` forever. The allocation outran the 300s mutation deadline and the OOM
+    // took the CI runner down with it (#55), which read as infrastructure for weeks.
+    while let [first, tail @ ..] = rest {
+        if *first == b'%' {
+            if let [high, low, after @ ..] = tail {
+                if let (Some(high), Some(low)) = (hex_value(*high), hex_value(*low)) {
+                    out.push(high * 16 + low);
+                    rest = after;
+                    continue;
+                }
             }
         }
 
-        out.push(bytes[index]);
-        index += 1;
+        out.push(*first);
+        rest = tail;
     }
 
-    String::from_utf8_lossy(&out).to_string()
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// The value of one hex digit, or `None` for anything else. At most 15, so `high * 16 + low`
+/// above stays inside a byte.
+fn hex_value(byte: u8) -> Option<u8> {
+    (byte as char).to_digit(16).map(|digit| digit as u8)
 }
 
 /// Parses a single-range `Range: bytes=<start>-<end>` header against a resource of `len` bytes.
@@ -387,11 +396,10 @@ mod tests {
         assert_eq!(percent_decode("video/%zz.mp4"), "video/%zz.mp4");
         assert_eq!(percent_decode("%"), "%");
 
-        // A `%` with only one byte behind it, ending the string. The bounds test that keeps this
-        // from reading past the end is off by one in the direction that panics rather than the one
-        // that misdecodes, so it is pinned with a case that would index out of bounds if it slipped.
-        // The renderer will not produce this, which is the reason to test it. The path arrives from
-        // the webview and nothing on the way promises it is well formed.
+        // A `%` with only one byte behind it, ending the string. It has to pass through as-is
+        // rather than be read past the end or swallowed. The renderer will not produce this, which
+        // is the reason to test it. The path arrives from the webview and nothing on the way
+        // promises it is well formed.
         assert_eq!(percent_decode("%4"), "%4");
         assert_eq!(percent_decode("video/100%4"), "video/100%4");
     }
