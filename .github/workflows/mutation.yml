@@ -272,16 +272,18 @@ jobs:
                 # did not fix, because it was never the same problem, is that shards lose their
                 # runners partway through. "The runner has received a shutdown signal" ended two
                 # shards in each of four consecutive runs, and both shards of a two-shard re-run,
-                # at 33, 36, 37, 75, 80 and 81 minutes. Exactly two per run whether the matrix held
-                # five or six, which reshuffled every slice, so it is not one bad mutant.
+                # at 33, 36, 37, 75, 80 and 81 minutes.
                 #
-                # Disk and memory were measured and are not it. A sampler inside the run step, over
-                # 142 samples of a passing leg, never saw available disk leave the 89 to 90 GB band
-                # against a 145 GB volume (`target/` peaks around 2.1 GB) or available memory drop
-                # under 13 GB of 16. The repository is public, so Actions minutes are unbounded and
-                # a spending limit is not it either. The sampling was removed after that, because a
-                # failing shard's log is destroyed along with its runner, `BlobNotFound` on every
-                # attempt, so the measurement can never reach the case worth measuring.
+                # The first diagnosis of that, written here on 2026-09-20, was wrong, and it is kept
+                # corrected rather than deleted because the way it went wrong is the lesson. It said
+                # "not one bad mutant" and "disk and memory are not it", on the strength of a sampler
+                # that read memory every 30 seconds on a shard that *passed*. It was one bad mutant
+                # per slice, and it was memory. `read_lossy_line(_capped)` mutated to return
+                # `Some("xyzzy")` forever makes the metadata loop push into `log_lines` without
+                # awaiting anything, which exhausts 16 GB in seconds and takes the runner with it.
+                # The empty-string spelling of the same mutant had long been excluded as a hang;
+                # this one was not. Found with `--caught --unviable`, which logs the last finished
+                # mutant, and excluded in mutants.toml. See docs/MUTATION-TESTING.md.
                 #
                 # The cost is not a slower run. A lost shard yields no artifact and no verdict for
                 # its slice, and every remaining step is skipped despite the upload's `if: always()`,

@@ -162,6 +162,13 @@ exclude_re = [
     # an answer already known is what the exclusion buys back.
     'replace read_lossy_line(_capped)? -> Option<String> with Some\(String::new\(\)\)',
     'replace \+ with [-*] in read_lossy_line_capped',
+    # Host-killing, which is worse than the hang above and is why it hid for weeks. The other
+    # `Some` spelling returns a line that is not empty and not JSON, so the same metadata loop
+    # pushes it into `log_lines` on every pass without awaiting any I/O. Memory runs out in
+    # seconds, well inside the 300s deadline, and the OOM takes the CI runner with it. That is
+    # "the runner has received a shutdown signal" on shards 3 and 5 in every run since the
+    # empty-string entry was written without this one (#55).
+    'replace read_lossy_line(_capped)? -> Option<String> with Some\("xyzzy"\.into\(\)\)',
     # cfg-split: the `\\?\` rewrite is a #[cfg(windows)] body with a #[cfg(not(windows))]
     # pass-through, so whichever platform runs the gate reports the other body as missed. The
     # Windows body is pinned by three cfg(windows) tests that run in the Windows test job. Narrow

@@ -9,9 +9,12 @@ name: retry-mutation
 #
 # What it is for is in mutation.yml, next to the shard count, and in issue #55. In short, a shard
 # that loses its runner uploads no cargo-mutants output, so its slice of the mutant list goes
-# unexamined, and on 2026-09-21 that was three of six shards. Nothing in this repository causes it,
-# and every avenue reachable from inside the job has been measured and ruled out, so the remaining
-# move is to make the loss recoverable instead of fatal.
+# unexamined, and on 2026-09-21 that was three of six shards.
+#
+# This was written believing nothing in the repository caused the losses. Two of the three turned
+# out to be one mutant each, exhausting memory (see the `Some("xyzzy")` entry in mutants.toml), and
+# are excluded now. The retry stays because the third was never identified, and because a runner
+# can still be lost for reasons that are genuinely the host's.
 on:
     workflow_run:
         workflows: [mutation]
