@@ -100,8 +100,8 @@ jobs:
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked
 
-            - name: Check licenses, sources and bans
-              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
+            - name: Check licenses, sources, bans and advisories
+              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources advisories
 
             # The duplicate-version count on this run's summary page. See ci.yml's step of the same
             # name for why it is a second cargo-deny invocation and why it never fails the job. It

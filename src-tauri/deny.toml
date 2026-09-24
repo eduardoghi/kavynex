@@ -1,9 +1,9 @@
 # cargo-deny configuration.
 #
 # Complements `cargo audit` (RUSTSEC vulnerability advisories) with the checks it does not do:
-# license compliance, dependency source trust, and duplicate/wildcard dependencies. CI runs
-# `cargo deny check licenses bans sources` (advisories stay with cargo-audit to avoid
-# duplicating the same gate). See .github/workflows/ci.yml.
+# license compliance, dependency source trust, duplicate/wildcard dependencies, and per-crate
+# exceptions for unmaintained and yanked crates (see [advisories] below). CI runs
+# `cargo deny check licenses bans sources advisories`. See .github/workflows/ci.yml.
 
 [graph]
 # No `targets` filter. Every crate in Cargo.lock is evaluated across all platforms the app ships
@@ -67,3 +67,23 @@ allow-wildcard-paths = true
 # registry fails, closing that supply-chain vector.
 unknown-registry = "deny"
 unknown-git = "deny"
+
+[advisories]
+# cargo-audit already fails on vulnerabilities and unsound crates, but it can only deny the
+# unmaintained and yanked classes as a whole, and the tree carries entries of both that arrive
+# through tauri and sqlx. So it allows them all, and a crate that turns unmaintained or yanked
+# tomorrow would pass unnoticed next to the known ones. This section is what can tell them apart.
+#
+# Unmaintained notices count only for crates this project depends on directly. The current ones
+# (proc-macro-error and the unic-* family) are transitive through tauri and not actionable here.
+unmaintained = "workspace"
+# The default here is "workspace", which would not see the glib advisory below at all. "all"
+# matches cargo-audit's `--deny unsound`.
+unsound = "all"
+yanked = "deny"
+# Each entry is a known case this project cannot act on. When the upstream moves and one stops
+# matching, cargo-deny warns "advisory was not encountered", which is the cue to delete it.
+ignore = [
+    { id = "RUSTSEC-2024-0429", reason = "glib unsound, via tauri's GTK3 tree. Re-check when GTK3 moves." },
+    { crate = "spin@0.9.8", reason = "yanked, via sqlx-sqlite -> flume. Re-check when sqlx moves." },
+]

@@ -295,7 +295,9 @@ authoritative version; what follows is what to expect a red run to be about:
   `logger::` call must go through `services::logger::redact_path` rather than `Path::display()`
   or `{:?}` (which prints the whole path too).
 - **Cargo audit and deny**: RUSTSEC advisories (not covered by the JS advisory check, hence a
-  separate job), plus licenses, sources and bans via `cargo-deny`.
+  separate job), plus licenses, sources, bans and advisories via `cargo-deny`. Its advisories
+  check is what fails on a newly unmaintained direct dependency or a newly yanked crate, with the
+  known transitive cases listed by name in `src-tauri/deny.toml`.
 - **Rust coverage**: publishes the per-file table and fails under a line floor. A backstop
   against a module landing untested, not a percentage to chase.
 - **Workflow lint**: `actionlint` over the workflow YAML, including shellcheck on every

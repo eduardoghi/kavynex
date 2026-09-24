@@ -79,10 +79,10 @@ jobs:
               run: cargo install cargo-deny@0.20.2 --locked
 
             # cargo-audit covers advisories. cargo-deny adds the checks it does not: license
-            # compliance, dependency source trust (crates.io only), and wildcard requirements.
-            # Config: src-tauri/deny.toml.
-            - name: Check licenses, sources and bans
-              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
+            # compliance, dependency source trust (crates.io only), wildcard requirements, and
+            # advisories with per-crate exceptions. Config: src-tauri/deny.toml.
+            - name: Check licenses, sources, bans and advisories
+              run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources advisories
 
     # The production JS advisory, license and lint gates run in their own job that publish-tauri
     # `needs`, so every build leg is blocked until they pass, symmetric with the `audit` (Rust)
