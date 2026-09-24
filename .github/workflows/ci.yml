@@ -619,6 +619,11 @@ jobs:
             # curl|bash bootstrap or an unpinned marketplace wrapper, matching the repo-wide rule
             # that the tool executing here is a version this project chose, not whatever released
             # today. No extra token permissions are needed: it reads files and exits non-zero.
+            #
+            # A tag is enough here, unlike the `uses:` lines above, which are pinned by commit SHA
+            # because a git tag can be moved. `go install` fetches through the module proxy and
+            # checks the download against sum.golang.org, which recorded v1.7.7's hash when it was
+            # published, so a retagged release fails verification instead of running different code.
             - name: Install actionlint
               run: |
                   go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
