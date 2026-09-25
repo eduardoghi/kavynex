@@ -453,6 +453,17 @@ pub fn check_library_integrity_sync(
     })
 }
 
+/// How many files the database names that the library folder does not have, across media,
+/// thumbnails and live chat.
+///
+/// The number the notice after a database import reports. Orphans and corrupt files are left out on
+/// purpose. An import replaces the rows, not the folder, so what it can get wrong is a row pointing
+/// at a file this library never had. A leftover file with no row, or a damaged one, was already
+/// there before the import and is Diagnostics' to report.
+pub(crate) fn missing_file_count(report: &LibraryIntegrityReport) -> usize {
+    report.missing_media_files + report.missing_thumbnail_files + report.missing_live_chat_files
+}
+
 /// Runs the integrity check against what the database currently references, and resolves the
 /// media row behind each path the report ended up naming.
 ///
@@ -482,6 +493,34 @@ pub fn check_library_integrity_for_references(
         report,
         media_targets,
     })
+}
+
+/// Counts the files the stored rows reference that the configured library folder does not have.
+///
+/// The check behind the notice after a database import (see `spawn_post_import_library_check` in
+/// lib.rs). Reads the library path from the settings row, the same one the guard trusts, so it takes
+/// nothing from a caller. Generic over the runtime so a mock-runtime test can drive it with a
+/// managed [`crate::services::database::Db`].
+pub async fn count_missing_library_files<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> AppResult<usize> {
+    let library_dir = crate::services::library::guard::configured_library_dir(app).await?;
+    let pool = crate::services::database::shared_pool(app).await?;
+    let references =
+        crate::services::video_repository::list_media_integrity_references(&pool).await?;
+    let avatar_paths =
+        crate::services::channel_repository::list_channel_avatar_paths(&pool).await?;
+
+    crate::utils::task::run_blocking(move || {
+        let check = check_library_integrity_for_references(
+            &library_dir.to_string_lossy(),
+            references,
+            avatar_paths,
+        )?;
+
+        Ok(missing_file_count(&check.report))
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -717,6 +756,24 @@ mod tests {
             invalid_live_chat_files: 0,
             invalid_live_chat_examples: Vec::new(),
         }
+    }
+
+    #[test]
+    fn missing_file_count_adds_the_three_missing_categories_and_nothing_else() {
+        let mut report = empty_report();
+        assert_eq!(missing_file_count(&report), 0);
+
+        report.missing_media_files = 3;
+        report.missing_thumbnail_files = 2;
+        report.missing_live_chat_files = 1;
+        assert_eq!(missing_file_count(&report), 6);
+
+        // What an import cannot cause stays out of the notice. See missing_file_count.
+        report.orphan_media_files = 10;
+        report.corrupt_media_files = 10;
+        report.invalid_thumbnail_files = 10;
+        report.orphan_live_chat_files = 10;
+        assert_eq!(missing_file_count(&report), 6);
     }
 
     #[test]

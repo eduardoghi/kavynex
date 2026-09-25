@@ -88,3 +88,9 @@ pub const EVENT_DATABASE_INTEGRITY_FAILED: &str = "database-integrity-failed";
 // the user is paying for and a concrete next step (Diagnostics reports the files as unreferenced),
 // and without this the only record of it is a log line nobody opens. See services/pending_media.rs.
 pub const EVENT_PENDING_MEDIA_ABANDONED: &str = "pending-media-abandoned";
+
+// Emitted after a database import was applied at startup, when the imported rows name files the
+// library folder does not have. Payload `{ "missing": <count> }`. The import itself only checks that
+// the file is a healthy Kavynex database, so without this a database brought from another machine
+// shows a full library that fails one video at a time. See spawn_post_import_library_check in lib.rs.
+pub const EVENT_IMPORTED_DATABASE_MISSING_FILES: &str = "imported-database-missing-files";

@@ -471,6 +471,48 @@ mod tests {
     }
 
     #[test]
+    fn count_missing_library_files_reads_the_configured_library_and_the_stored_rows() {
+        // What the notice after a database import counts. The seeded rows name one media and one
+        // thumbnail that are not on disk. The corrupt replay and the orphan are left out on
+        // purpose, see missing_file_count.
+        let library = unique_test_dir("post-import-count");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::create_dir_all(library.join("live_chat")).unwrap();
+        fs::create_dir_all(library.join("thumbnails")).unwrap();
+        fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
+        fs::write(library.join("video").join("orphan.mp4"), b"data").unwrap();
+        fs::write(library.join("live_chat").join("a.json.gz"), b"").unwrap();
+        fs::write(library.join("thumbnails").join("avatar_1.jpg"), b"img").unwrap();
+
+        let db = memory_db_with_library(&library);
+        seed_integrity_rows(&db);
+
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        app.manage(db);
+
+        let missing = tauri::async_runtime::block_on(
+            crate::services::library::integrity::count_missing_library_files(app.handle()),
+        )
+        .unwrap();
+
+        assert_eq!(missing, 2);
+
+        // A library folder that is not there at all, the usual shape of a database brought from
+        // another machine, counts every referenced file.
+        let _ = fs::remove_dir_all(&library);
+
+        let missing = tauri::async_runtime::block_on(
+            crate::services::library::integrity::count_missing_library_files(app.handle()),
+        )
+        .unwrap();
+
+        assert_eq!(
+            missing, 5,
+            "two media, the shared thumbnail, the avatar and the replay"
+        );
+    }
+
+    #[test]
     fn check_library_integrity_command_reads_the_stored_paths_itself() {
         // The command takes only `libraryPath` now. The three path arrays it used to be handed
         // are read from the pool here instead. Seeding rows and then asserting the counts is what

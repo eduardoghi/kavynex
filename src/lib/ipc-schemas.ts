@@ -387,6 +387,17 @@ const pendingMediaAbandonedEventSchema = z.object({
 
 export type PendingMediaAbandonedEvent = z.infer<typeof pendingMediaAbandonedEventSchema>;
 
+// Payload of the imported-database-missing-files event. How many files the rows of a just-imported
+// database name that the library folder does not have. Frontend-owned and a count only, like the one
+// above, because Diagnostics is where the paths are listed.
+const importedDatabaseMissingFilesEventSchema = z.object({
+    missing: z.number(),
+});
+
+export type ImportedDatabaseMissingFilesEvent = z.infer<
+    typeof importedDatabaseMissingFilesEventSchema
+>;
+
 export const IPC_EVENT_SCHEMAS = {
     ytDlpLog: ytDlpLogEventSchema,
     ytDlpFinished: ytDlpFinishedEventSchema,
@@ -395,6 +406,7 @@ export const IPC_EVENT_SCHEMAS = {
     ytDlpTerminal: ytDlpTerminalEventSchema,
     databaseIntegrityFailed: databaseIntegrityFailedEventSchema,
     pendingMediaAbandoned: pendingMediaAbandonedEventSchema,
+    importedDatabaseMissingFiles: importedDatabaseMissingFilesEventSchema,
 } as const;
 
 // The streamed live chat protocol on the `Channel`. A run of `batch` events carrying raw JSON

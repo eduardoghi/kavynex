@@ -45,6 +45,12 @@ const INTEGRITY_CHECK_STARTUP_DELAY_SECS: u64 = 120;
 // paying for until it is reconciled. Still off the first-render path.
 const PENDING_MEDIA_SWEEP_DELAY_SECS: u64 = 30;
 
+// Delay before the library check that follows an applied database import. Its result reaches the
+// user as an event, and an event emitted before the window subscribes is lost, so it waits for the
+// frontend the way the pending-media sweep does. The check is a `stat` per referenced file, which
+// Diagnostics already runs every time it opens.
+const POST_IMPORT_LIBRARY_CHECK_DELAY_SECS: u64 = 30;
+
 fn spawn_startup_cleanup(app_handle: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         match services::temp_cleanup::cleanup_stale_temp_files_sync(&app_handle) {
@@ -251,6 +257,52 @@ fn spawn_pending_media_sweep(app_handle: AppHandle) {
             Err(error) => services::logger::warn(
                 "pending_media",
                 format!("pending media sweep failed: {error}"),
+            ),
+        }
+    });
+}
+
+/// Payload of the [`EVENT_IMPORTED_DATABASE_MISSING_FILES`](crate::constants::EVENT_IMPORTED_DATABASE_MISSING_FILES)
+/// event. How many files the imported rows name that the library folder does not have. The count
+/// only, like the pending-media event, because Diagnostics is where the paths are listed.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportedDatabaseMissingFilesEvent {
+    missing: usize,
+}
+
+/// Checks the library against a database that was just imported, and tells the user when the rows
+/// name files the folder does not have.
+///
+/// Import validation proves the file is a healthy Kavynex database and nothing about the library it
+/// describes. A database from another machine, or a backup older than the folder, swaps in cleanly
+/// and then fails in the player one video at a time. This runs the same check Diagnostics does,
+/// once, right after the swap. Best effort. A library that is not configured, or a check that
+/// cannot run, is logged and never affects startup.
+fn spawn_post_import_library_check(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(POST_IMPORT_LIBRARY_CHECK_DELAY_SECS)).await;
+
+        match services::library::integrity::count_missing_library_files(&app_handle).await {
+            Ok(0) => services::logger::info(
+                "db_import",
+                "post-import library check found every referenced file",
+            ),
+            Ok(missing) => {
+                services::logger::warn(
+                    "db_import",
+                    format!("the imported database references {missing} file(s) missing from the library"),
+                );
+
+                // Fire and forget, like the integrity event. The log line above already recorded it.
+                let _ = app_handle.emit(
+                    crate::constants::EVENT_IMPORTED_DATABASE_MISSING_FILES,
+                    ImportedDatabaseMissingFilesEvent { missing },
+                );
+            }
+            Err(error) => services::logger::warn(
+                "db_import",
+                format!("post-import library check could not run: {error}"),
             ),
         }
     });
@@ -514,7 +566,8 @@ pub fn run() {
 
                     match services::db_backup::apply_pending_database_import(&db_path) {
                         Ok(true) => {
-                            services::logger::info("app", "applied a pending database import")
+                            services::logger::info("app", "applied a pending database import");
+                            spawn_post_import_library_check(app_handle.clone());
                         }
                         Ok(false) => {}
                         Err(error) => services::logger::error(

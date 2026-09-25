@@ -17,6 +17,7 @@ import { useHomePlayerPanel } from "./use-home-player-panel";
 import { useStartupUpdateCheck } from "../use-startup-update-check";
 import { useDatabaseIntegrityAlert } from "../use-database-integrity-alert";
 import { usePendingMediaAlert } from "../use-pending-media-alert";
+import { useImportedDatabaseAlert } from "../use-imported-database-alert";
 
 export function useHomeController(): HomeController {
     const errorState = useErrorModal();
@@ -69,6 +70,12 @@ export function useHomeController(): HomeController {
     // notice rather than an error, since nothing is broken and nothing was lost.
     usePendingMediaAlert({
         onArtifactsAbandoned: errorState.showNotice,
+    });
+
+    // And for a database import whose rows name files the library folder does not have. A notice,
+    // since nothing was deleted and the import can be undone.
+    useImportedDatabaseAlert({
+        onMissingFiles: errorState.showNotice,
     });
 
     const uiGuards = useHomeUiGuards({

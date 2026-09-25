@@ -13,3 +13,8 @@ export const EVENT_DATABASE_INTEGRITY_FAILED = "database-integrity-failed";
 // event above. The outcome costs the user disk and has a concrete next step, so it should not live
 // only in the log file.
 export const EVENT_PENDING_MEDIA_ABANDONED = "pending-media-abandoned";
+
+// Emitted by the backend shortly after a database import was applied at startup, when the imported
+// rows name files the library folder does not have. The import only proves the file is a healthy
+// database, so this is what tells the user before the player finds out one video at a time.
+export const EVENT_IMPORTED_DATABASE_MISSING_FILES = "imported-database-missing-files";

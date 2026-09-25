@@ -526,6 +526,16 @@ live connection pool is a singleton that cannot be reopened mid-session:
    That combination cannot be reached through the ordering above, which is exactly why it is not
    trusted when it does appear (a rollback that restored the database but failed to clear the marker
    leaves it).
+3. About 30 seconds after an import was applied, `spawn_post_import_library_check` in `lib.rs` runs
+   the same library check Diagnostics does (`library::integrity::count_missing_library_files`). The
+   validation in step 1 proves the file is a healthy Kavynex database and says nothing about the
+   library folder, so a database from another machine, or a backup older than the folder, would
+   otherwise show a full library that fails in the player one video at a time. When the rows name
+   files the folder does not have, the count is logged and sent to the frontend as
+   `imported-database-missing-files`, which shows a notice pointing at Diagnostics and at the undo.
+   Only missing files are counted. Orphans and damaged files were in the folder before the import,
+   and Diagnostics reports them as usual. The delay is there because an event sent before the window
+   subscribes is lost.
 
 ## Related files
 
