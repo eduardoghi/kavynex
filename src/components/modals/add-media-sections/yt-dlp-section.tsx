@@ -90,7 +90,10 @@ export function YtDlpSection({
                 data={COOKIES_BROWSER_SELECT_OPTIONS}
                 clearable
                 disabled={isLocked}
-                description="Use this only when YouTube asks for authentication."
+                // What choosing a browser actually does, said where the choice is made. The Windows
+                // note is yt-dlp's limitation (Chrome 127+ app-bound cookie encryption, yt-dlp issue
+                // 10927), and the ban risk is the one yt-dlp's own YouTube documentation warns about.
+                description="Use this only when YouTube asks for authentication. Downloads are made as the signed-in account, and YouTube can restrict or ban an account used this way, so prefer a secondary one. On Windows, Chrome and Edge cookies often cannot be read. Firefox or a cookies file works more reliably."
             />
 
             {/* Only needed when the browser has more than one profile, so it appears only once a

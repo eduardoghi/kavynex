@@ -42,6 +42,10 @@ terminal show the browser and mark the profile as redacted, since a profile path
 home directory. See `DATABASE.md` and `THREAT-MODEL.md` for more detail on what is stored
 locally and how it is protected.
 
+Downloading with cookies means YouTube sees those requests as coming from the signed-in account.
+yt-dlp's own documentation warns that an account used this way can be banned, temporarily or
+permanently, so a secondary account is the safer choice when a download needs one.
+
 If you point Kavynex at a cookies *file* instead of a browser, be aware of one thing that is
 yt-dlp's behavior rather than Kavynex's. At the end of a download yt-dlp **rewrites that file**
 with the cookies it acquired during the run, so the file you selected is updated in place rather
