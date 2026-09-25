@@ -1,4 +1,5 @@
 import { Group, Radio, Stack, Text, Title } from "@mantine/core";
+import { useId } from "react";
 import { Accessibility } from "lucide-react";
 import { MOTION_PREFERENCES, type MotionPreference } from "../../../utils/motion-preference";
 import { toUnionValue } from "../../../utils/guards";
@@ -15,11 +16,15 @@ export function MotionSection({
     motionPreference,
     onChangeMotionPreference,
 }: MotionSectionProps): JSX.Element {
+    const titleId = useId();
+
     return (
         <Stack gap="xs">
             <Group gap="sm">
                 <Accessibility size={18} />
-                <Title order={3} size="h4">Motion</Title>
+                <Title id={titleId} order={3} size="h4">
+                    Motion
+                </Title>
             </Group>
 
             <Text size="sm" c="dimmed">
@@ -28,6 +33,9 @@ export function MotionSection({
             </Text>
 
             <Radio.Group
+                // Names the group after the visible title. See ImportBehaviorSection for why this
+                // goes through labelProps rather than aria-label or aria-labelledby.
+                labelProps={{ id: titleId }}
                 value={motionPreference}
                 onChange={(value) =>
                     onChangeMotionPreference(

@@ -1,5 +1,6 @@
 import { Group, Radio, Stack, Title } from "@mantine/core";
 import { Settings2 } from "lucide-react";
+import { useId } from "react";
 import type { ImportMode } from "../../../types/settings";
 import { toUnionValue } from "../../../utils/guards";
 
@@ -16,19 +17,24 @@ export function ImportBehaviorSection({
     onChangeImportMode,
     isMigratingLibraryPath,
 }: ImportBehaviorSectionProps): JSX.Element {
+    const titleId = useId();
+
     return (
         <Stack gap="xs">
             <Group gap="sm">
                 <Settings2 size={18} />
-                <Title order={3} size="h4">Import behavior</Title>
+                <Title id={titleId} order={3} size="h4">
+                    Import behavior
+                </Title>
             </Group>
 
             <Radio.Group
-                // Lands on Mantine's Input.Wrapper root, not on the inner fieldset that carries
-                // role="radiogroup", so this does not name the group for assistive tech the way it
-                // was once assumed to. Kept because it still labels the wrapping region; each Radio
-                // has its own label, which is what a screen reader announces.
-                aria-label="Import behavior"
+                // Mantine puts aria-label and aria-labelledby on its Input.Wrapper root, not on the
+                // inner element with role="radiogroup", so neither names the group. That element
+                // does take aria-labelledby from the wrapper's label id, and labelProps.id sets it,
+                // so pointing it at the visible title names the group without rendering a second
+                // label.
+                labelProps={{ id: titleId }}
                 value={importMode}
                 onChange={(value) =>
                     onChangeImportMode(toUnionValue(value, IMPORT_MODES, importMode))

@@ -10,7 +10,7 @@ describe("MotionSection", () => {
             <MotionSection motionPreference="system" onChangeMotionPreference={vi.fn()} />
         );
 
-        expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+        expect(screen.getByRole("radiogroup", { name: "Motion" })).toBeInTheDocument();
         expect(screen.getByRole("radio", { name: /follow the system setting/i })).toBeChecked();
         expect(screen.getByRole("radio", { name: /reduce motion/i })).not.toBeChecked();
         expect(screen.getByRole("radio", { name: /full motion/i })).not.toBeChecked();

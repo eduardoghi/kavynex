@@ -17,6 +17,18 @@ describe("ImportBehaviorSection", () => {
         expect(screen.getByRole("radio", { name: /move files/i })).not.toBeChecked();
     });
 
+    it("names the radio group after the section title", () => {
+        renderWithMantine(
+            <ImportBehaviorSection
+                importMode="copy"
+                onChangeImportMode={vi.fn()}
+                isMigratingLibraryPath={false}
+            />
+        );
+
+        expect(screen.getByRole("radiogroup", { name: "Import behavior" })).toBeInTheDocument();
+    });
+
     it("calls onChangeImportMode when another mode is chosen", () => {
         const onChange = vi.fn();
 
