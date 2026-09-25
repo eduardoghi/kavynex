@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { useMemoObject } from "./use-memo-object";
 
 type UseAsyncFlagReturn = {
     isRunning: boolean;
@@ -34,9 +35,11 @@ export function useAsyncFlag(): UseAsyncFlagReturn {
         []
     );
 
-    return {
+    // Stable between renders unless isRunning changes, so a caller that keeps the whole object and
+    // lists it as a dependency (use-diagnostics does) does not rebuild its callbacks every render.
+    return useMemoObject({
         isRunning,
         runWithFlag,
         resetFlag,
-    };
+    });
 }

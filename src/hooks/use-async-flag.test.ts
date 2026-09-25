@@ -166,4 +166,33 @@ describe("useAsyncFlag", () => {
         expect(result.current.runWithFlag).toBe(firstRunWithFlag);
         expect(result.current.resetFlag).toBe(firstResetFlag);
     });
+
+    it("returns the same object across rerenders until isRunning changes", async () => {
+        // use-diagnostics keeps the whole object and lists it as a callback dependency, so a fresh
+        // literal per render would rebuild those callbacks on every render.
+        const { result, rerender } = renderHook(() => useAsyncFlag());
+
+        const idle = result.current;
+
+        rerender();
+
+        expect(result.current).toBe(idle);
+
+        let finishTask: () => void = () => {};
+
+        act(() => {
+            void result.current.runWithFlag(
+                () =>
+                    new Promise<void>((resolve) => {
+                        finishTask = resolve;
+                    })
+            );
+        });
+
+        expect(result.current).not.toBe(idle);
+
+        await act(async () => {
+            finishTask();
+        });
+    });
 });
