@@ -6,17 +6,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // command/args untouched, and turning whatever the backend rejects with into a normalized
 // AppErrorShape. The mocks are declared through `vi.hoisted` because `vi.mock` is hoisted above
 // the imports, so a plain `const` would still be uninitialized when the factory runs.
-const { invokeMock, listenMock } = vi.hoisted(() => ({
-    invokeMock: vi.fn(),
-    listenMock: vi.fn(),
-}));
+const { invokeMock, listenMock, FakeChannel } = vi.hoisted(() => {
+    // Stands in for Tauri's `Channel`. The seam only constructs one, hands it to `invoke` and sets
+    // `onmessage`, so a test drives the stream by calling `onmessage` on the instance the mocked
+    // `invoke` received, the same way the backend's messages would arrive.
+    class FakeChannel<T> {
+        onmessage: (message: T) => void = () => {};
+    }
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+    return { invokeMock: vi.fn(), listenMock: vi.fn(), FakeChannel };
+});
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock, Channel: FakeChannel }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { APP_ERROR_CODE } from "../constants/error-codes";
-import { invokeCommand, invokeVoid, listenTauri, listenValidated } from "./tauri-client";
+import {
+    invokeCommand,
+    invokeVoid,
+    listenTauri,
+    listenValidated,
+    streamLibraryVerification,
+    streamLiveChatFile,
+} from "./tauri-client";
 import { IPC_EVENT_SCHEMAS } from "./ipc-schemas";
 
 // A full, schema-valid Channel: LIST_CHANNELS now validates its result at the seam (ipc-schemas.ts),
@@ -175,5 +188,161 @@ describe("listenValidated", () => {
         expect(handler).not.toHaveBeenCalled();
         expect(spy).toHaveBeenCalled();
         spy.mockRestore();
+    });
+});
+
+// Lets every already-queued promise callback run, so a test can tell "not settled yet" apart from
+// "settled" without a timer.
+async function flushPromises(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// The channel the seam handed to the most recent `invoke`, under the argument name it used.
+function channelPassedAs<T>(argName: string): InstanceType<typeof FakeChannel<T>> {
+    const calls = invokeMock.mock.calls;
+    const args = calls[calls.length - 1]?.[1] as Record<string, unknown> | undefined;
+    const channel = args?.[argName];
+
+    if (!(channel instanceof FakeChannel)) {
+        throw new Error(`invoke was not handed a channel as "${argName}"`);
+    }
+
+    return channel as InstanceType<typeof FakeChannel<T>>;
+}
+
+describe("streamLiveChatFile", () => {
+    it("passes the path and the channel, and hands each batch to onLines", async () => {
+        invokeMock.mockResolvedValue(null);
+        const onLines = vi.fn();
+
+        const streaming = streamLiveChatFile("live_chat/a.json.gz", onLines);
+        await flushPromises();
+
+        expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE, {
+            relativePath: "live_chat/a.json.gz",
+            onBatch: expect.any(FakeChannel),
+        });
+
+        const channel = channelPassedAs("onBatch");
+        channel.onmessage({ kind: "batch", lines: ["one", "two"] });
+        channel.onmessage({ kind: "batch", lines: ["three"] });
+        channel.onmessage({ kind: "done" });
+
+        await expect(streaming).resolves.toBeUndefined();
+        expect(onLines.mock.calls).toEqual([[["one", "two"]], [["three"]]]);
+    });
+
+    it("does not resolve when the command returns, only when done arrives", async () => {
+        // The command response and the channel messages travel independently. Resolving on the
+        // return would drop a batch still in flight, which is why the seam waits for `done`.
+        invokeMock.mockResolvedValue(null);
+        let settled = false;
+
+        const streaming = streamLiveChatFile("live_chat/a.json.gz", vi.fn()).then(() => {
+            settled = true;
+        });
+        await flushPromises();
+
+        expect(settled).toBe(false);
+
+        channelPassedAs("onBatch").onmessage({ kind: "done" });
+        await streaming;
+
+        expect(settled).toBe(true);
+    });
+
+    it("drops a malformed message and keeps reading", async () => {
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        invokeMock.mockResolvedValue(null);
+        const onLines = vi.fn();
+
+        const streaming = streamLiveChatFile("live_chat/a.json.gz", onLines);
+        await flushPromises();
+
+        const channel = channelPassedAs("onBatch");
+        channel.onmessage({ kind: "batch", lines: [42] });
+        channel.onmessage({ kind: "batch", lines: ["kept"] });
+        channel.onmessage({ kind: "done" });
+
+        await streaming;
+
+        expect(onLines.mock.calls).toEqual([[["kept"]]]);
+        expect(spy).toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it("rejects with a normalized error when the read fails", async () => {
+        invokeMock.mockRejectedValue({
+            code: "LIVE_CHAT_FILE_NOT_FOUND",
+            message: "live chat file not found",
+        });
+
+        await expect(streamLiveChatFile("live_chat/gone.json.gz", vi.fn())).rejects.toMatchObject({
+            code: "LIVE_CHAT_FILE_NOT_FOUND",
+        });
+    });
+});
+
+describe("streamLibraryVerification", () => {
+    const report = {
+        checked: 3,
+        verified: 2,
+        corrupt: 1,
+        corruptExamples: ["video/media_abc.mp4"],
+        unverifiable: 0,
+        unverifiableExamples: [],
+        unreadable: 0,
+        unreadableExamples: [],
+        cancelled: false,
+    };
+
+    it("passes the library path and the channel, reports progress and resolves with the report", async () => {
+        invokeMock.mockResolvedValue(null);
+        const onProgress = vi.fn();
+
+        const verifying = streamLibraryVerification("D:/Library", onProgress);
+        await flushPromises();
+
+        expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.VERIFY_LIBRARY_CONTENT, {
+            libraryPath: "D:/Library",
+            onProgress: expect.any(FakeChannel),
+        });
+
+        const channel = channelPassedAs("onProgress");
+        channel.onmessage({ kind: "progress", checked: 1, total: 3 });
+        channel.onmessage({ kind: "progress", checked: 3, total: 3 });
+        channel.onmessage({ kind: "done", report });
+
+        await expect(verifying).resolves.toEqual(report);
+        expect(onProgress.mock.calls).toEqual([
+            [1, 3],
+            [3, 3],
+        ]);
+    });
+
+    it("rejects on a message it cannot read instead of waiting forever", async () => {
+        // Unlike the live chat stream, the unreadable message may be the `done` that carries the
+        // report, so dropping it would leave the dialog on "verifying" with no way back.
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        invokeMock.mockResolvedValue(null);
+
+        const verifying = streamLibraryVerification("D:/Library", vi.fn());
+        await flushPromises();
+
+        channelPassedAs("onProgress").onmessage({ kind: "done", report: { checked: "3" } });
+
+        await expect(verifying).rejects.toThrow("could not read");
+        spy.mockRestore();
+    });
+
+    it("rejects with a normalized error when the command is refused", async () => {
+        invokeMock.mockRejectedValue({
+            code: "LIBRARY_VERIFICATION_IN_PROGRESS",
+            message: "a verification is already running",
+        });
+
+        await expect(streamLibraryVerification("D:/Library", vi.fn())).rejects.toMatchObject({
+            code: "LIBRARY_VERIFICATION_IN_PROGRESS",
+        });
     });
 });
