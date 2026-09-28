@@ -5,7 +5,10 @@ use crate::services::channel_repository::ChannelRow;
 use crate::services::database::Db;
 use crate::services::library;
 use crate::services::library::cleanup::ArtifactCleanupReport;
-use crate::utils::path::ensure_managed_library_relative_path;
+use crate::services::logger;
+use crate::utils::path::{
+    ensure_managed_library_relative_path, ensure_relative_path_in_managed_dir,
+};
 use crate::utils::validation::{ensure_valid_channel_name, ensure_valid_youtube_handle};
 use crate::AppResult;
 
@@ -43,22 +46,51 @@ pub async fn get_channel_by_id(
     repo::get_channel_by_id(&pool, channel_id).await
 }
 
+/// Creates a channel row. When the row cannot be created, removes the avatar file it was handed if
+/// nothing else references it.
+///
+/// The frontend writes the avatar into the library before calling this, so a refusal here (a handle
+/// that already exists, a name that fails validation) used to leave that file behind with no row
+/// pointing at it. The removal goes through the reference-counted cleanup, so an avatar that is
+/// content-addressed onto a file another channel or a media thumbnail already uses is kept.
 #[tauri::command]
-pub async fn insert_channel(
+pub async fn insert_channel<R: Runtime>(
+    app: AppHandle<R>,
     db: State<'_, Db>,
     name: String,
     youtube_handle: String,
     avatar_path: Option<String>,
 ) -> AppResult<i64> {
+    // Only `thumbnails/`, not any managed directory. The cleanup below counts thumbnail and avatar
+    // references, not media ones, so an avatar path pointing into `video/` would let a refused
+    // insert remove a media file its rows still use.
+    if let Some(path) = avatar_path.as_deref() {
+        ensure_managed_library_relative_path(path)?;
+        ensure_relative_path_in_managed_dir(path, crate::constants::LIBRARY_DIR_THUMBNAILS)?;
+    }
+
+    let inserted = insert_channel_row(&db, &name, &youtube_handle, avatar_path.as_deref()).await;
+
+    if inserted.is_err() {
+        if let Some(avatar) = avatar_path {
+            remove_unused_avatar(&app, avatar).await;
+        }
+    }
+
+    inserted
+}
+
+async fn insert_channel_row(
+    db: &Db,
+    name: &str,
+    youtube_handle: &str,
+    avatar_path: Option<&str>,
+) -> AppResult<i64> {
     // Validate the text fields at this write boundary, not just in the frontend. The backend is
     // the only durable trust boundary, so a malformed name/handle from any other call path is
     // rejected here with a catalogued error before it reaches the row.
-    ensure_valid_channel_name(&name)?;
-    ensure_valid_youtube_handle(&youtube_handle)?;
-
-    if let Some(path) = avatar_path.as_deref() {
-        ensure_managed_library_relative_path(path)?;
-    }
+    ensure_valid_channel_name(name)?;
+    ensure_valid_youtube_handle(youtube_handle)?;
 
     // Persist the trimmed values, not the raw arguments. Validation checks the trimmed form, but
     // the UNIQUE index and `find_channel_by_youtube_handle` compare the stored column verbatim, so
@@ -68,7 +100,26 @@ pub async fn insert_channel(
     let youtube_handle = youtube_handle.trim();
 
     let pool = db.pool().await?;
-    repo::insert_channel(&pool, name, youtube_handle, avatar_path.as_deref()).await
+    repo::insert_channel(&pool, name, youtube_handle, avatar_path).await
+}
+
+/// Best effort. The insert error is what the caller needs to see, so a cleanup failure is only
+/// logged, and the file is left for Diagnostics to report as an orphan, as before.
+async fn remove_unused_avatar<R: Runtime>(app: &AppHandle<R>, avatar: String) {
+    match library::cleanup::cleanup_unreferenced_artifacts(app, None, Some(avatar), None).await {
+        Ok(report) if !report.failed_paths.is_empty() => logger::warn(
+            "channels",
+            format!(
+                "could not remove the avatar of a channel that was not created: {} file(s) left",
+                report.failed_paths.len()
+            ),
+        ),
+        Ok(_) => {}
+        Err(error) => logger::warn(
+            "channels",
+            format!("could not remove the avatar of a channel that was not created: {error}"),
+        ),
+    }
 }
 
 #[tauri::command]
@@ -114,9 +165,9 @@ mod tests {
     use tauri::test::{mock_builder, mock_context, noop_assets};
     use tauri::Manager;
 
-    // The pool-only channel commands take `State<Db>`, so they run under the mock runtime and
-    // can be driven through a real IPC round trip against an in-memory database. The two
-    // file-cleanup commands still take `AppHandle` and are covered at the service layer.
+    // Driven through a real IPC round trip under the mock runtime against an in-memory database.
+    // `insert_channel` also takes an `AppHandle` for its avatar cleanup, which the mock runtime
+    // provides. The two delete/replace commands are covered at the service layer.
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![
@@ -260,6 +311,133 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
+    }
+
+    /// A library folder with a `thumbnails/` directory, configured in the settings row of `db`, so
+    /// the avatar cleanup has somewhere to look.
+    fn configure_library(db: &Db, prefix: &str) -> std::path::PathBuf {
+        let library = std::env::temp_dir().join(format!(
+            "kavynex-channels-test-{prefix}-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(library.join("thumbnails")).unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let pool = db.pool().await.expect("open the in-memory pool");
+
+            crate::services::database::set_app_settings_in_pool(
+                &pool,
+                &crate::services::database::StoredAppSettings {
+                    library_path: Some(library.to_string_lossy().to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("persist the configured library path");
+        });
+
+        library
+    }
+
+    #[test]
+    fn a_refused_insert_removes_the_avatar_it_was_handed() {
+        // The frontend writes the avatar before calling insert_channel. When the insert is refused,
+        // here for a handle that already exists, nothing else points at that file.
+        let db = memory_db();
+        let library = configure_library(&db, "refused-insert");
+        let webview = test_webview(db);
+        insert(&webview, "Chan", "@chan");
+
+        let avatar = library.join("thumbnails").join("thumb_new.jpg");
+        std::fs::write(&avatar, b"img").unwrap();
+
+        let error = invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({
+                "name": "Other",
+                "youtubeHandle": "@chan",
+                "avatarPath": "thumbnails/thumb_new.jpg"
+            }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::ChannelAlreadyExists.as_str());
+        assert!(
+            !avatar.exists(),
+            "the avatar of a channel that was never created is removed"
+        );
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_refused_insert_keeps_an_avatar_another_channel_uses() {
+        // Avatars are content-addressed, so the same image picked for two channels is one file.
+        // The refused insert must not take it from the channel that already has it.
+        let db = memory_db();
+        let library = configure_library(&db, "shared-avatar");
+        let webview = test_webview(db);
+
+        let avatar = library.join("thumbnails").join("thumb_shared.jpg");
+        std::fs::write(&avatar, b"img").unwrap();
+
+        invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({
+                "name": "Chan",
+                "youtubeHandle": "@chan",
+                "avatarPath": "thumbnails/thumb_shared.jpg"
+            }),
+        )
+        .unwrap();
+
+        invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({
+                "name": "Other",
+                "youtubeHandle": "@chan",
+                "avatarPath": "thumbnails/thumb_shared.jpg"
+            }),
+        )
+        .unwrap_err();
+
+        assert!(
+            avatar.exists(),
+            "the first channel still references the file"
+        );
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn insert_channel_refuses_an_avatar_outside_the_thumbnails_directory() {
+        // The cleanup of a refused insert counts thumbnail references only, so an avatar path in
+        // `video/` would let it remove a media file its rows still use. It is refused up front.
+        let db = memory_db();
+        let library = configure_library(&db, "avatar-in-video");
+        std::fs::create_dir_all(library.join("video")).unwrap();
+        let media = library.join("video").join("media_abc.mp4");
+        std::fs::write(&media, b"data").unwrap();
+        let webview = test_webview(db);
+
+        let error = invoke(
+            &webview,
+            "insert_channel",
+            serde_json::json!({
+                "name": "Chan",
+                "youtubeHandle": "@chan",
+                "avatarPath": "video/media_abc.mp4"
+            }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
+        assert!(media.exists());
+
+        let _ = std::fs::remove_dir_all(&library);
     }
 
     #[test]
