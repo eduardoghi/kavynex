@@ -556,4 +556,162 @@ mod tests {
     // the flow it served. It is now `validate_picked_thumbnail_path` in
     // `services::thumbnail::temp`, tested there, and with a network-location refusal it did not
     // have here.
+
+    // register_library_asset_scope itself turns out to be drivable through a real IPC round trip
+    // after all. `Scope::new` and `allow_directory`/`is_allowed` only touch an in-memory globset the
+    // app manages, and `mock_context` provisions that state the same way a real app does. The
+    // comment above predates checking that; it is left in place because the grant helpers and
+    // directory lists still need the pure-function coverage regardless of what the command itself
+    // can now prove.
+    use crate::commands::test_ipc::{invoke, memory_db};
+    use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
+
+    fn memory_db_with_library(library_dir: &Path) -> Db {
+        let db = memory_db();
+        let library_path = library_dir.to_string_lossy().to_string();
+
+        tauri::async_runtime::block_on(async {
+            let pool = db.pool().await.expect("open the in-memory pool");
+
+            set_app_settings_in_pool(
+                &pool,
+                &StoredAppSettings {
+                    library_path: Some(library_path),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("persist the configured library path");
+        });
+
+        db
+    }
+
+    fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![register_library_asset_scope])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        app.manage(db);
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn register_library_asset_scope_command_grants_only_the_managed_subdirs_over_ipc() {
+        let library = unique_test_dir("register-happy");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::write(library.join("video").join("clip.mp4"), b"data").unwrap();
+        fs::write(library.join("outside.txt"), b"data").unwrap();
+        let library = library.canonicalize().unwrap();
+
+        let webview = test_webview(memory_db_with_library(&library));
+
+        invoke(
+            &webview,
+            "register_library_asset_scope",
+            serde_json::json!({ "libraryPath": library.to_string_lossy() }),
+        )
+        .unwrap();
+
+        let scope = webview.asset_protocol_scope();
+        assert!(
+            scope.is_allowed(library.join("video").join("clip.mp4")),
+            "a file under a managed subdirectory must be readable through the asset protocol"
+        );
+        assert!(
+            !scope.is_allowed(library.join("outside.txt")),
+            "a file at the library root, outside every managed subdirectory, must stay unreadable"
+        );
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn register_library_asset_scope_command_rejects_when_no_library_is_configured_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        let error = invoke(
+            &webview,
+            "register_library_asset_scope",
+            serde_json::json!({ "libraryPath": "/some/library" }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+    }
+
+    #[test]
+    fn register_library_asset_scope_command_rejects_a_path_that_is_not_the_configured_library_over_ipc(
+    ) {
+        let configured = unique_test_dir("register-configured");
+        let elsewhere = unique_test_dir("register-elsewhere");
+        fs::create_dir_all(&configured).unwrap();
+        fs::create_dir_all(elsewhere.join("video")).unwrap();
+        fs::write(elsewhere.join("video").join("private.mp4"), b"data").unwrap();
+
+        let webview = test_webview(memory_db_with_library(&configured));
+
+        let error = invoke(
+            &webview,
+            "register_library_asset_scope",
+            serde_json::json!({ "libraryPath": elsewhere.to_string_lossy() }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+        assert!(
+            !webview
+                .asset_protocol_scope()
+                .is_allowed(elsewhere.join("video").join("private.mp4")),
+            "a rejected library must never be granted"
+        );
+
+        let _ = fs::remove_dir_all(&configured);
+        let _ = fs::remove_dir_all(&elsewhere);
+    }
+
+    #[test]
+    fn register_library_asset_scope_command_rejects_a_network_library_path_over_ipc() {
+        // ensure_configured_library_path (via paths_refer_to_same_location) is one of the declared
+        // network-refusal sites in scripts/verify-command-path-surface.js, and this command's
+        // `library_path` is classified "configured-library" there. CONTRIBUTING.md requires a UNC
+        // test per path-taking command; this is the IPC-level one for this guard class.
+        let library = unique_test_dir("register-unc");
+        fs::create_dir_all(&library).unwrap();
+        let library = library.canonicalize().unwrap();
+
+        let webview = test_webview(memory_db_with_library(&library));
+
+        for unc in [
+            r"\\evil\share\library",
+            "//evil/share/library",
+            r"\\?\UNC\evil\share\library",
+        ] {
+            let error = invoke(
+                &webview,
+                "register_library_asset_scope",
+                serde_json::json!({ "libraryPath": unc }),
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                error["code"],
+                AppErrorCode::InvalidLibraryPath.as_str(),
+                "{unc} should be refused as a network path"
+            );
+        }
+
+        // The mismatch is caught by a textual share comparison, before canonicalize touches
+        // anything, so the configured library's managed subdirectories must never get created by a
+        // refused request.
+        assert!(!library.join("video").exists());
+
+        let _ = fs::remove_dir_all(&library);
+    }
 }

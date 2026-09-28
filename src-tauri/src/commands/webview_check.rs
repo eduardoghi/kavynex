@@ -520,4 +520,75 @@ mod tests {
         // been removed underneath it.
         remove_probe_assets(Path::new("/no/such/kavynex/dir"));
     }
+
+    // Everything above drives `is_webview_check_run` and `webview_check_failures` directly, which is
+    // right for pure parsing and pass/fail logic but never goes through tauri::command dispatch. The
+    // two tests below drive `begin_webview_check` and `report_webview_check` through a
+    // real IPC round trip, which is what proves the wire shapes
+    // (`WebviewCheckPlan`/`WebviewCheckReport`'s camelCase fields) and, for `report_webview_check`,
+    // that the guard actually holds when the command is called the way a renderer would call it.
+    //
+    // Neither command's "this is a real check run" branch is reachable from here.
+    // `is_webview_check_run` reads `std::env::args()` directly, unlike the pure function above which
+    // takes them as a parameter, and `cargo test`'s own argv never carries `--webview-check`. So
+    // `begin_webview_check` always answers `None` below, and `report_webview_check` always takes its
+    // "ignore, do not exit" branch. The `std::process::exit` branch cannot be exercised in-process at
+    // all under any argv: reaching it would end the test binary running every other test in this
+    // suite, which is exactly the property that makes the guard load-bearing rather than incidental.
+
+    use crate::commands::test_ipc::invoke;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    fn test_webview() -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![
+                begin_webview_check,
+                report_webview_check
+            ])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn begin_webview_check_command_answers_none_outside_a_check_run_over_ipc() {
+        let webview = test_webview();
+
+        let response = invoke(&webview, "begin_webview_check", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<serde_json::Value>()
+            .unwrap();
+
+        assert!(
+            response.is_null(),
+            "an ordinary launch must not receive a check plan"
+        );
+    }
+
+    #[test]
+    fn report_webview_check_command_ignores_a_report_outside_a_check_run_over_ipc() {
+        // The trust boundary that matters here is that an ordinary IPC call cannot reach
+        // std::process::exit through this command. A failing report is used, rather than a passing
+        // one, because a failing report is the shape most likely to have exited if the guard were
+        // missing; a passing report exiting 0 would be much easier to mistake for the command simply
+        // having worked.
+        let webview = test_webview();
+
+        invoke(
+            &webview,
+            "report_webview_check",
+            serde_json::json!({
+                "report": {
+                    "appVersion": null,
+                    "eventListenOk": false,
+                    "assetLoadOk": false,
+                    "failures": ["boom"]
+                }
+            }),
+        )
+        .unwrap();
+    }
 }

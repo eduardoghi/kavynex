@@ -238,4 +238,308 @@ mod tests {
 
         let _ = fs::remove_dir_all(&library);
     }
+
+    // Everything above drives `stream_live_chat_relative_sync` directly, which is deliberate for a
+    // pure resolve-then-stream function, but it never goes through tauri::command dispatch, so
+    // none of it proves the IPC argument mapping (`relativePath`/`onBatch` camelCase, the `Channel`
+    // deserialization) actually works. The tests below drive the three commands in this file through
+    // a real IPC round trip instead.
+
+    use crate::commands::test_ipc::{invoke, memory_db};
+    use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
+    use std::sync::{Arc, Mutex};
+    use tauri::ipc::InvokeResponseBody;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    /// A [`Db`] over an in-memory database whose `app_settings` row names `library_dir` as the
+    /// configured library, matching the pattern every other command test file uses.
+    fn memory_db_with_library(library_dir: &Path) -> Db {
+        let db = memory_db();
+        let library_path = library_dir.to_string_lossy().to_string();
+
+        tauri::async_runtime::block_on(async {
+            let pool = db.pool().await.expect("open the in-memory pool");
+
+            set_app_settings_in_pool(
+                &pool,
+                &StoredAppSettings {
+                    library_path: Some(library_path),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("persist the configured library path");
+        });
+
+        db
+    }
+
+    /// A webview wired for the three commands here, plus a channel interceptor that records every
+    /// message a test's `on_batch` receives instead of letting it fall through to `Webview::eval`.
+    ///
+    /// `stream_live_chat_file` takes a `Channel<LiveChatStreamEvent>`. Over IPC that argument
+    /// arrives as an ordinary `"__CHANNEL__:<id>"` string (see `tauri::ipc::channel::IPC_PAYLOAD_PREFIX`
+    /// and `JavaScriptChannelId`), which `Channel`'s `CommandArg` impl turns into a real channel bound
+    /// to this webview, so no test-only substitute is needed for the command side. The interceptor is
+    /// what lets a test see what was sent without a real renderer to run the generated JS in; the
+    /// mock runtime's own `eval` is a harmless no-op, but it also has no way to hand the payload back.
+    fn test_webview(
+        db: Db,
+    ) -> (
+        tauri::WebviewWindow<tauri::test::MockRuntime>,
+        Arc<Mutex<Vec<serde_json::Value>>>,
+    ) {
+        let messages: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let captured = messages.clone();
+
+        let app = mock_builder()
+            .channel_interceptor(move |_webview, _callback, _index, body| {
+                if let InvokeResponseBody::Json(json) = body {
+                    if let Ok(value) = serde_json::from_str(json) {
+                        captured.lock().unwrap().push(value);
+                    }
+                }
+
+                // Consumed: nothing here needs the JS side of the channel, only the payload.
+                true
+            })
+            .invoke_handler(tauri::generate_handler![
+                stream_live_chat_file,
+                list_live_chat_files,
+                migrate_live_chat_to_library
+            ])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+
+        app.manage(db);
+
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+
+        (webview, messages)
+    }
+
+    #[test]
+    fn stream_live_chat_file_command_streams_batches_then_done_over_ipc() {
+        let library = unique_library_dir("ipc-stream");
+        fs::write(
+            library.join("live_chat").join("clip.live_chat.json"),
+            b"{\"a\":1}\n{\"b\":2}\n",
+        )
+        .unwrap();
+
+        let (webview, messages) = test_webview(memory_db_with_library(&library));
+
+        invoke(
+            &webview,
+            "stream_live_chat_file",
+            serde_json::json!({
+                "relativePath": "live_chat/clip.live_chat.json",
+                "onBatch": "__CHANNEL__:1"
+            }),
+        )
+        .unwrap();
+
+        let messages = messages.lock().unwrap();
+        assert_eq!(
+            messages.len(),
+            2,
+            "two lines fit in one batch under the 500-line cap, so a batch then a done event"
+        );
+        assert_eq!(messages[0]["kind"], "batch");
+        assert_eq!(
+            messages[0]["lines"],
+            serde_json::json!(["{\"a\":1}", "{\"b\":2}"])
+        );
+        assert_eq!(messages[1]["kind"], "done");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn stream_live_chat_file_command_rejects_when_no_library_is_configured_over_ipc() {
+        let (webview, messages) = test_webview(memory_db());
+
+        let error = invoke(
+            &webview,
+            "stream_live_chat_file",
+            serde_json::json!({
+                "relativePath": "live_chat/clip.live_chat.json",
+                "onBatch": "__CHANNEL__:1"
+            }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+        assert!(
+            messages.lock().unwrap().is_empty(),
+            "a refused call must not stream anything"
+        );
+    }
+
+    #[test]
+    fn stream_live_chat_file_command_rejects_a_traversal_path_over_ipc() {
+        let library = unique_library_dir("ipc-traversal");
+        // A file planted outside the library must stay unreachable through a `..` path.
+        fs::write(library.parent().unwrap().join("secret.json"), b"secret").unwrap();
+
+        let (webview, messages) = test_webview(memory_db_with_library(&library));
+
+        let error = invoke(
+            &webview,
+            "stream_live_chat_file",
+            serde_json::json!({
+                "relativePath": "../secret.json",
+                "onBatch": "__CHANNEL__:1"
+            }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
+        assert!(messages.lock().unwrap().is_empty());
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn stream_live_chat_file_command_rejects_a_path_outside_live_chat_over_ipc() {
+        // Same guard as stream_live_chat_relative_sync_rejects_a_non_live_chat_managed_path above,
+        // now proven at the IPC boundary the command actually sits behind.
+        let library = unique_library_dir("ipc-scope");
+        fs::create_dir_all(library.join("video")).unwrap();
+        fs::write(library.join("video").join("media.mp4"), b"data").unwrap();
+
+        let (webview, messages) = test_webview(memory_db_with_library(&library));
+
+        let error = invoke(
+            &webview,
+            "stream_live_chat_file",
+            serde_json::json!({
+                "relativePath": "video/media.mp4",
+                "onBatch": "__CHANNEL__:1"
+            }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidRelativePath.as_str());
+        assert!(messages.lock().unwrap().is_empty());
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn stream_live_chat_file_command_rejects_a_unc_relative_path_over_ipc() {
+        // `relative_path` is classified "managed-relative" in
+        // scripts/verify-command-path-surface.js, and CONTRIBUTING.md requires a UNC test for every
+        // path-taking command. `sanitize_relative_path_strict` refuses these because a UNC path is
+        // absolute, not through an explicit network check, but the caller-visible outcome (refused
+        // before any file is touched) is the same property the rule is about.
+        let library = unique_library_dir("ipc-unc");
+
+        let (webview, messages) = test_webview(memory_db_with_library(&library));
+
+        for unc in [
+            r"\\evil\share\clip.live_chat.json",
+            "//evil/share/clip.live_chat.json",
+            r"\\?\UNC\evil\share\clip.live_chat.json",
+        ] {
+            let error = invoke(
+                &webview,
+                "stream_live_chat_file",
+                serde_json::json!({ "relativePath": unc, "onBatch": "__CHANNEL__:1" }),
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                error["code"],
+                AppErrorCode::InvalidRelativePath.as_str(),
+                "{unc} should be refused before touching the filesystem"
+            );
+        }
+
+        assert!(messages.lock().unwrap().is_empty());
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn stream_live_chat_file_command_errors_on_a_missing_file_over_ipc() {
+        let library = unique_library_dir("ipc-missing");
+        let (webview, messages) = test_webview(memory_db_with_library(&library));
+
+        let error = invoke(
+            &webview,
+            "stream_live_chat_file",
+            serde_json::json!({
+                "relativePath": "live_chat/missing.json",
+                "onBatch": "__CHANNEL__:1"
+            }),
+        )
+        .unwrap_err();
+
+        // ensure_existing_path_inside_dir's existence check runs before the file is ever opened, so
+        // a missing file comes back as PathNotFound rather than the LiveChatFileNotFound
+        // stream_live_chat_lines itself would raise (unreachable from this command for that reason).
+        assert_eq!(error["code"], AppErrorCode::PathNotFound.as_str());
+        assert!(messages.lock().unwrap().is_empty());
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn list_live_chat_files_command_lists_files_present_in_the_library_over_ipc() {
+        let library = unique_library_dir("ipc-list");
+        fs::write(
+            library.join("live_chat").join("a.live_chat.json.gz"),
+            b"data",
+        )
+        .unwrap();
+        fs::write(
+            library.join("live_chat").join("b.live_chat.json.gz"),
+            b"data",
+        )
+        .unwrap();
+
+        let (webview, _messages) = test_webview(memory_db_with_library(&library));
+
+        let mut files = invoke(&webview, "list_live_chat_files", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<Vec<String>>()
+            .unwrap();
+        files.sort();
+
+        assert_eq!(
+            files,
+            vec![
+                "live_chat/a.live_chat.json.gz".to_string(),
+                "live_chat/b.live_chat.json.gz".to_string(),
+            ]
+        );
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn list_live_chat_files_command_rejects_when_no_library_is_configured_over_ipc() {
+        let (webview, _messages) = test_webview(memory_db());
+
+        let error = invoke(&webview, "list_live_chat_files", serde_json::json!({})).unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+    }
+
+    #[test]
+    fn migrate_live_chat_to_library_command_rejects_when_no_library_is_configured_over_ipc() {
+        let (webview, _messages) = test_webview(memory_db());
+
+        let error = invoke(
+            &webview,
+            "migrate_live_chat_to_library",
+            serde_json::json!({}),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+    }
 }
