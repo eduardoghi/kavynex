@@ -395,6 +395,26 @@ fn a_cleanup_is_skipped_only_when_no_artifact_was_named_at_all() {
 }
 
 #[test]
+fn the_only_copy_of_a_users_file_is_never_offered_to_the_cleanup() {
+    let prepared = PreparedArtifacts {
+        file_path: "video/media_a.mp4".to_string(),
+        ..PreparedArtifacts::default()
+    };
+
+    assert_eq!(
+        deletable_media_file(&prepared),
+        Some("video/media_a.mp4".to_string())
+    );
+
+    let only_copy = PreparedArtifacts {
+        media_file_is_only_copy: true,
+        ..prepared
+    };
+
+    assert_eq!(deletable_media_file(&only_copy), None);
+}
+
+#[test]
 fn the_duplicate_pre_check_applies_only_to_a_yt_dlp_source_with_a_resolved_video_id() {
     // Both halves, because both flips are silent. Run it for a local import and the query
     // always answers "no" (there is no video id to match), skip it for a yt-dlp source and the
@@ -606,6 +626,8 @@ mod registration {
             published_at: None,
             is_live: false,
             live_chat_file_path: None,
+            move_source_to_remove: None,
+            media_file_is_only_copy: false,
         }
     }
 
@@ -1007,6 +1029,144 @@ mod registration {
         );
 
         let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn a_move_import_keeps_the_users_file_when_the_insert_is_refused() {
+        // The cleanup deletes the unreferenced library copy, which is only safe because the
+        // source is still on disk. Had the source been removed during the import, this would be
+        // the user's file gone with no row and no copy.
+        let (app, library) = app_with_library("move-refused").await;
+        let source = source_media_outside_the_library("move-refused");
+        let prepared = PreparedArtifacts {
+            move_source_to_remove: Some(source.clone()),
+            ..artifacts_on_disk(&library, "media_move_refused")
+        };
+        let file_path = prepared.file_path.clone();
+
+        let missing_channel = CreateMediaRequest {
+            channel_id: 4242,
+            ..request(MediaSourceMode::Local)
+        };
+
+        register_prepared_media(app.handle(), &missing_channel, prepared)
+            .await
+            .expect_err("an insert against a channel that does not exist must fail");
+
+        assert_eq!(
+            fs_bytes(&source),
+            b"media bytes",
+            "the user's file must survive"
+        );
+        assert!(!library.join(&file_path).exists());
+        assert_eq!(markers_naming(&app, &file_path), 0);
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(source.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_library_file_that_is_the_only_copy_survives_a_refused_insert() {
+        // A volume without hard links forces the Move to rename, so the library file is all the
+        // user has. Neither the failure path nor a marker for the startup sweep may name it.
+        let (app, library) = app_with_library("only-copy").await;
+        let prepared = PreparedArtifacts {
+            media_file_is_only_copy: true,
+            ..artifacts_on_disk(&library, "media_only_copy")
+        };
+        let file_path = prepared.file_path.clone();
+
+        let missing_channel = CreateMediaRequest {
+            channel_id: 4242,
+            ..request(MediaSourceMode::Local)
+        };
+
+        register_prepared_media(app.handle(), &missing_channel, prepared)
+            .await
+            .expect_err("an insert against a channel that does not exist must fail");
+
+        assert!(
+            library.join(&file_path).is_file(),
+            "the only copy of the user's file must be left for Diagnostics, not deleted"
+        );
+        assert_eq!(markers_naming(&app, &file_path), 0);
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn a_registered_move_import_removes_its_source() {
+        let (app, library) = app_with_library("move-registered").await;
+        let source = source_media_outside_the_library("move-registered");
+        let prepared = PreparedArtifacts {
+            move_source_to_remove: Some(source.clone()),
+            ..artifacts_on_disk(&library, "media_move_ok")
+        };
+        let file_path = prepared.file_path.clone();
+
+        register_prepared_media(app.handle(), &request(MediaSourceMode::Local), prepared)
+            .await
+            .expect("a valid registration should succeed");
+
+        assert!(
+            !source.exists(),
+            "a Move frees the original once the row exists"
+        );
+        assert!(library.join(&file_path).is_file());
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(source.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_move_import_runs_end_to_end_and_frees_the_source() {
+        let (app, library) = app_with_library("create-move").await;
+        let source = source_media_outside_the_library("create-move");
+
+        let mut move_request = local_request(&library, &source, "move");
+        move_request.import_mode = ImportMode::Move;
+
+        let created = create_media_async(app.handle(), move_request)
+            .await
+            .expect("a local Move import of a real file must succeed");
+
+        assert!(!source.exists());
+        assert_eq!(fs_bytes(&library.join(&created.file_path)), b"media bytes");
+        assert_eq!(media_row_count(&app).await, 1);
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(source.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_creation_for_a_missing_channel_is_refused_before_the_source_is_touched() {
+        let (app, library) = app_with_library("create-no-channel").await;
+        let source = source_media_outside_the_library("create-no-channel");
+
+        let mut move_request = local_request(&library, &source, "no-channel");
+        move_request.import_mode = ImportMode::Move;
+        move_request.channel_id = 4242;
+
+        let error = create_media_async(app.handle(), move_request)
+            .await
+            .expect_err("a channel that does not exist must be refused");
+
+        assert_eq!(error.code, AppErrorCode::ChannelNotFound.as_str());
+        assert_eq!(fs_bytes(&source), b"media bytes");
+        assert_eq!(
+            std::fs::read_dir(library.join(crate::constants::LIBRARY_DIR_VIDEO))
+                .unwrap()
+                .count(),
+            0,
+            "nothing may be imported for a channel the row could never point at"
+        );
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(source.parent().unwrap());
+    }
+
+    fn fs_bytes(path: &Path) -> Vec<u8> {
+        std::fs::read(path).unwrap_or_default()
     }
 
     #[tokio::test]

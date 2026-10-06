@@ -20,6 +20,7 @@
 //! or the cleanup has run, because clearing it earlier would drop the record precisely while it is
 //! the only thing describing the state on disk.
 
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -123,6 +124,12 @@ pub(crate) struct PreparedArtifacts {
     pub(crate) published_at: Option<String>,
     pub(crate) is_live: bool,
     pub(crate) live_chat_file_path: Option<String>,
+    /// A Move import's source, still on disk until the row lands. See
+    /// `library::media::StagedMediaImport`.
+    pub(crate) move_source_to_remove: Option<PathBuf>,
+    /// True when `file_path` is the only copy of the user's file, so neither the failure path nor
+    /// the startup sweep may delete it.
+    pub(crate) media_file_is_only_copy: bool,
 }
 
 /// What a caller-supplied thumbnail value actually is, which decides how it is turned into a stored
@@ -380,9 +387,10 @@ fn local_import_cancellation(
 
 /// Produces the artifacts for a local import. The thumbnail first, then the media file.
 ///
-/// That order is required rather than incidental. A `move` import removes the source once it is in
-/// the library, and the thumbnail for a file with no supplied one is generated *from that source*.
-/// so generating it afterwards would run FFmpeg against a path that no longer exists.
+/// That order is required rather than incidental. On a volume without hard links a `move` import
+/// renames the source into the library, and the thumbnail for a file with no supplied one is
+/// generated *from that source*, so generating it afterwards would run FFmpeg against a path that
+/// no longer exists.
 async fn prepare_local_artifacts<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
@@ -435,8 +443,11 @@ async fn prepare_local_artifacts<R: Runtime>(
     let source_value = request.source_value.clone();
     let library_path = request.library_path.clone();
 
-    let imported = run_blocking(move || {
-        library::media::import_media_file_cancellable_sync(
+    // Staged rather than imported outright. A Move leaves the source in place until
+    // `register_prepared_media` has a row pointing at the library copy, so a refused insert or a
+    // crash before it never costs the user their file.
+    let staged = run_blocking(move || {
+        library::media::stage_media_import_cancellable_sync(
             &source_value,
             import_mode,
             &library_path,
@@ -445,8 +456,8 @@ async fn prepare_local_artifacts<R: Runtime>(
     })
     .await;
 
-    let file_path = match imported {
-        Ok(file_path) => file_path,
+    let staged = match staged {
+        Ok(staged) => staged,
         Err(error) => {
             // The thumbnail is already in the library and nothing will ever point at it, so hand it
             // to the reference-counted cleanup rather than leaving it behind. Reference-counted
@@ -458,13 +469,15 @@ async fn prepare_local_artifacts<R: Runtime>(
     };
 
     Ok(PreparedArtifacts {
-        file_path,
+        file_path: staged.relative_path,
         thumbnail_path,
         media_type: request.media_type.clone(),
         youtube_video_id: None,
         published_at: request.published_at.clone(),
         is_live: false,
         live_chat_file_path: None,
+        move_source_to_remove: staged.source_to_remove,
+        media_file_is_only_copy: staged.library_holds_only_copy,
     })
 }
 
@@ -579,6 +592,8 @@ async fn prepare_yt_dlp_artifacts<R: Runtime>(
             .or_else(|| request.published_at.clone()),
         is_live: downloaded.is_live,
         live_chat_file_path: normalized_optional(downloaded.live_chat_file_path),
+        move_source_to_remove: None,
+        media_file_is_only_copy: false,
     })
 }
 
@@ -655,22 +670,66 @@ async fn cleanup_artifacts_best_effort<R: Runtime>(
     );
 }
 
+/// The media file a failed registration may hand to the cleanup, or to the startup sweep through the
+/// marker. `None` when the library file is the only copy of the user's file.
+///
+/// Pure, and shared by both, because a wrong answer here deletes the user's file. The cleanup removes
+/// whatever no row references, which after a refused insert includes the only copy. Left behind
+/// instead, the file is reported by Diagnostics as unreferenced and nothing is lost.
+pub(crate) fn deletable_media_file(prepared: &PreparedArtifacts) -> Option<String> {
+    if prepared.media_file_is_only_copy {
+        return None;
+    }
+
+    Some(prepared.file_path.clone())
+}
+
 /// The same cleanup, for a caller that already holds the registration lock. Takes the whole
-/// `PreparedArtifacts` because that caller always has one, and it always names a media file, so
-/// there is nothing for [`nothing_to_clean_up`] to decide here.
+/// `PreparedArtifacts` because that caller always has one.
 async fn cleanup_artifacts_best_effort_locked<R: Runtime>(
     app: &AppHandle<R>,
     prepared: &PreparedArtifacts,
 ) {
+    let file_path = deletable_media_file(prepared);
+
+    if nothing_to_clean_up(
+        file_path.as_deref(),
+        prepared.thumbnail_path.as_deref(),
+        prepared.live_chat_file_path.as_deref(),
+    ) {
+        return;
+    }
+
     report_cleanup_outcome(
         library::cleanup::cleanup_unreferenced_artifacts_locked(
             app,
-            Some(prepared.file_path.clone()),
+            file_path,
             prepared.thumbnail_path.clone(),
             prepared.live_chat_file_path.clone(),
         )
         .await,
     );
+}
+
+/// Removes a Move import's source now that a row points at the library copy.
+///
+/// Best effort. The media is registered and complete either way, so a source that cannot be removed
+/// (another program holding it open on Windows, a read-only folder) is left where it was and
+/// logged, which turns this one Move into a Copy rather than failing a creation that succeeded.
+async fn remove_move_source_best_effort(source: Option<PathBuf>) {
+    let Some(source) = source else {
+        return;
+    };
+
+    let removed =
+        run_blocking(move || library::media::remove_moved_import_source_sync(&source)).await;
+
+    if let Err(error) = removed {
+        logger::warn(
+            "media_creation",
+            format!("the media was imported, but its original file could not be removed: {error}"),
+        );
+    }
 }
 
 /// Re-checks every produced path as a managed library-relative path before it can reach a row.
@@ -703,9 +762,22 @@ async fn record_marker_best_effort<R: Runtime>(
     app: &AppHandle<R>,
     prepared: &PreparedArtifacts,
 ) -> Option<String> {
+    // The sweep deletes what a marker names once nothing references it, so the only copy of a
+    // user's file is left out. With nothing else to name there is no marker to write at all, and
+    // asking for an empty one would only log a refusal.
+    let file_path = deletable_media_file(prepared);
+
+    if nothing_to_clean_up(
+        file_path.as_deref(),
+        prepared.thumbnail_path.as_deref(),
+        prepared.live_chat_file_path.as_deref(),
+    ) {
+        return None;
+    }
+
     let app = app.clone();
     let artifacts = PendingMediaArtifacts {
-        file_path: Some(prepared.file_path.clone()),
+        file_path,
         thumbnail_path: prepared.thumbnail_path.clone(),
         live_chat_file_path: prepared.live_chat_file_path.clone(),
         // The sweep's own retry bookkeeping; a fresh record always starts at zero, which
@@ -782,6 +854,10 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
         Ok(id) => {
             clear_marker_best_effort(app, marker).await;
 
+            // Only now, with a row pointing at the library copy, is the Move source no longer the
+            // thing standing between the user and losing the file.
+            remove_move_source_best_effort(prepared.move_source_to_remove).await;
+
             Ok(CreatedMedia {
                 id,
                 file_path: prepared.file_path,
@@ -795,7 +871,8 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
         Err(error) => {
             // The cleanup runs while the lock is still held, so the count it takes cannot race a
             // creation that would have adopted these same paths, and the marker is cleared only
-            // afterwards, if the process dies in between, the marker is what reconciles them.
+            // afterwards, if the process dies in between, the marker is what reconciles them. A Move
+            // source is untouched here, since the source is what the user still has.
             cleanup_artifacts_best_effort_locked(app, &prepared).await;
             clear_marker_best_effort(app, marker).await;
 
@@ -883,6 +960,27 @@ pub(crate) fn needs_youtube_duplicate_pre_check(request: &CreateMediaRequest) ->
     request.source_mode == MediaSourceMode::YtDlp && request.yt_dlp_youtube_video_id.is_some()
 }
 
+/// Refuses a creation for a channel that does not exist, before anything is imported or downloaded.
+///
+/// The foreign key refuses the insert anyway, but only after the whole file has been copied or
+/// fetched. Checked here, the user hears it before waiting on a transfer that was never going to
+/// land.
+async fn ensure_channel_exists<R: Runtime>(app: &AppHandle<R>, channel_id: i64) -> AppResult<()> {
+    let pool = shared_pool(app).await?;
+
+    if crate::services::channel_repository::get_channel_by_id(&pool, channel_id)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::from_code(
+            AppErrorCode::ChannelNotFound,
+            "the channel this media was being added to no longer exists",
+        ));
+    }
+
+    Ok(())
+}
+
 async fn ensure_youtube_media_is_new<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
@@ -913,6 +1011,8 @@ pub async fn create_media_async<R: Runtime>(
     request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
     let request = normalize_create_media_request(request)?;
+
+    ensure_channel_exists(app, request.channel_id).await?;
 
     if needs_youtube_duplicate_pre_check(&request) {
         ensure_youtube_media_is_new(app, &request).await?;

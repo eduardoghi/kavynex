@@ -427,7 +427,7 @@ pub fn copy_file_atomic_cancellable(
 
 /// Picks the copy the caller is entitled to. The chunked, interruptible one when a cancel flag was
 /// offered, and the faster platform copy when it was not. Keeping the dispatch in one place is what
-/// lets the move path below take a flag without every non-cancelling caller paying for userspace
+/// lets the staged move below take a flag without every non-cancelling caller paying for userspace
 /// buffering it has no use for.
 fn copy_file_atomic_maybe_cancellable(
     source: &Path,
@@ -441,7 +441,7 @@ fn copy_file_atomic_maybe_cancellable(
 }
 
 pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
-    move_or_copy_file_using(source, destination, None, None)
+    move_or_copy_file_using(source, destination, None)
 }
 
 /// Like [`move_or_copy_file`], but reuses a precomputed SHA-256 of `source` for the
@@ -455,30 +455,13 @@ pub fn move_or_copy_file_with_known_source_hash(
     destination: &Path,
     source_hash: &str,
 ) -> AppResult<()> {
-    move_or_copy_file_using(source, destination, Some(source_hash), None)
-}
-
-/// Like [`move_or_copy_file_with_known_source_hash`], but abandons the transfer when `cancel` is
-/// set.
-///
-/// Only the cross-device branch can actually be interrupted, and that is the branch worth
-/// interrupting. A same-volume move is a `rename`, which is instant, while a move across volumes
-/// copies the whole file and is exactly as long as the Copy path. Both are reached from the same
-/// import, so the flag covers the mode the user chose either way.
-pub fn move_or_copy_file_cancellable(
-    source: &Path,
-    destination: &Path,
-    source_hash: &str,
-    cancel: Option<&AtomicBool>,
-) -> AppResult<()> {
-    move_or_copy_file_using(source, destination, Some(source_hash), cancel)
+    move_or_copy_file_using(source, destination, Some(source_hash))
 }
 
 fn move_or_copy_file_using(
     source: &Path,
     destination: &Path,
     source_hash: Option<&str>,
-    cancel: Option<&AtomicBool>,
 ) -> AppResult<()> {
     if !source.exists() {
         return Err(AppError::from_code(
@@ -547,7 +530,7 @@ fn move_or_copy_file_using(
     match fs::rename(source, destination) {
         Ok(_) => Ok(()),
         Err(error) if is_cross_device_error(&error) => {
-            copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
+            copy_file_atomic(source, destination)?;
 
             fs::remove_file(source).map_err(|e| {
                 AppError::fs_error(
@@ -567,6 +550,154 @@ fn move_or_copy_file_using(
             &error,
         )),
     }
+}
+
+/// What [`stage_move_cancellable`] did with the source, and therefore what the caller still owes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StagedMove {
+    /// The destination holds the content and the source is still where it was. The caller removes
+    /// the source once it has committed to keeping the destination, so a failure before that point
+    /// costs nothing but the destination.
+    SourceKept,
+    /// The source was renamed onto the destination, which is now the only copy. Only reached when
+    /// the volume cannot give the file a second name (FAT32 and exFAT have no hard links), because
+    /// the alternative there is copying the whole file within one disk.
+    SourceConsumed,
+    /// The source already is the destination. Nothing was placed and nothing is owed.
+    SameFile,
+}
+
+/// The first half of a move. Puts `source`'s content at `destination` without giving up `source`.
+///
+/// The media import's Move mode, which must not remove the user's file until a row points at the
+/// library copy. Until then a refused insert, or a crash, hands that copy to a cleanup that deletes
+/// unreferenced files. On one volume the destination is a hard link, as instant as a rename and
+/// costing no space. Across volumes it is the same atomic copy [`move_or_copy_file`] falls back to.
+///
+/// A symlinked source is copied rather than linked. Linking it would put the link itself in the
+/// library (hard-linking a symlink does not follow it on Linux), and every library walker refuses
+/// symlinks, so the file would read as missing.
+pub(crate) fn stage_move_cancellable(
+    source: &Path,
+    destination: &Path,
+    source_hash: &str,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<StagedMove> {
+    stage_move_using(source, destination, source_hash, cancel, |from, to| {
+        fs::hard_link(from, to)
+    })
+}
+
+/// [`stage_move_cancellable`] with the link step injected, so the branch a FAT32/exFAT volume takes
+/// can be driven by a test on a filesystem that does support links.
+fn stage_move_using(
+    source: &Path,
+    destination: &Path,
+    source_hash: &str,
+    cancel: Option<&AtomicBool>,
+    link: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> AppResult<StagedMove> {
+    if !source.exists() {
+        return Err(AppError::from_code(
+            AppErrorCode::SourceFileNotFound,
+            "source file does not exist",
+        ));
+    }
+
+    if !source.is_file() {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidSourceFile,
+            "source path is not a file",
+        ));
+    }
+
+    if let (Ok(canonical_source), Ok(canonical_destination)) =
+        (source.canonicalize(), destination.canonicalize())
+    {
+        if canonical_source == canonical_destination {
+            return Ok(StagedMove::SameFile);
+        }
+    }
+
+    let parent = destination.parent().ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::InvalidDestinationPath,
+            "destination path has no parent directory",
+        )
+    })?;
+
+    fs::create_dir_all(parent).map_err(|e| {
+        AppError::fs_error(
+            AppErrorCode::CreateDestinationParentFailed,
+            "failed to create destination parent directory",
+            parent,
+            &e,
+        )
+    })?;
+
+    if destination.exists() {
+        return staged_onto_existing_destination(source, destination, source_hash);
+    }
+
+    if path_is_symlink(source) {
+        copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
+        return Ok(StagedMove::SourceKept);
+    }
+
+    let link_error = match link(source, destination) {
+        Ok(()) => {
+            fsync_parent_dir(destination);
+            return Ok(StagedMove::SourceKept);
+        }
+        Err(error) => error,
+    };
+
+    // Something took the name between the existence check and the link. Rename would replace it
+    // on Unix, so it gets the same identical-content test as a destination that was already there.
+    if link_error.kind() == ErrorKind::AlreadyExists {
+        return staged_onto_existing_destination(source, destination, source_hash);
+    }
+
+    if is_cross_device_error(&link_error) {
+        copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
+        return Ok(StagedMove::SourceKept);
+    }
+
+    match fs::rename(source, destination) {
+        Ok(()) => {
+            fsync_parent_dir(destination);
+            Ok(StagedMove::SourceConsumed)
+        }
+        Err(error) if is_cross_device_error(&error) => {
+            copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
+            Ok(StagedMove::SourceKept)
+        }
+        Err(error) => Err(AppError::fs_error(
+            AppErrorCode::FileMoveFailed,
+            "failed to move file",
+            destination,
+            &error,
+        )),
+    }
+}
+
+/// A destination that already exists is accepted only when it holds the source's exact content, and
+/// then the source is left for the caller to remove, like any other staged move.
+fn staged_onto_existing_destination(
+    source: &Path,
+    destination: &Path,
+    source_hash: &str,
+) -> AppResult<StagedMove> {
+    if destination.is_file()
+        && file_paths_have_same_content_using(source, destination, Some(source_hash))?
+    {
+        return Ok(StagedMove::SourceKept);
+    }
+
+    Err(AppError::from_code(
+        AppErrorCode::DestinationAlreadyExists,
+        "destination file already exists",
+    ))
 }
 
 /// Re-reads a freshly written content-addressed file and confirms its real SHA-256 matches

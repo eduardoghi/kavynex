@@ -756,3 +756,183 @@ fn move_or_copy_file_removes_source_when_destination_has_same_content() {
 
     let _ = fs::remove_dir_all(dir);
 }
+
+/// A source and a not-yet-existing destination in a fresh directory, with the source's hash, the
+/// three things every staged-move test starts from.
+fn staged_move_fixture(contents: &[u8]) -> (PathBuf, PathBuf, PathBuf, String) {
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+
+    let source = dir.join("clip.mp4");
+    fs::write(&source, contents).unwrap();
+    let hash = file_hash(&source).unwrap();
+
+    (
+        dir.clone(),
+        source,
+        dir.join("video").join("media_hash.mp4"),
+        hash,
+    )
+}
+
+/// The OS error a link or rename across volumes reports, which is what routes a move to the copy.
+fn cross_device_error() -> std::io::Error {
+    std::io::Error::from_raw_os_error(if cfg!(windows) { 17 } else { 18 })
+}
+
+#[test]
+fn a_staged_move_places_the_content_and_leaves_the_source_where_it_was() {
+    // The property the whole split exists for. Until the caller has a row pointing at the
+    // destination, the user's file must still be at its original path, so nothing a failure does
+    // to the library copy can cost them the file.
+    let (dir, source, destination, hash) = staged_move_fixture(b"the user's only copy");
+
+    let staged = stage_move_cancellable(&source, &destination, &hash, None).unwrap();
+
+    assert_eq!(staged, StagedMove::SourceKept);
+    assert_eq!(fs::read(&source).unwrap(), b"the user's only copy");
+    assert_eq!(fs::read(&destination).unwrap(), b"the user's only copy");
+
+    // The library copy outlives the source, which is what removing the source afterwards relies on.
+    fs::remove_file(&source).unwrap();
+    assert_eq!(fs::read(&destination).unwrap(), b"the user's only copy");
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_staged_move_across_volumes_copies_and_keeps_the_source() {
+    let (dir, source, destination, hash) = staged_move_fixture(b"crossing a volume");
+
+    let staged = stage_move_using(&source, &destination, &hash, None, |_, _| {
+        Err(cross_device_error())
+    })
+    .unwrap();
+
+    assert_eq!(staged, StagedMove::SourceKept);
+    assert!(source.is_file());
+    assert_eq!(fs::read(&destination).unwrap(), b"crossing a volume");
+    assert_eq!(staging_files_in(destination.parent().unwrap()), 0);
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_volume_without_hard_links_falls_back_to_a_rename_and_says_the_source_is_gone() {
+    // FAT32 and exFAT refuse the link. Copying instead would cost a whole file's time and space on
+    // the same disk, so the source is renamed, and the result has to say so. The caller then knows
+    // the library file is the only copy and must not be cleaned up on a failure.
+    let (dir, source, destination, hash) = staged_move_fixture(b"no second name here");
+
+    let staged = stage_move_using(&source, &destination, &hash, None, |_, _| {
+        Err(std::io::Error::from(ErrorKind::Unsupported))
+    })
+    .unwrap();
+
+    assert_eq!(staged, StagedMove::SourceConsumed);
+    assert!(!source.exists());
+    assert_eq!(fs::read(&destination).unwrap(), b"no second name here");
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_staged_move_of_a_file_onto_itself_reports_the_same_file() {
+    let (dir, source, _, hash) = staged_move_fixture(b"already in the library");
+
+    let staged = stage_move_cancellable(&source, &source, &hash, None).unwrap();
+
+    assert_eq!(staged, StagedMove::SameFile);
+    assert_eq!(fs::read(&source).unwrap(), b"already in the library");
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_staged_move_onto_identical_content_keeps_the_source_for_the_caller_to_remove() {
+    let (dir, source, destination, hash) = staged_move_fixture(b"same bytes");
+    fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    fs::write(&destination, b"same bytes").unwrap();
+
+    let staged = stage_move_cancellable(&source, &destination, &hash, None).unwrap();
+
+    assert_eq!(staged, StagedMove::SourceKept);
+    assert!(
+        source.is_file(),
+        "the duplicate source is owed its removal, not removed here"
+    );
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_staged_move_refuses_a_destination_holding_different_content() {
+    let (dir, source, destination, hash) = staged_move_fixture(b"new bytes");
+    fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    fs::write(&destination, b"catalogued bytes").unwrap();
+
+    let error = stage_move_cancellable(&source, &destination, &hash, None).unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
+    assert_eq!(fs::read(&source).unwrap(), b"new bytes");
+    assert_eq!(fs::read(&destination).unwrap(), b"catalogued bytes");
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_destination_that_appears_during_the_link_is_never_replaced_by_the_rename_fallback() {
+    // A name taken between the existence check and the link fails the link with AlreadyExists.
+    // Falling through to the rename would replace that file on Unix, so it gets the same
+    // identical-content test as a destination that was there from the start.
+    let (dir, source, destination, hash) = staged_move_fixture(b"new bytes");
+
+    let error = stage_move_using(&source, &destination, &hash, None, |_, to| {
+        fs::write(to, b"someone else's bytes").unwrap();
+        Err(std::io::Error::from(ErrorKind::AlreadyExists))
+    })
+    .unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
+    assert_eq!(fs::read(&source).unwrap(), b"new bytes");
+    assert_eq!(fs::read(&destination).unwrap(), b"someone else's bytes");
+
+    let (dir_identical, source_identical, destination_identical, hash_identical) =
+        staged_move_fixture(b"same bytes");
+
+    let staged = stage_move_using(
+        &source_identical,
+        &destination_identical,
+        &hash_identical,
+        None,
+        |_, to| {
+            fs::write(to, b"same bytes").unwrap();
+            Err(std::io::Error::from(ErrorKind::AlreadyExists))
+        },
+    )
+    .unwrap();
+
+    assert_eq!(staged, StagedMove::SourceKept);
+    assert!(source_identical.is_file());
+
+    let _ = fs::remove_dir_all(dir);
+    let _ = fs::remove_dir_all(dir_identical);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_source_is_copied_rather_than_linked() {
+    // Hard-linking a symlink links the symlink itself on Linux, which would put a link in the
+    // library that every walker refuses to follow.
+    let (dir, target, destination, hash) = staged_move_fixture(b"behind a symlink");
+    let source = dir.join("link.mp4");
+    std::os::unix::fs::symlink(&target, &source).unwrap();
+
+    let staged = stage_move_cancellable(&source, &destination, &hash, None).unwrap();
+
+    assert_eq!(staged, StagedMove::SourceKept);
+    assert!(!path_is_symlink(&destination));
+    assert_eq!(fs::read(&destination).unwrap(), b"behind a symlink");
+
+    let _ = fs::remove_dir_all(dir);
+}

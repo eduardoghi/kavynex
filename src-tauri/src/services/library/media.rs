@@ -1,9 +1,11 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use crate::models::yt_dlp::ImportMode;
-use crate::services::filesystem::{copy_file_atomic_cancellable, move_or_copy_file_cancellable};
+use crate::services::filesystem::{
+    copy_file_atomic_cancellable, stage_move_cancellable, StagedMove,
+};
 use crate::services::library::paths::{ensure_library_dir, resolve_existing_library_dir};
 use crate::services::logger;
 use crate::utils::format::{
@@ -28,7 +30,7 @@ fn cancelled(stage: &str) -> AppError {
 
 /// Imports a media file with no way to interrupt it. The shape the tests and any future
 /// non-interactive caller want; the user-facing path goes through
-/// [`import_media_file_cancellable_sync`].
+/// [`stage_media_import_cancellable_sync`].
 pub fn import_media_file_sync(
     path: &str,
     mode: ImportMode,
@@ -37,7 +39,61 @@ pub fn import_media_file_sync(
     import_media_file_cancellable_sync(path, mode, library_path, None)
 }
 
-/// Imports a media file, abandoning the work when `cancel` is set.
+/// Imports a media file and, in Move mode, removes the source straight away.
+///
+/// For a caller with nothing to register in between. Media creation must not use this: it
+/// removes the source before any row points at the library copy, which is the window
+/// [`stage_media_import_cancellable_sync`] exists to close.
+pub fn import_media_file_cancellable_sync(
+    path: &str,
+    mode: ImportMode,
+    library_path: &str,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<String> {
+    let staged = stage_media_import_cancellable_sync(path, mode, library_path, cancel)?;
+
+    if let Some(source) = staged.source_to_remove.as_deref() {
+        remove_moved_import_source_sync(source)?;
+    }
+
+    Ok(staged.relative_path)
+}
+
+/// A media file placed in the library by [`stage_media_import_cancellable_sync`], and what the
+/// import still owes its source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagedMediaImport {
+    pub relative_path: String,
+    /// The Move-mode source, still on disk. Removed with [`remove_moved_import_source_sync`] once a
+    /// row points at `relative_path`. `None` in Copy mode, and in Move mode when nothing is left to
+    /// remove.
+    pub source_to_remove: Option<PathBuf>,
+    /// True when the library file is the only copy of the user's file, so a failure must leave it in
+    /// place rather than hand it to the reference-counted cleanup. Set when the source had to be
+    /// renamed into the library (a volume without hard links), and when the source already was the
+    /// library file.
+    pub library_holds_only_copy: bool,
+}
+
+/// Removes a Move-mode source once the media it became is registered.
+///
+/// A source that is already gone is not an error. Nothing is owed to it any more.
+pub fn remove_moved_import_source_sync(source: &Path) -> AppResult<()> {
+    match fs::remove_file(source) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(AppError::fs_error(
+            AppErrorCode::SourceFileRemoveFailed,
+            "failed to remove the imported source file",
+            source,
+            &error,
+        )),
+    }
+}
+
+/// Places a media file in the library, abandoning the work when `cancel` is set. In Move mode the
+/// source is left where it was whenever the volume allows it, and [`StagedMediaImport`] says what
+/// is still owed to it.
 ///
 /// A local import is the only long operation in this app the user had no way out of. A yt-dlp
 /// download has a stall detector, a timeout, a tree-kill and a Cancel button; an import of a 50 GB
@@ -54,12 +110,12 @@ pub fn import_media_file_sync(
 /// Nothing is left behind by a cancel. The hash writes nothing; the copy stages through a `.tmp-`
 /// sibling that its own error path removes; and a cancel before the rename means the library never
 /// saw the file at all.
-pub fn import_media_file_cancellable_sync(
+pub fn stage_media_import_cancellable_sync(
     path: &str,
     mode: ImportMode,
     library_path: &str,
     cancel: Option<&AtomicBool>,
-) -> AppResult<String> {
+) -> AppResult<StagedMediaImport> {
     let trimmed = path.trim();
 
     // Reject a UNC / network source before any filesystem call touches it. The source is
@@ -149,7 +205,7 @@ pub fn import_media_file_cancellable_sync(
     // multi-GB file for no reason).
     let destination_existed = destination.exists();
 
-    match mode {
+    let (source_to_remove, library_holds_only_copy) = match mode {
         ImportMode::Copy => {
             if destination_existed {
                 // The content-addressed destination already holds this exact content, so there
@@ -164,17 +220,23 @@ pub fn import_media_file_cancellable_sync(
             } else {
                 copy_file_atomic_cancellable(&source, &destination, cancel)?;
             }
+
+            (None, false)
         }
         ImportMode::Move => {
-            // Always go through the move helper, even when the destination already exists. It
-            // no-ops if the source already IS the destination, and otherwise removes the
-            // (identical-by-hash) redundant source. Skipping on "destination exists" would leave
-            // the source behind, so a Move would not actually free it. Pass the hash we already
-            // computed above so the identical-content check does not re-hash the (possibly
-            // multi-GB) source a second time.
-            move_or_copy_file_cancellable(&source, &destination, &hash, cancel)?;
+            // Always staged, even when the destination already exists, so an identical-by-hash
+            // source is still owed its removal and the Move actually frees it. Pass the hash we
+            // already computed above so the identical-content check does not re-hash the
+            // (possibly multi-GB) source a second time.
+            match stage_move_cancellable(&source, &destination, &hash, cancel)? {
+                StagedMove::SourceKept => (Some(source.clone()), false),
+                StagedMove::SourceConsumed => (None, true),
+                // The user's file is the library file. If no row ends up pointing at it, it is
+                // still theirs and must not be cleaned up.
+                StagedMove::SameFile => (None, true),
+            }
         }
-    }
+    };
 
     // A fresh write's name was built from a hash of the source taken before the transfer, so a
     // source changed in that window could leave the name describing the wrong content. Re-hash the
@@ -198,7 +260,11 @@ pub fn import_media_file_cancellable_sync(
         format!("media import finished: '{}'", relative_path),
     );
 
-    Ok(relative_path)
+    Ok(StagedMediaImport {
+        relative_path,
+        source_to_remove,
+        library_holds_only_copy,
+    })
 }
 
 pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<()> {
@@ -346,6 +412,124 @@ mod tests {
             .exists());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_staged_move_import_leaves_the_source_until_the_caller_removes_it() {
+        // Media creation registers the row between these two steps. Whatever happens to the
+        // library copy before that, the user's file is still at its original path.
+        let root = unique_test_dir("staged-move");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"video-bytes").unwrap();
+
+        let staged = stage_media_import_cancellable_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+        )
+        .unwrap();
+
+        assert!(source.is_file(), "staging must not remove the source");
+        assert_eq!(staged.source_to_remove.as_deref(), Some(source.as_path()));
+        assert!(!staged.library_holds_only_copy);
+
+        let library_file = library_dir.join(&staged.relative_path);
+        assert_eq!(fs::read(&library_file).unwrap(), b"video-bytes");
+
+        remove_moved_import_source_sync(&source).unwrap();
+
+        assert!(!source.exists());
+        assert_eq!(fs::read(&library_file).unwrap(), b"video-bytes");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_staged_copy_import_owes_the_source_nothing() {
+        let root = unique_test_dir("staged-copy");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"video-bytes").unwrap();
+
+        let staged = stage_media_import_cancellable_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(staged.source_to_remove, None);
+        assert!(!staged.library_holds_only_copy);
+        assert!(source.is_file());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn moving_the_library_file_onto_itself_marks_it_as_the_only_copy() {
+        // The source already is the content-addressed library file. If no row ends up pointing
+        // at it, it is still the user's file, so the failure path must not clean it up.
+        let root = unique_test_dir("staged-same-file");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let original = source_dir.join("video.mp4");
+        fs::write(&original, b"video-bytes").unwrap();
+
+        let first = import_media_file_sync(
+            original.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+        let library_file = library_dir.join(&first);
+
+        let staged = stage_media_import_cancellable_sync(
+            library_file.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(staged.relative_path, first);
+        assert_eq!(staged.source_to_remove, None);
+        assert!(staged.library_holds_only_copy);
+        assert!(library_file.is_file());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn removing_a_source_that_is_already_gone_is_not_an_error() {
+        let missing = unique_test_dir("source-gone").join("video.mp4");
+
+        remove_moved_import_source_sync(&missing).unwrap();
+    }
+
+    #[test]
+    fn a_source_that_cannot_be_removed_is_reported_rather_than_ignored() {
+        // Only "already gone" is forgiven. Anything else has to reach the caller, which logs that
+        // the Move left the original in place.
+        let dir = unique_test_dir("source-unremovable");
+        fs::create_dir_all(&dir).unwrap();
+
+        let error = remove_moved_import_source_sync(&dir).unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::SourceFileRemoveFailed.as_str());
+        assert!(dir.is_dir());
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

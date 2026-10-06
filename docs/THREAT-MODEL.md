@@ -116,7 +116,7 @@ past a literal prefix match), and the functions applying it are:
 | `thumbnail::picked::validate_picked_thumbnail_path` | the image staged for a manual thumbnail |
 | `thumbnail::persist::persist_thumbnail_file_sync` | the source of a persisted thumbnail or avatar as it arrives over IPC (`persist_thumbnail_file`, and `create_media`'s local thumbnail branch), refused before the library directory is even created |
 | `thumbnail::persist::persist_thumbnail_from_source` | the same source one level down, so the download path and any later caller inherit the refusal |
-| `library::media::import_media_file_cancellable_sync` | the import source |
+| `library::media::stage_media_import_cancellable_sync` | the import source |
 | `library::guard::paths_refer_to_same_location` | a network path aimed at a local library, or at another share than the one a network-hosted library lives on |
 | `utils::path::network_share_prefix` | not a refusal of its own: the host-and-share reading the guard compares before it will canonicalize a network path against a network-hosted library |
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
@@ -370,12 +370,11 @@ therefore not the missing guard here. Adding it would be a functional regression
 
 #### Accepted residual: a move-import hashes the source once
 
-`import_media_file` in move mode hashes the source file up front and reuses that hash through
-the duplicate check, so when the destination already holds identical content the source is
-deleted based on a hash computed slightly earlier
-(`services/filesystem.rs::move_or_copy_file_with_known_source_hash`). A writer that changes the
-source to different same-size content inside that in-process window would see the changed file
-deleted as an "already-imported duplicate". No such concurrent writer exists in the app's
+A media import in move mode hashes the source file up front and reuses that hash through the
+duplicate check (`services/filesystem.rs::stage_move_cancellable`), so when the destination already
+holds identical content the source is deleted, once the media row has landed, based on a hash
+computed earlier. A writer that changes the source to different same-size content inside that
+in-process window would see the changed file deleted as an "already-imported duplicate". No such concurrent writer exists in the app's
 single-user desktop model (the import is user-triggered on a file the user just picked), and
 re-hashing immediately before the delete would only narrow, not close, the window (the classic
 TOCTOU shape). Recorded as an accepted residual rather than left implicit.
@@ -396,7 +395,7 @@ is the app's largest path surface.
 | Field | How it satisfies the rule |
 |---|---|
 | `library_path` | Checked against the persisted setting by the command layer (`ensure_configured_library_path`) before any file is written, like every other library write. |
-| `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::import_media_file_cancellable_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
+| `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::stage_media_import_cancellable_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
 | `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch goes through `persist_thumbnail_file_sync`, which refuses a network location before its first `stat` (`services/thumbnail/persist.rs::persist_thumbnail_from_source`) and gates the extension; the remote branch goes through the image-CDN allow-list and the SSRF guard. This row used to credit `picked.rs` with the refusal, and `picked.rs` only ever guarded the staged preview (`stage_manual_thumbnail`), not this branch, so a UNC spelling reached the stat here. Fixed, and the table is what should have caught it: the script that holds it against the code checks that a listed site exists, not that a given parameter flows through it. |
 | `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). The header check is not cosmetic: yt-dlp rewrites the file it is given, so the extension alone left "an arbitrary text file is not destroyed" resting on yt-dlp's parser refusing it first. |
 
@@ -527,13 +526,12 @@ its critical section. What bounds it is a re-check rather than exclusion, since
 `media_creation::insert_prepared_media` confirms the media file is still on disk *inside* the
 critical section, where `execute_plan` can no longer be running. So the worst that window produces
 is a refused creation (`MEDIA_FILE_NOT_FOUND`, which the frontend already has a message for),
-never a row pointing at a file that is gone. The bytes can still be lost in one narrow case. A
-local import in **move** mode whose destination already held identical content deletes the source
-up front (`filesystem::move_or_copy_file_using`), so if the destination is then unlinked before the
-insert, both copies are gone and the user is told rather than left with a broken row. Closing that
-fully would mean registering the claim before the artifacts are produced, which is not possible for
-a yt-dlp source (the content-addressed path is not known until the download finishes). Recorded as
-an accepted residual, in the same spirit as the move-import TOCTOU below.
+never a row pointing at a file that is gone. A local import in **move** mode loses nothing in that
+window either. Its source is removed only after the row lands (`media_creation::register_prepared_media`,
+through `library::media::stage_media_import_cancellable_sync`), so a refused creation leaves the
+user's original where it was. The one Move that cannot keep its source until then is a rename on a
+volume without hard links (FAT32, exFAT), and that library file is flagged as the only copy, which
+keeps it out of both the failure cleanup and the crash marker the startup sweep reads.
 
 This paragraph used to say that lock was deliberately not built, and that the exclusion rested
 instead on the add-media modal refusing to start a second creation (`isModalLocked`). The one
