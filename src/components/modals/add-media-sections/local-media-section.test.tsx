@@ -9,6 +9,7 @@ describe("LocalMediaSection", () => {
             <LocalMediaSection
                 mediaPath=""
                 mediaType="video"
+                importMode="copy"
                 isLocked={false}
                 onPickMedia={vi.fn()}
             />
@@ -26,6 +27,7 @@ describe("LocalMediaSection", () => {
             <LocalMediaSection
                 mediaPath="/tmp/video.mp4"
                 mediaType="video"
+                importMode="copy"
                 isLocked={false}
                 onPickMedia={vi.fn()}
             />
@@ -39,11 +41,53 @@ describe("LocalMediaSection", () => {
         expect(screen.queryByText("video")).not.toBeInTheDocument();
     });
 
+    it("says the original leaves its folder when a file is picked in Move mode", () => {
+        renderWithMantine(
+            <LocalMediaSection
+                mediaPath="/tmp/video.mp4"
+                mediaType="video"
+                importMode="move"
+                isLocked={false}
+                onPickMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText(/The original file leaves its folder/)).toBeInTheDocument();
+    });
+
+    it("says nothing about moving in Copy mode, or before a file is picked", () => {
+        const { unmount } = renderWithMantine(
+            <LocalMediaSection
+                mediaPath="/tmp/video.mp4"
+                mediaType="video"
+                importMode="copy"
+                isLocked={false}
+                onPickMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByText(/leaves its folder/)).not.toBeInTheDocument();
+        unmount();
+
+        renderWithMantine(
+            <LocalMediaSection
+                mediaPath=""
+                mediaType="video"
+                importMode="move"
+                isLocked={false}
+                onPickMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByText(/leaves its folder/)).not.toBeInTheDocument();
+    });
+
     it("shows audio badge for audio media", () => {
         renderWithMantine(
             <LocalMediaSection
                 mediaPath="/tmp/audio.mp3"
                 mediaType="audio"
+                importMode="copy"
                 isLocked={false}
                 onPickMedia={vi.fn()}
             />
@@ -60,6 +104,7 @@ describe("LocalMediaSection", () => {
             <LocalMediaSection
                 mediaPath=""
                 mediaType="video"
+                importMode="copy"
                 isLocked={false}
                 onPickMedia={onPickMedia}
             />
@@ -76,6 +121,7 @@ describe("LocalMediaSection", () => {
             <LocalMediaSection
                 mediaPath=""
                 mediaType="video"
+                importMode="copy"
                 isLocked={false}
                 onPickMedia={onPickMedia}
             />
@@ -95,6 +141,7 @@ describe("LocalMediaSection", () => {
             <LocalMediaSection
                 mediaPath=""
                 mediaType="video"
+                importMode="copy"
                 isLocked={false}
                 onPickMedia={onPickMedia}
             />
@@ -114,6 +161,7 @@ describe("LocalMediaSection", () => {
             <LocalMediaSection
                 mediaPath=""
                 mediaType="video"
+                importMode="copy"
                 isLocked
                 onPickMedia={onPickMedia}
             />
@@ -130,6 +178,7 @@ describe("LocalMediaSection", () => {
             <LocalMediaSection
                 mediaPath=""
                 mediaType="video"
+                importMode="copy"
                 isLocked
                 onPickMedia={onPickMedia}
             />

@@ -17,6 +17,23 @@ describe("ImportBehaviorSection", () => {
         expect(screen.getByRole("radio", { name: /move files/i })).not.toBeChecked();
     });
 
+    it("says what each mode does to the original file", () => {
+        renderWithMantine(
+            <ImportBehaviorSection
+                importMode="copy"
+                onChangeImportMode={vi.fn()}
+                isMigratingLibraryPath={false}
+            />
+        );
+
+        expect(screen.getByRole("radio", { name: /move files/i })).toHaveAccessibleDescription(
+            /removed from its folder/i
+        );
+        expect(screen.getByRole("radio", { name: /copy files/i })).toHaveAccessibleDescription(
+            /stays where it is/i
+        );
+    });
+
     it("names the radio group after the section title", () => {
         renderWithMantine(
             <ImportBehaviorSection

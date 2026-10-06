@@ -7,6 +7,7 @@ import {
 } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
 import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../../types/media";
+import type { ImportMode } from "../../types/settings";
 import { AddMediaModalActions } from "./add-media-sections/add-media-modal-actions";
 import { ExternalToolsWarning } from "./add-media-sections/external-tools-warning";
 import { LocalMediaSection } from "./add-media-sections/local-media-section";
@@ -34,6 +35,7 @@ type AddMediaModalProps = {
     title: string;
     mediaPath: string;
     mediaType: MediaType;
+    importMode: ImportMode;
     thumbPath: string;
     publishedAt: string;
     downloadComments: boolean;
@@ -79,6 +81,7 @@ export function AddMediaModal({
     title,
     mediaPath,
     mediaType,
+    importMode,
     thumbPath,
     publishedAt,
     downloadComments,
@@ -296,6 +299,7 @@ export function AddMediaModal({
                             <LocalMediaSection
                                 mediaPath={mediaPath}
                                 mediaType={mediaType}
+                                importMode={importMode}
                                 isLocked={isModalLocked}
                                 onPickMedia={onPickMedia}
                             />

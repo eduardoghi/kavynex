@@ -19,6 +19,7 @@ function createDefaultProps(): React.ComponentProps<typeof AddMediaModal> {
         title: "",
         mediaPath: "",
         mediaType: "video",
+        importMode: "copy",
         thumbPath: "",
         publishedAt: "",
         downloadComments: true,

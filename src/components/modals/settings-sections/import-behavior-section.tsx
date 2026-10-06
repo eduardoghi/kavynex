@@ -44,12 +44,14 @@ export function ImportBehaviorSection({
                     <Radio
                         value="copy"
                         label="Copy files into the library folder"
+                        description="The original file stays where it is."
                         disabled={isMigratingLibraryPath}
                     />
 
                     <Radio
                         value="move"
                         label="Move files into the library folder"
+                        description="The original file is removed from its folder once the media is added to the library."
                         disabled={isMigratingLibraryPath}
                     />
                 </Stack>

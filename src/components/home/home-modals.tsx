@@ -260,6 +260,7 @@ export function HomeModals({
                 title={addMediaForm.title}
                 mediaPath={addMediaForm.mediaPath}
                 mediaType={addMediaForm.mediaType}
+                importMode={settings.settings.importMode}
                 thumbPath={addMediaForm.thumbPath}
                 publishedAt={addMediaForm.publishedAt}
                 downloadComments={addMediaForm.downloadComments}

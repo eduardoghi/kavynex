@@ -1,6 +1,7 @@
 import { Box, Group, Text, Tooltip } from "@mantine/core";
 import { Headphones, Upload, Video } from "lucide-react";
 import type { MediaType } from "../../../types/media";
+import type { ImportMode } from "../../../types/settings";
 import { MEDIA_TYPE_ACCENT_COLOR } from "../../../constants/media-type-accent";
 import { fileNameFromPath } from "../../../utils/media-utils";
 import {
@@ -14,6 +15,7 @@ import {
 type LocalMediaSectionProps = {
     mediaPath: string;
     mediaType: MediaType;
+    importMode: ImportMode;
     isLocked: boolean;
     onPickMedia: () => void;
 };
@@ -21,6 +23,7 @@ type LocalMediaSectionProps = {
 export function LocalMediaSection({
     mediaPath,
     mediaType,
+    importMode,
     isLocked,
     onPickMedia,
 }: LocalMediaSectionProps): JSX.Element {
@@ -104,6 +107,16 @@ export function LocalMediaSection({
                     <Text size="sm" c="dimmed" lineClamp={2}>
                         {hasMedia ? "Click to change file" : "Click to choose a file"}
                     </Text>
+
+                    {/* Said here, next to the file it applies to, because the setting lives in
+                        Settings and this is the moment the user's original is about to leave its
+                        folder. */}
+                    {hasMedia && importMode === "move" && (
+                        <Text size="sm" c="dimmed" lineClamp={2}>
+                            Move is on in Settings. The original file leaves its folder once the
+                            media is added.
+                        </Text>
+                    )}
                 </Box>
 
             </Group>
