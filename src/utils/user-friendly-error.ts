@@ -16,6 +16,9 @@ import {
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
     LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE,
+    LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE,
+    NOT_ENOUGH_SPACE_FOR_LIBRARY_ERROR_CODE,
+    LIBRARY_COPY_INCOMPLETE_ERROR_CODE,
     LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE,
     LIBRARY_VERIFICATION_FAILED_ERROR_CODE,
     ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
@@ -125,7 +128,15 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [INVALID_DIRECTORY_PATH_ERROR_CODE]: "Choose a valid folder.",
     [INVALID_LIBRARY_PATH_ERROR_CODE]:
         "The library folder is missing or not valid. Reconnect the drive it is on, or choose the folder in Settings.",
-    [INVALID_LIBRARY_MIGRATION_ERROR_CODE]: "The selected library migration path is not valid.",
+    [INVALID_LIBRARY_MIGRATION_ERROR_CODE]:
+        "The new library folder cannot be used. It has to be empty, or hold only an interrupted Kavynex move, and it cannot be inside the current library folder or contain it.",
+    [LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE]:
+        "The current library folder cannot be reached. Reconnect the drive it is on and try again.",
+    // The amounts arrive in the backend details and are appended after this line.
+    [NOT_ENOUGH_SPACE_FOR_LIBRARY_ERROR_CODE]:
+        "The new folder's drive does not have enough free space for the library. Nothing was copied. Free up space or choose another drive.",
+    [LIBRARY_COPY_INCOMPLETE_ERROR_CODE]:
+        "A file could not be copied completely, so the library stayed where it was and nothing was removed. The partial copy in the new folder can be deleted, or the move tried again.",
     [LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE]:
         "A library folder change is already running. Wait for it to finish before starting another one.",
     [LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE]:

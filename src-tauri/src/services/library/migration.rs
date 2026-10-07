@@ -85,6 +85,203 @@ pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) 
     Ok(())
 }
 
+/// Calls `visit` with the path relative to `root` and the size of every regular file in `root`'s
+/// managed directories. Symlinks are skipped, as `copy_directory_contents` skips them, so the walk
+/// sees exactly the files the copy writes.
+fn for_each_managed_file(
+    root: &Path,
+    visit: &mut impl FnMut(&Path, u64) -> AppResult<()>,
+) -> AppResult<()> {
+    fn walk(
+        dir: &Path,
+        relative: &Path,
+        visit: &mut impl FnMut(&Path, u64) -> AppResult<()>,
+    ) -> AppResult<()> {
+        let entries = fs::read_dir(dir).map_err(|e| {
+            AppError::fs_error(
+                AppErrorCode::ReadDirFailed,
+                "failed to read directory",
+                dir,
+                &e,
+            )
+        })?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                AppError::fs_error(
+                    AppErrorCode::ReadDirEntryFailed,
+                    "failed to read directory entry",
+                    dir,
+                    &e,
+                )
+            })?;
+
+            if crate::services::filesystem::dir_entry_is_symlink(&entry) {
+                continue;
+            }
+
+            let path = entry.path();
+            let child = relative.join(entry.file_name());
+
+            if path.is_dir() {
+                walk(&path, &child, visit)?;
+            } else if let Some(metadata) =
+                path.metadata().ok().filter(|metadata| metadata.is_file())
+            {
+                visit(&child, metadata.len())?;
+            }
+        }
+
+        Ok(())
+    }
+
+    for dir_name in MANAGED_LIBRARY_DIRS {
+        let dir = root.join(dir_name);
+
+        if dir.is_dir() {
+            walk(&dir, Path::new(dir_name), visit)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// The size of `relative` under `root`, or `None` when it is not a file there.
+fn file_size_at(root: &Path, relative: &Path) -> Option<u64> {
+    root.join(relative)
+        .metadata()
+        .ok()
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+}
+
+/// What the copy still has to write. Every file of the old library whose counterpart in the new
+/// one is missing or a different size, so a resumed migration is not asked for room it has
+/// already used.
+fn bytes_left_to_copy(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<u64> {
+    let mut needed: u64 = 0;
+
+    for_each_managed_file(old_library_dir, &mut |relative, size| {
+        if file_size_at(new_library_dir, relative) != Some(size) {
+            needed = needed.saturating_add(size);
+        }
+        Ok(())
+    })?;
+
+    Ok(needed)
+}
+
+/// Whether `available` bytes fit `needed`. An unknown free space lets the migration go ahead, as
+/// it did before this check existed, and the copy fails on its own when the disk fills.
+fn has_room_for(needed: u64, available: Option<u64>) -> bool {
+    available.is_none_or(|available| available >= needed)
+}
+
+/// The bytes the current user can still write on the volume holding `path`, or `None` when the
+/// platform call fails.
+#[cfg(windows)]
+fn available_space_bytes(path: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetDiskFreeSpaceExW(
+            lp_directory_name: *const u16,
+            lp_free_bytes_available_to_caller: *mut u64,
+            lp_total_number_of_bytes: *mut u64,
+            lp_total_number_of_free_bytes: *mut u64,
+        ) -> i32;
+    }
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut available: u64 = 0;
+
+    // SAFETY: `wide` is a NUL-terminated UTF-16 string that outlives the call, `available` is a
+    // valid u64 to write to, and the two totals are optional and passed as null.
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut available,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+
+    (ok != 0).then_some(available)
+}
+
+/// Unix counterpart, through `statvfs`. `f_bavail` is the count available to an unprivileged
+/// process, which is what the copy runs as.
+#[cfg(unix)]
+fn available_space_bytes(path: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+
+    // SAFETY: `c_path` is NUL-terminated and outlives the call, and `stat` is only read after the
+    // call reported success, which means it was filled in.
+    let result = unsafe { libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) };
+
+    if result != 0 {
+        return None;
+    }
+
+    // SAFETY: statvfs returned 0, so it initialized `stat`.
+    let stat = unsafe { stat.assume_init() };
+
+    #[allow(clippy::unnecessary_cast)]
+    Some((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
+}
+
+/// Refuses a migration whose destination volume cannot hold what is left to copy. Checked before
+/// anything is written, because running out of space halfway leaves a partial copy on the new
+/// drive and nothing gained.
+fn ensure_room_for_migration(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
+    let needed = bytes_left_to_copy(old_library_dir, new_library_dir)?;
+    let available = available_space_bytes(new_library_dir);
+
+    if has_room_for(needed, available) {
+        return Ok(());
+    }
+
+    Err(AppError::from_code_with_details(
+        AppErrorCode::NotEnoughSpaceForLibrary,
+        "the new library folder's drive does not have enough free space",
+        format!(
+            "{} to copy, {} available",
+            crate::utils::format::format_bytes(needed),
+            crate::utils::format::format_bytes(available.unwrap_or(0))
+        ),
+    ))
+}
+
+/// The first file of the old library that has no copy of the same size in the new one.
+///
+/// Run after the copy and before anything of the old library is removed. The copy reports
+/// success file by file, and this is the last point where the old folder still holds everything,
+/// so a file that did not arrive whole (a destination that filled up or went away mid-copy, a
+/// file that changed while it was read) stops the migration here instead of being deleted.
+fn first_incomplete_copy(
+    old_library_dir: &Path,
+    new_library_dir: &Path,
+) -> AppResult<Option<PathBuf>> {
+    let mut incomplete: Option<PathBuf> = None;
+
+    for_each_managed_file(old_library_dir, &mut |relative, size| {
+        if incomplete.is_none() && file_size_at(new_library_dir, relative) != Some(size) {
+            incomplete = Some(relative.to_path_buf());
+        }
+        Ok(())
+    })?;
+
+    Ok(incomplete)
+}
+
 /// Phase 1. Copy all managed directories to the new location without touching the originals.
 /// If any copy fails here, the old library is still fully intact and the app continues working
 /// normally against the old path.
@@ -183,6 +380,14 @@ fn migrate_library_contents_with_marker(
 ) -> AppResult<bool> {
     copy_library_contents(old_library_dir, new_library_dir)?;
 
+    if let Some(relative) = first_incomplete_copy(old_library_dir, new_library_dir)? {
+        return Err(AppError::from_code_with_details(
+            AppErrorCode::LibraryCopyIncomplete,
+            "a library file was not copied completely, so the old library folder was kept as it was",
+            relative.to_string_lossy().to_string(),
+        ));
+    }
+
     if let Some(marker) = commit_marker {
         if let Err(error) = crate::services::library::recovery::write_commit_marker(
             marker,
@@ -226,10 +431,43 @@ fn list_leftover_entries(old_library_dir: &Path) -> Vec<String> {
         .collect()
 }
 
+/// What the caller knows that the filesystem cannot tell the migration.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MigrationContext {
+    /// The database lists media (or channel avatars) that live in the current library.
+    pub library_has_media: bool,
+    /// The user confirmed switching to the new folder although the current one cannot be reached,
+    /// knowing nothing will be moved.
+    pub switch_without_moving: bool,
+}
+
+/// Whether a migration whose current library folder does not exist has to stop and ask.
+///
+/// It used to switch without a word, which was right for a library that was never used and wrong
+/// for one whose drive is simply not connected. Every media then pointed at the new, empty folder
+/// and read as missing.
+fn must_ask_before_switching(context: MigrationContext) -> bool {
+    context.library_has_media && !context.switch_without_moving
+}
+
 pub fn migrate_library_directory_sync(
     old_library_path: &str,
     new_library_path: &str,
     commit_marker: Option<&Path>,
+) -> AppResult<MigrateLibraryDirectoryResult> {
+    migrate_library_directory_in_context(
+        old_library_path,
+        new_library_path,
+        commit_marker,
+        MigrationContext::default(),
+    )
+}
+
+pub fn migrate_library_directory_in_context(
+    old_library_path: &str,
+    new_library_path: &str,
+    commit_marker: Option<&Path>,
+    context: MigrationContext,
 ) -> AppResult<MigrateLibraryDirectoryResult> {
     let migration_guard = match library_migration_lock().try_lock() {
         Ok(guard) => guard,
@@ -270,6 +508,14 @@ pub fn migrate_library_directory_sync(
     }
 
     if !old_library_dir.exists() {
+        if must_ask_before_switching(context) {
+            drop(migration_guard);
+            return Err(AppError::from_code(
+                AppErrorCode::LibraryFolderUnreachable,
+                "the current library folder cannot be reached and the library still lists media in it",
+            ));
+        }
+
         ensure_destination_is_migratable(&canonical_new)?;
 
         drop(migration_guard);
@@ -320,6 +566,7 @@ pub fn migrate_library_directory_sync(
     }
 
     ensure_destination_is_migratable(&canonical_new)?;
+    ensure_room_for_migration(&canonical_old, &canonical_new)?;
 
     // Hold the exclusive library gate across the copy/remove phase. It drains any in-flight
     // import/download/delete and blocks new ones, so a file can never be written into the old
@@ -406,6 +653,129 @@ mod tests {
 
         let _ = fs::remove_dir_all(new_root);
         let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn the_room_check_counts_only_what_is_left_to_copy() {
+        let old_root = unique_test_dir("room-old");
+        let new_root = unique_test_dir("room-new");
+        fs::create_dir_all(old_root.join("video").join("nested")).unwrap();
+        fs::create_dir_all(old_root.join("thumbnails")).unwrap();
+        fs::create_dir_all(new_root.join("video")).unwrap();
+
+        fs::write(old_root.join("video").join("done.mp4"), b"12345").unwrap();
+        fs::write(
+            old_root.join("video").join("nested").join("todo.mp4"),
+            b"1234567",
+        )
+        .unwrap();
+        fs::write(old_root.join("thumbnails").join("half.jpg"), b"abc").unwrap();
+        // A file outside the managed folders is never copied, so it needs no room.
+        fs::write(old_root.join("stray.txt"), b"ignored by the copy").unwrap();
+
+        // A resumed migration. One file already arrived whole, another only partly.
+        fs::write(new_root.join("video").join("done.mp4"), b"12345").unwrap();
+        fs::create_dir_all(new_root.join("thumbnails")).unwrap();
+        fs::write(new_root.join("thumbnails").join("half.jpg"), b"a").unwrap();
+
+        assert_eq!(bytes_left_to_copy(&old_root, &new_root).unwrap(), 7 + 3);
+
+        let _ = fs::remove_dir_all(new_root);
+        let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn a_destination_fits_when_its_free_space_covers_the_copy_or_is_unknown() {
+        assert!(has_room_for(10, Some(10)));
+        assert!(has_room_for(10, Some(11)));
+        assert!(!has_room_for(10, Some(9)));
+        assert!(has_room_for(10, None));
+    }
+
+    #[test]
+    fn the_free_space_of_a_real_folder_can_be_read() {
+        // Not asserted against a number, which depends on the machine. Only that the platform
+        // call works on a path that exists, which the room check depends on.
+        assert!(available_space_bytes(&std::env::temp_dir()).is_some());
+    }
+
+    #[test]
+    fn a_copy_missing_a_file_or_holding_a_short_one_is_reported_before_anything_is_removed() {
+        let old_root = unique_test_dir("incomplete-old");
+        let new_root = unique_test_dir("incomplete-new");
+        fs::create_dir_all(old_root.join("audio")).unwrap();
+        fs::create_dir_all(new_root.join("audio")).unwrap();
+        fs::write(old_root.join("audio").join("a.mp3"), b"whole").unwrap();
+        fs::write(new_root.join("audio").join("a.mp3"), b"whole").unwrap();
+
+        assert_eq!(first_incomplete_copy(&old_root, &new_root).unwrap(), None);
+
+        fs::write(old_root.join("audio").join("b.mp3"), b"longer file").unwrap();
+        fs::write(new_root.join("audio").join("b.mp3"), b"short").unwrap();
+
+        assert_eq!(
+            first_incomplete_copy(&old_root, &new_root).unwrap(),
+            Some(Path::new("audio").join("b.mp3"))
+        );
+
+        fs::remove_file(new_root.join("audio").join("b.mp3")).unwrap();
+
+        assert_eq!(
+            first_incomplete_copy(&old_root, &new_root).unwrap(),
+            Some(Path::new("audio").join("b.mp3"))
+        );
+
+        let _ = fs::remove_dir_all(new_root);
+        let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn a_missing_library_with_media_in_it_asks_before_switching() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let missing_old = unique_test_dir("unreachable-old");
+        let new_root = unique_test_dir("unreachable-new");
+        fs::create_dir_all(&new_root).unwrap();
+
+        let with_media = MigrationContext {
+            library_has_media: true,
+            switch_without_moving: false,
+        };
+        let error = migrate_library_directory_in_context(
+            missing_old.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+            None,
+            with_media,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, AppErrorCode::LibraryFolderUnreachable.as_str());
+
+        // Once the user confirmed, it switches without moving anything, as before.
+        let confirmed = migrate_library_directory_in_context(
+            missing_old.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+            None,
+            MigrationContext {
+                switch_without_moving: true,
+                ..with_media
+            },
+        )
+        .unwrap();
+        assert!(confirmed.changed);
+
+        // A library that never held anything switches without asking.
+        assert!(
+            migrate_library_directory_in_context(
+                missing_old.to_string_lossy().as_ref(),
+                new_root.to_string_lossy().as_ref(),
+                None,
+                MigrationContext::default(),
+            )
+            .unwrap()
+            .changed
+        );
+
+        let _ = fs::remove_dir_all(new_root);
     }
 
     #[test]

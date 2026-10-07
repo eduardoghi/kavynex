@@ -181,6 +181,10 @@ exclude_re = [
     # cfg-split: unix File::sync_all / windows FlushFileBuffers, best effort, and flushing a
     # directory entry is invisible to any functional test.
     'fsync_parent_dir',
+    # Boundary and cfg-split: the free space of the machine's own disk, statvfs on unix and
+    # GetDiskFreeSpaceExW on windows. No test can pin the number. The decision it feeds,
+    # has_room_for, stays in scope and covered.
+    'available_space_bytes',
     # Equivalent: with `&&`, a missing or non-file path still returns Ok(false). Covers both guards.
     'replace \|\| with && in file_paths_have_same_content',
     # Equivalent: changes only the internal temp filename, which the following rename discards.

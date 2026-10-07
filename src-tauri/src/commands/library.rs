@@ -68,11 +68,34 @@ pub async fn is_directory_empty(path: String) -> AppResult<bool> {
     run_blocking(move || library::paths::is_directory_empty_sync(&path)).await
 }
 
+/// Whether the database lists anything stored in the library, a media or a channel avatar.
+///
+/// What tells a library that was never used apart from one whose drive is not connected when its
+/// folder does not exist. A failed query counts as "yes", so the migration asks rather than
+/// switching on a guess.
+async fn library_has_media<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let Ok(pool) = crate::services::database::shared_pool(app).await else {
+        return true;
+    };
+
+    sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM videos) OR EXISTS(
+             SELECT 1 FROM channels WHERE avatar_path IS NOT NULL AND TRIM(avatar_path) <> ''
+         )",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(true)
+}
+
 #[tauri::command]
 pub async fn migrate_library_directory<R: Runtime>(
     app: AppHandle<R>,
     old_library_path: String,
     new_library_path: String,
+    // Set once the user confirmed using the new folder although the current one cannot be
+    // reached (LIBRARY_FOLDER_UNREACHABLE). Nothing is moved then.
+    switch_without_moving: Option<bool>,
 ) -> AppResult<library::migration::MigrateLibraryDirectoryResult> {
     // Keep the old path (already the canonical form register_library_asset_scope authorized)
     // so its asset-scope grant can be withdrawn once the migration actually moves the library.
@@ -116,12 +139,18 @@ pub async fn migrate_library_directory<R: Runtime>(
         .as_deref()
         .map(crate::services::library::recovery::commit_marker_path);
 
+    let context = library::migration::MigrationContext {
+        library_has_media: library_has_media(&app).await,
+        switch_without_moving: switch_without_moving.unwrap_or(false),
+    };
+
     let result =
         verify_library_path_then_blocking(&app, old_library_path, move |old_library_path| {
-            library::migration::migrate_library_directory_sync(
+            library::migration::migrate_library_directory_in_context(
                 &old_library_path,
                 &new_library_path,
                 commit_marker.as_deref(),
+                context,
             )
         })
         .await?;

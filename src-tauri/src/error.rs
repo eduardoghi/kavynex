@@ -39,6 +39,11 @@ pub enum AppErrorCode {
     CanonicalizeDirectoryFailed,
     InvalidLibraryMigration,
     LibraryMigrationAlreadyRunning,
+    // The current library folder cannot be reached while the database still lists media in it.
+    // The frontend asks before switching without moving anything.
+    LibraryFolderUnreachable,
+    NotEnoughSpaceForLibrary,
+    LibraryCopyIncomplete,
     LibraryVerificationInProgress,
     LibraryVerificationFailed,
 
@@ -212,6 +217,9 @@ impl AppErrorCode {
             Self::CanonicalizeLibraryPathFailed => "CANONICALIZE_LIBRARY_PATH_FAILED",
             Self::CanonicalizeDirectoryFailed => "CANONICALIZE_DIRECTORY_FAILED",
             Self::InvalidLibraryMigration => "INVALID_LIBRARY_MIGRATION",
+            Self::LibraryFolderUnreachable => "LIBRARY_FOLDER_UNREACHABLE",
+            Self::NotEnoughSpaceForLibrary => "NOT_ENOUGH_SPACE_FOR_LIBRARY",
+            Self::LibraryCopyIncomplete => "LIBRARY_COPY_INCOMPLETE",
             Self::LibraryMigrationAlreadyRunning => "LIBRARY_MIGRATION_ALREADY_RUNNING",
             Self::LibraryVerificationInProgress => "LIBRARY_VERIFICATION_IN_PROGRESS",
             Self::LibraryVerificationFailed => "LIBRARY_VERIFICATION_FAILED",
