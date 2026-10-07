@@ -123,6 +123,8 @@ pub async fn list_live_chat_files<R: Runtime>(app: AppHandle<R>) -> AppResult<Ve
 /// once the library path is known.
 #[tauri::command]
 pub async fn migrate_live_chat_to_library<R: Runtime>(app: AppHandle<R>) -> AppResult<()> {
+    // Before the library path is read, for the reason given on LibraryPass::begin.
+    let library_pass = crate::services::library::lock::LibraryPass::begin();
     let library_dir = configured_library_dir(&app).await?;
 
     let app_data_dir = app.path().app_data_dir().map_err(|e| {
@@ -133,12 +135,13 @@ pub async fn migrate_live_chat_to_library<R: Runtime>(app: AppHandle<R>) -> AppR
     })?;
 
     run_blocking(move || {
-        // Serialize this library write against a concurrent migration (see
-        // services::library::lock). Held across both steps; neither reacquires the guard.
-        let _library_guard = crate::services::library::lock::library_read_guard();
-
-        migrate_live_chat_files(&app_data_dir, &library_dir)?;
-        compress_existing_live_chat_files(&library_dir.join("live_chat"))?;
+        // Serialized against a concurrent library migration one file at a time (see
+        // services::library::lock::LibraryPass). A pass that a migration got into stops where it
+        // is, and the next launch finishes it, since both steps are idempotent.
+        migrate_live_chat_files(&app_data_dir, &library_dir, || library_pass.file_guard())?;
+        compress_existing_live_chat_files(&library_dir.join("live_chat"), || {
+            library_pass.file_guard()
+        })?;
         Ok(())
     })
     .await

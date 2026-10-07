@@ -26,7 +26,7 @@ use serde::Serialize;
 use crate::services::logger;
 use crate::utils::hash::{file_hash_cancellable, is_cancelled};
 use crate::utils::path::{absolute_path_from_relative, ManagedSubtree};
-use crate::AppResult;
+use crate::{AppError, AppErrorCode, AppResult};
 
 /// How many example paths of each kind the report carries back, matching `integrity.rs`.
 const MAX_EXAMPLES: usize = 5;
@@ -263,10 +263,11 @@ fn record(report: &mut ContentVerificationReport, path: &str, outcome: ContentVe
 ///
 /// `on_progress` is called with (checked so far, total). Its failure stops the run. The only caller
 /// emits on an IPC channel, and a channel that has gone away means the window that asked is gone.
-pub(crate) fn verify_library_content_sync<F>(
+pub(crate) fn verify_library_content_sync<F, G>(
     library_dir: &Path,
     artifacts: &[VerifiableArtifact],
     cancel: Option<&AtomicBool>,
+    mut file_guard: impl FnMut() -> Option<G>,
     mut on_progress: F,
 ) -> AppResult<ContentVerificationReport>
 where
@@ -281,12 +282,23 @@ where
             break;
         }
 
+        // One file at a time (see library::lock::LibraryPass). `None` means the library was moved
+        // since the check began, and every remaining path names the old location, where each
+        // file would read as missing.
+        let Some(guard) = file_guard() else {
+            return Err(AppError::from_code(
+                AppErrorCode::LibraryVerificationFailed,
+                "the library folder was moved while it was being checked",
+            ));
+        };
+
         let outcome = verify_stored_file(
             library_dir,
             &artifact.relative_path,
             artifact.subtree,
             cancel,
         );
+        drop(guard);
 
         // Re-checked after the hash rather than only before it. A cancel that landed mid-read comes
         // back as Unreadable, and recording that would leave a cancelled run reporting unreadable
@@ -516,6 +528,38 @@ mod tests {
     }
 
     #[test]
+    fn a_check_the_library_moved_under_stops_instead_of_reporting_its_files_missing() {
+        let library = unique_dir("moved");
+        fs::create_dir_all(library.join(LIBRARY_DIR_VIDEO)).unwrap();
+
+        let first = format!("{LIBRARY_DIR_VIDEO}/media_{}.mp4", hash_of(b"first"));
+        fs::write(library.join(&first), b"first").unwrap();
+        let second = format!("{LIBRARY_DIR_VIDEO}/media_{}.mp4", hash_of(b"second"));
+        fs::write(library.join(&second), b"second").unwrap();
+
+        // A migration gets in after the first file.
+        let mut guards = [Some(()), None].into_iter();
+        let mut progress = Vec::new();
+
+        let error = verify_library_content_sync(
+            &library,
+            &[media(&first), media(&second)],
+            None,
+            || guards.next().flatten(),
+            |checked, total| {
+                progress.push((checked, total));
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::LibraryVerificationFailed.as_str());
+        assert_eq!(progress, vec![(1, 2)]);
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
     fn a_sweep_counts_each_outcome_and_reports_progress() {
         let library = unique_dir("sweep");
         fs::create_dir_all(library.join(LIBRARY_DIR_VIDEO)).unwrap();
@@ -535,10 +579,16 @@ mod tests {
         let artifacts = [media(&good), media(&bad), media(&unnamed), media(&missing)];
 
         let mut progress = Vec::new();
-        let report = verify_library_content_sync(&library, &artifacts, None, |checked, total| {
-            progress.push((checked, total));
-            Ok(())
-        })
+        let report = verify_library_content_sync(
+            &library,
+            &artifacts,
+            None,
+            || Some(()),
+            |checked, total| {
+                progress.push((checked, total));
+                Ok(())
+            },
+        )
         .unwrap();
 
         assert_eq!(report.checked, 4);
@@ -566,15 +616,20 @@ mod tests {
         let artifacts = [media(&relative), media(&relative), media(&relative)];
 
         let cancel = AtomicBool::new(false);
-        let report =
-            verify_library_content_sync(&library, &artifacts, Some(&cancel), |checked, _| {
+        let report = verify_library_content_sync(
+            &library,
+            &artifacts,
+            Some(&cancel),
+            || Some(()),
+            |checked, _| {
                 // Cancel after the first file, the way the user's click arrives mid-sweep.
                 if checked == 1 {
                     cancel.store(true, Ordering::SeqCst);
                 }
                 Ok(())
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
 
         assert!(report.cancelled, "a stopped run must report itself partial");
         assert_eq!(
@@ -658,7 +713,8 @@ mod tests {
         let library = unique_dir("empty");
         fs::create_dir_all(&library).unwrap();
 
-        let report = verify_library_content_sync(&library, &[], None, |_, _| Ok(())).unwrap();
+        let report =
+            verify_library_content_sync(&library, &[], None, || Some(()), |_, _| Ok(())).unwrap();
 
         assert_eq!(report.checked, 0);
         assert_eq!(report.corrupt, 0);

@@ -340,7 +340,15 @@ where
 /// and travel with the library folder. Idempotent. A no-op once the source folder is empty
 /// or gone. Handles the app-data-on-SSD to library-on-HDD case by falling back to copy+delete
 /// when a cross-volume rename fails. Returns how many files were moved.
-pub fn migrate_live_chat_files(app_data_dir: &Path, library_dir: &Path) -> AppResult<usize> {
+///
+/// `file_guard` is taken around each file and stops the pass when it returns `None` (a library
+/// migration ran since it began, see `library::lock::LibraryPass`). What was moved so far is
+/// counted, and the rest waits for the next run.
+pub fn migrate_live_chat_files<G>(
+    app_data_dir: &Path,
+    library_dir: &Path,
+    mut file_guard: impl FnMut() -> Option<G>,
+) -> AppResult<usize> {
     let source_dir = app_data_dir.join("live_chat");
 
     if !source_dir.exists() {
@@ -363,6 +371,10 @@ pub fn migrate_live_chat_files(app_data_dir: &Path, library_dir: &Path) -> AppRe
 
         let Some(name) = path.file_name() else {
             continue;
+        };
+
+        let Some(_guard) = file_guard() else {
+            break;
         };
 
         fs::create_dir_all(&dest_dir)
@@ -528,7 +540,12 @@ fn record_unreadable_entry(summary: &mut LiveChatCompressionSummary) {
 
 /// Compresses every uncompressed live chat file in `dir`. Best effort. A failure on one file
 /// is logged and counted, never aborting the whole pass.
-pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompressionSummary> {
+///
+/// `file_guard` works as in [`migrate_live_chat_files`].
+pub fn compress_existing_live_chat_files<G>(
+    dir: &Path,
+    mut file_guard: impl FnMut() -> Option<G>,
+) -> AppResult<LiveChatCompressionSummary> {
     let mut summary = LiveChatCompressionSummary::default();
 
     if !dir.exists() {
@@ -564,6 +581,10 @@ pub fn compress_existing_live_chat_files(dir: &Path) -> AppResult<LiveChatCompre
         if is_temp {
             continue;
         }
+
+        let Some(_guard) = file_guard() else {
+            break;
+        };
 
         summary.scanned += 1;
 
@@ -1002,15 +1023,59 @@ mod tests {
         fs::create_dir_all(&source).unwrap();
         fs::write(source.join("a.live_chat.json"), b"hello").unwrap();
 
-        assert_eq!(migrate_live_chat_files(&app_data, &library).unwrap(), 1);
+        assert_eq!(
+            migrate_live_chat_files(&app_data, &library, || Some(())).unwrap(),
+            1
+        );
         assert!(library.join("live_chat").join("a.live_chat.json").exists());
         assert!(!source.join("a.live_chat.json").exists());
 
         // The source folder is gone after the move, so a second run is a no-op.
-        assert_eq!(migrate_live_chat_files(&app_data, &library).unwrap(), 0);
+        assert_eq!(
+            migrate_live_chat_files(&app_data, &library, || Some(())).unwrap(),
+            0
+        );
 
         let _ = fs::remove_dir_all(&app_data);
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_live_chat_move_that_a_library_migration_got_into_stops_and_leaves_the_rest() {
+        // Writing on would recreate live_chat/ under the old library path after the migration
+        // removed it, where nothing would ever look.
+        let app_data = temp_dir("mig-stopped-appdata");
+        let library = temp_dir("mig-stopped-library");
+
+        let source = app_data.join("live_chat");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("a.live_chat.json"), b"hello").unwrap();
+
+        assert_eq!(
+            migrate_live_chat_files(&app_data, &library, || None::<()>).unwrap(),
+            0
+        );
+        assert!(source.join("a.live_chat.json").is_file());
+        assert!(!library.join("live_chat").exists());
+
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_compression_pass_that_a_library_migration_got_into_stops_and_leaves_the_rest() {
+        let dir = temp_dir("compress-stopped");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("youtube_x.live_chat.json");
+        let original = b"{\"replayChatItemAction\":{}}\n";
+        fs::write(&file, original).unwrap();
+
+        let summary = compress_existing_live_chat_files(&dir, || None::<()>).unwrap();
+
+        assert_eq!(summary.scanned, 0);
+        assert_eq!(fs::read(&file).unwrap(), original);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1030,7 +1095,10 @@ mod tests {
         fs::create_dir_all(&dest_dir).unwrap();
         fs::write(dest_dir.join("a.live_chat.json"), b"already-migrated").unwrap();
 
-        assert_eq!(migrate_live_chat_files(&app_data, &library).unwrap(), 0);
+        assert_eq!(
+            migrate_live_chat_files(&app_data, &library, || Some(())).unwrap(),
+            0
+        );
 
         // The intact destination is preserved and the stale source is removed.
         assert_eq!(
@@ -1088,12 +1156,12 @@ mod tests {
         fs::write(dir.join("a.live_chat.json"), b"hello\n").unwrap();
         fs::write(dir.join("b.live_chat.json"), b"world\n").unwrap();
 
-        let summary = compress_existing_live_chat_files(&dir).unwrap();
+        let summary = compress_existing_live_chat_files(&dir, || Some(())).unwrap();
         assert_eq!(summary.scanned, 2);
         assert_eq!(summary.compressed, 2);
         assert_eq!(summary.already_compressed, 0);
 
-        let second = compress_existing_live_chat_files(&dir).unwrap();
+        let second = compress_existing_live_chat_files(&dir, || Some(())).unwrap();
         assert_eq!(second.scanned, 2);
         assert_eq!(second.compressed, 0);
         assert_eq!(second.already_compressed, 2);
@@ -1122,7 +1190,7 @@ mod tests {
         // must not abort the pass or skip the files after it.
         fs::write(dir.join("fine.live_chat.json"), b"compressed\n").unwrap();
 
-        let summary = compress_existing_live_chat_files(&dir).unwrap();
+        let summary = compress_existing_live_chat_files(&dir, || Some(())).unwrap();
 
         assert_eq!(summary.failed, 1);
         assert_eq!(summary.compressed, 1);

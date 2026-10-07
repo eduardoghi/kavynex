@@ -983,26 +983,31 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 let final_live_chat_destination = live_chat_dir.join(live_chat_file_name);
 
                 // Store live chat replays gzip-compressed to save disk; the frontend reader
-                // transparently decompresses them. Serialize this library write against a
-                // concurrent migration (see library::lock); the guard is dropped as soon as the
-                // synchronous compress returns, never held across an await.
+                // transparently decompresses them. On the blocking pool, since a long stream's
+                // replay is tens of MB to gzip and that held an async runtime thread for the whole
+                // compression. Serialize this library write against a concurrent migration (see
+                // library::lock); the guard lives inside the blocking closure, never across an
+                // await.
                 let kept_existing_live_chat = {
-                    let _library_guard = crate::services::library::lock::library_read_guard();
+                    let source = temp_live_chat_file.clone();
+                    let destination = final_live_chat_destination.clone();
 
-                    // Never overwrite an already-stored replay, matching place_downloaded_file's
-                    // "keep the catalogued bytes" rule for the main media file. The name is
-                    // deterministic per video+run, so an existing file is the same replay; without
-                    // this guard compress_file_to (via replace_file_safely) would silently discard
-                    // it on a re-download.
-                    if final_live_chat_destination.exists() {
-                        true
-                    } else {
-                        crate::services::live_chat_storage::compress_file_to(
-                            &temp_live_chat_file,
-                            &final_live_chat_destination,
-                        )?;
-                        false
-                    }
+                    run_blocking(move || {
+                        let _library_guard = crate::services::library::lock::library_read_guard();
+
+                        // Never overwrite an already-stored replay, matching
+                        // place_downloaded_file's "keep the catalogued bytes" rule for the main
+                        // media file. The name is deterministic per video+run, so an existing file
+                        // is the same replay; without this guard compress_file_to (via
+                        // replace_file_safely) would silently discard it on a re-download.
+                        if destination.exists() {
+                            return Ok(true);
+                        }
+
+                        crate::services::live_chat_storage::compress_file_to(&source, &destination)?;
+                        Ok(false)
+                    })
+                    .await?
                 };
 
                 if kept_existing_live_chat {

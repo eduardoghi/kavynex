@@ -252,6 +252,9 @@ pub async fn verify_library_content(
     library_path: String,
     on_progress: Channel<library::verification::ContentVerificationEvent>,
 ) -> AppResult<()> {
+    // Begun before the path is checked against the settings, so a migration that finishes after
+    // that check stops the pass instead of leaving it to verify the old location.
+    let library_pass = crate::services::library::lock::LibraryPass::begin();
     let pool = db.pool().await?;
 
     ensure_configured_library_path_in_pool(&pool, &library_path).await?;
@@ -296,14 +299,13 @@ pub async fn verify_library_content(
     let progress_channel = on_progress.clone();
 
     let report = run_blocking(move || {
-        // Serialize against a concurrent library migration, like every other read that walks the
-        // library tree (see services::library::lock).
-        let _library_guard = crate::services::library::lock::library_read_guard();
-
         library::verification::verify_library_content_sync(
             std::path::Path::new(&library_path),
             &artifacts,
             Some(library::verification::verification_cancel_flag()),
+            // Serialized against a concurrent library migration one file at a time, like every
+            // other read that walks the library tree (see services::library::lock).
+            || library_pass.file_guard(),
             |checked, total| {
                 progress_channel
                     .send(library::verification::ContentVerificationEvent::Progress {

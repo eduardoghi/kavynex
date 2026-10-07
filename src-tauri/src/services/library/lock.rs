@@ -19,9 +19,11 @@
 //! it, mirroring `library::migration::migrate_library_directory_sync`'s own poison handling.
 //!
 //! How long a holder keeps the read side varies. A delete or a download's placement holds it for
-//! one file. A local import holds it across the hash, copy and verification of its file, and the
-//! content verification, the live chat migration and the startup leftover sweep hold it for their
-//! whole pass, so a migration started during one of those waits until it ends.
+//! one file. A local import holds it across the hash, copy and verification of its file. The
+//! content verification and the live chat migration take it once per file through a
+//! [`LibraryPass`], which stops when a migration got in between two files. The startup leftover
+//! sweep still holds it for its whole pass, so a migration started during that one waits until it
+//! ends.
 //!
 //! IMPORTANT: a guarded function must never call another guarded function while holding the
 //! guard. A nested read acquisition can deadlock against a waiting writer (`std::sync::RwLock`
@@ -30,7 +32,14 @@
 //! a per-thread depth check that panics at the offending acquisition (see `library_read_guard`),
 //! not left to code review alone.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+// Bumped when a migration takes the exclusive side and again when it lets go, so a pass that read
+// it before either can tell, under its own per-file guard, that the library may have moved. Twice
+// rather than once because a pass can begin while a migration already holds the lock, and only
+// the release tells it that one finished.
+static MIGRATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 fn library_operation_gate() -> &'static RwLock<()> {
     static GATE: OnceLock<RwLock<()>> = OnceLock::new();
@@ -90,13 +99,62 @@ pub fn library_read_guard() -> LibraryReadGuard {
     LibraryReadGuard { _inner: inner }
 }
 
+/// RAII guard returned by [`library_write_guard`]. Releasing it counts as a migration for every
+/// [`LibraryPass`] that began before.
+pub struct LibraryWriteGuard {
+    _inner: RwLockWriteGuard<'static, ()>,
+}
+
+impl Drop for LibraryWriteGuard {
+    fn drop(&mut self) {
+        // Runs before `_inner` is dropped, so the lock is still held and a reader that gets in
+        // next already sees the new generation.
+        MIGRATION_GENERATION.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 /// Acquires the exclusive (write) side for a library migration's destructive copy/remove phase.
 /// Blocks until every in-flight library mutation has released its read guard, and blocks new
 /// ones until the returned guard is dropped.
-pub fn library_write_guard() -> RwLockWriteGuard<'static, ()> {
-    library_operation_gate()
+pub fn library_write_guard() -> LibraryWriteGuard {
+    let inner = library_operation_gate()
         .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    MIGRATION_GENERATION.fetch_add(1, Ordering::SeqCst);
+
+    LibraryWriteGuard { _inner: inner }
+}
+
+/// A long pass over the library that takes the read side once per file instead of for the whole
+/// pass.
+///
+/// Held for the whole pass, the guard kept a migration waiting for as long as the pass ran (a
+/// content verification hashes the entire library), and since the lock is write-preferring, every
+/// import, download and delete queued behind that waiting migration as well. Taken per file, a
+/// migration gets in between two files. The pass still holds paths into the library it started
+/// with, so [`LibraryPass::file_guard`] refuses once a migration has run since the pass began,
+/// and the caller stops rather than verifying or writing into the old location.
+#[derive(Debug, Clone, Copy)]
+pub struct LibraryPass {
+    generation: u64,
+}
+
+impl LibraryPass {
+    /// Starts a pass. Call it before reading the library path the pass will use, so a migration
+    /// that finishes in between is seen.
+    pub fn begin() -> Self {
+        Self {
+            generation: MIGRATION_GENERATION.load(Ordering::SeqCst),
+        }
+    }
+
+    /// The read guard for the next file, or `None` when a migration ran since the pass began.
+    pub fn file_guard(&self) -> Option<LibraryReadGuard> {
+        let guard = library_read_guard();
+
+        (MIGRATION_GENERATION.load(Ordering::SeqCst) == self.generation).then_some(guard)
+    }
 }
 
 #[cfg(test)]
@@ -185,6 +243,29 @@ mod tests {
         // the nesting the module forbids. The debug depth check must catch it right here rather
         // than let a real deadlock form against a waiting migration.
         let _second = library_read_guard();
+    }
+
+    #[test]
+    fn a_pass_stops_handing_out_guards_once_a_migration_has_run() {
+        // Only the refusal is asserted. Other tests take the write side in parallel, so a pass that
+        // should still be handing out guards cannot be relied on to here.
+        let pass = LibraryPass::begin();
+
+        drop(library_write_guard());
+
+        assert!(pass.file_guard().is_none());
+    }
+
+    #[test]
+    fn a_pass_begun_while_a_migration_holds_the_lock_sees_it_finish() {
+        let write = library_write_guard();
+        let pass = LibraryPass::begin();
+
+        let waiting = thread::spawn(move || pass.file_guard().is_some());
+        thread::sleep(Duration::from_millis(50));
+        drop(write);
+
+        assert!(!waiting.join().unwrap());
     }
 
     #[test]
