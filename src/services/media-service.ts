@@ -20,7 +20,8 @@ import {
     validateMediaId,
 } from "./media-input-service";
 import { validateChannelId } from "./channel-input-service";
-import { createAppError } from "../utils/app-error";
+import { createAppError, parseAppError } from "../utils/app-error";
+import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
 import { commentsRefreshRunId, fetchYouTubeComments } from "./media-download-service";
 import {
     markMediaCommentsAbsentInBackend,
@@ -34,6 +35,11 @@ type CreateMediaResult = {
 
 type CreateMediaOptions = {
     onProgress?: (message: string) => void | Promise<void>;
+    // Makes the comment backup that follows the registration cancellable. The download's run is
+    // released once the media is registered, so the fetch registers this id for itself, and
+    // onCommentsFetchChange tells the caller while it runs, the only time a Cancel can reach it.
+    commentsRunId?: string;
+    onCommentsFetchChange?: (fetching: boolean) => void;
 };
 
 type RefreshMediaCommentsResult = {
@@ -127,8 +133,9 @@ async function tryPersistYouTubeComments(
     youtubeVideoId: string | null,
     cookiesBrowser: string | null,
     cookiesPath: string | null,
-    onProgress?: (message: string) => void | Promise<void>
+    options: CreateMediaOptions
 ): Promise<void> {
+    const { onProgress, commentsRunId, onCommentsFetchChange } = options;
     const normalizedVideoId = youtubeVideoId?.trim() ?? "";
 
     if (!mediaId || !normalizedVideoId) {
@@ -137,11 +144,21 @@ async function tryPersistYouTubeComments(
 
     try {
         await emitProgress(onProgress, "Fetching YouTube comments...");
-        const fetchedComments = await fetchYouTubeComments(
-            normalizedVideoId,
-            cookiesBrowser,
-            cookiesPath
-        );
+
+        let fetchedComments: YtDlpComment[];
+        onCommentsFetchChange?.(true);
+
+        try {
+            fetchedComments = await fetchYouTubeComments(
+                normalizedVideoId,
+                cookiesBrowser,
+                cookiesPath,
+                commentsRunId
+            );
+        } finally {
+            onCommentsFetchChange?.(false);
+        }
+
         const comments = normalizeFetchedComments(fetchedComments);
 
         await emitProgress(onProgress, `Comments fetched: ${comments.length}`);
@@ -155,6 +172,12 @@ async function tryPersistYouTubeComments(
         await replaceMediaCommentsInBackend(mediaId, comments);
         await emitProgress(onProgress, `Comments saved successfully: ${comments.length}`);
     } catch (error) {
+        // The user skipped them. The media is already registered and stays.
+        if (parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
+            await emitProgress(onProgress, "Comments skipped. The media was added without them.");
+            return;
+        }
+
         logError("media-service", "Failed to fetch and persist YouTube comments.", error, {
             mediaId,
             youtubeVideoId: normalizedVideoId,
@@ -296,7 +319,7 @@ export async function createMedia(
                 created.youtubeVideoId,
                 normalizedInput.cookiesBrowser,
                 normalizedInput.cookiesPath,
-                options.onProgress
+                options
             );
         } else {
             await emitProgress(options.onProgress, "Skipping comments because the user disabled them.");

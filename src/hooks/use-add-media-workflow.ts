@@ -43,6 +43,9 @@ type UseAddMediaWorkflowReturn = {
     setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
     isAddingMedia: boolean;
     isCancellingYtDlp: boolean;
+    // The comment backup that runs after a download was registered. Cancelling it skips the
+    // comments and keeps the media.
+    isFetchingComments: boolean;
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     ytDlpProgress: YtDlpProgress | null;
@@ -81,6 +84,11 @@ export function useAddMediaWorkflow({
     // A ref rather than state on purpose. The cancel callback reads it at click time and must not
     // be recreated when an import starts, which would churn every consumer of the controller.
     const localImportRunIdRef = useRef("");
+
+    // The run id the comment backup registers, set only while that fetch is in flight. State for
+    // the button, a ref for the cancel callback, for the same reason as localImportRunIdRef.
+    const [isFetchingComments, setIsFetchingComments] = useState(false);
+    const commentsRunIdRef = useRef("");
 
     const ytDlpEvents = useYtDlpEvents();
     const { startManualSession } = ytDlpEvents;
@@ -178,6 +186,9 @@ export function useAddMediaWorkflow({
                 // killing the process. The field keeps its yt-dlp name because that is what the
                 // wire contract calls it; only its scope widened.
                 const ytDlpRunId = generateYtDlpRunId();
+                // Its own id rather than the download's, so a Cancel meant for the download that
+                // lands after it ended cannot skip the comments too.
+                const commentsRunId = generateYtDlpRunId();
                 let ytDlpFormatId = "";
 
                 if (sourceMode === "local") {
@@ -240,6 +251,11 @@ export function useAddMediaWorkflow({
                         onProgress: (message) => {
                             appendManualLog(message);
                         },
+                        commentsRunId,
+                        onCommentsFetchChange: (fetching) => {
+                            commentsRunIdRef.current = fetching ? commentsRunId : "";
+                            setIsFetchingComments(fetching);
+                        },
                     }
                 );
 
@@ -284,6 +300,8 @@ export function useAddMediaWorkflow({
                 // Cancel click reach a run the backend has already released, which the registry
                 // refuses, surfacing as an error modal for a button that should have done nothing.
                 localImportRunIdRef.current = "";
+                commentsRunIdRef.current = "";
+                setIsFetchingComments(false);
             }
         });
     }, [
@@ -308,9 +326,11 @@ export function useAddMediaWorkflow({
         // requiring isYtDlpRunning, so a stale id from a finished download still cancels nothing;
         // the local ref carries that guard in itself, since it is only non-empty while an import is
         // actually in flight.
+        // The comment backup comes third. It only runs once the download has stopped, and it has
+        // a ref of its own for the same reason the local import does.
         const runId = ytDlpEvents.isYtDlpRunning
             ? ytDlpEvents.currentRunIdRef.current.trim()
-            : localImportRunIdRef.current.trim();
+            : (commentsRunIdRef.current || localImportRunIdRef.current).trim();
 
         if (!runId) {
             return;
@@ -397,6 +417,7 @@ export function useAddMediaWorkflow({
         setAddMediaOpen,
         isAddingMedia,
         isCancellingYtDlp,
+        isFetchingComments,
         ytDlpLogs,
         isYtDlpRunning,
         ytDlpProgress,

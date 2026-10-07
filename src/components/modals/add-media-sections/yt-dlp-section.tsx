@@ -200,7 +200,7 @@ export function YtDlpSection({
 
             <Checkbox
                 label="Save YouTube comments"
-                description="When enabled, the app fetches and stores comments during import."
+                description="Fetched after the download, up to 100,000 per media. A video with many can take a few minutes, and Skip comments stops it without losing the media."
                 checked={downloadComments}
                 onChange={(event) => onChangeDownloadComments(event.currentTarget.checked)}
                 disabled={isLocked}

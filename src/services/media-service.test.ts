@@ -268,8 +268,53 @@ describe("media-service", () => {
 
         // The video id comes off the created media rather than the request. For a yt-dlp source the
         // backend resolved it from the download, which is the authoritative one.
-        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", null, null);
+        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", null, null, undefined);
         expect(replaceMediaCommentsInBackend).toHaveBeenCalledWith(55, [fetchedComment]);
+    });
+
+    it("registers the comment backup under the run id it was given and says while it runs", async () => {
+        const input = ytDlpInput({ downloadComments: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
+
+        const fetching: boolean[] = [];
+        const onCommentsFetchChange = vi.fn((value: boolean) => void fetching.push(value));
+        vi.mocked(fetchYouTubeComments).mockImplementationOnce(async () => {
+            // Still running here, which is when the caller's Cancel has to reach it.
+            expect(fetching).toEqual([true]);
+            return [];
+        });
+
+        await createMedia(input, { commentsRunId: "comments-run", onCommentsFetchChange });
+
+        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", null, null, "comments-run");
+        expect(fetching).toEqual([true, false]);
+    });
+
+    it("keeps the media and says so when the user skips the comments", async () => {
+        const input = ytDlpInput({ downloadComments: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
+        vi.mocked(fetchYouTubeComments).mockRejectedValueOnce({
+            code: "YT_DLP_DOWNLOAD_CANCELLED",
+            message: "yt-dlp download cancelled",
+        });
+
+        const messages: string[] = [];
+        const onCommentsFetchChange = vi.fn();
+        await expect(
+            createMedia(input, {
+                onProgress: (message) => void messages.push(message),
+                onCommentsFetchChange,
+            })
+        ).resolves.toEqual({ id: 55 });
+
+        expect(messages).toContain("Comments skipped. The media was added without them.");
+        expect(messages).not.toContain("Failed to fetch comments. Import will continue without them.");
+        expect(onCommentsFetchChange).toHaveBeenLastCalledWith(false);
+        expect(replaceMediaCommentsInBackend).not.toHaveBeenCalled();
+        // Asked for, so not a failure worth a log entry.
+        expect(logError).not.toHaveBeenCalled();
     });
 
     it("skips the comment backup when the user turned it off", async () => {

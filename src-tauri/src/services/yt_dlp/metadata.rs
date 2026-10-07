@@ -683,6 +683,18 @@ pub async fn fetch_yt_dlp_metadata(
     })
 }
 
+/// The extractor arguments for a comment backup.
+///
+/// Capped at `MAX_COMMENTS_PER_MEDIA` because that is the most `replace_media_comments` stores.
+/// Uncapped, yt-dlp kept paging through a video with more, and the whole backup was then refused
+/// at that limit, or ran into the timeout first, with nothing saved either way.
+fn comments_extractor_args() -> String {
+    format!(
+        "youtube:comment_sort=top;max_comments={}",
+        crate::services::media_comments::MAX_COMMENTS_PER_MEDIA
+    )
+}
+
 async fn fetch_yt_dlp_metadata_with_comments(
     yt_dlp: &str,
     url: &str,
@@ -699,7 +711,7 @@ async fn fetch_yt_dlp_metadata_with_comments(
         "--write-comments".to_string(),
         "--no-warnings".to_string(),
         "--extractor-args".to_string(),
-        "youtube:comment_sort=top".to_string(),
+        comments_extractor_args(),
     ];
 
     append_auth_args(&mut args, cookies_browser, cookies_path);
@@ -823,13 +835,15 @@ pub async fn fetch_youtube_comments_async<R: Runtime>(
         ));
     }
 
-    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
-    let url = format!("https://www.youtube.com/watch?v={}", normalized_video_id);
-
     // Register the run (when a run_id was supplied) so the frontend can cancel this comment backup
     // (which can run for up to YT_DLP_COMMENTS_TIMEOUT_SECS) promptly, instead of waiting it out.
-    // The guard unregisters the run when this function returns.
+    // The guard unregisters the run when this function returns. Registered before anything else
+    // awaits, so a Cancel clicked right after the fetch starts finds the run instead of being
+    // refused as unknown.
     let (cancel_flag, _run_release_guard) = optional_cancellable_run(run_id)?;
+
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+    let url = format!("https://www.youtube.com/watch?v={}", normalized_video_id);
 
     let metadata = fetch_yt_dlp_metadata_with_comments(
         &yt_dlp,

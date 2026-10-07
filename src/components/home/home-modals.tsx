@@ -274,6 +274,7 @@ export function HomeModals({
                 isGeneratingThumb={addMediaForm.isGeneratingThumb}
                 loading={media.isAddingMedia}
                 isCancellingYtDlp={media.isCancellingYtDlp}
+                isFetchingComments={media.isFetchingComments}
                 ytDlpLogs={media.ytDlpLogs}
                 isYtDlpRunning={media.isYtDlpRunning}
                 ytDlpProgress={media.ytDlpProgress}

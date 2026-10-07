@@ -3,10 +3,10 @@
 // parent), so `use super::*` still reaches every private item it did.
 
 use super::{
-    comments_extraction_looks_incomplete, cookies_browser_from_args, cookies_path_from_args,
-    is_valid_youtube_video_id, read_capped_json_stdout, redact_cookies_path_from_line,
-    redact_sensitive_from_line, resolve_youtube_video_id, run_yt_dlp_and_capture_json,
-    sanitize_filename_component, sanitize_identifier_component,
+    comments_extraction_looks_incomplete, comments_extractor_args, cookies_browser_from_args,
+    cookies_path_from_args, is_valid_youtube_video_id, read_capped_json_stdout,
+    redact_cookies_path_from_line, redact_sensitive_from_line, resolve_youtube_video_id,
+    run_yt_dlp_and_capture_json, sanitize_filename_component, sanitize_identifier_component,
 };
 use crate::AppErrorCode;
 
@@ -615,4 +615,16 @@ fn empty_comments_are_incomplete_only_when_a_positive_count_is_reported() {
     // Any comments were retrieved. Never incomplete, regardless of the reported total.
     assert!(!comments_extraction_looks_incomplete(Some(42), 10));
     assert!(!comments_extraction_looks_incomplete(None, 5));
+}
+
+#[test]
+fn a_comment_backup_asks_yt_dlp_for_no_more_than_one_media_can_store() {
+    // One --extractor-args value per extractor, so the cap rides on the same string as the sort.
+    assert_eq!(
+        comments_extractor_args(),
+        format!(
+            "youtube:comment_sort=top;max_comments={}",
+            crate::services::media_comments::MAX_COMMENTS_PER_MEDIA
+        )
+    );
 }

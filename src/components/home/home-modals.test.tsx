@@ -134,6 +134,7 @@ function createMedia(): MediaLibraryController {
         watchedActionInFlight: new Set<number>(),
         isUpdatingTitle: false,
         isCancellingYtDlp: false,
+        isFetchingComments: false,
         ytDlpLogs: [],
         isYtDlpRunning: false,
         ytDlpProgress: null,

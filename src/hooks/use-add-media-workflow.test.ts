@@ -382,6 +382,68 @@ describe("useAddMediaWorkflow", () => {
         expect(cancelMediaDownload).not.toHaveBeenCalled();
     });
 
+    it("cancels the comment backup with the run id it registered, not the download's", async () => {
+        // Once the media is registered the download's run is released and the yt-dlp flag is off,
+        // so the comment fetch that follows (up to a few minutes) had no Cancel at all.
+        mockYtDlpEvents.isYtDlpRunning = false;
+
+        let finishComments: (() => void) | undefined;
+        vi.mocked(createMedia).mockImplementation(
+            (_input, options) =>
+                new Promise((resolve) => {
+                    options?.onCommentsFetchChange?.(true);
+                    finishComments = () => {
+                        options?.onCommentsFetchChange?.(false);
+                        resolve({ id: 1 });
+                    };
+                })
+        );
+        vi.mocked(cancelMediaDownload).mockResolvedValue(undefined);
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        let addMediaPromise: Promise<void> | undefined;
+        await act(async () => {
+            addMediaPromise = result.current.addMedia();
+            await Promise.resolve();
+        });
+
+        const [input, options] = vi.mocked(createMedia).mock.calls[0] ?? [];
+        const commentsRunId = options?.commentsRunId;
+        expect(commentsRunId).toBeTruthy();
+        expect(commentsRunId).not.toBe(input?.ytDlpRunId);
+        expect(result.current.isFetchingComments).toBe(true);
+
+        await act(async () => {
+            await result.current.cancelYtDlpDownload();
+        });
+
+        expect(cancelMediaDownload).toHaveBeenCalledWith(commentsRunId);
+
+        await act(async () => {
+            finishComments?.();
+            await addMediaPromise;
+        });
+
+        expect(result.current.isFetchingComments).toBe(false);
+        vi.mocked(cancelMediaDownload).mockClear();
+
+        await act(async () => {
+            await result.current.cancelYtDlpDownload();
+        });
+
+        expect(cancelMediaDownload).not.toHaveBeenCalled();
+    });
+
     it("still reports a real download failure as an error", async () => {
         // The other side of the split. Only cancellation is the expected outcome, so an actual
         // failure must keep reaching the error modal.

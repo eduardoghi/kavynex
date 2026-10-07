@@ -47,6 +47,7 @@ type AddMediaModalProps = {
     isGeneratingThumb: boolean;
     loading?: boolean;
     isCancellingYtDlp?: boolean;
+    isFetchingComments?: boolean;
 
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
@@ -92,6 +93,7 @@ export function AddMediaModal({
     isGeneratingThumb,
     loading = false,
     isCancellingYtDlp = false,
+    isFetchingComments = false,
     ytDlpLogs,
     isYtDlpRunning,
     ytDlpProgress,
@@ -336,6 +338,7 @@ export function AddMediaModal({
                             isImportingLocalFile={!isUrlMode && Boolean(loading)}
                             isLoadingYtDlpFormats={isLoadingYtDlpFormats}
                             isCancellingYtDlp={isCancellingYtDlp}
+                            isFetchingComments={isFetchingComments}
                             isModalLocked={isModalLocked}
                             canSubmit={canSubmit}
                             isBusy={isBusy}

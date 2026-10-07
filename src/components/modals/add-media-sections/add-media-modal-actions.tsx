@@ -13,6 +13,8 @@ type AddMediaModalActionsProps = {
     // shared with the download, so without this the footer said "Downloading..." for a listing.
     isLoadingYtDlpFormats: boolean;
     isCancellingYtDlp: boolean;
+    // The comment backup after a download was registered. Cancelling it skips the comments only.
+    isFetchingComments?: boolean;
     isModalLocked: boolean;
     canSubmit: boolean;
     isBusy: boolean;
@@ -27,6 +29,7 @@ export function AddMediaModalActions({
     isImportingLocalFile,
     isLoadingYtDlpFormats,
     isCancellingYtDlp,
+    isFetchingComments = false,
     isModalLocked,
     canSubmit,
     isBusy,
@@ -37,7 +40,7 @@ export function AddMediaModalActions({
     // One button for both, because it is one backend mechanism. A download and an import register
     // the same kind of run and are stopped by the same command. Only the wording differs, since
     // "Cancel download" in front of a file copy would describe the wrong thing.
-    const cancellable = isUrlMode ? isYtDlpRunning : isImportingLocalFile;
+    const cancellable = isUrlMode ? isYtDlpRunning || isFetchingComments : isImportingLocalFile;
 
     // The whole import, not just the yt-dlp process. `loading` stays true through
     // registering the media and fetching comments and live chat, which is exactly the
@@ -53,6 +56,9 @@ export function AddMediaModalActions({
         cancelText = "Cancel";
     } else if (isYtDlpRunning) {
         statusText = "Downloading...";
+    } else if (isFetchingComments) {
+        statusText = "Fetching comments...";
+        cancelText = "Skip comments";
     }
 
     if (isImporting) {

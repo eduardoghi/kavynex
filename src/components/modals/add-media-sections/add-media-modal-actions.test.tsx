@@ -51,6 +51,33 @@ describe("AddMediaModalActions", () => {
         expect(screen.queryByRole("button", { name: /cancel download/i })).not.toBeInTheDocument();
     });
 
+    it("offers to skip the comments while they are fetched after the download", () => {
+        const onCancel = vi.fn();
+
+        renderWithMantine(
+            <form>
+                <AddMediaModalActions
+                    isYtDlpRunning={false}
+                    isUrlMode
+                    isImportingLocalFile={false}
+                    isLoadingYtDlpFormats={false}
+                    isCancellingYtDlp={false}
+                    isFetchingComments
+                    isModalLocked
+                    canSubmit
+                    isBusy
+                    loading
+                    onCancelYtDlpDownload={onCancel}
+                    onClose={vi.fn()}
+                />
+            </form>
+        );
+
+        expect(screen.getByText("Fetching comments...")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Skip comments" }));
+        expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
     it("shows cancel download button when yt-dlp is running in url mode", () => {
         renderWithMantine(
             <form>

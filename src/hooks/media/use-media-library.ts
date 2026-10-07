@@ -43,6 +43,7 @@ export type MediaLibraryController = {
     watchedActionInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
     isCancellingYtDlp: boolean;
+    isFetchingComments: boolean;
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     ytDlpProgress: YtDlpProgress | null;
@@ -239,6 +240,7 @@ export function useMediaLibrary({
         watchedActionInFlight: mediaActions.watchedActionInFlight,
         isUpdatingTitle: mediaActions.isUpdatingTitle,
         isCancellingYtDlp: addMediaWorkflow.isCancellingYtDlp,
+        isFetchingComments: addMediaWorkflow.isFetchingComments,
 
         ytDlpLogs: addMediaWorkflow.ytDlpLogs,
         isYtDlpRunning: addMediaWorkflow.isYtDlpRunning,

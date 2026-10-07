@@ -360,6 +360,13 @@ does not match its zod schema is dropped at the seam. `cancelYtDlpDownload` call
 recognizes `YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE` and routes it to the notice channel rather
 than the error modal. The user got the outcome they clicked for.
 
+The comment backup after the row lands is cancellable on its own. The download's run is released
+once the media is registered, so `createMedia` gets a second run id (`commentsRunId`) that
+`fetch_youtube_comments` registers for itself, and `onCommentsFetchChange` keeps
+`isFetchingComments` set while it runs, which is what puts "Skip comments" in the modal footer.
+Skipping keeps the media. yt-dlp is asked for at most `MAX_COMMENTS_PER_MEDIA` comments
+(`max_comments`), the most one media can store.
+
 **The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
 `isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is
 now UX only, closing the modal mid-run would discard a terminal the user is watching. It used to be

@@ -37,6 +37,7 @@ describe("useHomeMediaActions", () => {
             watchedActionInFlight: new Set<number>(),
             isUpdatingTitle: false,
             isCancellingYtDlp: false,
+            isFetchingComments: false,
 
             ytDlpLogs: [],
             isYtDlpRunning: false,
