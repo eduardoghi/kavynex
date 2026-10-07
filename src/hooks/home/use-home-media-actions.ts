@@ -13,7 +13,7 @@ export type HomeMediaActionsController = {
     // See MediaLibraryController.watchedActionInFlight. Passed through unchanged so the grid can
     // disable a card's watch/unwatch action while that row's own toggle is in flight.
     watchedActionInFlight: ReadonlySet<number>;
-    editMediaTitle: (media: MediaRow, title: string) => Promise<void>;
+    editMediaTitle: (media: MediaRow, title: string) => Promise<boolean>;
     saveMediaProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
 };
 
@@ -86,10 +86,13 @@ export function useHomeMediaActions({
     );
 
     const editMediaTitle = useCallback(
-        async (media: MediaRow, title: string): Promise<void> => {
-            await runActionAndRefreshDiagnostics(() => editTitle(media, title));
+        async (media: MediaRow, title: string): Promise<boolean> => {
+            const saved = await editTitle(media, title);
+            await refreshDiagnosticsIfOpen();
+
+            return saved;
         },
-        [editTitle, runActionAndRefreshDiagnostics]
+        [editTitle, refreshDiagnosticsIfOpen]
     );
 
     const saveMediaProgress = useCallback(

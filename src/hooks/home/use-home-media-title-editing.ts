@@ -3,7 +3,7 @@ import { useMemoObject } from "../use-memo-object";
 import type { MediaRow } from "../../types/media";
 
 type UseHomeMediaTitleEditingOptions = {
-    editMediaTitle: (media: MediaRow, title: string) => Promise<void>;
+    editMediaTitle: (media: MediaRow, title: string) => Promise<boolean>;
 };
 
 export type HomeMediaTitleEditing = {
@@ -38,8 +38,9 @@ export function useHomeMediaTitleEditing({
             setIsSavingTitle(true);
 
             try {
-                await editMediaTitle(item, title);
-                setEditTitleMedia(null);
+                if (await editMediaTitle(item, title)) {
+                    setEditTitleMedia(null);
+                }
             } finally {
                 setIsSavingTitle(false);
             }

@@ -534,10 +534,12 @@ describe("useMediaActions", () => {
             })
         );
 
+        let saved: boolean | undefined;
         await act(async () => {
-            await result.current.editTitle(mediaPlayer.activeMedia!, "  New title  ");
+            saved = await result.current.editTitle(mediaPlayer.activeMedia!, "  New title  ");
         });
 
+        expect(saved).toBe(true);
         expect(updateMediaTitle).toHaveBeenCalledWith(1, "New title");
         expect(setMediaItems).toHaveBeenCalledWith(expect.any(Function));
         expect(mediaPlayer.setActiveMedia).toHaveBeenCalledWith({
@@ -592,10 +594,13 @@ describe("useMediaActions", () => {
             })
         );
 
+        let saved: boolean | undefined;
         await act(async () => {
-            await result.current.editTitle(mediaPlayer.activeMedia!, "New title");
+            saved = await result.current.editTitle(mediaPlayer.activeMedia!, "New title");
         });
 
+        // Reported as unsaved, which is what keeps the edit modal open with the typed title.
+        expect(saved).toBe(false);
         expect(onError).toHaveBeenCalled();
         expect(onItemReordered).not.toHaveBeenCalled();
     });

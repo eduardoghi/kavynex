@@ -309,6 +309,30 @@ describe("useHomeMediaActions", () => {
         expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
     });
 
+    it("passes on whether the title was saved, so the edit modal can stay open on a failure", async () => {
+        const mediaLibrary = createMediaLibrary();
+        const { result } = renderHook(() =>
+            useHomeMediaActions({
+                diagnosticsState: createDiagnosticsState({ diagnosticsOpen: false }),
+                mediaLibrary,
+                confirmDeleteChannelFlow: vi.fn().mockResolvedValue(undefined),
+            })
+        );
+
+        vi.mocked(mediaLibrary.editTitle).mockResolvedValueOnce(false);
+        let saved: boolean | undefined;
+        await act(async () => {
+            saved = await result.current.editMediaTitle({ id: 7 } as any, "New title");
+        });
+        expect(saved).toBe(false);
+
+        vi.mocked(mediaLibrary.editTitle).mockResolvedValueOnce(true);
+        await act(async () => {
+            saved = await result.current.editMediaTitle({ id: 7 } as any, "New title");
+        });
+        expect(saved).toBe(true);
+    });
+
     it("saves media progress without reloading diagnostics even when diagnostics is open", async () => {
         // Progress saves happen periodically during playback and are irrelevant to what the
         // diagnostics dialog reports, so they never trigger a reload. Otherwise an open

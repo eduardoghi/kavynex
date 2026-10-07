@@ -32,7 +32,7 @@ describe("useHomeMediaTitleEditing", () => {
 
     it("saves, then closes the modal and clears the saving flag on success", async () => {
         const media = createMedia({ id: 9 });
-        const editMediaTitle = vi.fn().mockResolvedValue(undefined);
+        const editMediaTitle = vi.fn().mockResolvedValue(true);
         const { result } = renderHook(() => useHomeMediaTitleEditing({ editMediaTitle }));
 
         act(() => {
@@ -49,7 +49,27 @@ describe("useHomeMediaTitleEditing", () => {
     });
 
     it("keeps the modal open and clears the saving flag when the save fails", async () => {
+        // The real editTitle reports a failure by resolving false, after it has shown the error.
+        // It never rejects, so a test that only covered a rejection passed while the modal closed
+        // on every failed save and took the typed title with it.
         const media = createMedia({ id: 11 });
+        const editMediaTitle = vi.fn().mockResolvedValue(false);
+        const { result } = renderHook(() => useHomeMediaTitleEditing({ editMediaTitle }));
+
+        act(() => {
+            result.current.handleEditTitle(media);
+        });
+
+        await act(async () => {
+            await result.current.handleSaveMediaTitle(media, "New title");
+        });
+
+        expect(result.current.isSavingTitle).toBe(false);
+        expect(result.current.editTitleMedia).toBe(media);
+    });
+
+    it("keeps the modal open when the save rejects", async () => {
+        const media = createMedia({ id: 12 });
         const editMediaTitle = vi.fn().mockRejectedValue(new Error("boom"));
         const { result } = renderHook(() => useHomeMediaTitleEditing({ editMediaTitle }));
 
@@ -58,8 +78,6 @@ describe("useHomeMediaTitleEditing", () => {
         });
 
         await act(async () => {
-            // The rejection propagates to the caller (the modal's onSave), which surfaces the error;
-            // the hook's job is only to leave the edit intact and stop the spinner.
             await expect(result.current.handleSaveMediaTitle(media, "New title")).rejects.toThrow(
                 "boom"
             );

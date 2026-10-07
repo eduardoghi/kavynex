@@ -56,7 +56,9 @@ type UseMediaActionsReturn = {
     markAsUnwatched: (mediaId: number) => Promise<void>;
     refreshComments: (media: MediaRow) => Promise<void>;
     cancelRefreshComments: (mediaId: number) => Promise<void>;
-    editTitle: (media: MediaRow, title: string) => Promise<void>;
+    // Resolves true once the new title is saved, false when it was not (an error the user has
+    // already been shown, or a save already running), so the caller can keep its form open.
+    editTitle: (media: MediaRow, title: string) => Promise<boolean>;
     openMediaFileLocation: (media: MediaRow) => Promise<void>;
     openMediaSourceInYoutube: (media: MediaRow) => Promise<void>;
 };
@@ -344,8 +346,8 @@ export function useMediaActions({
     );
 
     const editTitle = useCallback(
-        async (media: MediaRow, title: string): Promise<void> => {
-            await runUpdateTitleAction(async () => {
+        async (media: MediaRow, title: string): Promise<boolean> => {
+            const saved = await runUpdateTitleAction(async (): Promise<boolean> => {
                 try {
                     const normalizedTitle = title.trim();
 
@@ -380,14 +382,21 @@ export function useMediaActions({
                             title: normalizedTitle,
                         });
                     }
+
+                    return true;
                 } catch (error) {
                     logError("media-actions", "Failed to update media title.", error, {
                         mediaId: media.id,
                         title,
                     });
                     onError(resolveErrorMessage(error, "Failed to update media title."));
+
+                    return false;
                 }
             });
+
+            // `undefined` when a save was already running and this one did not start.
+            return saved ?? false;
         },
         [setActiveMedia, onError, onItemReordered, runUpdateTitleAction, setMediaItems]
     );
