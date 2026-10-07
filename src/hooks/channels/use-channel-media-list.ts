@@ -48,6 +48,9 @@ type UseChannelMediaListReturn = {
     // Gives the pagination cursor a position back after an in-place edit moved a loaded row within
     // the backend's sort (a rename), so the row it displaced past the window is not skipped.
     handleItemReordered: () => void;
+    // Drops a loaded row whose new watched state no longer matches the watched filter, so marking a
+    // media watched under "Unwatched" (or the reverse) takes it out of the list like a refetch would.
+    handleWatchedChanged: (mediaId: number, watched: boolean) => void;
     clearMedia: () => void;
 };
 
@@ -106,6 +109,14 @@ export function useChannelMediaList({
     useEffect(() => {
         totalRef.current = total;
     }, [total]);
+
+    // Read by `handleWatchedChanged`, which adjusts the counts only for a row that is loaded and
+    // cannot find that out inside a state updater (React may run one twice).
+    const mediaItemsRef = useRef(mediaItems);
+
+    useEffect(() => {
+        mediaItemsRef.current = mediaItems;
+    }, [mediaItems]);
 
     // Derived from the rows handed out rather than from the rows kept, for the reason above. A
     // deduplicated append leaves the list shorter than the cursor, and reading `mediaItems.length`
@@ -311,6 +322,28 @@ export function useChannelMediaList({
         setLoadedRows(Math.max(0, loadedCountRef.current - 1));
     }, [setLoadedRows]);
 
+    // Like a delete for the filtered view, except the media still belongs to the channel, so
+    // `channelTotal` stays. The row leaves the backend's matching set and the loaded prefix together,
+    // which is why the cursor shrinks with `total` (see `handleItemsRemoved`).
+    const handleWatchedChanged = useCallback(
+        (mediaId: number, watched: boolean): void => {
+            const watchedFilter = filtersRef.current?.watched ?? "all";
+
+            if (watchedFilter === "all" || (watchedFilter === "watched") === watched) {
+                return;
+            }
+
+            if (!mediaItemsRef.current.some((item) => item.id === mediaId)) {
+                return;
+            }
+
+            setMediaItems((current) => current.filter((item) => item.id !== mediaId));
+            setTotal((current) => Math.max(0, current - 1));
+            setLoadedRows(Math.max(0, loadedCountRef.current - 1));
+        },
+        [setLoadedRows]
+    );
+
     // Clear when no channel is selected; the section (which drives applyQuery) is unmounted then.
     useEffect(() => {
         if (selectedChannelId === null) {
@@ -331,6 +364,7 @@ export function useChannelMediaList({
         reloadMedia,
         handleItemsRemoved,
         handleItemReordered,
+        handleWatchedChanged,
         clearMedia,
     });
 }

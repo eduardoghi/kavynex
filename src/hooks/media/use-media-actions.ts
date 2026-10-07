@@ -29,6 +29,9 @@ type UseMediaActionsOptions = {
     // row that displaced across the page boundary is fetched rather than skipped. See
     // `useChannelMediaList.handleItemReordered` for why one position is the exact correction.
     onItemReordered: () => void;
+    // Notifies the pager that a media's watched state changed, so a row that no longer matches the
+    // watched filter leaves the list. See `useChannelMediaList.handleWatchedChanged`.
+    onWatchedChanged: (mediaId: number, watched: boolean) => void;
     mediaPlayer: {
         activeMedia: MediaRow | null;
         setActiveMedia: (media: MediaRow | null) => void;
@@ -68,6 +71,7 @@ export function useMediaActions({
     setMediaItems,
     onItemsRemoved,
     onItemReordered,
+    onWatchedChanged,
     mediaPlayer,
     onError,
     onNotice,
@@ -203,6 +207,8 @@ export function useMediaActions({
                         updateMediaItems: setMediaItems,
                     });
 
+                    onWatchedChanged(mediaId, true);
+
                     const active = activeMediaRef.current;
 
                     if (active?.id === mediaId) {
@@ -223,7 +229,7 @@ export function useMediaActions({
                 }
             });
         },
-        [setActiveMedia, onError, runWatchedActionFor, setMediaItems]
+        [setActiveMedia, onError, onWatchedChanged, runWatchedActionFor, setMediaItems]
     );
 
     const markAsUnwatched = useCallback(
@@ -234,6 +240,8 @@ export function useMediaActions({
                         mediaId,
                         updateMediaItems: setMediaItems,
                     });
+
+                    onWatchedChanged(mediaId, false);
 
                     const active = activeMediaRef.current;
 
@@ -252,7 +260,7 @@ export function useMediaActions({
                 }
             });
         },
-        [setActiveMedia, onError, runWatchedActionFor, setMediaItems]
+        [setActiveMedia, onError, onWatchedChanged, runWatchedActionFor, setMediaItems]
     );
 
     const refreshComments = useCallback(

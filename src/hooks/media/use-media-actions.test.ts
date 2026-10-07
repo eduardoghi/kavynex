@@ -80,6 +80,7 @@ describe("useMediaActions", () => {
     const setMediaItems = vi.fn();
     const onItemsRemoved = vi.fn();
     const onItemReordered = vi.fn();
+    const onWatchedChanged = vi.fn();
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -100,6 +101,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -127,6 +129,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -141,6 +144,7 @@ describe("useMediaActions", () => {
             mediaId: 1,
             updateMediaItems: setMediaItems,
         });
+        expect(onWatchedChanged).toHaveBeenCalledWith(1, true);
 
         // Progress is reset to 0 alongside watched_at, matching the backend and the media list.
         expect(mediaPlayer.setActiveMedia).toHaveBeenCalledWith({
@@ -167,6 +171,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -210,6 +215,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -249,6 +255,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -275,6 +282,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -289,6 +297,7 @@ describe("useMediaActions", () => {
             mediaId: 1,
             updateMediaItems: setMediaItems,
         });
+        expect(onWatchedChanged).toHaveBeenCalledWith(1, false);
 
         expect(mediaPlayer.setActiveMedia).toHaveBeenCalledWith({
             ...mediaPlayer.activeMedia,
@@ -307,6 +316,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -342,6 +352,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -371,6 +382,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -383,6 +395,8 @@ describe("useMediaActions", () => {
 
         expect(onError).toHaveBeenCalledWith("Failed to update watched status.");
         expect(consoleErrorSpy).toHaveBeenCalled();
+        // The row's state did not change, so it must stay in a filtered list.
+        expect(onWatchedChanged).not.toHaveBeenCalled();
     });
 
     it("refreshes comments and updates active player state", async () => {
@@ -406,6 +420,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -437,6 +452,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -466,6 +482,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -497,6 +514,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -528,6 +546,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -562,6 +581,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -588,6 +608,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -616,6 +637,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -644,6 +666,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -683,6 +706,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -730,6 +754,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -769,6 +794,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -818,6 +844,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -855,6 +882,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -884,6 +912,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -914,6 +943,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -948,6 +978,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -977,6 +1008,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1008,6 +1040,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1042,6 +1075,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1077,6 +1111,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1109,6 +1144,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1144,6 +1180,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1189,6 +1226,7 @@ describe("useMediaActions", () => {
                 setMediaItems,
                 onItemsRemoved,
                 onItemReordered,
+                onWatchedChanged,
                 mediaPlayer,
                 onError,
                 onNotice,
@@ -1224,6 +1262,7 @@ describe("useMediaActions", () => {
             setMediaItems,
             onItemsRemoved,
             onItemReordered,
+            onWatchedChanged,
             mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
             onError,
             onNotice,
@@ -1258,6 +1297,7 @@ describe("useMediaActions", () => {
             setMediaItems,
             onItemsRemoved,
             onItemReordered,
+            onWatchedChanged,
             mediaPlayer: { activeMedia, setActiveMedia, closePlayer },
             onError,
             onNotice,

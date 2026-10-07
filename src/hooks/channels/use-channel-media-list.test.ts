@@ -496,6 +496,124 @@ describe("useChannelMediaList", () => {
         );
     });
 
+    it("drops a row marked watched under the unwatched filter and keeps the channel total", async () => {
+        const unwatchedQuery: MediaQueryFilters = {
+            ...DEFAULT_MEDIA_QUERY_FILTERS,
+            watched: "unwatched",
+        };
+
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(page([createMediaRow({ id: 1 })], 8))
+            .mockResolvedValueOnce(
+                page(
+                    [createMediaRow({ id: 1 }), createMediaRow({ id: 2 }), createMediaRow({ id: 3 })],
+                    6
+                )
+            )
+            .mockResolvedValueOnce(page([createMediaRow({ id: 4 })], 5));
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        // The unfiltered load is what sets the channel total, the way the first load of a channel does.
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        await act(async () => {
+            await result.current.applyQuery(unwatchedQuery);
+        });
+
+        act(() => {
+            result.current.handleWatchedChanged(2, true);
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 3]);
+        expect(result.current.total).toBe(5);
+        expect(result.current.channelTotal).toBe(8);
+
+        // The row left the backend's matching set too, so the next page starts one row earlier.
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ watched: "unwatched", offset: 2 })
+        );
+    });
+
+    it("drops a row marked unwatched under the watched filter", async () => {
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 2)
+        );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(filteredQuery);
+        });
+
+        act(() => {
+            result.current.handleWatchedChanged(1, true);
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2]);
+
+        act(() => {
+            result.current.handleWatchedChanged(1, false);
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([2]);
+        expect(result.current.total).toBe(1);
+    });
+
+    it("keeps every row when no watched filter is active", async () => {
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 2)
+        );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        act(() => {
+            result.current.handleWatchedChanged(1, true);
+            result.current.handleWatchedChanged(2, false);
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2]);
+        expect(result.current.total).toBe(2);
+    });
+
+    it("leaves the counts alone for a media the list does not hold", async () => {
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 })], 4)
+        );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(filteredQuery);
+        });
+
+        act(() => {
+            result.current.handleWatchedChanged(99, false);
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1]);
+        expect(result.current.total).toBe(4);
+    });
+
     it("fetches the row a rename displaced past the window instead of skipping it", async () => {
         // The failure this closes, end to end. Three rows are loaded out of six, so the cursor sits
         // at 3. Renaming a loaded row moves it in the backend's sort (every ORDER BY ties on
