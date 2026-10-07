@@ -77,6 +77,7 @@ const mockErrorState = {
     errorOpen: true,
     errorMessage: "boom",
     errorVariant: "error" as const,
+    pendingMessageCount: 0,
     showError: vi.fn(),
     showNotice: vi.fn(),
     closeErrorModal: vi.fn(),

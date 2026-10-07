@@ -216,6 +216,7 @@ function createError(): ErrorModalController {
         errorOpen: true,
         errorMessage: "boom",
         errorVariant: "error",
+        pendingMessageCount: 0,
         showError: vi.fn(),
         showNotice: vi.fn(),
         closeErrorModal: vi.fn(),

@@ -6,40 +6,67 @@ export type ErrorModalController = {
     errorOpen: boolean;
     errorMessage: string;
     errorVariant: ErrorModalVariant;
+    // Messages waiting behind the one on screen.
+    pendingMessageCount: number;
     showError: (message: string) => void;
     showNotice: (message: string) => void;
     closeErrorModal: () => void;
 };
 
+type QueuedMessage = {
+    message: string;
+    variant: ErrorModalVariant;
+};
+
+// Bounds what a failure repeating in a loop can pile up. Past it the newest messages are dropped,
+// since the ones already queued are the first failures and usually the cause of the rest.
+const MAX_QUEUED_MESSAGES = 20;
+
+function enqueue(queue: QueuedMessage[], next: QueuedMessage): QueuedMessage[] {
+    // The same message twice says nothing new, and a retry that fails the same way would otherwise
+    // make the user close it once per attempt.
+    const alreadyQueued = queue.some(
+        (entry) => entry.message === next.message && entry.variant === next.variant,
+    );
+
+    if (alreadyQueued || queue.length >= MAX_QUEUED_MESSAGES) {
+        return queue;
+    }
+
+    return [...queue, next];
+}
+
+/**
+ * Error and notice messages for the shared modal, shown one at a time in arrival order.
+ *
+ * A message never replaces the one on screen. A notice landing while an error is open used to
+ * overwrite it, and the user never saw the failure. Closing shows the next one.
+ */
 export function useErrorModal(): ErrorModalController {
-    const [errorOpen, setErrorOpen] = useState(false);
-    const [errorMessage, setErrorMessage] = useState("");
-    const [errorVariant, setErrorVariant] = useState<ErrorModalVariant>("error");
+    const [queue, setQueue] = useState<QueuedMessage[]>([]);
 
     const showError = useCallback((message: string): void => {
-        setErrorVariant("error");
-        setErrorMessage(message);
-        setErrorOpen(true);
+        setQueue((current) => enqueue(current, { message, variant: "error" }));
     }, []);
 
     // Neutral, non-alarming message (e.g. "no comments were found"). Shown in the same modal
     // as errors but styled as a notice, so an expected outcome is not dressed up as a failure.
     const showNotice = useCallback((message: string): void => {
-        setErrorVariant("notice");
-        setErrorMessage(message);
-        setErrorOpen(true);
+        setQueue((current) => enqueue(current, { message, variant: "notice" }));
     }, []);
 
     const closeErrorModal = useCallback((): void => {
-        setErrorOpen(false);
-        setErrorMessage("");
+        setQueue((current) => current.slice(1));
     }, []);
+
+    const shown = queue[0];
 
     // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
     return useMemoObject({
-        errorOpen,
-        errorMessage,
-        errorVariant,
+        errorOpen: shown !== undefined,
+        errorMessage: shown?.message ?? "",
+        errorVariant: shown?.variant ?? "error",
+        pendingMessageCount: Math.max(queue.length - 1, 0),
         showError,
         showNotice,
         closeErrorModal,

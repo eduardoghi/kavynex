@@ -234,6 +234,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 onClose={error.closeErrorModal}
                 variant={error.errorVariant}
                 message={error.errorMessage}
+                pendingCount={error.pendingMessageCount}
             />
         </>
     );

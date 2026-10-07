@@ -49,6 +49,61 @@ describe("useErrorModal", () => {
         expect(result.current.errorMessage).toBe("");
     });
 
+    it("keeps an open error on screen when a notice arrives, and shows the notice next", () => {
+        const { result } = renderHook(() => useErrorModal());
+
+        act(() => {
+            result.current.showError("The download failed");
+            result.current.showNotice("No comments were found");
+        });
+
+        expect(result.current.errorMessage).toBe("The download failed");
+        expect(result.current.errorVariant).toBe("error");
+        expect(result.current.pendingMessageCount).toBe(1);
+
+        act(() => {
+            result.current.closeErrorModal();
+        });
+
+        expect(result.current.errorOpen).toBe(true);
+        expect(result.current.errorMessage).toBe("No comments were found");
+        expect(result.current.errorVariant).toBe("notice");
+        expect(result.current.pendingMessageCount).toBe(0);
+
+        act(() => {
+            result.current.closeErrorModal();
+        });
+
+        expect(result.current.errorOpen).toBe(false);
+        expect(result.current.errorMessage).toBe("");
+    });
+
+    it("queues a message that is already waiting only once", () => {
+        const { result } = renderHook(() => useErrorModal());
+
+        act(() => {
+            result.current.showError("Network error");
+            result.current.showError("Network error");
+            result.current.showNotice("Network error");
+        });
+
+        // The same text as a notice is a different message.
+        expect(result.current.pendingMessageCount).toBe(1);
+    });
+
+    it("stops queueing past the cap and keeps the earliest messages", () => {
+        const { result } = renderHook(() => useErrorModal());
+
+        act(() => {
+            for (let index = 0; index < 25; index += 1) {
+                result.current.showError(`Failure ${index}`);
+            }
+        });
+
+        expect(result.current.errorMessage).toBe("Failure 0");
+        expect(result.current.pendingMessageCount).toBe(19);
+    });
+
     it("keeps a stable showError reference across rerenders", () => {
         const { result, rerender } = renderHook(() => useErrorModal());
 

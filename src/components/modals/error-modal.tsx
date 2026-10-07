@@ -11,6 +11,8 @@ type ErrorModalProps = {
     variant?: ErrorModalVariant;
     title?: ReactNode;
     message: ReactNode;
+    // Messages queued behind this one, which closing it shows next.
+    pendingCount?: number;
 };
 
 export function ErrorModal({
@@ -19,6 +21,7 @@ export function ErrorModal({
     variant = "error",
     title,
     message,
+    pendingCount = 0,
 }: ErrorModalProps): JSX.Element {
     const isNotice = variant === "notice";
     const color = isNotice ? "blue" : "red";
@@ -65,7 +68,14 @@ export function ErrorModal({
                     {message}
                 </Text>
 
-                <Group justify="flex-end">
+                <Group justify={pendingCount > 0 ? "space-between" : "flex-end"}>
+                    {pendingCount > 0 && (
+                        <Text size="sm" c="dimmed">
+                            {pendingCount === 1
+                                ? "1 more message after this one"
+                                : `${pendingCount} more messages after this one`}
+                        </Text>
+                    )}
                     <Button type="button" color={color} onClick={onClose}>
                         Close
                     </Button>
