@@ -12,6 +12,8 @@ type AppUpdateSectionProps = Pick<
     | "checkForUpdate"
     | "installUpdate"
 > & {
+    // Why the install cannot start right now, or null when it can. The install relaunches the app.
+    installBlockedReason?: string | null;
     checkUpdatesOnStartup: boolean;
     onChangeCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
 };
@@ -23,6 +25,7 @@ export function AppUpdateSection({
     appUpdateErrorMessage,
     checkForUpdate,
     installUpdate,
+    installBlockedReason = null,
     checkUpdatesOnStartup,
     onChangeCheckUpdatesOnStartup,
 }: AppUpdateSectionProps): JSX.Element {
@@ -118,11 +121,18 @@ export function AppUpdateSection({
                                     void installUpdate();
                                 }}
                                 loading={appUpdateStatus === "downloading"}
-                                disabled={appUpdateStatus === "downloading"}
+                                disabled={
+                                    appUpdateStatus === "downloading" || !!installBlockedReason
+                                }
                             >
                                 Download and install
                             </AppButton>
                         </Group>
+
+                        <Text size="xs" c="dimmed">
+                            {installBlockedReason ??
+                                "Kavynex restarts on its own to finish installing the update."}
+                        </Text>
                     </Stack>
                 </Alert>
             )}

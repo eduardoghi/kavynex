@@ -75,6 +75,15 @@ export function SettingsModal({
 
     const modalLock = useModalLock(isModalLocked, onClose);
 
+    // The install ends in a relaunch, which would cut short anything else this modal has running.
+    let installBlockedReason: string | null = null;
+
+    if (isMigratingLibraryPath) {
+        installBlockedReason = "Wait for the library folder to finish moving before updating.";
+    } else if (controller.databaseBusy !== "idle") {
+        installBlockedReason = "Wait for the database operation to finish before updating.";
+    }
+
     return (
         <Modal
             opened={opened}
@@ -180,6 +189,7 @@ export function SettingsModal({
                         appUpdateErrorMessage={controller.appUpdateErrorMessage}
                         checkForUpdate={controller.checkForUpdate}
                         installUpdate={controller.installUpdate}
+                        installBlockedReason={installBlockedReason}
                         checkUpdatesOnStartup={checkUpdatesOnStartup}
                         onChangeCheckUpdatesOnStartup={onChangeCheckUpdatesOnStartup}
                     />

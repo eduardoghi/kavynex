@@ -71,6 +71,41 @@ describe("AppUpdateSection", () => {
         expect(installUpdate).toHaveBeenCalledTimes(1);
     });
 
+    it("says the app restarts to finish the update", () => {
+        renderWithMantine(
+            <AppUpdateSection
+                {...baseProps({
+                    appUpdateStatus: "available",
+                    updateInfo: { version: "1.2.0", currentVersion: "1.1.1", body: "" },
+                })}
+            />
+        );
+
+        expect(screen.getByText(/restarts on its own/i)).toBeInTheDocument();
+    });
+
+    it("holds the install, with the reason, while something else would be cut short", () => {
+        const installUpdate = vi.fn();
+
+        renderWithMantine(
+            <AppUpdateSection
+                {...baseProps({
+                    appUpdateStatus: "available",
+                    updateInfo: { version: "1.2.0", currentVersion: "1.1.1", body: "" },
+                    installUpdate,
+                    installBlockedReason:
+                        "Wait for the library folder to finish moving before updating.",
+                })}
+            />
+        );
+
+        const install = screen.getByRole("button", { name: /download and install/i });
+        expect(install).toBeDisabled();
+        fireEvent.click(install);
+        expect(installUpdate).not.toHaveBeenCalled();
+        expect(screen.getByText(/finish moving before updating/i)).toBeInTheDocument();
+    });
+
     it("shows an update error message", () => {
         renderWithMantine(
             <AppUpdateSection
