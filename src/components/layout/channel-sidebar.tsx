@@ -105,13 +105,17 @@ export function ChannelSidebar({
                                 src={appIconSrc}
                                 width={32}
                                 height={32}
-                                alt="Kavynex"
+                                // Decorative. The name is the heading right beside it, and an alt
+                                // repeating it made a screen reader say "Kavynex" twice.
+                                alt=""
                                 style={{ borderRadius: 8, display: "block" }}
                             />
                         ) : null}
 
                         <Group gap={8} align="baseline" wrap="nowrap">
                             <Text
+                                component="h1"
+                                m={0}
                                 fw={700}
                                 size="xl"
                                 lh={1}

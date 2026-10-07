@@ -113,8 +113,10 @@ describe("ChannelSidebar", () => {
             { withAppShell: true }
         );
 
-        expect(screen.getByText("Kavynex")).toBeInTheDocument();
-        expect(screen.getByAltText("Kavynex")).toBeInTheDocument();
+        // The app name is the page's one h1, and the logo beside it is decorative, so a screen
+        // reader says the name once rather than once for the image and again for the text.
+        expect(screen.getByRole("heading", { level: 1, name: "Kavynex" })).toBeInTheDocument();
+        expect(screen.queryByRole("img", { name: "Kavynex" })).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: /new channel/i }));
         expect(onOpenCreateChannel).toHaveBeenCalledTimes(1);

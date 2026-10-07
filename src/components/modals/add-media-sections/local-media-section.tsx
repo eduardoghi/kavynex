@@ -35,6 +35,7 @@ export function LocalMediaSection({
         <Box
             role="button"
             tabIndex={isLocked ? -1 : 0}
+            aria-disabled={isLocked || undefined}
             onClick={isLocked ? undefined : onPickMedia}
             onKeyDown={(event) => {
                 if (isLocked) {

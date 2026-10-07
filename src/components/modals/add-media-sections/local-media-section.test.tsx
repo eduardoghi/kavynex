@@ -169,6 +169,23 @@ describe("LocalMediaSection", () => {
 
         fireEvent.click(screen.getByRole("button"));
         expect(onPickMedia).not.toHaveBeenCalled();
+        // Locked is announced, not only enforced, so a screen reader does not offer a control
+        // that does nothing.
+        expect(screen.getByRole("button")).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("does not mark the picker disabled while it can be used", () => {
+        renderWithMantine(
+            <LocalMediaSection
+                mediaPath=""
+                mediaType="video"
+                importMode="copy"
+                isLocked={false}
+                onPickMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button")).not.toHaveAttribute("aria-disabled");
     });
 
     it("does not call pick handler on Enter when locked", () => {

@@ -155,5 +155,24 @@ describe("ThumbnailSection", () => {
         fireEvent.click(screen.getByText("Select a media file first"));
 
         expect(onPickThumb).not.toHaveBeenCalled();
+        expect(screen.getByRole("button")).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("marks the picker disabled while busy, and not while it can be used", () => {
+        const props = {
+            thumbPath: "",
+            mediaType: "video" as const,
+            isGeneratingThumb: false,
+            canSelectThumb: true,
+            isUrlMode: false,
+            onPickThumb: vi.fn(),
+        };
+
+        const { unmount } = renderWithMantine(<ThumbnailSection {...props} isBusy />);
+        expect(screen.getByRole("button")).toHaveAttribute("aria-disabled", "true");
+        unmount();
+
+        renderWithMantine(<ThumbnailSection {...props} isBusy={false} />);
+        expect(screen.getByRole("button")).not.toHaveAttribute("aria-disabled");
     });
 });

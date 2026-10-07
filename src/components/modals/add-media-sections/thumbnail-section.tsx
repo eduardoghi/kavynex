@@ -57,6 +57,7 @@ export function ThumbnailSection({
             p="md"
             role="button"
             tabIndex={!isBusy && canSelectThumb ? 0 : -1}
+            aria-disabled={isBusy || !canSelectThumb || undefined}
             onClick={!isBusy && canSelectThumb ? onPickThumb : undefined}
             onKeyDown={(event) => {
                 if (isBusy || !canSelectThumb) {
