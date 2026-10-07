@@ -11,6 +11,7 @@ describe("AddMediaModalActions", () => {
                     isYtDlpRunning={false}
                     isUrlMode={false}
                     isImportingLocalFile={false}
+                    isLoadingYtDlpFormats={false}
                     isCancellingYtDlp={false}
                     isModalLocked={false}
                     canSubmit
@@ -25,6 +26,31 @@ describe("AddMediaModalActions", () => {
         expect(screen.getByRole("button", { name: /add media/i })).toBeInTheDocument();
     });
 
+    it("says formats are loading, not downloading, while yt-dlp only lists them", () => {
+        renderWithMantine(
+            <form>
+                <AddMediaModalActions
+                    isYtDlpRunning
+                    isUrlMode
+                    isImportingLocalFile={false}
+                    isLoadingYtDlpFormats
+                    isCancellingYtDlp={false}
+                    isModalLocked
+                    canSubmit
+                    isBusy
+                    loading={false}
+                    onCancelYtDlpDownload={vi.fn()}
+                    onClose={vi.fn()}
+                />
+            </form>
+        );
+
+        expect(screen.getByText("Loading formats...")).toBeInTheDocument();
+        expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /cancel download/i })).not.toBeInTheDocument();
+    });
+
     it("shows cancel download button when yt-dlp is running in url mode", () => {
         renderWithMantine(
             <form>
@@ -32,6 +58,7 @@ describe("AddMediaModalActions", () => {
                     isYtDlpRunning
                     isUrlMode
                     isImportingLocalFile={false}
+                    isLoadingYtDlpFormats={false}
                     isCancellingYtDlp={false}
                     isModalLocked
                     canSubmit
@@ -55,6 +82,7 @@ describe("AddMediaModalActions", () => {
                     isYtDlpRunning={false}
                     isUrlMode={false}
                     isImportingLocalFile
+                    isLoadingYtDlpFormats={false}
                     isCancellingYtDlp={false}
                     isModalLocked
                     canSubmit
@@ -85,6 +113,7 @@ describe("AddMediaModalActions", () => {
                     isYtDlpRunning={false}
                     isUrlMode={false}
                     isImportingLocalFile={false}
+                    isLoadingYtDlpFormats={false}
                     isCancellingYtDlp={false}
                     isModalLocked={false}
                     canSubmit
@@ -108,6 +137,7 @@ describe("AddMediaModalActions", () => {
                     isYtDlpRunning={false}
                     isUrlMode={false}
                     isImportingLocalFile={false}
+                    isLoadingYtDlpFormats={false}
                     isCancellingYtDlp={false}
                     isModalLocked={false}
                     canSubmit
@@ -131,6 +161,7 @@ describe("AddMediaModalActions", () => {
                     isYtDlpRunning={false}
                     isUrlMode={false}
                     isImportingLocalFile={false}
+                    isLoadingYtDlpFormats={false}
                     isCancellingYtDlp={false}
                     isModalLocked={false}
                     canSubmit

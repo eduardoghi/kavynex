@@ -9,6 +9,9 @@ type AddMediaModalActionsProps = {
     // a way out in front of the user. An import of a large file from a slow drive holds the modal
     // locked for as long as it runs, and until it was cancellable the only exit was killing the app.
     isImportingLocalFile: boolean;
+    // yt-dlp is running to list the formats, not to download. The terminal and the run flag are
+    // shared with the download, so without this the footer said "Downloading..." for a listing.
+    isLoadingYtDlpFormats: boolean;
     isCancellingYtDlp: boolean;
     isModalLocked: boolean;
     canSubmit: boolean;
@@ -22,6 +25,7 @@ export function AddMediaModalActions({
     isYtDlpRunning,
     isUrlMode,
     isImportingLocalFile,
+    isLoadingYtDlpFormats,
     isCancellingYtDlp,
     isModalLocked,
     canSubmit,
@@ -39,6 +43,17 @@ export function AddMediaModalActions({
     // registering the media and fetching comments and live chat, which is exactly the
     // window where the footer must not be offering to start another one.
     const isImporting = loading || isYtDlpRunning;
+    const isListingFormats = isLoadingYtDlpFormats && !loading;
+
+    let statusText = "Importing...";
+    let cancelText = isUrlMode ? "Cancel download" : "Cancel import";
+
+    if (isListingFormats) {
+        statusText = "Loading formats...";
+        cancelText = "Cancel";
+    } else if (isYtDlpRunning) {
+        statusText = "Downloading...";
+    }
 
     if (isImporting) {
         return (
@@ -50,7 +65,7 @@ export function AddMediaModalActions({
                     <Loader size="xs" />
 
                     <Text size="sm" c="dimmed">
-                        {isYtDlpRunning ? "Downloading..." : "Importing..."}
+                        {statusText}
                     </Text>
                 </Group>
 
@@ -61,11 +76,7 @@ export function AddMediaModalActions({
                         onClick={() => void onCancelYtDlpDownload?.()}
                         disabled={isCancellingYtDlp}
                     >
-                        {isCancellingYtDlp
-                            ? "Cancelling..."
-                            : isUrlMode
-                              ? "Cancel download"
-                              : "Cancel import"}
+                        {isCancellingYtDlp ? "Cancelling..." : cancelText}
                     </AppButton>
                 )}
             </Group>
