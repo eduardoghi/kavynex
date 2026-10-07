@@ -82,7 +82,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use http::{Request, Response, StatusCode};
-use tauri::{Manager, Runtime, UriSchemeContext};
+use tauri::{AppHandle, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 
 /// The scheme the renderer builds media URLs with. Reaches the webview as `kvxmedia://localhost/...`
 /// on macOS and Linux and as `http://kvxmedia.localhost/...` on Windows, which is why the CSP in
@@ -276,19 +276,49 @@ fn empty_response(status: StatusCode) -> Response<Vec<u8>> {
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
+/// True when the decoded path climbs out of a directory anywhere along it.
+///
+/// Refused before the scope is asked, as Tauri's own `asset:` handler does through `SafePathBuf`.
+/// The scope canonicalizes only a path that exists, and on Windows its globs let a `..` component
+/// match, so a path that climbs out of the library and names nothing would pass the check and
+/// answer 404 where one naming a real file answers 403. That difference says whether a file exists.
+pub(crate) fn climbs_out_of_a_directory(path: &str) -> bool {
+    Path::new(path)
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+}
+
+/// The protocol's entry point. Hands the request to the blocking pool and answers from there.
+///
+/// Registered as an asynchronous protocol because a response is a read of up to
+/// [`MAX_RANGE_BYTES`], and a synchronous handler runs it on the thread the webview calls it from,
+/// which on Windows is the UI thread. Every seek in a long recording on a slow disk or a network
+/// share then froze the window for the length of the read.
+pub fn handle<R: Runtime>(
+    context: UriSchemeContext<'_, R>,
+    request: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
+    let app = context.app_handle().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        responder.respond(serve(&app, &request));
+    });
+}
+
 /// Serves one request for a media file.
 ///
 /// Refuses anything the asset-protocol scope would refuse, which is what keeps this from being a
 /// second, looser way to read the disk. See the module docs.
-pub fn handle<R: Runtime>(
-    context: UriSchemeContext<'_, R>,
-    request: Request<Vec<u8>>,
+pub(crate) fn serve<R: Runtime>(
+    app: &AppHandle<R>,
+    request: &Request<Vec<u8>>,
 ) -> Response<Vec<u8>> {
     // Skip the leading `/` the URI always carries, then undo the encoding the renderer applied.
     let raw_path = request.uri().path();
     let path = percent_decode(raw_path.strip_prefix('/').unwrap_or(raw_path));
 
-    if path.is_empty() {
+    if path.is_empty() || climbs_out_of_a_directory(&path) {
         return empty_response(StatusCode::BAD_REQUEST);
     }
 
@@ -296,11 +326,7 @@ pub fn handle<R: Runtime>(
     // than a second implementation of it. The scope holds exactly the four managed subdirectories
     // of the configured library (see commands::security), so a path outside them is refused here
     // without this module knowing anything about libraries.
-    if !context
-        .app_handle()
-        .asset_protocol_scope()
-        .is_allowed(&path)
-    {
+    if !app.asset_protocol_scope().is_allowed(&path) {
         crate::services::logger::warn(
             "media_protocol",
             format!(
@@ -574,4 +600,92 @@ mod tests {
     // The cap's floor is pinned at compile time next to the constant itself (`const _: () =
     // assert!(..)`), rather than by a test here. Both sides are constants, so a runtime assertion
     // would be dead weight and clippy says so.
+
+    #[test]
+    fn a_path_that_climbs_out_of_a_directory_is_recognized() {
+        assert!(climbs_out_of_a_directory("/lib/video/../../secret.txt"));
+        assert!(climbs_out_of_a_directory("../x.mp4"));
+        assert!(!climbs_out_of_a_directory("/lib/video/clip.mp4"));
+        // A name that merely contains dots is not a parent component.
+        assert!(!climbs_out_of_a_directory("/lib/video/clip..final.mp4"));
+        assert!(!climbs_out_of_a_directory("/lib/video/..hidden.mp4"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_backslash_spelling_of_the_climb_is_recognized_on_windows() {
+        // What `%5C..%5C` in a request decodes to. The case the existence oracle needed.
+        assert!(climbs_out_of_a_directory(
+            r"C:\lib\video\..\..\Users\me\secret.txt"
+        ));
+    }
+
+    /// A request for `path` the way the renderer builds one, with the characters `convertFileSrc`
+    /// escapes that a test path can contain.
+    fn request_for(path: &Path) -> Request<Vec<u8>> {
+        let encoded = path
+            .to_string_lossy()
+            .replace('%', "%25")
+            .replace('\\', "%5C")
+            .replace(':', "%3A")
+            .replace(' ', "%20");
+
+        Request::builder()
+            .uri(format!("http://kvxmedia.localhost/{encoded}"))
+            .body(Vec::new())
+            .unwrap()
+    }
+
+    /// A mock app whose asset scope grants `dir`, in both spellings, the way
+    /// `register_library_asset_scope` does.
+    fn app_granting(dir: &Path) -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let scope = app.asset_protocol_scope();
+        scope.allow_directory(dir, true).unwrap();
+        scope
+            .allow_directory(dir.canonicalize().unwrap(), true)
+            .unwrap();
+        app
+    }
+
+    #[test]
+    fn serve_answers_a_file_inside_the_scope_and_refuses_everything_else() {
+        let root = std::env::temp_dir().join(format!(
+            "kavynex-media-protocol-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        let library = root.join("library");
+        std::fs::create_dir_all(&library).unwrap();
+        let outside = root.join("outside.mp4");
+        std::fs::write(&outside, b"not the library's").unwrap();
+        let inside = library.join("clip.mp4");
+        std::fs::write(&inside, b"media bytes").unwrap();
+
+        let app = app_granting(&library);
+
+        let ok = serve(app.handle(), &request_for(&inside));
+        assert_eq!(ok.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(ok.body(), b"media bytes");
+
+        // The authorization check itself. A path the scope never granted is refused.
+        let refused = serve(app.handle(), &request_for(&outside));
+        assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+        assert!(refused.body().is_empty());
+
+        // Granted directory, file gone. The player reports this as missing.
+        let missing = serve(app.handle(), &request_for(&library.join("gone.mp4")));
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+
+        // A climb out of the granted directory is refused before the scope is asked, whether or
+        // not the file it names exists, so the two answers cannot be told apart.
+        for name in ["outside.mp4", "nothing-here.mp4"] {
+            let climbing = library.join("..").join(name);
+            let answer = serve(app.handle(), &request_for(&climbing));
+            assert_eq!(answer.status(), StatusCode::BAD_REQUEST);
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

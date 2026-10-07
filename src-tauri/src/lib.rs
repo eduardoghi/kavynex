@@ -512,7 +512,7 @@ pub fn run() {
         // bites, and leaving them there keeps this handler to the one case that needed it. See
         // services::media_protocol for why a long recording cannot be served through `asset:` on
         // Apple platforms, and for the guard it reuses rather than reimplements.
-        .register_uri_scheme_protocol(
+        .register_asynchronous_uri_scheme_protocol(
             services::media_protocol::MEDIA_URI_SCHEME,
             services::media_protocol::handle,
         )
