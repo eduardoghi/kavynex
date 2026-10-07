@@ -1,7 +1,18 @@
-import { Alert, Group, Paper, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
+import {
+    Alert,
+    Group,
+    Paper,
+    Progress,
+    SimpleGrid,
+    Stack,
+    Text,
+    TextInput,
+    Title,
+} from "@mantine/core";
 import { ArrowRightLeft, FolderOpen, HardDrive, RefreshCcw, Search, Wrench } from "lucide-react";
 import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import type { PendingLibraryMove } from "../../../use-cases/change-library-path";
+import type { LibraryMigrationProgress } from "../../../types/generated/LibraryMigrationProgress";
 import { AppButton } from "../../ui/app-button";
 
 // Windows extended-length paths (`\\?\`, `\\?\UNC\`) are what the backend canonicalizes to, but
@@ -34,18 +45,52 @@ function describeMoveSize(move: PendingLibraryMove): string | null {
     return `${summary.formatted_size} in ${count(summary.video_files, "video file", "video files")}, ${count(summary.audio_files, "audio file", "audio files")} and ${count(summary.thumbnail_files, "thumbnail", "thumbnails")}`;
 }
 
+type LibraryMoveProgressProps = {
+    progress: LibraryMigrationProgress | null;
+    onCancelRunning: () => void;
+};
+
+// While the copy runs. By bytes rather than by files, since one video outweighs thousands of
+// thumbnails and a file count would sit near the end for most of the time.
+function LibraryMoveProgress({ progress, onCancelRunning }: LibraryMoveProgressProps): JSX.Element {
+    const percent =
+        progress && progress.totalBytes > 0
+            ? Math.min(100, (progress.copiedBytes / progress.totalBytes) * 100)
+            : 0;
+
+    return (
+        <Stack gap="xs">
+            <Progress value={percent} aria-label="Library move progress" />
+            <Text size="sm" c="dimmed" role="status" aria-live="polite">
+                {progress
+                    ? `Copied ${progress.copiedFiles.toLocaleString()} of ${progress.totalFiles.toLocaleString()} files`
+                    : "Preparing the move..."}
+            </Text>
+            <Group gap="sm">
+                <AppButton appVariant="danger" onClick={onCancelRunning}>
+                    Cancel move
+                </AppButton>
+            </Group>
+        </Stack>
+    );
+}
+
 type PendingLibraryMoveAlertProps = {
     move: PendingLibraryMove;
     isMigratingLibraryPath: boolean;
+    progress: LibraryMigrationProgress | null;
     onConfirm: () => void;
     onCancel: () => void;
+    onCancelRunning: () => void;
 };
 
 function PendingLibraryMoveAlert({
     move,
     isMigratingLibraryPath,
+    progress,
     onConfirm,
     onCancel,
+    onCancelRunning,
 }: PendingLibraryMoveAlertProps): JSX.Element {
     const destination = displayWindowsPath(move.destination);
     const size = describeMoveSize(move);
@@ -96,23 +141,22 @@ function PendingLibraryMoveAlert({
                     The old folder is removed only after every file is confirmed copied, and
                     adding or deleting media waits until the move is done.
                 </Text>
-                <Group gap="sm">
-                    <AppButton
-                        appVariant="primary"
-                        leftSection={<ArrowRightLeft size={16} />}
-                        onClick={onConfirm}
-                        loading={isMigratingLibraryPath}
-                    >
-                        Move library
-                    </AppButton>
-                    <AppButton
-                        appVariant="ghost"
-                        onClick={onCancel}
-                        disabled={isMigratingLibraryPath}
-                    >
-                        Cancel
-                    </AppButton>
-                </Group>
+                {isMigratingLibraryPath ? (
+                    <LibraryMoveProgress progress={progress} onCancelRunning={onCancelRunning} />
+                ) : (
+                    <Group gap="sm">
+                        <AppButton
+                            appVariant="primary"
+                            leftSection={<ArrowRightLeft size={16} />}
+                            onClick={onConfirm}
+                        >
+                            Move library
+                        </AppButton>
+                        <AppButton appVariant="ghost" onClick={onCancel}>
+                            Cancel
+                        </AppButton>
+                    </Group>
+                )}
             </Stack>
         </Alert>
     );
@@ -135,6 +179,8 @@ type LibraryFolderSectionProps = Pick<
     pendingLibraryMove?: PendingLibraryMove | null;
     onConfirmLibraryMove?: () => void;
     onCancelLibraryMove?: () => void;
+    libraryMoveProgress?: LibraryMigrationProgress | null;
+    onCancelRunningLibraryMove?: () => void;
 };
 
 export function LibraryFolderSection({
@@ -152,6 +198,8 @@ export function LibraryFolderSection({
     pendingLibraryMove = null,
     onConfirmLibraryMove = () => undefined,
     onCancelLibraryMove = () => undefined,
+    libraryMoveProgress = null,
+    onCancelRunningLibraryMove = () => undefined,
 }: LibraryFolderSectionProps): JSX.Element {
     return (
         <Stack gap="xs">
@@ -293,8 +341,10 @@ export function LibraryFolderSection({
                 <PendingLibraryMoveAlert
                     move={pendingLibraryMove}
                     isMigratingLibraryPath={isMigratingLibraryPath}
+                    progress={libraryMoveProgress}
                     onConfirm={onConfirmLibraryMove}
                     onCancel={onCancelLibraryMove}
+                    onCancelRunning={onCancelRunningLibraryMove}
                 />
             )}
 

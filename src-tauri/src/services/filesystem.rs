@@ -1078,6 +1078,18 @@ pub(crate) fn path_is_symlink(path: &Path) -> bool {
 }
 
 pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
+    copy_directory_contents_tracked(source_dir, destination_dir, None, &mut |_| {})
+}
+
+/// [`copy_directory_contents`] for a copy someone is watching. `on_copied` gets the size of each
+/// file once it is in place, and a set `cancel` stops the walk before the next file and the copy of
+/// the current one partway (the chunked copy, which leaves nothing behind).
+pub(crate) fn copy_directory_contents_tracked(
+    source_dir: &Path,
+    destination_dir: &Path,
+    cancel: Option<&AtomicBool>,
+    on_copied: &mut dyn FnMut(u64),
+) -> AppResult<()> {
     if !source_dir.exists() {
         return Ok(());
     }
@@ -1125,7 +1137,7 @@ pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> App
         let destination_path = destination_dir.join(entry.file_name());
 
         if source_path.is_dir() {
-            copy_directory_contents(&source_path, &destination_path)?;
+            copy_directory_contents_tracked(&source_path, &destination_path, cancel, on_copied)?;
             continue;
         }
 
@@ -1133,7 +1145,20 @@ pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> App
             continue;
         }
 
-        copy_file_atomic(&source_path, &destination_path)?;
+        if cancel.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst)) {
+            return Err(AppError::from_code(
+                AppErrorCode::FileCopyFailed,
+                "the copy was cancelled",
+            ));
+        }
+
+        copy_file_atomic_maybe_cancellable(&source_path, &destination_path, cancel)?;
+        on_copied(
+            source_path
+                .metadata()
+                .map(|metadata| metadata.len())
+                .unwrap_or(0),
+        );
     }
 
     Ok(())

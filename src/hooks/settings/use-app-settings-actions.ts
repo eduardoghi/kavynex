@@ -8,7 +8,12 @@ import {
 } from "../../use-cases/change-library-path";
 import { initializeAppSettings } from "../../use-cases/initialize-app-settings";
 import { chooseExternalBackupDirectory } from "../../services/database-service";
-import { getLibrarySummary, openLibraryDirectory } from "../../services/library-service";
+import {
+    cancelLibraryMigration,
+    getLibrarySummary,
+    openLibraryDirectory,
+} from "../../services/library-service";
+import type { LibraryMigrationProgress } from "../../types/generated/LibraryMigrationProgress";
 import { parseAppError } from "../../utils/app-error";
 import { LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE } from "../../constants/error-codes";
 import { useAsyncFlag } from "../use-async-flag";
@@ -36,10 +41,14 @@ type UseAppSettingsActionsReturn = {
     isSavingExternalBackupDir: boolean;
     // A move of the library waiting for the user to confirm it, or null.
     pendingLibraryMove: PendingLibraryMove | null;
+    // How far the copy of a confirmed move has got, or null when none is copying.
+    libraryMoveProgress: LibraryMigrationProgress | null;
     prepareSettings: () => Promise<void>;
     changeLibraryPath: (currentLibraryPath: string) => Promise<void>;
     confirmLibraryMove: () => Promise<void>;
     cancelLibraryMove: () => void;
+    // Stops a move that is copying. The old library stays as it was.
+    cancelRunningLibraryMove: () => Promise<void>;
     setImportModeAction: (mode: AppSettings["importMode"]) => void;
     setLoadRemoteImagesAction: (loadRemoteImages: boolean) => void;
     setCheckUpdatesOnStartupAction: (checkUpdatesOnStartup: boolean) => void;
@@ -65,6 +74,8 @@ export function useAppSettingsActions({
     const [pendingLibraryMove, setPendingLibraryMove] = useState<PendingLibraryMove | null>(
         null
     );
+    const [libraryMoveProgress, setLibraryMoveProgress] =
+        useState<LibraryMigrationProgress | null>(null);
 
     const prepareSettings = useCallback(async (): Promise<void> => {
         await runPrepareSettings(async () => {
@@ -151,7 +162,8 @@ export function useAppSettingsActions({
 
         await runLibraryPathChange(async () => {
             try {
-                const result = await moveLibrary(move);
+                const result = await moveLibrary(move, setLibraryMoveProgress);
+                setLibraryMoveProgress(null);
                 setPendingLibraryMove(null);
 
                 if (!result.changed) {
@@ -173,6 +185,8 @@ export function useAppSettingsActions({
                     );
                 }
             } catch (error) {
+                setLibraryMoveProgress(null);
+
                 // Not a failure but a second question. The backend refuses to switch away from a
                 // folder it cannot reach while media are registered in it, until the user says
                 // that is what they want.
@@ -192,6 +206,15 @@ export function useAppSettingsActions({
             }
         });
     }, [onError, pendingLibraryMove, runLibraryPathChange, setSettings]);
+
+    const cancelRunningLibraryMove = useCallback(async (): Promise<void> => {
+        try {
+            await cancelLibraryMigration();
+        } catch (error) {
+            logError("settings", "Failed to cancel the library move.", error);
+            onError(resolveErrorMessage(error, "Failed to cancel the library move."));
+        }
+    }, [onError]);
 
     const setImportModeAction = useCallback(
         (mode: AppSettings["importMode"]): void => {
@@ -316,10 +339,12 @@ export function useAppSettingsActions({
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
         pendingLibraryMove,
+        libraryMoveProgress,
         prepareSettings,
         changeLibraryPath,
         confirmLibraryMove,
         cancelLibraryMove,
+        cancelRunningLibraryMove,
         setImportModeAction,
         setLoadRemoteImagesAction,
         setCheckUpdatesOnStartupAction,

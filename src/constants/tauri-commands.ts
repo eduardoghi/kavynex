@@ -18,6 +18,7 @@ export const TAURI_COMMANDS = {
     CHECK_LIBRARY_INTEGRITY: "check_library_integrity",
     VERIFY_LIBRARY_CONTENT: "verify_library_content",
     CANCEL_LIBRARY_VERIFICATION: "cancel_library_verification",
+    CANCEL_LIBRARY_MIGRATION: "cancel_library_migration",
     OPEN_PATH_IN_SYSTEM: "open_path_in_system",
 
     // Creating a media is one command rather than the chain of steps this list used to name

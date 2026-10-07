@@ -1,6 +1,12 @@
 import { openFileDialog, openUrl } from "../lib/tauri-platform";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
-import { invokeCommand, invokeVoid, streamLibraryVerification } from "../lib/tauri-client";
+import {
+    invokeCommand,
+    invokeVoid,
+    migrateLibraryWithProgress,
+    streamLibraryVerification,
+} from "../lib/tauri-client";
+import type { LibraryMigrationProgress } from "../types/generated/LibraryMigrationProgress";
 import { normalizeString } from "../utils/guards";
 import { logError } from "../utils/app-logger";
 import { ClientError } from "../utils/app-error";
@@ -94,8 +100,12 @@ export async function migrateLibraryDirectory(
     currentLibraryPath: string,
     newLibraryPath: string,
     // switchWithoutMoving is the user's confirmation that the current folder cannot be reached and
-    // the library should point at the new one anyway, with nothing moved.
-    options: { switchWithoutMoving?: boolean } = {}
+    // the library should point at the new one anyway, with nothing moved. onProgress follows the
+    // copy, which cancelLibraryMigration can stop.
+    options: {
+        switchWithoutMoving?: boolean;
+        onProgress?: (progress: LibraryMigrationProgress) => void;
+    } = {}
 ): Promise<MigrateLibraryDirectoryResult> {
     const normalizedCurrentLibraryPath = normalizeString(currentLibraryPath);
     const normalizedNewLibraryPath = normalizeString(newLibraryPath);
@@ -111,11 +121,21 @@ export async function migrateLibraryDirectory(
     // The command returns the full MigrateLibraryDirectoryResult (final path, whether anything
     // changed, and whether the old directory was retained); return it as-is rather than rebuilding
     // it. It is validated against migrateLibraryDirectoryResultSchema in invokeCommand.
-    return invokeCommand(TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY, {
-        oldLibraryPath: normalizedCurrentLibraryPath,
-        newLibraryPath: normalizedNewLibraryPath,
-        switchWithoutMoving: options.switchWithoutMoving ?? false,
-    });
+    return migrateLibraryWithProgress(
+        {
+            oldLibraryPath: normalizedCurrentLibraryPath,
+            newLibraryPath: normalizedNewLibraryPath,
+            switchWithoutMoving: options.switchWithoutMoving ?? false,
+        },
+        options.onProgress ?? (() => undefined)
+    );
+}
+
+/**
+ * Asks a running library migration to stop copying. Safe to call when none is running.
+ */
+export async function cancelLibraryMigration(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.CANCEL_LIBRARY_MIGRATION);
 }
 
 export async function getLibrarySummary(path: string): Promise<LibrarySummaryInfo> {

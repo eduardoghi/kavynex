@@ -97,6 +97,7 @@ const mockSettingsState = {
     isMigratingLibraryPath: false,
     isSavingExternalBackupDir: false,
     pendingLibraryMove: null,
+    libraryMoveProgress: null,
     openSettings: vi.fn(),
     closeSettings: vi.fn(),
     setImportMode: vi.fn(),
@@ -105,6 +106,7 @@ const mockSettingsState = {
     chooseLibraryPath: vi.fn(),
     confirmLibraryMove: vi.fn(),
     cancelLibraryMove: vi.fn(),
+    cancelRunningLibraryMove: vi.fn(),
     openCurrentLibraryPath: vi.fn(),
     chooseExternalBackupDir: vi.fn(),
     clearExternalBackupDir: vi.fn(),
@@ -304,6 +306,7 @@ const mockHomeActions = {
     chooseLibraryPath: vi.fn(),
     confirmLibraryMove: vi.fn(),
     cancelLibraryMove: vi.fn(),
+    cancelRunningLibraryMove: vi.fn(),
     confirmDeleteChannel: vi.fn(),
 };
 

@@ -27,6 +27,7 @@ import {
     invokeVoid,
     listenTauri,
     listenValidated,
+    migrateLibraryWithProgress,
     streamLibraryVerification,
     streamLiveChatFile,
 } from "./tauri-client";
@@ -280,6 +281,38 @@ describe("streamLiveChatFile", () => {
         await expect(streamLiveChatFile("live_chat/gone.json.gz", vi.fn())).rejects.toMatchObject({
             code: "LIVE_CHAT_FILE_NOT_FOUND",
         });
+    });
+});
+
+describe("migrateLibraryWithProgress", () => {
+    it("passes the channel with the paths, reports valid progress and returns the result", async () => {
+        const result = { final_library_path: "E:/Library", changed: true, old_directory_retained: false };
+        invokeMock.mockResolvedValue(result);
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const onProgress = vi.fn();
+
+        const moving = migrateLibraryWithProgress(
+            { oldLibraryPath: "D:/Library", newLibraryPath: "E:/Library", switchWithoutMoving: false },
+            onProgress
+        );
+        await flushPromises();
+
+        expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY, {
+            oldLibraryPath: "D:/Library",
+            newLibraryPath: "E:/Library",
+            switchWithoutMoving: false,
+            onProgress: expect.any(FakeChannel),
+        });
+
+        const channel = channelPassedAs("onProgress");
+        const progress = { copiedFiles: 1, totalFiles: 2, copiedBytes: 10, totalBytes: 20 };
+        channel.onmessage(progress);
+        // Only a progress bar depends on these, so one it cannot read is dropped, not fatal.
+        channel.onmessage({ copiedFiles: "one" });
+
+        await expect(moving).resolves.toEqual(result);
+        expect(onProgress.mock.calls).toEqual([[progress]]);
+        spy.mockRestore();
     });
 });
 

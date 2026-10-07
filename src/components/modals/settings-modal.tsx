@@ -5,6 +5,7 @@ import { useModalLock } from "../../hooks/use-modal-lock";
 import { useMotionPreference } from "../../hooks/use-motion-preference";
 import type { ImportMode } from "../../types/settings";
 import type { PendingLibraryMove } from "../../use-cases/change-library-path";
+import type { LibraryMigrationProgress } from "../../types/generated/LibraryMigrationProgress";
 import { AppUpdateSection } from "./settings-sections/app-update-section";
 import { DatabaseSection } from "./settings-sections/database-section";
 import { ImportBehaviorSection } from "./settings-sections/import-behavior-section";
@@ -31,6 +32,8 @@ type SettingsModalProps = {
     pendingLibraryMove?: PendingLibraryMove | null;
     onConfirmLibraryMove?: () => void;
     onCancelLibraryMove?: () => void;
+    libraryMoveProgress?: LibraryMigrationProgress | null;
+    onCancelRunningLibraryMove?: () => void;
     externalBackupDir: string;
     isSavingExternalBackupDir: boolean;
     onChooseExternalBackupDir: () => void;
@@ -56,6 +59,8 @@ export function SettingsModal({
     pendingLibraryMove,
     onConfirmLibraryMove,
     onCancelLibraryMove,
+    libraryMoveProgress,
+    onCancelRunningLibraryMove,
     externalBackupDir,
     isSavingExternalBackupDir,
     onChooseExternalBackupDir,
@@ -166,6 +171,8 @@ export function SettingsModal({
                         pendingLibraryMove={pendingLibraryMove}
                         onConfirmLibraryMove={onConfirmLibraryMove}
                         onCancelLibraryMove={onCancelLibraryMove}
+                        libraryMoveProgress={libraryMoveProgress}
+                        onCancelRunningLibraryMove={onCancelRunningLibraryMove}
                     />
 
                     <Divider />

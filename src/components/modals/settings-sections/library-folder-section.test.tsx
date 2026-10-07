@@ -145,6 +145,37 @@ describe("LibraryFolderSection", () => {
         expect(onCancelLibraryMove).toHaveBeenCalledTimes(1);
     });
 
+    it("shows the copy's progress and a way to stop it while the move runs", () => {
+        const onCancelRunningLibraryMove = vi.fn();
+
+        renderWithMantine(
+            <LibraryFolderSection
+                {...baseProps({
+                    isMigratingLibraryPath: true,
+                    pendingLibraryMove: {
+                        currentLibraryPath: "/library",
+                        destination: "/new-library",
+                        summary: SUMMARY,
+                        currentFolderUnreachable: false,
+                    },
+                    libraryMoveProgress: {
+                        copiedFiles: 3,
+                        totalFiles: 10,
+                        copiedBytes: 1024,
+                        totalBytes: 2048,
+                    },
+                    onCancelRunningLibraryMove,
+                })}
+            />
+        );
+
+        expect(screen.getByText("Copied 3 of 10 files")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /move library/i })).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /cancel move/i }));
+        expect(onCancelRunningLibraryMove).toHaveBeenCalledTimes(1);
+    });
+
     it("says nothing will move when the current folder cannot be reached", () => {
         const onConfirmLibraryMove = vi.fn();
 

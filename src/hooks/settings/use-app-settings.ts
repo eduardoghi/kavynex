@@ -10,6 +10,7 @@ import { parseAppError } from "../../utils/app-error";
 import { toUserFriendlyError } from "../../utils/user-friendly-error";
 import { ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE } from "../../constants/error-codes";
 import type { PendingLibraryMove } from "../../use-cases/change-library-path";
+import type { LibraryMigrationProgress } from "../../types/generated/LibraryMigrationProgress";
 
 type UseAppSettingsOptions = {
     onError: (message: string) => void;
@@ -24,6 +25,7 @@ export type AppSettingsController = {
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
     pendingLibraryMove: PendingLibraryMove | null;
+    libraryMoveProgress: LibraryMigrationProgress | null;
     openSettings: () => void;
     closeSettings: () => void;
     setImportMode: (mode: ImportMode) => void;
@@ -32,6 +34,7 @@ export type AppSettingsController = {
     chooseLibraryPath: () => Promise<void>;
     confirmLibraryMove: () => Promise<void>;
     cancelLibraryMove: () => void;
+    cancelRunningLibraryMove: () => Promise<void>;
     openCurrentLibraryPath: () => Promise<void>;
     chooseExternalBackupDir: () => Promise<void>;
     clearExternalBackupDir: () => Promise<void>;
@@ -150,8 +153,10 @@ export function useAppSettings({
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
         pendingLibraryMove,
+        libraryMoveProgress,
         confirmLibraryMove,
         cancelLibraryMove,
+        cancelRunningLibraryMove,
     } = settingsActions;
 
     return useMemoObject({
@@ -162,6 +167,7 @@ export function useAppSettings({
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
         pendingLibraryMove,
+        libraryMoveProgress,
         openSettings,
         closeSettings,
         setImportMode,
@@ -170,6 +176,7 @@ export function useAppSettings({
         chooseLibraryPath,
         confirmLibraryMove,
         cancelLibraryMove,
+        cancelRunningLibraryMove,
         openCurrentLibraryPath,
         chooseExternalBackupDir,
         clearExternalBackupDir,

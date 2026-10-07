@@ -4,6 +4,7 @@ import {
     migrateLibraryDirectory,
 } from "../services/library-service";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
+import type { LibraryMigrationProgress } from "../types/generated/LibraryMigrationProgress";
 import { isFilesystemRootPath } from "../utils/paths";
 import { ClientError } from "../utils/app-error";
 
@@ -81,10 +82,12 @@ export async function planChangeLibraryPath({
 }
 
 export async function moveLibrary(
-    move: Pick<PendingLibraryMove, "currentLibraryPath" | "destination" | "currentFolderUnreachable">
+    move: Pick<PendingLibraryMove, "currentLibraryPath" | "destination" | "currentFolderUnreachable">,
+    onProgress?: (progress: LibraryMigrationProgress) => void
 ): Promise<ExecuteChangeLibraryPathResult> {
     const migrationResult = await migrateLibraryDirectory(move.currentLibraryPath, move.destination, {
         switchWithoutMoving: move.currentFolderUnreachable,
+        onProgress,
     });
 
     return {

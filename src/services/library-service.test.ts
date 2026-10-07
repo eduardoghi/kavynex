@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { openFileDialog, openUrl } from "../lib/tauri-platform";
-import { invokeCommand, invokeVoid, streamLibraryVerification } from "../lib/tauri-client";
+import {
+    invokeCommand,
+    invokeVoid,
+    migrateLibraryWithProgress,
+    streamLibraryVerification,
+} from "../lib/tauri-client";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
+    cancelLibraryMigration,
     cancelLibraryVerification,
     chooseLibraryDirectory,
     ensureDirectoryExists,
@@ -24,6 +30,7 @@ vi.mock("../lib/tauri-platform", () => ({
 vi.mock("../lib/tauri-client", () => ({
     invokeVoid: vi.fn(),
     invokeCommand: vi.fn(),
+    migrateLibraryWithProgress: vi.fn(),
     streamLibraryVerification: vi.fn(),
 }));
 
@@ -136,26 +143,46 @@ describe("migrateLibraryDirectory", () => {
     it("sends the two paths under the keys the backend reads and returns its result", async () => {
         // The backend treats oldLibraryPath as the configured library and newLibraryPath as the
         // destination. Swapping the two keys would ask it to move the library the other way.
-        const result = { library_path: "E:/Library", changed: true, old_directory_retained: false };
-        invokeCommandMock.mockResolvedValueOnce(result as never);
+        const result = {
+            final_library_path: "E:/Library",
+            changed: true,
+            old_directory_retained: false,
+        };
+        vi.mocked(migrateLibraryWithProgress).mockResolvedValueOnce(result);
+        const onProgress = vi.fn();
 
-        await expect(migrateLibraryDirectory(" D:/Library ", " E:/Library ")).resolves.toBe(result);
-        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY, {
-            oldLibraryPath: "D:/Library",
-            newLibraryPath: "E:/Library",
-            switchWithoutMoving: false,
-        });
+        await expect(
+            migrateLibraryDirectory(" D:/Library ", " E:/Library ", { onProgress })
+        ).resolves.toBe(result);
+        expect(migrateLibraryWithProgress).toHaveBeenCalledWith(
+            {
+                oldLibraryPath: "D:/Library",
+                newLibraryPath: "E:/Library",
+                switchWithoutMoving: false,
+            },
+            onProgress
+        );
     });
 
     it("passes the user's consent to switch away from an unreachable folder", async () => {
-        invokeCommandMock.mockResolvedValueOnce({} as never);
+        vi.mocked(migrateLibraryWithProgress).mockResolvedValueOnce({
+            final_library_path: "E:/Library",
+            changed: true,
+            old_directory_retained: false,
+        });
 
         await migrateLibraryDirectory("D:/Library", "E:/Library", { switchWithoutMoving: true });
 
-        expect(invokeCommandMock).toHaveBeenCalledWith(
-            TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY,
-            expect.objectContaining({ switchWithoutMoving: true })
+        expect(migrateLibraryWithProgress).toHaveBeenCalledWith(
+            expect.objectContaining({ switchWithoutMoving: true }),
+            expect.any(Function)
         );
+    });
+
+    it("asks a running move to stop", async () => {
+        await cancelLibraryMigration();
+
+        expect(invokeVoid).toHaveBeenCalledWith(TAURI_COMMANDS.CANCEL_LIBRARY_MIGRATION);
     });
 
     it("refuses a missing path on either side before reaching the backend", async () => {

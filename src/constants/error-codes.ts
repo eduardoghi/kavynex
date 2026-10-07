@@ -120,6 +120,7 @@ export const LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE =
 export const LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE = "LIBRARY_FOLDER_UNREACHABLE" as const;
 export const NOT_ENOUGH_SPACE_FOR_LIBRARY_ERROR_CODE = "NOT_ENOUGH_SPACE_FOR_LIBRARY" as const;
 export const LIBRARY_COPY_INCOMPLETE_ERROR_CODE = "LIBRARY_COPY_INCOMPLETE" as const;
+export const LIBRARY_MIGRATION_CANCELLED_ERROR_CODE = "LIBRARY_MIGRATION_CANCELLED" as const;
 // The deep library verification is single-run. A second request is refused rather than queued,
 // because the work is proportional to the size of the library and two sweeps would read every
 // byte twice while competing for the same disk. Nothing is wrong and the action is to wait, the
@@ -225,6 +226,7 @@ export const KNOWN_ERROR_CODES = [
     LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE,
     NOT_ENOUGH_SPACE_FOR_LIBRARY_ERROR_CODE,
     LIBRARY_COPY_INCOMPLETE_ERROR_CODE,
+    LIBRARY_MIGRATION_CANCELLED_ERROR_CODE,
     LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE,
     LIBRARY_VERIFICATION_FAILED_ERROR_CODE,
     ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,

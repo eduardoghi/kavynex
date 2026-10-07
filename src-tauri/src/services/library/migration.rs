@@ -1,11 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock, TryLockError};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
 use crate::constants::MANAGED_LIBRARY_DIRS;
-use crate::services::filesystem::copy_directory_contents;
+use crate::services::filesystem::copy_directory_contents_tracked;
 use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -21,6 +23,34 @@ pub struct MigrateLibraryDirectoryResult {
     /// copy succeeded and the new library is usable, but a full duplicate of the media remains on
     /// the old volume with nothing to clean it up automatically, so the frontend surfaces a notice.
     pub old_directory_retained: bool,
+}
+
+/// How far the copy phase has got, sent to the frontend while a migration runs.
+#[derive(Serialize, Clone, Copy, Debug, Default, PartialEq, Eq, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct LibraryMigrationProgress {
+    #[ts(type = "number")]
+    pub copied_files: u64,
+    #[ts(type = "number")]
+    pub total_files: u64,
+    #[ts(type = "number")]
+    pub copied_bytes: u64,
+    #[ts(type = "number")]
+    pub total_bytes: u64,
+}
+
+/// The least time between two progress reports. A library of thumbnails copies thousands of small
+/// files a second, and one IPC message each would cost more than the copy.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
+
+static MIGRATION_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+/// Asks the running migration to stop copying. Only the copy phase listens, since it is the long
+/// one and the only one that leaves the old library untouched when stopped. A no-op when nothing
+/// runs. The next migration clears the flag when it starts.
+pub fn request_migration_cancel() {
+    MIGRATION_CANCELLED.store(true, Ordering::SeqCst);
 }
 
 fn library_migration_lock() -> &'static Mutex<()> {
@@ -80,7 +110,7 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
 }
 
 pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
-    copy_library_contents(old_library_dir, new_library_dir)?;
+    copy_library_contents(old_library_dir, new_library_dir, None, &mut |_| {})?;
     remove_old_library_contents(old_library_dir);
     Ok(())
 }
@@ -285,7 +315,54 @@ fn first_incomplete_copy(
 /// Phase 1. Copy all managed directories to the new location without touching the originals.
 /// If any copy fails here, the old library is still fully intact and the app continues working
 /// normally against the old path.
-fn copy_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
+///
+/// `report` gets the progress at the start, then at most every [`PROGRESS_INTERVAL`], and once
+/// more when the last file is in. A set `cancel` stops the copy with `LibraryMigrationCancelled`.
+/// What was copied so far stays in the new folder, which a later attempt resumes from.
+fn copy_library_contents(
+    old_library_dir: &Path,
+    new_library_dir: &Path,
+    cancel: Option<&AtomicBool>,
+    report: &mut dyn FnMut(LibraryMigrationProgress),
+) -> AppResult<()> {
+    let mut progress = LibraryMigrationProgress::default();
+
+    for_each_managed_file(old_library_dir, &mut |_, size| {
+        progress.total_files += 1;
+        progress.total_bytes = progress.total_bytes.saturating_add(size);
+        Ok(())
+    })?;
+
+    report(progress);
+
+    let result = copy_library_contents_reporting(
+        old_library_dir,
+        new_library_dir,
+        cancel,
+        &mut progress,
+        report,
+    );
+
+    match result {
+        Err(_) if cancel.is_some_and(|flag| flag.load(Ordering::SeqCst)) => {
+            Err(AppError::from_code(
+                AppErrorCode::LibraryMigrationCancelled,
+                "the library move was cancelled before the old folder was touched",
+            ))
+        }
+        other => other,
+    }
+}
+
+fn copy_library_contents_reporting(
+    old_library_dir: &Path,
+    new_library_dir: &Path,
+    cancel: Option<&AtomicBool>,
+    progress: &mut LibraryMigrationProgress,
+    report: &mut dyn FnMut(LibraryMigrationProgress),
+) -> AppResult<()> {
+    let mut last_report = Instant::now();
+
     fs::create_dir_all(new_library_dir).map_err(|e| {
         AppError::from_code(
             AppErrorCode::CreateNewLibraryDirFailed,
@@ -307,7 +384,17 @@ fn copy_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppR
             ),
         );
 
-        copy_directory_contents(&source_dir, &destination_dir)?;
+        copy_directory_contents_tracked(&source_dir, &destination_dir, cancel, &mut |size| {
+            progress.copied_files += 1;
+            progress.copied_bytes = progress.copied_bytes.saturating_add(size);
+
+            if progress.copied_files == progress.total_files
+                || last_report.elapsed() >= PROGRESS_INTERVAL
+            {
+                report(*progress);
+                last_report = Instant::now();
+            }
+        })?;
     }
 
     Ok(())
@@ -377,8 +464,14 @@ fn migrate_library_contents_with_marker(
     old_library_dir: &Path,
     new_library_dir: &Path,
     commit_marker: Option<&Path>,
+    report: &mut dyn FnMut(LibraryMigrationProgress),
 ) -> AppResult<bool> {
-    copy_library_contents(old_library_dir, new_library_dir)?;
+    copy_library_contents(
+        old_library_dir,
+        new_library_dir,
+        Some(&MIGRATION_CANCELLED),
+        report,
+    )?;
 
     if let Some(relative) = first_incomplete_copy(old_library_dir, new_library_dir)? {
         return Err(AppError::from_code_with_details(
@@ -460,14 +553,18 @@ pub fn migrate_library_directory_sync(
         new_library_path,
         commit_marker,
         MigrationContext::default(),
+        &mut |_| {},
     )
 }
 
+/// The migration, with what the caller knows (`context`) and a `report` for the copy's progress
+/// (see `copy_library_contents`).
 pub fn migrate_library_directory_in_context(
     old_library_path: &str,
     new_library_path: &str,
     commit_marker: Option<&Path>,
     context: MigrationContext,
+    report: &mut dyn FnMut(LibraryMigrationProgress),
 ) -> AppResult<MigrateLibraryDirectoryResult> {
     let migration_guard = match library_migration_lock().try_lock() {
         Ok(guard) => guard,
@@ -483,6 +580,9 @@ pub fn migrate_library_directory_in_context(
         // running" would instead wedge every future migration until the app is restarted.
         Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
     };
+
+    // Cleared once the lock is held, so a cancel left over from an earlier run cannot stop this one.
+    MIGRATION_CANCELLED.store(false, Ordering::SeqCst);
 
     let canonical_new = ensure_library_dir(new_library_path)?;
     let old_library_dir = PathBuf::from(old_library_path.trim());
@@ -574,7 +674,7 @@ pub fn migrate_library_directory_in_context(
     // destructive phase needs it; the validation above is read-only. See services/library/lock.
     let migration_result = {
         let _library_write_guard = crate::services::library::lock::library_write_guard();
-        migrate_library_contents_with_marker(&canonical_old, &canonical_new, commit_marker)
+        migrate_library_contents_with_marker(&canonical_old, &canonical_new, commit_marker, report)
     };
 
     match &migration_result {
@@ -685,6 +785,88 @@ mod tests {
     }
 
     #[test]
+    fn the_copy_reports_its_totals_first_and_everything_copied_last() {
+        let old_root = unique_test_dir("progress-old");
+        let new_root = unique_test_dir("progress-new");
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::create_dir_all(old_root.join("thumbnails")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"12345").unwrap();
+        fs::write(old_root.join("video").join("b.mp4"), b"123").unwrap();
+        fs::write(old_root.join("thumbnails").join("a.jpg"), b"12").unwrap();
+
+        let mut reports = Vec::new();
+        copy_library_contents(&old_root, &new_root, None, &mut |progress| {
+            reports.push(progress)
+        })
+        .unwrap();
+
+        assert_eq!(
+            reports.first(),
+            Some(&LibraryMigrationProgress {
+                copied_files: 0,
+                total_files: 3,
+                copied_bytes: 0,
+                total_bytes: 10,
+            })
+        );
+        assert_eq!(
+            reports.last(),
+            Some(&LibraryMigrationProgress {
+                copied_files: 3,
+                total_files: 3,
+                copied_bytes: 10,
+                total_bytes: 10,
+            })
+        );
+
+        let _ = fs::remove_dir_all(new_root);
+        let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn a_cancelled_copy_stops_with_its_own_code_and_leaves_the_old_library_whole() {
+        let old_root = unique_test_dir("cancel-old");
+        let new_root = unique_test_dir("cancel-new");
+        fs::create_dir_all(old_root.join("audio")).unwrap();
+        fs::write(old_root.join("audio").join("a.mp3"), b"audio").unwrap();
+
+        let cancel = AtomicBool::new(true);
+        let error =
+            copy_library_contents(&old_root, &new_root, Some(&cancel), &mut |_| {}).unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::LibraryMigrationCancelled.as_str());
+        assert!(old_root.join("audio").join("a.mp3").is_file());
+        assert!(!new_root.join("audio").join("a.mp3").exists());
+
+        // A copy that failed for another reason keeps its own error.
+        let not_cancelled = AtomicBool::new(false);
+        fs::create_dir_all(new_root.join("audio").join("a.mp3")).unwrap();
+        let error = copy_library_contents(&old_root, &new_root, Some(&not_cancelled), &mut |_| {})
+            .unwrap_err();
+        assert_ne!(error.code, AppErrorCode::LibraryMigrationCancelled.as_str());
+
+        let _ = fs::remove_dir_all(new_root);
+        let _ = fs::remove_dir_all(old_root);
+    }
+
+    #[test]
+    fn a_cancel_request_reaches_the_copy_and_the_next_migration_clears_it() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        request_migration_cancel();
+        assert!(MIGRATION_CANCELLED.load(Ordering::SeqCst));
+
+        // A first-time setup is the shortest migration that takes the lock.
+        let new_root = unique_test_dir("cancel-cleared");
+        fs::create_dir_all(&new_root).unwrap();
+        migrate_library_directory_sync("   ", new_root.to_string_lossy().as_ref(), None).unwrap();
+
+        assert!(!MIGRATION_CANCELLED.load(Ordering::SeqCst));
+
+        let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
     fn a_destination_fits_when_its_free_space_covers_the_copy_or_is_unknown() {
         assert!(has_room_for(10, Some(10)));
         assert!(has_room_for(10, Some(11)));
@@ -746,6 +928,7 @@ mod tests {
             new_root.to_string_lossy().as_ref(),
             None,
             with_media,
+            &mut |_| {},
         )
         .unwrap_err();
         assert_eq!(error.code, AppErrorCode::LibraryFolderUnreachable.as_str());
@@ -759,6 +942,7 @@ mod tests {
                 switch_without_moving: true,
                 ..with_media
             },
+            &mut |_| {},
         )
         .unwrap();
         assert!(confirmed.changed);
@@ -770,6 +954,7 @@ mod tests {
                 new_root.to_string_lossy().as_ref(),
                 None,
                 MigrationContext::default(),
+                &mut |_| {},
             )
             .unwrap()
             .changed

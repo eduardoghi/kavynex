@@ -14,6 +14,7 @@ vi.mock("../../use-cases/initialize-app-settings", () => ({
 vi.mock("../../services/library-service", () => ({
     openLibraryDirectory: vi.fn(),
     getLibrarySummary: vi.fn(),
+    cancelLibraryMigration: vi.fn(),
 }));
 
 vi.mock("./use-app-settings-storage", () => ({
@@ -29,7 +30,11 @@ vi.mock("../../utils/app-logger", () => ({
 
 import { moveLibrary, planChangeLibraryPath } from "../../use-cases/change-library-path";
 import { initializeAppSettings } from "../../use-cases/initialize-app-settings";
-import { getLibrarySummary, openLibraryDirectory } from "../../services/library-service";
+import {
+    cancelLibraryMigration,
+    getLibrarySummary,
+    openLibraryDirectory,
+} from "../../services/library-service";
 import {
     loadStoredSettings,
     persistSettings,
@@ -281,16 +286,56 @@ describe("useAppSettingsActions", () => {
             await result.current.confirmLibraryMove();
         });
 
-        expect(moveLibrary).toHaveBeenCalledWith({
-            currentLibraryPath: "/library",
-            destination: "/new-library",
-            summary: SUMMARY,
-            currentFolderUnreachable: false,
-        });
+        expect(moveLibrary).toHaveBeenCalledWith(
+            {
+                currentLibraryPath: "/library",
+                destination: "/new-library",
+                summary: SUMMARY,
+                currentFolderUnreachable: false,
+            },
+            expect.any(Function)
+        );
         expect(updateStoredLibraryPath).toHaveBeenCalledWith("/new-library");
         expect(setSettings).toHaveBeenCalledWith(NEW_SETTINGS);
         expect(result.current.pendingLibraryMove).toBeNull();
         expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("exposes the copy's progress while it runs and asks the backend to stop on cancel", async () => {
+        const { result } = await renderWithPendingMove();
+        const progress = { copiedFiles: 1, totalFiles: 4, copiedBytes: 512, totalBytes: 2048 };
+
+        let finishMove: (() => void) | undefined;
+        vi.mocked(moveLibrary).mockImplementationOnce(
+            (_move, onProgress) =>
+                new Promise((resolve, reject) => {
+                    onProgress?.(progress);
+                    finishMove = () =>
+                        reject({ code: "LIBRARY_MIGRATION_CANCELLED", message: "cancelled" });
+                    void resolve;
+                })
+        );
+
+        let confirming: Promise<void> | undefined;
+        await act(async () => {
+            confirming = result.current.confirmLibraryMove();
+            await Promise.resolve();
+        });
+
+        expect(result.current.libraryMoveProgress).toEqual(progress);
+
+        await act(async () => {
+            await result.current.cancelRunningLibraryMove();
+        });
+        expect(cancelLibraryMigration).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            finishMove?.();
+            await confirming;
+        });
+
+        expect(result.current.libraryMoveProgress).toBeNull();
+        expect(result.current.pendingLibraryMove).toBeNull();
     });
 
     it("drops the pending move when the user cancels", async () => {
@@ -332,7 +377,8 @@ describe("useAppSettingsActions", () => {
         });
 
         expect(moveLibrary).toHaveBeenLastCalledWith(
-            expect.objectContaining({ currentFolderUnreachable: true })
+            expect.objectContaining({ currentFolderUnreachable: true }),
+            expect.any(Function)
         );
         expect(setSettings).toHaveBeenCalledWith(NEW_SETTINGS);
     });

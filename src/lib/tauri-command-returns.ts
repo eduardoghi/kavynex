@@ -52,6 +52,7 @@ export type TauriCommandReturns = {
     // terminal `done` message, not here.
     verify_library_content: void;
     cancel_library_verification: void;
+    cancel_library_migration: void;
     open_path_in_system: void;
 
     // The whole creation, not a step of it. The backend produces the artifacts, records the crash

@@ -9,13 +9,16 @@ import { TAURI_COMMANDS, type TauriCommandName } from "../constants/tauri-comman
 import type { TauriCommandReturns } from "./tauri-command-returns";
 import {
     contentVerificationEventSchema,
+    libraryMigrationProgressSchema,
     liveChatStreamEventSchema,
     parseEventPayload,
     validateIpcResult,
     type ContentVerificationEvent,
     type ContentVerificationReport,
+    type LibraryMigrationProgress,
     type LiveChatStreamEvent,
 } from "./ipc-schemas";
+import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import { parseAppError } from "../utils/app-error";
 import type { z } from "zod";
 
@@ -156,6 +159,35 @@ export async function streamLibraryVerification(
     // Awaited after the invoke, not instead of it. Channel messages and the invoke response travel
     // independently, so resolving on the return could race the `done` that carries the report.
     return await done;
+}
+
+// Runs a library migration, passing each progress message to `onProgress`.
+//
+// Unlike the verification stream, the result is the invoke's own return value, and the messages
+// only drive a progress bar. A message this seam cannot validate is dropped (and logged by
+// parseEventPayload), and one arriving after the return is harmless.
+export async function migrateLibraryWithProgress(
+    args: { oldLibraryPath: string; newLibraryPath: string; switchWithoutMoving: boolean },
+    onProgress: (progress: LibraryMigrationProgress) => void
+): Promise<MigrateLibraryDirectoryResult> {
+    const channel = new Channel<LibraryMigrationProgress>();
+
+    channel.onmessage = (rawProgress) => {
+        const progress = parseEventPayload(
+            libraryMigrationProgressSchema,
+            TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY,
+            rawProgress
+        );
+
+        if (progress) {
+            onProgress(progress);
+        }
+    };
+
+    return invokeCommand(TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY, {
+        ...args,
+        onProgress: channel,
+    });
 }
 
 export async function listenTauri<TPayload>(

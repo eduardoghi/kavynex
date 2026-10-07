@@ -189,6 +189,8 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         pendingLibraryMove={settings.pendingLibraryMove}
                         onConfirmLibraryMove={() => void settings.confirmLibraryMove()}
                         onCancelLibraryMove={settings.cancelLibraryMove}
+                        libraryMoveProgress={settings.libraryMoveProgress}
+                        onCancelRunningLibraryMove={() => void settings.cancelRunningLibraryMove()}
                         externalBackupDir={settings.settings.externalBackupDir}
                         isSavingExternalBackupDir={settings.isSavingExternalBackupDir}
                         onChooseExternalBackupDir={() =>

@@ -52,6 +52,7 @@ import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStat
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
+import type { LibraryMigrationProgress } from "../types/generated/LibraryMigrationProgress";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
@@ -441,6 +442,15 @@ export const contentVerificationEventSchema = z.union([
 ]) satisfies z.ZodType<ContentVerificationEvent>;
 
 export type { ContentVerificationEvent, ContentVerificationReport };
+
+export const libraryMigrationProgressSchema = z.object({
+    copiedFiles: z.number(),
+    totalFiles: z.number(),
+    copiedBytes: z.number(),
+    totalBytes: z.number(),
+}) satisfies z.ZodType<LibraryMigrationProgress>;
+
+export type { LibraryMigrationProgress };
 
 // Validates an event/channel payload against `schema`. Returns the parsed value on success, or
 // `null` on a mismatch after logging the specific fields that failed. Unlike `validateIpcResult`

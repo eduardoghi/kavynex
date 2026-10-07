@@ -91,6 +91,7 @@ pub async fn migrate_library_directory<R: Runtime>(
     // Set once the user confirmed using the new folder although the current one cannot be
     // reached (LIBRARY_FOLDER_UNREACHABLE). Nothing is moved then.
     switch_without_moving: Option<bool>,
+    on_progress: Channel<library::migration::LibraryMigrationProgress>,
 ) -> AppResult<library::migration::MigrateLibraryDirectoryResult> {
     // Keep the old path (already the canonical form register_library_asset_scope authorized)
     // so its asset-scope grant can be withdrawn once the migration actually moves the library.
@@ -146,6 +147,11 @@ pub async fn migrate_library_directory<R: Runtime>(
                 &new_library_path,
                 commit_marker.as_deref(),
                 context,
+                // A progress message that cannot be delivered (the window went away) must not
+                // stop a copy that is otherwise fine.
+                &mut |progress| {
+                    let _ = on_progress.send(progress);
+                },
             )
         })
         .await?;
@@ -363,6 +369,13 @@ pub async fn verify_library_content(
 /// a time, so there is no run to name and therefore nothing for a caller to point at the wrong one.
 /// A cancel arriving when nothing is running is a no-op, because the flag is cleared by the next run
 /// that begins rather than by this one.
+/// Asks a running library migration to stop copying. Same contract as
+/// `cancel_library_verification` below. A no-op when nothing runs.
+#[tauri::command]
+pub fn cancel_library_migration() {
+    library::migration::request_migration_cancel();
+}
+
 #[tauri::command]
 pub fn cancel_library_verification() {
     library::verification::request_verification_cancel();

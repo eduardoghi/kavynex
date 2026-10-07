@@ -412,6 +412,13 @@ database still lists media or avatars, since the likeliest cause is a drive that
 The pending move then turns into a second question, and confirming it passes
 `switchWithoutMoving`, which switches to the new folder without moving anything.
 
+While the copy runs, `migrate_library_directory` reports `LibraryMigrationProgress` (files and
+bytes copied out of the totals) on a Channel at most every 200 ms, which the section shows as a
+progress bar by bytes. `cancel_library_migration` stops the copy before the next file, or partway
+through the current one, with `LIBRARY_MIGRATION_CANCELLED`. Only the copy phase listens, so the
+old folder is always whole when that happens, and what was copied stays in the new folder for a
+retry to resume from.
+
 Back in the frontend, `updateStoredLibraryPath` persists **before** `setSettings` exposes the
 new value. That order is required, not stylistic. The state change is what fires
 `useAppSettings`'s effect calling `registerLibraryAssetScope`, and the backend validates that
