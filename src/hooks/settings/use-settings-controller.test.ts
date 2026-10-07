@@ -305,7 +305,9 @@ describe("useSettingsController", () => {
     it("reports an error when exporting the database fails", async () => {
         getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
         saveMock.mockResolvedValueOnce("/backups/kavynex-backup.db");
-        exportDatabaseMock.mockRejectedValueOnce(new Error("disk full"));
+        // The shape a backend failure arrives in. An uncatalogued code such as APP_ERROR keeps its
+        // raw detail out of the UI and falls back to the generic sentence.
+        exportDatabaseMock.mockRejectedValueOnce({ code: "APP_ERROR", message: "disk full" });
 
         const { result } = renderHook(() =>
             useSettingsController({ opened: true, libraryPath: "/library" })
@@ -450,10 +452,59 @@ describe("useSettingsController", () => {
         expect(importDatabaseMock).not.toHaveBeenCalled();
     });
 
+    it("names the reason when the backend refused the file for a catalogued one", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        openMock.mockResolvedValueOnce("/backups/import.db");
+        importDatabaseMock.mockRejectedValueOnce({
+            code: "DATABASE_IMPORT_INVALID",
+            message: "missing table videos",
+        });
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await act(async () => {
+            await result.current.pickImportFileAction();
+        });
+        await act(async () => {
+            await result.current.confirmImportAction();
+        });
+
+        expect(result.current.databaseMessage).toEqual({
+            tone: "error",
+            text: "The selected file is not a valid Kavynex database.",
+        });
+    });
+
+    it("does not report a staged import as failed when only the relaunch fails", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        openMock.mockResolvedValueOnce("/backups/import.db");
+        importDatabaseMock.mockResolvedValueOnce(undefined);
+        relaunchMock.mockRejectedValueOnce(new Error("relaunch refused"));
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await act(async () => {
+            await result.current.pickImportFileAction();
+        });
+        await act(async () => {
+            await result.current.confirmImportAction();
+        });
+
+        expect(result.current.databaseBusy).toBe("idle");
+        expect(result.current.databaseMessage).toEqual({
+            tone: "success",
+            text: "The database is ready to import. Close and reopen Kavynex to finish.",
+        });
+    });
+
     it("reports an error and clears the pending import path when import fails", async () => {
         getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
         openMock.mockResolvedValueOnce("/backups/import.db");
-        importDatabaseMock.mockRejectedValueOnce(new Error("corrupt file"));
+        importDatabaseMock.mockRejectedValueOnce({ code: "APP_ERROR", message: "corrupt file" });
 
         const { result } = renderHook(() =>
             useSettingsController({ opened: true, libraryPath: "/library" })

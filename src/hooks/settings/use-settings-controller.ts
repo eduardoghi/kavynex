@@ -11,6 +11,7 @@ import {
 } from "../../services/database-service";
 import { getLibrarySummary, type LibrarySummaryInfo } from "../../services/library-service";
 import { parseAppError } from "../../utils/app-error";
+import { resolveErrorMessage } from "../../utils/error-message";
 import { logError } from "../../utils/app-logger";
 import { useAppUpdate, type AppUpdateStatus } from "../use-app-update";
 import { useMemoObject } from "../use-memo-object";
@@ -176,7 +177,10 @@ export function useSettingsController({
             logError("settings-modal", "Failed to export the database.", error, {
                 parsed: parseAppError(error),
             });
-            setDatabaseMessage({ tone: "error", text: "Could not export the database." });
+            setDatabaseMessage({
+                tone: "error",
+                text: resolveErrorMessage(error, "Could not export the database."),
+            });
         } finally {
             setDatabaseBusy("idle");
         }
@@ -215,15 +219,29 @@ export function useSettingsController({
 
         try {
             await importDatabase(pendingImportPath);
-            // The swap is applied on the next startup, so relaunch to complete the import.
-            await relaunch();
         } catch (error) {
             logError("settings-modal", "Failed to import the database.", error, {
                 parsed: parseAppError(error),
             });
             setDatabaseMessage({
                 tone: "error",
-                text: "Could not import the selected database.",
+                text: resolveErrorMessage(error, "Could not import the selected database."),
+            });
+            setDatabaseBusy("idle");
+            setPendingImportPath(null);
+            return;
+        }
+
+        // The swap is applied on the next startup, so relaunch to complete the import. A relaunch
+        // that fails is not a failed import. The database is already staged and goes in whenever
+        // the app next starts, so say that rather than reporting the import itself as failed.
+        try {
+            await relaunch();
+        } catch (error) {
+            logError("settings-modal", "Failed to relaunch after staging the import.", error);
+            setDatabaseMessage({
+                tone: "success",
+                text: "The database is ready to import. Close and reopen Kavynex to finish.",
             });
             setDatabaseBusy("idle");
             setPendingImportPath(null);
