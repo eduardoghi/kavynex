@@ -165,13 +165,13 @@ already exists as a directory outside the app config directory. Note also that
 command-level refusal above does not reach the daily mirror. Gating the export command costs this
 feature nothing.
 
-**The library-selection helpers `ensure_directory_exists`, `resolve_existing_directory` and
-`is_directory_empty`**, all reaching the filesystem through
+**The library-selection helpers `ensure_directory_exists` and `resolve_existing_directory`**,
+both reaching the filesystem through
 `services/library/paths.rs::library_input_path`. These run on the *selection* path (onboarding and
 the change-library flow both probe a candidate folder before it is persisted), and a library kept on
 a share is a supported configuration, so refusing a UNC here would not harden anything, it would
-remove the ability to choose such a library at all. The bound is what these three do rather than
-where they point. Two only read directory metadata, and the third creates an empty directory. The
+remove the ability to choose such a library at all. The bound is what these two do rather than
+where they point. One only reads directory metadata, and the other creates an empty directory. The
 NTLM exposure is real and accepted, narrowed by the path always coming from a folder dialog the user
 drove rather than from an unattended caller redirecting a delete or a move. See the residual below
 for what a compromised renderer can still do with them.
@@ -339,7 +339,7 @@ above.
 
 #### Accepted residual: the library-selection helpers create and probe arbitrary directories
 
-`ensure_directory_exists`, `resolve_existing_directory` and `is_directory_empty` are the group of
+`ensure_directory_exists` and `resolve_existing_directory` are the group of
 commands still acting on a caller-supplied path, and they are the ones easiest to miss, since they read
 as plumbing rather than as a boundary. They are also the group the candidate-folder argument
 *actually* applies to, and the only one. Onboarding and the change-library flow really do act
@@ -349,9 +349,10 @@ commands above were once justified the same way and should not have been; see th
 
 Two things follow, and both are accepted rather than closed:
 
-- **They are a file-existence oracle.** All three answer, by succeeding or failing, whether an
-  arbitrary absolute path exists and whether it is a directory; `is_directory_empty` additionally
-  answers whether it holds anything. Disclosure only, never a write outside the directory named,
+- **They are a file-existence oracle.** Both answer, by succeeding or failing, whether an
+  arbitrary absolute path exists and whether it is a directory. (`is_directory_empty`, which also
+  answered whether it held anything, was removed once the change flow stopped previewing the
+  destination's contents and left that decision to the migration.) Disclosure only, never a write outside the directory named,
   a file-content read, or code execution. There is no backend signal separating "the user picked
   this folder in the dialog" from "the renderer invoked this directly," so the oracle is inherent
   to supporting the preview at all. It is recorded here as an accepted residual rather than left
@@ -365,7 +366,7 @@ Two things follow, and both are accepted rather than closed:
   write that `validate_settings_library_path` gates. So the worst case is litter in writable
   locations, not a foothold.
 
-These three also do not apply the UNC refusal, deliberately and for the reason given with the rule
+These two also do not apply the UNC refusal, deliberately and for the reason given with the rule
 above. A library on a share is supported, and the refusal would remove that. `is_network_path` is
 therefore not the missing guard here. Adding it would be a functional regression, not a fix.
 

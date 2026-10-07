@@ -78,8 +78,6 @@ export type TauriCommandReturns = {
     replace_media_comments: number;
     mark_media_comments_absent: void;
 
-    is_directory_empty: boolean;
-
     register_library_asset_scope: void;
 
     ensure_database_ready: void;

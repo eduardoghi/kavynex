@@ -642,7 +642,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::library::ensure_directory_exists,
             commands::library::resolve_existing_directory,
-            commands::library::is_directory_empty,
             commands::library::migrate_library_directory,
             commands::library::get_library_summary,
             commands::library::check_library_integrity,

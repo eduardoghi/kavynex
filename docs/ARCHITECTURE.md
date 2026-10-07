@@ -379,26 +379,38 @@ than a correctness one.
 
 Entry point: Settings > Library folder. `useHomeController` overrides the settings hook's
 `chooseLibraryPath` with the Home-level one so the UI guards run first; it reaches
-`useAppSettingsActions.changeLibraryPath`, which delegates the decisions to the
-`executeChangeLibraryPath` use-case (`src/use-cases/`):
+`useAppSettingsActions.changeLibraryPath`, which plans the change with the
+`planChangeLibraryPath` use-case (`src/use-cases/`):
 
 1. `chooseLibraryDirectory()`: the native folder dialog, through the platform seam. Cancel
-   returns `changed: false` and nothing else runs.
+   returns `unchanged` and nothing else runs.
 2. A filesystem root is refused. (The backend's `reject_filesystem_root` is the real guard;
    this one is there to fail before the round trip.)
 3. `ensureDirectoryExists(selected)` returns the canonical path, which is what everything
    downstream compares against, not the string the dialog handed back.
-4. Same as the current library -> `changed: false`.
-5. A non-empty destination is refused when a library already exists.
-6. No current library (first-time setup) -> `changed: true` with no migration to run.
-7. Otherwise `migrateLibraryDirectory(old, new)`.
+4. Same as the current library -> `unchanged`.
+5. No current library (first-time setup) -> `apply`, stored at once with no migration to run.
+6. Otherwise `move`, which does not run yet. It becomes `pendingLibraryMove`, and the library
+   section shows the destination with what is about to be copied (the library summary) until the
+   user confirms or cancels. Confirming calls `moveLibrary`, which runs
+   `migrateLibraryDirectory(old, new)`.
+
+Whether the destination can take the library is left to the backend, which accepts an empty
+folder or one holding only managed directories (an interrupted move being retried).
 
 On the backend side (`commands/library.rs`), the *old* path is the one verified against persisted
 settings, since that is the directory the migration removes; a destination inside the app
-config directory is refused; a commit marker is written next to the database before the old
-directory goes, so a crash mid-move is self-healed by `reconcile_interrupted_migration` on the
-next `get_app_settings`; and once the move succeeds the old directory's asset-scope grant is
-revoked.
+config directory is refused; the destination volume must have room for what is left to copy
+(`NOT_ENOUGH_SPACE_FOR_LIBRARY`); after the copy every file is compared by size with the original,
+and the old folder is kept when one did not arrive whole (`LIBRARY_COPY_INCOMPLETE`); a commit
+marker is written next to the database before the old directory goes, so a crash mid-move is
+self-healed by `reconcile_interrupted_migration` on the next `get_app_settings`; and once the move
+succeeds the old directory's asset-scope grant is revoked.
+
+A current folder that does not exist is refused with `LIBRARY_FOLDER_UNREACHABLE` while the
+database still lists media or avatars, since the likeliest cause is a drive that is not connected.
+The pending move then turns into a second question, and confirming it passes
+`switchWithoutMoving`, which switches to the new folder without moving anything.
 
 Back in the frontend, `updateStoredLibraryPath` persists **before** `setSettings` exposes the
 new value. That order is required, not stylistic. The state change is what fires

@@ -7,7 +7,6 @@ import {
     chooseLibraryDirectory,
     ensureDirectoryExists,
     getLibrarySummary,
-    isDirectoryEmpty,
     migrateLibraryDirectory,
     openExternalUrl,
     openFileLocation,
@@ -121,19 +120,9 @@ describe("directory commands", () => {
         ]);
     });
 
-    it("asks whether a directory is empty", async () => {
-        invokeCommandMock.mockResolvedValueOnce(true as never);
-
-        await expect(isDirectoryEmpty(" D:/New ")).resolves.toBe(true);
-        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.IS_DIRECTORY_EMPTY, {
-            path: "D:/New",
-        });
-    });
-
     it("refuses an empty path before reaching the backend", async () => {
         await expect(ensureDirectoryExists("  ")).rejects.toThrow("Directory path is required.");
         await expect(resolveExistingDirectory("")).rejects.toThrow("Directory path is required.");
-        await expect(isDirectoryEmpty(" ")).rejects.toThrow("Directory path is required.");
 
         expect(invokeCommandMock).not.toHaveBeenCalled();
     });
@@ -154,7 +143,19 @@ describe("migrateLibraryDirectory", () => {
         expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY, {
             oldLibraryPath: "D:/Library",
             newLibraryPath: "E:/Library",
+            switchWithoutMoving: false,
         });
+    });
+
+    it("passes the user's consent to switch away from an unreachable folder", async () => {
+        invokeCommandMock.mockResolvedValueOnce({} as never);
+
+        await migrateLibraryDirectory("D:/Library", "E:/Library", { switchWithoutMoving: true });
+
+        expect(invokeCommandMock).toHaveBeenCalledWith(
+            TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY,
+            expect.objectContaining({ switchWithoutMoving: true })
+        );
     });
 
     it("refuses a missing path on either side before reaching the backend", async () => {

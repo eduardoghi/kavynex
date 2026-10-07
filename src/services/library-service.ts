@@ -90,21 +90,12 @@ export async function resolveExistingDirectory(path: string): Promise<string> {
     return normalizeString(result);
 }
 
-export async function isDirectoryEmpty(path: string): Promise<boolean> {
-    const normalizedPath = normalizeString(path);
-
-    if (!normalizedPath) {
-        throw new ClientError("Directory path is required.");
-    }
-
-    return invokeCommand(TAURI_COMMANDS.IS_DIRECTORY_EMPTY, {
-        path: normalizedPath,
-    });
-}
-
 export async function migrateLibraryDirectory(
     currentLibraryPath: string,
-    newLibraryPath: string
+    newLibraryPath: string,
+    // switchWithoutMoving is the user's confirmation that the current folder cannot be reached and
+    // the library should point at the new one anyway, with nothing moved.
+    options: { switchWithoutMoving?: boolean } = {}
 ): Promise<MigrateLibraryDirectoryResult> {
     const normalizedCurrentLibraryPath = normalizeString(currentLibraryPath);
     const normalizedNewLibraryPath = normalizeString(newLibraryPath);
@@ -123,6 +114,7 @@ export async function migrateLibraryDirectory(
     return invokeCommand(TAURI_COMMANDS.MIGRATE_LIBRARY_DIRECTORY, {
         oldLibraryPath: normalizedCurrentLibraryPath,
         newLibraryPath: normalizedNewLibraryPath,
+        switchWithoutMoving: options.switchWithoutMoving ?? false,
     });
 }
 

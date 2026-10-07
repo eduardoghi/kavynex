@@ -3,239 +3,138 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../services/library-service", () => ({
     chooseLibraryDirectory: vi.fn(),
     ensureDirectoryExists: vi.fn(),
-    isDirectoryEmpty: vi.fn(),
     migrateLibraryDirectory: vi.fn(),
 }));
 
 import {
     chooseLibraryDirectory,
     ensureDirectoryExists,
-    isDirectoryEmpty,
     migrateLibraryDirectory,
 } from "../services/library-service";
-import { executeChangeLibraryPath } from "./change-library-path";
+import { moveLibrary, planChangeLibraryPath } from "./change-library-path";
 
 const chooseLibraryDirectoryMock = vi.mocked(chooseLibraryDirectory);
 const ensureDirectoryExistsMock = vi.mocked(ensureDirectoryExists);
-const isDirectoryEmptyMock = vi.mocked(isDirectoryEmpty);
 const migrateLibraryDirectoryMock = vi.mocked(migrateLibraryDirectory);
 
-describe("executeChangeLibraryPath", () => {
+describe("planChangeLibraryPath", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it("returns unchanged when user cancels selection", async () => {
+    it("changes nothing when the user cancels the dialog", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce(null);
 
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "/library",
-        });
-
-        expect(result).toEqual({
-            changed: false,
-            finalLibraryPath: "/library",
-            oldDirectoryRetained: false,
+        await expect(planChangeLibraryPath({ currentLibraryPath: "/library" })).resolves.toEqual({
+            kind: "unchanged",
         });
         expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
-        expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
-        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
     });
 
-    it("returns the trimmed current path when the user cancels selection", async () => {
-        chooseLibraryDirectoryMock.mockResolvedValueOnce(null);
-
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "  /library  ",
-        });
-
-        expect(result).toEqual({
-            changed: false,
-            finalLibraryPath: "/library",
-            oldDirectoryRetained: false,
-        });
-    });
-
-    it("returns unchanged when the selected path is whitespace only", async () => {
+    it("changes nothing when the selected path is whitespace only", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce("   ");
 
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "/library",
-        });
-
-        expect(result).toEqual({
-            changed: false,
-            finalLibraryPath: "/library",
-            oldDirectoryRetained: false,
+        await expect(planChangeLibraryPath({ currentLibraryPath: "/library" })).resolves.toEqual({
+            kind: "unchanged",
         });
         expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
-        expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
-        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
     });
 
-    it("returns unchanged when ensured path matches current path", async () => {
+    it("changes nothing when the chosen folder is the current one", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce("/library");
         ensureDirectoryExistsMock.mockResolvedValueOnce("/library");
 
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "/library",
-        });
-
-        expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
-        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
-        expect(result).toEqual({
-            changed: false,
-            finalLibraryPath: "/library",
-            oldDirectoryRetained: false,
-        });
+        await expect(
+            planChangeLibraryPath({ currentLibraryPath: "  /library  " })
+        ).resolves.toEqual({ kind: "unchanged" });
     });
 
-    it("migrates when current path exists and a different path is selected", async () => {
-        chooseLibraryDirectoryMock.mockResolvedValueOnce("/new-library");
-        ensureDirectoryExistsMock.mockResolvedValueOnce("/new-library");
-        isDirectoryEmptyMock.mockResolvedValueOnce(true);
-        migrateLibraryDirectoryMock.mockResolvedValueOnce({
-            final_library_path: "/new-library",
-            changed: true,
-            old_directory_retained: false,
-        });
-
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "/library",
-        });
-
-        expect(isDirectoryEmptyMock).toHaveBeenCalledWith("/new-library");
-        expect(migrateLibraryDirectoryMock).toHaveBeenCalledWith(
-            "/library",
-            "/new-library"
-        );
-        expect(result).toEqual({
-            changed: true,
-            finalLibraryPath: "/new-library",
-            oldDirectoryRetained: false,
-        });
-    });
-
-    it("propagates the retained-old-directory flag from the migration", async () => {
-        chooseLibraryDirectoryMock.mockResolvedValueOnce("/new-library");
-        ensureDirectoryExistsMock.mockResolvedValueOnce("/new-library");
-        isDirectoryEmptyMock.mockResolvedValueOnce(true);
-        migrateLibraryDirectoryMock.mockResolvedValueOnce({
-            final_library_path: "/new-library",
-            changed: true,
-            old_directory_retained: true,
-        });
-
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "/library",
-        });
-
-        expect(result).toEqual({
-            changed: true,
-            finalLibraryPath: "/new-library",
-            oldDirectoryRetained: true,
-        });
-    });
-
-    it("uses ensured path directly when there is no current library path", async () => {
-        chooseLibraryDirectoryMock.mockResolvedValueOnce("/new-library");
-        ensureDirectoryExistsMock.mockResolvedValueOnce("/new-library");
-        isDirectoryEmptyMock.mockResolvedValueOnce(true);
-
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "",
-        });
-
-        expect(isDirectoryEmptyMock).toHaveBeenCalledWith("/new-library");
-        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
-        expect(result).toEqual({
-            changed: true,
-            finalLibraryPath: "/new-library",
-            oldDirectoryRetained: false,
-        });
-    });
-
-    it("allows non-empty folder when there is no current library path", async () => {
+    it("uses the folder as it is when there is no library yet", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce("/backup-library");
         ensureDirectoryExistsMock.mockResolvedValueOnce("/backup-library");
-        isDirectoryEmptyMock.mockResolvedValueOnce(false);
 
-        const result = await executeChangeLibraryPath({
-            currentLibraryPath: "",
-        });
-
-        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
-        expect(result).toEqual({
-            changed: true,
+        await expect(planChangeLibraryPath({ currentLibraryPath: "" })).resolves.toEqual({
+            kind: "apply",
             finalLibraryPath: "/backup-library",
-            oldDirectoryRetained: false,
         });
+        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
     });
 
-    it("throws a specific error when selected folder is not empty", async () => {
-        chooseLibraryDirectoryMock.mockResolvedValueOnce("/new-library");
+    it("asks to move an existing library instead of moving it right away", async () => {
+        chooseLibraryDirectoryMock.mockResolvedValueOnce(" /new-library ");
         ensureDirectoryExistsMock.mockResolvedValueOnce("/new-library");
-        isDirectoryEmptyMock.mockResolvedValueOnce(false);
 
-        await expect(
-            executeChangeLibraryPath({
-                currentLibraryPath: "/library",
-            })
-        ).rejects.toThrow(
-            "The selected folder must be empty before it can be used as the library folder."
-        );
-
+        await expect(planChangeLibraryPath({ currentLibraryPath: "/library" })).resolves.toEqual({
+            kind: "move",
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+        });
+        expect(ensureDirectoryExistsMock).toHaveBeenCalledWith("/new-library");
         expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
     });
 
     it("rejects a Windows drive root selection without touching the filesystem", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce("C:\\");
 
-        await expect(
-            executeChangeLibraryPath({
-                currentLibraryPath: "/library",
-            })
-        ).rejects.toThrow(
+        await expect(planChangeLibraryPath({ currentLibraryPath: "/library" })).rejects.toThrow(
             "A drive or volume root cannot be used as the library folder. Choose a regular folder instead."
         );
-
         expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
-        expect(isDirectoryEmptyMock).not.toHaveBeenCalled();
-        expect(migrateLibraryDirectoryMock).not.toHaveBeenCalled();
     });
 
     it("rejects a UNC share root selection", async () => {
         chooseLibraryDirectoryMock.mockResolvedValueOnce("\\\\server\\share");
 
-        await expect(
-            executeChangeLibraryPath({
-                currentLibraryPath: "/library",
-            })
-        ).rejects.toThrow(
+        await expect(planChangeLibraryPath({ currentLibraryPath: "/library" })).rejects.toThrow(
             "A drive or volume root cannot be used as the library folder. Choose a regular folder instead."
         );
-
         expect(ensureDirectoryExistsMock).not.toHaveBeenCalled();
     });
+});
 
-    it("accepts a normal empty folder that is not a drive root", async () => {
-        chooseLibraryDirectoryMock.mockResolvedValueOnce("C:\\Users\\bob\\Library");
-        ensureDirectoryExistsMock.mockResolvedValueOnce("C:\\Users\\bob\\Library");
-        isDirectoryEmptyMock.mockResolvedValueOnce(true);
+describe("moveLibrary", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("moves the library and reports where it ended up", async () => {
         migrateLibraryDirectoryMock.mockResolvedValueOnce({
-            final_library_path: "C:\\Users\\bob\\Library",
+            final_library_path: "/new-library",
+            changed: true,
+            old_directory_retained: true,
+        });
+
+        await expect(
+            moveLibrary({
+                currentLibraryPath: "/library",
+                destination: "/new-library",
+                currentFolderUnreachable: false,
+            })
+        ).resolves.toEqual({
+            changed: true,
+            finalLibraryPath: "/new-library",
+            oldDirectoryRetained: true,
+        });
+        expect(migrateLibraryDirectoryMock).toHaveBeenCalledWith("/library", "/new-library", {
+            switchWithoutMoving: false,
+        });
+    });
+
+    it("switches without moving once the user accepted that the current folder is unreachable", async () => {
+        migrateLibraryDirectoryMock.mockResolvedValueOnce({
+            final_library_path: "/new-library",
             changed: true,
             old_directory_retained: false,
         });
 
-        const result = await executeChangeLibraryPath({
+        await moveLibrary({
             currentLibraryPath: "/library",
+            destination: "/new-library",
+            currentFolderUnreachable: true,
         });
 
-        expect(result).toEqual({
-            changed: true,
-            finalLibraryPath: "C:\\Users\\bob\\Library",
-            oldDirectoryRetained: false,
+        expect(migrateLibraryDirectoryMock).toHaveBeenCalledWith("/library", "/new-library", {
+            switchWithoutMoving: true,
         });
     });
 });

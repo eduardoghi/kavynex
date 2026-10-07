@@ -63,11 +63,6 @@ pub async fn resolve_existing_directory(path: String) -> AppResult<String> {
     run_blocking(move || library::paths::resolve_existing_directory_sync(&path)).await
 }
 
-#[tauri::command]
-pub async fn is_directory_empty(path: String) -> AppResult<bool> {
-    run_blocking(move || library::paths::is_directory_empty_sync(&path)).await
-}
-
 /// Whether the database lists anything stored in the library, a media or a channel avatar.
 ///
 /// What tells a library that was never used apart from one whose drive is not connected when its
@@ -172,7 +167,7 @@ pub async fn migrate_library_directory<R: Runtime>(
 /// as a first-party-webview concession so the settings UI could preview a folder before it was
 /// saved, but no caller ever did that. The settings modal and the diagnostics summary both pass
 /// `settings.libraryPath`, which is the persisted value, and the folder-change flow
-/// (`use-cases/change-library-path.ts`) previews a candidate with `is_directory_empty` instead.
+/// (`use-cases/change-library-path.ts`) only ever passes a candidate to `ensure_directory_exists`.
 /// The concession bought nothing and cost the one rule the whole backend rests on.
 #[tauri::command]
 pub async fn get_library_summary(
@@ -464,7 +459,6 @@ mod tests {
             .invoke_handler(tauri::generate_handler![
                 ensure_directory_exists,
                 resolve_existing_directory,
-                is_directory_empty,
                 get_library_summary,
                 check_library_integrity,
                 verify_library_content,
@@ -612,44 +606,6 @@ mod tests {
         assert!(targets["video/missing.mp4"]["channelId"].is_number());
 
         let _ = fs::remove_dir_all(&library);
-    }
-
-    #[test]
-    fn is_directory_empty_command_round_trips_a_bool_over_ipc() {
-        let dir = unique_test_dir("command-empty");
-        fs::create_dir_all(&dir).unwrap();
-
-        let webview = test_webview(memory_db());
-
-        let empty = invoke(
-            &webview,
-            "is_directory_empty",
-            serde_json::json!({ "path": dir.to_string_lossy() }),
-        )
-        .unwrap()
-        .deserialize::<bool>()
-        .unwrap();
-        assert!(
-            empty,
-            "a freshly created directory should be reported empty"
-        );
-
-        fs::write(dir.join("a.txt"), b"data").unwrap();
-
-        let empty = invoke(
-            &webview,
-            "is_directory_empty",
-            serde_json::json!({ "path": dir.to_string_lossy() }),
-        )
-        .unwrap()
-        .deserialize::<bool>()
-        .unwrap();
-        assert!(
-            !empty,
-            "a directory with a file should be reported non-empty"
-        );
-
-        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

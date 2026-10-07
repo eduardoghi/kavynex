@@ -617,7 +617,6 @@ export const DECLARED_PATH_SURFACE = [
     { command: "get_library_summary", parameters: ["library_path"], guard: "configured-library" },
     { command: "import_database", parameters: ["source_path"], guard: "user-picked" },
     { command: "insert_channel", parameters: ["avatar_path"], guard: "managed-relative" },
-    { command: "is_directory_empty", parameters: ["path"], guard: "chosen-directory" },
     { command: "list_yt_dlp_formats", parameters: ["cookies_path"], guard: "user-picked" },
     { command: "migrate_library_directory", parameters: ["old_library_path", "new_library_path"], guard: { old_library_path: "configured-library", new_library_path: "chosen-directory" } },
     { command: "open_path_in_system", parameters: ["path", "library_path"], guard: { path: "library-confined", library_path: "configured-library" } },

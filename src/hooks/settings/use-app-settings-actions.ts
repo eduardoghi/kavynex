@@ -1,10 +1,16 @@
 import { useCallback, useState } from "react";
 import type { AppSettings } from "../../types/settings";
 import { resolveErrorMessage } from "../../utils/error-message";
-import { executeChangeLibraryPath } from "../../use-cases/change-library-path";
+import {
+    moveLibrary,
+    planChangeLibraryPath,
+    type PendingLibraryMove,
+} from "../../use-cases/change-library-path";
 import { initializeAppSettings } from "../../use-cases/initialize-app-settings";
 import { chooseExternalBackupDirectory } from "../../services/database-service";
-import { openLibraryDirectory } from "../../services/library-service";
+import { getLibrarySummary, openLibraryDirectory } from "../../services/library-service";
+import { parseAppError } from "../../utils/app-error";
+import { LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE } from "../../constants/error-codes";
 import { useAsyncFlag } from "../use-async-flag";
 import { useMemoObject } from "../use-memo-object";
 import {
@@ -28,8 +34,12 @@ type UseAppSettingsActionsReturn = {
     hasLoadedSettings: boolean;
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
+    // A move of the library waiting for the user to confirm it, or null.
+    pendingLibraryMove: PendingLibraryMove | null;
     prepareSettings: () => Promise<void>;
     changeLibraryPath: (currentLibraryPath: string) => Promise<void>;
+    confirmLibraryMove: () => Promise<void>;
+    cancelLibraryMove: () => void;
     setImportModeAction: (mode: AppSettings["importMode"]) => void;
     setLoadRemoteImagesAction: (loadRemoteImages: boolean) => void;
     setCheckUpdatesOnStartupAction: (checkUpdatesOnStartup: boolean) => void;
@@ -52,6 +62,9 @@ export function useAppSettingsActions({
         useAsyncFlag();
     const { isRunning: isSavingExternalBackupDir, runWithFlag: runSaveExternalBackupDir } =
         useAsyncFlag();
+    const [pendingLibraryMove, setPendingLibraryMove] = useState<PendingLibraryMove | null>(
+        null
+    );
 
     const prepareSettings = useCallback(async (): Promise<void> => {
         await runPrepareSettings(async () => {
@@ -83,32 +96,37 @@ export function useAppSettingsActions({
         });
     }, [onError, runPrepareSettings, setSettings]);
 
+    // Choosing a folder only plans the change. A first library is applied at once, and a move of an
+    // existing one becomes pendingLibraryMove, which the library section shows with what is about
+    // to be copied and where. It used to start copying the whole library the moment the folder
+    // dialog closed, with no way to back out of a misclick.
     const changeLibraryPath = useCallback(
         async (currentLibraryPath: string): Promise<void> => {
             await runLibraryPathChange(async () => {
                 try {
-                    const result = await executeChangeLibraryPath({
-                        currentLibraryPath,
-                    });
+                    const plan = await planChangeLibraryPath({ currentLibraryPath });
 
-                    if (!result.changed) {
+                    if (plan.kind === "unchanged") {
                         return;
                     }
 
-                    const nextSettings = await updateStoredLibraryPath(result.finalLibraryPath);
-                    setSettings(nextSettings);
-
-                    if (result.oldDirectoryRetained) {
-                        // The migration copied everything but could not remove the old directory, so
-                        // a full duplicate of the media remains on the old location with nothing to
-                        // clean it up automatically. Tell the user so they can delete it by hand.
-                        onError(
-                            "Your library was copied to the new folder, but the old folder could not " +
-                                "be removed automatically, so a full copy of your media is still there. " +
-                                "The new library works normally; you can delete the old folder manually " +
-                                "once you have confirmed everything is present."
-                        );
+                    if (plan.kind === "apply") {
+                        setSettings(await updateStoredLibraryPath(plan.finalLibraryPath));
+                        return;
                     }
+
+                    // Best effort. A summary that cannot be read (the current folder being gone is
+                    // one reason) leaves the confirmation without sizes rather than blocking it.
+                    const summary = await getLibrarySummary(plan.currentLibraryPath).catch(
+                        () => null
+                    );
+
+                    setPendingLibraryMove({
+                        currentLibraryPath: plan.currentLibraryPath,
+                        destination: plan.destination,
+                        summary,
+                        currentFolderUnreachable: false,
+                    });
                 } catch (error) {
                     logError("settings", "Failed to change library folder.", error, {
                         currentLibraryPath,
@@ -119,6 +137,61 @@ export function useAppSettingsActions({
         },
         [onError, runLibraryPathChange, setSettings]
     );
+
+    const cancelLibraryMove = useCallback((): void => {
+        setPendingLibraryMove(null);
+    }, []);
+
+    const confirmLibraryMove = useCallback(async (): Promise<void> => {
+        const move = pendingLibraryMove;
+
+        if (!move) {
+            return;
+        }
+
+        await runLibraryPathChange(async () => {
+            try {
+                const result = await moveLibrary(move);
+                setPendingLibraryMove(null);
+
+                if (!result.changed) {
+                    return;
+                }
+
+                const nextSettings = await updateStoredLibraryPath(result.finalLibraryPath);
+                setSettings(nextSettings);
+
+                if (result.oldDirectoryRetained) {
+                        // The migration copied everything but could not remove the old directory, so
+                        // a full duplicate of the media remains on the old location with nothing to
+                        // clean it up automatically. Tell the user so they can delete it by hand.
+                    onError(
+                        "Your library was copied to the new folder, but the old folder could not " +
+                            "be removed automatically, so a full copy of your media is still there. " +
+                            "The new library works normally; you can delete the old folder manually " +
+                            "once you have confirmed everything is present."
+                    );
+                }
+            } catch (error) {
+                // Not a failure but a second question. The backend refuses to switch away from a
+                // folder it cannot reach while media are registered in it, until the user says
+                // that is what they want.
+                if (
+                    parseAppError(error).code === LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE &&
+                    !move.currentFolderUnreachable
+                ) {
+                    setPendingLibraryMove({ ...move, currentFolderUnreachable: true });
+                    return;
+                }
+
+                setPendingLibraryMove(null);
+                logError("settings", "Failed to change library folder.", error, {
+                    currentLibraryPath: move.currentLibraryPath,
+                });
+                onError(resolveErrorMessage(error, "Failed to change library folder."));
+            }
+        });
+    }, [onError, pendingLibraryMove, runLibraryPathChange, setSettings]);
 
     const setImportModeAction = useCallback(
         (mode: AppSettings["importMode"]): void => {
@@ -242,8 +315,11 @@ export function useAppSettingsActions({
         hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
+        pendingLibraryMove,
         prepareSettings,
         changeLibraryPath,
+        confirmLibraryMove,
+        cancelLibraryMove,
         setImportModeAction,
         setLoadRemoteImagesAction,
         setCheckUpdatesOnStartupAction,

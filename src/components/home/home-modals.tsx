@@ -186,6 +186,9 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                             uiGuards.libraryPathChangeDisabledReason
                         }
                         isMigratingLibraryPath={settings.isMigratingLibraryPath}
+                        pendingLibraryMove={settings.pendingLibraryMove}
+                        onConfirmLibraryMove={() => void settings.confirmLibraryMove()}
+                        onCancelLibraryMove={settings.cancelLibraryMove}
                         externalBackupDir={settings.settings.externalBackupDir}
                         isSavingExternalBackupDir={settings.isSavingExternalBackupDir}
                         onChooseExternalBackupDir={() =>

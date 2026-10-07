@@ -9,6 +9,7 @@ import { logError } from "../../utils/app-logger";
 import { parseAppError } from "../../utils/app-error";
 import { toUserFriendlyError } from "../../utils/user-friendly-error";
 import { ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE } from "../../constants/error-codes";
+import type { PendingLibraryMove } from "../../use-cases/change-library-path";
 
 type UseAppSettingsOptions = {
     onError: (message: string) => void;
@@ -22,12 +23,15 @@ export type AppSettingsController = {
     hasLoadedSettings: boolean;
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
+    pendingLibraryMove: PendingLibraryMove | null;
     openSettings: () => void;
     closeSettings: () => void;
     setImportMode: (mode: ImportMode) => void;
     setLoadRemoteImages: (loadRemoteImages: boolean) => void;
     setCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
     chooseLibraryPath: () => Promise<void>;
+    confirmLibraryMove: () => Promise<void>;
+    cancelLibraryMove: () => void;
     openCurrentLibraryPath: () => Promise<void>;
     chooseExternalBackupDir: () => Promise<void>;
     clearExternalBackupDir: () => Promise<void>;
@@ -145,6 +149,9 @@ export function useAppSettings({
         hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
+        pendingLibraryMove,
+        confirmLibraryMove,
+        cancelLibraryMove,
     } = settingsActions;
 
     return useMemoObject({
@@ -154,12 +161,15 @@ export function useAppSettings({
         hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
+        pendingLibraryMove,
         openSettings,
         closeSettings,
         setImportMode,
         setLoadRemoteImages,
         setCheckUpdatesOnStartup,
         chooseLibraryPath,
+        confirmLibraryMove,
+        cancelLibraryMove,
         openCurrentLibraryPath,
         chooseExternalBackupDir,
         clearExternalBackupDir,

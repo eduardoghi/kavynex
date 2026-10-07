@@ -59,7 +59,7 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
 /// Deliberately does NOT reject a UNC / network path here (unlike `services::library::guard` and
 /// `services::library::resolve_path_inside_library`, which do). These helpers sit on the
 /// library-selection path (onboarding and change-library both call `ensure_directory_exists`/
-/// `resolve_existing_directory`/`is_directory_empty` on the candidate folder), and a library kept
+/// `resolve_existing_directory` on the candidate folder), and a library kept
 /// on a network share is a supported configuration (docs/THREAT-MODEL.md. It only loses the
 /// "reveal in file manager" convenience). Rejecting network paths here would break choosing such a
 /// library. The NTLM-hash-leak concern that motivates the rejection elsewhere is bounded here
@@ -246,42 +246,6 @@ pub fn resolve_existing_directory_sync(path: &str) -> AppResult<String> {
     Ok(canonical_dir.to_string_lossy().to_string())
 }
 
-pub fn is_directory_empty_sync(path: &str) -> AppResult<bool> {
-    let dir = library_input_path(path);
-
-    if dir.as_os_str().is_empty() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidDirectoryPath,
-            "directory path is empty",
-        ));
-    }
-
-    if !dir.exists() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidDirectoryPath,
-            "directory path does not exist",
-        ));
-    }
-
-    if !dir.is_dir() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidDirectoryPath,
-            "directory path is not a directory",
-        ));
-    }
-
-    let mut entries = fs::read_dir(&dir).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::InvalidDirectoryPath,
-            "failed to read directory entries",
-            &dir,
-            &e,
-        )
-    })?;
-
-    Ok(entries.next().is_none())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,31 +353,6 @@ mod tests {
         let result = resolve_existing_directory_sync(file_path.to_string_lossy().as_ref());
 
         assert!(result.is_err());
-
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn is_directory_empty_sync_returns_true_for_empty_directory() {
-        let dir = unique_test_dir("empty-dir");
-        fs::create_dir_all(&dir).unwrap();
-
-        let result = is_directory_empty_sync(dir.to_string_lossy().as_ref()).unwrap();
-
-        assert!(result);
-
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn is_directory_empty_sync_returns_false_for_non_empty_directory() {
-        let dir = unique_test_dir("non-empty-dir");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("file.txt"), b"abc").unwrap();
-
-        let result = is_directory_empty_sync(dir.to_string_lossy().as_ref()).unwrap();
-
-        assert!(!result);
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -528,10 +467,6 @@ mod tests {
                 resolve_existing_directory_sync(input).unwrap_err().code,
                 AppErrorCode::InvalidDirectoryPath.as_str()
             );
-            assert_eq!(
-                is_directory_empty_sync(input).unwrap_err().code,
-                AppErrorCode::InvalidDirectoryPath.as_str()
-            );
         }
 
         assert_eq!(
@@ -540,20 +475,12 @@ mod tests {
                 .code,
             AppErrorCode::InvalidDirectoryPath.as_str()
         );
-        assert_eq!(
-            is_directory_empty_sync(&missing_path).unwrap_err().code,
-            AppErrorCode::InvalidDirectoryPath.as_str()
-        );
         assert!(!missing.exists(), "a probe must not create the directory");
 
         assert_eq!(
             resolve_existing_directory_sync(&file_path)
                 .unwrap_err()
                 .code,
-            AppErrorCode::InvalidDirectoryPath.as_str()
-        );
-        assert_eq!(
-            is_directory_empty_sync(&file_path).unwrap_err().code,
             AppErrorCode::InvalidDirectoryPath.as_str()
         );
 

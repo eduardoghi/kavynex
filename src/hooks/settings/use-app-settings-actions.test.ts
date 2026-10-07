@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppSettingsActions } from "./use-app-settings-actions";
 
 vi.mock("../../use-cases/change-library-path", () => ({
-    executeChangeLibraryPath: vi.fn(),
+    planChangeLibraryPath: vi.fn(),
+    moveLibrary: vi.fn(),
 }));
 
 vi.mock("../../use-cases/initialize-app-settings", () => ({
@@ -12,6 +13,7 @@ vi.mock("../../use-cases/initialize-app-settings", () => ({
 
 vi.mock("../../services/library-service", () => ({
     openLibraryDirectory: vi.fn(),
+    getLibrarySummary: vi.fn(),
 }));
 
 vi.mock("./use-app-settings-storage", () => ({
@@ -25,9 +27,9 @@ vi.mock("../../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-import { executeChangeLibraryPath } from "../../use-cases/change-library-path";
+import { moveLibrary, planChangeLibraryPath } from "../../use-cases/change-library-path";
 import { initializeAppSettings } from "../../use-cases/initialize-app-settings";
-import { openLibraryDirectory } from "../../services/library-service";
+import { getLibrarySummary, openLibraryDirectory } from "../../services/library-service";
 import {
     loadStoredSettings,
     persistSettings,
@@ -197,77 +199,177 @@ describe("useAppSettingsActions", () => {
         expect(result.current.hasLoadedSettings).toBe(false);
     });
 
-    it("changes library path when result is changed", async () => {
-        const onError = vi.fn();
-        const setSettings = vi.fn();
+    const NEW_SETTINGS = {
+        importMode: "copy" as const,
+        libraryPath: "/new-library",
+        loadRemoteImages: true,
+        checkUpdatesOnStartup: false,
+        externalBackupDir: "",
+    };
 
-        vi.mocked(executeChangeLibraryPath).mockResolvedValueOnce({
+    const SUMMARY = {
+        total_bytes: 2048,
+        formatted_size: "2 KB",
+        video_files: 3,
+        audio_files: 1,
+        thumbnail_files: 4,
+    };
+
+    async function renderWithPendingMove(onError = vi.fn(), setSettings = vi.fn()) {
+        vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({
+            kind: "move",
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+        });
+        vi.mocked(getLibrarySummary).mockResolvedValueOnce(SUMMARY);
+
+        const rendered = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+
+        await act(async () => {
+            await rendered.result.current.changeLibraryPath("/library");
+        });
+
+        return { ...rendered, onError, setSettings };
+    }
+
+    it("asks before moving an existing library, with what is about to be copied", async () => {
+        const { result, setSettings } = await renderWithPendingMove();
+
+        expect(planChangeLibraryPath).toHaveBeenCalledWith({ currentLibraryPath: "/library" });
+        expect(getLibrarySummary).toHaveBeenCalledWith("/library");
+        expect(result.current.pendingLibraryMove).toEqual({
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+            summary: SUMMARY,
+            currentFolderUnreachable: false,
+        });
+        // Nothing moved yet.
+        expect(moveLibrary).not.toHaveBeenCalled();
+        expect(setSettings).not.toHaveBeenCalled();
+    });
+
+    it("still asks when the summary cannot be read", async () => {
+        vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({
+            kind: "move",
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+        });
+        vi.mocked(getLibrarySummary).mockRejectedValueOnce(new Error("unreadable"));
+
+        const { result } = renderHook(() =>
+            useAppSettingsActions({ onError: vi.fn(), setSettings: vi.fn() })
+        );
+
+        await act(async () => {
+            await result.current.changeLibraryPath("/library");
+        });
+
+        expect(result.current.pendingLibraryMove?.summary).toBeNull();
+    });
+
+    it("moves the library once confirmed and stores the new path", async () => {
+        const { result, onError, setSettings } = await renderWithPendingMove();
+
+        vi.mocked(moveLibrary).mockResolvedValueOnce({
             changed: true,
             finalLibraryPath: "/new-library",
             oldDirectoryRetained: false,
         });
-
-        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce({
-            importMode: "copy",
-            libraryPath: "/new-library",
-            loadRemoteImages: true,
-            checkUpdatesOnStartup: false,
-            externalBackupDir: "",
-        });
-
-        const { result } = renderHook(() =>
-            useAppSettingsActions({
-                onError,
-                setSettings,
-            })
-        );
+        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce(NEW_SETTINGS);
 
         await act(async () => {
-            await result.current.changeLibraryPath("/library");
+            await result.current.confirmLibraryMove();
         });
 
-        expect(executeChangeLibraryPath).toHaveBeenCalledWith({
+        expect(moveLibrary).toHaveBeenCalledWith({
             currentLibraryPath: "/library",
+            destination: "/new-library",
+            summary: SUMMARY,
+            currentFolderUnreachable: false,
         });
         expect(updateStoredLibraryPath).toHaveBeenCalledWith("/new-library");
-        expect(setSettings).toHaveBeenCalledWith({
-            importMode: "copy",
-            libraryPath: "/new-library",
-            loadRemoteImages: true,
-            checkUpdatesOnStartup: false,
-            externalBackupDir: "",
-        });
-        // The old directory was removed normally, so the user is not warned.
+        expect(setSettings).toHaveBeenCalledWith(NEW_SETTINGS);
+        expect(result.current.pendingLibraryMove).toBeNull();
         expect(onError).not.toHaveBeenCalled();
     });
 
-    it("warns the user when the migration kept the old library directory", async () => {
-        const onError = vi.fn();
-        const setSettings = vi.fn();
+    it("drops the pending move when the user cancels", async () => {
+        const { result } = await renderWithPendingMove();
 
-        vi.mocked(executeChangeLibraryPath).mockResolvedValueOnce({
+        act(() => {
+            result.current.cancelLibraryMove();
+        });
+
+        expect(result.current.pendingLibraryMove).toBeNull();
+        expect(moveLibrary).not.toHaveBeenCalled();
+    });
+
+    it("asks a second time when the current folder turns out to be unreachable", async () => {
+        const { result, onError, setSettings } = await renderWithPendingMove();
+
+        vi.mocked(moveLibrary).mockRejectedValueOnce({
+            code: "LIBRARY_FOLDER_UNREACHABLE",
+            message: "the current library folder cannot be reached",
+        });
+
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        expect(result.current.pendingLibraryMove?.currentFolderUnreachable).toBe(true);
+        expect(onError).not.toHaveBeenCalled();
+        expect(setSettings).not.toHaveBeenCalled();
+
+        vi.mocked(moveLibrary).mockResolvedValueOnce({
+            changed: true,
+            finalLibraryPath: "/new-library",
+            oldDirectoryRetained: false,
+        });
+        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce(NEW_SETTINGS);
+
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        expect(moveLibrary).toHaveBeenLastCalledWith(
+            expect.objectContaining({ currentFolderUnreachable: true })
+        );
+        expect(setSettings).toHaveBeenCalledWith(NEW_SETTINGS);
+    });
+
+    it("reports a second unreachable refusal instead of asking forever", async () => {
+        const { result, onError } = await renderWithPendingMove();
+        const unreachable = {
+            code: "LIBRARY_FOLDER_UNREACHABLE",
+            message: "the current library folder cannot be reached",
+        };
+
+        vi.mocked(moveLibrary).mockRejectedValueOnce(unreachable);
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        vi.mocked(moveLibrary).mockRejectedValueOnce(unreachable);
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(result.current.pendingLibraryMove).toBeNull();
+    });
+
+    it("warns the user when the migration kept the old library directory", async () => {
+        const { result, onError, setSettings } = await renderWithPendingMove();
+
+        vi.mocked(moveLibrary).mockResolvedValueOnce({
             changed: true,
             finalLibraryPath: "/new-library",
             oldDirectoryRetained: true,
         });
-
-        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce({
-            importMode: "copy",
-            libraryPath: "/new-library",
-            loadRemoteImages: true,
-            checkUpdatesOnStartup: false,
-            externalBackupDir: "",
-        });
-
-        const { result } = renderHook(() =>
-            useAppSettingsActions({
-                onError,
-                setSettings,
-            })
-        );
+        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce(NEW_SETTINGS);
 
         await act(async () => {
-            await result.current.changeLibraryPath("/library");
+            await result.current.confirmLibraryMove();
         });
 
         // The new library is still applied...
@@ -278,52 +380,72 @@ describe("useAppSettingsActions", () => {
         );
     });
 
-    it("logs and reports an error when changing the library path fails", async () => {
+    it("logs and reports an error when the move fails", async () => {
+        const { result, onError, setSettings } = await renderWithPendingMove();
+        const error = new Error("move failed");
+
+        vi.mocked(moveLibrary).mockRejectedValueOnce(error);
+
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        expect(logError).toHaveBeenCalledWith("settings", "Failed to change library folder.", error, {
+            currentLibraryPath: "/library",
+        });
+        expect(onError).toHaveBeenCalledWith("Failed to change library folder.");
+        expect(setSettings).not.toHaveBeenCalled();
+        expect(result.current.pendingLibraryMove).toBeNull();
+    });
+
+    it("applies a first library folder without asking", async () => {
+        const onError = vi.fn();
+        const setSettings = vi.fn();
+
+        vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({
+            kind: "apply",
+            finalLibraryPath: "/new-library",
+        });
+        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce(NEW_SETTINGS);
+
+        const { result } = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+
+        await act(async () => {
+            await result.current.changeLibraryPath("");
+        });
+
+        expect(setSettings).toHaveBeenCalledWith(NEW_SETTINGS);
+        expect(result.current.pendingLibraryMove).toBeNull();
+        expect(moveLibrary).not.toHaveBeenCalled();
+    });
+
+    it("logs and reports an error when choosing the folder fails", async () => {
         const onError = vi.fn();
         const setSettings = vi.fn();
         const error = new Error("change failed");
 
-        vi.mocked(executeChangeLibraryPath).mockRejectedValueOnce(error);
+        vi.mocked(planChangeLibraryPath).mockRejectedValueOnce(error);
 
-        const { result } = renderHook(() =>
-            useAppSettingsActions({
-                onError,
-                setSettings,
-            })
-        );
+        const { result } = renderHook(() => useAppSettingsActions({ onError, setSettings }));
 
         await act(async () => {
             await result.current.changeLibraryPath("/library");
         });
 
-        expect(logError).toHaveBeenCalledWith(
-            "settings",
-            "Failed to change library folder.",
-            error,
-            {
-                currentLibraryPath: "/library",
-            }
-        );
+        expect(logError).toHaveBeenCalledWith("settings", "Failed to change library folder.", error, {
+            currentLibraryPath: "/library",
+        });
         expect(onError).toHaveBeenCalledWith("Failed to change library folder.");
         expect(setSettings).not.toHaveBeenCalled();
     });
 
-    it("does not update settings when library path was not changed", async () => {
+    it("does not update settings when the library path was not changed", async () => {
         const onError = vi.fn();
         const setSettings = vi.fn();
 
-        vi.mocked(executeChangeLibraryPath).mockResolvedValueOnce({
-            changed: false,
-            finalLibraryPath: "/library",
-            oldDirectoryRetained: false,
-        });
+        vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({ kind: "unchanged" });
 
-        const { result } = renderHook(() =>
-            useAppSettingsActions({
-                onError,
-                setSettings,
-            })
-        );
+        const { result } = renderHook(() => useAppSettingsActions({ onError, setSettings }));
 
         await act(async () => {
             await result.current.changeLibraryPath("/library");
@@ -332,6 +454,7 @@ describe("useAppSettingsActions", () => {
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
         expect(setSettings).not.toHaveBeenCalled();
         expect(onError).not.toHaveBeenCalled();
+        expect(result.current.pendingLibraryMove).toBeNull();
     });
 
     it("updates import mode in storage", async () => {

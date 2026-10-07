@@ -112,6 +112,63 @@ describe("LibraryFolderSection", () => {
         expect(screen.queryByText("A download is in progress.")).not.toBeInTheDocument();
     });
 
+    it("asks before moving, naming the destination and what will be copied", () => {
+        const onConfirmLibraryMove = vi.fn();
+        const onCancelLibraryMove = vi.fn();
+
+        renderWithMantine(
+            <LibraryFolderSection
+                {...baseProps({
+                    pendingLibraryMove: {
+                        currentLibraryPath: "/library",
+                        destination: "\\\\?\\E:\\Library",
+                        summary: { ...SUMMARY, video_files: 1 },
+                        currentFolderUnreachable: false,
+                    },
+                    onConfirmLibraryMove,
+                    onCancelLibraryMove,
+                })}
+            />
+        );
+
+        expect(screen.getByText("Move the library to E:\\Library?")).toBeInTheDocument();
+        expect(
+            screen.getByText(/2\.0 KB in 1 video file, 2 audio files and 5 thumbnails will be copied there/)
+        ).toBeInTheDocument();
+        // A second folder cannot be chosen while one is waiting for an answer.
+        expect(screen.getByRole("button", { name: /choose folder/i })).toBeDisabled();
+
+        fireEvent.click(screen.getByRole("button", { name: /move library/i }));
+        expect(onConfirmLibraryMove).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+        expect(onCancelLibraryMove).toHaveBeenCalledTimes(1);
+    });
+
+    it("says nothing will move when the current folder cannot be reached", () => {
+        const onConfirmLibraryMove = vi.fn();
+
+        renderWithMantine(
+            <LibraryFolderSection
+                {...baseProps({
+                    pendingLibraryMove: {
+                        currentLibraryPath: "/library",
+                        destination: "/new-library",
+                        summary: null,
+                        currentFolderUnreachable: true,
+                    },
+                    onConfirmLibraryMove,
+                })}
+            />
+        );
+
+        expect(screen.getByText("The current library folder cannot be reached")).toBeInTheDocument();
+        expect(screen.getByText(/moves nothing/)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /use the new folder anyway/i }));
+        expect(onConfirmLibraryMove).toHaveBeenCalledTimes(1);
+    });
+
     it("shows the summary error when one is reported", () => {
         renderWithMantine(
             <LibraryFolderSection

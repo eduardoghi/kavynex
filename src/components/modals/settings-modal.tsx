@@ -4,6 +4,7 @@ import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome"
 import { useModalLock } from "../../hooks/use-modal-lock";
 import { useMotionPreference } from "../../hooks/use-motion-preference";
 import type { ImportMode } from "../../types/settings";
+import type { PendingLibraryMove } from "../../use-cases/change-library-path";
 import { AppUpdateSection } from "./settings-sections/app-update-section";
 import { DatabaseSection } from "./settings-sections/database-section";
 import { ImportBehaviorSection } from "./settings-sections/import-behavior-section";
@@ -27,6 +28,9 @@ type SettingsModalProps = {
     disableLibraryPathChange: boolean;
     libraryPathChangeDisabledReason: string;
     isMigratingLibraryPath: boolean;
+    pendingLibraryMove?: PendingLibraryMove | null;
+    onConfirmLibraryMove?: () => void;
+    onCancelLibraryMove?: () => void;
     externalBackupDir: string;
     isSavingExternalBackupDir: boolean;
     onChooseExternalBackupDir: () => void;
@@ -49,6 +53,9 @@ export function SettingsModal({
     disableLibraryPathChange,
     libraryPathChangeDisabledReason,
     isMigratingLibraryPath,
+    pendingLibraryMove,
+    onConfirmLibraryMove,
+    onCancelLibraryMove,
     externalBackupDir,
     isSavingExternalBackupDir,
     onChooseExternalBackupDir,
@@ -156,6 +163,9 @@ export function SettingsModal({
                         disableLibraryPathChange={disableLibraryPathChange}
                         libraryPathChangeDisabledReason={libraryPathChangeDisabledReason}
                         isMigratingLibraryPath={isMigratingLibraryPath}
+                        pendingLibraryMove={pendingLibraryMove}
+                        onConfirmLibraryMove={onConfirmLibraryMove}
+                        onCancelLibraryMove={onCancelLibraryMove}
                     />
 
                     <Divider />

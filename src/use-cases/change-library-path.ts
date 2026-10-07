@@ -1,14 +1,33 @@
 import {
     chooseLibraryDirectory,
     ensureDirectoryExists,
-    isDirectoryEmpty,
     migrateLibraryDirectory,
 } from "../services/library-service";
+import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import { isFilesystemRootPath } from "../utils/paths";
 import { ClientError } from "../utils/app-error";
 
-type ExecuteChangeLibraryPathInput = {
+type PlanChangeLibraryPathInput = {
     currentLibraryPath: string;
+};
+
+// What choosing a folder leads to. A first library is used as it is. Moving an existing one waits
+// for the user to confirm, since it copies the whole library and then deletes the old folder.
+export type LibraryPathChangePlan =
+    | { kind: "unchanged" }
+    | { kind: "apply"; finalLibraryPath: string }
+    | { kind: "move"; currentLibraryPath: string; destination: string };
+
+// A move waiting for the user's answer.
+export type PendingLibraryMove = {
+    currentLibraryPath: string;
+    destination: string;
+    // What is about to be copied, or null when it could not be read, which an unreachable current
+    // folder is one reason for.
+    summary: LibrarySummaryInfo | null;
+    // The current folder cannot be reached while media are registered in it. Confirming then
+    // switches to the destination without moving anything.
+    currentFolderUnreachable: boolean;
 };
 
 export type ExecuteChangeLibraryPathResult = {
@@ -20,75 +39,53 @@ export type ExecuteChangeLibraryPathResult = {
     oldDirectoryRetained: boolean;
 };
 
-function createNonEmptyFolderError(): ClientError {
-    return new ClientError(
-        "The selected folder must be empty before it can be used as the library folder."
-    );
-}
-
 function createDriveRootError(): ClientError {
     return new ClientError(
         "A drive or volume root cannot be used as the library folder. Choose a regular folder instead."
     );
 }
 
-export async function executeChangeLibraryPath({
+export async function planChangeLibraryPath({
     currentLibraryPath,
-}: ExecuteChangeLibraryPathInput): Promise<ExecuteChangeLibraryPathResult> {
+}: PlanChangeLibraryPathInput): Promise<LibraryPathChangePlan> {
     const normalizedCurrentLibraryPath = currentLibraryPath.trim();
 
-    const selectedPath = await chooseLibraryDirectory();
+    const selectedPath = (await chooseLibraryDirectory())?.trim() ?? "";
 
     if (!selectedPath) {
-        return {
-            changed: false,
-            finalLibraryPath: normalizedCurrentLibraryPath,
-            oldDirectoryRetained: false,
-        };
+        return { kind: "unchanged" };
     }
 
-    const normalizedSelectedPath = selectedPath.trim();
-
-    if (!normalizedSelectedPath) {
-        return {
-            changed: false,
-            finalLibraryPath: normalizedCurrentLibraryPath,
-            oldDirectoryRetained: false,
-        };
-    }
-
-    if (isFilesystemRootPath(normalizedSelectedPath)) {
+    if (isFilesystemRootPath(selectedPath)) {
         throw createDriveRootError();
     }
 
-    const ensuredSelectedPath = await ensureDirectoryExists(normalizedSelectedPath);
+    const ensuredSelectedPath = await ensureDirectoryExists(selectedPath);
 
     if (ensuredSelectedPath === normalizedCurrentLibraryPath) {
-        return {
-            changed: false,
-            finalLibraryPath: normalizedCurrentLibraryPath,
-            oldDirectoryRetained: false,
-        };
-    }
-
-    const destinationIsEmpty = await isDirectoryEmpty(ensuredSelectedPath);
-
-    if (!destinationIsEmpty && normalizedCurrentLibraryPath) {
-        throw createNonEmptyFolderError();
+        return { kind: "unchanged" };
     }
 
     if (!normalizedCurrentLibraryPath) {
-        return {
-            changed: true,
-            finalLibraryPath: ensuredSelectedPath,
-            oldDirectoryRetained: false,
-        };
+        return { kind: "apply", finalLibraryPath: ensuredSelectedPath };
     }
 
-    const migrationResult = await migrateLibraryDirectory(
-        normalizedCurrentLibraryPath,
-        ensuredSelectedPath
-    );
+    // Whether the destination can take the library (empty, or holding only an interrupted move)
+    // is the backend's to decide. Checking emptiness here refused the folder of an interrupted
+    // move, which is exactly the one a retry has to accept.
+    return {
+        kind: "move",
+        currentLibraryPath: normalizedCurrentLibraryPath,
+        destination: ensuredSelectedPath,
+    };
+}
+
+export async function moveLibrary(
+    move: Pick<PendingLibraryMove, "currentLibraryPath" | "destination" | "currentFolderUnreachable">
+): Promise<ExecuteChangeLibraryPathResult> {
+    const migrationResult = await migrateLibraryDirectory(move.currentLibraryPath, move.destination, {
+        switchWithoutMoving: move.currentFolderUnreachable,
+    });
 
     return {
         changed: migrationResult.changed,

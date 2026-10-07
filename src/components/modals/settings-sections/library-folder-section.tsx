@@ -1,6 +1,7 @@
 import { Alert, Group, Paper, SimpleGrid, Stack, Text, TextInput, Title } from "@mantine/core";
-import { FolderOpen, HardDrive, RefreshCcw, Search, Wrench } from "lucide-react";
+import { ArrowRightLeft, FolderOpen, HardDrive, RefreshCcw, Search, Wrench } from "lucide-react";
 import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
+import type { PendingLibraryMove } from "../../../use-cases/change-library-path";
 import { AppButton } from "../../ui/app-button";
 
 // Windows extended-length paths (`\\?\`, `\\?\UNC\`) are what the backend canonicalizes to, but
@@ -19,6 +20,104 @@ function displayWindowsPath(path: string): string {
     return normalizedPath;
 }
 
+// "12.4 GB in 1,204 video files, 33 audio files and 1,250 thumbnails", or null without a summary.
+function describeMoveSize(move: PendingLibraryMove): string | null {
+    const summary = move.summary;
+
+    if (!summary) {
+        return null;
+    }
+
+    const count = (value: number, one: string, many: string): string =>
+        `${value.toLocaleString()} ${value === 1 ? one : many}`;
+
+    return `${summary.formatted_size} in ${count(summary.video_files, "video file", "video files")}, ${count(summary.audio_files, "audio file", "audio files")} and ${count(summary.thumbnail_files, "thumbnail", "thumbnails")}`;
+}
+
+type PendingLibraryMoveAlertProps = {
+    move: PendingLibraryMove;
+    isMigratingLibraryPath: boolean;
+    onConfirm: () => void;
+    onCancel: () => void;
+};
+
+function PendingLibraryMoveAlert({
+    move,
+    isMigratingLibraryPath,
+    onConfirm,
+    onCancel,
+}: PendingLibraryMoveAlertProps): JSX.Element {
+    const destination = displayWindowsPath(move.destination);
+    const size = describeMoveSize(move);
+
+    if (move.currentFolderUnreachable) {
+        return (
+            <Alert color="yellow" variant="light">
+                <Stack gap="xs">
+                    <Text size="sm" fw={600}>
+                        The current library folder cannot be reached
+                    </Text>
+                    <Text size="sm">
+                        Kavynex cannot open {displayWindowsPath(move.currentLibraryPath)}, so
+                        nothing can be moved from it. If it is on a drive that is not connected,
+                        cancel, reconnect the drive and try again. Using {destination} instead
+                        moves nothing, and the media already added show as missing until their
+                        files are back in the library folder.
+                    </Text>
+                    <Group gap="sm">
+                        <AppButton
+                            appVariant="primary"
+                            onClick={onConfirm}
+                            loading={isMigratingLibraryPath}
+                        >
+                            Use the new folder anyway
+                        </AppButton>
+                        <AppButton
+                            appVariant="ghost"
+                            onClick={onCancel}
+                            disabled={isMigratingLibraryPath}
+                        >
+                            Cancel
+                        </AppButton>
+                    </Group>
+                </Stack>
+            </Alert>
+        );
+    }
+
+    return (
+        <Alert color="yellow" variant="light">
+            <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                    Move the library to {destination}?
+                </Text>
+                <Text size="sm">
+                    {size ? `${size} will be copied there. ` : "Every file in the library will be copied there. "}
+                    The old folder is removed only after every file is confirmed copied, and
+                    adding or deleting media waits until the move is done.
+                </Text>
+                <Group gap="sm">
+                    <AppButton
+                        appVariant="primary"
+                        leftSection={<ArrowRightLeft size={16} />}
+                        onClick={onConfirm}
+                        loading={isMigratingLibraryPath}
+                    >
+                        Move library
+                    </AppButton>
+                    <AppButton
+                        appVariant="ghost"
+                        onClick={onCancel}
+                        disabled={isMigratingLibraryPath}
+                    >
+                        Cancel
+                    </AppButton>
+                </Group>
+            </Stack>
+        </Alert>
+    );
+}
+
 type LibraryFolderSectionProps = Pick<
     SettingsController,
     | "librarySummary"
@@ -33,6 +132,9 @@ type LibraryFolderSectionProps = Pick<
     disableLibraryPathChange: boolean;
     libraryPathChangeDisabledReason: string;
     isMigratingLibraryPath: boolean;
+    pendingLibraryMove?: PendingLibraryMove | null;
+    onConfirmLibraryMove?: () => void;
+    onCancelLibraryMove?: () => void;
 };
 
 export function LibraryFolderSection({
@@ -47,6 +149,9 @@ export function LibraryFolderSection({
     disableLibraryPathChange,
     libraryPathChangeDisabledReason,
     isMigratingLibraryPath,
+    pendingLibraryMove = null,
+    onConfirmLibraryMove = () => undefined,
+    onCancelLibraryMove = () => undefined,
 }: LibraryFolderSectionProps): JSX.Element {
     return (
         <Stack gap="xs">
@@ -160,8 +265,8 @@ export function LibraryFolderSection({
                     appVariant="secondary"
                     leftSection={<Search size={16} />}
                     onClick={onChooseLibraryPath}
-                    disabled={disableLibraryPathChange}
-                    loading={isMigratingLibraryPath}
+                    disabled={disableLibraryPathChange || pendingLibraryMove !== null}
+                    loading={isMigratingLibraryPath && pendingLibraryMove === null}
                 >
                     Choose folder
                 </AppButton>
@@ -183,6 +288,15 @@ export function LibraryFolderSection({
                     Diagnostics
                 </AppButton>
             </Group>
+
+            {pendingLibraryMove && (
+                <PendingLibraryMoveAlert
+                    move={pendingLibraryMove}
+                    isMigratingLibraryPath={isMigratingLibraryPath}
+                    onConfirm={onConfirmLibraryMove}
+                    onCancel={onCancelLibraryMove}
+                />
+            )}
 
             {disableLibraryPathChange && libraryPathChangeDisabledReason && (
                 <Alert color="yellow" variant="light">

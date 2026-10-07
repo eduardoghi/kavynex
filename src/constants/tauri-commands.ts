@@ -42,8 +42,6 @@ export const TAURI_COMMANDS = {
     REPLACE_MEDIA_COMMENTS: "replace_media_comments",
     MARK_MEDIA_COMMENTS_ABSENT: "mark_media_comments_absent",
 
-    IS_DIRECTORY_EMPTY: "is_directory_empty",
-
     REGISTER_LIBRARY_ASSET_SCOPE: "register_library_asset_scope",
 
     ENSURE_DATABASE_READY: "ensure_database_ready",
