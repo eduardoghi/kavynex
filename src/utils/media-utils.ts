@@ -327,6 +327,12 @@ export function formatPublishedDate(value: string | null | undefined): string {
     return formatDateValue(value);
 }
 
+// A trailing `Z` or a `+hh:mm`/`-hhmm` offset.
+const EXPLICIT_TIME_ZONE = /(?:z|[+-]\d{2}:?\d{2})$/i;
+
+// `created_at` is SQLite's `datetime('now')`, which is UTC written without a zone. JavaScript reads a
+// zone-less date-time as local time, which showed every "added" time off by the user's UTC offset,
+// so a value with no zone of its own is read as UTC and then shown in local time.
 export function formatCreatedAt(value: string | null | undefined): string {
     const normalized = value?.trim() ?? "";
 
@@ -334,7 +340,9 @@ export function formatCreatedAt(value: string | null | undefined): string {
         return "";
     }
 
-    const date = new Date(normalized.replace(" ", "T"));
+    const isoLike = normalized.replace(" ", "T");
+    const readsAsLocal = isoLike.includes("T") && !EXPLICIT_TIME_ZONE.test(isoLike);
+    const date = new Date(readsAsLocal ? `${isoLike}Z` : isoLike);
 
     if (Number.isNaN(date.getTime())) {
         return normalized;

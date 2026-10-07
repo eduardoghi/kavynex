@@ -459,21 +459,43 @@ describe("media-utils", () => {
             expect(formatCreatedAt("   ")).toBe("");
         });
 
-        it("formats space-separated datetimes with date and time", () => {
+        // The expected text is built from the same instant in UTC and formatted in the machine's
+        // own zone, so these hold wherever the suite runs, which a literal "2:30 PM" did not.
+        const localText = (utcMillis: number): string =>
+            normalizeSpaces(
+                new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(
+                    new Date(utcMillis)
+                )
+            );
+
+        it("reads SQLite's zone-less datetime as UTC", () => {
             expect(normalizeSpaces(formatCreatedAt("2024-03-05 14:30:00"))).toBe(
-                "Mar 5, 2024, 2:30 PM"
+                localText(Date.UTC(2024, 2, 5, 14, 30))
+            );
+            expect(normalizeSpaces(formatCreatedAt("2024-03-05T09:05:00"))).toBe(
+                localText(Date.UTC(2024, 2, 5, 9, 5))
             );
         });
 
-        it("formats ISO datetimes with date and time", () => {
-            expect(normalizeSpaces(formatCreatedAt("2024-03-05T09:05:00"))).toBe(
-                "Mar 5, 2024, 9:05 AM"
+        it("keeps a zone the value states itself", () => {
+            expect(normalizeSpaces(formatCreatedAt("2024-03-05T09:05:00Z"))).toBe(
+                localText(Date.UTC(2024, 2, 5, 9, 5))
             );
+            expect(normalizeSpaces(formatCreatedAt("2024-03-05T09:05:00-03:00"))).toBe(
+                localText(Date.UTC(2024, 2, 5, 12, 5))
+            );
+            expect(normalizeSpaces(formatCreatedAt("2024-03-05T09:05:00+0100"))).toBe(
+                localText(Date.UTC(2024, 2, 5, 8, 5))
+            );
+        });
+
+        it("still parses a date with no time", () => {
+            expect(formatCreatedAt("2024-03-05")).not.toBe("2024-03-05");
         });
 
         it("trims the value before parsing", () => {
             expect(normalizeSpaces(formatCreatedAt("  2024-03-05 14:30:00  "))).toBe(
-                "Mar 5, 2024, 2:30 PM"
+                localText(Date.UTC(2024, 2, 5, 14, 30))
             );
         });
 
