@@ -22,8 +22,9 @@ use crate::services::logger;
 use crate::AppResult;
 
 use super::{
-    backup_error, escape_sql_literal, is_healthy, is_recent, managed_database_paths, modified_ms,
-    open, rotate_generations, sibling, total_size_bytes, BACKUP_IN_PROGRESS,
+    backup_error, database_schema_version, escape_sql_literal, is_healthy, is_recent,
+    managed_database_paths, modified_ms, open, rotate_generations, sibling, total_size_bytes,
+    BACKUP_IN_PROGRESS,
 };
 
 // The DB is snapshotted at most once per day so it does not add cost to every launch; any
@@ -60,6 +61,106 @@ pub(super) fn temp_backup_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".bak.tmp")
 }
 
+/// How many pre-migration snapshots are kept. Each is a full copy, taken once per upgrade that
+/// changes the schema, so this many cover the upgrade that just ran and the one before it.
+pub(super) const PRE_MIGRATION_SNAPSHOTS_KEPT: usize = 2;
+
+/// The snapshot taken right before a migration from `from_version` runs.
+pub(super) fn pre_migration_path(db_path: &Path, from_version: i64) -> PathBuf {
+    sibling(db_path, &format!(".pre-migration-v{from_version}"))
+}
+
+fn pre_migration_temp_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".pre-migration.tmp")
+}
+
+/// The versions whose pre-migration snapshots go, given the ones on disk. The `keep` highest stay.
+///
+/// Pure so the retention can be pinned without a directory, because a wrong answer here deletes the
+/// one copy taken before an upgrade.
+pub(super) fn pre_migration_versions_to_prune(mut versions: Vec<i64>, keep: usize) -> Vec<i64> {
+    versions.sort_unstable_by(|left, right| right.cmp(left));
+    versions.dedup();
+    versions.into_iter().skip(keep).collect()
+}
+
+/// The schema versions of the pre-migration snapshots sitting beside `db_path`.
+fn pre_migration_versions_on_disk(db_path: &Path) -> Vec<i64> {
+    let (Some(dir), Some(name)) = (db_path.parent(), db_path.file_name()) else {
+        return Vec::new();
+    };
+    let prefix = format!("{}.pre-migration-v", name.to_string_lossy());
+
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .to_str()?
+                .strip_prefix(&prefix)?
+                .parse::<i64>()
+                .ok()
+        })
+        .collect()
+}
+
+/// Snapshots the database right before a schema migration from `from_version` runs, and returns
+/// where it went.
+///
+/// Separate from [`backup_database`] for two reasons. That one is throttled to a day, so before a
+/// migration it often wrote nothing and the rollback point was a `.bak` up to a day old. And its
+/// generations rotate daily, so within a week the last copy in the old schema was gone, which is
+/// the copy a downgrade needs. This one always runs, and only a later upgrade's snapshot replaces
+/// it. The caller has already run `quick_check` on the database, so it is not repeated here.
+pub async fn snapshot_before_migration(db_path: &Path, from_version: i64) -> AppResult<PathBuf> {
+    let _guard = BACKUP_IN_PROGRESS.lock().await;
+
+    let target = pre_migration_path(db_path, from_version);
+    let temp = pre_migration_temp_path(db_path);
+    let _ = std::fs::remove_file(&temp);
+
+    let pool = open(db_path).await?;
+    let vacuum_sql = format!(
+        "VACUUM INTO '{}'",
+        escape_sql_literal(&temp.to_string_lossy())
+    );
+    let vacuum_result = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
+        .execute(&pool)
+        .await;
+    pool.close().await;
+
+    if let Err(error) = vacuum_result {
+        let _ = std::fs::remove_file(&temp);
+        return Err(backup_error(
+            "failed to snapshot the database before a migration",
+            error,
+        ));
+    }
+
+    crate::services::filesystem::fsync_file(&temp)?;
+    std::fs::rename(&temp, &target)
+        .map_err(|error| backup_error("failed to store the pre-migration snapshot", error))?;
+    crate::services::filesystem::fsync_parent_dir(&target);
+
+    for version in pre_migration_versions_to_prune(
+        pre_migration_versions_on_disk(db_path),
+        PRE_MIGRATION_SNAPSHOTS_KEPT,
+    ) {
+        let _ = std::fs::remove_file(pre_migration_path(db_path, version));
+    }
+
+    logger::info(
+        "db_backup",
+        format!("snapshotted the database before migrating from schema version {from_version}"),
+    );
+
+    Ok(target)
+}
+
 /// Creates a consistent snapshot of the database (via `VACUUM INTO`) before migrations run,
 /// so a bad migration or corruption can be rolled back. Best effort and throttled to once a
 /// day; a source database that fails `quick_check` is skipped so a corrupt DB never
@@ -78,6 +179,20 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     let backup = backup_path(db_path);
 
     if is_recent(&backup, BACKUP_MIN_INTERVAL_SECS) {
+        return Ok(false);
+    }
+
+    // A database newer than this build (a downgrade) is not snapshotted. This build cannot open it
+    // and cannot restore a snapshot of it either, and rotating its copies in would push out, one a
+    // day, the older generations that are the only ones this build can restore.
+    if database_schema_version(db_path)
+        .await
+        .is_some_and(|version| version > crate::services::db_schema::SCHEMA_VERSION)
+    {
+        logger::warn(
+            "db_backup",
+            "skipping backup: the database was written by a newer version of Kavynex",
+        );
         return Ok(false);
     }
 
@@ -175,9 +290,10 @@ pub struct DatabaseBackupStatus {
 /// Reports whether a backup file exists (without verifying its integrity), when the most recent
 /// one was written, and how much disk the database and its snapshots occupy in total.
 ///
-/// The size is reported because nothing else in the app makes it visible. Up to eleven full copies
+/// The size is reported because nothing else in the app makes it visible. Up to thirteen full copies
 /// of the database can sit in the app config directory (seven `.bak` generations, three `.corrupt`
-/// ones, one `.pre-import`), the rotation bounds how *many* exist but never how *large* they get,
+/// ones, one `.pre-import`, two `.pre-migration-v<N>`), the rotation bounds how *many* exist but
+/// never how *large* they get,
 /// and that directory is the roaming profile on Windows. A database that grows with every comment
 /// backed up can therefore take gigabytes there with nothing saying so.
 pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {

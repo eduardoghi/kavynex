@@ -34,6 +34,12 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   evidence. Fewer generations than `.bak`, since each is a full copy of an already-broken database.
 - `kavynex.db.pre-import`: the database as it was before the last applied import, kept so the
   import can be undone. It persists until the next import replaces it.
+- `kavynex.db.pre-migration-v<N>`: the database as it was right before an upgrade migrated it from
+  schema version N. Taken every time a migration is pending, never throttled or rotated by the
+  daily snapshot, and the two most recent are kept (`PRE_MIGRATION_SNAPSHOTS_KEPT`). It is the copy
+  to go back to after a migration that went wrong, or after installing an older version, which
+  cannot open a database a newer one migrated. Restore does not offer it, so going back means
+  closing Kavynex and copying it over `kavynex.db` by hand.
 - `kavynex.db.integrity-checked`: an empty marker whose mtime records the last time the background
   full `integrity_check` passed. It throttles that check to once a week (`db_backup/integrity.rs`); the
   automatic paths use the faster `quick_check`, and this thorough one runs off the startup critical
@@ -69,8 +75,8 @@ counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in
 ever disagree.
 
 Those counts bound how *many* snapshots exist, never how *large* they get, and each `.bak`,
-`.corrupt` and `.pre-import` is a full copy of the database, which grows with every comment
-backed up. Up to eleven such copies can therefore sit in this one directory. Because that is not
+`.corrupt`, `.pre-import` and `.pre-migration-v<N>` is a full copy of the database, which grows
+with every comment backed up. Up to thirteen such copies can therefore sit in this one directory. Because that is not
 otherwise visible anywhere (and on Windows this is the roaming profile), **Settings > Database**
 reports the total these files currently occupy alongside the date of the last automatic snapshot;
 `db_backup/mod.rs::managed_database_paths` is the set it sums. It stayed in `mod.rs` when the

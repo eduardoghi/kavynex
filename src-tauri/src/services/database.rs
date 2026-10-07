@@ -292,6 +292,26 @@ pub fn database_path<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     Ok(config_dir.join(DATABASE_FILE_NAME))
 }
 
+/// Takes the rollback point a pending migration needs, and reports only a real failure.
+///
+/// A database file that does not exist yet (first run) has nothing to snapshot. One whose schema
+/// version cannot be read falls back to the daily snapshot, the only option that needs no version
+/// to name the file by.
+async fn snapshot_before_migration(path: &Path) -> AppResult<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    match crate::services::db_backup::database_schema_version(path).await {
+        Some(version) => crate::services::db_backup::snapshot_before_migration(path, version)
+            .await
+            .map(|_| ()),
+        None => crate::services::db_backup::backup_database(path)
+            .await
+            .map(|_| ()),
+    }
+}
+
 /// The database file is there but could not be read: a lock, a sharing violation, a permission
 /// error. A distinct code because the frontend's startup recovery offers a backup restore for a
 /// failed open, which is the wrong answer here.
@@ -337,15 +357,13 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
             }
         }
 
-        // The pre-migration snapshot is the only rollback point once schema DDL runs, so a real
-        // backup failure must block the migration rather than proceed unprotected. A throttled or
-        // skipped backup returns Ok(false). A recent snapshot already predates this migration, so
-        // that case is fine. Only an Err (disk full, permission denied, a failed VACUUM) is fatal.
-        // A brand-new database (first run, no file yet) never reaches here as an Err either.
-        // backup_database returns Ok(false) immediately when the file is missing, so first-run setup
-        // is not blocked. The frontend's startup recovery flow handles this AppError the same way it
-        // handles the quick_check gate above, by offering a restore from the last healthy backup.
-        if let Err(error) = crate::services::db_backup::backup_database(path).await {
+        // The pre-migration snapshot is the only rollback point once schema DDL runs, so a failure
+        // to take it (disk full, permission denied, a failed VACUUM) blocks the migration rather
+        // than letting it proceed unprotected. It is never throttled, so the rollback point is the
+        // database as it was a moment ago, not a daily snapshot up to a day old. A first run has no
+        // file yet and nothing to snapshot. The frontend's startup recovery flow handles this
+        // AppError the same way it handles the quick_check gate above.
+        if let Err(error) = snapshot_before_migration(path).await {
             return Err(AppError::from_code_with_details(
                 AppErrorCode::AppError,
                 "could not snapshot the database before a pending schema migration, so free up disk \
@@ -939,6 +957,44 @@ mod tests {
         assert_eq!(error.code, AppErrorCode::DatabaseUnavailable.as_str());
 
         drop(held);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn opening_a_database_that_needs_a_migration_snapshots_it_first() {
+        // A real v5 database, so ensure_schema has migrations to run. The daily .bak is fresh,
+        // which is the case where the rollback point used to be that day-old snapshot instead of
+        // the database as it was a moment before the migration.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-premigration-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("kavynex.db");
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/kavynex_v1_user_version_5.sqlite"),
+            &path,
+        )
+        .unwrap();
+        std::fs::write(dir.join("kavynex.db.bak"), b"a recent daily snapshot").unwrap();
+
+        let pool = build_pool_at(&path)
+            .await
+            .expect("the v5 fixture must open and migrate");
+        pool.close().await;
+
+        let snapshot = dir.join("kavynex.db.pre-migration-v5");
+        assert!(
+            snapshot.is_file(),
+            "the rollback point must be the database before migrating"
+        );
+        assert_eq!(
+            crate::services::db_backup::database_schema_version(&snapshot).await,
+            Some(5),
+            "the snapshot is the old schema, not the migrated one"
+        );
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

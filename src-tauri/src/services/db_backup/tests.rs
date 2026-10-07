@@ -308,20 +308,32 @@ fn managed_database_paths_names_every_file_this_module_writes() {
         })
         .collect();
 
-    assert_eq!(
-        named,
-        vec![
-            "kavynex.db",
-            "kavynex.db-wal",
-            "kavynex.db-shm",
-            "kavynex.db.bak",
-            "kavynex.db.bak.1",
-            "kavynex.db.bak.2",
-            "kavynex.db.bak.3",
-            "kavynex.db.bak.4",
-            "kavynex.db.bak.5",
-            "kavynex.db.bak.6",
-            "kavynex.db.bak.tmp",
+    // The pre-migration snapshots are named per schema version, so their run is built from the
+    // version this build ships rather than written out, or every new migration would break this.
+    let pre_migration: Vec<String> = (0..crate::services::db_schema::SCHEMA_VERSION)
+        .map(|version| format!("kavynex.db.pre-migration-v{version}"))
+        .chain(std::iter::once("kavynex.db.pre-migration.tmp".to_string()))
+        .collect();
+
+    let mut expected: Vec<String> = [
+        "kavynex.db",
+        "kavynex.db-wal",
+        "kavynex.db-shm",
+        "kavynex.db.bak",
+        "kavynex.db.bak.1",
+        "kavynex.db.bak.2",
+        "kavynex.db.bak.3",
+        "kavynex.db.bak.4",
+        "kavynex.db.bak.5",
+        "kavynex.db.bak.6",
+        "kavynex.db.bak.tmp",
+    ]
+    .iter()
+    .map(|name| name.to_string())
+    .collect();
+    expected.extend(pre_migration);
+    expected.extend(
+        [
             "kavynex.db.corrupt",
             "kavynex.db.corrupt.1",
             "kavynex.db.corrupt.2",
@@ -333,7 +345,11 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.import-applying",
             "kavynex.db.integrity-checked",
         ]
+        .iter()
+        .map(|name| name.to_string()),
     );
+
+    assert_eq!(named, expected);
 
     // Every entry is a sibling of the database, never somewhere else on disk. The report is
     // about what this one directory holds.
@@ -1591,6 +1607,88 @@ async fn database_quick_check_ok_reports_health() {
 
     // A missing file is likewise not openable (open uses create_if_missing(false)).
     assert!(!database_quick_check_ok(&dir.join("missing.db")).await);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn pre_migration_retention_keeps_the_two_most_recent_versions() {
+    assert_eq!(
+        pre_migration_versions_to_prune(vec![13, 15, 14], 2),
+        vec![13]
+    );
+    assert_eq!(
+        pre_migration_versions_to_prune(vec![15, 14], 2),
+        Vec::<i64>::new()
+    );
+    assert_eq!(
+        pre_migration_versions_to_prune(vec![15], 2),
+        Vec::<i64>::new()
+    );
+    assert_eq!(
+        pre_migration_versions_to_prune(Vec::new(), 2),
+        Vec::<i64>::new()
+    );
+    assert_eq!(
+        pre_migration_versions_to_prune(vec![9, 12, 10, 11], 2),
+        vec![10, 9]
+    );
+    assert_eq!(PRE_MIGRATION_SNAPSHOTS_KEPT, 2);
+}
+
+#[tokio::test]
+async fn a_pre_migration_snapshot_is_written_whatever_the_daily_throttle_says() {
+    // The daily .bak is fresh, which made the old path write nothing and leave a rollback point up
+    // to a day old. The pre-migration snapshot is the database as it is now.
+    let dir = temp_dir("pre_migration");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "before the upgrade").await;
+    std::fs::write(backup_path(&db), b"a recent daily snapshot").unwrap();
+
+    let written = snapshot_before_migration(&db, 14).await.unwrap();
+
+    assert_eq!(written, dir.join("kavynex.db.pre-migration-v14"));
+    assert!(database_quick_check_ok(&written).await);
+    assert!(!dir.join("kavynex.db.pre-migration.tmp").exists());
+
+    // Later upgrades replace older snapshots, never the latest two.
+    snapshot_before_migration(&db, 15).await.unwrap();
+    snapshot_before_migration(&db, 16).await.unwrap();
+
+    assert!(!dir.join("kavynex.db.pre-migration-v14").exists());
+    assert!(dir.join("kavynex.db.pre-migration-v15").exists());
+    assert!(dir.join("kavynex.db.pre-migration-v16").exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn the_daily_backup_leaves_a_newer_database_alone() {
+    // After a downgrade this build cannot open the database or restore a snapshot of it, and the
+    // older .bak generations are the only ones it can restore. Rotating new copies in would push
+    // them out one a day.
+    let dir = temp_dir("downgrade_backup");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "written by a newer build").await;
+
+    {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(SqliteConnectOptions::new().filename(&db))
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION + 1
+        )))
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+    }
+
+    assert!(!backup_database(&db).await.unwrap());
+    assert!(!backup_path(&db).exists());
 
     let _ = std::fs::remove_dir_all(&dir);
 }

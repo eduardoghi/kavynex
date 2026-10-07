@@ -396,6 +396,21 @@ renamed into `.bak` after it succeeds. Because `VACUUM INTO` requires the destin
 already exist, and produces a single, fully checkpointed file, `.bak` is always a complete,
 WAL-free snapshot, never combined with a live write-ahead log.
 
+A database whose `user_version` is above this build's `SCHEMA_VERSION` (an older version installed
+over a newer one) is not snapshotted at all. This build can neither open it nor restore a copy of
+it, and rotating such copies in would push out, one a day, the older generations that are the only
+ones it can restore.
+
+### Before a migration (`snapshot_before_migration`)
+
+When `build_pool_at` finds a migration pending, it snapshots the database into
+`kavynex.db.pre-migration-v<N>`, N being the schema version the migration starts from, before any
+DDL runs. Unlike `backup_database` this is never throttled, so the rollback point is the database
+as it was a moment before the upgrade, and it is outside the `.bak` rotation, so the daily snapshot
+does not push it out. The two most recent are kept. A failure to take it blocks the migration, the
+same way a failed `quick_check` does. Restore does not pick it up. It is the manual way back after
+a migration that went wrong or a downgrade, and `DIRECTORIES.md` lists it.
+
 ### Restore (`restore_database_from_backup`)
 
 Used when opening the live database fails. It walks every generation in turn (`.bak`, then

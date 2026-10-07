@@ -230,6 +230,15 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
     );
     paths.push(snapshot::temp_backup_path(db_path));
 
+    // One snapshot per schema version an upgrade migrated from, and the scratch name it vacuums
+    // into. Named for every version up to this build's, since at most two exist at a time but which
+    // two depends on the upgrades this machine went through.
+    paths.extend(
+        (0..crate::services::db_schema::SCHEMA_VERSION)
+            .map(|version| snapshot::pre_migration_path(db_path, version)),
+    );
+    paths.push(sibling(db_path, ".pre-migration.tmp"));
+
     // `.corrupt` plus its rotated generations, and the scratch name a restore moves through.
     paths.extend(
         (0..=restore::CORRUPT_ROTATED_GENERATIONS)
@@ -304,7 +313,7 @@ fn quick_check_failure(error: &sqlx::Error) -> QuickCheck {
 /// Reads a database file's `user_version` (schema version) without migrating it. Used by restore
 /// to refuse a backup produced by a newer app build. Returns `None` if the file cannot be opened
 /// or the pragma read fails.
-async fn database_schema_version(db_path: &Path) -> Option<i64> {
+pub(crate) async fn database_schema_version(db_path: &Path) -> Option<i64> {
     let pool = open(db_path).await.ok()?;
     let version: Result<(i64,), _> = sqlx::query_as("PRAGMA user_version").fetch_one(&pool).await;
     pool.close().await;
@@ -338,11 +347,16 @@ pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
 
 // The automatic `.bak` snapshot family and the status report over it.
 mod snapshot;
-pub use snapshot::{backup_database, database_backup_status, DatabaseBackupStatus};
+pub use snapshot::{
+    backup_database, database_backup_status, snapshot_before_migration, DatabaseBackupStatus,
+};
 // The parent module's snapshot tests assert against these internals; test-only so a non-test build
 // does not flag them unused.
 #[cfg(test)]
-use snapshot::{backup_path, temp_backup_path, BACKUP_MIN_INTERVAL_SECS};
+use snapshot::{
+    backup_path, pre_migration_versions_to_prune, temp_backup_path, BACKUP_MIN_INTERVAL_SECS,
+    PRE_MIGRATION_SNAPSHOTS_KEPT,
+};
 
 // Restoring from a snapshot, and finishing a restore a crash interrupted.
 mod restore;
