@@ -188,8 +188,9 @@ pub async fn reconcile_interrupted_migration(pool: &SqlitePool, config_dir: &Pat
                     logger::info(
                         "library",
                         format!(
-                        "recovered the library path from an interrupted migration: '{new_path}'"
-                    ),
+                            "recovered the library path from an interrupted migration: '{}'",
+                            logger::redact_path(&new_path)
+                        ),
                     );
                 }
                 Err(error) => logger::warn(
