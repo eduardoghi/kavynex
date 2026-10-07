@@ -143,7 +143,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         Delete <b>{mediaToDelete?.title ?? "this item"}</b>?
                     </>
                 }
-                description="This permanently deletes the media file and its thumbnail from disk. This cannot be undone."
+                description="This permanently deletes the media file, its thumbnail and live chat replay from disk, and removes its saved comments. This cannot be undone."
             />
 
             <ConfirmDeleteModal

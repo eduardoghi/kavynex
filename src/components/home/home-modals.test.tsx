@@ -299,7 +299,7 @@ describe("HomeModals", () => {
 
         expect(
             screen.getByText(
-                "This permanently deletes the media file and its thumbnail from disk. This cannot be undone."
+                "This permanently deletes the media file, its thumbnail and live chat replay from disk, and removes its saved comments. This cannot be undone."
             )
         ).toBeInTheDocument();
     });
