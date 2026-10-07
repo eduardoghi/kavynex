@@ -655,6 +655,15 @@ mod registration {
             .count()
     }
 
+    /// What `source_media_outside_the_library(label)` writes.
+    ///
+    /// Distinct per label because the import names the library file after its hash. The mock apps
+    /// share one cache directory, so two tests importing the same bytes in parallel would each see
+    /// the other's pending marker for the same `video/media_<hash>.mp4`.
+    fn source_contents(label: &str) -> Vec<u8> {
+        format!("media bytes for {label}").into_bytes()
+    }
+
     /// A media file on disk outside the library, named so the import accepts its extension.
     fn source_media_outside_the_library(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -664,7 +673,7 @@ mod registration {
         std::fs::create_dir_all(&dir).unwrap();
 
         let source = dir.join("clip.mp4");
-        std::fs::write(&source, b"media bytes").unwrap();
+        std::fs::write(&source, source_contents(label)).unwrap();
 
         source
     }
@@ -1055,7 +1064,7 @@ mod registration {
 
         assert_eq!(
             fs_bytes(&source),
-            b"media bytes",
+            source_contents("move-refused"),
             "the user's file must survive"
         );
         assert!(!library.join(&file_path).exists());
@@ -1131,7 +1140,10 @@ mod registration {
             .expect("a local Move import of a real file must succeed");
 
         assert!(!source.exists());
-        assert_eq!(fs_bytes(&library.join(&created.file_path)), b"media bytes");
+        assert_eq!(
+            fs_bytes(&library.join(&created.file_path)),
+            source_contents("create-move")
+        );
         assert_eq!(media_row_count(&app).await, 1);
 
         let _ = std::fs::remove_dir_all(&library);
@@ -1152,7 +1164,7 @@ mod registration {
             .expect_err("a channel that does not exist must be refused");
 
         assert_eq!(error.code, AppErrorCode::ChannelNotFound.as_str());
-        assert_eq!(fs_bytes(&source), b"media bytes");
+        assert_eq!(fs_bytes(&source), source_contents("create-no-channel"));
         assert_eq!(
             std::fs::read_dir(library.join(crate::constants::LIBRARY_DIR_VIDEO))
                 .unwrap()
