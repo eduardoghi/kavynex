@@ -20,6 +20,38 @@ export async function listAllChannels(): Promise<Channel[]> {
     return listChannels();
 }
 
+/**
+ * Refuses a channel that createChannel would refuse: an invalid name or handle, or a handle that is
+ * already registered.
+ *
+ * Separate so a caller can ask before doing the expensive part. Creating a channel with an avatar
+ * writes or downloads that avatar first, and a refusal after that left the file in the library with
+ * nothing pointing at it.
+ */
+export async function ensureChannelCanBeCreated(
+    name: string,
+    youtubeHandle: string
+): Promise<void> {
+    const normalizedInput = validateCreateChannelInput({
+        name,
+        youtubeHandle,
+        avatarPath: null,
+    });
+
+    await rejectRegisteredHandle(normalizedInput.youtubeHandle);
+}
+
+async function rejectRegisteredHandle(youtubeHandle: string): Promise<void> {
+    const existing = await findChannelByYoutubeHandle(youtubeHandle);
+
+    if (existing) {
+        throw createAppError(
+            CHANNEL_ALREADY_EXISTS_ERROR_CODE,
+            "A channel with this YouTube handle already exists."
+        );
+    }
+}
+
 export async function createChannel(
     name: string,
     youtubeHandle: string,
@@ -31,14 +63,7 @@ export async function createChannel(
         avatarPath,
     });
 
-    const existing = await findChannelByYoutubeHandle(normalizedInput.youtubeHandle);
-
-    if (existing) {
-        throw createAppError(
-            CHANNEL_ALREADY_EXISTS_ERROR_CODE,
-            "A channel with this YouTube handle already exists."
-        );
-    }
+    await rejectRegisteredHandle(normalizedInput.youtubeHandle);
 
     return insertChannel(
         normalizedInput.name,

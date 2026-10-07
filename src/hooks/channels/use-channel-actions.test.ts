@@ -12,6 +12,7 @@ vi.mock("../../utils/app-logger", () => ({
 
 vi.mock("../../services/channel-service", () => ({
     createChannel: vi.fn(),
+    ensureChannelCanBeCreated: vi.fn(),
     deleteChannelWithThumbnailCleanup: vi.fn(),
     listAllChannels: vi.fn(),
     updateChannelAvatarWithCleanup: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("../../services/thumbnail-service", () => ({
 
 import {
     createChannel,
+    ensureChannelCanBeCreated,
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
@@ -245,6 +247,49 @@ describe("useChannelActions", () => {
             "@canala",
             "thumbnails/youtube-avatar.png"
         );
+    });
+
+    it("refuses a duplicate channel before writing or downloading its avatar", async () => {
+        vi.mocked(ensureChannelCanBeCreated).mockRejectedValueOnce(
+            new Error("A channel with this YouTube handle already exists.")
+        );
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let created = true;
+
+        await act(async () => {
+            created = await result.current.createChannelAction(
+                "Canal A",
+                "@canala",
+                "youtube",
+                ""
+            );
+        });
+
+        // The avatar would have landed in the library with no channel pointing at it.
+        expect(created).toBe(false);
+        expect(downloadChannelAvatarFromHandle).not.toHaveBeenCalled();
+        expect(persistThumbnailFile).not.toHaveBeenCalled();
+        expect(createChannel).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalled();
     });
 
     it("returns false when manual avatar mode has no file", async () => {

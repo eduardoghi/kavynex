@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createChannel,
+    ensureChannelCanBeCreated,
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
@@ -109,6 +110,35 @@ describe("channel-service", () => {
             "thumbnails/avatar_a.png"
         );
         expect(result).toBe(10);
+    });
+
+    it("tells a caller a channel would be refused before anything is created", async () => {
+        vi.mocked(validateCreateChannelInput).mockReturnValueOnce({
+            name: "Canal A",
+            youtubeHandle: "@canala",
+            avatarPath: null,
+        });
+        vi.mocked(findChannelByYoutubeHandle).mockResolvedValueOnce({
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: null,
+            created_at: "2026-03-31T10:00:00.000Z",
+        });
+
+        await expect(ensureChannelCanBeCreated("Canal A", "@canala")).rejects.toThrow(
+            "A channel with this YouTube handle already exists."
+        );
+        expect(insertChannel).not.toHaveBeenCalled();
+
+        vi.mocked(validateCreateChannelInput).mockReturnValueOnce({
+            name: "Canal B",
+            youtubeHandle: "@canalb",
+            avatarPath: null,
+        });
+        vi.mocked(findChannelByYoutubeHandle).mockResolvedValueOnce(null);
+
+        await expect(ensureChannelCanBeCreated("Canal B", "@canalb")).resolves.toBeUndefined();
     });
 
     it("rejects duplicate channel handle", async () => {

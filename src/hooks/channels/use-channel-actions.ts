@@ -6,6 +6,7 @@ import { useAsyncFlag } from "../use-async-flag";
 import { useRequestGuard } from "../use-request-guard";
 import {
     createChannel,
+    ensureChannelCanBeCreated,
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
@@ -128,6 +129,10 @@ export function useChannelActions({
 
             const created = await runCreateChannel(async () => {
                 try {
+                    // Before the avatar, which is written or downloaded into the library. Refused
+                    // after that, the file would stay there with no channel pointing at it.
+                    await ensureChannelCanBeCreated(normalizedName, normalizedYoutubeHandle);
+
                     let finalAvatarPath: string | null = null;
 
                     if (avatarMode === "manual") {
