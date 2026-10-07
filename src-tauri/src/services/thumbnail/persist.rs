@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::constants::LIBRARY_DIR_THUMBNAILS;
 use crate::services::filesystem::copy_file_atomic;
-use crate::services::library::paths::{ensure_library_dir, resolve_existing_library_dir};
+use crate::services::library::paths::resolve_existing_library_dir;
 use crate::utils::format::{allowed_thumbnail_extensions_label, is_allowed_thumbnail_extension};
 use crate::utils::hash::file_hash;
 use crate::utils::path::{
@@ -100,9 +100,9 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
 pub fn persist_thumbnail_file_sync(path: &str, library_path: &str) -> AppResult<String> {
     let source = PathBuf::from(path.trim());
 
-    // Refused here as well as in `persist_thumbnail_from_source`, ahead of `ensure_library_dir`.
+    // Refused here as well as in `persist_thumbnail_from_source`, ahead of `resolve_existing_library_dir`.
     // The source is the value that arrived over IPC, and nothing should run on its account (not
-    // even creating the library directory) before it is known to be one this app will read.
+    // even resolving the library directory) before it is known to be one this app will read.
     if is_network_path(&source.to_string_lossy()) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidSourceThumbnail,
@@ -110,7 +110,7 @@ pub fn persist_thumbnail_file_sync(path: &str, library_path: &str) -> AppResult<
         ));
     }
 
-    let library_dir = ensure_library_dir(library_path)?;
+    let library_dir = resolve_existing_library_dir(library_path)?;
     persist_thumbnail_from_source(&source, &library_dir)
 }
 

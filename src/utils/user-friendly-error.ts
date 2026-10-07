@@ -123,7 +123,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "Too many downloads are already in progress. Wait for one to finish and try again.",
 
     [INVALID_DIRECTORY_PATH_ERROR_CODE]: "Choose a valid folder.",
-    [INVALID_LIBRARY_PATH_ERROR_CODE]: "Configure a valid library folder before continuing.",
+    [INVALID_LIBRARY_PATH_ERROR_CODE]:
+        "The library folder is missing or not valid. Reconnect the drive it is on, or choose the folder in Settings.",
     [INVALID_LIBRARY_MIGRATION_ERROR_CODE]: "The selected library migration path is not valid.",
     [LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE]:
         "A library folder change is already running. Wait for it to finish before starting another one.",

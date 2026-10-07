@@ -16,7 +16,7 @@ use crate::services::binaries::{
 use crate::services::filesystem::{
     clean_matching_files_in_dir, find_best_matching_file, replace_file_safely,
 };
-use crate::services::library::paths::ensure_library_dir;
+use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
 use crate::services::thumbnail::download::download_media_thumbnail_async;
@@ -417,7 +417,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
-    let library_dir = ensure_library_dir(library_path)?;
+    let library_dir = resolve_existing_library_dir(library_path)?;
     let temp_root_dir = yt_dlp_temp_dir(app)?;
 
     let unique_run_dir = format!(

@@ -84,6 +84,11 @@ fn reject_filesystem_root(library_dir: &std::path::Path) -> AppResult<()> {
     Ok(())
 }
 
+/// Creates the library directory if needed and returns its canonical path.
+///
+/// Only for a destination the user just chose (a library migration). Every write into an existing
+/// library goes through [`resolve_existing_library_dir`] instead, so a library whose drive is not
+/// mounted is reported rather than recreated empty under the same path.
 pub fn ensure_library_dir(path: &str) -> AppResult<PathBuf> {
     let library_dir = library_input_path(path);
 

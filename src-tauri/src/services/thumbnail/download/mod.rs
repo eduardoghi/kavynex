@@ -24,7 +24,7 @@ use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
 use crate::services::filesystem::{clean_matching_files_in_dir, find_best_matching_file};
-use crate::services::library::paths::ensure_library_dir;
+use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
 use crate::services::thumbnail::persist::persist_thumbnail_from_source;
 use crate::services::thumbnail::url::is_allowed_thumbnail_image_host;
@@ -145,7 +145,7 @@ fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
 }
 
 /// Resolves the library directory and creates the fresh temp subdirectory a thumbnail/avatar run
-/// writes into. Both steps are blocking filesystem work (`ensure_library_dir` canonicalizes,
+/// writes into. Both steps are blocking filesystem work (`resolve_existing_library_dir` canonicalizes,
 /// `create_dir_all` touches disk), so callers invoke this through `run_blocking` off the async
 /// runtime, matching the convention the rest of the app follows for filesystem calls. Returns the
 /// canonical library directory and the created temp directory.
@@ -154,7 +154,7 @@ fn prepare_thumbnail_dirs<R: Runtime>(
     library_path: String,
     temp_dir_name: String,
 ) -> AppResult<(PathBuf, PathBuf)> {
-    let library_dir = ensure_library_dir(&library_path)?;
+    let library_dir = resolve_existing_library_dir(&library_path)?;
     let thumb_temp_root = yt_dlp_thumb_temp_dir(&app)?;
     let thumb_temp_dir = thumb_temp_root.join(temp_dir_name);
 

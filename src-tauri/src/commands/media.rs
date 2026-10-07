@@ -265,6 +265,7 @@ mod tests {
     fn import_media_file_sync_copies_into_content_addressed_path_and_keeps_source() {
         let root = unique_test_dir("copy");
         let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
         let source = write_temp_file(&root.join("source"), "clip.mp4", b"copy-me");
 
         let relative = library::media::import_media_file_sync(
@@ -290,6 +291,7 @@ mod tests {
     fn import_media_file_sync_moves_source_into_library() {
         let root = unique_test_dir("move");
         let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
         let source = write_temp_file(&root.join("source"), "clip.mp3", b"move-me");
 
         let relative = library::media::import_media_file_sync(
@@ -317,6 +319,7 @@ mod tests {
     fn import_media_file_sync_reuses_existing_content_addressed_file() {
         let root = unique_test_dir("dedupe");
         let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
         let source_dir = root.join("source");
         let first_source = write_temp_file(&source_dir, "first.mp4", b"same-bytes");
         let second_source = write_temp_file(&source_dir, "second.mp4", b"same-bytes");
@@ -347,6 +350,7 @@ mod tests {
     fn import_media_file_sync_move_removes_source_when_destination_already_exists() {
         let root = unique_test_dir("move-existing");
         let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
 
         // First import establishes the content-addressed destination.
         let first = write_temp_file(&root.join("source"), "first.mp4", b"same-bytes");
@@ -381,6 +385,7 @@ mod tests {
     fn import_media_file_sync_rejects_missing_source_file() {
         let root = unique_test_dir("missing-source");
         let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
         let missing_source = root.join("does-not-exist.mp4");
 
         let error = library::media::import_media_file_sync(
@@ -399,6 +404,7 @@ mod tests {
     fn import_media_file_sync_rejects_unsupported_extension() {
         let root = unique_test_dir("bad-ext");
         let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
         let source = write_temp_file(&root.join("source"), "notes.txt", b"not media");
 
         let error = library::media::import_media_file_sync(

@@ -6,7 +6,7 @@ use crate::models::yt_dlp::ImportMode;
 use crate::services::filesystem::{
     copy_file_atomic_cancellable, stage_move_cancellable, StagedMove,
 };
-use crate::services::library::paths::{ensure_library_dir, resolve_existing_library_dir};
+use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
 use crate::utils::format::{
     allowed_media_extensions_label, is_allowed_media_extension, media_subdir_from_extension,
@@ -173,7 +173,7 @@ pub fn stage_media_import_cancellable_sync(
     // dropped in the window between the migration copying and removing the old directory.
     let _library_guard = crate::services::library::lock::library_read_guard();
 
-    let library_dir = ensure_library_dir(library_path)?;
+    let library_dir = resolve_existing_library_dir(library_path)?;
     let media_subdir = media_subdir_from_extension(&ext);
     let media_dir = library_dir.join(media_subdir);
 
@@ -336,6 +336,7 @@ mod tests {
         let root = unique_test_dir("unsupported-ext");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(&source_dir).unwrap();
 
         let source = source_dir.join("notes.txt");
@@ -369,6 +370,7 @@ mod tests {
         let root = unique_test_dir("copy-preserves");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(&source_dir).unwrap();
 
         let source = source_dir.join("video.mp4");
@@ -394,6 +396,7 @@ mod tests {
         let root = unique_test_dir("move-removes");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(&source_dir).unwrap();
 
         let source = source_dir.join("video.mp4");
@@ -421,6 +424,7 @@ mod tests {
         let root = unique_test_dir("staged-move");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(&source_dir).unwrap();
 
         let source = source_dir.join("video.mp4");
@@ -454,6 +458,7 @@ mod tests {
         let root = unique_test_dir("staged-copy");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(&source_dir).unwrap();
 
         let source = source_dir.join("video.mp4");
@@ -481,6 +486,7 @@ mod tests {
         let root = unique_test_dir("staged-same-file");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(&source_dir).unwrap();
 
         let original = source_dir.join("video.mp4");
@@ -537,6 +543,7 @@ mod tests {
         let root = unique_test_dir("noop-existing");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(&source_dir).unwrap();
 
         let source = source_dir.join("video.mp4");
@@ -581,6 +588,7 @@ mod tests {
             let root = unique_test_dir("cancelled");
             let source_dir = root.join("source");
             let library_dir = root.join("library");
+            fs::create_dir_all(&library_dir).unwrap();
             fs::create_dir_all(&source_dir).unwrap();
 
             let source = source_dir.join("video.mp4");
@@ -617,6 +625,8 @@ mod tests {
         let root = unique_test_dir("not-cancelled");
         let source_dir = root.join("source");
         fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(root.join("with-flag")).unwrap();
+        fs::create_dir_all(root.join("without-flag")).unwrap();
 
         let source = source_dir.join("video.mp4");
         fs::write(&source, b"video-bytes").unwrap();
@@ -643,9 +653,36 @@ mod tests {
     }
 
     #[test]
+    fn an_import_into_a_library_folder_that_is_gone_is_refused_without_recreating_it() {
+        // The drive holding the library unmounted, or the folder was moved away. Recreating it put
+        // new media in an empty folder of the same name while every existing row named files that
+        // were somewhere else.
+        let root = unique_test_dir("library-gone");
+        let source_dir = root.join("source");
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"video-bytes").unwrap();
+        let library_dir = root.join("library");
+
+        let error = import_media_file_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+        assert!(!library_dir.exists());
+        assert!(source.is_file());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn delete_media_file_sync_returns_ok_for_missing_file() {
         let root = unique_test_dir("delete-missing");
         let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
         fs::create_dir_all(library_dir.join("video")).unwrap();
 
         let result =

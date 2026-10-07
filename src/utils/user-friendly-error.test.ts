@@ -80,7 +80,7 @@ const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [INVALID_FORMAT_ID_ERROR_CODE, "Choose a valid format before continuing."],
 
     [INVALID_DIRECTORY_PATH_ERROR_CODE, "Choose a valid folder."],
-    [INVALID_LIBRARY_PATH_ERROR_CODE, "Configure a valid library folder before continuing."],
+    [INVALID_LIBRARY_PATH_ERROR_CODE, "The library folder is missing or not valid. Reconnect the drive it is on, or choose the folder in Settings."],
     [INVALID_LIBRARY_MIGRATION_ERROR_CODE, "The selected library migration path is not valid."],
     [INVALID_MEDIA_PATH_ERROR_CODE, "The selected media item is invalid."],
     [INVALID_THUMBNAIL_PATH_ERROR_CODE, "The selected thumbnail is invalid."],
@@ -251,7 +251,7 @@ describe("toUserFriendlyError", () => {
                 code: INVALID_LIBRARY_PATH_ERROR_CODE,
                 message: "library path is empty",
             })
-        ).toBe("Configure a valid library folder before continuing.");
+        ).toBe("The library folder is missing or not valid. Reconnect the drive it is on, or choose the folder in Settings.");
     });
 
     it("maps INVALID_LIBRARY_MIGRATION correctly", () => {
