@@ -73,10 +73,14 @@ describe("useAppSettingsActions", () => {
             })
         );
 
+        // Until the read lands, the settings in memory are the defaults, not the user's choices.
+        expect(result.current.hasLoadedSettings).toBe(false);
+
         await act(async () => {
             await result.current.prepareSettings();
         });
 
+        expect(result.current.hasLoadedSettings).toBe(true);
         expect(loadStoredSettings).toHaveBeenCalledTimes(1);
         expect(initializeAppSettings).toHaveBeenCalledWith({
             storedSettings: {
@@ -189,6 +193,8 @@ describe("useAppSettingsActions", () => {
         );
         expect(onError).toHaveBeenCalledWith("Failed to prepare app settings.");
         expect(setSettings).not.toHaveBeenCalled();
+        // A failed read leaves the stored preferences unknown, so nothing gated on them may run.
+        expect(result.current.hasLoadedSettings).toBe(false);
     });
 
     it("changes library path when result is changed", async () => {

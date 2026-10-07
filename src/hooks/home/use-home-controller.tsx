@@ -53,9 +53,12 @@ export function useHomeController(): HomeController {
     });
 
     // Passive update check. Checks once on startup and surfaces a non-intrusive notice if a newer
-    // version exists. On by default, and turned off under Settings > Application update.
+    // version exists. On by default, and turned off under Settings > Application update. Gated on
+    // the stored settings having loaded, because before that `checkUpdatesOnStartup` is the default
+    // `true` and the check would run for a user who turned it off.
     useStartupUpdateCheck({
-        enabled: settingsState.settings.checkUpdatesOnStartup,
+        enabled:
+            settingsState.hasLoadedSettings && settingsState.settings.checkUpdatesOnStartup,
         onUpdateAvailable: errorState.showNotice,
     });
 

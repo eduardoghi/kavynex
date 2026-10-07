@@ -14,6 +14,7 @@ describe("useHomeUiGuards", () => {
                 externalBackupDir: "",
             },
             isPreparingSettings: false,
+            hasLoadedSettings: true,
             isMigratingLibraryPath: false,
             isSavingExternalBackupDir: false,
             openSettings: vi.fn(),

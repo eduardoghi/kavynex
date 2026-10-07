@@ -18,6 +18,8 @@ export type AppSettingsController = {
     settingsOpen: boolean;
     settings: AppSettings;
     isPreparingSettings: boolean;
+    // See useAppSettingsActions. Gate anything that acts on a stored preference on this.
+    hasLoadedSettings: boolean;
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
     openSettings: () => void;
@@ -138,13 +140,18 @@ export function useAppSettings({
     // Reference-stable controller (its identity only changes when a field does), via useMemoObject
     // rather than a hand-maintained useMemo dependency array, so adding a field here can never
     // silently omit it from the deps and leave the memo stale.
-    const { isPreparingSettings, isMigratingLibraryPath, isSavingExternalBackupDir } =
-        settingsActions;
+    const {
+        isPreparingSettings,
+        hasLoadedSettings,
+        isMigratingLibraryPath,
+        isSavingExternalBackupDir,
+    } = settingsActions;
 
     return useMemoObject({
         settingsOpen,
         settings,
         isPreparingSettings,
+        hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
         openSettings,

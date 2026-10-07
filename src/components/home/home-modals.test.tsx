@@ -181,6 +181,7 @@ function createSettings(): AppSettingsController {
         settingsOpen: true,
         settings: { importMode: "copy", libraryPath: "/library", loadRemoteImages: true, checkUpdatesOnStartup: false, externalBackupDir: "" },
         isPreparingSettings: false,
+        hasLoadedSettings: true,
         isMigratingLibraryPath: false,
         isSavingExternalBackupDir: false,
         openSettings: vi.fn(),

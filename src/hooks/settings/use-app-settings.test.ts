@@ -53,6 +53,7 @@ describe("useAppSettings", () => {
 
         mockedUseAppSettingsActions.mockReturnValue({
             isPreparingSettings: false,
+            hasLoadedSettings: true,
             isMigratingLibraryPath: false,
             prepareSettings,
             changeLibraryPath,
@@ -169,6 +170,7 @@ describe("useAppSettings", () => {
 
         mockedUseAppSettingsActions.mockReturnValue({
             isPreparingSettings: false,
+            hasLoadedSettings: true,
             isMigratingLibraryPath: false,
             prepareSettings,
             changeLibraryPath,
@@ -208,6 +210,7 @@ describe("useAppSettings", () => {
 
         mockedUseAppSettingsActions.mockReturnValue({
             isPreparingSettings: false,
+            hasLoadedSettings: true,
             isMigratingLibraryPath: false,
             prepareSettings,
             changeLibraryPath: nextChangeLibraryPath,
@@ -247,6 +250,7 @@ describe("useAppSettings", () => {
 
         mockedUseAppSettingsActions.mockReturnValue({
             isPreparingSettings: false,
+            hasLoadedSettings: true,
             isMigratingLibraryPath: false,
             prepareSettings: nextPrepareSettings,
             changeLibraryPath,

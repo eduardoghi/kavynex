@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { AppSettings } from "../../types/settings";
 import { resolveErrorMessage } from "../../utils/error-message";
 import { executeChangeLibraryPath } from "../../use-cases/change-library-path";
@@ -25,6 +25,7 @@ type UseAppSettingsActionsOptions = {
 
 type UseAppSettingsActionsReturn = {
     isPreparingSettings: boolean;
+    hasLoadedSettings: boolean;
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
     prepareSettings: () => Promise<void>;
@@ -42,6 +43,11 @@ export function useAppSettingsActions({
     setSettings,
 }: UseAppSettingsActionsOptions): UseAppSettingsActionsReturn {
     const { isRunning: isPreparingSettings, runWithFlag: runPrepareSettings } = useAsyncFlag();
+    // True once the stored settings have been read and applied. Until then `settings` holds the
+    // defaults, which is not the user's choice for anything, so a consumer that acts on a stored
+    // preference (the startup update check, which is on by default) has to wait for this. It stays
+    // false when the read fails, since the stored value is then unknown rather than the default.
+    const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
     const { isRunning: isMigratingLibraryPath, runWithFlag: runLibraryPathChange } =
         useAsyncFlag();
     const { isRunning: isSavingExternalBackupDir, runWithFlag: runSaveExternalBackupDir } =
@@ -61,6 +67,7 @@ export function useAppSettingsActions({
                 // must already hold the value before that effect can fire.
                 await persistSettings(result.settings);
                 setSettings(result.settings);
+                setHasLoadedSettings(true);
 
                 if (result.shouldWarnAboutLibraryPath) {
                     onError(
@@ -232,6 +239,7 @@ export function useAppSettingsActions({
     // HomeSecondaryModals relies on (it would re-render on every yt-dlp log tick).
     return useMemoObject({
         isPreparingSettings,
+        hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
         prepareSettings,

@@ -3,8 +3,9 @@ import { checkAppUpdate } from "../services/app-update-service";
 import { logError } from "../utils/app-logger";
 
 type UseStartupUpdateCheckOptions = {
-    // Whether the user opted in (Settings > Application update). Starts false until settings load,
-    // so the check never runs before the stored preference is known.
+    // Whether to check now. The caller has to keep this false until the stored preference is known
+    // (Settings > Application update), because the in-memory default is on and the check runs at
+    // most once, on the first render where this is true.
     enabled: boolean;
     // Surfaces a non-intrusive "a new version is available" notice.
     onUpdateAvailable: (message: string) => void;

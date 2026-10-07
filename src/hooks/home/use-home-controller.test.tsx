@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useHomeController } from "./use-home-controller";
 
@@ -54,6 +54,10 @@ vi.mock("./use-home-library-panel", () => ({
     useHomeLibraryPanel: vi.fn(),
 }));
 
+vi.mock("../../services/app-update-service", () => ({
+    checkAppUpdate: vi.fn().mockResolvedValue(null),
+}));
+
 import { useErrorModal } from "../use-error-modal";
 import { useAppBootstrap } from "../use-app-bootstrap";
 import { useAppSettings } from "../settings/use-app-settings";
@@ -67,6 +71,7 @@ import { useHomePlayerActions } from "./use-home-player-actions";
 import { useHomePlayerPanel } from "./use-home-player-panel";
 import { useHomeViewState } from "./use-home-view-state";
 import { useHomeLibraryPanel } from "./use-home-library-panel";
+import { checkAppUpdate } from "../../services/app-update-service";
 
 const mockErrorState = {
     errorOpen: true,
@@ -87,6 +92,7 @@ const mockSettingsState = {
         externalBackupDir: "",
     },
     isPreparingSettings: false,
+    hasLoadedSettings: true,
     isMigratingLibraryPath: false,
     isSavingExternalBackupDir: false,
     openSettings: vi.fn(),
@@ -368,6 +374,53 @@ describe("useHomeController", () => {
             isRestoring: false,
             restoreFromBackup: vi.fn().mockResolvedValue(undefined),
             dismiss: vi.fn(),
+        });
+    });
+
+    it("never checks for updates before the stored opt-out is known", async () => {
+        // The first renders carry the in-memory defaults, where the check is on. A user who turned
+        // it off must not reach GitHub in the moment before their stored choice is read.
+        vi.mocked(useAppSettings).mockReturnValue({
+            ...mockSettingsState,
+            hasLoadedSettings: false,
+            settings: { ...mockSettingsState.settings, checkUpdatesOnStartup: true },
+        });
+
+        const { rerender } = renderHook(() => useHomeController());
+
+        vi.mocked(useAppSettings).mockReturnValue({
+            ...mockSettingsState,
+            hasLoadedSettings: true,
+            settings: { ...mockSettingsState.settings, checkUpdatesOnStartup: false },
+        });
+
+        rerender();
+        await Promise.resolve();
+
+        expect(checkAppUpdate).not.toHaveBeenCalled();
+    });
+
+    it("checks for updates once the stored settings say to", async () => {
+        vi.mocked(useAppSettings).mockReturnValue({
+            ...mockSettingsState,
+            hasLoadedSettings: false,
+            settings: { ...mockSettingsState.settings, checkUpdatesOnStartup: true },
+        });
+
+        const { rerender } = renderHook(() => useHomeController());
+
+        expect(checkAppUpdate).not.toHaveBeenCalled();
+
+        vi.mocked(useAppSettings).mockReturnValue({
+            ...mockSettingsState,
+            hasLoadedSettings: true,
+            settings: { ...mockSettingsState.settings, checkUpdatesOnStartup: true },
+        });
+
+        rerender();
+
+        await waitFor(() => {
+            expect(checkAppUpdate).toHaveBeenCalledTimes(1);
         });
     });
 
