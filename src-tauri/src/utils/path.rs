@@ -61,21 +61,42 @@ pub(crate) fn is_windows_reserved_name(segment: &str) -> bool {
 /// (`canonicalize`, `exists`, `read_dir`, `create_dir_all`) touches them.
 ///
 /// Separators are normalized to `\` first so a mixed spelling cannot slip past a literal prefix
-/// match (`/\host\share` and `\/host\share` both resolve to `\\host\share` on Windows). The device
-/// namespace (`\\.\`) and the verbatim *disk* form (`\\?\C:\...`) are local and return false.
-/// Checked on every platform so a library synced from Windows behaves the same everywhere.
+/// match (`/\host\share` and `\/host\share` both resolve to `\\host\share` on Windows). Checked on
+/// every platform so a library synced from Windows behaves the same everywhere.
+///
+/// Behind the namespace prefixes (`\\?\`, `\\.\`, and the NT `\??\` that Win32 passes through),
+/// only a drive (`\\?\C:\...`) or a volume GUID is treated as local. The rest of that namespace is
+/// not just `UNC\`. `GLOBALROOT\Device\Mup\host\share` and the redirector devices reach a remote
+/// host as well, so matching `UNC\` alone left those spellings past every caller. No path the app
+/// handles needs a device name, which is why the others (`\\.\PhysicalDrive0` among them) are
+/// refused along with the shares rather than listed one by one.
 pub fn is_network_path(value: &str) -> bool {
     let normalized = value.trim_start().replace('/', "\\");
 
-    if let Some(rest) = normalized.strip_prefix(r"\\?\") {
-        return rest.starts_with("UNC\\") || rest.starts_with("unc\\");
-    }
-
-    if normalized.starts_with(r"\\.\") {
-        return false;
+    for prefix in NAMESPACE_PREFIXES {
+        if let Some(rest) = normalized.strip_prefix(prefix) {
+            return !names_a_local_volume(rest);
+        }
     }
 
     normalized.starts_with(r"\\")
+}
+
+/// The Win32 namespace prefixes. None is a prefix of another, so their order does not matter.
+const NAMESPACE_PREFIXES: [&str; 3] = [r"\\?\", r"\\.\", r"\??\"];
+
+/// True when what follows a namespace prefix is a drive (`C:` or `C:\...`) or a volume GUID.
+fn names_a_local_volume(rest: &str) -> bool {
+    let bytes = rest.as_bytes();
+    let is_drive = bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes.len() == 2 || bytes[2] == b'\\');
+
+    is_drive
+        || rest
+            .get(..7)
+            .is_some_and(|head| head.eq_ignore_ascii_case("Volume{"))
 }
 
 /// The `\\host\share` prefix of a network path, lowercased and with separators normalized, or
@@ -92,9 +113,16 @@ pub fn network_share_prefix(value: &str) -> Option<String> {
     }
 
     let normalized = value.trim().replace('/', "\\");
-    let rest = match normalized.strip_prefix(r"\\?\") {
-        // `is_network_path` already established the verbatim form carries `UNC\` here.
-        Some(verbatim) => &verbatim[4..],
+    let namespaced = NAMESPACE_PREFIXES
+        .iter()
+        .find_map(|prefix| normalized.strip_prefix(prefix));
+    let rest = match namespaced {
+        // Only the `UNC\` form names a share textually. A `GLOBALROOT` or redirector spelling has
+        // none, so it matches no other path and stays refused.
+        Some(namespaced) => match namespaced.get(..4) {
+            Some(head) if head.eq_ignore_ascii_case(r"UNC\") => &namespaced[4..],
+            _ => return None,
+        },
         None => &normalized[2..],
     };
     let mut components = rest.split('\\').filter(|component| !component.is_empty());
@@ -503,6 +531,15 @@ mod tests {
             r"\\server\share\clip.mp4",
             "//server/share",
             r"\\?\UNC\server\share", // verbatim UNC is still a network share
+            r"\\?\Unc\server\share",
+            // The other spellings that reach a share through the namespace.
+            r"\\.\UNC\server\share",
+            r"\??\UNC\server\share",
+            r"\\?\GLOBALROOT\Device\Mup\server\share",
+            r"\\.\globalroot\device\mup\server\share",
+            r"\\.\LanmanRedirector\server\share",
+            // Not a share, but a device name no media path needs, refused with them.
+            r"\\.\PhysicalDrive0",
             // Mixed separators that Windows normalizes to a UNC path; a literal `\\`/`//` prefix
             // match misses these, which is exactly the bypass this normalization closes.
             r"/\server\share",
@@ -517,7 +554,10 @@ mod tests {
             "/home/me/video.mp4",
             "video/clip.mp4",
             r"\\?\C:\Users\me\video.mp4", // extended-length local path, not a network share
-            r"\\.\PhysicalDrive0",        // device namespace, local
+            r"\\.\C:\Users\me\video.mp4",
+            r"\??\C:\Users\me\video.mp4",
+            r"\\?\c:",
+            r"\\?\Volume{0b1c2d3e-0000-0000-0000-000000000000}\video.mp4",
         ] {
             assert!(!is_network_path(value), "should not flag: {value}");
         }
@@ -532,6 +572,8 @@ mod tests {
             r"/\nas\videos",
             r"\\?\UNC\nas\videos\clip.mp4",
             r"\\?\unc\NAS\VIDEOS",
+            r"\\.\UNC\nas\videos\clip.mp4",
+            r"\??\UNC\nas\videos",
             "  \\\\nas\\videos  ",
         ] {
             assert_eq!(
@@ -549,6 +591,7 @@ mod tests {
             "/home/me/video.mp4",
             r"\\?\C:\Users\me\video.mp4",
             r"\\.\PhysicalDrive0",
+            r"\\?\GLOBALROOT\Device\Mup\nas\videos",
             r"\\nas",
             r"\\nas\",
             "//nas//",
