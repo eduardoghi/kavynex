@@ -515,7 +515,10 @@ live connection pool is a singleton that cannot be reopened mid-session:
    path that may not exist here, and the values skipped the checks `set_app_settings` makes even
    though the library guard trusts the stored setting from then on. This machine's value wins
    whenever it has one. A setting it has never configured takes the imported value only if that
-   passes the same validation here, and is left empty otherwise. Only `key` and `value` are written,
+   passes the same validation here and the folder already looks like what it claims (a library
+   holding one of the managed directories, a mirror holding `kavynex-backup.db`), and is left empty
+   otherwise. The file is untrusted, so a network path in it is refused before anything resolves
+   it, which would otherwise authenticate to the host it names. Only `key` and `value` are written,
    so an older schema still imports. The undo goes through the same staging, so it keeps them too.
 
    Before staging, the command checkpoints the live database's WAL. The swap renames the `.db` into

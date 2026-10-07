@@ -20,7 +20,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// The current external mirror is generation 0 (`kavynex-backup.db`); `pub(super)` so the parent
 /// module's mirror tests can name the generations.
-pub(super) const EXTERNAL_BACKUP_FILE_NAME: &str = "kavynex-backup.db";
+pub(crate) const EXTERNAL_BACKUP_FILE_NAME: &str = "kavynex-backup.db";
 pub(super) const EXTERNAL_BACKUP_ROTATED_GENERATIONS: usize = 2;
 
 /// Exports a consistent, self-contained snapshot of the database to a user-chosen path via

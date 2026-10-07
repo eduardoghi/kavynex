@@ -298,6 +298,53 @@ pub(crate) fn machine_setting_after_import(
     }
 }
 
+/// The imported folder to check on disk, or `None` when it is refused without touching anything.
+///
+/// Empty means unconfigured. A network path is refused here, before any `stat`, because resolving
+/// one authenticates to whatever host the imported file names.
+fn imported_folder_to_check(path: &str) -> Option<&str> {
+    let path = path.trim();
+
+    if path.is_empty() || is_network_path(path) {
+        None
+    } else {
+        Some(path)
+    }
+}
+
+/// Whether a library folder named by an imported database may be taken on this machine.
+///
+/// The file is not trusted, so the folder has to pass the check `set_app_settings` makes and also
+/// already hold one of the managed directories, which a folder really used as a Kavynex library
+/// does. Without that, any file could point the library, and the cleanup that runs in it, at an
+/// arbitrary existing folder.
+pub(crate) fn imported_library_is_usable(path: &str, config_dir: Option<&Path>) -> bool {
+    let Some(path) = imported_folder_to_check(path) else {
+        return false;
+    };
+
+    crate::commands::settings::validate_settings_library_path(path, config_dir).is_ok()
+        && crate::constants::MANAGED_LIBRARY_DIRS
+            .iter()
+            .any(|dir| Path::new(path).join(dir).is_dir())
+}
+
+/// Whether a mirror folder named by an imported database may be taken on this machine.
+///
+/// Same reasoning as [`imported_library_is_usable`]. The folder must already hold the mirror
+/// file, so an imported value cannot make the daily mirror start writing into a folder of the
+/// file's choosing.
+pub(crate) fn imported_mirror_is_usable(path: &str, config_dir: Option<&Path>) -> bool {
+    let Some(path) = imported_folder_to_check(path) else {
+        return false;
+    };
+
+    crate::commands::settings::validate_external_backup_dir(path, config_dir).is_ok()
+        && Path::new(path)
+            .join(db_backup::EXTERNAL_BACKUP_FILE_NAME)
+            .is_file()
+}
+
 /// This machine's library and mirror folders, as an import should carry them over.
 ///
 /// The live settings are read through the pool when it opens. It does not when the import comes
@@ -337,16 +384,8 @@ async fn machine_paths_for_import<R: Runtime>(
         run_blocking(move || {
             let config_dir = config_dir.as_deref();
             Ok((
-                crate::commands::settings::validate_settings_library_path(
-                    &imported.library_path,
-                    config_dir,
-                )
-                .is_ok(),
-                crate::commands::settings::validate_external_backup_dir(
-                    &imported.external_backup_dir,
-                    config_dir,
-                )
-                .is_ok(),
+                imported_library_is_usable(&imported.library_path, config_dir),
+                imported_mirror_is_usable(&imported.external_backup_dir, config_dir),
             ))
         })
         .await
@@ -705,6 +744,51 @@ mod tests {
         app.manage(db);
 
         (app, path)
+    }
+
+    #[test]
+    fn an_imported_folder_is_taken_only_when_it_already_looks_like_what_it_claims() {
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-imported-folders-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        let library = dir.join("Library");
+        let mirror = dir.join("Mirror");
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::create_dir_all(&mirror).unwrap();
+        let library_text = library.to_string_lossy().to_string();
+        let mirror_text = mirror.to_string_lossy().to_string();
+
+        // Existing folders that pass the settings checks, but nothing says Kavynex ever used them.
+        assert!(!imported_library_is_usable(&library_text, None));
+        assert!(!imported_mirror_is_usable(&mirror_text, None));
+
+        std::fs::create_dir_all(library.join(crate::constants::LIBRARY_DIR_VIDEO)).unwrap();
+        std::fs::write(mirror.join(db_backup::EXTERNAL_BACKUP_FILE_NAME), b"mirror").unwrap();
+
+        assert!(imported_library_is_usable(&library_text, None));
+        assert!(imported_mirror_is_usable(&mirror_text, None));
+
+        // Still refused when the folder is one the settings checks reject.
+        assert!(!imported_library_is_usable(&library_text, Some(&dir)));
+        assert!(!imported_mirror_is_usable(&mirror_text, Some(&dir)));
+        assert!(!imported_library_is_usable("   ", None));
+        assert!(!imported_mirror_is_usable("", None));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_imported_network_folder_is_refused_before_anything_resolves_it() {
+        assert_eq!(
+            imported_folder_to_check("  D:/Library  "),
+            Some("D:/Library")
+        );
+        assert_eq!(imported_folder_to_check("   "), None);
+
+        for path in [r"\\192.0.2.1\share\Library", "//192.0.2.1/share/Library"] {
+            assert_eq!(imported_folder_to_check(path), None);
+        }
     }
 
     #[tokio::test]
