@@ -923,9 +923,12 @@ jobs:
             # platform. Nothing else would notice. The file is there, the installers are there, and
             # only users on the missing platform would silently stop getting updates.
             #
-            # Reads the copy the checksums step already downloaded, and checks the four keys the
-            # updater actually looks up: tauri also emits `-app`/`-msi`/`-nsis`/`-appimage`/`-deb`/
-            # `-rpm` variants, but the client resolves the bare `<os>-<arch>` one.
+            # Reads the copy the checksums step already downloaded and requires all eighteen keys.
+            # The client looks up `<os>-<arch>-<installer>` (`-app`, `-msi`, `-nsis`, `-appimage`,
+            # `-deb`, `-rpm`) first and the bare `<os>-<arch>` only as a fallback, so a missing
+            # installer key sends that install to whichever installer the bare entry names. Each
+            # signature is then verified against the downloaded file it points at, with the public
+            # key from tauri.conf.json, which is the check the client itself makes.
             - name: Verify latest.json offers every platform
               run: node scripts/verify-latest-json.js assets/latest.json
 

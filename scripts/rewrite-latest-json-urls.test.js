@@ -8,22 +8,6 @@ const VERSION = "1.2.0";
 
 const apiUrl = (id) => `https://api.github.com/repos/eduardoghi/kavynex/releases/assets/${id}`;
 
-// The six platforms verify-latest-json.js requires, as tauri-action leaves them on a draft. Every
-// url is the api.github.com asset endpoint rather than the tagged download url.
-function draftManifest() {
-    return {
-        version: VERSION,
-        platforms: {
-            "darwin-aarch64": { signature: "sig", url: apiUrl("1") },
-            "darwin-x86_64": { signature: "sig", url: apiUrl("2") },
-            "linux-aarch64": { signature: "sig", url: apiUrl("3") },
-            "linux-x86_64": { signature: "sig", url: apiUrl("4") },
-            "windows-aarch64": { signature: "sig", url: apiUrl("5") },
-            "windows-x86_64": { signature: "sig", url: apiUrl("6") },
-        },
-    };
-}
-
 const ASSETS = [
     { id: "1", name: `kavynex_${VERSION}_aarch64.app.tar.gz` },
     { id: "2", name: `kavynex_${VERSION}_x64.app.tar.gz` },
@@ -31,7 +15,48 @@ const ASSETS = [
     { id: "4", name: `kavynex_${VERSION}_amd64.AppImage` },
     { id: "5", name: `kavynex_${VERSION}_arm64_en-US.msi` },
     { id: "6", name: `kavynex_${VERSION}_x64_en-US.msi` },
+    { id: "7", name: `kavynex_${VERSION}_arm64-setup.exe` },
+    { id: "8", name: `kavynex_${VERSION}_x64-setup.exe` },
+    { id: "9", name: `kavynex_${VERSION}_arm64.deb` },
+    { id: "10", name: `kavynex_${VERSION}_amd64.deb` },
+    { id: "11", name: `kavynex-${VERSION}-1.aarch64.rpm` },
+    { id: "12", name: `kavynex-${VERSION}-1.x86_64.rpm` },
 ];
+
+// The eighteen keys verify-latest-json.js requires, as tauri-action leaves them on a draft. Every
+// url is the api.github.com asset endpoint rather than the tagged download url.
+const DRAFT_ASSET_IDS = {
+    "darwin-aarch64": "1",
+    "darwin-aarch64-app": "1",
+    "darwin-x86_64": "2",
+    "darwin-x86_64-app": "2",
+    "linux-aarch64": "3",
+    "linux-aarch64-appimage": "3",
+    "linux-aarch64-deb": "9",
+    "linux-aarch64-rpm": "11",
+    "linux-x86_64": "4",
+    "linux-x86_64-appimage": "4",
+    "linux-x86_64-deb": "10",
+    "linux-x86_64-rpm": "12",
+    "windows-aarch64": "5",
+    "windows-aarch64-msi": "5",
+    "windows-aarch64-nsis": "7",
+    "windows-x86_64": "6",
+    "windows-x86_64-msi": "6",
+    "windows-x86_64-nsis": "8",
+};
+
+function draftManifest() {
+    return {
+        version: VERSION,
+        platforms: Object.fromEntries(
+            Object.entries(DRAFT_ASSET_IDS).map(([platform, id]) => [
+                platform,
+                { signature: "sig", url: apiUrl(id) },
+            ])
+        ),
+    };
+}
 
 describe("assetIdFromUrl", () => {
     it("takes the numeric asset id from the rest endpoint", () => {

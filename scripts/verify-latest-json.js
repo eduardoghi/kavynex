@@ -1,5 +1,6 @@
 // Release gate. Fails when the updater manifest on the draft release does not offer a signed
-// artifact for every platform.
+// artifact for every platform and installer, or when a signature does not verify against the file
+// its entry points at.
 //
 // The workflow's asset check proves latest.json is *present*, which is not the same as it being
 // complete. Each build leg merges its own entries into that one file on the release, so a leg that
@@ -8,19 +9,39 @@
 // would notice. The file is there, the installers are there, and only users on the missing platform
 // would quietly stop receiving updates.
 
-import { readFileSync } from "fs";
+import { createReadStream, readFileSync } from "fs";
+import { createHash, createPublicKey, verify } from "crypto";
+import { basename, dirname, join } from "path";
 
-// The keys the updater actually resolves. Tauri also emits `-app`/`-msi`/`-nsis`/`-appimage`/
-// `-deb`/`-rpm` variants of these, but the client looks up the bare `<os>-<arch>` one, so those are
-// what a release has to carry.
-const REQUIRED_PLATFORMS = [
-    "darwin-aarch64",
-    "darwin-x86_64",
-    "linux-aarch64",
-    "linux-x86_64",
-    "windows-aarch64",
-    "windows-x86_64",
-];
+// Every key the release carries, mapped to the asset suffix its entry must point at (null for the
+// bare key, which tauri fills with one of the installers).
+//
+// The client looks up `<os>-<arch>-<installer>` first and falls back to the bare `<os>-<arch>`
+// only when that is missing (`get_urls` in tauri-plugin-updater). Checking only the bare keys, as
+// this gate once did, let an install whose own key was missing quietly take the bare entry, which
+// on Windows is the MSI, so an NSIS install would have been updated with the other installer.
+const ENTRY_SUFFIXES = {
+    "darwin-aarch64": null,
+    "darwin-aarch64-app": ".app.tar.gz",
+    "darwin-x86_64": null,
+    "darwin-x86_64-app": ".app.tar.gz",
+    "linux-aarch64": null,
+    "linux-aarch64-appimage": ".AppImage",
+    "linux-aarch64-deb": ".deb",
+    "linux-aarch64-rpm": ".rpm",
+    "linux-x86_64": null,
+    "linux-x86_64-appimage": ".AppImage",
+    "linux-x86_64-deb": ".deb",
+    "linux-x86_64-rpm": ".rpm",
+    "windows-aarch64": null,
+    "windows-aarch64-msi": ".msi",
+    "windows-aarch64-nsis": "-setup.exe",
+    "windows-x86_64": null,
+    "windows-x86_64-msi": ".msi",
+    "windows-x86_64-nsis": "-setup.exe",
+};
+
+export const REQUIRED_PLATFORMS = Object.keys(ENTRY_SUFFIXES);
 
 // Derives the URL prefix every updater artifact must sit under, from the same GitHub release
 // endpoint the client is actually pointed at (tauri.conf.json's updater `endpoints`). That
@@ -69,6 +90,11 @@ export function findLatestJsonProblems(manifest, expectedVersion, expectedUrlPre
         }
 
         const url = entry.url?.trim();
+        const suffix = ENTRY_SUFFIXES[platform];
+
+        if (url && suffix && !assetNameFromUrl(url).endsWith(suffix)) {
+            problems.push(`${platform}: url ${JSON.stringify(entry.url)} is not a ${suffix} file`);
+        }
 
         if (!url) {
             problems.push(`${platform}: empty url`);
@@ -98,6 +124,134 @@ export function findLatestJsonProblems(manifest, expectedVersion, expectedUrlPre
     return problems;
 }
 
+// The release asset an entry's URL names, which is also its file name in the downloaded copy.
+export function assetNameFromUrl(url) {
+    const last = String(url).trim().split("/").pop() ?? "";
+
+    try {
+        return decodeURIComponent(last);
+    } catch {
+        return last;
+    }
+}
+
+// The lines of a minisign text file (a `.sig`, or the public key), base64-encoded once more as
+// tauri stores both.
+function minisignLines(base64Text) {
+    return Buffer.from(String(base64Text ?? "").trim(), "base64")
+        .toString("utf8")
+        .split(/\r?\n/);
+}
+
+function ed25519PublicKey(rawKey) {
+    return createPublicKey({
+        key: { kty: "OKP", crv: "Ed25519", x: rawKey.toString("base64url") },
+        format: "jwk",
+    });
+}
+
+// Checks a tauri updater signature against the BLAKE2b-512 digest of the file it signs. Returns a
+// reason when it does not verify, or null.
+//
+// The minisign layout. The public key's second line decodes to `Ed`, an 8-byte key id and the
+// 32-byte key. The signature's second line decodes to the algorithm, the key id and 64 bytes of
+// signature, and its fourth line signs those 64 bytes followed by the trusted comment, so the
+// comment cannot be swapped either. Only `ED` (prehashed) is accepted, which is what tauri's signer
+// writes. A legacy `Ed` signature would need the whole file in memory to check.
+export function minisignSignatureProblem(signatureBase64, publicKeyBase64, fileDigest) {
+    const keyBytes = Buffer.from(minisignLines(publicKeyBase64)[1] ?? "", "base64");
+
+    if (keyBytes.length !== 42 || keyBytes.subarray(0, 2).toString("latin1") !== "Ed") {
+        return "the updater public key is not a minisign Ed25519 key";
+    }
+
+    const lines = minisignLines(signatureBase64);
+    const signatureBytes = Buffer.from(lines[1] ?? "", "base64");
+    const commentPrefix = "trusted comment: ";
+    const trustedComment = (lines[2] ?? "").startsWith(commentPrefix)
+        ? lines[2].slice(commentPrefix.length)
+        : null;
+    const globalSignature = Buffer.from(lines[3] ?? "", "base64");
+
+    if (signatureBytes.length !== 74 || trustedComment === null || globalSignature.length !== 64) {
+        return "the signature is not a minisign signature";
+    }
+
+    if (signatureBytes.subarray(0, 2).toString("latin1") !== "ED") {
+        return "the signature is not prehashed (ED)";
+    }
+
+    if (!signatureBytes.subarray(2, 10).equals(keyBytes.subarray(2, 10))) {
+        return "the signature was made with a different key than the updater trusts";
+    }
+
+    const publicKey = ed25519PublicKey(keyBytes.subarray(10));
+    const signature = signatureBytes.subarray(10);
+
+    if (!verify(null, fileDigest, publicKey, signature)) {
+        return "the signature does not match the file";
+    }
+
+    const signedComment = Buffer.concat([signature, Buffer.from(trustedComment, "utf8")]);
+
+    if (!verify(null, signedComment, publicKey, globalSignature)) {
+        return "the trusted comment signature does not verify";
+    }
+
+    return null;
+}
+
+export function blake2b512OfFile(path) {
+    return new Promise((resolve, reject) => {
+        const hash = createHash("blake2b512");
+        createReadStream(path)
+            .on("error", reject)
+            .on("data", (chunk) => hash.update(chunk))
+            .on("end", () => resolve(hash.digest()));
+    });
+}
+
+// Verifies every entry's signature against the file it names in `assetsDir`, the copy of the
+// release the checksums job downloaded. The structural check proves a signature is there. Only
+// this proves it is the right one, made with the key the shipped app trusts, for the bytes the
+// entry serves. Without it, a leg signing with a rotated or wrong key (or an entry whose signature
+// and url came from different merges) passes every other gate and fails on each user's machine.
+export async function findSignatureProblems(manifest, assetsDir, publicKeyBase64) {
+    const problems = [];
+    const digests = new Map();
+
+    for (const platform of REQUIRED_PLATFORMS) {
+        const entry = manifest?.platforms?.[platform];
+
+        if (!entry?.url?.trim() || !entry.signature?.trim()) {
+            // Already reported by findLatestJsonProblems.
+            continue;
+        }
+
+        // basename, so a crafted url cannot point the read outside the assets directory.
+        const name = basename(assetNameFromUrl(entry.url));
+
+        if (!digests.has(name)) {
+            digests.set(name, await blake2b512OfFile(join(assetsDir, name)).catch(() => null));
+        }
+
+        const digest = digests.get(name);
+
+        if (!digest) {
+            problems.push(`${platform}: ${name} is not among the release's assets`);
+            continue;
+        }
+
+        const problem = minisignSignatureProblem(entry.signature, publicKeyBase64, digest);
+
+        if (problem) {
+            problems.push(`${platform}: ${problem}`);
+        }
+    }
+
+    return problems;
+}
+
 // Only run the gate when invoked as a script, so the export above stays unit-testable.
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
     const manifestPath = process.argv[2];
@@ -111,8 +265,9 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
 
     // Derive the required artifact URL prefix from the updater endpoint the client is pointed at,
     // so a url pointing at the wrong repo/host is caught here rather than shipping in the manifest.
-    const updaterEndpoint = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"))?.plugins
-        ?.updater?.endpoints?.[0];
+    const updaterConfig = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"))?.plugins
+        ?.updater;
+    const updaterEndpoint = updaterConfig?.endpoints?.[0];
     const expectedUrlPrefix = releaseDownloadPrefix(updaterEndpoint);
 
     if (!expectedUrlPrefix) {
@@ -146,5 +301,24 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
         process.exit(1);
     }
 
-    console.log(`latest.json offers a signed artifact for every platform (version ${expectedVersion}).`);
+    // The manifest sits in the directory the release was downloaded into.
+    const signatureProblems = await findSignatureProblems(
+        manifest,
+        dirname(manifestPath),
+        updaterConfig?.pubkey
+    );
+
+    if (signatureProblems.length > 0) {
+        console.error(
+            "::error::latest.json carries signatures the updater would reject. Do not publish."
+        );
+        for (const problem of signatureProblems) {
+            console.error(`  ${problem}`);
+        }
+        process.exit(1);
+    }
+
+    console.log(
+        `latest.json offers a verified signed artifact for every platform and installer (version ${expectedVersion}).`
+    );
 }
