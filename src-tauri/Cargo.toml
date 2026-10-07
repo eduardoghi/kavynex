@@ -84,3 +84,8 @@ tauri-plugin-single-instance = "2"
 strip = true
 lto = "thin"
 codegen-units = 1
+# Keep integer overflow a panic in the shipped binary, as it already is in every test run. Without
+# this, release silently wraps, so a size or offset computation that overflows would carry on with a
+# wrong value instead of stopping where it went wrong. The cost is negligible for an app that spends
+# its time waiting on disk and network.
+overflow-checks = true
