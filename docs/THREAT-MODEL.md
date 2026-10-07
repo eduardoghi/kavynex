@@ -122,6 +122,7 @@ past a literal prefix match), and the functions applying it are:
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
 | `commands/database.rs::prepare_import_source` | the database import source |
 | `commands/database.rs::prepare_export_destination` | the database export destination |
+| `commands/database.rs::imported_folder_to_check` | the library and mirror folders an imported database names, which come from the file rather than from the user and are only taken on a machine that has none configured |
 
 A library or a cookies file the user deliberately keeps on a share is not blocked from *existing*,
 only from being reached through a path the renderer supplies; copy it locally and the flow works.

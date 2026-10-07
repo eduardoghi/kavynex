@@ -540,6 +540,7 @@ export function collectNetworkRefusalSites(sources) {
 // Regenerate with:
 //     node scripts/verify-command-path-surface.js --print
 export const DECLARED_NETWORK_REFUSAL_SITES = [
+    "commands/database.rs::imported_folder_to_check",
     "commands/database.rs::prepare_export_destination",
     "commands/database.rs::prepare_import_source",
     "services/library/guard.rs::paths_refer_to_same_location",
