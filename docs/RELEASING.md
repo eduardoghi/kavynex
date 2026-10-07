@@ -188,7 +188,8 @@ not a corrupted state, and it does **not** cost a version number:
   deliberately run even when a leg fails (`if: ${{ !cancelled() }}`), so the incomplete draft is
   reported rather than silently left publishable.
 - **The release was already published.** The guard refuses, correctly. A published release is
-  final. Bump the version and release again.
+  final, and with immutable releases on (see `RELEASE-SECURITY.md`) GitHub enforces that too.
+  Bump the version and release again.
 - **The tag exists with no release behind it** (a draft deleted by hand). The guard refuses,
   since nothing proves what the tag points at. Delete the tag on the remote
   (`git push origin :refs/tags/v<version>`) and re-dispatch, or bump the version.
