@@ -225,6 +225,8 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 confirmLabel="Restore"
                 confirmColor="blue"
                 confirmIcon={<RotateCcw size={18} />}
+                // Dismissed, it does not come back until the next launch.
+                requireExplicitChoice
             />
 
             <ErrorModal

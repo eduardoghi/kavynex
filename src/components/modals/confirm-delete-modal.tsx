@@ -18,6 +18,9 @@ type ConfirmDeleteModalProps = {
     confirmColor?: string;
     confirmIcon?: ReactNode;
     loading?: boolean;
+    // Only the Cancel button dismisses it: no Esc, no click outside, no close button. For a prompt
+    // that does not come back once dismissed, so a stray key cannot be the decision.
+    requireExplicitChoice?: boolean;
 };
 
 export function ConfirmDeleteModal({
@@ -32,8 +35,9 @@ export function ConfirmDeleteModal({
     confirmColor = "red",
     confirmIcon = <Trash2 size={18} />,
     loading = false,
+    requireExplicitChoice = false,
 }: ConfirmDeleteModalProps): JSX.Element {
-    const modalLock = useModalLock(loading, onClose);
+    const modalLock = useModalLock(loading || requireExplicitChoice, onClose);
 
     return (
         <Modal

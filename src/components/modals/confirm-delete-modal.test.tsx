@@ -68,6 +68,39 @@ describe("ConfirmDeleteModal", () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it("can be dismissed only through Cancel when it asks for an explicit choice", () => {
+        const onClose = vi.fn();
+
+        renderWithMantine(
+            <ConfirmDeleteModal
+                opened
+                onClose={onClose}
+                onConfirm={vi.fn()}
+                message="The database could not be opened."
+                requireExplicitChoice
+            />
+        );
+
+        const dialog = screen.getByRole("dialog");
+        fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes on Escape by default", () => {
+        const onClose = vi.fn();
+
+        renderWithMantine(
+            <ConfirmDeleteModal opened onClose={onClose} onConfirm={vi.fn()} message="Sure?" />
+        );
+
+        fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape", code: "Escape" });
+        expect(onClose).toHaveBeenCalled();
+    });
+
     it("calls onConfirm", () => {
         const onConfirm = vi.fn();
 
