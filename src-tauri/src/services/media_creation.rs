@@ -506,32 +506,23 @@ pub(crate) fn fetched_thumbnail_to_discard(
 
 /// Resolves the thumbnail for a completed yt-dlp download.
 ///
-/// Three cases, in the order they are decided. A thumbnail the user supplied wins over the one
-/// yt-dlp fetched, the fetched one is used when there is no supplied one, and a bare URL from the
-/// metadata is the last resort. The first case is the one with a loose end. The run is told to skip
-/// its own thumbnail when a manual one is supplied, so a fetched file should not exist, but if one
-/// does it is now unreferenced and is handed to the reference-counted cleanup rather than left in
-/// the library.
+/// Two cases. A thumbnail the user supplied wins over the one the download fetched, and the fetched
+/// one is used otherwise, including when there is none. The download already tried every thumbnail
+/// URL the metadata named, so a missing one is not retried here; retrying would also be the one
+/// thumbnail failure able to discard a finished download.
+///
+/// The supplied case is the one with a loose end. The run is told to skip its own thumbnail when a
+/// manual one is supplied, so a fetched file should not exist, but if one does it is now
+/// unreferenced and is handed to the reference-counted cleanup rather than left in the library.
 async fn resolve_downloaded_thumbnail<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
     downloaded: &DownloadedMediaResult,
 ) -> AppResult<Option<String>> {
     let fetched = normalized_optional(downloaded.thumbnail_path.clone());
-    let metadata_url = normalized_optional(downloaded.thumbnail_url.clone());
 
     match classify_thumbnail_source(request.thumbnail_source_path.as_deref()) {
-        ThumbnailSource::Absent => match fetched {
-            Some(path) => Ok(Some(path)),
-            None => {
-                store_thumbnail_source(
-                    app,
-                    classify_thumbnail_source(metadata_url.as_deref()),
-                    &request.library_path,
-                )
-                .await
-            }
-        },
+        ThumbnailSource::Absent => Ok(fetched),
         supplied => {
             let stored = store_thumbnail_source(app, supplied, &request.library_path).await?;
 

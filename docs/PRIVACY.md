@@ -15,8 +15,9 @@ live chat) on your own disk, under the library directory and app data directorie
 control. Nothing you back up is uploaded anywhere by the app itself. The only network
 activity Kavynex initiates is:
 
-- yt-dlp/FFmpeg downloading the video, audio, thumbnail, comments, or live chat data you
-  explicitly requested, directly from YouTube.
+- yt-dlp/FFmpeg downloading the video, audio, comments, or live chat data you explicitly
+  requested, directly from YouTube, and Kavynex itself fetching that video's thumbnail from
+  YouTube's image servers (`i.ytimg.com`), at a URL yt-dlp reported. No cookies are sent with it.
 - A check against the GitHub releases endpoint for a newer version. Kavynex runs one such check
   on startup, and it is the only setting on this page that is **on by default**. The reason is
   that only the latest release receives fixes (see `SECURITY.md`), so this check is how a

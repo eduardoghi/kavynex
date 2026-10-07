@@ -125,10 +125,12 @@ in `src-tauri/src/constants.rs`). Three of them hold pure scratch:
 
 - `thumbs-temp/`: temporary thumbnail previews generated before a thumbnail is committed
   to the library (`services/thumbnail/temp.rs`), named `thumb_<sha256>.jpg`. The container
-  both thumbnail producers share (`THUMBNAIL_OUTPUT_FORMAT` in `src-tauri/src/constants.rs`).
+  the FFmpeg preview and the yt-dlp avatar download convert to (`THUMBNAIL_OUTPUT_FORMAT` in
+  `src-tauri/src/constants.rs`), and the one a downloaded media's thumbnail is fetched in, since
+  YouTube serves every declared thumbnail as JPEG.
 - `yt-dlp-temp/`: scratch space for an in-progress yt-dlp download before its output is
   moved into the library.
-- `yt-dlp-thumb-temp/`: scratch space for thumbnails fetched as part of a yt-dlp run.
+- `yt-dlp-thumb-temp/`: scratch space for a thumbnail or channel avatar while it is being fetched.
 
 A fourth, `thumb-display/`, holds something different from scratch data: a **display-sized copy** of
 each thumbnail the grid has drawn (`services/thumbnail/display.rs`), named

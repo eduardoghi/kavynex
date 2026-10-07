@@ -13,14 +13,13 @@ mod process;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 
 use http::Uri;
 use tauri::{AppHandle, Runtime};
 use tokio::process::Command;
 
 use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
-use crate::models::yt_dlp::YtDlpMetadata;
+use crate::models::yt_dlp::{YtDlpMetadata, YtDlpThumbnailMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
@@ -390,118 +389,111 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
     result
 }
 
-pub async fn download_thumbnail_for_media_async<R: Runtime>(
-    app: &AppHandle<R>,
-    media_url: &str,
-    library_path: &str,
-    metadata: &YtDlpMetadata,
-    cookies_browser: Option<&str>,
-    cookies_path: Option<&str>,
-    cancel: Option<Arc<AtomicBool>>,
-) -> AppResult<Option<String>> {
-    let normalized_url = media_url.trim();
+/// How many of a media's thumbnail candidates are tried before it is saved without one. Each try is
+/// one HTTP request, and the list is ordered so the first normally succeeds.
+pub(crate) const MAX_MEDIA_THUMBNAIL_ATTEMPTS: usize = 4;
 
-    if normalized_url.is_empty() {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidUrl,
-            "url is empty",
-        ));
+/// The URLs to try for a media's thumbnail, best first.
+///
+/// Only thumbnails YouTube declared (the ones yt-dlp reports a width for) and the metadata's own
+/// `thumbnail` are tried. The others are yt-dlp's guesses, and on an older video every guess above
+/// the declared size is a 404. Within that, JPEG comes first because it is the format the library
+/// stores (`THUMBNAIL_OUTPUT_FORMAT`), and YouTube serves every declared image as JPEG as well as
+/// WebP. The JPEG of the largest size is usually smaller than the WebP above it (1280x720 against
+/// 1920x1080 on a recent upload), which a card drawn a few hundred pixels wide never shows.
+///
+/// URLs are deduplicated by path, ignoring the query. YouTube declares the same `hqdefault.jpg` at
+/// five sizes that differ only in their query string, and spending the fallbacks on one image would
+/// leave none for a different one. The first spelling kept is the largest.
+///
+/// Pure, so the ordering can be pinned against the shape real yt-dlp output has. Every URL that
+/// survives is one the direct fetch accepts (https, an image extension, an allowed CDN host), so a
+/// candidate can never fall through to a yt-dlp run.
+pub(crate) fn media_thumbnail_candidates(
+    thumbnail: Option<&str>,
+    thumbnails: &[YtDlpThumbnailMetadata],
+) -> Vec<String> {
+    let declared: Vec<&str> = thumbnails
+        .iter()
+        .rev()
+        .filter(|entry| entry.width.is_some())
+        .filter_map(|entry| entry.url.as_deref())
+        .collect();
+
+    let is_jpeg = |url: &&str| matches!(direct_image_extension(url), Some("jpg" | "jpeg"));
+
+    let ordered = declared
+        .iter()
+        .copied()
+        .filter(is_jpeg)
+        .chain(thumbnail)
+        .chain(declared.iter().copied().filter(|url| !is_jpeg(url)));
+
+    let without_query = |url: &str| url.split(['?', '#']).next().unwrap_or(url).to_string();
+    let mut candidates: Vec<String> = Vec::new();
+
+    for url in ordered.map(str::trim) {
+        let resource = without_query(url);
+
+        if !is_direct_thumbnail_url(url)
+            || candidates
+                .iter()
+                .any(|seen| without_query(seen) == resource)
+        {
+            continue;
+        }
+
+        candidates.push(url.to_string());
     }
 
-    let thumbnail_url = metadata
-        .thumbnail
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
+    candidates.truncate(MAX_MEDIA_THUMBNAIL_ATTEMPTS);
+    candidates
+}
 
-    if thumbnail_url.is_none() {
-        return Ok(None);
-    }
-
-    let (library_dir, thumb_temp_dir) = {
-        let app = app.clone();
-        let library_path = library_path.to_string();
-        let temp_dir_name = format!("media-thumb-{}", unique_temp_suffix());
-        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
+/// True for a URL the direct fetch in [`download_thumbnail_from_url_async`] accepts without falling
+/// back to yt-dlp. https, an image extension, and one of the allowed image CDNs.
+fn is_direct_thumbnail_url(url: &str) -> bool {
+    let Ok(uri) = url.parse::<Uri>() else {
+        return false;
     };
 
-    let result = async {
-        let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
-        let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
-        let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
+    uri.scheme_str() == Some("https")
+        && direct_image_extension(url).is_some()
+        && is_allowed_thumbnail_image_host(&uri)
+}
 
-        let id = metadata
-            .id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpInvalidMetadata,
-                    "yt-dlp did not return a media id",
-                )
-            })?;
+/// Downloads a media's thumbnail straight from YouTube's image CDN, trying
+/// [`media_thumbnail_candidates`] in order until one is stored.
+///
+/// A direct request rather than a yt-dlp run. yt-dlp has already reported the URLs, so asking it
+/// again meant one more full extraction of the video, with the user's cookies, for an image the CDN
+/// serves to anyone. `Ok(None)` when there is nothing to try or the run was cancelled before a try;
+/// otherwise the last failure.
+pub async fn download_media_thumbnail_async<R: Runtime>(
+    app: &AppHandle<R>,
+    library_path: &str,
+    metadata: &YtDlpMetadata,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<Option<String>> {
+    let candidates =
+        media_thumbnail_candidates(metadata.thumbnail.as_deref(), &metadata.thumbnails);
+    let mut last_error = None;
 
-        let extractor = metadata
-            .extractor
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or("media");
+    for url in candidates {
+        if cancel.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst)) {
+            break;
+        }
 
-        let safe_extractor = sanitize_filename_component(extractor);
-        let safe_id = sanitize_filename_component(id);
-
-        let file_prefix = format!("thumb_{}_{}", safe_extractor, safe_id);
-        let file_name_prefix = format!("{file_prefix}.");
-
-        clean_matching_files_in_dir(&thumb_temp_dir, &file_name_prefix)?;
-
-        let args = build_thumbnail_command_args(
-            &ffmpeg_location,
-            &thumb_temp_dir,
-            &file_prefix,
-            normalized_url,
-            ThumbnailTarget::SingleMedia,
-            cookies_browser,
-            cookies_path,
-        );
-
-        let mut command = Command::new(&yt_dlp);
-        command.args(&args);
-        // Starts in the thumbnail scratch directory the output goes to rather than wherever the
-        // app was launched from (see utils::process::pin_working_dir_async).
-        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
-
-        let output = run_thumbnail_yt_dlp_with_timeout(
-            command,
-            "yt-dlp thumbnail download timed out",
-            "failed to execute yt-dlp for thumbnail download",
-            cancel.clone(),
-        )
-        .await?;
-
-        finalize_thumbnail_download(
-            &output,
-            &thumb_temp_dir,
-            &file_name_prefix,
-            library_dir,
-            "thumbnail",
-        )
-        .await
-        .map(Some)
+        match download_thumbnail_from_url_async(app, &url, library_path).await {
+            Ok(path) => return Ok(Some(path)),
+            Err(error) => last_error = Some(error),
+        }
     }
-    .await;
 
-    // Small (an image or two), but still filesystem IO on a possibly slow disk. Offload the
-    // recursive removal to the blocking pool like the download temp-dir cleanup does.
-    let _ = run_blocking(move || {
-        let _ = fs::remove_dir_all(&thumb_temp_dir);
-        Ok::<(), AppError>(())
-    })
-    .await;
-
-    result
+    match last_error {
+        Some(error) => Err(error),
+        None => Ok(None),
+    }
 }
 
 pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
@@ -689,5 +681,183 @@ mod tests {
                 "{handle} should be refused: it cannot form a URI"
             );
         }
+    }
+
+    /// A `thumbnails` entry as yt-dlp reports it. `width` is present only on the ones YouTube
+    /// declared, absent on the URLs yt-dlp guesses at.
+    fn entry(url: &str, width: Option<u64>) -> YtDlpThumbnailMetadata {
+        YtDlpThumbnailMetadata {
+            url: Some(url.to_string()),
+            width,
+        }
+    }
+
+    #[test]
+    fn an_older_video_is_never_asked_for_the_sizes_youtube_did_not_declare() {
+        // The shape of `yt-dlp -J` for a 2005 upload, captured in October 2026. Every guessed
+        // URL above the declared 480x360 answered 404 when probed, including both maxresdefault
+        // spellings, so trying them first would spend every attempt on a miss.
+        let declared = "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg?sqp=480";
+        let thumbnails = [
+            entry(
+                "https://i.ytimg.com/vi/jNQXAC9IVRw/mqdefault.jpg?sqp=320",
+                Some(320),
+            ),
+            entry(
+                "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg?sqp=168",
+                Some(168),
+            ),
+            entry(
+                "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg?sqp=336",
+                Some(336),
+            ),
+            entry(declared, Some(480)),
+            entry(
+                "https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp",
+                None,
+            ),
+            entry("https://i.ytimg.com/vi/jNQXAC9IVRw/sddefault.jpg", None),
+            entry("https://i.ytimg.com/vi/jNQXAC9IVRw/maxresdefault.jpg", None),
+            entry(
+                "https://i.ytimg.com/vi_webp/jNQXAC9IVRw/maxresdefault.webp",
+                None,
+            ),
+        ];
+
+        let candidates = media_thumbnail_candidates(Some(declared), &thumbnails);
+
+        // The two smaller spellings of hqdefault are the same image, so the fallback after the
+        // largest one is a different image rather than a smaller copy of the one that just failed.
+        assert_eq!(
+            candidates,
+            vec![
+                declared.to_string(),
+                "https://i.ytimg.com/vi/jNQXAC9IVRw/mqdefault.jpg?sqp=320".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_recent_video_tries_the_largest_jpeg_before_the_webp_the_metadata_names() {
+        // Also captured shape. The metadata's `thumbnail` is the 1920x1080 WebP, and YouTube
+        // declares the same image as a 1280x720 JPEG. The library stores JPEG, so the JPEG is
+        // tried first and the WebP stays as the fallback.
+        let webp = "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp";
+        let thumbnails = [
+            entry(
+                "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+                Some(480),
+            ),
+            entry("https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg", Some(1280)),
+            entry(
+                "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+                Some(1280),
+            ),
+            entry(webp, Some(1920)),
+        ];
+
+        let candidates = media_thumbnail_candidates(Some(webp), &thumbnails);
+
+        assert_eq!(
+            candidates,
+            vec![
+                "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg".to_string(),
+                "https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg".to_string(),
+                "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg".to_string(),
+                webp.to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_metadata_thumbnail_alone_is_still_tried() {
+        // Metadata without a `thumbnails` list (older yt-dlp, a trimmed fixture) still has the one
+        // URL the previous flow relied on.
+        let url = "https://i.ytimg.com/vi/abc/hqdefault.jpg";
+
+        assert_eq!(
+            media_thumbnail_candidates(Some(url), &[]),
+            vec![url.to_string()]
+        );
+        assert!(media_thumbnail_candidates(None, &[]).is_empty());
+    }
+
+    #[test]
+    fn only_urls_the_direct_fetch_accepts_become_candidates() {
+        // Anything else would reach the yt-dlp fallback in download_thumbnail_from_url_async, which
+        // is the extra extraction this exists to avoid, or be refused there anyway.
+        let thumbnails = [
+            entry("http://i.ytimg.com/vi/abc/plain-http.jpg", Some(1)),
+            entry("https://attacker.example/vi/abc/elsewhere.jpg", Some(1)),
+            entry("https://i.ytimg.com/vi/abc/no-extension", Some(1)),
+            entry("not a url", Some(1)),
+            entry("https://i.ytimg.com/vi/abc/kept.jpg", Some(1)),
+        ];
+
+        assert_eq!(
+            media_thumbnail_candidates(None, &thumbnails),
+            vec!["https://i.ytimg.com/vi/abc/kept.jpg".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_url_listed_twice_is_tried_once_and_the_list_is_capped() {
+        let thumbnails: Vec<YtDlpThumbnailMetadata> = (0..10)
+            .map(|index| {
+                entry(
+                    &format!("https://i.ytimg.com/vi/abc/{index}.jpg"),
+                    Some(index),
+                )
+            })
+            .collect();
+
+        let candidates =
+            media_thumbnail_candidates(Some("https://i.ytimg.com/vi/abc/9.jpg"), &thumbnails);
+
+        assert_eq!(candidates.len(), MAX_MEDIA_THUMBNAIL_ATTEMPTS);
+        assert_eq!(candidates[0], "https://i.ytimg.com/vi/abc/9.jpg");
+        assert_eq!(
+            candidates
+                .iter()
+                .filter(|url| url.ends_with("/9.jpg"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn the_attempt_cap_is_four() {
+        // Pinned by value. Every attempt is a request, and an older video's list holds dozens of
+        // URLs, so a slip here is either a wasted burst at the CDN or no fallback at all.
+        assert_eq!(MAX_MEDIA_THUMBNAIL_ATTEMPTS, 4);
+    }
+
+    #[test]
+    fn a_media_with_no_candidate_or_a_cancelled_run_asks_the_network_for_nothing() {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+
+        let empty = YtDlpMetadata::default();
+        let none = tauri::async_runtime::block_on(download_media_thumbnail_async(
+            app.handle(),
+            "/library",
+            &empty,
+            None,
+        ));
+        assert!(matches!(none, Ok(None)));
+
+        let with_a_candidate = YtDlpMetadata {
+            thumbnail: Some("https://i.ytimg.com/vi/abc/hqdefault.jpg".to_string()),
+            ..YtDlpMetadata::default()
+        };
+        let cancelled = AtomicBool::new(true);
+        let skipped = tauri::async_runtime::block_on(download_media_thumbnail_async(
+            app.handle(),
+            "/library",
+            &with_a_candidate,
+            Some(&cancelled),
+        ));
+        assert!(matches!(skipped, Ok(None)));
     }
 }

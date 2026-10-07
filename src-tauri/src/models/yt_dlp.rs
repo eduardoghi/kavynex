@@ -33,7 +33,6 @@ pub struct DownloadedMediaResult {
     pub published_at: Option<String>,
     #[ts(type = "\"video\" | \"audio\"")]
     pub media_type: String,
-    pub thumbnail_url: Option<String>,
     pub thumbnail_path: Option<String>,
     pub is_live: bool,
     pub live_chat_file_path: Option<String>,
@@ -118,6 +117,10 @@ pub struct YtDlpMetadata {
     pub extractor: Option<String>,
     pub upload_date: Option<String>,
     pub thumbnail: Option<String>,
+    // Every thumbnail yt-dlp knows of, in ascending preference. Entries with a width are the ones
+    // YouTube declared; the rest are URLs yt-dlp guesses at, which 404 on older videos.
+    #[serde(default)]
+    pub thumbnails: Vec<YtDlpThumbnailMetadata>,
     pub live_status: Option<String>,
     pub was_live: Option<bool>,
     #[serde(default)]
@@ -130,6 +133,12 @@ pub struct YtDlpMetadata {
     // `comments`). Absent/`null` when comments are disabled.
     #[serde(default)]
     pub comment_count: Option<i64>,
+}
+
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct YtDlpThumbnailMetadata {
+    pub url: Option<String>,
+    pub width: Option<u64>,
 }
 
 #[derive(Deserialize, Default, Clone, Debug)]

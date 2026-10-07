@@ -306,16 +306,20 @@ ordering lives on the other side, in `services/media_creation.rs`:
 
 1. `normalize_create_media_request`: title, media type, and every stored value trimmed. Runs first
    and entirely, so a rejected request has produced nothing to clean up.
-2. yt-dlp only: `ensure_youtube_media_is_new` on the video id the format picker resolved, so a
+2. `ensure_channel_exists`, so a channel deleted meanwhile is refused before anything is copied or
+   fetched.
+3. yt-dlp only: `ensure_youtube_media_is_new` on the video id the format picker resolved, so a
    re-add fails before the download rather than after it.
-3. `prepare_yt_dlp_artifacts` / `prepare_local_artifacts`: the download or import, plus the
-   thumbnail. **The files are in the library from here on.**
-4. `register_prepared_media`, under `library::cleanup::media_registration_guard`: the crash marker,
-   the duplicate check on the stored path, `insert_media`, then the marker's removal. A failure
-   inside it cleans the artifacts up (reference-counted, so a path a registered row shares is kept)
-   while still holding the lock.
+4. `prepare_yt_dlp_artifacts` / `prepare_local_artifacts`: the download or import, plus the
+   thumbnail. A download fetches its thumbnail after the media and straight from YouTube's image
+   CDN, and a thumbnail that fails leaves the media saved without one. A Move import leaves its
+   source in place. **The files are in the library from here on.**
+5. `register_prepared_media`, under `library::cleanup::media_registration_guard`: the crash marker,
+   the duplicate check on the stored path, `insert_media`, then the marker's removal and, for a
+   Move import, the source's. A failure inside it cleans the artifacts up (reference-counted, so a
+   path a registered row shares is kept) while still holding the lock.
 
-Steps 3 and 4 are in that order and not the other way round, because a marker written before the artifacts
+Steps 4 and 5 are in that order and not the other way round, because a marker written before the artifacts
 exist would name files that were never created. And the marker is cleared *after* the row lands or
 the cleanup has run, never before, because until then it is the only record of what is on disk.
 

@@ -574,6 +574,20 @@ fn live_yt_dlp_output_still_matches_the_committed_fixture() {
     assert!(!live.formats.is_empty());
     assert!(live.comments.is_empty(), "-J must still omit comments");
 
+    // The media thumbnail is downloaded from these, and only the entries carrying a width are
+    // trusted to exist (see thumbnail::download::media_thumbnail_candidates). If yt-dlp stops
+    // reporting widths, the download falls back to `thumbnail` alone, which still works but has
+    // lost its fallbacks without anything saying so.
+    assert!(live
+        .thumbnails
+        .iter()
+        .any(|thumbnail| thumbnail.width.is_some()));
+    assert!(!crate::services::thumbnail::media_thumbnail_candidates(
+        live.thumbnail.as_deref(),
+        &live.thumbnails
+    )
+    .is_empty());
+
     assert!(live
         .formats
         .iter()

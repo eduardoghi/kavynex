@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Runtime};
 use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
 
-use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata};
+use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata, YtDlpMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
@@ -19,7 +19,7 @@ use crate::services::filesystem::{
 use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
-use crate::services::thumbnail::download::download_thumbnail_for_media_async;
+use crate::services::thumbnail::download::download_media_thumbnail_async;
 use crate::services::yt_dlp::cookies::{
     normalize_cookies_browser, normalize_cookies_path, redact_cookies_browser_selector,
 };
@@ -339,6 +339,56 @@ mod redaction;
 use redaction::redact_paths_value;
 use redaction::redacted_args_for_log;
 
+/// Downloads the media's thumbnail, and on failure says so in the terminal and returns `None`.
+///
+/// The error is shown rather than only logged because a media saved without the thumbnail the user
+/// expected is otherwise silent, and the reason (a CDN outage, a firewall) is something they can
+/// act on.
+async fn download_thumbnail_best_effort<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    library_path: &str,
+    metadata: &YtDlpMetadata,
+    cancel_flag: &AtomicBool,
+) -> Option<String> {
+    match download_media_thumbnail_async(app, library_path, metadata, Some(cancel_flag)).await {
+        Ok(Some(path)) => {
+            emit_download_log_infallible(
+                app,
+                run_id,
+                "Thumbnail downloaded successfully",
+                "system",
+            );
+            Some(path)
+        }
+        Ok(None) => {
+            emit_download_log_infallible(
+                app,
+                run_id,
+                "No thumbnail available for this media",
+                "system",
+            );
+            None
+        }
+        Err(error) => {
+            logger::warn(
+                "yt_dlp",
+                format!("thumbnail download failed, saving the media without one: {error}"),
+            );
+            emit_download_log_infallible(
+                app,
+                run_id,
+                format!(
+                    "The thumbnail could not be downloaded, so the media was saved without one: {}",
+                    error.message
+                ),
+                "system",
+            );
+            None
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
@@ -514,82 +564,6 @@ pub async fn download_media_from_url_async<R: Runtime>(
             ));
         }
 
-        let thumbnail_path = if skip_auto_thumbnail_download {
-            None
-        } else {
-            emit_download_log(
-                app,
-                &normalized_run_id,
-                "Downloading thumbnail before media download",
-                "system",
-            )?;
-
-            match download_thumbnail_for_media_async(
-                app,
-                &normalized_url,
-                library_path,
-                &metadata,
-                normalized_cookies_browser.as_deref(),
-                normalized_cookies_path.as_deref(),
-                Some(Arc::clone(&cancel_flag)),
-            )
-            .await
-            {
-                Ok(path) => {
-                    if path.is_some() {
-                        emit_download_log(
-                            app,
-                            &normalized_run_id,
-                            "Thumbnail downloaded successfully",
-                            "system",
-                        )?;
-                    } else {
-                        emit_download_log(
-                            app,
-                            &normalized_run_id,
-                            "No thumbnail available for this media",
-                            "system",
-                        )?;
-                    }
-
-                    path
-                }
-                Err(error) => {
-                    // The thumbnail phase now honors cancellation itself; report a cancel as a
-                    // cancellation event instead of a thumbnail failure.
-                    if cancel_flag.load(Ordering::SeqCst) {
-                        let message = "yt-dlp download cancelled";
-                        emit_download_cancelled(app, &normalized_run_id, message);
-                        return Err(AppError::from_code(
-                            AppErrorCode::YtDlpDownloadCancelled,
-                            message,
-                        ));
-                    }
-
-                    emit_download_error(
-                        app,
-                        &normalized_run_id,
-                        format!(
-                            "thumbnail download failed before media download: {}",
-                            error.message
-                        ),
-                    );
-
-                    return Err(error);
-                }
-            }
-        };
-
-        if cancel_flag.load(Ordering::SeqCst) {
-            let message = "yt-dlp download cancelled";
-            emit_download_cancelled(app, &normalized_run_id, message);
-
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadCancelled,
-                message,
-            ));
-        }
-
         let selected_format = metadata
             .formats
             .iter()
@@ -631,12 +605,6 @@ pub async fn download_media_from_url_async<R: Runtime>(
             normalize_download_metadata(&metadata)?;
 
         let is_live = infer_is_live(metadata.live_status.as_deref(), metadata.was_live);
-
-        let thumbnail_url = metadata
-            .thumbnail
-            .as_ref()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
 
         let safe_extractor = sanitize_filename_component(&extractor);
         // The id disambiguates collisions (two distinct ids that sanitize to the same string),
@@ -1067,13 +1035,29 @@ pub async fn download_media_from_url_async<R: Runtime>(
             None
         };
 
+        // After the media rather than before it, and never fatal. The video is what the user asked
+        // to archive, so an image that will not download cannot cost them the backup, and fetching
+        // it last means a download that fails leaves no thumbnail behind with nothing pointing at
+        // it.
+        let thumbnail_path = if skip_auto_thumbnail_download {
+            None
+        } else {
+            download_thumbnail_best_effort(
+                app,
+                &normalized_run_id,
+                library_path,
+                &metadata,
+                &cancel_flag,
+            )
+            .await
+        };
+
         let result = DownloadedMediaResult {
             file_path: relative_path_from_base(&library_dir, &final_destination)?,
             suggested_title: suggested_title.clone(),
             youtube_video_id,
             published_at,
             media_type: media_subdir.to_string(),
-            thumbnail_url,
             thumbnail_path,
             is_live,
             live_chat_file_path,

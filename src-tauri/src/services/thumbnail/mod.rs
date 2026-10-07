@@ -15,6 +15,8 @@ pub mod temp;
 pub mod url;
 
 pub use display::resolve_display_thumbnails_sync;
+#[cfg(test)]
+pub(crate) use download::media_thumbnail_candidates;
 pub use download::{download_channel_avatar_from_handle_async, download_thumbnail_from_url_async};
 pub use persist::{
     delete_thumbnail_file_sync, persist_thumbnail_file_sync, persist_thumbnail_from_source,

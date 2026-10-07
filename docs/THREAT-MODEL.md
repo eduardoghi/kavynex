@@ -705,8 +705,10 @@ Worth stating plainly, because the two halves once differed. The host gate on th
 added after the fallback already had one. Until then the SSRF guard kept that branch off internal
 addresses but nothing kept it off the open internet, which left a compromised frontend an outbound
 channel (a path ending in `.jpg` on a host of its choosing). It cost no functionality to close. The
-manual thumbnail control is a file picker, never a URL field, and the only remote value that reaches
-the command is yt-dlp's own `thumbnail` metadata.
+manual thumbnail control is a file picker, never a URL field, and the only remote values that reach
+the fetch are the thumbnail URLs in yt-dlp's own metadata (`thumbnail` and the declared `thumbnails`
+entries, ordered by `media_thumbnail_candidates`), filtered to ones the direct branch accepts before
+any request goes out, so a media's thumbnail never falls through to the yt-dlp branch.
 
 That gate was then per *fetch* rather than per *hop* for a while, which is a narrower version of the
 same gap, recorded separately because the code read as though it were closed. The initial
