@@ -272,6 +272,41 @@ describe("streamLiveChatFile", () => {
         spy.mockRestore();
     });
 
+    it("rejects on an unreadable message that is not a batch instead of waiting forever", async () => {
+        // It may be the terminal `done`, the only message that settles the read. Dropping it the way
+        // a bad batch is dropped left the live chat panel loading with no error and no way back.
+        for (const message of [{ kind: "finished" }, { lines: ["x"] }, null]) {
+            const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+            invokeMock.mockResolvedValue(null);
+
+            const streaming = streamLiveChatFile("live_chat/a.json.gz", vi.fn());
+            await flushPromises();
+
+            channelPassedAs("onBatch").onmessage(message);
+
+            await expect(streaming).rejects.toThrow("could not read");
+            spy.mockRestore();
+            invokeMock.mockClear();
+        }
+    });
+
+    it("hands no more batches to onLines once the read has failed", async () => {
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        invokeMock.mockResolvedValue(null);
+        const onLines = vi.fn();
+
+        const streaming = streamLiveChatFile("live_chat/a.json.gz", onLines);
+        await flushPromises();
+
+        const channel = channelPassedAs("onBatch");
+        channel.onmessage({ kind: "finished" });
+        channel.onmessage({ kind: "batch", lines: ["late"] });
+
+        await expect(streaming).rejects.toThrow("could not read");
+        expect(onLines).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
     it("rejects with a normalized error when the read fails", async () => {
         invokeMock.mockRejectedValue({
             code: "LIVE_CHAT_FILE_NOT_FOUND",

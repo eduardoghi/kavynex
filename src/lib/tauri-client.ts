@@ -70,7 +70,9 @@ export async function invokeVoid(
 //
 // Each channel message is validated against liveChatStreamEventSchema before it is acted on, so a
 // backend bug that changed the wire shape (a batch line that is not a string) is dropped and logged
-// at the seam rather than flowing into the parser as the wrong type.
+// at the seam rather than flowing into the parser as the wrong type. That holds for batches only. A
+// message that is not a batch may be the terminal `done`, the one thing that settles the promise, so
+// one this seam cannot read rejects the read instead of leaving the panel loading forever.
 export async function streamLiveChatFile(
     relativePath: string,
     onLines: (lines: string[]) => void
@@ -78,11 +80,23 @@ export async function streamLiveChatFile(
     const channel = new Channel<LiveChatStreamEvent>();
 
     let signalDone: () => void = () => {};
-    const done = new Promise<void>((resolve) => {
+    let fail: (error: Error) => void = () => {};
+    let failed = false;
+
+    const done = new Promise<void>((resolve, reject) => {
         signalDone = resolve;
+        fail = reject;
     });
 
+    // Observed here so a rejection from `fail` is not reported as unhandled when the invoke below
+    // throws first and `done` is never awaited.
+    done.catch(() => {});
+
     channel.onmessage = (rawEvent) => {
+        if (failed) {
+            return;
+        }
+
         const event = parseEventPayload(
             liveChatStreamEventSchema,
             TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE,
@@ -90,6 +104,14 @@ export async function streamLiveChatFile(
         );
 
         if (!event) {
+            // One unreadable batch costs a slice of the replay, the same loss the parser already
+            // accepts for a line it cannot read.
+            if (isLiveChatBatchMessage(rawEvent)) {
+                return;
+            }
+
+            failed = true;
+            fail(new Error("The live chat replay sent a message this app could not read."));
             return;
         }
 
@@ -102,6 +124,15 @@ export async function streamLiveChatFile(
 
     await invokeCommand(TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE, { relativePath, onBatch: channel });
     await done;
+}
+
+function isLiveChatBatchMessage(message: unknown): boolean {
+    return (
+        typeof message === "object" &&
+        message !== null &&
+        "kind" in message &&
+        message.kind === "batch"
+    );
 }
 
 // Runs the deep library verification, reporting progress through `onProgress` and resolving with
