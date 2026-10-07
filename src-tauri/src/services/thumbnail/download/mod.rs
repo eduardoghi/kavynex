@@ -70,6 +70,8 @@ async fn finalize_thumbnail_download(
             output,
             AppErrorCode::YtDlpThumbnailFailed,
             &format!("yt-dlp {subject} download failed"),
+            // Neither flow passes cookies, and the URL is a public one the user entered.
+            str::to_string,
         ));
     }
 

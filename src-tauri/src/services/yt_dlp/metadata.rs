@@ -269,12 +269,21 @@ fn build_friendly_terminal_hints(stdout_logs: &[String], stderr_logs: &[String])
 /// ("cookies.txt"), appears in benign hint text, and does not reveal the user's profile layout. It
 /// is the directory portion that does.
 pub(crate) fn redact_cookies_path_from_line(line: &str, cookies_path: Option<&str>) -> String {
-    let Some(path) = cookies_path
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    match cookies_path {
+        Some(path) => redact_path_from_line(line, path),
+        None => line.to_string(),
+    }
+}
+
+/// Replaces every spelling of the local `path` in `line` with `<redacted>`, verbatim and with
+/// either separator convention, ignoring ASCII case. Not specific to cookies. A thumbnail's ffmpeg
+/// error uses it for the user's input file.
+pub(crate) fn redact_path_from_line(line: &str, path: &str) -> String {
+    let path = path.trim();
+
+    if path.is_empty() {
         return line.to_string();
-    };
+    }
 
     // The plausible representations of the same full path. Verbatim, and with either separator
     // convention. Case is handled by the ASCII-insensitive matcher below.

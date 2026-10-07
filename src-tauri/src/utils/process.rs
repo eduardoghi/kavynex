@@ -269,25 +269,65 @@ pub async fn wait_for_cancel(cancel: Option<&std::sync::atomic::AtomicBool>) {
     }
 }
 
+/// How many of a failed process's last output lines an error keeps.
+const PROCESS_ERROR_MAX_LINES: usize = 8;
+
+/// The most characters of output an error keeps, counted from the end.
+const PROCESS_ERROR_MAX_CHARS: usize = 1_500;
+
+/// The tail of a process's output that goes into an error, each line passed through `redact`.
+///
+/// The cause is at the end. Kept whole, ffmpeg's banner and stream dump, or a yt-dlp trace, put
+/// kilobytes into a message that is logged and can reach the error modal, along with every path
+/// the process printed. Returns `None` when nothing but blank lines is left.
+pub(crate) fn process_output_tail(text: &str, redact: impl Fn(&str) -> String) -> Option<String> {
+    let lines: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(redact)
+        .collect();
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    let tail = lines[lines.len().saturating_sub(PROCESS_ERROR_MAX_LINES)..].join("\n");
+    let char_count = tail.chars().count();
+
+    if char_count <= PROCESS_ERROR_MAX_CHARS {
+        return Some(tail);
+    }
+
+    let kept: String = tail
+        .chars()
+        .skip(char_count - PROCESS_ERROR_MAX_CHARS)
+        .collect();
+    Some(format!("...{kept}"))
+}
+
 /// Builds an [`AppError`] from a failed child process's output, preferring stderr, then
 /// stdout, then falling back to `default_message` when both streams are empty.
+///
+/// Only the tail of the output is kept, and `redact` runs on each kept line (see
+/// [`process_output_tail`]), so a caller whose process prints a path it should not leak (the
+/// user's input file, a cookies file) hides it here.
 pub fn read_process_error(
     output: &std::process::Output,
     default_code: AppErrorCode,
     default_message: &str,
+    redact: impl Fn(&str) -> String,
 ) -> AppError {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
-    if !stderr.is_empty() {
-        return AppError::from_code(default_code, format!("{default_message}: {stderr}"));
+    let tail =
+        process_output_tail(&stderr, &redact).or_else(|| process_output_tail(&stdout, &redact));
+
+    match tail {
+        Some(tail) => AppError::from_code(default_code, format!("{default_message}: {tail}")),
+        None => AppError::from_code(default_code, default_message),
     }
-
-    if !stdout.is_empty() {
-        return AppError::from_code(default_code, format!("{default_message}: {stdout}"));
-    }
-
-    AppError::from_code(default_code, default_message)
 }
 
 #[cfg(test)]
@@ -423,6 +463,7 @@ mod tests {
             &output,
             AppErrorCode::FfmpegFailed,
             "ffmpeg failed to generate thumbnail",
+            str::to_string,
         );
 
         assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
@@ -441,10 +482,91 @@ mod tests {
             &output,
             AppErrorCode::FfmpegFailed,
             "ffmpeg failed to generate thumbnail",
+            str::to_string,
         );
 
         assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
         assert!(error.message.contains("stdout message"));
+    }
+
+    #[test]
+    fn a_process_error_keeps_only_the_last_lines_of_a_long_output() {
+        let banner: String = (0..40)
+            .map(|index| format!("banner line {index}\n"))
+            .collect();
+        let output = Output {
+            status: exit_status(1),
+            stdout: Vec::new(),
+            stderr: format!("{banner}\nError opening input file\n").into_bytes(),
+        };
+
+        let error = read_process_error(
+            &output,
+            AppErrorCode::FfmpegFailed,
+            "ffmpeg failed",
+            str::to_string,
+        );
+
+        assert!(error.message.ends_with("Error opening input file"));
+        assert!(error.message.contains("banner line 39"));
+        assert!(!error.message.contains("banner line 32"));
+        assert_eq!(error.message.lines().count(), PROCESS_ERROR_MAX_LINES);
+    }
+
+    #[test]
+    fn a_process_error_caps_a_single_huge_line_from_the_end() {
+        let line = format!("{}the cause", "x".repeat(10_000));
+
+        let tail = process_output_tail(&line, str::to_string).unwrap();
+
+        assert!(tail.starts_with("..."));
+        assert!(tail.ends_with("the cause"));
+        assert_eq!(tail.chars().count(), PROCESS_ERROR_MAX_CHARS + 3);
+        // Exactly at the cap is kept whole.
+        let at_cap = "y".repeat(PROCESS_ERROR_MAX_CHARS);
+        assert_eq!(
+            process_output_tail(&at_cap, str::to_string).unwrap(),
+            at_cap
+        );
+    }
+
+    #[test]
+    fn a_process_error_redacts_every_kept_line() {
+        let output = Output {
+            status: exit_status(1),
+            stdout: Vec::new(),
+            stderr:
+                b"Input #0, from 'C:/Users/me/secret.mp4':\nC:/Users/me/secret.mp4: Invalid data"
+                    .to_vec(),
+        };
+
+        let error = read_process_error(
+            &output,
+            AppErrorCode::FfmpegFailed,
+            "ffmpeg failed",
+            |line| line.replace("C:/Users/me/secret.mp4", "<redacted>"),
+        );
+
+        assert!(!error.message.contains("secret"));
+        assert_eq!(error.message.matches("<redacted>").count(), 2);
+    }
+
+    #[test]
+    fn a_blank_stderr_falls_through_to_stdout() {
+        let output = Output {
+            status: exit_status(1),
+            stdout: b"from stdout".to_vec(),
+            stderr: b"  \n\n  ".to_vec(),
+        };
+
+        let error = read_process_error(
+            &output,
+            AppErrorCode::FfmpegFailed,
+            "failed",
+            str::to_string,
+        );
+
+        assert_eq!(error.message, "failed: from stdout");
     }
 
     #[test]
@@ -459,6 +581,7 @@ mod tests {
             &output,
             AppErrorCode::FfmpegFailed,
             "ffmpeg failed to generate thumbnail",
+            str::to_string,
         );
 
         assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());

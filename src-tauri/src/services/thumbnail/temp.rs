@@ -319,6 +319,12 @@ fn ffmpeg_working_dir(out_thumbnail: &Path) -> PathBuf {
         .unwrap_or_else(default_child_working_dir)
 }
 
+/// ffmpeg echoes the input path in its errors, and it is the user's own file, often under their
+/// home directory. Logged and shown, it is replaced.
+fn redact_source_path(line: &str, source_path: &Path) -> String {
+    crate::services::yt_dlp::metadata::redact_path_from_line(line, &source_path.to_string_lossy())
+}
+
 fn generate_video_temporary_thumbnail(
     ffmpeg: &str,
     source_path: &Path,
@@ -335,6 +341,7 @@ fn generate_video_temporary_thumbnail(
             &output,
             AppErrorCode::FfmpegFailed,
             "ffmpeg failed to generate thumbnail",
+            |line| redact_source_path(line, source_path),
         ));
     }
 
@@ -361,6 +368,7 @@ fn generate_audio_embedded_temporary_thumbnail(
             &output,
             AppErrorCode::ThumbnailNotSupportedForAudio,
             "audio file does not have an embedded thumbnail",
+            |line| redact_source_path(line, source_path),
         ));
     }
 
