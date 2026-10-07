@@ -323,12 +323,6 @@ describe("MediaPlayerView", () => {
             const banner = screen.getByRole("alert");
             expect(within(banner).getByText(/can't be played here/i)).toBeInTheDocument();
 
-            // A short media names only the two causes the webview cannot tell apart. The third one
-            // below is about long recordings, so offering it here would be noise.
-            expect(
-                within(banner).queryByText(/long recording/i)
-            ).not.toBeInTheDocument();
-
             fireEvent.click(
                 within(banner).getByRole("button", { name: /open file location/i })
             );
@@ -362,7 +356,9 @@ describe("MediaPlayerView", () => {
             expect(screen.queryByText(/can't be played here/i)).not.toBeInTheDocument();
         });
 
-        it("names the long-recording cause only for a long media, and only after a failure", () => {
+        it("blames no platform for a long media that fails to play", () => {
+            // The long-recording note named a macOS failure that the kvxmedia protocol fixed, and a
+            // Linux one that was never measured, so a codec problem was being blamed on length.
             // The third cause the two generic ones cannot cover. On macOS the asset protocol
             // truncates every range response, and the Apple media stack does not recover once a
             // recording's metadata grows past a few megabytes, so a perfectly good file fails.
@@ -389,13 +385,12 @@ describe("MediaPlayerView", () => {
                 />
             );
 
-            // Nothing is claimed while the media is playing. A long recording is not a warning.
-            expect(screen.queryByText(/long recording/i)).not.toBeInTheDocument();
-
             fireEvent.error(screen.getByLabelText(/video player/i));
 
             const banner = screen.getByRole("alert");
-            expect(within(banner).getByText(/long recording/i)).toBeInTheDocument();
+            expect(within(banner).getByText(/can't be played here/i)).toBeInTheDocument();
+            expect(within(banner).queryByText(/long recording/i)).not.toBeInTheDocument();
+            expect(within(banner).queryByText(/macOS|Linux/)).not.toBeInTheDocument();
         });
     });
 
