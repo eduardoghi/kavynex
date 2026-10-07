@@ -131,6 +131,11 @@ jobs:
 
     publish-tauri:
         needs: [audit, frontend-audit]
+        # The signing key and its password are secrets of the `release` environment, not of the
+        # repository, and that environment only admits runs on `main`. So GitHub refuses the key to
+        # a run from any other branch before a step starts, including a workflow file edited on
+        # that branch to drop the ref guard below. The guard stays as the step that says why.
+        environment: release
         permissions:
             contents: write
             # Build provenance attestation (actions/attest-build-provenance): id-token mints

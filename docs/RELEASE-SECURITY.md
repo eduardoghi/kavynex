@@ -19,8 +19,9 @@ Storing `"false"` turns it off and is the only value that does, so an absent key
 written before this became the default) reads as on. Settings also offers a check on demand.
 What a check produces is a non-intrusive notice. The update is never auto-downloaded and never
 installed without the user starting it. Downloaded update artifacts are verified against a minisign
-public key embedded in `tauri.conf.json` before being installed; the matching private key is
-held by the release workflow's GitHub secrets and never checked into the repository.
+public key embedded in `tauri.conf.json` before being installed. The matching private key and its
+password are secrets of the repository's `release` environment, never checked into the repository,
+and that environment only admits runs on `main`.
 
 ### Accepted risk: the updater can be rolled back to an older signed release
 
@@ -219,6 +220,9 @@ does not separate building from signing, so the two cannot be split into a job t
 secret and a job that does not. What is done about it:
 
 - Every action is pinned to a full commit SHA, so a tag cannot be repointed at new code.
+- The signing secrets live in the `release` environment, which only `main` may deploy to, and only
+  `publish-tauri` names it. A workflow run on any other branch, including one whose copy of
+  `release.yml` drops the ref guard, never receives the key.
 - The `permissions:` blocks are per-job. The jobs that compile a third-party tool (`audit`, which
   installs `cargo-audit`/`cargo-deny`, and `sbom`, which installs `cargo-cyclonedx`) are read-only
   and hold no signing secret. Write access belongs to the build job, which needs it to upload, and
