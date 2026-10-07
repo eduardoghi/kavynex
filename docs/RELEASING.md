@@ -54,8 +54,9 @@ actually act on what it says.
    it verbatim into `latest.json`'s `notes`, which the in-app update notice renders as one
    unscrolled block, so anything longer arrives as a wall of text in the update dialog. A
    release here can carry hundreds of commits, which is what made this a real problem rather
-   than a stylistic one. A separate `sbom` job publishes a CycloneDX SBOM of the
-   Rust dependency tree (`kavynex_<version>_sbom.cdx.json`), and a `checksums` job then
+   than a stylistic one. A separate `sbom` job generates a CycloneDX SBOM of the
+   Rust dependency tree (`kavynex_<version>_sbom.cdx.json`) without write access, `sbom-upload`
+   attaches it to the draft, and a `checksums` job then
    downloads every asset, verifies the release is complete (the asset-completeness check.
    A missing installer or SBOM fails the release loudly rather than shipping silently), and
    publishes `SHA256SUMS.txt` on the same release (see `RELEASE-SECURITY.md` for why the checksums,
@@ -169,8 +170,8 @@ say that a format is not shipped.
 
 ### When a release dispatch fails
 
-The tag is created by `tauri-action` in step 3, i.e. *before* the `sbom` and `checksums` jobs
-run. A dispatch that built and signed everything and then failed one of those later gates
+The tag is created by `tauri-action` in step 3, i.e. *before* the `sbom`, `sbom-upload` and
+`checksums` jobs run. A dispatch that built and signed everything and then failed one of those later gates
 therefore leaves the tag behind on a release that is still a draft. That is a normal outcome,
 not a corrupted state, and it does **not** cost a version number:
 
@@ -183,9 +184,9 @@ not a corrupted state, and it does **not** cost a version number:
   dispatch, and the lesson from it was that the list is perishable in both directions. The arm64
   names, flagged in the workflow as unconfirmed, all held, while the macOS `.app.tar.gz` names (the pair that *had* been observed on v1.1.1) had since gained the version and were the ones
   that broke.
-- **A build leg failed.** Same thing, re-dispatch. The `sbom` and `checksums` jobs deliberately
-  run even when a leg fails (`if: ${{ !cancelled() }}`), so the incomplete draft is reported
-  rather than silently left publishable.
+- **A build leg failed.** Same thing, re-dispatch. The `sbom`, `sbom-upload` and `checksums` jobs
+  deliberately run even when a leg fails (`if: ${{ !cancelled() }}`), so the incomplete draft is
+  reported rather than silently left publishable.
 - **The release was already published.** The guard refuses, correctly. A published release is
   final. Bump the version and release again.
 - **The tag exists with no release behind it** (a draft deleted by hand). The guard refuses,

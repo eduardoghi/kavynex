@@ -150,7 +150,7 @@ proved only that two things a third party could both have written agree with eac
 ## Software Bill of Materials (SBOM)
 
 Every release also publishes a CycloneDX SBOM (`kavynex_<version>_sbom.cdx.json`,
-`.github/workflows/release.yml`'s `sbom` job) of the Rust dependency tree that goes into the
+`.github/workflows/release.yml`'s `sbom` and `sbom-upload` jobs) of the Rust dependency tree that goes into the
 shipped binary. It is generated with `cargo-cyclonedx` from the committed `Cargo.lock`, so it lists
 the exact crate versions a given release contains. The machine-readable answer to "does this
 release ship crate X at version Y?" when an advisory lands after the fact, without recompiling or
@@ -211,11 +211,12 @@ does not separate building from signing, so the two cannot be split into a job t
 secret and a job that does not. What is done about it:
 
 - Every action is pinned to a full commit SHA, so a tag cannot be repointed at new code.
-- The `permissions:` blocks are per-job; only the build job holds `contents: write` /
-  `id-token: write`, and the dependency-audit job (which installs and runs `cargo-audit` /
-  `cargo-deny`) is a separate job with no access to the signing secrets.
-- The release build deliberately skips the Rust build cache that CI uses, so a poisoned cache
-  entry cannot reach the job that holds the key.
+- The `permissions:` blocks are per-job. The jobs that compile a third-party tool (`audit`, which
+  installs `cargo-audit`/`cargo-deny`, and `sbom`, which installs `cargo-cyclonedx`) are read-only
+  and hold no signing secret. Write access belongs to the build job, which needs it to upload, and
+  to `sbom-upload` and `checksums`, which build nothing.
+- The release build deliberately skips the Rust build cache and the pnpm store cache that CI uses,
+  so a poisoned cache entry cannot reach the job that holds the key.
 - Releases are always created as drafts and published by hand, so a build is inspected before
   the updater endpoint can ever serve it.
 

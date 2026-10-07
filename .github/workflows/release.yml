@@ -5,9 +5,9 @@ on:
 
 # Least-privilege default for the whole workflow, matching ci.yml/mutation.yml. The jobs that need
 # more escalate in their own `permissions:` block: publish-tauri and checksums get
-# contents/id-token/attestations write (both attest what they upload), sbom gets contents write.
-# The audit job stays read-only. Declaring the read-only
-# default here means a job added later without its own block inherits read-only rather than the
+# contents/id-token/attestations write (both attest what they upload), sbom-upload gets contents
+# write. The audit and sbom jobs, which compile third-party tools, stay read-only. Declaring the
+# read-only default here means a job added later without its own block inherits read-only rather than the
 # repository/organization default, so a new job cannot silently gain write access.
 permissions:
     contents: read
@@ -240,8 +240,9 @@ jobs:
               with:
                   # Pinned to the Node major @types/node targets (26), so release builds run
                   # on the same runtime the code is type-checked against. Bump both together.
+                  # No `cache: pnpm` on this job, for the reason the Rust cache note below gives.
+                  # The pnpm store feeds the frontend bundle that ships inside the signed binary.
                   node-version: 26.5.0
-                  cache: pnpm
 
             - name: Install Rust toolchain
               # Pin the exact toolchain (keep in sync with rust-toolchain.toml) instead of pulling
@@ -627,14 +628,18 @@ jobs:
     # A CycloneDX SBOM (Software Bill of Materials) of the Rust dependency tree that goes into the
     # shipped binary, published as a release asset. It is generated from the committed Cargo.lock, so
     # it lists the exact crate versions a downloader received: the machine-readable answer to "does
-    # this release contain crate X at version Y?" when an advisory lands later. Kept in its own job,
-    # out of publish-tauri, for the same reason as the audit job. `cargo install` compiles a
-    # third-party tool (and its build scripts) on the runner, which must never run on the leg that
-    # holds the signing key. The JS build-time tree is deliberately not included here. It is bundled
-    # into the frontend assets rather than being a native dependency of the binary, and is already
-    # advisory/license-gated by the frontend-audit job and pinned in pnpm-lock.yaml.
+    # this release contain crate X at version Y?" when an advisory lands later. The JS build-time tree
+    # is deliberately not included here. It is bundled into the frontend assets rather than being a
+    # native dependency of the binary, and is already advisory/license-gated by the frontend-audit job
+    # and pinned in pnpm-lock.yaml.
+    #
+    # Two jobs, for the same reason the audit job is separate from publish-tauri. Generating the SBOM
+    # means `cargo install`, which compiles a third-party tool and runs its build scripts, so that job
+    # holds only `contents: read` and hands the file over as a workflow artifact. The job that can
+    # write to the draft (sbom-upload) checks nothing out and builds nothing. It downloads that one
+    # file and attaches it.
     sbom:
-        name: Publish SBOM
+        name: Generate SBOM
         needs: publish-tauri
         # Run even if a build leg failed (but not on a manual cancel), so this and the completeness
         # gates in the checksums job still execute on a *partial* draft. With the default behavior a
@@ -647,7 +652,9 @@ jobs:
         runs-on: ubuntu-26.04
         timeout-minutes: 30
         permissions:
-            contents: write
+            contents: read
+        outputs:
+            version: ${{ steps.generate.outputs.version }}
 
         steps:
             - name: Checkout repository
@@ -666,12 +673,9 @@ jobs:
             - name: Install cargo-cyclonedx
               run: cargo install cargo-cyclonedx@0.5.9 --locked
 
-            # Generates the SBOM from the committed Cargo.lock (metadata only, no compile), then
-            # uploads it to the draft *before* the checksums job runs, so its hash is covered by
-            # SHA256SUMS.txt and its presence is enforced by that job's asset-completeness check.
-            - name: Generate and upload the SBOM
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            # Generates the SBOM from the committed Cargo.lock (metadata only, no compile).
+            - name: Generate the SBOM
+              id: generate
               run: |
                   VERSION=$(node -p "require('./package.json').version")
                   cargo cyclonedx --manifest-path src-tauri/Cargo.toml --format json
@@ -683,11 +687,46 @@ jobs:
                       exit 1
                   fi
                   cp "$SBOM" "kavynex_${VERSION}_sbom.cdx.json"
-                  gh release upload "v$VERSION" "kavynex_${VERSION}_sbom.cdx.json" --clobber
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+            - name: Hand the SBOM to the upload job
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: sbom
+                  path: kavynex_${{ steps.generate.outputs.version }}_sbom.cdx.json
+                  if-no-files-found: error
+                  retention-days: 1
+
+    sbom-upload:
+        name: Publish SBOM
+        needs: sbom
+        # Same `!cancelled()` as the jobs around it, so a failed generation fails here, loudly, and
+        # the checksums job still runs its completeness gate on what reached the draft.
+        if: ${{ !cancelled() }}
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            contents: write
+
+        steps:
+            - name: Download the SBOM
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+              with:
+                  name: sbom
+
+            # Uploaded to the draft *before* the checksums job runs, so its hash is covered by
+            # SHA256SUMS.txt and its presence is enforced by that job's asset-completeness check.
+            # No checkout, so the repository is named explicitly.
+            - name: Attach the SBOM to the draft
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  VERSION: ${{ needs.sbom.outputs.version }}
+              run: gh release upload "v$VERSION" "kavynex_${VERSION}_sbom.cdx.json" --clobber
 
     checksums:
         name: Publish checksums
-        needs: [publish-tauri, sbom]
+        needs: [publish-tauri, sbom-upload]
         # Run on a partial draft too (see the SBOM job). A failed build leg must not skip the
         # asset-completeness and latest.json checks below. Those are exactly what should turn a
         # partial release red with a list of what is missing, rather than being silently skipped.
