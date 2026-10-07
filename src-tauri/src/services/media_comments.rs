@@ -136,7 +136,6 @@ struct PreparedComment {
     published_at: Option<String>,
 }
 
-/// Dedupes the payload, drops comments whose text is blank, and normalizes every field into the
 /// Records that a comment fetch found nothing, without touching the comments already stored.
 ///
 /// The manual refresh needs this and `replace_media_comments` cannot serve it. That one deletes the
@@ -167,6 +166,7 @@ pub async fn mark_media_comments_absent(pool: &SqlitePool, media_id: i64) -> App
     Ok(())
 }
 
+/// Dedupes the payload, drops comments whose text is blank, and normalizes every field into the
 /// row shape persisted below, preserving insertion order.
 fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
     // Drop blank-text comments before deduping by id. Dedup keeps the first occurrence of a repeated

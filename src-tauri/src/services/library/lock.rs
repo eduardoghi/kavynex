@@ -7,9 +7,9 @@
 //! silently deleted and never reach the new location, with the operation still reporting success.
 //! It is the only path in the app that can lose user data silently and permanently.
 //!
-//! This gate closes that window. Every leaf filesystem function that writes into, or deletes
-//! from, the library takes the shared (read) side for the duration of that single operation;
-//! a migration takes the exclusive (write) side around its copy/remove phase. So a migration
+//! This gate closes that window. Every operation that writes into, deletes from, or walks the
+//! library takes the shared (read) side for its own duration. A migration takes the exclusive
+//! (write) side around its copy/remove phase. So a migration
 //! waits for the in-flight mutations to finish and blocks new ones until it completes, and a
 //! mutation started while a migration runs waits for it. The copy/remove phase can never
 //! overlap a library write.
@@ -18,8 +18,12 @@
 //! every future library operation. Both helpers recover a poisoned lock rather than propagate
 //! it, mirroring `library::migration::migrate_library_directory_sync`'s own poison handling.
 //!
-//! IMPORTANT: only leaf filesystem functions take the read guard, and only for the extent of a
-//! single fs call. A guarded function must never call another guarded function while holding the
+//! How long a holder keeps the read side varies. A delete or a download's placement holds it for
+//! one file. A local import holds it across the hash, copy and verification of its file, and the
+//! content verification, the live chat migration and the startup leftover sweep hold it for their
+//! whole pass, so a migration started during one of those waits until it ends.
+//!
+//! IMPORTANT: a guarded function must never call another guarded function while holding the
 //! guard. A nested read acquisition can deadlock against a waiting writer (`std::sync::RwLock`
 //! makes no reentrancy guarantee). Acquiring the guard once per file inside a loop (release
 //! between iterations) is fine; nesting is not. In debug and test builds this rule is enforced by

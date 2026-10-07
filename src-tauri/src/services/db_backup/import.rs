@@ -344,8 +344,9 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
 
 /// Restores a `.pre-import` snapshot that an interrupted import stranded as the only copy of the
 /// database, when its staged file is gone so the normal swap can never consume it. Removes any empty
-/// `db_path` the pool may have created on an earlier launch (a rename onto an existing file fails on
-/// Windows), renames the snapshot back into place, makes it durable and clears the marker. Trusts
+/// `db_path` the pool may have created on an earlier launch, with its `-wal`/`-shm`, which SQLite
+/// would otherwise try to apply to the restored file, renames the snapshot back into place, makes
+/// it durable and clears the marker. Trusts
 /// the same invariant the swap path does. A marker with a `.pre-import` behind it means `db_path`
 /// holds no real data.
 fn recover_stranded_pre_import(db_path: &Path, pre_import: &Path, marker: &Path) -> AppResult<()> {

@@ -198,9 +198,13 @@ src/lib/tauri-client.ts  ->  @tauri-apps/api  ->  IPC  ->  Rust commands
 system opener, process relaunch, the updater, the app version, `convertFileSrc`), so those
 never reach a component either. See "The Tauri boundary" below.)
 
-- **Components** (`src/components/`) are presentation. They receive data and callbacks as
-  props and render Mantine/React UI. They never call `invoke()` and never import
-  `@tauri-apps` directly, only the two seam modules under `src/lib/` do.
+- **Components** (`src/components/`) render Mantine/React UI. Most are presentation, receiving
+  data and callbacks as props. Three own a feature's state and call the hook that loads it, so they
+  carry IPC behind them and are not reusable without it: `SettingsModal` (`useSettingsController`),
+  `AddMediaModal` (`useExternalToolsAvailability`) and `MediaPlayerView` (`useMediaComments`,
+  `useMediaLiveChat`, `useMediaProgressPersistence`). No component calls `invoke()` or imports
+  `@tauri-apps`. One imports a seam module, `AppErrorBoundary`, for `relaunch`, since a render crash
+  leaves no hook tree to go through.
 - **Hooks** (`src/hooks/`) hold UI state and orchestration. `useHomeController`
   (`src/hooks/home/use-home-controller.tsx`) is the composition root for the main `Home` page.
   It wires together `useErrorModal`, `useAppBootstrap`, `useAppSettings`, `useChannels`,
@@ -260,9 +264,22 @@ never reach a component either. See "The Tauri boundary" below.)
 ### The Tauri boundary
 
 A component never calls `invoke()`; it calls a hook; the hook calls a use-case or service;
-the service or repository calls `invokeCommand`/`invokeVoid` from `tauri-client.ts`. Events
-emitted by the backend (yt-dlp progress, download completion) are subscribed to the same
-way, through `listenTauri`.
+the service or repository calls `invokeCommand`/`invokeVoid` from `tauri-client.ts`. That is the
+path for every backend command except the ones called from outside the React tree.
+`utils/global-error-reporting.ts` sends `log_frontend_error` itself, because `main.tsx` installs it
+before the first render, and `lib/webview-check.ts` drives the two `--webview-check` commands from
+`main.tsx` after it.
+
+Below the command layer, a few callers use a seam directly where a service would only forward
+the call:
+
+- Backend events are subscribed to with `listenValidated` from `tauri-client.ts`, in
+  `use-yt-dlp-events` and the three alert hooks (`use-database-integrity-alert`,
+  `use-pending-media-alert`, `use-imported-database-alert`).
+- File dialogs come from `tauri-platform.ts` in `use-add-media-form`, `use-settings-controller`
+  (which also relaunches after an import) and `utils/pick-image-file.ts`.
+- `use-app-version` reads `getVersion`, `use-app-update` takes the updater's `Update` type, and
+  `utils/media-utils.ts` builds media URLs with `convertFileSrc`.
 
 `src/lib/tauri-client.ts` and `src/lib/tauri-platform.ts` are the **only** two files that
 import `@tauri-apps` at all, and that is enforced by `eslint.config.js`'s

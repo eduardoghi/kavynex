@@ -71,20 +71,12 @@ const YT_DLP_MAX_RUNTIME_SECS: u64 = 12 * 60 * 60;
 // thrashing.
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
-// One process-wide gate, through the same `BoundedSemaphore` its two sibling spawn sites already use
-// (`yt_dlp::metadata`, `thumbnail::download`). This was a bare `tokio::sync::Semaphore` whose
-// `acquire()` result was `.expect()`ed on the (true) grounds that a 'static semaphore is never
-// closed. The one production `expect` left in the crate. The reasoning was sound and the shape was
-// still the odd one out. The app is built with `panic = "unwind"` precisely so a webview app degrades
-// rather than aborts, and every other impossible-permit case here already answers with a refusal
-// (`thumbnail::display::try_reserve_resolve_slot` collapses the same `Closed` to "no slot").
-// Refusing this one run is the equivalent, and it is the only degradation that keeps the bound.
-// Continuing without a permit would drop the concurrency cap the gate exists to hold.
+// One process-wide gate, through the same `BoundedSemaphore` as the other spawn sites
+// (`yt_dlp::metadata`, `thumbnail::download`). A permit that cannot be had refuses the run rather
+// than panicking or running without one, since running without one would drop the cap.
 //
-// The in-flight ceiling is the registry's, not a second number. `register_download_run` runs *before*
-// this acquire and already refuses past `MAX_ACTIVE_RUNS`, so the queue behind these permits cannot
-// grow deeper than that. Passing the same value states the relationship rather than inventing a
-// ceiling that can never be reached from a different one.
+// The queue bound is `MAX_ACTIVE_RUNS` because `register_download_run` runs before this acquire and
+// already refuses past it, so the queue behind these permits can never grow deeper than that.
 static DOWNLOAD_SEMAPHORE: BoundedSemaphore =
     BoundedSemaphore::new(MAX_CONCURRENT_DOWNLOADS, MAX_ACTIVE_RUNS);
 
