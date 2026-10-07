@@ -224,16 +224,65 @@ pub fn cleanup_stale_temp_files_sync<R: Runtime>(app: &AppHandle<R>) -> AppResul
 
 /// True for a filename produced by the atomic-write helpers as scratch and left behind if the
 /// process died mid-operation, covering the copy temp (`.<name>.tmp-<suffix>`, `filesystem.rs`), the
-/// replace backup (`.<name>.backup-<suffix>`, `filesystem.rs`), the migration staging name
-/// (`<stem>.migrated-<suffix>[.<ext>]`, `filesystem.rs`), and the live-chat gzip temp
-/// (`<name>.gztmp`, `live_chat_storage.rs`). None of these infixes/suffixes ever appears in a
-/// committed library file (`media_<hash>`, `thumb_<hash>`, `*.live_chat.json.gz`), so matching
-/// them cannot touch a real media/thumbnail/live-chat file.
+/// replace backup (`.<name>.backup-<suffix>`, `filesystem.rs`), the staging name an older version's
+/// directory migration wrote (`<stem>.migrated-<suffix>[.<ext>]`), and the live-chat gzip temp
+/// (`<name>.gztmp`, `live_chat_storage.rs`).
+///
+/// Each shape is matched whole, suffix included, rather than by its marker anywhere in the name. A
+/// committed file keeps the name its source gave it (a yt-dlp download is
+/// `<extractor>_<id>_<format>.<ext>`), and a marker found mid-name would have this sweep delete a
+/// registered media once it is a week old.
 fn is_atomic_write_leftover(file_name: &str) -> bool {
-    file_name.contains(".tmp-")
-        || file_name.contains(".backup-")
-        || file_name.contains(".migrated-")
+    is_hidden_scratch_name(file_name, ".tmp-")
+        || is_hidden_scratch_name(file_name, ".backup-")
+        || is_migration_staging_name(file_name)
         || file_name.ends_with(".gztmp")
+}
+
+/// True for the `<pid>-<nanos>-<counter>` suffix `utils::naming::unique_temp_suffix` writes. Two
+/// groups are enough to match, because the counter was added later and an older install's leftovers
+/// end in `<pid>-<nanos>`.
+fn is_unique_temp_suffix(value: &str) -> bool {
+    let mut groups = 0;
+
+    for group in value.split('-') {
+        if group.is_empty() || !group.bytes().all(|byte| byte.is_ascii_digit()) {
+            return false;
+        }
+
+        groups += 1;
+    }
+
+    groups >= 2
+}
+
+/// `.<name><marker><suffix>`, the shape of the copy temp and of the replace backup.
+fn is_hidden_scratch_name(file_name: &str, marker: &str) -> bool {
+    let Some(without_dot) = file_name.strip_prefix('.') else {
+        return false;
+    };
+
+    let Some((name, suffix)) = without_dot.rsplit_once(marker) else {
+        return false;
+    };
+
+    !name.is_empty() && is_unique_temp_suffix(suffix)
+}
+
+/// `<stem>.migrated-<suffix>` with an optional `.<ext>`. Nothing writes it any more, but an install
+/// that crashed in the middle of the old directory migration can still hold one.
+fn is_migration_staging_name(file_name: &str) -> bool {
+    let Some((stem, rest)) = file_name.rsplit_once(".migrated-") else {
+        return false;
+    };
+
+    let suffix = match rest.split_once('.') {
+        Some((suffix, ext)) if !ext.is_empty() => suffix,
+        Some(_) => return false,
+        None => rest,
+    };
+
+    !stem.is_empty() && is_unique_temp_suffix(suffix)
 }
 
 /// True for a replace-backup leftover (`.<name>.backup-<suffix>`, `filesystem.rs::
@@ -241,7 +290,7 @@ fn is_atomic_write_leftover(file_name: &str) -> bool {
 /// sole copy of a live file (see [`replace_backup_target_present`]); the `.tmp-`/`.migrated-`/
 /// `.gztmp` kinds are always redundant scratch and safe to reclaim once old.
 fn is_replace_backup_leftover(file_name: &str) -> bool {
-    file_name.contains(".backup-")
+    is_hidden_scratch_name(file_name, ".backup-")
 }
 
 /// Whether the live destination a replace-backup was made from still exists next to it.
@@ -615,6 +664,42 @@ mod tests {
     }
 
     #[test]
+    fn is_atomic_write_leftover_ignores_a_marker_that_is_not_the_scratch_shape() {
+        // A committed file can carry a marker inside the name its source gave it. Only the exact
+        // shape the helpers write is scratch, so none of these is ever swept.
+        for name in [
+            // Not hidden: a scratch copy or backup always starts with a dot.
+            "youtube_abc.tmp-123-456_137.mp4",
+            "clip.backup-123-456.mp4",
+            // Hidden, but the suffix is not the numeric one unique_temp_suffix writes.
+            ".media_abc.mp4.tmp-old",
+            ".media_abc.mp4.tmp-123",
+            ".media_abc.mp4.tmp-123--456",
+            ".media_abc.mp4.backup-1-2.mp4",
+            // Nothing before the marker.
+            ".tmp-123-456",
+            // The old migration name, but with a suffix that is not numeric, or an empty extension.
+            "clip.migrated-notes.mp4",
+            "clip.migrated-123-456.",
+            ".migrated-123-456.mp4",
+        ] {
+            assert!(!is_atomic_write_leftover(name), "{name} should not match");
+        }
+    }
+
+    #[test]
+    fn is_atomic_write_leftover_matches_the_names_the_helpers_write() {
+        let suffix = crate::utils::naming::unique_temp_suffix();
+
+        for name in [
+            format!(".media_abc.mp4.tmp-{suffix}"),
+            format!(".thumb_abc.jpg.backup-{suffix}"),
+        ] {
+            assert!(is_atomic_write_leftover(&name), "{name} should match");
+        }
+    }
+
+    #[test]
     fn replace_backup_target_present_reflects_the_live_file() {
         let dir = unique_test_dir("backup-target");
         fs::create_dir_all(&dir).unwrap();
@@ -710,7 +795,7 @@ mod tests {
         let root = unique_test_dir("leftovers-guard");
         let video_dir = root.join("video");
         fs::create_dir_all(&video_dir).unwrap();
-        let stale = video_dir.join(".tmp-old");
+        let stale = video_dir.join(".media_abc.mp4.tmp-1-2-3");
         make_old_file(
             &stale,
             Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60),
