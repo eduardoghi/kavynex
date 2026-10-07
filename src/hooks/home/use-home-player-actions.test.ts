@@ -8,6 +8,10 @@ vi.mock("../../services/library-service", () => ({
     openFileLocation: vi.fn(),
 }));
 
+vi.mock("../../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
+
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
     return {
         id: 55,
@@ -236,6 +240,63 @@ describe("useHomePlayerActions", () => {
 
         expect(options.homeMediaActions.saveMediaProgress).not.toHaveBeenCalled();
         expect(options.mediaPlayer.closePlayer).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes the player even when saving the position fails", async () => {
+        // A Back button that stays put because the database refused one write is worse than a
+        // lost position. The failure goes to the log.
+        const options = createDefaultOptions({
+            activeMedia: createMediaRow({ id: 88, watched_at: null }),
+        });
+        vi.mocked(options.homeMediaActions.saveMediaProgress).mockRejectedValueOnce(
+            new Error("database is locked")
+        );
+
+        const { result } = renderHook(() => useHomePlayerActions(options));
+
+        await act(async () => {
+            await result.current.closePlayer(64.8);
+        });
+
+        expect(options.mediaPlayer.closePlayer).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps closePlayer stable while the active media's progress changes", () => {
+        // The sidebar's channel rows receive closePlayer, and activeMedia is replaced on every
+        // progress sync, so an identity tied to it re-rendered every row while a video played.
+        let options = createDefaultOptions({
+            activeMedia: createMediaRow({ id: 88, progress_seconds: 10 }),
+        });
+        const { result, rerender } = renderHook(() => useHomePlayerActions(options));
+        const first = result.current.closePlayer;
+
+        options = {
+            ...options,
+            mediaPlayer: {
+                ...options.mediaPlayer,
+                activeMedia: createMediaRow({ id: 88, progress_seconds: 20 }),
+            },
+        };
+        rerender();
+
+        expect(result.current.closePlayer).toBe(first);
+    });
+
+    it("saves the position of the media on screen at the time of the close", async () => {
+        let options = createDefaultOptions({ activeMedia: createMediaRow({ id: 1 }) });
+        const { result, rerender } = renderHook(() => useHomePlayerActions(options));
+
+        options = {
+            ...options,
+            mediaPlayer: { ...options.mediaPlayer, activeMedia: createMediaRow({ id: 2 }) },
+        };
+        rerender();
+
+        await act(async () => {
+            await result.current.closePlayer(30);
+        });
+
+        expect(options.homeMediaActions.saveMediaProgress).toHaveBeenCalledWith(2, 30);
     });
 
     it("does not save progress when closing without an explicit position", async () => {

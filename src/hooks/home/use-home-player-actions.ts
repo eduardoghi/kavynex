@@ -1,6 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { openFileLocation } from "../../services/library-service";
 import { resolveErrorMessage } from "../../utils/error-message";
+import { logError } from "../../utils/app-logger";
 import { isMediaWatched } from "../../utils/media-utils";
 import type { MediaRow } from "../../types/media";
 import type { MediaPlayerController } from "../media/use-media-player";
@@ -161,21 +162,39 @@ export function useHomePlayerActions({
         [saveMediaProgress]
     );
 
+    // Read through a ref so closePlayer keeps one identity for the player's lifetime. activeMedia
+    // changes on every progress sync (about every ten seconds while playing), and closePlayer reaches
+    // every channel row in the sidebar, so depending on it re-rendered the whole list each time.
+    const activeMediaRef = useRef(activeMedia);
+    useEffect(() => {
+        activeMediaRef.current = activeMedia;
+    }, [activeMedia]);
+
     const closePlayer = useCallback(
         async (progressSeconds?: number): Promise<void> => {
+            const current = activeMediaRef.current;
+
             // Only persist when a concrete position was supplied. The Back button reads it
             // from the media element and passes it here. Navigation-only closes (switching
             // channels from the sidebar, deleting the active media) call this with no argument
             // and must not overwrite the saved position with 0. The player view persists
             // progress on its own (periodically and on unmount), so those paths still keep the
             // latest position.
-            if (progressSeconds !== undefined && activeMedia && !isMediaWatched(activeMedia)) {
-                await saveMediaProgress(activeMedia.id, progressSeconds);
+            if (progressSeconds !== undefined && current && !isMediaWatched(current)) {
+                // A save that fails must not keep the player open. The position is lost either
+                // way, and a Back button that does nothing is the worse of the two.
+                try {
+                    await saveMediaProgress(current.id, progressSeconds);
+                } catch (error) {
+                    logError("player", "Failed to save the position when closing the player.", error, {
+                        mediaId: current.id,
+                    });
+                }
             }
 
             closePlayerAction();
         },
-        [saveMediaProgress, activeMedia, closePlayerAction]
+        [saveMediaProgress, closePlayerAction]
     );
 
     return useMemoObject({
