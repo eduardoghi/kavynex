@@ -225,6 +225,31 @@ pub(crate) fn is_unique_violation(error: &sqlx::Error) -> bool {
     }
 }
 
+/// True when SQLite reported the file itself as damaged or as not a database (`SQLITE_CORRUPT` or
+/// `SQLITE_NOTADB`, extended codes included).
+///
+/// Everything else a connection can fail with is about reaching the file rather than about what is
+/// in it: a lock another process holds, a sharing violation while an antivirus scans it, a
+/// permission error, a missing directory. Restoring a backup over the file answers only the first
+/// kind, and over a healthy file it throws away everything since that backup.
+pub(crate) fn sqlite_error_means_damage(error: &sqlx::Error) -> bool {
+    use sqlx::error::DatabaseError;
+
+    let sqlx::Error::Database(database_error) = error else {
+        return false;
+    };
+
+    DatabaseError::code(database_error.as_ref())
+        .and_then(|code| code.parse::<i32>().ok())
+        .is_some_and(sqlite_result_code_means_damage)
+}
+
+/// The primary result code behind an extended one is its low byte. 11 is `SQLITE_CORRUPT` and 26 is
+/// `SQLITE_NOTADB`. Split out so the arithmetic can be pinned without building a driver error.
+pub(crate) fn sqlite_result_code_means_damage(code: i32) -> bool {
+    matches!(code & 0xff, 11 | 26)
+}
+
 /// The raw driver message for a SQLite database error, if it carries one. For a constraint
 /// violation this is text like `UNIQUE constraint failed: videos.youtube_video_id`, which lets a
 /// caller tell *which* constraint fired instead of assuming it, so a unique violation can be mapped
@@ -267,6 +292,17 @@ pub fn database_path<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     Ok(config_dir.join(DATABASE_FILE_NAME))
 }
 
+/// The database file is there but could not be read: a lock, a sharing violation, a permission
+/// error. A distinct code because the frontend's startup recovery offers a backup restore for a
+/// failed open, which is the wrong answer here.
+fn database_unavailable(detail: String) -> AppError {
+    AppError::from_code_with_details(
+        AppErrorCode::DatabaseUnavailable,
+        "the database could not be read, which usually means another program is holding it",
+        detail,
+    )
+}
+
 async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
     // The pre-migration snapshot only matters when a migration will actually run (so a bad
     // migration or corruption can be rolled back). When one is pending, snapshot
@@ -285,12 +321,20 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         // migrating over a bad file. A missing file (first run) is not a database yet, so it is
         // exempt. A subtly damaged file that still passes the fast quick_check is not caught here
         // (that would need a full integrity_check on every launch), which is an accepted limit.
-        if path.exists() && !crate::services::db_backup::database_quick_check_ok(path).await {
-            return Err(AppError::from_code_with_details(
-                AppErrorCode::AppError,
-                "the database failed an integrity check and a schema migration is pending, so restore from a backup before continuing",
-                "quick_check failed on the existing database before a pending migration, refusing to migrate to avoid amplifying corruption",
-            ));
+        if path.exists() {
+            match crate::services::db_backup::database_quick_check(path).await {
+                crate::services::db_backup::QuickCheck::Healthy => {}
+                crate::services::db_backup::QuickCheck::Damaged => {
+                    return Err(AppError::from_code_with_details(
+                        AppErrorCode::AppError,
+                        "the database failed an integrity check and a schema migration is pending, so restore from a backup before continuing",
+                        "quick_check failed on the existing database before a pending migration, refusing to migrate to avoid amplifying corruption",
+                    ));
+                }
+                crate::services::db_backup::QuickCheck::Unreadable(detail) => {
+                    return Err(database_unavailable(detail));
+                }
+            }
         }
 
         // The pre-migration snapshot is the only rollback point once schema DDL runs, so a real
@@ -327,7 +371,13 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         .max_connections(MAX_CONNECTIONS)
         .connect_with(options)
         .await
-        .map_err(|error| db_error("failed to open app database", error))?;
+        .map_err(|error| {
+            if sqlite_error_means_damage(&error) {
+                db_error("failed to open app database", error)
+            } else {
+                database_unavailable(error.to_string())
+            }
+        })?;
 
     // The schema is owned by the backend. create/migrate it as part of pool
     // initialization so it is ready before any query runs.
@@ -838,6 +888,58 @@ mod tests {
 
         let settings = get_app_settings_from_pool(&pool).await.unwrap();
         assert_eq!(settings.import_mode.as_deref(), Some("move"));
+    }
+
+    #[test]
+    fn only_corruption_and_not_a_database_count_as_damage() {
+        // Primary codes and their extended forms, which carry the primary in the low byte.
+        assert!(sqlite_result_code_means_damage(11)); // SQLITE_CORRUPT
+        assert!(sqlite_result_code_means_damage(267)); // SQLITE_CORRUPT_VTAB
+        assert!(sqlite_result_code_means_damage(779)); // SQLITE_CORRUPT_INDEX
+        assert!(sqlite_result_code_means_damage(26)); // SQLITE_NOTADB
+
+        assert!(!sqlite_result_code_means_damage(5)); // SQLITE_BUSY
+        assert!(!sqlite_result_code_means_damage(517)); // SQLITE_BUSY_SNAPSHOT
+        assert!(!sqlite_result_code_means_damage(6)); // SQLITE_LOCKED
+        assert!(!sqlite_result_code_means_damage(10)); // SQLITE_IOERR
+        assert!(!sqlite_result_code_means_damage(14)); // SQLITE_CANTOPEN
+        assert!(!sqlite_result_code_means_damage(0));
+    }
+
+    #[test]
+    fn an_error_that_is_not_from_sqlite_is_never_damage() {
+        assert!(!sqlite_error_means_damage(&sqlx::Error::PoolTimedOut));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_database_held_by_another_program_is_unavailable_rather_than_offered_for_restore() {
+        // What the startup recovery reads. A plain APP_ERROR from this path offered to restore a
+        // backup over a healthy database that an antivirus scan happened to be holding.
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-db-held-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("kavynex.db");
+        std::fs::write(&path, b"").unwrap();
+
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+
+        let error = build_pool_at(&path)
+            .await
+            .expect_err("a file another program holds cannot be opened");
+        assert_eq!(error.code, AppErrorCode::DatabaseUnavailable.as_str());
+
+        drop(held);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

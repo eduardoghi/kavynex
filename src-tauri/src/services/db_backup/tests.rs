@@ -1596,6 +1596,96 @@ async fn database_quick_check_ok_reports_health() {
 }
 
 #[tokio::test]
+async fn database_quick_check_tells_damage_from_a_file_it_could_not_read() {
+    // The live database's gate restores a backup only for the first kind. A file that could not be
+    // reached at all (here a missing one, which SQLite answers with CANTOPEN) says nothing about
+    // its contents, so it must not read as damaged.
+    let dir = temp_dir("quick_check_kinds");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "hello").await;
+    assert_eq!(database_quick_check(&db).await, QuickCheck::Healthy);
+
+    let garbage = dir.join("garbage.db");
+    std::fs::write(&garbage, b"this is not a sqlite database at all, just text").unwrap();
+    assert_eq!(database_quick_check(&garbage).await, QuickCheck::Damaged);
+
+    assert!(matches!(
+        database_quick_check(&dir.join("missing.db")).await,
+        QuickCheck::Unreadable(_)
+    ));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_quick_check_that_answers_with_a_problem_is_damage() {
+    // The other way damage arrives. The file opens and the pragma runs, but its answer is a row
+    // naming a problem rather than "ok". A row that violates a CHECK constraint, written with the
+    // constraint switched off, is a deterministic one, since quick_check verifies CHECK and
+    // NOT NULL.
+    let dir = temp_dir("quick_check_answer");
+    let db = dir.join("kavynex.db");
+
+    {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&db)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+
+        for statement in [
+            "CREATE TABLE guarded (value INTEGER CHECK (value > 0))",
+            "PRAGMA ignore_check_constraints = ON",
+            "INSERT INTO guarded (value) VALUES (-1)",
+        ] {
+            sqlx::query(statement).execute(&pool).await.unwrap();
+        }
+
+        pool.close().await;
+    }
+
+    assert_eq!(database_quick_check(&db).await, QuickCheck::Damaged);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Holds `path` open with no sharing, the way an antivirus scan or a sync client can on Windows.
+#[cfg(windows)]
+fn hold_exclusively(path: &std::path::Path) -> std::fs::File {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .share_mode(0)
+        .open(path)
+        .unwrap()
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_database_another_process_holds_is_unreadable_not_damaged() {
+    let dir = temp_dir("quick_check_locked");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "hello").await;
+
+    let held = hold_exclusively(&db);
+    assert!(matches!(
+        database_quick_check(&db).await,
+        QuickCheck::Unreadable(_)
+    ));
+    drop(held);
+
+    assert_eq!(database_quick_check(&db).await, QuickCheck::Healthy);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn stage_and_apply_import_swaps_database_and_keeps_previous() {
     let dir = temp_dir("import");
     let db = dir.join("kavynex.db");

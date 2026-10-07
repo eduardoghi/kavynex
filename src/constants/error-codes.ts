@@ -8,6 +8,9 @@ export const INVALID_INPUT_ERROR_CODE = "INVALID_INPUT" as const;
 // never mistaken for a backend one and hidden behind the generic fallback.
 export const CLIENT_ERROR_CODE = "CLIENT_ERROR" as const;
 export const DATABASE_SCHEMA_TOO_NEW_ERROR_CODE = "DATABASE_SCHEMA_TOO_NEW" as const;
+// The database file is there but could not be read (a lock, a sharing violation, a permission
+// error). Startup recovery must not offer a backup restore for it, since the file may be fine.
+export const DATABASE_UNAVAILABLE_ERROR_CODE = "DATABASE_UNAVAILABLE" as const;
 
 export const INVALID_URL_ERROR_CODE = "INVALID_URL" as const;
 export const INVALID_LIBRARY_PATH_ERROR_CODE = "INVALID_LIBRARY_PATH" as const;
@@ -159,6 +162,7 @@ export const KNOWN_ERROR_CODES = [
     CLIENT_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
+    DATABASE_UNAVAILABLE_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,

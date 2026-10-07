@@ -96,6 +96,27 @@ describe("useAppBootstrap", () => {
         expect(result.current.open).toBe(false);
     });
 
+    it("does not offer a restore for a database another program is holding", async () => {
+        // The file could not be read at all, which says nothing about its contents. A restore
+        // would replace a database that may be fine with a snapshot up to a day old.
+        vi.mocked(ensureDatabaseReady).mockRejectedValueOnce({
+            code: "DATABASE_UNAVAILABLE",
+            message: "the database could not be read",
+        });
+
+        const onError = vi.fn();
+        const { result } = renderHook(() => useAppBootstrap({ onError }));
+
+        // resolveErrorMessage is mocked to its fallback here. The catalogued sentence for this
+        // code lives in utils/user-friendly-error.ts and is checked there.
+        await waitFor(() => {
+            expect(onError).toHaveBeenCalledWith("Kavynex could not read its database.");
+        });
+
+        expect(getDatabaseBackupStatus).not.toHaveBeenCalled();
+        expect(result.current.open).toBe(false);
+    });
+
     it("logs and swallows the error when the backup status check itself fails", async () => {
         const readyError = new Error("boom");
         const statusError = new Error("status check failed");

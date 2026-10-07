@@ -4,6 +4,7 @@ import {
     CLIENT_ERROR_CODE,
     MEDIA_NOT_FOUND_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
+    DATABASE_UNAVAILABLE_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_RUN_ID_ERROR_CODE,
@@ -90,6 +91,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
 
     [DATABASE_SCHEMA_TOO_NEW_ERROR_CODE]:
         "This database was created by a newer version of Kavynex. Update the app and try again.",
+    [DATABASE_UNAVAILABLE_ERROR_CODE]:
+        "Kavynex could not read its database, which usually means another program is holding the file (an antivirus scan, a backup or sync tool, or a second copy of Kavynex). Close it and restart Kavynex. Nothing was changed.",
     DATABASE_IMPORT_INVALID: "The selected file is not a valid Kavynex database.",
     // The three database-recovery refusals. Each is a state the user asked about rather than a
     // failure, and each surfaces in the restore/import flow. The one place where telling someone

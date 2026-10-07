@@ -421,8 +421,13 @@ corruption, a failed migration, or a database this build refuses.
 The hook branches on which:
 
 - `DATABASE_SCHEMA_TOO_NEW` shows an "update Kavynex" message and **deliberately does not offer
-  a restore**. That database is fine, just newer; restoring would replace a good database with
+  a restore**. That database is fine, just newer. Restoring would replace a good database with
   an older snapshot.
+- `DATABASE_UNAVAILABLE` says another program is probably holding the file and does not offer a
+  restore either. The backend raises it when the file could not be read at all (a lock, a sharing
+  violation, a permission error) as opposed to SQLite reporting it corrupt or not a database
+  (`database::sqlite_error_means_damage`, `db_backup::database_quick_check`), and a file nobody
+  could read says nothing about its contents.
 - Anything else asks `getDatabaseBackupStatus()`. If a backup exists, the recovery modal opens
   showing its date; otherwise the initialization error is surfaced as-is.
 

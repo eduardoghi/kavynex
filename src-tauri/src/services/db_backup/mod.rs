@@ -107,6 +107,14 @@ fn backup_error(message: impl Into<String>, error: impl std::fmt::Display) -> Ap
 }
 
 async fn open(db_path: &Path) -> AppResult<SqlitePool> {
+    connect(db_path)
+        .await
+        .map_err(|error| backup_error("failed to open database for backup", error))
+}
+
+/// [`open`] with the driver's error kept, for a caller that has to tell damage from a file it
+/// merely could not reach.
+async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     let options = SqliteConnectOptions::new()
         .filename(db_path)
         .create_if_missing(false)
@@ -127,7 +135,6 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
         .max_connections(1)
         .connect_with(options)
         .await
-        .map_err(|error| backup_error("failed to open database for backup", error))
 }
 
 /// True when `modified` is within `min_interval_secs` of `now`. Extracted as a pure function so the
@@ -247,13 +254,50 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
 /// to restore and, in the pool builder, to refuse migrating a database that is already damaged
 /// (see `services::database::build_pool_at`).
 pub async fn database_quick_check_ok(db_path: &Path) -> bool {
-    match open(db_path).await {
-        Ok(pool) => {
-            let healthy = is_healthy(&pool).await;
-            pool.close().await;
-            healthy
-        }
-        Err(_) => false,
+    database_quick_check(db_path).await == QuickCheck::Healthy
+}
+
+/// What a `quick_check` of a database file found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuickCheck {
+    Healthy,
+    /// The check ran and reported a problem, or SQLite reported the file as corrupt or as not a
+    /// database.
+    Damaged,
+    /// The check could not run, for a reason that says nothing about the contents (a lock, a sharing
+    /// violation, a permission error). Carries the driver's message.
+    Unreadable(String),
+}
+
+/// Runs `quick_check` on `db_path`, telling a damaged file apart from one that could not be read.
+///
+/// Choosing a backup only needs [`database_quick_check_ok`], since a candidate that cannot be read
+/// is as useless as a damaged one. The live database is the case that needs the difference. Read
+/// as damaged, a file locked by an antivirus scan sends the user to restore a snapshot up to a day
+/// old over a database that was fine.
+pub async fn database_quick_check(db_path: &Path) -> QuickCheck {
+    let pool = match connect(db_path).await {
+        Ok(pool) => pool,
+        Err(error) => return quick_check_failure(&error),
+    };
+
+    let result = sqlx::query_as::<_, (String,)>("PRAGMA quick_check")
+        .fetch_one(&pool)
+        .await;
+    pool.close().await;
+
+    match result {
+        Ok((verdict,)) if verdict == "ok" => QuickCheck::Healthy,
+        Ok(_) => QuickCheck::Damaged,
+        Err(error) => quick_check_failure(&error),
+    }
+}
+
+fn quick_check_failure(error: &sqlx::Error) -> QuickCheck {
+    if crate::services::database::sqlite_error_means_damage(error) {
+        QuickCheck::Damaged
+    } else {
+        QuickCheck::Unreadable(error.to_string())
     }
 }
 

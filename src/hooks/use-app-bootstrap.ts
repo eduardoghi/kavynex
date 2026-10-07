@@ -4,7 +4,10 @@ import {
     getDatabaseBackupStatus,
     restoreDatabaseFromBackup,
 } from "../services/database-service";
-import { DATABASE_SCHEMA_TOO_NEW_ERROR_CODE } from "../constants/error-codes";
+import {
+    DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
+    DATABASE_UNAVAILABLE_ERROR_CODE,
+} from "../constants/error-codes";
 import { parseAppError } from "../utils/app-error";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
@@ -55,6 +58,14 @@ export function useAppBootstrap({
                 // the app" message and skip the recovery flow entirely.
                 if (parseAppError(error).code === DATABASE_SCHEMA_TOO_NEW_ERROR_CODE) {
                     onError(SCHEMA_TOO_NEW_MESSAGE);
+                    return;
+                }
+
+                // The file could not be read at all (another program holding it), which says
+                // nothing about its contents. A restore would replace a database that may be
+                // perfectly healthy with an older snapshot, so say what to do instead.
+                if (parseAppError(error).code === DATABASE_UNAVAILABLE_ERROR_CODE) {
+                    onError(resolveErrorMessage(error, "Kavynex could not read its database."));
                     return;
                 }
 
