@@ -815,6 +815,36 @@ describe("useAddMediaForm", () => {
         expect(ytDlpTerminal.resetYtDlpState).toHaveBeenCalledWith(true);
     });
 
+    it("hands the format loader getters that keep their identity and read the latest values", () => {
+        const { result } = renderHook(() => useAddMediaForm());
+        const firstOptions = latestYtDlpFormatLoaderOptions();
+
+        act(() => {
+            result.current.setMediaUrl("https://youtube.com/watch?v=abc");
+            result.current.setTitle("Typed title");
+        });
+
+        const lastOptions = latestYtDlpFormatLoaderOptions();
+        expect(lastOptions.getUrl).toBe(firstOptions.getUrl);
+        expect(lastOptions.getCurrentTitle).toBe(firstOptions.getCurrentTitle);
+        expect(firstOptions.getUrl()).toBe("https://youtube.com/watch?v=abc");
+        expect(firstOptions.getCurrentTitle()).toBe("Typed title");
+    });
+
+    it("keeps its yt-dlp callbacks when the terminal object is rebuilt with the same functions", () => {
+        const ytDlpTerminal = createYtDlpTerminalMock();
+        const { result, rerender } = renderHook(
+            ({ terminal }: { terminal: ReturnType<typeof createYtDlpTerminalMock> }) =>
+                useAddMediaForm({ ytDlpTerminal: terminal }),
+            { initialProps: { terminal: ytDlpTerminal } }
+        );
+        const firstClearCookiesPath = result.current.clearCookiesPath;
+
+        rerender({ terminal: { ...ytDlpTerminal } });
+
+        expect(result.current.clearCookiesPath).toBe(firstClearCookiesPath);
+    });
+
     it("uses the latest ytDlpTerminal across re-renders for cookie and reset actions", () => {
         const { result, rerender } = renderHook(
             ({ ytDlpTerminal }: { ytDlpTerminal?: ReturnType<typeof createYtDlpTerminalMock> }) =>

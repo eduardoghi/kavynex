@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { openFileDialog } from "../lib/tauri-platform";
 import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
@@ -118,14 +118,44 @@ export function useAddMediaForm({
 
     const thumbnailState = useTempThumbnail();
 
+    // The loader calls these getters when formats are requested, never during render, so they read
+    // the latest values off a ref and keep one identity. Inline closures were new on every render,
+    // and loadYtDlpFormats depends on them, so it was recreated on every keystroke.
+    const loaderInputsRef = useRef({
+        mediaUrl,
+        title,
+        cookiesBrowser,
+        cookiesBrowserProfile,
+        cookiesPath,
+    });
+    useEffect(() => {
+        loaderInputsRef.current = {
+            mediaUrl,
+            title,
+            cookiesBrowser,
+            cookiesBrowserProfile,
+            cookiesPath,
+        };
+    }, [mediaUrl, title, cookiesBrowser, cookiesBrowserProfile, cookiesPath]);
+
+    const getUrl = useCallback((): string => loaderInputsRef.current.mediaUrl, []);
+    const getCurrentTitle = useCallback((): string => loaderInputsRef.current.title, []);
+    const getCookiesBrowser = useCallback((): string => {
+        const inputs = loaderInputsRef.current;
+        return composeCookiesBrowserSelector(inputs.cookiesBrowser, inputs.cookiesBrowserProfile);
+    }, []);
+    const getCookiesPath = useCallback((): string => {
+        const inputs = loaderInputsRef.current;
+        return inputs.cookiesBrowser === "manual" ? inputs.cookiesPath : "";
+    }, []);
+
     const ytDlpState = useYtDlpFormatLoader({
-        getUrl: () => formState.state.mediaUrl,
-        getCurrentTitle: () => formState.state.title,
-        getCookiesBrowser: () =>
-            composeCookiesBrowserSelector(cookiesBrowser, cookiesBrowserProfile),
-        getCookiesPath: () => (cookiesBrowser === "manual" ? cookiesPath : ""),
-        onSuggestedTitle: (value) => formState.setTitleState(value),
-        onMediaTypeResolved: (value) => formState.setMediaTypeState(value),
+        getUrl,
+        getCurrentTitle,
+        getCookiesBrowser,
+        getCookiesPath,
+        onSuggestedTitle: formState.setTitleState,
+        onMediaTypeResolved: formState.setMediaTypeState,
         onTerminalStart: ytDlpTerminal?.startManualSession,
         onTerminalLog: ytDlpTerminal?.appendManualLog,
         onTerminalStop: ytDlpTerminal?.markStopped,
@@ -244,10 +274,12 @@ export function useAddMediaForm({
     // change to an input that affects the fetched result (the URL, cookies, the source mode) makes
     // the previously loaded formats stale. Kept as one callback so the many call sites below cannot
     // drift. A site doing one reset but forgetting the other was the duplication this removes.
+    // Depends on the callback rather than the ytDlpTerminal object, which a caller may build inline.
+    const resetYtDlpTerminal = ytDlpTerminal?.resetYtDlpState;
     const resetYtDlpSelectionState = useCallback((): void => {
         resetYtDlpFormats();
-        ytDlpTerminal?.resetYtDlpState(true);
-    }, [resetYtDlpFormats, ytDlpTerminal]);
+        resetYtDlpTerminal?.(true);
+    }, [resetYtDlpFormats, resetYtDlpTerminal]);
 
     const pickCookiesFileViaDialog = useCallback(async (): Promise<void> => {
         try {

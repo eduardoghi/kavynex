@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ImportMode } from "../types/settings";
 import { createMedia } from "../services/media-service";
 import { cancelMediaDownload } from "../services/media-download-service";
@@ -83,16 +83,27 @@ export function useAddMediaWorkflow({
     const localImportRunIdRef = useRef("");
 
     const ytDlpEvents = useYtDlpEvents();
+    const { startManualSession } = ytDlpEvents;
 
-    const addMediaForm = useAddMediaForm({
-        onError,
-        ytDlpTerminal: {
-            startManualSession: ytDlpEvents.startManualSession,
+    // Memoized because the form hook depends on these callbacks. Built inline, the object was new on
+    // every render (every log line during a download) and recreated the form's yt-dlp callbacks
+    // with it.
+    const ytDlpTerminal = useMemo(
+        () => ({
+            startManualSession,
             appendManualLog: ytDlpEvents.appendManualLog,
             markStopped: ytDlpEvents.markStopped,
             resetYtDlpState: ytDlpEvents.resetYtDlpState,
-        },
-    });
+        }),
+        [
+            startManualSession,
+            ytDlpEvents.appendManualLog,
+            ytDlpEvents.markStopped,
+            ytDlpEvents.resetYtDlpState,
+        ]
+    );
+
+    const addMediaForm = useAddMediaForm({ onError, ytDlpTerminal });
 
     // Destructure the stable fields off the per-render addMediaForm/ytDlpEvents controller
     // objects so the callbacks and effects below can depend on them directly. This keeps the
