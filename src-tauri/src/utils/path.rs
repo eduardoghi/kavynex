@@ -70,12 +70,17 @@ pub(crate) fn is_windows_reserved_name(segment: &str) -> bool {
 /// host as well, so matching `UNC\` alone left those spellings past every caller. No path the app
 /// handles needs a device name, which is why the others (`\\.\PhysicalDrive0` among them) are
 /// refused along with the shares rather than listed one by one.
+///
+/// A drive is local only without `.`/`..` components. Win32 normalizes a `\\.\` path and treats
+/// its drive as an ordinary component, so `\\.\C:\..\UNC\host\share` resolves to the share. Any
+/// component made only of dots and spaces is refused, since trailing dots and spaces are trimmed
+/// in that same normalization (`.. ` is `..`).
 pub fn is_network_path(value: &str) -> bool {
     let normalized = value.trim_start().replace('/', "\\");
 
     for prefix in NAMESPACE_PREFIXES {
         if let Some(rest) = normalized.strip_prefix(prefix) {
-            return !names_a_local_volume(rest);
+            return !names_a_local_volume(rest) || has_dot_component(rest);
         }
     }
 
@@ -84,6 +89,14 @@ pub fn is_network_path(value: &str) -> bool {
 
 /// The Win32 namespace prefixes. None is a prefix of another, so their order does not matter.
 const NAMESPACE_PREFIXES: [&str; 3] = [r"\\?\", r"\\.\", r"\??\"];
+
+/// True when a component is only dots and spaces (`.`, `..`, `.. `), which Win32 normalization
+/// turns into a step up or nothing.
+fn has_dot_component(rest: &str) -> bool {
+    rest.split('\\').any(|component| {
+        !component.is_empty() && component.chars().all(|ch| ch == '.' || ch == ' ')
+    })
+}
 
 /// True when what follows a namespace prefix is a drive (`C:` or `C:\...`) or a volume GUID.
 fn names_a_local_volume(rest: &str) -> bool {
@@ -538,6 +551,16 @@ mod tests {
             r"\\?\GLOBALROOT\Device\Mup\server\share",
             r"\\.\globalroot\device\mup\server\share",
             r"\\.\LanmanRedirector\server\share",
+            // Not a drive: a digit where the letter goes, and a letter with no colon.
+            r"\\?\1:\video.mp4",
+            r"\\?\C",
+            // A drive or volume that `..` steps out of, into the namespace root, after Win32
+            // normalizes the device path.
+            r"\\.\C:\..\UNC\server\share",
+            r"\\.\C:\folder\..\..\UNC\server\share",
+            r"\\.\C:\.. \UNC\server\share",
+            r"\\.\Volume{0b1c2d3e-0000-0000-0000-000000000000}\..\UNC\server\share",
+            r"\\?\C:\.\video.mp4",
             // Not a share, but a device name no media path needs, refused with them.
             r"\\.\PhysicalDrive0",
             // Mixed separators that Windows normalizes to a UNC path; a literal `\\`/`//` prefix
@@ -557,6 +580,7 @@ mod tests {
             r"\\.\C:\Users\me\video.mp4",
             r"\??\C:\Users\me\video.mp4",
             r"\\?\c:",
+            r"\\?\C:\my...clips\video.mp4", // dots inside a name are not a step up
             r"\\?\Volume{0b1c2d3e-0000-0000-0000-000000000000}\video.mp4",
         ] {
             assert!(!is_network_path(value), "should not flag: {value}");
