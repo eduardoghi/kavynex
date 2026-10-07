@@ -2,7 +2,7 @@ import { Badge, Box, Group, Text, VisuallyHidden, rem } from "@mantine/core";
 import { useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { YtDlpLogLevel, YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
-import type { YtDlpProgress } from "../../../services/yt-dlp-progress";
+import { parseYtDlpProgress, type YtDlpProgress } from "../../../services/yt-dlp-progress";
 import { YtDlpProgressBar } from "./yt-dlp-progress-bar";
 
 type YtDlpTerminalProps = {
@@ -47,6 +47,22 @@ const LINE_COLOR: Record<YtDlpLogLevel, string> = {
     warn: "yellow.4",
     error: "red.4",
 };
+
+// The line the live region announces. The latest one, except that a line reporting a percentage is
+// skipped. yt-dlp prints several a second during a download, and reading each one out buries the
+// lines that matter (a stage change, a warning, the error, the finish). The progress bar above
+// carries that number.
+function latestAnnouncedLine(logs: YtDlpLogLine[]): string {
+    for (let index = logs.length - 1; index >= 0; index -= 1) {
+        const text = logs[index]?.text ?? "";
+
+        if ((parseYtDlpProgress(text)?.percent ?? null) === null) {
+            return text;
+        }
+    }
+
+    return "";
+}
 
 export function YtDlpTerminal({
     opened,
@@ -104,11 +120,11 @@ export function YtDlpTerminal({
     }
 
     // Screen readers announce changes to a live region, and the scrollback below is not one. It
-    // holds up to 500 lines and now renders only the rows near the viewport, so making it live
-    // would announce whatever the virtualizer happened to mount rather than the new line. Instead
-    // this hidden region carries only the most recent line, so assistive tech announces just that
-    // delta while the scrollback stays a normal, browsable region.
-    const latestLine = ytDlpLogs[ytDlpLogs.length - 1]?.text ?? "";
+    // holds up to 500 lines and renders only the rows near the viewport, so making it live would
+    // announce whatever the virtualizer happened to mount rather than the new line. Instead this
+    // hidden region carries one line, so assistive tech announces just that delta while the
+    // scrollback stays a normal, browsable region.
+    const latestLine = latestAnnouncedLine(ytDlpLogs);
 
     // Nothing has run and nothing was captured. The scrollback is a 220px minimum black
     // box holding one sentence at that point, which is most of the modal before the user
@@ -151,6 +167,10 @@ export function YtDlpTerminal({
                 >
                     <Box
                         ref={terminalViewportRef}
+                        // Focusable so the scrollback can be scrolled from the keyboard. A region
+                        // rather than a log, because a log is a live region by default.
+                        role="region"
+                        tabIndex={0}
                         aria-label="yt-dlp output"
                         style={{
                             height: TERMINAL_HEIGHT,

@@ -150,7 +150,7 @@ describe("YtDlpTerminal", () => {
             <YtDlpTerminal
                 opened
                 visible
-                ytDlpLogs={logs("Downloading...", "[download] 5%")}
+                ytDlpLogs={logs("Resolving metadata", "Starting download")}
                 isYtDlpRunning={false}
                 ytDlpProgress={null}
             />
@@ -160,11 +160,51 @@ describe("YtDlpTerminal", () => {
         // just that delta rather than re-announcing the whole (up to 500-line) scrollback.
         const liveRegion = screen.getByRole("log", { name: "yt-dlp latest output" });
         expect(liveRegion).toHaveAttribute("aria-live", "polite");
-        expect(liveRegion).toHaveTextContent("[download] 5%");
-        expect(liveRegion).not.toHaveTextContent("Downloading...");
+        expect(liveRegion).toHaveTextContent("Starting download");
+        expect(liveRegion).not.toHaveTextContent("Resolving metadata");
 
         // The earlier line is not announced again, but stays rendered in the browsable scrollback.
-        expect(screen.getByText("Downloading...")).toBeInTheDocument();
+        expect(screen.getByText("Resolving metadata")).toBeInTheDocument();
+    });
+
+    it("does not read out the percentage lines a download prints several times a second", () => {
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs(
+                    "Starting download",
+                    "[download]  12.0% of 50.00MiB at 2.00MiB/s ETA 00:21",
+                    "[download]  12.5% of 50.00MiB at 2.00MiB/s ETA 00:20"
+                )}
+                isYtDlpRunning
+                ytDlpProgress={null}
+            />
+        );
+
+        // The live region holds the last line that is not a percentage, so a screen reader hears
+        // the stage once instead of every tick. The progress bar carries the number.
+        const liveRegion = screen.getByRole("log", { name: "yt-dlp latest output" });
+        expect(liveRegion).toHaveTextContent("Starting download");
+        expect(liveRegion).not.toHaveTextContent("12.5%");
+    });
+
+    it("lets the scrollback be reached and scrolled from the keyboard", () => {
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("Starting download")}
+                isYtDlpRunning={false}
+                ytDlpProgress={null}
+            />
+        );
+
+        const scrollback = screen.getByRole("region", { name: "yt-dlp output" });
+        expect(scrollback).toHaveAttribute("tabindex", "0");
+        // Not a live region. The virtualizer mounts rows as the view scrolls, and a live region
+        // would announce each of those as if it were new output.
+        expect(scrollback).not.toHaveAttribute("aria-live");
     });
 
     it("stays running while the import continues past yt-dlp", () => {
