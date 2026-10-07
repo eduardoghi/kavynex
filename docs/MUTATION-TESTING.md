@@ -243,6 +243,7 @@ function still compiles when replaced; what cannot be built is a test that calls
 | `replace cleanup_artifacts_best_effort(_locked)? with ()`, `replace record_marker_best_effort -> Option<String>`, `replace clear_marker_best_effort with ()` | `media_creation.rs` glue. The decisions that matter were extracted into pure functions and are in scope and covered. |
 | `in sweep_pending_media_artifacts` | Needs a live handle and the shared pool to reach the reference-counting cleanup. The decision that matters, `marker_is_sweepable`, is pure, in scope and covered. The `\|\|` filter in `read_pending_markers` is deliberately *not* excluded. |
 | `configured_library_dir`, `ensure_configured_library_path`, `verify_library_path_then_blocking` | Guard entrypoints needing the pool and the settings row. The pure comparison they delegate to, `paths_refer_to_same_location`, stays in scope and tested. |
+| `library_is_reachable` | Reads the configured library through the `AppHandle` and stats it. What a deletion does with the answer, `ensure_library_reachable_for` inside the deletion transaction, takes a plain bool and stays in scope, covered for media and channels in both directions. |
 | `replace register_cache_asset_scope with ()` | What is left of that function once the half with an observable effect was extracted into `prepare_cache_scope_dirs`. Narrow on purpose: `prepare_cache_scope_dirs`, `managed_cache_scope_dirs` and `grant_path_with_canonical` all stay in scope. |
 
 ### One exclusion that was reasoned wrongly, kept as a note

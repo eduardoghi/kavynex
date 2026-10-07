@@ -137,6 +137,9 @@ exclude_re = [
     'configured_library_dir',
     'ensure_configured_library_path',
     'verify_library_path_then_blocking',
+    # AppHandle glue: resolves the configured library for a deletion. The decision it feeds,
+    # ensure_library_reachable_for, takes a bool and stays in scope.
+    'replace library_is_reachable -> bool',
     # Equivalent: with `&&`, one empty input still returns false, because canonicalize("") errors and
     # an empty string never equals a non-empty one.
     'replace \|\| with && in paths_refer_to_same_location',

@@ -161,7 +161,7 @@ async fn media_plan_deletes_unshared_artifacts() {
     )
     .await;
 
-    let plan = delete_media_row_and_plan_cleanup(&pool, media_id)
+    let plan = delete_media_row_and_plan_cleanup(&pool, media_id, true)
         .await
         .unwrap()
         .expect("media exists");
@@ -203,7 +203,7 @@ async fn media_plan_skips_artifacts_shared_with_other_media() {
     )
     .await;
 
-    let plan = delete_media_row_and_plan_cleanup(&pool, media_id)
+    let plan = delete_media_row_and_plan_cleanup(&pool, media_id, true)
         .await
         .unwrap()
         .expect("media exists");
@@ -232,7 +232,7 @@ async fn media_plan_skips_thumbnail_used_as_channel_avatar() {
     )
     .await;
 
-    let plan = delete_media_row_and_plan_cleanup(&pool, media_id)
+    let plan = delete_media_row_and_plan_cleanup(&pool, media_id, true)
         .await
         .unwrap()
         .expect("media exists");
@@ -245,7 +245,9 @@ async fn media_plan_skips_thumbnail_used_as_channel_avatar() {
 async fn media_plan_returns_none_for_missing_media() {
     let pool = create_test_pool().await;
 
-    let plan = delete_media_row_and_plan_cleanup(&pool, 999).await.unwrap();
+    let plan = delete_media_row_and_plan_cleanup(&pool, 999, true)
+        .await
+        .unwrap();
 
     assert!(plan.is_none());
 }
@@ -271,7 +273,7 @@ async fn channel_plan_cascades_rows_and_collects_unshared_artifacts() {
     )
     .await;
 
-    let plan = delete_channel_row_and_plan_cleanup(&pool, channel_id)
+    let plan = delete_channel_row_and_plan_cleanup(&pool, channel_id, true)
         .await
         .unwrap()
         .expect("channel exists");
@@ -324,7 +326,7 @@ async fn channel_plan_skips_artifacts_shared_with_other_channels() {
     )
     .await;
 
-    let plan = delete_channel_row_and_plan_cleanup(&pool, channel_a)
+    let plan = delete_channel_row_and_plan_cleanup(&pool, channel_a, true)
         .await
         .unwrap()
         .expect("channel exists");
@@ -344,7 +346,7 @@ async fn channel_plan_skips_artifacts_shared_with_other_channels() {
 async fn channel_plan_returns_none_for_missing_channel() {
     let pool = create_test_pool().await;
 
-    let plan = delete_channel_row_and_plan_cleanup(&pool, 999)
+    let plan = delete_channel_row_and_plan_cleanup(&pool, 999, true)
         .await
         .unwrap();
 
@@ -796,4 +798,88 @@ fn remove_planned_artifacts_reports_traversal_paths_as_failed() {
     assert_eq!(report.failed_paths, vec!["../outside.txt"]);
 
     let _ = fs::remove_dir_all(&library);
+}
+
+#[tokio::test]
+async fn a_media_whose_files_cannot_be_reached_is_not_deleted() {
+    let pool = create_test_pool().await;
+    let channel_id = insert_channel(&pool, "@one", None).await;
+    let media_id = insert_media(
+        &pool,
+        channel_id,
+        "video/a.mp4",
+        Some("thumbnails/a.jpg"),
+        None,
+    )
+    .await;
+
+    let error = delete_media_row_and_plan_cleanup(&pool, media_id, false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+    let (remaining,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        remaining, 1,
+        "the row must survive, or its files are orphans nothing names"
+    );
+}
+
+#[tokio::test]
+async fn a_media_whose_files_are_all_shared_is_deleted_without_the_library() {
+    // Nothing would be removed from disk, so there is no file to leave behind.
+    let pool = create_test_pool().await;
+    let channel_a = insert_channel(&pool, "@a", None).await;
+    let channel_b = insert_channel(&pool, "@b", None).await;
+    let media_id = insert_media(&pool, channel_a, "video/shared.mp4", None, None).await;
+    insert_media(&pool, channel_b, "video/shared.mp4", None, None).await;
+
+    let plan = delete_media_row_and_plan_cleanup(&pool, media_id, false)
+        .await
+        .unwrap()
+        .expect("media exists");
+
+    assert!(plan.deletable.is_empty());
+    assert_eq!(
+        plan.skipped_shared_paths,
+        vec!["video/shared.mp4".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn a_channel_whose_files_cannot_be_reached_is_not_deleted() {
+    let pool = create_test_pool().await;
+    let channel_id = insert_channel(&pool, "@one", Some("thumbnails/avatar.jpg")).await;
+    insert_media(&pool, channel_id, "video/a.mp4", None, None).await;
+
+    let error = delete_channel_row_and_plan_cleanup(&pool, channel_id, false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+    let (channels,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM channels")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (videos,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!((channels, videos), (1, 1));
+}
+
+#[tokio::test]
+async fn a_channel_with_nothing_on_disk_is_deleted_without_the_library() {
+    let pool = create_test_pool().await;
+    let channel_id = insert_channel(&pool, "@empty", None).await;
+
+    let plan = delete_channel_row_and_plan_cleanup(&pool, channel_id, false)
+        .await
+        .unwrap()
+        .expect("channel exists");
+
+    assert!(plan.deletable.is_empty());
 }

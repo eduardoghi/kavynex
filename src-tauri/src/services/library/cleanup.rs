@@ -138,12 +138,37 @@ async fn plan_artifact(
     Ok(())
 }
 
+/// Refuses a deletion that would leave its files behind because the library cannot be reached.
+///
+/// Checked inside the deletion transaction, once the plan says which files are about to become
+/// unreferenced, so a refusal rolls the rows back. Committed anyway, as it used to be, a media
+/// deleted with the library drive unplugged lost its row while its files stayed on that drive as
+/// orphans nothing pointed at any more. A plan with nothing to remove (every file still shared)
+/// needs no library and goes through.
+fn ensure_library_reachable_for(
+    plan: &ArtifactCleanupPlan,
+    library_reachable: bool,
+) -> AppResult<()> {
+    if library_reachable || plan.deletable.is_empty() {
+        return Ok(());
+    }
+
+    Err(AppError::from_code(
+        AppErrorCode::InvalidLibraryPath,
+        "the library folder is not available, so the files of what is being deleted could not be removed",
+    ))
+}
+
 /// Deletes the media row and decides, within the same transaction, which of its artifact
 /// files became unreferenced. Returns `None` when the media does not exist (the operation
 /// is idempotent. Nothing is deleted and no error is raised).
+///
+/// `library_reachable` says whether the library folder exists right now. When it does not and the
+/// deletion would free files, nothing is deleted (see [`ensure_library_reachable_for`]).
 pub async fn delete_media_row_and_plan_cleanup(
     pool: &SqlitePool,
     media_id: i64,
+    library_reachable: bool,
 ) -> AppResult<Option<ArtifactCleanupPlan>> {
     let mut tx = pool
         .begin_with(BEGIN_IMMEDIATE)
@@ -182,6 +207,9 @@ pub async fn delete_media_row_and_plan_cleanup(
         plan_artifact(&mut tx, ArtifactKind::LiveChat, path, &mut plan).await?;
     }
 
+    // Before the commit, so a refusal drops the transaction and the row stays.
+    ensure_library_reachable_for(&plan, library_reachable)?;
+
     tx.commit()
         .await
         .map_err(|error| db_error("failed to commit media deletion", error))?;
@@ -192,9 +220,12 @@ pub async fn delete_media_row_and_plan_cleanup(
 /// Deletes the channel row (its videos and comments go with it via `ON DELETE CASCADE`)
 /// and decides, within the same transaction, which artifact files became unreferenced.
 /// Returns `None` when the channel does not exist.
+///
+/// `library_reachable` works as in [`delete_media_row_and_plan_cleanup`].
 pub async fn delete_channel_row_and_plan_cleanup(
     pool: &SqlitePool,
     channel_id: i64,
+    library_reachable: bool,
 ) -> AppResult<Option<ArtifactCleanupPlan>> {
     let mut tx = pool
         .begin_with(BEGIN_IMMEDIATE)
@@ -277,6 +308,8 @@ pub async fn delete_channel_row_and_plan_cleanup(
     for path in live_chats {
         plan_artifact(&mut tx, ArtifactKind::LiveChat, path, &mut plan).await?;
     }
+
+    ensure_library_reachable_for(&plan, library_reachable)?;
 
     tx.commit()
         .await
@@ -576,6 +609,20 @@ async fn execute_plan_locked<R: Runtime>(
     .await
 }
 
+/// Whether the configured library folder exists right now, which a deletion needs to remove files.
+async fn library_is_reachable<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let Ok(library_dir) = configured_library_dir(app).await else {
+        return false;
+    };
+    let library_path = library_dir.to_string_lossy().to_string();
+
+    run_blocking(move || {
+        crate::services::library::paths::resolve_existing_library_dir(&library_path)
+    })
+    .await
+    .is_ok()
+}
+
 /// Deletes a media row and removes its now-unreferenced files from disk. The row deletion
 /// and the "is this file still referenced" decision happen in one transaction; file
 /// removal is best-effort and reported back.
@@ -584,8 +631,9 @@ pub async fn delete_media_with_artifacts<R: Runtime>(
     media_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
+    let library_reachable = library_is_reachable(app).await;
 
-    match delete_media_row_and_plan_cleanup(&pool, media_id).await? {
+    match delete_media_row_and_plan_cleanup(&pool, media_id, library_reachable).await? {
         Some(plan) => execute_plan(app, plan).await,
         None => Ok(ArtifactCleanupReport::default()),
     }
@@ -598,8 +646,9 @@ pub async fn delete_channel_with_artifacts<R: Runtime>(
     channel_id: i64,
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
+    let library_reachable = library_is_reachable(app).await;
 
-    match delete_channel_row_and_plan_cleanup(&pool, channel_id).await? {
+    match delete_channel_row_and_plan_cleanup(&pool, channel_id, library_reachable).await? {
         Some(plan) => execute_plan(app, plan).await,
         None => Ok(ArtifactCleanupReport::default()),
     }
