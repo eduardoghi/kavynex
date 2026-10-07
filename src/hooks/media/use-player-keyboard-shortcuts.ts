@@ -1,26 +1,25 @@
 import { useEffect, type RefObject } from "react";
 
-function isTypingTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) {
-        return false;
+// True when no other element has a claim on the key. Focus is on the player itself, or on nothing,
+// which is the body (where focus lands after a click on content that cannot take it). Anything else
+// focused keeps its own keys: a field types, a button presses, a slider moves, and a focusable
+// scroll area (the comments, the live chat replay) scrolls with Space and the arrows.
+function isPlayerShortcutTarget(
+    target: EventTarget | null,
+    player: HTMLMediaElement
+): boolean {
+    if (target === document || target === document.body) {
+        return true;
     }
 
-    const tagName = target.tagName.toLowerCase();
-
-    return (
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select" ||
-        tagName === "button" ||
-        target.isContentEditable
-    );
+    return target instanceof Node && player.contains(target);
 }
 
 // Wires the player's global keyboard shortcuts (Space play/pause, left/right seek, up/down volume,
 // M mute, F fullscreen) to whatever element `playerElementRef` currently points at. The handler reads the
 // ref fresh on every keypress, so it is subscribed once for the player's lifetime rather than
-// re-subscribing per media. Shortcuts are suppressed while typing in a form field or while a
-// modal is open on top of the player. Extracted from MediaPlayerView to keep the (sizeable)
+// re-subscribing per media. Shortcuts apply only while focus is on the player or on nothing (see
+// isPlayerShortcutTarget), and never while a modal is open on top of the player. Extracted from MediaPlayerView to keep the (sizeable)
 // keyboard wiring out of the component body.
 //
 // The listener is registered in the **capture** phase, and that is load-bearing. The player is a
@@ -139,13 +138,9 @@ export function usePlayerKeyboardShortcuts(
                 return;
             }
 
-            if (isTypingTarget(event.target)) {
-                return;
-            }
-
             const element = playerElementRef.current;
 
-            if (!element) {
+            if (!element || !isPlayerShortcutTarget(event.target, element)) {
                 return;
             }
 

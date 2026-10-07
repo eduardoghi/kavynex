@@ -6,6 +6,7 @@ type PlayerStub = {
     paused: boolean;
     play: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
+    contains: (node: Node) => boolean;
 };
 
 function createPlayer(overrides: Partial<PlayerStub> = {}): PlayerStub {
@@ -13,6 +14,8 @@ function createPlayer(overrides: Partial<PlayerStub> = {}): PlayerStub {
         paused: true,
         play: vi.fn().mockResolvedValue(undefined),
         pause: vi.fn(),
+        // A stub is not in the DOM, so no focused element is inside it.
+        contains: () => false,
         ...overrides,
     };
 }
@@ -109,6 +112,40 @@ describe("usePlayerKeyboardShortcuts", () => {
         pressKey("ArrowUp");
         pressKey("ArrowUp");
         expect(player.volume).toBe(1);
+    });
+
+    it("leaves Space and the arrows to a focused element outside the player", async () => {
+        // A focusable scroll area, like the comments list or the live chat replay. Space and the
+        // arrows scroll it, so the player must neither act on them nor prevent the default.
+        const player = createPlayer({ paused: true });
+        renderWithPlayer(player);
+
+        const scrollArea = document.createElement("div");
+        scrollArea.tabIndex = 0;
+        document.body.appendChild(scrollArea);
+
+        for (const code of ["Space", "ArrowDown", "ArrowRight"]) {
+            const event = new KeyboardEvent("keydown", { code, bubbles: true, cancelable: true });
+            scrollArea.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+        }
+
+        await flush();
+        expect(player.play).not.toHaveBeenCalled();
+
+        scrollArea.remove();
+    });
+
+    it("acts when nothing is focused, which is the body", async () => {
+        const player = createPlayer({ paused: true });
+        renderWithPlayer(player);
+
+        document.body.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "Space", bubbles: true, cancelable: true })
+        );
+        await flush();
+
+        expect(player.play).toHaveBeenCalledTimes(1);
     });
 
     it("ignores Space while typing in a form field", async () => {
