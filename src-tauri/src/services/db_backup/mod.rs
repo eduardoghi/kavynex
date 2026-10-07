@@ -390,16 +390,15 @@ use external::{
 };
 
 mod import;
+pub(crate) use import::pre_import_path;
 pub use import::{
-    apply_pending_database_import, database_import_undo_available, stage_database_import,
-    stage_database_import_undo,
+    apply_pending_database_import, database_import_undo_available, read_machine_paths,
+    stage_database_import, stage_database_import_undo, MachinePaths,
 };
 // The parent module's import tests reach these internals; test-only so a non-test build does
 // not flag the imports unused.
 #[cfg(test)]
-use import::{
-    import_applying_marker_path, import_staged_path, pre_import_path, write_import_applying_marker,
-};
+use import::{import_applying_marker_path, import_staged_path, write_import_applying_marker};
 
 // The fixtures the tests in this family share. Declared here rather than inside `mod tests` so a
 // submodule's own tests can reach them too; see the module docs above for why that mattered.

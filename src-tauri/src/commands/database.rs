@@ -2,8 +2,10 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager, Runtime, State};
 
-use crate::services::database::{database_path, Db};
-use crate::services::db_backup::{self, DatabaseBackupStatus, DatabaseIntegrityReport};
+use crate::services::database::{database_path, get_app_settings_from_pool, Db};
+use crate::services::db_backup::{
+    self, DatabaseBackupStatus, DatabaseIntegrityReport, MachinePaths,
+};
 use crate::utils::path::{extension_from_path, is_network_path};
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -272,6 +274,120 @@ pub async fn export_database<R: Runtime>(
     db_backup::export_database(&path, &destination).await
 }
 
+/// Which value a machine setting takes in an imported database.
+///
+/// This machine's own wins whenever it has one. When it has none (a fresh install restoring its own
+/// export), the imported value is kept only if it passes here the same check `set_app_settings`
+/// applies, and the setting is left unconfigured otherwise. Pure, because it decides what the
+/// library guard trusts from the next launch on.
+pub(crate) fn machine_setting_after_import(
+    local: &str,
+    imported: &str,
+    imported_is_valid_here: bool,
+) -> String {
+    let local = local.trim();
+
+    if !local.is_empty() {
+        return local.to_string();
+    }
+
+    if imported_is_valid_here {
+        imported.trim().to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// This machine's library and mirror folders, as an import should carry them over.
+///
+/// The live settings are read through the pool when it opens. It does not when the import comes
+/// from the startup recovery prompt, and then the file's own values are taken only where they are
+/// valid here, which is the same rule as an unconfigured setting.
+async fn machine_paths_for_import<R: Runtime>(
+    app: &AppHandle<R>,
+    db_path: &Path,
+    imported_file: &Path,
+) -> MachinePaths {
+    let local = match app.try_state::<Db>() {
+        Some(db) => match db.pool().await {
+            Ok(pool) => get_app_settings_from_pool(&pool).await.ok(),
+            Err(_) => None,
+        },
+        None => None,
+    };
+
+    let local = MachinePaths {
+        library_path: local
+            .as_ref()
+            .and_then(|settings| settings.library_path.clone())
+            .unwrap_or_default(),
+        external_backup_dir: local
+            .as_ref()
+            .and_then(|settings| settings.external_backup_dir.clone())
+            .unwrap_or_default(),
+    };
+
+    let imported = db_backup::read_machine_paths(imported_file)
+        .await
+        .unwrap_or_default();
+    let config_dir = db_path.parent().map(Path::to_path_buf);
+
+    let validity = {
+        let imported = imported.clone();
+        run_blocking(move || {
+            let config_dir = config_dir.as_deref();
+            Ok((
+                crate::commands::settings::validate_settings_library_path(
+                    &imported.library_path,
+                    config_dir,
+                )
+                .is_ok(),
+                crate::commands::settings::validate_external_backup_dir(
+                    &imported.external_backup_dir,
+                    config_dir,
+                )
+                .is_ok(),
+            ))
+        })
+        .await
+    };
+    let (library_ok, mirror_ok) = validity.unwrap_or((false, false));
+
+    MachinePaths {
+        library_path: machine_setting_after_import(
+            &local.library_path,
+            &imported.library_path,
+            library_ok,
+        ),
+        external_backup_dir: machine_setting_after_import(
+            &local.external_backup_dir,
+            &imported.external_backup_dir,
+            mirror_ok,
+        ),
+    }
+}
+
+/// Folds the live database's write-ahead log into the main file before an import is staged.
+///
+/// The swap on the next launch sets the current database aside as the undo snapshot by renaming
+/// the `.db` alone and deletes its `-wal`, so commits still in the log at that point were missing
+/// from the snapshot an undo would bring back. Best effort. A pool that is not open has no log
+/// worth folding (it is the recovery prompt's case, where the open failed).
+async fn checkpoint_live_database<R: Runtime>(app: &AppHandle<R>) {
+    if !crate::services::database::is_pool_initialized(app) {
+        return;
+    }
+
+    if let Ok(pool) = crate::services::database::shared_pool(app).await {
+        if let Err(error) = crate::services::database::checkpoint_wal(&pool).await {
+            crate::services::logger::warn(
+                "db_import",
+                format!("could not fold the write-ahead log in before staging an import: {error}"),
+            );
+        }
+    }
+}
+
 /// Validates and stages a user-provided database file for import. The swap is applied on the
 /// next startup, so the caller should relaunch the app after this succeeds.
 #[tauri::command]
@@ -281,7 +397,11 @@ pub async fn import_database<R: Runtime>(app: AppHandle<R>, source_path: String)
     let source = prepare_import_source(&source_path)?;
 
     let path = database_path(&app)?;
-    db_backup::stage_database_import(&path, &source).await
+    let machine_paths = machine_paths_for_import(&app, &path, &source).await;
+
+    checkpoint_live_database(&app).await;
+
+    db_backup::stage_database_import(&path, &source, Some(&machine_paths)).await
 }
 
 /// Reports whether the last applied import can still be undone (a `.pre-import` snapshot of
@@ -304,7 +424,12 @@ pub async fn get_database_import_undo_status<R: Runtime>(app: AppHandle<R>) -> A
 #[tauri::command]
 pub async fn undo_database_import<R: Runtime>(app: AppHandle<R>) -> AppResult<()> {
     let path = database_path(&app)?;
-    db_backup::stage_database_import_undo(&path).await
+    let machine_paths =
+        machine_paths_for_import(&app, &path, &db_backup::pre_import_path(&path)).await;
+
+    checkpoint_live_database(&app).await;
+
+    db_backup::stage_database_import_undo(&path, Some(&machine_paths)).await
 }
 
 /// Runs a full `PRAGMA integrity_check` against the live database, a more thorough (and
@@ -549,6 +674,95 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{name} should be accepted: {error}"));
             assert_eq!(prepared, source);
         }
+    }
+
+    /// A mock app managing a real on-disk database in its own directory, opened and migrated, with
+    /// `library_path` set to `library`.
+    async fn app_with_live_database(
+        label: &str,
+        library: &str,
+    ) -> (tauri::App<tauri::test::MockRuntime>, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-import-{label}-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("kavynex.db");
+
+        let db = Db::new(path.clone());
+        let pool = db.pool().await.unwrap();
+        crate::services::database::set_app_settings_in_pool(
+            &pool,
+            &crate::services::database::StoredAppSettings {
+                library_path: Some(library.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        app.manage(db);
+
+        (app, path)
+    }
+
+    #[tokio::test]
+    async fn an_import_reads_this_machines_folders_from_the_live_database() {
+        let (app, path) = app_with_live_database("machine-paths", "C:/This machine").await;
+
+        // The imported file is the live one here, so its own value is the same. What matters is
+        // that the live setting comes through rather than nothing.
+        let paths = machine_paths_for_import(app.handle(), &path, &path).await;
+
+        assert_eq!(paths.library_path, "C:/This machine");
+        assert_eq!(paths.external_backup_dir, "");
+
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn staging_an_import_folds_the_live_write_ahead_log_in_first() {
+        let (app, path) = app_with_live_database("checkpoint", "C:/Library").await;
+        let wal = path.with_file_name("kavynex.db-wal");
+        assert!(
+            std::fs::metadata(&wal).map(|meta| meta.len()).unwrap_or(0) > 0,
+            "the settings write must still be in the log for this to test anything"
+        );
+
+        checkpoint_live_database(app.handle()).await;
+
+        assert_eq!(std::fs::metadata(&wal).unwrap().len(), 0);
+
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn an_import_keeps_this_machines_setting_whenever_it_has_one() {
+        assert_eq!(
+            machine_setting_after_import("C:\\Here", "D:\\There", true),
+            "C:\\Here"
+        );
+        assert_eq!(
+            machine_setting_after_import("  C:\\Here  ", "D:\\There", false),
+            "C:\\Here"
+        );
+    }
+
+    #[test]
+    fn an_unconfigured_setting_takes_the_imported_value_only_when_it_is_valid_here() {
+        // A fresh install restoring its own export keeps a library folder that exists here.
+        assert_eq!(
+            machine_setting_after_import("", "D:\\Library", true),
+            "D:\\Library"
+        );
+        // A path from another machine that fails the settings check is left unconfigured, which
+        // sends the user to choose the folder rather than trusting a value nothing validated.
+        assert_eq!(
+            machine_setting_after_import("   ", "D:\\Library", false),
+            ""
+        );
+        assert_eq!(machine_setting_after_import("", "", true), "");
     }
 
     #[test]

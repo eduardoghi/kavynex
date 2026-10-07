@@ -508,6 +508,19 @@ live connection pool is a singleton that cannot be reopened mid-session:
    library. The version gate is the point. Below v11 a NULL is simply what that schema looks like,
    and importing an older library has to keep working, which it does because the swap is followed
    by v11's backfill.
+
+   The staged copy keeps this machine's `library_path` and `external_backup_dir`, written into it
+   before the rename (`MachinePaths`). They describe the machine, not the library, and the file
+   brings the folders of whatever machine exported it. Taken as they were, the library pointed at a
+   path that may not exist here, and the values skipped the checks `set_app_settings` makes even
+   though the library guard trusts the stored setting from then on. This machine's value wins
+   whenever it has one. A setting it has never configured takes the imported value only if that
+   passes the same validation here, and is left empty otherwise. Only `key` and `value` are written,
+   so an older schema still imports. The undo goes through the same staging, so it keeps them too.
+
+   Before staging, the command checkpoints the live database's WAL. The swap renames the `.db` into
+   `.pre-import` and drops its `-wal`, so commits still in the log were missing from the snapshot an
+   undo brings back.
 2. On the *next* app startup, before the pool opens, `lib.rs`'s `setup()` calls
    `apply_pending_database_import`. If a staged file exists, the current database is
    moved aside to `.pre-import` (a safety net, not deleted), the staged file's `-wal`/

@@ -8,9 +8,12 @@
 
 use std::path::{Path, PathBuf};
 
-use sqlx::sqlite::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions};
 
 use super::{backup_error, is_healthy, open, sibling};
+use crate::services::database::{
+    get_app_settings_from_pool, EXTERNAL_BACKUP_DIR_KEY, LIBRARY_PATH_KEY, SQLITE_BUSY_TIMEOUT_MS,
+};
 use crate::services::logger;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -19,7 +22,7 @@ pub(super) fn import_staged_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".import-staged")
 }
 
-pub(super) fn pre_import_path(db_path: &Path) -> PathBuf {
+pub(crate) fn pre_import_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".pre-import")
 }
 
@@ -241,11 +244,92 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
+/// The two settings that describe this machine rather than the library: where the library folder
+/// is, and where the daily external mirror goes.
+///
+/// An imported database brings its own, written on whatever machine it came from. Taken as they
+/// are, they replaced this machine's library folder with a path that may not exist here (every
+/// media then reads as missing), and they skipped the checks `set_app_settings` makes on that
+/// path (an existing directory, not a drive root, not inside the config directory), although the
+/// library guard trusts the stored value from then on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MachinePaths {
+    pub library_path: String,
+    pub external_backup_dir: String,
+}
+
+/// Reads the machine paths stored in a database file.
+pub async fn read_machine_paths(db_file: &Path) -> AppResult<MachinePaths> {
+    let pool = open(db_file).await?;
+    let settings = get_app_settings_from_pool(&pool).await;
+    pool.close().await;
+    let settings = settings?;
+
+    Ok(MachinePaths {
+        library_path: settings.library_path.unwrap_or_default(),
+        external_backup_dir: settings.external_backup_dir.unwrap_or_default(),
+    })
+}
+
+/// Writes `paths` into the staged copy, so the database that is swapped in keeps this machine's.
+///
+/// Opened in rollback-journal mode so the write leaves no `-wal` sidecar next to the staged file,
+/// which only the `.db` itself is carried across from. The live pool switches it back to WAL when
+/// it opens the database after the swap.
+///
+/// Only `key` and `value` are written, the two columns the import validation guarantees. The file
+/// can be from an older schema that the migrations bring up to date only after the swap.
+async fn write_machine_paths(db_file: &Path, paths: &MachinePaths) -> AppResult<()> {
+    let options = SqliteConnectOptions::new()
+        .filename(db_file)
+        .create_if_missing(false)
+        .journal_mode(SqliteJournalMode::Delete)
+        .busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS));
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .map_err(|error| backup_error("failed to open the staged import", error))?;
+
+    let result = async {
+        let mut tx = pool.begin().await?;
+        for (key, value) in [
+            (LIBRARY_PATH_KEY, &paths.library_path),
+            (EXTERNAL_BACKUP_DIR_KEY, &paths.external_backup_dir),
+        ] {
+            sqlx::query(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?)                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            )
+            .bind(key)
+            .bind(value)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await
+    }
+    .await;
+    pool.close().await;
+
+    result.map_err(|error| {
+        backup_error(
+            "failed to write this machine's folders into the import",
+            error,
+        )
+    })
+}
+
 /// Validates a user-provided database file and stages it for import. The swap is deferred to
 /// the next startup (`apply_pending_database_import`) because the live connection pool is a
 /// process-wide singleton that cannot be reopened in-process. Rejects a file that is not a
 /// healthy database, is not a kavynex database, or was created by a newer app version.
-pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppResult<()> {
+///
+/// `machine_paths`, when given, replaces the library and mirror folders the file names, so the
+/// imported database keeps pointing at this machine's (see [`MachinePaths`]).
+pub async fn stage_database_import(
+    db_path: &Path,
+    source_path: &Path,
+    machine_paths: Option<&MachinePaths>,
+) -> AppResult<()> {
     if !source_path.exists() {
         return Err(AppError::from_code(
             AppErrorCode::DatabaseImportInvalid,
@@ -332,6 +416,18 @@ pub async fn stage_database_import(db_path: &Path, source_path: &Path) -> AppRes
         })
         .await?;
     }
+
+    // Before the rename, so the staged slot only ever holds a database that already carries them.
+    if let Some(paths) = machine_paths {
+        if let Err(error) = write_machine_paths(&staging_tmp, paths).await {
+            let _ = std::fs::remove_file(&staging_tmp);
+            return Err(error);
+        }
+
+        let written = staging_tmp.clone();
+        run_blocking(move || crate::services::filesystem::fsync_file(&written)).await?;
+    }
+
     let _ = std::fs::remove_file(&staged);
     std::fs::rename(&staging_tmp, &staged)
         .map_err(|error| backup_error("failed to stage database import", error))?;
@@ -505,7 +601,10 @@ pub fn database_import_undo_available(db_path: &Path) -> bool {
 /// while the app is running, whether the undo is triggered from Settings (pool open) or from
 /// the startup recovery flow (pool closed). The caller relaunches the app afterward. Errors
 /// when there is no snapshot to revert to.
-pub async fn stage_database_import_undo(db_path: &Path) -> AppResult<()> {
+pub async fn stage_database_import_undo(
+    db_path: &Path,
+    machine_paths: Option<&MachinePaths>,
+) -> AppResult<()> {
     let pre_import = pre_import_path(db_path);
 
     if !pre_import.exists() {
@@ -515,5 +614,5 @@ pub async fn stage_database_import_undo(db_path: &Path) -> AppResult<()> {
         ));
     }
 
-    stage_database_import(db_path, &pre_import).await
+    stage_database_import(db_path, &pre_import, machine_paths).await
 }

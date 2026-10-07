@@ -627,7 +627,7 @@ async fn an_interrupted_import_already_resumes_itself() {
 
     let source = dir.join("incoming.db");
     seed_kavynex_db(&source, "imported").await;
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
 
     // Crash after the database was moved aside, before the staged file was renamed in.
     std::fs::rename(&db, pre_import_path(&db)).unwrap();
@@ -663,7 +663,7 @@ async fn an_import_retried_after_a_failed_swap_keeps_the_real_pre_import_snapsho
 
     let source = dir.join("incoming.db");
     seed_kavynex_db(&source, "imported").await;
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
 
     // The failed swap. Database moved aside, marker still in place because the rollback did
     // not get it back.
@@ -697,7 +697,7 @@ async fn a_stranded_pre_import_is_restored_when_the_staged_file_is_gone() {
 
     let source = dir.join("incoming.db");
     seed_kavynex_db(&source, "imported").await;
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
 
     // Failed swap. Marker written, database moved aside into `.pre-import`.
     write_import_applying_marker(&import_applying_marker_path(&db)).unwrap();
@@ -735,7 +735,7 @@ async fn a_marker_with_no_snapshot_behind_it_never_skips_the_move_aside() {
 
     let source = dir.join("incoming.db");
     seed_kavynex_db(&source, "imported").await;
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
 
     // A marker claiming a move-aside that never happened. The database is untouched and there
     // is no snapshot behind the claim.
@@ -768,7 +768,7 @@ async fn a_move_aside_whose_marker_cannot_be_written_is_rolled_back() {
 
     let source = dir.join("incoming.db");
     seed_kavynex_db(&source, "imported").await;
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
 
     // A directory sitting on the marker path is something `File::create` cannot write over,
     // which fails the marker write without touching anything else.
@@ -799,13 +799,17 @@ async fn a_normal_second_import_still_replaces_the_previous_undo_snapshot() {
 
     let first_source = dir.join("second.db");
     seed_kavynex_db(&first_source, "second").await;
-    stage_database_import(&db, &first_source).await.unwrap();
+    stage_database_import(&db, &first_source, None)
+        .await
+        .unwrap();
     assert!(apply_pending_database_import(&db).unwrap());
     assert_eq!(read_video_title(&pre_import_path(&db)).await, "first");
 
     let second_source = dir.join("third.db");
     seed_kavynex_db(&second_source, "third").await;
-    stage_database_import(&db, &second_source).await.unwrap();
+    stage_database_import(&db, &second_source, None)
+        .await
+        .unwrap();
     assert!(apply_pending_database_import(&db).unwrap());
 
     assert_eq!(read_video_title(&db).await, "third");
@@ -854,7 +858,7 @@ async fn import_rejects_a_namesake_database_whose_columns_are_wrong() {
     .unwrap();
     pool.close().await;
 
-    let error = stage_database_import(&db, &source).await.unwrap_err();
+    let error = stage_database_import(&db, &source, None).await.unwrap_err();
     assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
 
     // Nothing was staged, so the next startup has no import to apply.
@@ -882,7 +886,7 @@ async fn import_rejects_a_database_missing_the_media_unique_key() {
     )
     .await;
 
-    let error = stage_database_import(&db, &source).await.unwrap_err();
+    let error = stage_database_import(&db, &source, None).await.unwrap_err();
     assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
     assert!(!import_staged_path(&db).exists());
 
@@ -907,7 +911,7 @@ async fn import_rejects_a_database_missing_the_channel_cascade() {
     )
     .await;
 
-    let error = stage_database_import(&db, &source).await.unwrap_err();
+    let error = stage_database_import(&db, &source, None).await.unwrap_err();
     assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
     assert!(!import_staged_path(&db).exists());
 
@@ -933,7 +937,7 @@ async fn import_rejects_a_database_missing_the_comment_cascade() {
     )
     .await;
 
-    let error = stage_database_import(&db, &source).await.unwrap_err();
+    let error = stage_database_import(&db, &source, None).await.unwrap_err();
     assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
     assert!(!import_staged_path(&db).exists());
 
@@ -1121,7 +1125,7 @@ async fn import_accepts_a_normalized_current_schema_database() {
     .unwrap();
     pool.close().await;
 
-    stage_database_import(&db, &source)
+    stage_database_import(&db, &source, None)
         .await
         .expect("a normalized current-schema database must import");
     assert!(import_staged_path(&db).exists());
@@ -1173,7 +1177,7 @@ async fn import_rejects_a_live_chat_flag_with_no_stored_path() {
     .unwrap();
     pool.close().await;
 
-    let error = stage_database_import(&db, &source)
+    let error = stage_database_import(&db, &source, None)
         .await
         .expect_err("a live-chat flag with no stored path must be refused");
     assert_eq!(
@@ -1233,7 +1237,7 @@ async fn import_accepts_a_live_chat_flag_with_a_stored_path() {
     .unwrap();
     pool.close().await;
 
-    stage_database_import(&db, &source)
+    stage_database_import(&db, &source, None)
         .await
         .expect("a live-chat flag with a stored path must import");
     assert!(import_staged_path(&db).exists());
@@ -1284,7 +1288,7 @@ async fn import_accepts_a_v13_database_that_lacks_the_live_chat_path_column() {
     .unwrap();
     pool.close().await;
 
-    stage_database_import(&db, &source)
+    stage_database_import(&db, &source, None)
         .await
         .expect("a database without the live_chat_file_path column must import");
     assert!(import_staged_path(&db).exists());
@@ -1792,7 +1796,7 @@ async fn stage_and_apply_import_swaps_database_and_keeps_previous() {
     let source = dir.join("incoming.db");
     seed_kavynex_db(&source, "imported").await;
 
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
     assert!(import_staged_path(&db).exists());
 
     assert!(apply_pending_database_import(&db).unwrap());
@@ -1800,6 +1804,65 @@ async fn stage_and_apply_import_swaps_database_and_keeps_previous() {
     assert_eq!(read_video_title(&db).await, "imported");
     assert!(pre_import_path(&db).exists());
     assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_staged_import_carries_this_machines_folders() {
+    // The imported file names the folders of the machine it came from. Applied as they are, the
+    // library pointed at a path that may not exist here and every media read as missing.
+    let dir = temp_dir("import-machine-paths");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    let source = dir.join("incoming.db");
+    seed_kavynex_db(&source, "imported").await;
+    {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(SqliteConnectOptions::new().filename(&source))
+            .await
+            .unwrap();
+        for (key, value) in [
+            ("library_path", "D:\\Other machine\\Library"),
+            ("external_backup_dir", "E:\\Other machine\\Mirror"),
+        ] {
+            sqlx::query("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)")
+                .bind(key)
+                .bind(value)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        pool.close().await;
+    }
+
+    let local = MachinePaths {
+        library_path: "C:\\This machine\\Library".to_string(),
+        external_backup_dir: String::new(),
+    };
+
+    stage_database_import(&db, &source, Some(&local))
+        .await
+        .unwrap();
+
+    let staged = import_staged_path(&db);
+    assert_eq!(read_machine_paths(&staged).await.unwrap(), local);
+    // Only the .db is carried across to the swap, so the write must not have left its changes in
+    // a sidecar.
+    assert!(!sibling(&staged, "-wal").exists());
+
+    // And the database itself is still the imported one, swapped in as before.
+    assert!(apply_pending_database_import(&db).unwrap());
+    assert_eq!(read_video_title(&db).await, "imported");
+    assert_eq!(read_machine_paths(&db).await.unwrap(), local);
+
+    // The source file the user picked is never written to.
+    assert_eq!(
+        read_machine_paths(&source).await.unwrap().library_path,
+        "D:\\Other machine\\Library"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1826,7 +1889,9 @@ async fn stage_import_rejects_non_kavynex_database() {
     let foreign = dir.join("foreign.db");
     seed_db(&foreign).await;
 
-    let error = stage_database_import(&db, &foreign).await.unwrap_err();
+    let error = stage_database_import(&db, &foreign, None)
+        .await
+        .unwrap_err();
     assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
     assert!(!import_staged_path(&db).exists());
 
@@ -1889,7 +1954,7 @@ async fn import_rejects_a_current_database_whose_titles_were_never_normalized() 
     let source = dir.join("unnormalized.db");
     seed_db_with_null_normalized_title(&source, crate::services::db_schema::SCHEMA_VERSION).await;
 
-    let error = stage_database_import(&db, &source).await.unwrap_err();
+    let error = stage_database_import(&db, &source, None).await.unwrap_err();
 
     assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
     assert!(!import_staged_path(&db).exists());
@@ -1910,7 +1975,7 @@ async fn import_accepts_an_older_database_whose_titles_are_not_normalized_yet() 
     let source = dir.join("older.db");
     seed_db_with_null_normalized_title(&source, 10).await;
 
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
 
     assert!(import_staged_path(&db).exists());
 
@@ -1940,7 +2005,9 @@ async fn stage_import_rejects_database_missing_a_core_table() {
         .unwrap();
     pool.close().await;
 
-    let error = stage_database_import(&db, &partial).await.unwrap_err();
+    let error = stage_database_import(&db, &partial, None)
+        .await
+        .unwrap_err();
     assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
     assert!(!import_staged_path(&db).exists());
 
@@ -1957,14 +2024,14 @@ async fn undo_reverts_the_last_import_on_the_next_startup() {
     seed_kavynex_db(&source, "imported").await;
 
     // Apply an import, leaving the previous database as the `.pre-import` snapshot.
-    stage_database_import(&db, &source).await.unwrap();
+    stage_database_import(&db, &source, None).await.unwrap();
     assert!(apply_pending_database_import(&db).unwrap());
     assert_eq!(read_video_title(&db).await, "imported");
     assert!(database_import_undo_available(&db));
 
     // Undo stages the pre-import snapshot; the swap happens on the next startup, like a
     // normal import, so the live database is never swapped underneath.
-    stage_database_import_undo(&db).await.unwrap();
+    stage_database_import_undo(&db, None).await.unwrap();
     assert!(import_staged_path(&db).exists());
     assert!(apply_pending_database_import(&db).unwrap());
 
@@ -1982,7 +2049,10 @@ async fn undo_fails_when_no_import_was_applied() {
 
     assert!(!database_import_undo_available(&db));
     assert_eq!(
-        stage_database_import_undo(&db).await.unwrap_err().code,
+        stage_database_import_undo(&db, None)
+            .await
+            .unwrap_err()
+            .code,
         AppErrorCode::NoDatabaseImportToUndo.as_str()
     );
 

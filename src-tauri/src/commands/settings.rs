@@ -33,7 +33,10 @@ pub async fn get_app_settings(db: State<'_, Db>) -> AppResult<StoredAppSettings>
 /// compromised frontend from persisting an arbitrary base path that a later delete/move command
 /// would then operate inside. An empty value is the valid "not configured yet" state and the
 /// legitimate flow always persists a path already created by `ensure_directory_exists`.
-fn validate_settings_library_path(library_path: &str, config_dir: Option<&Path>) -> AppResult<()> {
+pub(crate) fn validate_settings_library_path(
+    library_path: &str,
+    config_dir: Option<&Path>,
+) -> AppResult<()> {
     if library_path.trim().is_empty() {
         return Ok(());
     }
@@ -101,7 +104,7 @@ pub async fn set_app_settings(
 /// never read back through the asset scope or a delete/move command, but the whole point of the
 /// mirror is to survive a failure of the config volume (where the database and every on-volume
 /// `.bak` generation live), so it must not sit inside that directory either.
-fn validate_external_backup_dir(
+pub(crate) fn validate_external_backup_dir(
     external_backup_dir: &str,
     config_dir: Option<&Path>,
 ) -> AppResult<()> {

@@ -15,10 +15,10 @@ pub(crate) const SQLITE_BUSY_TIMEOUT_MS: u64 = 30_000;
 const MAX_CONNECTIONS: u32 = 4;
 
 const IMPORT_MODE_KEY: &str = "import_mode";
-const LIBRARY_PATH_KEY: &str = "library_path";
+pub(crate) const LIBRARY_PATH_KEY: &str = "library_path";
 const LOAD_REMOTE_IMAGES_KEY: &str = "load_remote_images";
 const CHECK_UPDATES_ON_STARTUP_KEY: &str = "check_updates_on_startup";
-const EXTERNAL_BACKUP_DIR_KEY: &str = "external_backup_dir";
+pub(crate) const EXTERNAL_BACKUP_DIR_KEY: &str = "external_backup_dir";
 
 /// The application database, held in Tauri-managed state (`app.manage`) rather than a
 /// process-wide static. The pool is created once, lazily, on first access and reused for the
