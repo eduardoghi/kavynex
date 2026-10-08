@@ -23,8 +23,8 @@ and a reconciliation of the database against the files on disk.
 
 ## Where to report
 
-**Issues are the only public channel.** Discussions are not enabled, and the wiki is unused, so
-please do not treat either as a way to reach the maintainer.
+**Issues are the only public channel.** Discussions and the wiki are both disabled on the
+repository.
 
 | What | Where |
 |---|---|
