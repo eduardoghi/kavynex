@@ -91,7 +91,8 @@ Linux uninstalling is deleting the bundle or the package, which never reaches th
 folder is not touched by any of them, so the media files survive, but the comments saved with them
 do not, and without the database Kavynex cannot tell which video each file belongs to. If you had
 the external backup above turned on, its `kavynex-backup.db` can be brought back through Settings >
-Database > Import.
+Database > Import. Import does not read from a `\\server\share` path, so a mirror kept on a network
+share has to be copied to a local folder first (a share mounted as a drive letter works as it is).
 
 To remove everything, delete the library folder plus the three app directories (config, cache and
 logs). The Diagnostics dialog shows the resolved library folder; `DIRECTORIES.md` lists the

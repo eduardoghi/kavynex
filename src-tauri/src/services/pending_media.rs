@@ -214,8 +214,8 @@ pub(crate) fn marker_is_sweepable(
 /// one takes a media creation that crashed *and* five consecutive launches that could not reconcile
 /// it. Against that, a sweep able to delete these files would be a sweep able to delete the only
 /// record of artifacts sitting in the user's library, which is exactly the decision
-/// [`marker_is_sweepable`] refuses to make on anything uncertain. Diagnostics is what reports and
-/// removes what an abandoned marker names.
+/// [`marker_is_sweepable`] refuses to make on anything uncertain. Diagnostics reports what an
+/// abandoned marker names as orphans, and removing them is left to the user.
 const MAX_MARKER_SWEEP_ATTEMPTS: u32 = 5;
 
 /// Payload of the [`EVENT_PENDING_MEDIA_ABANDONED`](crate::constants::EVENT_PENDING_MEDIA_ABANDONED)
@@ -468,7 +468,8 @@ fn read_pending_markers<R: Runtime>(
                     // cleanup that has failed every time, and (since the sweep reports abandoning
                     // it) would put an error line and a user-facing notice on every launch for the
                     // rest of the library's life. The marker stays on disk regardless. It names
-                    // artifacts in the user's library, which Diagnostics is what reports and removes.
+                    // artifacts in the user's library, which Diagnostics reports and the user
+                    // removes.
                     continue;
                 }
                 Some(artifacts) => markers.push((name, artifacts)),
@@ -980,7 +981,8 @@ mod tests {
         );
 
         // The file itself stays. It names artifacts in the user's library, and abandoning the record
-        // is not the same as being allowed to remove them. Diagnostics is what reports and removes.
+        // is not the same as being allowed to remove them. Diagnostics reports them and the user
+        // removes them.
         assert!(
             marker.exists(),
             "abandoning the record must not delete the marker"

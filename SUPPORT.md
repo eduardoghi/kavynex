@@ -13,7 +13,7 @@ hit, with the resolution rather than a pointer to one:
   (PATH only, never the working directory), and the `tools/` fallback for a portable install.
 - **The window does not open, or opens blank, on Windows**: almost always the WebView2 runtime.
 - **"This library was released earlier in this session"**: restart and it works; nothing is lost.
-  The README explains why the restart is genuinely required rather than a workaround.
+  `docs/TROUBLESHOOTING.md` explains why the restart is genuinely required rather than a workaround.
 - **"Kavynex reports a corrupted database"**: handled automatically on the next launch, from the
   most recent healthy snapshot. Nothing is silently discarded.
 

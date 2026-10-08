@@ -143,20 +143,33 @@ belonged to those rows (media, thumbnails, avatar, live chat), not for the rows.
 
 ### Indexes
 
-`db_schema/ddl.rs`'s `INDEX_DDLS` declares a set of indexes to support the app's real query
-patterns:
-`videos(channel_id)`, lookups by `youtube_handle`,
-`avatar_path`, `thumbnail_path`, `youtube_video_id`, `watched_at`, `published_at`,
-`has_comments`, `is_live`, `has_live_chat`, a unique index backing
-`(channel_id, file_path)`, a partial unique index backing
-`(channel_id, youtube_video_id)`, single-column indexes on `file_path` and
-`live_chat_file_path` (which keep the per-artifact reference-count lookups run on every
-media/channel delete off a full table scan. The composite `(channel_id, file_path)`
-index cannot serve a bare `file_path =` predicate), `(channel_id, thumbnail_path)` (which
-serves the other half of a channel delete, collecting the thumbnails its videos point at,
-before deciding which are still referenced elsewhere), and comment lookups by `video_id`,
-`parent_comment_id`, and `comment_id`. All index DDL uses
-`CREATE INDEX IF NOT EXISTS`, so it is safe to re-run on every migration.
+`db_schema/ddl.rs`'s `INDEX_DDLS` declares every index, each with a comment on what uses it. The
+ones the app's queries rely on are:
+
+- `videos(channel_id)` and `(channel_id, title_normalized)`, plus the five sort indexes in the next
+  section.
+- Single-column indexes on `file_path` and `live_chat_file_path`, which keep the per-artifact
+  reference-count lookups run on every media/channel delete off a full table scan. The
+  `(channel_id, file_path)` auto-index the table's UNIQUE constraint creates cannot serve a bare
+  `file_path =` predicate.
+- `(channel_id, thumbnail_path)`, which serves the other half of a channel delete, collecting the
+  thumbnails its videos point at before deciding which are still referenced elsewhere, and
+  `videos(thumbnail_path)` and `channels(avatar_path)` for the same reference counts.
+- `video_comments(video_id)` for loading a media's comments, and `video_comments(comment_id)`,
+  which only the v10 comment dedup walks.
+- The partial unique index on `(channel_id, youtube_video_id)`. It never shows up in a query plan
+  and is not meant to, since it exists to enforce one row per YouTube video per channel.
+
+Nine more are declared and marked MEASURED DEAD in `ddl.rs`, because no statement the backend
+issues chooses them (measured with `EXPLAIN QUERY PLAN` on 2026-08-16).
+`idx_videos_channel_created_id`, `idx_channels_youtube_handle` (a duplicate of the auto-index the
+UNIQUE `youtube_handle` column already has), the single-column `youtube_video_id`, `watched_at`,
+`published_at`, `has_comments`, `is_live` and `has_live_chat` indexes on `videos`, and
+`video_comments(parent_comment_id)`. They stay because dropping them is a schema migration plus
+surgery on the migration-history tests, for a write cost that is negligible at the rate this app
+inserts rows. `ddl.rs` records what should send someone back to that measurement.
+
+All index DDL uses `CREATE INDEX IF NOT EXISTS`, so it is safe to re-run on every migration.
 
 ### The `list_media_page` sort indexes
 
@@ -312,7 +325,7 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   `SCHEMA_VERSION` this build knows about, `ensure_schema` returns an error instead of
   touching anything. An older build can never silently downgrade or corrupt a database
   produced by a newer one. The same check exists on the import path
-  (`validate_import_source` in `db_backup/mod.rs`) so importing a database from a newer
+  (`validate_import_source` in `db_backup/import.rs`) so importing a database from a newer
   Kavynex version is rejected up front.
 
 ## Connection settings
@@ -364,14 +377,12 @@ than one machine in the same scenario.
 A best-effort snapshot taken via `VACUUM INTO` into a sibling `.bak` file, throttled to at
 most once every 24 hours (checked by the `.bak` file's mtime). It runs:
 
-- **Synchronously, before the pool opens**, when a schema migration is about to run
-  (`is_schema_migration_pending` (true when the database file is missing, or its
-  `user_version` is below the build's `SCHEMA_VERSION`)), so a bad migration or
-  pre-existing corruption can be rolled back.
-- **In the background**, off the startup critical path, on a normal launch where no
-  migration is pending.
+- **In the background**, off the startup critical path, on a launch where no migration is
+  pending. A launch that migrates takes the unthrottled `snapshot_before_migration` below
+  instead, and falls back to this one only when the database's schema version cannot be read,
+  since that version is what names the pre-migration file.
 - **Periodically while the app runs** (`lib.rs::spawn_periodic_backup`), every
-  `PERIODIC_BACKUP_CHECK_INTERVAL_SECS` (6 hours). Both invocations above happen at startup, so
+  `PERIODIC_BACKUP_CHECK_INTERVAL_SECS` (6 hours). The one above happens at startup, so
   without this a session left running for days would never take another snapshot. It creates no
   extra backups (`backup_database` throttles to once per 24h regardless of how often it is
   asked), the loop only needs to wake often enough that a long session eventually crosses that

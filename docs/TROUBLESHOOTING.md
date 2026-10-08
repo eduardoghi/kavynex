@@ -191,12 +191,11 @@ Nothing needs repairing afterwards. If you want to confirm, run Diagnostics once
 and the same checks report the real numbers.
 
 One thing to *not* do while the drive is away. Do not point Settings > Library folder at a new
-location to "fix" it. Kavynex cannot tell a library that is temporarily unreachable from one that
-was never there, so instead of refusing it treats the move as a first-time setup. It reports
-success, copies nothing, and adopts the new empty folder as your library. Your media is not deleted
-(the disconnected drive is never touched), but the app is now pointed somewhere else and every item
-reads as missing until you point Settings > Library folder back at the original path. Reconnect the
-drive first and the whole situation does not arise.
+location to "fix" it. Kavynex sees that the current folder cannot be reached while the library still
+lists media in it, and asks before switching instead of moving anything. Confirming points the app at
+the new, empty folder. Your media is not deleted (the disconnected drive is never touched), but every
+item reads as missing until you point Settings > Library folder back at the original path. Reconnect
+the drive first and the question does not come up.
 
 (The log records this too, as a `library_guard` line saying the library path was accepted by an
 exact-string match because it could not be canonicalized. That line is the app noting it could not
@@ -272,7 +271,8 @@ never touched either way, whichever answer you give.
 If the data has already been deleted, the automatic backups went with it, because they sit next to
 the database. What survives is an external backup, if one was configured under Settings > Database
 before the uninstall. Reinstall Kavynex, then Settings > Database > **Import database** and pick the
-`kavynex-backup.db` from that folder. Without one, the media files in the library are intact but
+`kavynex-backup.db` from that folder. If that folder is a `\\server\share` path, copy the file to a
+local folder first, since import does not read from one. Without one, the media files in the library are intact but
 the comments saved with them are gone, and for a video that is no longer on YouTube they cannot be
 fetched again. That is the case the external backup setting exists for, and why `PRIVACY.md` says to
 turn it on early.

@@ -282,7 +282,7 @@ authoritative version; what follows is what to expect a red run to be about:
 - **Frontend**: lint, the Vitest suite *with coverage* (`pnpm test:coverage`; the floors in
   `vitest.config.ts` are only enforced when coverage is collected, so this is where a coverage
   regression fails), build, the production JS advisory and license gates (the dev-tree advisory
-  scan runs too but is non-blocking), the three repository-consistency scripts above, and a grep
+  scan runs too but is non-blocking), the five repository-consistency scripts above, and a grep
   refusing a unicode dash where a plain `-` belongs, if a test needs one of those characters as
   data, spell it as a `\uXXXX` escape rather than pasting it.
 - **Frontend tests (Windows, macOS)**: the same suite on the other two platforms. It is jsdom

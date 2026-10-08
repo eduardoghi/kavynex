@@ -53,7 +53,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
     common prefix was already naming a directory, so they are now `library/`
     (`cleanup.rs`, `guard.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
-    `paths.rs`, `recovery.rs`, `summary.rs`, `verification.rs`), `thumbnail/` (`display.rs`, `download.rs`,
+    `paths.rs`, `recovery.rs`, `summary.rs`, `verification.rs`), `thumbnail/` (`display.rs`, `download/`,
     `persist.rs`, `picked.rs`, `redirect.rs`, `temp.rs`, `url.rs`) and `yt_dlp/`
     (`cookies.rs`, `events.rs`, `metadata.rs`, `registry.rs`, `url.rs`, plus the nested
     `download/`). Each family's `mod.rs` declares its submodules and re-exports the entry

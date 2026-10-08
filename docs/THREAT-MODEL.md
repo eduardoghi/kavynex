@@ -903,19 +903,18 @@ directories it serves. Naming the subdirectories is the same rule
 `managed_asset_scope_dirs` already applies to the library, applied to the cache tree
 (`constants::WEBVIEW_READABLE_CACHE_DIRS`).
 
-One property of the scope itself differs from how containment is decided everywhere else in
-this document: Tauri matches a request against the scope's **glob
-patterns over the requested path string**, without canonicalizing it first. Every other containment
-check here resolves symlinks and compares canonical paths
-(`ensure_existing_path_inside_dir`, `library::guard`), so this is the one place the decision is
-purely lexical. The practical consequence is that a symlink planted inside one of the four managed
-subdirectories, pointing outside the library, would be served through `convertFileSrc`. That is
-recorded rather than fixed because reaching it already requires write access to the user's library
-folder, at which point an attacker has better options than reading a file back through the webview,
-and because the paths the app itself serves are content-addressed names taken from the database,
-never a name a symlink would carry. It matters if the scope is ever widened to a directory the user
-did not choose, which is exactly what `register_library_asset_scope`'s settings cross-check and the
-managed-subdirectory restriction above are there to prevent.
+How a request is matched against the scope is decided by Tauri, not by this codebase, so it is
+stated here from the dependency's source. `Scope::is_allowed` (tauri 2.12.1, `scope/fs.rs`) follows
+a symlink at the requested path, canonicalizes the result when it exists, and only then matches the
+scope's glob patterns. A symlink planted inside one of the four managed subdirectories and pointing
+outside the library is therefore refused, because its target is what gets matched, the same outcome
+the canonical comparisons elsewhere in this document reach (`ensure_existing_path_inside_dir`,
+`library::guard`). A path that does not exist is matched as written, which costs nothing since there
+is no file behind it to serve. The `kvxmedia:` handler calls the same `is_allowed`, so the player
+inherits this. Because the behavior belongs to the dependency, `is_allowed` is worth re-reading when
+Tauri is bumped. The scope still must not widen to a directory the user did not choose, which is
+what `register_library_asset_scope`'s settings cross-check and the managed-subdirectory restriction
+above are there to prevent.
 
 The scope decides *which files* may be served; the CSP decides *whether the webview may fetch
 them at all*, and the two must agree. `tauri.conf.json`'s `img-src`/`media-src` therefore name
