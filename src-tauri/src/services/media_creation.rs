@@ -838,7 +838,7 @@ async fn clear_marker_best_effort<R: Runtime>(app: &AppHandle<R>, marker: Option
 pub(crate) async fn register_prepared_media<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
-    prepared: PreparedArtifacts,
+    mut prepared: PreparedArtifacts,
 ) -> AppResult<CreatedMedia> {
     ensure_managed_prepared_paths(&prepared)?;
 
@@ -846,7 +846,7 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
 
     let marker = record_marker_best_effort(app, &prepared).await;
 
-    let inserted = insert_prepared_media(app, request, &prepared).await;
+    let inserted = insert_prepared_media(app, request, &mut prepared).await;
 
     match inserted {
         Ok(id) => {
@@ -879,34 +879,57 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
     }
 }
 
-/// The existence re-check, the duplicate check and the insert.
+/// The existence re-checks, the duplicate check and the insert.
 ///
 /// The pre-insert lookup exists for its message rather than for correctness. `(channel_id,
 /// file_path)` is unique in the schema, so a duplicate would be refused either way, just as a
 /// constraint violation rather than as "this media is already registered for the selected channel".
 ///
-/// The existence re-check is the one that is about correctness, and it is here rather than in
-/// `prepare_*` precisely because it has to run **inside** the critical section. The artifacts land
+/// The existence re-checks are the ones about correctness, and they are here rather than in
+/// `prepare_*` precisely because they have to run **inside** the critical section. The artifacts land
 /// before [`register_prepared_media`] takes the lock, so a concurrent delete unlinking a
 /// content-addressed file this creation is adopting is not excluded by the lock and cannot be.
 /// Covering that window would mean holding the lock across a download, which the lock's own
 /// documentation rules out. `library::cleanup::execute_plan` now takes the same lock, so nothing can
-/// unlink between this check and the insert below. What the earlier window can still cost is
-/// therefore a refused creation, never a row pointing at a file that is gone.
+/// unlink between these checks and the insert below. What the earlier window can still cost is a
+/// refused creation when the media file went, or a media registered without its thumbnail or live
+/// chat replay when one of those went, never a row pointing at a file that is gone.
+///
+/// A vanished thumbnail or replay is dropped from `prepared` rather than failing the creation. The
+/// media is what the user asked for and outlives either, and the caller reports what was registered.
 async fn insert_prepared_media<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
-    prepared: &PreparedArtifacts,
+    prepared: &mut PreparedArtifacts,
 ) -> AppResult<i64> {
     let library_dir = library::guard::configured_library_dir(app).await?;
     let media_file = library_dir.join(&prepared.file_path);
+    let thumbnail = prepared.thumbnail_path.clone();
+    let live_chat = prepared.live_chat_file_path.clone();
 
-    if !run_blocking(move || Ok(media_file.exists())).await? {
+    let (media_exists, thumbnail_gone, live_chat_gone) = run_blocking(move || {
+        Ok((
+            media_file.exists(),
+            is_gone_from_library(&library_dir, thumbnail.as_deref()),
+            is_gone_from_library(&library_dir, live_chat.as_deref()),
+        ))
+    })
+    .await?;
+
+    if !media_exists {
         return Err(AppError::from_code(
             AppErrorCode::MediaFileNotFound,
             "the prepared media file is no longer in the library; it was removed before the row \
              could be inserted",
         ));
+    }
+
+    if thumbnail_gone {
+        drop_vanished_sidecar(&mut prepared.thumbnail_path, "thumbnail");
+    }
+
+    if live_chat_gone {
+        drop_vanished_sidecar(&mut prepared.live_chat_file_path, "live chat replay");
     }
 
     let pool = shared_pool(app).await?;
@@ -940,6 +963,24 @@ async fn insert_prepared_media<R: Runtime>(
         prepared.live_chat_file_path.as_deref(),
     )
     .await
+}
+
+/// True when `relative` names a file the library no longer holds. `None` has nothing to lose.
+fn is_gone_from_library(library_dir: &Path, relative: Option<&str>) -> bool {
+    relative.is_some_and(|relative| !library_dir.join(relative).is_file())
+}
+
+fn drop_vanished_sidecar(slot: &mut Option<String>, kind: &str) {
+    if let Some(relative) = slot.take() {
+        logger::warn(
+            "media_creation",
+            format!(
+                "registering the media without its {kind}: {} was removed from the library while \
+                 the media was being prepared",
+                logger::redact_path(&relative)
+            ),
+        );
+    }
 }
 
 /// Refuses a yt-dlp source whose video is already registered for this channel, before downloading it.

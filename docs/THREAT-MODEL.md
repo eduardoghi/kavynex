@@ -525,10 +525,12 @@ multi-gigabyte copy and holding a process-wide lock across it would serialize th
 user actually waits on. So a delete that unlinks a content-addressed file an in-flight creation is
 adopting is still possible, in the window between the artifacts landing and the creation reaching
 its critical section. What bounds it is a re-check rather than exclusion, since
-`media_creation::insert_prepared_media` confirms the media file is still on disk *inside* the
-critical section, where `execute_plan` can no longer be running. So the worst that window produces
-is a refused creation (`MEDIA_FILE_NOT_FOUND`, which the frontend already has a message for),
-never a row pointing at a file that is gone. A local import in **move** mode loses nothing in that
+`media_creation::insert_prepared_media` confirms the media file, the thumbnail and the live chat
+replay are still on disk *inside* the critical section, where `execute_plan` can no longer be
+running. So the worst that window produces is a refused creation when the media file went
+(`MEDIA_FILE_NOT_FOUND`, which the frontend already has a message for), or a media registered
+without its thumbnail or replay when one of those went (logged, and the result the frontend gets
+says so), never a row pointing at a file that is gone. A local import in **move** mode loses nothing in that
 window either. Its source is removed only after the row lands (`media_creation::register_prepared_media`,
 through `library::media::stage_media_import_cancellable_sync`), so a refused creation leaves the
 user's original where it was. The one Move that cannot keep its source until then is a rename on a

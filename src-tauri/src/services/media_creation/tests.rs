@@ -663,8 +663,13 @@ mod registration {
     /// The thumbnail matters. `classify_thumbnail_source` returns `Managed` for it and
     /// `store_thumbnail_source` hands it back untouched, so this drives the whole creation
     /// without reaching the FFmpeg preview. Leaving it absent would make the test pass or fail
-    /// depending on whether the machine running it happens to have FFmpeg installed.
+    /// depending on whether the machine running it happens to have FFmpeg installed. The file is
+    /// written into `library` too, since a registration drops a thumbnail the library does not hold.
     fn local_request(library: &Path, source: &Path, label: &str) -> CreateMediaRequest {
+        let thumbnails = library.join(crate::constants::LIBRARY_DIR_THUMBNAILS);
+        std::fs::create_dir_all(&thumbnails).unwrap();
+        std::fs::write(thumbnails.join("thumb_abc.jpg"), b"thumbnail bytes").unwrap();
+
         CreateMediaRequest {
             channel_id: 1,
             title: "An imported clip".to_string(),
@@ -913,6 +918,82 @@ mod registration {
             library.join(&file_path).exists(),
             "a successful registration must not touch the artifacts"
         );
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn a_thumbnail_and_replay_removed_before_the_lock_are_left_off_the_row() {
+        // Both are content-addressed and land before the registration lock, so deleting another
+        // media that shared them can unlink them while this one is still being copied. The media
+        // must still register, and the row must not point at files that are gone.
+        let (app, library) = app_with_library("sidecars-gone").await;
+        let prepared = PreparedArtifacts {
+            thumbnail_path: Some("thumbnails/thumb_gone.jpg".to_string()),
+            live_chat_file_path: Some("live_chat/gone.live_chat.json.gz".to_string()),
+            ..artifacts_on_disk(&library, "media_sidecars_gone")
+        };
+        let file_path = prepared.file_path.clone();
+
+        let created =
+            register_prepared_media(app.handle(), &request(MediaSourceMode::Local), prepared)
+                .await
+                .expect("the media must register without its vanished thumbnail and replay");
+
+        assert_eq!(created.thumbnail_path, None);
+        assert_eq!(created.live_chat_file_path, None);
+
+        let pool = crate::services::database::shared_pool(app.handle())
+            .await
+            .unwrap();
+        let row = video_repository::find_media_by_channel_and_file_path(&pool, 1, &file_path)
+            .await
+            .unwrap()
+            .expect("the media must have a row");
+        assert_eq!(row.thumbnail_path, None);
+        assert_eq!(row.live_chat_file_path, None);
+        assert_eq!(row.has_live_chat, 0);
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn a_thumbnail_and_replay_still_in_the_library_stay_on_the_row() {
+        let (app, library) = app_with_library("sidecars-kept").await;
+        let thumbnail = "thumbnails/thumb_kept.jpg";
+        let live_chat = "live_chat/kept.live_chat.json.gz";
+
+        for relative in [thumbnail, live_chat] {
+            let path = library.join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"sidecar bytes").unwrap();
+        }
+
+        let prepared = PreparedArtifacts {
+            thumbnail_path: Some(thumbnail.to_string()),
+            live_chat_file_path: Some(live_chat.to_string()),
+            ..artifacts_on_disk(&library, "media_sidecars_kept")
+        };
+        let file_path = prepared.file_path.clone();
+
+        let created =
+            register_prepared_media(app.handle(), &request(MediaSourceMode::Local), prepared)
+                .await
+                .expect("a valid registration should succeed");
+
+        assert_eq!(created.thumbnail_path.as_deref(), Some(thumbnail));
+        assert_eq!(created.live_chat_file_path.as_deref(), Some(live_chat));
+
+        let pool = crate::services::database::shared_pool(app.handle())
+            .await
+            .unwrap();
+        let row = video_repository::find_media_by_channel_and_file_path(&pool, 1, &file_path)
+            .await
+            .unwrap()
+            .expect("the media must have a row");
+        assert_eq!(row.thumbnail_path.as_deref(), Some(thumbnail));
+        assert_eq!(row.live_chat_file_path.as_deref(), Some(live_chat));
+        assert_eq!(row.has_live_chat, 1);
 
         let _ = std::fs::remove_dir_all(&library);
     }
