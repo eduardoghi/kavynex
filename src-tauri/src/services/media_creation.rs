@@ -20,7 +20,7 @@
 //! or the cleanup has run, because clearing it earlier would drop the record precisely while it is
 //! the only thing describing the state on disk.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -35,9 +35,11 @@ use crate::services::pending_media::{self, PendingMediaArtifacts};
 use crate::services::thumbnail;
 use crate::services::video_repository as repo;
 use crate::services::yt_dlp;
+use crate::utils::format::media_subdir_from_extension;
 use crate::utils::path::ensure_managed_library_relative_path;
+use crate::utils::path::extension_from_path;
 use crate::utils::task::run_blocking;
-use crate::utils::validation::{ensure_valid_media_title, ensure_valid_media_type};
+use crate::utils::validation::ensure_valid_media_title;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Where a media's bytes come from. The two modes differ only in how the artifacts are produced;
@@ -54,8 +56,11 @@ pub enum MediaSourceMode {
 /// Deliberately the same field set the frontend already assembled for its own orchestration, so the
 /// move is a change of *who runs the steps* rather than of what the user is asked for. Every value
 /// here is caller-supplied and none is trusted. `library_path` is checked against the persisted
-/// settings by the command layer, the title and media type go through the shared validators, and
-/// every produced path is re-checked as a managed library-relative path before it reaches a row.
+/// settings by the command layer, the title goes through the shared validator, and every produced
+/// path is re-checked as a managed library-relative path before it reaches a row. The media type is
+/// not asked for at all. A download reports it and a local import takes it from its extension, the
+/// same rule that picks the file's subdirectory, so a row cannot say "video" about a file in
+/// `audio/`.
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/types/generated/")]
@@ -78,8 +83,6 @@ pub struct CreateMediaRequest {
     /// A managed `thumbnails/...` path, a remote URL, or an absolute path the user picked. Absent
     /// means "derive one", from the download's own thumbnail, or from the media file itself.
     pub thumbnail_source_path: Option<String>,
-    #[ts(type = "\"video\" | \"audio\"")]
-    pub media_type: String,
     #[ts(type = "\"copy\" | \"move\"")]
     pub import_mode: ImportMode,
     pub library_path: String,
@@ -225,7 +228,6 @@ pub(crate) fn normalize_create_media_request(
     let library_path = request.library_path.trim().to_string();
 
     ensure_valid_media_title(&title)?;
-    ensure_valid_media_type(&request.media_type)?;
 
     if source_value.is_empty() {
         return Err(AppError::from_code(
@@ -267,7 +269,6 @@ pub(crate) fn normalize_create_media_request(
         title,
         source_value,
         library_path,
-        media_type: request.media_type.trim().to_string(),
         thumbnail_source_path: normalized_optional(request.thumbnail_source_path),
         published_at: normalized_optional(request.published_at),
         yt_dlp_run_id,
@@ -468,10 +469,16 @@ async fn prepare_local_artifacts<R: Runtime>(
         }
     };
 
+    // The subdirectory names are the two media types, and the extension decides both through the
+    // one function, so the row agrees with where the file landed.
+    let media_type =
+        media_subdir_from_extension(&extension_from_path(Path::new(&staged.relative_path)))
+            .to_string();
+
     Ok(PreparedArtifacts {
         file_path: staged.relative_path,
         thumbnail_path,
-        media_type: request.media_type.clone(),
+        media_type,
         youtube_video_id: None,
         published_at: request.published_at.clone(),
         is_live: false,

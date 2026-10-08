@@ -11,7 +11,6 @@ fn request(source_mode: MediaSourceMode) -> CreateMediaRequest {
         source_mode,
         source_value: "https://www.youtube.com/watch?v=abc".to_string(),
         thumbnail_source_path: None,
-        media_type: "video".to_string(),
         import_mode: ImportMode::Copy,
         library_path: "/library".to_string(),
         published_at: None,
@@ -157,19 +156,9 @@ fn normalizing_trims_every_stored_value() {
         ..request(MediaSourceMode::YtDlp)
     };
 
-    let padded = CreateMediaRequest {
-        media_type: "  video  ".to_string(),
-        ..padded
-    };
-
     let normalized = normalize_create_media_request(padded).unwrap();
 
     assert_eq!(normalized.title, "A title");
-    // The media type is stored verbatim and compared verbatim by the `CHECK (media_type IN
-    // ('video', 'audio'))` constraint, so a padded value would be validated (the validator
-    // trims) and then rejected by the schema, or, worse on an older database without the
-    // constraint, stored as a type nothing matches.
-    assert_eq!(normalized.media_type, "video");
     assert_eq!(
         normalized.source_value,
         "https://www.youtube.com/watch?v=abc"
@@ -224,15 +213,6 @@ fn a_request_is_refused_before_anything_is_written() {
             .unwrap_err()
             .code,
         AppErrorCode::InvalidMediaTitle.as_str()
-    );
-
-    let bad_type = CreateMediaRequest {
-        media_type: "image".to_string(),
-        ..request(MediaSourceMode::Local)
-    };
-    assert_eq!(
-        normalize_create_media_request(bad_type).unwrap_err().code,
-        AppErrorCode::InvalidMediaCreationArguments.as_str()
     );
 
     let no_source = CreateMediaRequest {
@@ -691,7 +671,6 @@ mod registration {
             source_mode: MediaSourceMode::Local,
             source_value: source.to_string_lossy().to_string(),
             thumbnail_source_path: Some("thumbnails/thumb_abc.jpg".to_string()),
-            media_type: "video".to_string(),
             import_mode: ImportMode::Copy,
             library_path: library.to_string_lossy().to_string(),
             published_at: None,
@@ -763,9 +742,42 @@ mod registration {
                 .unwrap();
         assert!(row.is_some(), "the creation must have inserted a row");
         assert_eq!(markers_naming(&app, &created.file_path), 0);
+        assert_eq!(created.media_type, "video");
 
         let _ = std::fs::remove_dir_all(&library);
         let _ = std::fs::remove_dir_all(source.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_local_import_takes_its_media_type_from_where_the_file_lands() {
+        // The request carries no media type, so nothing the renderer believes about the file can
+        // end up in a row that disagrees with its subdirectory.
+        let (app, library) = app_with_library("create-audio").await;
+        let source_dir = std::env::temp_dir().join(format!(
+            "kavynex_mediasrc_audio_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("song.mp3");
+        std::fs::write(&source, source_contents("audio")).unwrap();
+
+        let created = create_media_async(app.handle(), local_request(&library, &source, "audio"))
+            .await
+            .expect("a local import of an audio file must succeed");
+
+        assert!(created.file_path.starts_with("audio/"));
+        assert_eq!(created.media_type, "audio");
+
+        let pool = shared_pool(app.handle()).await.unwrap();
+        let row =
+            video_repository::find_media_by_channel_and_file_path(&pool, 1, &created.file_path)
+                .await
+                .unwrap()
+                .expect("the creation must have inserted a row");
+        assert_eq!(row.media_type, "audio");
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(&source_dir);
     }
 
     #[tokio::test]

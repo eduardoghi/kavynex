@@ -58,7 +58,6 @@ describe("media-repository command wiring", () => {
             sourceMode: "yt-dlp",
             sourceValue: "https://www.youtube.com/watch?v=yt1",
             thumbnailSourcePath: null,
-            mediaType: "video",
             importMode: "copy",
             libraryPath: "/library",
             publishedAt: "2026-01-01",

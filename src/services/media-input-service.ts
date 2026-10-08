@@ -1,5 +1,5 @@
 import type { ImportMode } from "../types/settings";
-import type { MediaSourceMode, MediaType } from "../types/media";
+import type { MediaSourceMode } from "../types/media";
 import {
     INVALID_FORMAT_ID_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
@@ -17,7 +17,6 @@ export type CreateMediaInput = {
     sourceMode: MediaSourceMode;
     sourceValue: string;
     thumbnailSourcePath: string | null;
-    mediaType: MediaType;
     importMode: ImportMode;
     libraryPath: string;
     publishedAt: string | null;

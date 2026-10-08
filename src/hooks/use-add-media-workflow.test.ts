@@ -181,7 +181,6 @@ describe("useAddMediaWorkflow", () => {
                 title: "My media",
                 sourceMode: "local",
                 sourceValue: "/tmp/file.mp4",
-                mediaType: "video",
                 importMode: "copy",
                 libraryPath: "/library",
                 publishedAt: null,
@@ -250,9 +249,6 @@ describe("useAddMediaWorkflow", () => {
                 title: "My media",
                 thumbnailSourcePath: "/tmp/thumb.jpg",
                 publishedAt: "2026-01-01",
-                // Local mode must use addMediaForm.mediaType, not the (different)
-                // yt-dlp resolved media type, proving the ternary branch is exercised.
-                mediaType: "video",
             }),
             expect.objectContaining({
                 onProgress: expect.any(Function),
@@ -793,14 +789,13 @@ describe("useAddMediaWorkflow", () => {
         }
     });
 
-    it("uses selected yt-dlp media type when importing from url", async () => {
+    it("passes the selected format and the download options when importing from url", async () => {
         vi.mocked(createMedia).mockResolvedValue({ id: 1 });
 
         mockAddMediaForm.sourceMode = "yt-dlp";
         mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
         mockAddMediaForm.mediaPath = "";
         mockAddMediaForm.selectedYtDlpFormatId = "251";
-        mockAddMediaForm.selectedYtDlpMediaType = "audio";
         mockAddMediaForm.title = "Remote media";
         mockAddMediaForm.downloadComments = false;
         mockAddMediaForm.downloadLiveChat = true;
@@ -826,7 +821,6 @@ describe("useAddMediaWorkflow", () => {
                 sourceMode: "yt-dlp",
                 sourceValue: "https://youtube.com/watch?v=abc",
                 ytDlpFormatId: "251",
-                mediaType: "audio",
                 publishedAt: null,
                 downloadComments: false,
                 downloadLiveChat: true,

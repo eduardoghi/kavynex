@@ -16,9 +16,7 @@ function form(overrides: Partial<AddMediaFormFields> = {}): AddMediaFormFields {
         mediaPath: "",
         title: "",
         thumbPath: "",
-        mediaType: "video",
         selectedYtDlpFormatId: "",
-        selectedYtDlpMediaType: "video",
         resolvedYoutubeVideoId: null,
         publishedAt: "",
         downloadComments: false,
@@ -249,7 +247,7 @@ describe("buildCreateMediaInput", () => {
 
     it("uses local fields and keeps publishedAt for a local import", () => {
         const input = buildCreateMediaInput(
-            form({ title: " Local ", mediaType: "audio", publishedAt: " 2026-01-01 ", thumbPath: "t.jpg" }),
+            form({ title: " Local ", publishedAt: " 2026-01-01 ", thumbPath: "t.jpg" }),
             { ...context, sourceMode: "local", sourceValue: "/a/b.m4a" }
         );
 
@@ -258,7 +256,6 @@ describe("buildCreateMediaInput", () => {
             title: "Local",
             sourceMode: "local",
             sourceValue: "/a/b.m4a",
-            mediaType: "audio",
             publishedAt: "2026-01-01",
             thumbnailSourcePath: "t.jpg",
             ytDlpYoutubeVideoId: null,
@@ -268,7 +265,6 @@ describe("buildCreateMediaInput", () => {
     it("uses yt-dlp fields and drops publishedAt for a yt-dlp download", () => {
         const input = buildCreateMediaInput(
             form({
-                selectedYtDlpMediaType: "video",
                 resolvedYoutubeVideoId: "abc",
                 publishedAt: "2026-01-01",
             }),
@@ -283,7 +279,6 @@ describe("buildCreateMediaInput", () => {
 
         expect(input).toMatchObject({
             sourceMode: "yt-dlp",
-            mediaType: "video",
             publishedAt: null,
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137",

@@ -293,7 +293,6 @@ export async function createMedia(
         sourceMode: normalizedInput.sourceMode,
         sourceValue: normalizedInput.sourceValue,
         thumbnailSourcePath: normalizedInput.thumbnailSourcePath,
-        mediaType: normalizedInput.mediaType,
         importMode: normalizedInput.importMode,
         libraryPath: normalizedInput.libraryPath,
         publishedAt: normalizedInput.publishedAt,

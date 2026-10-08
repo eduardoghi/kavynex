@@ -1,4 +1,4 @@
-import type { MediaSourceMode, MediaType } from "../types/media";
+import type { MediaSourceMode } from "../types/media";
 import type { ImportMode } from "../types/settings";
 import type { CreateMediaInput } from "../services/media-input-service";
 import {
@@ -16,9 +16,7 @@ export type AddMediaFormFields = {
     mediaPath: string;
     title: string;
     thumbPath: string;
-    mediaType: MediaType;
     selectedYtDlpFormatId: string;
-    selectedYtDlpMediaType: MediaType;
     resolvedYoutubeVideoId: string | null;
     publishedAt: string;
     downloadComments: boolean;
@@ -176,7 +174,6 @@ export function buildCreateMediaInput(
         sourceMode: context.sourceMode,
         sourceValue: context.sourceValue,
         thumbnailSourcePath: form.thumbPath || null,
-        mediaType: isYtDlp ? form.selectedYtDlpMediaType : form.mediaType,
         importMode: context.importMode,
         libraryPath: context.libraryPath,
         publishedAt: isYtDlp ? null : form.publishedAt.trim() || null,
