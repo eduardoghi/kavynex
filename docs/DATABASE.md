@@ -105,6 +105,15 @@ CREATE TABLE video_comments (
 Comments fetched from YouTube via yt-dlp for a given video, flattened with
 `parent_comment_id` for building the reply tree in the frontend.
 
+A fetch is merged into what is already stored (`media_comments::merge_media_comments`), and no stored
+comment is ever removed by one. Refreshing an old video returns fewer comments than were saved,
+because some were deleted on YouTube since, and those are the ones nothing else has a copy of. A
+comment with an id is upserted on `(video_id, comment_id)`, so its text, like count and flags follow
+the latest fetch while its `published_at` keeps the first value stored. A comment without an id is
+inserted only when no id-less comment with the same parent, author and text is already there.
+`comments_count` is recounted from the table after each merge, so it can exceed what any one fetch
+returned. Deleting the media (or its channel) is what removes its comments.
+
 ### `app_settings`
 
 ```sql
@@ -346,7 +355,7 @@ Every pooled connection (`database.rs::build_pool_at`) is configured identically
   busy handler**. Waiting can never make a stale snapshot writable. That is why the
   read-then-write transactions in `services/library/cleanup.rs` open with `BEGIN IMMEDIATE`
   (`begin_with(BEGIN_IMMEDIATE)`), taking the write lock up front so the wait happens where this
-  timeout does apply. A transaction that writes first (e.g. `media_comments::replace_media_comments`)
+  timeout does apply. A transaction that writes first (e.g. `media_comments::merge_media_comments`)
   is unaffected.
 - `foreign_keys(true)`: `ON DELETE CASCADE` is only enforced when this pragma is on, and
   it must be set per-connection (it does not persist in the database file itself).

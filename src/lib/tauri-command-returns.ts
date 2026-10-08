@@ -76,7 +76,8 @@ export type TauriCommandReturns = {
     list_yt_dlp_formats: YtDlpFormatsResult;
     cancel_media_download: void;
     fetch_youtube_comments: YtDlpComment[];
-    replace_media_comments: number;
+    // How many comments the media holds after the merge, not how many were sent.
+    merge_media_comments: number;
     mark_media_comments_absent: void;
 
     register_library_asset_scope: void;

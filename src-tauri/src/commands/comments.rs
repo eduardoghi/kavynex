@@ -5,22 +5,23 @@ use crate::services::database::Db;
 use crate::services::media_comments;
 use crate::AppResult;
 
+/// Merges a fetched set of comments into the media's stored ones and returns how many it holds
+/// afterwards. Nothing stored is removed. See `media_comments::merge_media_comments`.
 #[tauri::command]
-pub async fn replace_media_comments(
+pub async fn merge_media_comments(
     db: State<'_, Db>,
     media_id: i64,
     comments: Vec<YtDlpComment>,
 ) -> AppResult<u64> {
     let pool = db.pool().await?;
-    media_comments::replace_media_comments(&pool, media_id, comments).await
+    media_comments::merge_media_comments(&pool, media_id, comments).await
 }
 
 /// Records that a comment fetch for this media found nothing, leaving any comments already stored
 /// untouched.
 ///
-/// Its own command rather than an empty `replace_media_comments`, because that one deletes before
-/// it inserts. Calling it with nothing would wipe a saved backup on the strength of a later fetch
-/// coming back empty. See `media_comments::mark_media_comments_absent`.
+/// Called on an empty fetch instead of `merge_media_comments`, so the player can say nothing came
+/// back. See `media_comments::mark_media_comments_absent`.
 #[tauri::command]
 pub async fn mark_media_comments_absent(db: State<'_, Db>, media_id: i64) -> AppResult<()> {
     let pool = db.pool().await?;
@@ -36,13 +37,13 @@ mod tests {
     use tauri::test::{mock_builder, mock_context, noop_assets};
     use tauri::Manager;
 
-    // replace_media_comments now takes State<Db>, so it runs under the mock runtime. insert_channel
+    // merge_media_comments takes State<Db>, so it runs under the mock runtime. insert_channel
     // is registered too so a real channel row exists before the media row that references it.
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![
                 crate::commands::channels::insert_channel,
-                replace_media_comments
+                merge_media_comments
             ])
             .build(mock_context(noop_assets()))
             .unwrap();
@@ -90,12 +91,12 @@ mod tests {
     }
 
     #[test]
-    fn replace_media_comments_rejects_a_non_positive_media_id_over_ipc() {
+    fn merge_media_comments_rejects_a_non_positive_media_id_over_ipc() {
         let webview = test_webview(memory_db());
 
         let error = invoke(
             &webview,
-            "replace_media_comments",
+            "merge_media_comments",
             serde_json::json!({ "mediaId": 0, "comments": [] }),
         )
         .unwrap_err();
@@ -104,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn replace_media_comments_inserts_comments_for_a_media_row_over_ipc() {
+    fn merge_media_comments_inserts_comments_for_a_media_row_over_ipc() {
         let webview = test_webview(memory_db());
         let media_id = seed_media(&webview);
 
@@ -112,7 +113,7 @@ mod tests {
         // exercises the Vec<YtDlpComment> deserialization across the boundary end to end.
         let inserted = invoke(
             &webview,
-            "replace_media_comments",
+            "merge_media_comments",
             serde_json::json!({
                 "mediaId": media_id,
                 "comments": [{

@@ -210,7 +210,7 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
 // idx_videos_channel_youtube_video_id_unique (which is safe in INDEX_DDLS because it predates any
 // data that could violate it. There is no later migration that first had to dedupe videos).
 pub(super) const COMMENT_UNIQUE_INDEX_TABLE: &str = "video_comments";
-pub(super) const COMMENT_UNIQUE_INDEX_DDL: &str = "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''";
+pub(crate) const COMMENT_UNIQUE_INDEX_DDL: &str = "CREATE UNIQUE INDEX IF NOT EXISTS idx_video_comments_video_comment_unique ON video_comments(video_id, comment_id) WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> ''";
 
 // Every trigger, paired with the table it belongs to (same shape as INDEX_DDLS). These backport
 // the videos live-chat CHECK to databases whose `videos` table predates it. A table created by an

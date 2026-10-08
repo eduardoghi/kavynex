@@ -25,7 +25,7 @@ import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
 import { commentsRefreshRunId, fetchYouTubeComments } from "./media-download-service";
 import {
     markMediaCommentsAbsentInBackend,
-    replaceMediaCommentsInBackend,
+    mergeMediaCommentsInBackend,
 } from "./media-comments-service";
 import { logError } from "../utils/app-logger";
 
@@ -169,7 +169,7 @@ async function tryPersistYouTubeComments(
             await emitProgress(onProgress, "Persisting comments...");
         }
 
-        await replaceMediaCommentsInBackend(mediaId, comments);
+        await mergeMediaCommentsInBackend(mediaId, comments);
         await emitProgress(onProgress, `Comments saved successfully: ${comments.length}`);
     } catch (error) {
         // The user skipped them. The media is already registered and stays.
@@ -253,10 +253,6 @@ export async function refreshMediaComments(
         // without telling the backend anything left the media indistinguishable from one nothing
         // had ever been fetched for, so the player kept offering a Fetch button and the user could
         // re-run a refresh that could never return anything.
-        //
-        // Deliberately not `replaceMediaCommentsInBackend(mediaId, [])`. That deletes before it
-        // inserts, so it would wipe a saved backup because a later fetch came back empty. This one
-        // writes only the state, and only when no comments are stored.
         await markMediaCommentsAbsentInBackend(mediaId);
 
         return {
@@ -265,11 +261,13 @@ export async function refreshMediaComments(
         };
     }
 
-    await replaceMediaCommentsInBackend(mediaId, comments);
+    // The count comes back from the backend because it is not `comments.length`. The merge keeps
+    // every comment saved earlier, including the ones this fetch no longer found.
+    const totalComments = await mergeMediaCommentsInBackend(mediaId, comments);
 
     return {
         updated: true,
-        totalComments: comments.length,
+        totalComments,
     };
 }
 

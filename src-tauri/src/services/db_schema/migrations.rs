@@ -266,7 +266,7 @@ pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
 /// blindly run the DDLs. A database created before this index could in principle hold a duplicate
 /// that would fail the unique build. So it first collapses any duplicate rows to the lowest id,
 /// then runs the guarded index DDLs, both in one transaction so a crash leaves the database fully
-/// at the old or the new version. The single write path (replace_media_comments) already dedups
+/// at the old or the new version. The single write path (merge_media_comments) already dedups
 /// per payload, so the cleanup is a safety net, not an expected case.
 pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
     let mut tx = pool

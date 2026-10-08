@@ -694,7 +694,7 @@ pub async fn fetch_yt_dlp_metadata(
 
 /// The extractor arguments for a comment backup.
 ///
-/// Capped at `MAX_COMMENTS_PER_MEDIA` because that is the most `replace_media_comments` stores.
+/// Capped at `MAX_COMMENTS_PER_MEDIA` because that is the most one `merge_media_comments` accepts.
 /// Uncapped, yt-dlp kept paging through a video with more, and the whole backup was then refused
 /// at that limit, or ran into the timeout first, with nothing saved either way.
 fn comments_extractor_args() -> String {

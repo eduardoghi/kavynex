@@ -15,7 +15,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// The two must stay in sync), a db_schema test pins the DDL value against this constant.
 pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 
-/// Upper bound on how many comments one media may be handed in a single replace.
+/// Upper bound on how many comments one media may be handed in a single merge.
 ///
 /// The body of each comment is capped above; this caps the count, which was the one input from the
 /// renderer left without a ceiling. The vector arrives over IPC and is written in one transaction
@@ -27,6 +27,9 @@ pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 /// The limit sits far above what a real fetch delivers (yt-dlp's comment run is itself bounded by
 /// its timeout and by `MAX_YT_DLP_JSON_BYTES`), so it only ever trips on a caller that is not the
 /// app's own flow.
+///
+/// It bounds one payload, not what a media holds. A merge keeps every comment stored before it, so
+/// repeated refreshes of a video whose comments keep changing can leave more than this on the row.
 pub(crate) const MAX_COMMENTS_PER_MEDIA: usize = 100_000;
 
 /// The states this code *writes* to `videos.comments_state`.
@@ -138,12 +141,10 @@ struct PreparedComment {
 
 /// Records that a comment fetch found nothing, without touching the comments already stored.
 ///
-/// The manual refresh needs this and `replace_media_comments` cannot serve it. That one deletes the
-/// existing rows before inserting, so calling it with an empty payload would wipe a backup because
-/// a later fetch came back empty, which is the opposite of what this app is for. The refresh
-/// therefore returns early on an empty result and leaves the stored comments alone. What it could
-/// not do before was record that it had *asked*, so the media stayed `unknown` and the user could
-/// re-run a fetch that could never return anything.
+/// The manual refresh calls this on an empty result instead of `merge_media_comments`, so the
+/// player can tell the user nothing came back rather than report a refresh that changed nothing.
+/// Before this existed the refresh returned without telling the backend anything, so the media
+/// stayed `unknown` and the user could re-run a fetch that could never return anything.
 ///
 /// The `comments_count = 0` guard is what makes it safe to call blind. A media that does have
 /// stored comments keeps its `available` state, so an empty refresh of a video whose comments were
@@ -215,7 +216,20 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
         .collect()
 }
 
-pub async fn replace_media_comments(
+/// Merges a fetched set of comments into what is already stored for the media, and returns how many
+/// the media holds afterwards.
+///
+/// Nothing stored is ever removed. A comment that left YouTube since the last fetch is exactly what
+/// this app exists to keep, and a later fetch always misses some of them, since authors, channels
+/// and YouTube itself delete comments over time. Replacing the stored set with the fetched one, as
+/// this used to, made a refresh of an old video quietly destroy that part of the archive.
+///
+/// A comment with an id is matched on `(video_id, comment_id)`, the partial unique index v10
+/// created, and updated in place, so a refresh still picks up edits and new like counts. One
+/// without an id has nothing to match on, so it is inserted only when no stored id-less comment has
+/// the same parent, author and text. That keeps a refresh from duplicating it without ever dropping
+/// one.
+pub async fn merge_media_comments(
     pool: &SqlitePool,
     media_id: i64,
     comments: Vec<YtDlpComment>,
@@ -240,10 +254,122 @@ pub async fn replace_media_comments(
         ));
     }
 
-    replace_media_comments_in_pool(pool, media_id, comments).await
+    merge_media_comments_in_pool(pool, media_id, comments).await
 }
 
-async fn replace_media_comments_in_pool(
+const COMMENT_INSERT_COLUMNS: &str = "INSERT INTO video_comments (\
+     video_id, comment_id, parent_comment_id, author_name, author_handle, \
+     author_channel_id, author_thumbnail, text, like_count, reply_count, \
+     is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at) ";
+
+// The conflict target has to repeat the partial index's WHERE for SQLite to use that index as the
+// arbiter (db_schema::ddl::COMMENT_UNIQUE_INDEX_DDL). `parent_comment_id` is left as stored, since
+// a comment does not move between threads. `published_at` keeps the stored value when there is
+// one. yt-dlp derives it from YouTube's relative "2 years ago" text, which only gets coarser as the
+// comment ages, so the first fetch is the most precise it will ever be.
+const COMMENT_UPSERT_CLAUSE: &str = " ON CONFLICT(video_id, comment_id) \
+     WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> '' DO UPDATE SET \
+     author_name = excluded.author_name, \
+     author_handle = excluded.author_handle, \
+     author_channel_id = excluded.author_channel_id, \
+     author_thumbnail = excluded.author_thumbnail, \
+     text = excluded.text, \
+     like_count = excluded.like_count, \
+     reply_count = excluded.reply_count, \
+     is_author_uploader = excluded.is_author_uploader, \
+     is_favorited = excluded.is_favorited, \
+     is_pinned = excluded.is_pinned, \
+     is_edited = excluded.is_edited, \
+     time_text = excluded.time_text, \
+     published_at = COALESCE(video_comments.published_at, excluded.published_at)";
+
+async fn upsert_comments_with_id(
+    tx: &mut sqlx::SqliteConnection,
+    media_id: i64,
+    rows: &[&PreparedComment],
+) -> Result<(), sqlx::Error> {
+    // Multi-row batches rather than one statement per comment (see COMMENT_INSERT_CHUNK_SIZE).
+    // The payload is already deduped by id, so no batch can conflict with itself.
+    for chunk in rows.chunks(COMMENT_INSERT_CHUNK_SIZE) {
+        let mut query_builder = QueryBuilder::new(COMMENT_INSERT_COLUMNS);
+
+        query_builder.push_values(chunk, |mut row, comment| {
+            row.push_bind(media_id)
+                .push_bind(comment.comment_id.as_deref())
+                .push_bind(comment.parent_comment_id.as_deref())
+                .push_bind(comment.author_name.as_str())
+                .push_bind(comment.author_handle.as_deref())
+                .push_bind(comment.author_channel_id.as_deref())
+                .push_bind(comment.author_thumbnail.as_deref())
+                .push_bind(comment.text.as_str())
+                .push_bind(comment.like_count)
+                .push_bind(comment.reply_count)
+                .push_bind(comment.is_author_uploader)
+                .push_bind(comment.is_favorited)
+                .push_bind(comment.is_pinned)
+                .push_bind(comment.is_edited)
+                .push_bind(comment.time_text.as_deref())
+                .push_bind(comment.published_at.as_deref());
+        });
+
+        query_builder.push(COMMENT_UPSERT_CLAUSE);
+        query_builder.build().execute(&mut *tx).await?;
+    }
+
+    Ok(())
+}
+
+async fn insert_comments_without_id(
+    tx: &mut sqlx::SqliteConnection,
+    media_id: i64,
+    rows: &[&PreparedComment],
+) -> Result<(), sqlx::Error> {
+    // One statement per comment, which is fine because yt-dlp gives YouTube comments an id and this
+    // only runs for the odd one it did not. The NOT EXISTS reads rows this loop inserted too, so two
+    // identical id-less comments in one payload store once. Rows written before ids were trimmed
+    // can hold an empty string rather than NULL, hence the TRIM.
+    for comment in rows {
+        sqlx::query(
+            r#"
+            INSERT INTO video_comments (
+                video_id, comment_id, parent_comment_id, author_name, author_handle,
+                author_channel_id, author_thumbnail, text, like_count, reply_count,
+                is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at
+            )
+            SELECT ?1, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+            WHERE NOT EXISTS (
+                SELECT 1 FROM video_comments
+                WHERE video_id = ?1
+                  AND (comment_id IS NULL OR TRIM(comment_id) = '')
+                  AND parent_comment_id IS ?2
+                  AND author_name = ?3
+                  AND text = ?7
+            )
+            "#,
+        )
+        .bind(media_id)
+        .bind(comment.parent_comment_id.as_deref())
+        .bind(comment.author_name.as_str())
+        .bind(comment.author_handle.as_deref())
+        .bind(comment.author_channel_id.as_deref())
+        .bind(comment.author_thumbnail.as_deref())
+        .bind(comment.text.as_str())
+        .bind(comment.like_count)
+        .bind(comment.reply_count)
+        .bind(comment.is_author_uploader)
+        .bind(comment.is_favorited)
+        .bind(comment.is_pinned)
+        .bind(comment.is_edited)
+        .bind(comment.time_text.as_deref())
+        .bind(comment.published_at.as_deref())
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn merge_media_comments_in_pool(
     pool: &SqlitePool,
     media_id: i64,
     comments: Vec<YtDlpComment>,
@@ -254,96 +380,67 @@ async fn replace_media_comments_in_pool(
         .map_err(|error| sqlite_error("failed to begin comments transaction", error))?;
 
     let result = async {
-        sqlx::query("DELETE FROM video_comments WHERE video_id = ?")
-            .bind(media_id)
-            .execute(&mut *tx)
-            .await?;
-
         let rows = prepare_comment_rows(comments);
-        let inserted_count = rows.len() as u64;
+        let (with_id, without_id): (Vec<&PreparedComment>, Vec<&PreparedComment>) = rows
+            .iter()
+            .partition(|comment| comment.comment_id.is_some());
 
-        // Insert in multi-row batches so a video with thousands of comments no longer holds the
-        // transaction open across thousands of individual round-trips (see COMMENT_INSERT_CHUNK_SIZE).
-        for chunk in rows.chunks(COMMENT_INSERT_CHUNK_SIZE) {
-            let mut query_builder = QueryBuilder::new(
-                "INSERT INTO video_comments (\
-                 video_id, comment_id, parent_comment_id, author_name, author_handle, \
-                 author_channel_id, author_thumbnail, text, like_count, reply_count, \
-                 is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at) ",
-            );
+        upsert_comments_with_id(&mut tx, media_id, &with_id).await?;
+        insert_comments_without_id(&mut tx, media_id, &without_id).await?;
 
-            query_builder.push_values(chunk, |mut row, comment| {
-                row.push_bind(media_id)
-                    .push_bind(comment.comment_id.as_deref())
-                    .push_bind(comment.parent_comment_id.as_deref())
-                    .push_bind(comment.author_name.as_str())
-                    .push_bind(comment.author_handle.as_deref())
-                    .push_bind(comment.author_channel_id.as_deref())
-                    .push_bind(comment.author_thumbnail.as_deref())
-                    .push_bind(comment.text.as_str())
-                    .push_bind(comment.like_count)
-                    .push_bind(comment.reply_count)
-                    .push_bind(comment.is_author_uploader)
-                    .push_bind(comment.is_favorited)
-                    .push_bind(comment.is_pinned)
-                    .push_bind(comment.is_edited)
-                    .push_bind(comment.time_text.as_deref())
-                    .push_bind(comment.published_at.as_deref());
-            });
-
-            query_builder.build().execute(&mut *tx).await?;
-        }
-
-        let update_result = sqlx::query(
+        // Counted from the table rather than from the payload, since the media now holds what was
+        // stored before plus what this fetch added. Counted inside the UPDATE rather than by a
+        // SELECT ahead of it, so a merge with nothing to insert still opens with a write. A
+        // deferred transaction that reads first and writes second fails with SQLITE_BUSY_SNAPSHOT
+        // when another connection commits in between, without waiting (see docs/DATABASE.md).
+        //
+        // Reaching here means a fetch ran and succeeded, so a media with nothing stored has a final
+        // answer rather than the absence of an attempt. That is the whole distinction the state
+        // column exists for. `has_comments = 0` alone cannot tell the two apart, and the player
+        // offered its Fetch button on both. No row back means the media is gone.
+        let stored_count: Option<(i64,)> = sqlx::query_as(
             r#"
             UPDATE videos
-            SET has_comments = ?,
-                comments_count = ?,
-                comments_state = ?
-            WHERE id = ?
+            SET comments_count = (SELECT COUNT(*) FROM video_comments WHERE video_id = ?1),
+                has_comments = EXISTS (SELECT 1 FROM video_comments WHERE video_id = ?1),
+                comments_state = CASE
+                    WHEN EXISTS (SELECT 1 FROM video_comments WHERE video_id = ?1) THEN ?2
+                    ELSE ?3
+                END
+            WHERE id = ?1
+            RETURNING comments_count
             "#,
         )
-        .bind(if inserted_count > 0 { 1_i64 } else { 0_i64 })
-        .bind(i64::try_from(inserted_count).unwrap_or(i64::MAX))
-        // Reaching here means a fetch ran and succeeded, so zero stored comments is a final answer
-        // rather than the absence of an attempt. That is the whole distinction the column exists
-        // for. `has_comments = 0` alone cannot tell the two apart, and the player offered its Fetch
-        // button on both.
-        .bind(
-            if inserted_count > 0 {
-                CommentsState::Available
-            } else {
-                CommentsState::None
-            }
-            .as_str(),
-        )
         .bind(media_id)
-        .execute(&mut *tx)
+        .bind(CommentsState::Available.as_str())
+        .bind(CommentsState::None.as_str())
+        .fetch_optional(&mut *tx)
         .await?;
 
-        Ok::<(u64, u64), sqlx::Error>((inserted_count, update_result.rows_affected()))
+        Ok::<Option<u64>, sqlx::Error>(
+            stored_count.map(|(count,)| u64::try_from(count).unwrap_or(0)),
+        )
     }
     .await;
 
     match result {
-        Ok((inserted_count, updated_rows)) => {
+        Ok(None) => {
             // With no comments to insert, the video_comments foreign key that maps a vanished media
             // row to MediaNotFound never fires (the insert loop is skipped), so a media deleted
             // concurrently while its zero-length comment fetch was finishing is detected here
             // instead. The UPDATE matched no row. Roll back and report it, mirroring the non-empty
             // path's foreign-key handling below.
-            if updated_rows == 0 {
-                let _ = tx.rollback().await;
-                return Err(AppError::from_code(
-                    AppErrorCode::MediaNotFound,
-                    "the media no longer exists",
-                ));
-            }
-
+            let _ = tx.rollback().await;
+            Err(AppError::from_code(
+                AppErrorCode::MediaNotFound,
+                "the media no longer exists",
+            ))
+        }
+        Ok(Some(stored_count)) => {
             tx.commit()
                 .await
                 .map_err(|error| sqlite_error("failed to commit comments transaction", error))?;
-            Ok(inserted_count)
+            Ok(stored_count)
         }
         Err(error) => {
             let rollback_result = tx.rollback().await;
@@ -455,6 +552,11 @@ mod tests {
         .await
         .expect("create comments table");
 
+        sqlx::query(crate::services::db_schema::COMMENT_UNIQUE_INDEX_DDL)
+            .execute(&pool)
+            .await
+            .expect("create the comment unique index the upsert arbitrates on");
+
         sqlx::query("INSERT INTO videos (id) VALUES (1)")
             .execute(&pool)
             .await
@@ -530,13 +632,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_media_comments_refuses_a_payload_past_the_count_ceiling() {
+    async fn merge_media_comments_refuses_a_payload_past_the_count_ceiling() {
         // One over the ceiling is refused before anything is written, and the refusal leaves the
-        // stored comments alone. This is a replace, so an accepted oversized payload would first
-        // delete the backup it then failed to rewrite.
+        // stored comments alone.
         let pool = create_test_pool().await;
 
-        replace_media_comments(&pool, 1, vec![sample_comment("kept")])
+        merge_media_comments(&pool, 1, vec![sample_comment("kept")])
             .await
             .expect("seed one stored comment");
 
@@ -544,7 +645,7 @@ mod tests {
             .map(|index| comment_with_id("flood", Some(&index.to_string())))
             .collect();
 
-        let error = replace_media_comments(&pool, 1, oversized)
+        let error = merge_media_comments(&pool, 1, oversized)
             .await
             .expect_err("a payload past the ceiling must be refused");
 
@@ -562,12 +663,12 @@ mod tests {
                 .unwrap();
         assert_eq!(
             stored, 1,
-            "the existing backup must survive a refused replace"
+            "the existing backup must survive a refused merge"
         );
     }
 
     #[tokio::test]
-    async fn replace_media_comments_accepts_a_payload_at_the_count_ceiling() {
+    async fn merge_media_comments_accepts_a_payload_at_the_count_ceiling() {
         // The boundary itself is allowed, so the ceiling is a refusal of abuse and not a silent
         // cap on a large but legitimate fetch. Distinct ids, or dedup would shrink the count.
         let pool = create_test_pool().await;
@@ -576,7 +677,7 @@ mod tests {
             .map(|index| comment_with_id("ok", Some(&index.to_string())))
             .collect();
 
-        let inserted = replace_media_comments(&pool, 1, at_ceiling)
+        let inserted = merge_media_comments(&pool, 1, at_ceiling)
             .await
             .expect("a payload at the ceiling is accepted");
 
@@ -584,16 +685,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_media_comments_inserts_non_blank_comments_and_updates_flags() {
+    async fn merge_media_comments_inserts_non_blank_comments_and_updates_flags() {
         let pool = create_test_pool().await;
 
-        let inserted = replace_media_comments_in_pool(
+        let inserted = merge_media_comments_in_pool(
             &pool,
             1,
             vec![sample_comment("Great video!"), sample_comment("   ")],
         )
         .await
-        .expect("replace comments");
+        .expect("merge comments");
 
         let (total_comments,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE video_id = 1")
@@ -627,9 +728,9 @@ mod tests {
     async fn storing_comments_records_that_a_fetch_found_some() {
         let pool = create_test_pool().await;
 
-        replace_media_comments_in_pool(&pool, 1, vec![sample_comment("Great video!")])
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Great video!")])
             .await
-            .expect("replace comments");
+            .expect("merge comments");
 
         assert_eq!(
             stored_state(&pool, 1).await,
@@ -654,9 +755,9 @@ mod tests {
             "a row starts out never having been asked"
         );
 
-        replace_media_comments_in_pool(&pool, 1, vec![])
+        merge_media_comments_in_pool(&pool, 1, vec![])
             .await
-            .expect("replace comments");
+            .expect("merge comments");
 
         assert_eq!(stored_state(&pool, 1).await, CommentsState::None.as_str());
 
@@ -674,8 +775,7 @@ mod tests {
 
     #[tokio::test]
     async fn marking_comments_absent_records_the_outcome_without_deleting_anything() {
-        // What the manual refresh needs. It returns early on an empty result so a later fetch coming
-        // back empty can never wipe a saved backup, and this is how it records that it asked.
+        // What the manual refresh calls on an empty result, so it records that it asked.
         let pool = create_test_pool().await;
 
         mark_media_comments_absent(&pool, 1)
@@ -692,9 +792,9 @@ mod tests {
         // backup as absent. That would be the app contradicting its own stored data.
         let pool = create_test_pool().await;
 
-        replace_media_comments_in_pool(&pool, 1, vec![sample_comment("Kept forever")])
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Kept forever")])
             .await
-            .expect("replace comments");
+            .expect("merge comments");
 
         mark_media_comments_absent(&pool, 1)
             .await
@@ -724,10 +824,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_media_comments_drops_repeated_comment_id_but_keeps_null_id_rows() {
+    async fn merge_media_comments_drops_repeated_comment_id_but_keeps_null_id_rows() {
         let pool = create_test_pool().await;
 
-        let inserted = replace_media_comments_in_pool(
+        let inserted = merge_media_comments_in_pool(
             &pool,
             1,
             vec![
@@ -738,7 +838,7 @@ mod tests {
             ],
         )
         .await
-        .expect("replace comments");
+        .expect("merge comments");
 
         let (total_comments,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE video_id = 1")
@@ -765,7 +865,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_media_comments_maps_foreign_key_violation_to_media_not_found() {
+    async fn merge_media_comments_maps_foreign_key_violation_to_media_not_found() {
         let pool = create_test_pool().await;
         // The real pool opens with foreign_keys ON (services::database); the in-memory test pool
         // must enable it explicitly to exercise the mapping. max_connections(1) keeps this PRAGMA
@@ -776,7 +876,7 @@ mod tests {
             .expect("enable foreign keys");
 
         // media id 999 has no `videos` row, so the comment insert violates the video_id FK.
-        let error = replace_media_comments_in_pool(&pool, 999, vec![sample_comment("orphan")])
+        let error = merge_media_comments_in_pool(&pool, 999, vec![sample_comment("orphan")])
             .await
             .expect_err("insert against a missing media must fail");
 
@@ -784,12 +884,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_media_comments_keeps_the_real_comment_behind_a_blank_duplicate_id() {
+    async fn merge_media_comments_keeps_the_real_comment_behind_a_blank_duplicate_id() {
         let pool = create_test_pool().await;
 
         // Two entries share comment_id "c1". The first is blank, the second has real content. The
         // blank one must not win the dedup and then be dropped, silently losing the real comment.
-        let inserted = replace_media_comments_in_pool(
+        let inserted = merge_media_comments_in_pool(
             &pool,
             1,
             vec![
@@ -798,7 +898,7 @@ mod tests {
             ],
         )
         .await
-        .expect("replace comments");
+        .expect("merge comments");
 
         let (kept_text,): (String,) =
             sqlx::query_as("SELECT text FROM video_comments WHERE comment_id = 'c1'")
@@ -811,7 +911,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_media_comments_maps_a_missing_media_with_zero_comments_to_media_not_found() {
+    async fn merge_media_comments_maps_a_missing_media_with_zero_comments_to_media_not_found() {
         let pool = create_test_pool().await;
         sqlx::query("PRAGMA foreign_keys = ON")
             .execute(&pool)
@@ -821,7 +921,7 @@ mod tests {
         // media id 999 has no `videos` row and there are no comments to insert, so the foreign-key
         // path never fires. The missing row is caught by the UPDATE matching no row instead. A
         // false success here would report "nothing updated" for a media that no longer exists.
-        let error = replace_media_comments_in_pool(&pool, 999, Vec::new())
+        let error = merge_media_comments_in_pool(&pool, 999, Vec::new())
             .await
             .expect_err("replacing comments on a missing media must fail even with zero comments");
 
@@ -829,15 +929,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_media_comments_rolls_back_when_insert_fails() {
+    async fn merge_media_comments_rolls_back_when_insert_fails() {
         let pool = create_test_pool().await;
 
-        replace_media_comments_in_pool(&pool, 1, vec![sample_comment("Original")])
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Original")])
             .await
             .expect("seed comments");
 
-        let result =
-            replace_media_comments_in_pool(&pool, 1, vec![sample_comment("Invalid")]).await;
+        let result = merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Invalid")]).await;
 
         let (total_comments,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE video_id = 1")
@@ -853,5 +952,196 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(total_comments, 1);
         assert_eq!(text, "Original");
+    }
+
+    /// Every stored `(comment_id, text)` for media 1, ordered so assertions read the same way.
+    async fn stored_comments(pool: &SqlitePool) -> Vec<(Option<String>, String)> {
+        sqlx::query_as(
+            "SELECT comment_id, text FROM video_comments WHERE video_id = 1 \
+             ORDER BY comment_id IS NULL, comment_id, text",
+        )
+        .fetch_all(pool)
+        .await
+        .expect("read stored comments")
+    }
+
+    #[tokio::test]
+    async fn a_refresh_keeps_the_comments_it_no_longer_finds() {
+        // The case this module exists for. Comments disappear from YouTube over time, so a later
+        // fetch of an old video returns fewer than the backup holds, and those missing ones are
+        // exactly what nothing else has a copy of anymore.
+        let pool = create_test_pool().await;
+
+        merge_media_comments(
+            &pool,
+            1,
+            vec![
+                comment_with_id("first", Some("c1")),
+                comment_with_id("second", Some("c2")),
+                comment_with_id("third", Some("c3")),
+            ],
+        )
+        .await
+        .expect("first fetch");
+
+        let stored = merge_media_comments(
+            &pool,
+            1,
+            vec![
+                comment_with_id("second, edited", Some("c2")),
+                comment_with_id("fourth", Some("c4")),
+            ],
+        )
+        .await
+        .expect("later fetch");
+
+        assert_eq!(
+            stored, 4,
+            "what the media holds, not what the fetch returned"
+        );
+        assert_eq!(
+            stored_comments(&pool).await,
+            vec![
+                (Some("c1".to_string()), "first".to_string()),
+                (Some("c2".to_string()), "second, edited".to_string()),
+                (Some("c3".to_string()), "third".to_string()),
+                (Some("c4".to_string()), "fourth".to_string()),
+            ]
+        );
+
+        let (comments_count,): (i64,) =
+            sqlx::query_as("SELECT comments_count FROM videos WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("read count");
+        assert_eq!(comments_count, 4);
+    }
+
+    #[tokio::test]
+    async fn a_refresh_updates_what_changed_on_a_comment_it_finds_again() {
+        let pool = create_test_pool().await;
+
+        merge_media_comments(&pool, 1, vec![comment_with_id("before", Some("c1"))])
+            .await
+            .expect("first fetch");
+
+        let mut edited = comment_with_id("after", Some("c1"));
+        edited.like_count = 900;
+        edited.is_edited = true;
+        edited.is_pinned = false;
+
+        merge_media_comments(&pool, 1, vec![edited])
+            .await
+            .expect("later fetch");
+
+        let (text, like_count, is_edited, is_pinned): (String, i64, i64, i64) = sqlx::query_as(
+            "SELECT text, like_count, is_edited, is_pinned FROM video_comments WHERE comment_id = 'c1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read comment");
+
+        assert_eq!(
+            (text.as_str(), like_count, is_edited, is_pinned),
+            ("after", 900, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refresh_keeps_the_first_publication_date_it_stored() {
+        // yt-dlp derives the date from YouTube's relative text, which only gets coarser with age, so
+        // the earliest fetch carries the most precise value. A missing one is still filled in.
+        let pool = create_test_pool().await;
+
+        let mut dated = comment_with_id("dated", Some("c1"));
+        dated.published_at = Some("2026-01-01".to_string());
+        let mut undated = comment_with_id("undated", Some("c2"));
+        undated.published_at = None;
+
+        merge_media_comments(&pool, 1, vec![dated, undated])
+            .await
+            .expect("first fetch");
+
+        let mut coarser = comment_with_id("dated", Some("c1"));
+        coarser.published_at = Some("2025-10-08".to_string());
+        let mut now_dated = comment_with_id("undated", Some("c2"));
+        now_dated.published_at = Some("2026-02-02".to_string());
+
+        merge_media_comments(&pool, 1, vec![coarser, now_dated])
+            .await
+            .expect("later fetch");
+
+        let dates: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT comment_id, published_at FROM video_comments WHERE video_id = 1 ORDER BY comment_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("read dates");
+
+        assert_eq!(
+            dates,
+            vec![
+                ("c1".to_string(), Some("2026-01-01".to_string())),
+                ("c2".to_string(), Some("2026-02-02".to_string())),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_comment_without_an_id_is_neither_duplicated_nor_dropped_by_a_refresh() {
+        let pool = create_test_pool().await;
+
+        merge_media_comments(
+            &pool,
+            1,
+            vec![
+                comment_with_id("no id, first fetch only", None),
+                comment_with_id("no id, both fetches", None),
+            ],
+        )
+        .await
+        .expect("first fetch");
+
+        let stored = merge_media_comments(
+            &pool,
+            1,
+            vec![
+                comment_with_id("no id, both fetches", None),
+                comment_with_id("no id, second fetch only", None),
+            ],
+        )
+        .await
+        .expect("later fetch");
+
+        assert_eq!(stored, 3);
+        assert_eq!(
+            stored_comments(&pool).await,
+            vec![
+                (None, "no id, both fetches".to_string()),
+                (None, "no id, first fetch only".to_string()),
+                (None, "no id, second fetch only".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_merge_leaves_stored_comments_and_their_state_alone() {
+        // The renderer records an empty refresh through mark_media_comments_absent, but a merge
+        // handed nothing must be just as harmless, since nothing about it can remove a row.
+        let pool = create_test_pool().await;
+
+        merge_media_comments(&pool, 1, vec![sample_comment("kept")])
+            .await
+            .expect("first fetch");
+
+        let stored = merge_media_comments(&pool, 1, Vec::new())
+            .await
+            .expect("empty fetch");
+
+        assert_eq!(stored, 1);
+        assert_eq!(
+            stored_state(&pool, 1).await,
+            CommentsState::Available.as_str()
+        );
     }
 }

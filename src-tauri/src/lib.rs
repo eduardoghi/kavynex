@@ -659,7 +659,7 @@ pub fn run() {
             commands::thumbnail::resolve_display_thumbnails,
             commands::thumbnail::stage_manual_thumbnail,
             commands::thumbnail::delete_temporary_thumbnail,
-            commands::comments::replace_media_comments,
+            commands::comments::merge_media_comments,
             commands::comments::mark_media_comments_absent,
             commands::yt_dlp::fetch_youtube_comments,
             commands::yt_dlp::list_yt_dlp_formats,

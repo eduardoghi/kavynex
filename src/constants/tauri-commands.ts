@@ -40,7 +40,7 @@ export const TAURI_COMMANDS = {
     LIST_YT_DLP_FORMATS: "list_yt_dlp_formats",
     CANCEL_MEDIA_DOWNLOAD: "cancel_media_download",
     FETCH_YOUTUBE_COMMENTS: "fetch_youtube_comments",
-    REPLACE_MEDIA_COMMENTS: "replace_media_comments",
+    MERGE_MEDIA_COMMENTS: "merge_media_comments",
     MARK_MEDIA_COMMENTS_ABSENT: "mark_media_comments_absent",
 
     REGISTER_LIBRARY_ASSET_SCOPE: "register_library_asset_scope",

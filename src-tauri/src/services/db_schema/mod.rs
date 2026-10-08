@@ -20,6 +20,10 @@ const BASELINE_SCHEMA_VERSION: i64 = 7;
 mod ddl;
 #[allow(unused_imports)]
 use ddl::*;
+// The comment upsert in `media_comments` names this index as its conflict target, so its tests
+// build the real one rather than a copy that could drift from it.
+#[cfg(test)]
+pub(crate) use ddl::COMMENT_UNIQUE_INDEX_DDL;
 
 // Read-only schema introspection (pragma_* lookups) lives in the `introspection` submodule;
 // re-exported so the import validation in `db_backup::import` and the migrations here both reach
