@@ -69,12 +69,17 @@ unless you `cd src-tauri` first):
 - `cargo fmt --manifest-path src-tauri/Cargo.toml --all`: format (CI runs
   `--check`, i.e. it fails if this would change anything, it does not auto-fix for you).
 
-Repository consistency (plain Node, no install needed. CI runs all five on every push):
+Repository consistency (plain Node, no install needed. CI runs all six on every push):
 
 - `node scripts/verify-release-version.js`: fails when `package.json`,
   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
 - `node scripts/verify-node-version.js`: fails when the Node version in `.nvmrc` and the
   `node-version:` values in the workflows disagree.
+- `node scripts/verify-tauri-package-versions.js`: fails when an `@tauri-apps/*` npm package and
+  the Rust crate it pairs with (`@tauri-apps/api` with `tauri`, `@tauri-apps/plugin-<name>` with
+  `tauri-plugin-<name>`) are on different major.minor releases in the lockfiles, which `tauri build`
+  refuses. Dependabot bumps the two sides in separate PRs, so this is what catches a half-applied
+  bump before a release does.
 - `node scripts/verify-command-path-surface.js`: fails when either half of the cross-cutting path
   rule no longer matches its declared inventory, which is the set of `#[tauri::command]`s taking a
   path from the caller and the set of functions calling `is_network_path` to refuse a network
@@ -105,7 +110,7 @@ Repository consistency (plain Node, no install needed. CI runs all five on every
   nothing calls is still reachable from the renderer, and two that unlinked files stayed registered
   for weeks that way. Run it with `--print` to see each command's wrapper and how many files call it.
 
-A sixth consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
+A seventh consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
 on every push:
 
 - `node scripts/verify-mutants-exclusions.js <cargo mutants --list output>`: fails when an
@@ -282,7 +287,7 @@ authoritative version; what follows is what to expect a red run to be about:
 - **Frontend**: lint, the Vitest suite *with coverage* (`pnpm test:coverage`; the floors in
   `vitest.config.ts` are only enforced when coverage is collected, so this is where a coverage
   regression fails), build, the production JS advisory and license gates (the dev-tree advisory
-  scan runs too but is non-blocking), the five repository-consistency scripts above, and a grep
+  scan runs too but is non-blocking), the six repository-consistency scripts above, and a grep
   refusing a unicode dash where a plain `-` belongs, if a test needs one of those characters as
   data, spell it as a `\uXXXX` escape rather than pasting it.
 - **Frontend tests (Windows, macOS)**: the same suite on the other two platforms. It is jsdom

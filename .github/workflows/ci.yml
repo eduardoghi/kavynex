@@ -51,6 +51,13 @@ jobs:
             - name: Verify Node version consistency
               run: node scripts/verify-node-version.js
 
+            # `tauri build` refuses an @tauri-apps npm package and its Rust crate on different
+            # major.minor releases, and nothing in this workflow runs `tauri build`, so the skew
+            # used to surface only in release.yml. Dependabot bumps the two sides in separate PRs,
+            # which is how PR #60 produced one. Reads both lockfiles as text, before the install.
+            - name: Verify Tauri npm and Rust versions agree
+              run: node scripts/verify-tauri-package-versions.js
+
             # `docs/THREAT-MODEL.md` states a cross-cutting rule (every command taking a path from
             # the caller refuses a UNC/network location before any filesystem call, or reaches it
             # through the library guard or a strictly-relative path) and then names the commands
