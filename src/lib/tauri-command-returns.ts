@@ -35,6 +35,11 @@ export type TauriCommandReturns = {
     log_frontend_error: void;
     open_log_directory: void;
 
+    // The chosen path, or null when the dialog was cancelled.
+    open_folder_dialog: string | null;
+    open_file_dialog: string | null;
+    save_file_dialog: string | null;
+
     // null on every launch that is not a `--webview-check` run, which is what lets the frontend ask
     // unconditionally at boot. `report_webview_check` never resolves during a check. The backend
     // terminates the process with the outcome instead of answering.

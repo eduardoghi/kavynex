@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openFileDialog } from "../lib/tauri-platform";
+import { pickFile } from "../services/file-dialog-service";
 import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../types/media";
 import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
 import { resolveErrorMessage } from "../utils/error-message";
@@ -68,14 +68,6 @@ export type AddMediaFormController = {
     pickThumbViaDialog: () => Promise<void>;
     resetForm: () => Promise<void>;
 };
-
-function normalizeSelectedPath(selection: string | string[] | null): string {
-    if (typeof selection !== "string") {
-        return "";
-    }
-
-    return selection.trim();
-}
 
 function normalizeCookiesBrowser(value: string): string {
     const normalized = value.trim().toLowerCase();
@@ -262,12 +254,7 @@ export function useAddMediaForm({
     );
 
     const pickSinglePathFromDialog = useCallback(async (): Promise<string> => {
-        const selection = await openFileDialog({
-            multiple: false,
-            directory: false,
-        });
-
-        return normalizeSelectedPath(selection);
+        return (await pickFile()) ?? "";
     }, []);
 
     // Invalidating the resolved yt-dlp formats and clearing the terminal always go together. Any

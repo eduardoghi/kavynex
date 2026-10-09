@@ -756,8 +756,18 @@ That surface is granted as the exact list the app uses, not a preset:
 - `core:app:allow-version`: `getVersion`, for the version shown in Settings.
 - `core:event:allow-listen` / `core:event:allow-unlisten`: `listen`, for the yt-dlp progress and
   database-integrity events the backend emits.
-- `opener:allow-open-url`, scoped to the three YouTube hosts; `dialog:allow-open` /
-  `dialog:allow-save`; and, in `desktop.json`, `updater:default` and `process:allow-restart`.
+- `opener:allow-open-url`, scoped to the three YouTube hosts, and, in `desktop.json`,
+  `updater:default` and `process:allow-restart`.
+
+The file and folder pickers are not on that list, and that is a security decision rather than a
+smaller list for its own sake. The dialog plugin's renderer-facing `open` and `save` add every path
+the user picks to the asset-protocol scope (below), recursively for a folder, with no way to take it
+back for the session. Picking the library folder granted its root, the one directory
+`managed_asset_scope_dirs` refuses to grant, and every imported file, cookies file and database
+became readable through `asset:`. The pickers are backend commands instead (`commands/dialog.rs`:
+`open_folder_dialog`, `open_file_dialog`, `save_file_dialog`), which drive the same plugin from Rust,
+where nothing touches the scope. They return the path and grant nothing, so the renderer holds no
+`dialog:` permission at all.
 
 `convertFileSrc` and `Channel` appear in no grant because they need none. The first builds a URL
 string in the renderer, and the second is part of the IPC mechanism rather than a command. What
@@ -817,10 +827,9 @@ A renderer that never loads at all reports nothing, which a watchdog turns into 
 naming that outcome rather than a hang. The case that covers a bundle the webview refuses or a
 CSP that blocks the entry script.
 
-The four plugin grants cannot be probed that way at all, because none can be exercised without a
-side effect. `dialog:allow-open`/`allow-save` would open a file picker, `opener:allow-open-url`
-would launch a browser, `updater:default` would reach the network, and `process:allow-restart`
-would restart the app.
+The three plugin grants cannot be probed that way at all, because none can be exercised without a
+side effect. `opener:allow-open-url` would launch a browser, `updater:default` would reach the
+network, and `process:allow-restart` would restart the app.
 
 What covers them instead is a second gate on a different question.
 `scripts/verify-capability-surface.js` (`ci.yml`, on every push) reads the two seam files and the
@@ -833,7 +842,7 @@ refuses.
 
 The two gates divide the work, and neither covers the other. `--webview-check`
 proves a grant *works* for the three it can reach, on a packaged binary, at release time. This one
-proves the *list* cannot drift from the two files that define the used surface, for all eight, on
+proves the *list* cannot drift from the two files that define the used surface, for all six, on
 every push, which is where the drift this section is about actually happens. It is deliberately not
 a claim that a granted permission functions, since only the ACL can answer that, and only in the renderer.
 
@@ -859,7 +868,8 @@ plus `convertFileSrc`, which only serves files inside directories/files explicit
 "allowed" in the asset-protocol scope (`tauri.conf.json`'s `assetProtocol.scope` starts
 empty). Exactly one command populates that scope at runtime, and it is careful about what it grants,
 because the scope plus `convertFileSrc` is effectively an arbitrary local-file-read primitive if it
-is ever widened too far:
+is ever widened too far. (The dialog plugin's own commands are the other way in, since they grant
+whatever the user picks, which is why the pickers are backend commands. See "Capabilities" above.)
 
 - `register_library_asset_scope` (`commands/security.rs`) authorizes the *library*
   directory, but only after `ensure_configured_library_path` confirms the requested path

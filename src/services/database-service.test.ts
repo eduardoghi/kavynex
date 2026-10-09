@@ -11,7 +11,7 @@ import {
     undoDatabaseImport,
 } from "./database-service";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
-import { openFileDialog } from "../lib/tauri-platform";
+import { pickFolder } from "./file-dialog-service";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 
 vi.mock("../lib/tauri-client", () => ({
@@ -19,8 +19,8 @@ vi.mock("../lib/tauri-client", () => ({
     invokeVoid: vi.fn(),
 }));
 
-vi.mock("../lib/tauri-platform", () => ({
-    openFileDialog: vi.fn(),
+vi.mock("./file-dialog-service", () => ({
+    pickFolder: vi.fn(),
 }));
 
 describe("checkDatabaseIntegrity", () => {
@@ -111,21 +111,11 @@ describe("chooseExternalBackupDirectory", () => {
         vi.clearAllMocks();
     });
 
-    it("asks for a single directory and returns the trimmed choice", async () => {
-        vi.mocked(openFileDialog).mockResolvedValueOnce("  E:/Kavynex backups  ");
-
+    it("asks the backend's folder picker and returns its answer", async () => {
+        vi.mocked(pickFolder).mockResolvedValueOnce("E:/Kavynex backups");
         await expect(chooseExternalBackupDirectory()).resolves.toBe("E:/Kavynex backups");
-        expect(openFileDialog).toHaveBeenCalledWith({ directory: true, multiple: false });
-    });
 
-    it("returns null when the dialog is cancelled or returns nothing usable", async () => {
-        vi.mocked(openFileDialog).mockResolvedValueOnce(null);
-        await expect(chooseExternalBackupDirectory()).resolves.toBeNull();
-
-        vi.mocked(openFileDialog).mockResolvedValueOnce("   ");
-        await expect(chooseExternalBackupDirectory()).resolves.toBeNull();
-
-        vi.mocked(openFileDialog).mockResolvedValueOnce(["E:/a", "E:/b"] as never);
+        vi.mocked(pickFolder).mockResolvedValueOnce(null);
         await expect(chooseExternalBackupDirectory()).resolves.toBeNull();
     });
 });

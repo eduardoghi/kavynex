@@ -1,4 +1,5 @@
-import { openFileDialog, openUrl } from "../lib/tauri-platform";
+import { openUrl } from "../lib/tauri-platform";
+import { pickFolder } from "./file-dialog-service";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
     invokeCommand,
@@ -55,17 +56,7 @@ export function createEmptyLibrarySummary(): LibrarySummaryInfo {
 }
 
 export async function chooseLibraryDirectory(): Promise<string | null> {
-    const selection = await openFileDialog({
-        directory: true,
-        multiple: false,
-    });
-
-    if (typeof selection !== "string") {
-        return null;
-    }
-
-    const normalizedSelection = normalizeString(selection);
-    return normalizedSelection || null;
+    return pickFolder();
 }
 
 export async function ensureDirectoryExists(path: string): Promise<string> {

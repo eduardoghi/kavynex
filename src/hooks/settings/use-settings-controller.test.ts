@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LibrarySummaryInfo } from "../../services/library-service";
 
 vi.mock("../../lib/tauri-platform", () => ({
-    openFileDialog: vi.fn(),
-    saveFileDialog: vi.fn(),
     relaunch: vi.fn(),
+}));
+
+vi.mock("../../services/file-dialog-service", () => ({
+    pickFile: vi.fn(),
+    pickSaveDestination: vi.fn(),
 }));
 
 vi.mock("../../services/database-service", () => ({
@@ -42,7 +45,8 @@ vi.mock("../use-app-update", () => ({
     }),
 }));
 
-import { openFileDialog, relaunch, saveFileDialog } from "../../lib/tauri-platform";
+import { relaunch } from "../../lib/tauri-platform";
+import { pickFile, pickSaveDestination } from "../../services/file-dialog-service";
 import {
     exportDatabase,
     getDatabaseBackupStatus,
@@ -55,8 +59,8 @@ import { getLibrarySummary } from "../../services/library-service";
 import { logError } from "../../utils/app-logger";
 import { useSettingsController } from "./use-settings-controller";
 
-const openMock = vi.mocked(openFileDialog);
-const saveMock = vi.mocked(saveFileDialog);
+const openMock = vi.mocked(pickFile);
+const saveMock = vi.mocked(pickSaveDestination);
 const relaunchMock = vi.mocked(relaunch);
 const exportDatabaseMock = vi.mocked(exportDatabase);
 const importDatabaseMock = vi.mocked(importDatabase);
@@ -271,7 +275,7 @@ describe("useSettingsController", () => {
 
         expect(saveMock).toHaveBeenCalledWith({
             title: "Export database",
-            defaultPath: "kavynex-backup.db",
+            defaultFileName: "kavynex-backup.db",
             filters: [{ name: "Database", extensions: ["db"] }],
         });
         expect(exportDatabaseMock).toHaveBeenCalledWith("/backups/kavynex-backup.db");
@@ -357,8 +361,6 @@ describe("useSettingsController", () => {
 
         expect(openMock).toHaveBeenCalledWith({
             title: "Import database",
-            multiple: false,
-            directory: false,
             filters: [{ name: "Database", extensions: ["db"] }],
         });
         expect(result.current.pendingImportPath).toBe("/backups/import.db");

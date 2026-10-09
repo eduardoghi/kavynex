@@ -100,15 +100,11 @@ same in dev (the capabilities are compiled into the binary either way), so a mis
 catchable earlier than this. The artifact is what this step uses anyway because it is the build being
 published, and because the updater half of the list does not behave realistically anywhere else.
 
-- [ ] **`dialog:allow-open`**: Settings > Library folder > **Choose folder** opens the OS folder
-      picker. Several other paths reach the same permission (the **Choose a video/audio file to
-      import** row in Add media's local mode, **Choose file** beside the cookies path in its yt-dlp
-      mode, the channel avatar and media thumbnail pickers, Settings > Database > **Import database**
-      and **Choose backup folder**), so any one of them is enough. This one is the cheapest, since
-      cancelling the picker changes nothing.
-- [ ] **`dialog:allow-save`**: Settings > Database > **Export database** opens the OS save dialog.
-      Unlike the one above there is no alternative path, since `saveFileDialog` has exactly this one
-      caller, so nothing else exercises this grant.
+- [ ] **The pickers** (no grant, but nothing automated opens a native dialog either): Settings >
+      Library folder > **Choose folder** opens the OS folder picker, and Settings > Database >
+      **Export database** opens the save dialog. They are backend commands (`commands/dialog.rs`),
+      and these two cover the folder picker and the save dialog, the two shapes no other picker
+      shares. Cancelling either changes nothing.
 - [ ] **`opener:allow-open-url`**: in the player, **Open source on YouTube** launches the browser on
       a media that has a YouTube source. Also the only caller of `openUrl`. This grant carries a URL
       allow-list (`youtube.com`, `youtu.be`), so the check proves the scope still matches the URLs
@@ -197,4 +193,4 @@ not a corrupted state, and it does **not** cost a version number:
 Never delete or re-upload an asset on an *already published* release. `latest.json` and the
 minisign signatures are what the updater trusts, and rewriting a published release is the one
 operation the updater's rollback exposure (see `RELEASE-SECURITY.md`) actually depends on not happening.
-
+

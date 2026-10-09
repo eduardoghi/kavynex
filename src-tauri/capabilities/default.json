@@ -16,8 +16,6 @@
                 { "url": "https://youtube.com/*" },
                 { "url": "https://youtu.be/*" }
             ]
-        },
-        "dialog:allow-open",
-        "dialog:allow-save"
+        }
     ]
 }

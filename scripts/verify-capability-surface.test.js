@@ -170,7 +170,7 @@ describe("verifyCapabilitySurface", () => {
         // silently does nothing, on the first click a user makes.
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),
-        ].filter((identifier) => identifier !== "dialog:allow-save");
+        ].filter((identifier) => identifier !== "opener:allow-open-url");
 
         const result = verifyCapabilitySurface({
             seams: completeSeams(),
@@ -179,7 +179,7 @@ describe("verifyCapabilitySurface", () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.message).toContain("dialog:allow-save");
+        expect(result.message).toContain("opener:allow-open-url");
         expect(result.message).toContain("silently does nothing");
     });
 
@@ -239,7 +239,9 @@ describe("verifyCapabilitySurface", () => {
         // amount for a one-character mistake that would otherwise reach a user.
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),
-        ].map((identifier) => (identifier === "dialog:allow-open" ? "dialog:allow-opne" : identifier));
+        ].map((identifier) =>
+            identifier === "opener:allow-open-url" ? "opener:allow-open-ulr" : identifier
+        );
 
         const result = verifyCapabilitySurface({
             seams: completeSeams(),
@@ -248,7 +250,7 @@ describe("verifyCapabilitySurface", () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.message).toContain("dialog:allow-opne");
+        expect(result.message).toContain("opener:allow-open-ulr");
     });
 
     it("reports the identifier check as skipped when no ACL manifest is available", () => {

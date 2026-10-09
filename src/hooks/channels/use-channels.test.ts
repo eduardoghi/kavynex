@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Channel } from "../../types/media";
 import { useChannels } from "./use-channels";
 
-vi.mock("../../lib/tauri-platform", () => ({
-    openFileDialog: vi.fn(),
+vi.mock("../../services/file-dialog-service", () => ({
+    pickFile: vi.fn(),
 }));
 
 vi.mock("./use-channel-actions", () => ({
@@ -19,13 +19,13 @@ vi.mock("../../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-import { openFileDialog } from "../../lib/tauri-platform";
+import { pickFile } from "../../services/file-dialog-service";
 import { listChannelMediaPage } from "../../services/media-service";
 import { logError } from "../../utils/app-logger";
 import { useChannelActions } from "./use-channel-actions";
 
 const mockedUseChannelActions = vi.mocked(useChannelActions);
-const mockedOpen = vi.mocked(openFileDialog);
+const mockedOpen = vi.mocked(pickFile);
 const mockedListChannelMediaPage = vi.mocked(listChannelMediaPage);
 const mockedLogError = vi.mocked(logError);
 
@@ -503,7 +503,7 @@ describe("useChannels", () => {
     });
 
     it("selects channel avatar via dialog", async () => {
-        mockedOpen.mockResolvedValueOnce("  C:/avatar.png  ");
+        mockedOpen.mockResolvedValueOnce("C:/avatar.png");
 
         const { result } = renderHook(() =>
             useChannels({
@@ -517,8 +517,6 @@ describe("useChannels", () => {
         });
 
         expect(mockedOpen).toHaveBeenCalledWith({
-            multiple: false,
-            directory: false,
             filters: [
                 {
                     name: "Images",
@@ -532,24 +530,6 @@ describe("useChannels", () => {
 
     it("does nothing when avatar dialog is cancelled", async () => {
         mockedOpen.mockResolvedValueOnce(null);
-
-        const { result } = renderHook(() =>
-            useChannels({
-                libraryPath: "/library",
-                onError: vi.fn(),
-            })
-        );
-
-        await act(async () => {
-            await result.current.pickChannelAvatarViaDialog();
-        });
-
-        expect(result.current.newChannelAvatarMode).toBe("none");
-        expect(result.current.newChannelAvatarPath).toBe("");
-    });
-
-    it("does nothing when avatar dialog returns only whitespace", async () => {
-        mockedOpen.mockResolvedValueOnce("   ");
 
         const { result } = renderHook(() =>
             useChannels({
@@ -606,7 +586,7 @@ describe("useChannels", () => {
     });
 
     it("updates channel avatar from file dialog selection", async () => {
-        mockedOpen.mockResolvedValueOnce("  C:/new-avatar.png  ");
+        mockedOpen.mockResolvedValueOnce("C:/new-avatar.png");
 
         const { result } = renderHook(() =>
             useChannels({
@@ -620,8 +600,6 @@ describe("useChannels", () => {
         });
 
         expect(mockedOpen).toHaveBeenCalledWith({
-            multiple: false,
-            directory: false,
             filters: [
                 {
                     name: "Images",
@@ -638,23 +616,6 @@ describe("useChannels", () => {
 
     it("does not update channel avatar when file dialog is cancelled", async () => {
         mockedOpen.mockResolvedValueOnce(null);
-
-        const { result } = renderHook(() =>
-            useChannels({
-                libraryPath: "/library",
-                onError: vi.fn(),
-            })
-        );
-
-        await act(async () => {
-            await result.current.updateChannelAvatarFromFile(channelA);
-        });
-
-        expect(updateChannelAvatarAction).not.toHaveBeenCalled();
-    });
-
-    it("does not update channel avatar when file dialog returns only whitespace", async () => {
-        mockedOpen.mockResolvedValueOnce("   ");
 
         const { result } = renderHook(() =>
             useChannels({

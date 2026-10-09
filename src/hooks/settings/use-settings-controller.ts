@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openFileDialog, relaunch, saveFileDialog } from "../../lib/tauri-platform";
+import { relaunch } from "../../lib/tauri-platform";
+import { pickFile, pickSaveDestination } from "../../services/file-dialog-service";
 import type { AppUpdateInfo, AppUpdateProgress } from "../../services/app-update-service";
 import {
     exportDatabase,
@@ -153,9 +154,9 @@ export function useSettingsController({
         let destination: string | null;
 
         try {
-            destination = await saveFileDialog({
+            destination = await pickSaveDestination({
                 title: "Export database",
-                defaultPath: "kavynex-backup.db",
+                defaultFileName: "kavynex-backup.db",
                 filters: [{ name: "Database", extensions: ["db"] }],
             });
         } catch (error) {
@@ -189,13 +190,11 @@ export function useSettingsController({
     const pickImportFileAction = useCallback(async (): Promise<void> => {
         setDatabaseMessage(null);
 
-        let selection: string | string[] | null;
+        let selection: string | null;
 
         try {
-            selection = await openFileDialog({
+            selection = await pickFile({
                 title: "Import database",
-                multiple: false,
-                directory: false,
                 filters: [{ name: "Database", extensions: ["db"] }],
             });
         } catch (error) {
@@ -204,7 +203,7 @@ export function useSettingsController({
             return;
         }
 
-        if (typeof selection === "string") {
+        if (selection) {
             setPendingImportPath(selection);
         }
     }, []);

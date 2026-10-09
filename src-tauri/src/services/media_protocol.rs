@@ -323,9 +323,10 @@ pub(crate) fn serve<R: Runtime>(
     }
 
     // The one authorization check, and deliberately the same one the asset protocol makes rather
-    // than a second implementation of it. The scope holds exactly the four managed subdirectories
-    // of the configured library (see commands::security), so a path outside them is refused here
-    // without this module knowing anything about libraries.
+    // than a second implementation of it. The scope holds the four managed subdirectories of the
+    // configured library and the two cache directories the webview renders from (see
+    // commands::security), so a path outside them is refused here without this module knowing
+    // anything about libraries.
     if !app.asset_protocol_scope().is_allowed(&path) {
         crate::services::logger::warn(
             "media_protocol",

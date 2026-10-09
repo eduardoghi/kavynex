@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { openFileDialog, openUrl } from "../lib/tauri-platform";
+import { openUrl } from "../lib/tauri-platform";
+import { pickFolder } from "./file-dialog-service";
 import {
     invokeCommand,
     invokeVoid,
@@ -22,9 +23,12 @@ import {
     verifyLibraryContent,
 } from "./library-service";
 
+vi.mock("./file-dialog-service", () => ({
+    pickFolder: vi.fn(),
+}));
+
 vi.mock("../lib/tauri-platform", () => ({
     openUrl: vi.fn(),
-    openFileDialog: vi.fn(),
 }));
 
 vi.mock("../lib/tauri-client", () => ({
@@ -323,15 +327,11 @@ describe("chooseLibraryDirectory", () => {
         vi.clearAllMocks();
     });
 
-    it("returns the trimmed folder, or null when nothing usable was picked", async () => {
-        vi.mocked(openFileDialog).mockResolvedValueOnce(" D:/Library ");
+    it("asks the backend's folder picker and returns its answer", async () => {
+        vi.mocked(pickFolder).mockResolvedValueOnce("D:/Library");
         await expect(chooseLibraryDirectory()).resolves.toBe("D:/Library");
-        expect(openFileDialog).toHaveBeenCalledWith({ directory: true, multiple: false });
 
-        vi.mocked(openFileDialog).mockResolvedValueOnce(null);
-        await expect(chooseLibraryDirectory()).resolves.toBeNull();
-
-        vi.mocked(openFileDialog).mockResolvedValueOnce("  ");
+        vi.mocked(pickFolder).mockResolvedValueOnce(null);
         await expect(chooseLibraryDirectory()).resolves.toBeNull();
     });
 });

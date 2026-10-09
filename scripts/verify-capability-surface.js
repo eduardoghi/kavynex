@@ -65,8 +65,6 @@ export const DECLARED_CAPABILITY_SURFACE = [
         permissions: ["core:event:allow-listen", "core:event:allow-unlisten"],
     },
     { binding: "getVersion", module: "@tauri-apps/api/app", permissions: ["core:app:allow-version"] },
-    { binding: "open", module: "@tauri-apps/plugin-dialog", permissions: ["dialog:allow-open"] },
-    { binding: "save", module: "@tauri-apps/plugin-dialog", permissions: ["dialog:allow-save"] },
     { binding: "openUrl", module: "@tauri-apps/plugin-opener", permissions: ["opener:allow-open-url"] },
     { binding: "relaunch", module: "@tauri-apps/plugin-process", permissions: ["process:allow-restart"] },
     { binding: "check", module: "@tauri-apps/plugin-updater", permissions: ["updater:default"] },
