@@ -381,6 +381,115 @@ async fn download_thumbnail_best_effort<R: Runtime>(
     }
 }
 
+/// Stores the stream's live chat replay in the library, and on failure says so in the terminal and
+/// returns `None`, the way the thumbnail does.
+///
+/// It runs once the media is already in the library. Failing the whole creation over it (a replay
+/// past the decompression ceiling, a full disk) used to leave a download of hours in `video/` with
+/// no row and no crash marker to clean it up, and the user with an error for a video that had
+/// arrived. The replay is the smaller loss of the two.
+async fn store_live_chat_best_effort<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    temp_dir: &Path,
+    file_prefix: &str,
+    live_chat_dir: Option<&Path>,
+) -> Option<String> {
+    match store_live_chat(app, run_id, temp_dir, file_prefix, live_chat_dir).await {
+        Ok(path) => path,
+        Err(error) => {
+            logger::warn(
+                "yt_dlp",
+                format!(
+                    "live chat replay could not be stored, saving the media without it: {error}"
+                ),
+            );
+            emit_download_log_infallible(
+                app,
+                run_id,
+                format!(
+                    "The live chat replay could not be saved, so the media was saved without it: {}",
+                    error.message
+                ),
+                "system",
+            );
+            None
+        }
+    }
+}
+
+/// The library-relative path of the stored replay, or `None` when yt-dlp wrote none.
+async fn store_live_chat<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    temp_dir: &Path,
+    file_prefix: &str,
+    live_chat_dir: Option<&Path>,
+) -> AppResult<Option<String>> {
+    let Some(temp_live_chat_file) = find_live_chat_temp_file(temp_dir, file_prefix) else {
+        return Ok(None);
+    };
+
+    let live_chat_file_name = temp_live_chat_file.file_name().ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::InvalidDownloadedFile,
+            "live chat file has no valid name",
+        )
+    })?;
+
+    let live_chat_dir = live_chat_dir.ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::DataDirectoryResolveFailed,
+            "app live chat directory was not initialized",
+        )
+    })?;
+
+    let final_live_chat_destination = live_chat_dir.join(live_chat_file_name);
+
+    // Store live chat replays gzip-compressed to save disk; the frontend reader transparently
+    // decompresses them. On the blocking pool, since a long stream's replay is tens of MB to gzip
+    // and that held an async runtime thread for the whole compression. Serialize this library write
+    // against a concurrent migration (see library::lock); the guard lives inside the blocking
+    // closure, never across an await.
+    let kept_existing_live_chat = {
+        let source = temp_live_chat_file.clone();
+        let destination = final_live_chat_destination.clone();
+
+        run_blocking(move || {
+            let _library_guard = crate::services::library::lock::library_read_guard();
+
+            // Never overwrite an already-stored replay, matching place_downloaded_file's "keep the
+            // catalogued bytes" rule for the main media file. The name is deterministic per
+            // video+run, so an existing file is the same replay; without this guard
+            // compress_file_to (via replace_file_safely) would silently discard it on a
+            // re-download.
+            if destination.exists() {
+                return Ok(true);
+            }
+
+            crate::services::live_chat_storage::compress_file_to(&source, &destination)?;
+            Ok(false)
+        })
+        .await?
+    };
+
+    if kept_existing_live_chat {
+        // Same visibility rule as the kept-existing media log. Keeping the stored replay is
+        // correct, but doing it silently reads as "the fresh replay was saved" when it was
+        // discarded.
+        emit_download_log_infallible(
+            app,
+            run_id,
+            "A live chat replay for this video already existed in the library; kept the existing copy and discarded the new one.",
+            "system",
+        );
+    }
+
+    Ok(Some(build_live_chat_relative_path(Path::new(
+        live_chat_file_name,
+    ))))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
@@ -964,70 +1073,16 @@ pub async fn download_media_from_url_async<R: Runtime>(
             )?;
         }
 
+        // Best effort, like the thumbnail below, because the media is already in the library by now.
         let live_chat_file_path = if download_live_chat {
-            if let Some(temp_live_chat_file) = find_live_chat_temp_file(&temp_dir, &file_prefix) {
-                let live_chat_file_name = temp_live_chat_file.file_name().ok_or_else(|| {
-                    AppError::from_code(
-                        AppErrorCode::InvalidDownloadedFile,
-                        "live chat file has no valid name",
-                    )
-                })?;
-
-                let live_chat_dir = run_live_chat_dir.as_ref().ok_or_else(|| {
-                    AppError::from_code(
-                        AppErrorCode::DataDirectoryResolveFailed,
-                        "app live chat directory was not initialized",
-                    )
-                })?;
-
-                let final_live_chat_destination = live_chat_dir.join(live_chat_file_name);
-
-                // Store live chat replays gzip-compressed to save disk; the frontend reader
-                // transparently decompresses them. On the blocking pool, since a long stream's
-                // replay is tens of MB to gzip and that held an async runtime thread for the whole
-                // compression. Serialize this library write against a concurrent migration (see
-                // library::lock); the guard lives inside the blocking closure, never across an
-                // await.
-                let kept_existing_live_chat = {
-                    let source = temp_live_chat_file.clone();
-                    let destination = final_live_chat_destination.clone();
-
-                    run_blocking(move || {
-                        let _library_guard = crate::services::library::lock::library_read_guard();
-
-                        // Never overwrite an already-stored replay, matching
-                        // place_downloaded_file's "keep the catalogued bytes" rule for the main
-                        // media file. The name is deterministic per video+run, so an existing file
-                        // is the same replay; without this guard compress_file_to (via
-                        // replace_file_safely) would silently discard it on a re-download.
-                        if destination.exists() {
-                            return Ok(true);
-                        }
-
-                        crate::services::live_chat_storage::compress_file_to(&source, &destination)?;
-                        Ok(false)
-                    })
-                    .await?
-                };
-
-                if kept_existing_live_chat {
-                    // Same visibility rule as the kept-existing media log above. Keeping the
-                    // stored replay is correct, but doing it silently reads as "the fresh replay
-                    // was saved" when it was discarded.
-                    emit_download_log(
-                        app,
-                        &normalized_run_id,
-                        "A live chat replay for this video already existed in the library; kept the existing copy and discarded the new one.",
-                        "system",
-                    )?;
-                }
-
-                Some(build_live_chat_relative_path(Path::new(
-                    live_chat_file_name,
-                )))
-            } else {
-                None
-            }
+            store_live_chat_best_effort(
+                app,
+                &normalized_run_id,
+                &temp_dir,
+                &file_prefix,
+                run_live_chat_dir.as_deref(),
+            )
+            .await
         } else {
             None
         };
@@ -1655,6 +1710,86 @@ mod tests {
         assert!(!infer_is_live(None, None));
         assert!(!infer_is_live(Some("not_live"), Some(false)));
         assert!(!infer_is_live(Some(""), None));
+    }
+
+    fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
+        tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_live_chat_replay_is_stored_compressed_in_the_library() {
+        let root = unique_temp_dir("live-chat-store");
+        let temp_dir = root.join("run");
+        let live_chat_dir = root.join("library").join("live_chat");
+        fs::create_dir_all(&temp_dir).unwrap();
+        fs::create_dir_all(&live_chat_dir).unwrap();
+        fs::write(
+            temp_dir.join("youtube_ID_137.live_chat.json"),
+            b"{\"a\":1}\n",
+        )
+        .unwrap();
+
+        let app = mock_app();
+        let stored = store_live_chat_best_effort(
+            app.handle(),
+            "run-1",
+            &temp_dir,
+            "youtube_ID_137",
+            Some(&live_chat_dir),
+        )
+        .await;
+
+        assert_eq!(
+            stored.as_deref(),
+            Some("live_chat/youtube_ID_137.live_chat.json")
+        );
+        assert!(live_chat_dir
+            .join("youtube_ID_137.live_chat.json")
+            .is_file());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_replay_that_cannot_be_stored_leaves_the_media_without_one_instead_of_failing() {
+        // The media is already in the library when this runs. Failing here used to abandon a
+        // finished download with no row and no crash marker behind it.
+        let root = unique_temp_dir("live-chat-unstorable");
+        let temp_dir = root.join("run");
+        fs::create_dir_all(&temp_dir).unwrap();
+        fs::write(temp_dir.join("youtube_ID_137.live_chat.json"), b"{}\n").unwrap();
+        // A file where the live chat directory should be, so nothing can be written under it.
+        let not_a_dir = root.join("live_chat");
+        fs::write(&not_a_dir, b"").unwrap();
+
+        let app = mock_app();
+        let stored = store_live_chat_best_effort(
+            app.handle(),
+            "run-1",
+            &temp_dir,
+            "youtube_ID_137",
+            Some(&not_a_dir),
+        )
+        .await;
+
+        assert_eq!(stored, None);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn no_replay_from_yt_dlp_is_not_an_error() {
+        let root = unique_temp_dir("live-chat-none");
+        fs::create_dir_all(&root).unwrap();
+
+        let app = mock_app();
+        let stored = store_live_chat(app.handle(), "run-1", &root, "youtube_ID_137", None).await;
+
+        assert_eq!(stored.unwrap(), None);
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
