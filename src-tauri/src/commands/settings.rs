@@ -81,6 +81,13 @@ pub async fn set_app_settings(
         .unwrap_or_default();
 
     if trimmed_library_path != stored_library_path.trim() {
+        // A new library folder has to be one the user picked. Checked before anything resolves it,
+        // so a made-up `\\host\share` is refused without an SMB handshake. See
+        // services::chosen_folders.
+        if !trimmed_library_path.is_empty() {
+            crate::services::chosen_folders::ensure_chosen(&trimmed_library_path, &[])?;
+        }
+
         // The database file lives directly in the app config directory, so its parent is that
         // directory (the same derivation get_app_settings uses); the library must not be nested
         // inside it.
@@ -157,6 +164,20 @@ pub(crate) fn validate_external_backup_dir(
 #[tauri::command]
 pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResult<()> {
     let trimmed = path.trim().to_string();
+
+    // Turning the mirror off needs no folder. Any other value has to be one the user picked, or the
+    // one already stored. The mirror writes the whole database there every day, and a share is a
+    // supported target, which is why the value cannot simply be refused for being a network path.
+    // See services::chosen_folders.
+    if !trimmed.is_empty() {
+        let pool = db.pool().await?;
+        let stored = get_app_settings_from_pool(&pool).await?;
+
+        crate::services::chosen_folders::ensure_chosen(
+            &trimmed,
+            &[stored.external_backup_dir.as_deref()],
+        )?;
+    }
 
     // The database file lives directly in the app config directory, so its parent is that directory
     // (the same derivation set_app_settings uses); the external mirror must not be nested inside it.
@@ -397,6 +418,7 @@ mod tests {
         let library = unique_test_dir("stored-gone");
         fs::create_dir_all(&library).unwrap();
         let library_path = library.to_string_lossy().to_string();
+        crate::services::chosen_folders::record(&library_path);
 
         let webview = test_webview(memory_db());
 
@@ -421,6 +443,9 @@ mod tests {
         let stored = unique_test_dir("stored-present");
         fs::create_dir_all(&stored).unwrap();
         let missing = unique_test_dir("new-missing");
+        crate::services::chosen_folders::record(&stored.to_string_lossy());
+        // Picked, so what refuses it below is the folder being gone, not where it came from.
+        crate::services::chosen_folders::record(&missing.to_string_lossy());
 
         let webview = test_webview(memory_db());
 
@@ -432,6 +457,30 @@ mod tests {
         assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
 
         let _ = fs::remove_dir_all(&stored);
+    }
+
+    #[test]
+    fn set_app_settings_refuses_a_library_folder_that_was_not_picked() {
+        // What a compromised renderer would send to point the library at a share it controls. The
+        // spellings the cross-cutting path rule asks every such command to be tested with.
+        let webview = test_webview(memory_db());
+
+        for path in [
+            r"\\attacker\share\library",
+            "//attacker/share/library",
+            r"\\?\UNC\attacker\share\library",
+        ] {
+            let error = set_settings_over_ipc(&webview, "copy", path)
+                .expect_err("a folder the user did not pick must be refused");
+
+            assert_eq!(error["code"], AppErrorCode::InvalidInput.as_str(), "{path}");
+        }
+
+        let response = invoke(&webview, "get_app_settings", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<serde_json::Value>()
+            .unwrap();
+        assert!(response["libraryPath"].is_null(), "nothing was stored");
     }
 
     #[test]
@@ -457,6 +506,7 @@ mod tests {
     fn set_external_backup_dir_persists_and_reads_back_over_ipc() {
         let dir = unique_test_dir("ext-ipc");
         fs::create_dir_all(&dir).unwrap();
+        crate::services::chosen_folders::record(&dir.to_string_lossy());
 
         let webview = test_webview(memory_db());
 
@@ -483,6 +533,8 @@ mod tests {
     #[test]
     fn set_external_backup_dir_rejects_a_missing_directory_over_ipc() {
         let missing = unique_test_dir("ext-ipc-missing");
+        // Picked, so what refuses it is the folder being gone.
+        crate::services::chosen_folders::record(&missing.to_string_lossy());
         let webview = test_webview(memory_db());
 
         let error = invoke(
@@ -493,5 +545,35 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error["code"], AppErrorCode::InvalidInput.as_str());
+    }
+
+    #[test]
+    fn set_external_backup_dir_refuses_a_folder_that_was_not_picked() {
+        // The mirror writes the whole database there every day, so a made-up share is refused
+        // before anything resolves it, and nothing is stored.
+        let webview = test_webview(memory_db());
+
+        let error = invoke(
+            &webview,
+            "set_external_backup_dir",
+            serde_json::json!({ "path": r"\\attacker\share\backups" }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidInput.as_str());
+
+        let response = invoke(&webview, "get_app_settings", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<serde_json::Value>()
+            .unwrap();
+        assert!(response["externalBackupDir"].is_null());
+
+        // Turning the mirror off needs no folder.
+        invoke(
+            &webview,
+            "set_external_backup_dir",
+            serde_json::json!({ "path": "" }),
+        )
+        .expect("an empty value turns the mirror off");
     }
 }

@@ -63,8 +63,8 @@ fn to_extended_length_path(path: PathBuf) -> PathBuf {
 /// on a network share is a supported configuration (docs/THREAT-MODEL.md. It only loses the
 /// "reveal in file manager" convenience). Rejecting network paths here would break choosing such a
 /// library. The NTLM-hash-leak concern that motivates the rejection elsewhere is bounded here
-/// because the path always comes from a native folder picker the user drove, not from an
-/// unattended IPC caller redirecting a delete/move at an arbitrary host.
+/// because the commands calling these helpers accept only a folder the user picked or the one
+/// already stored (services::chosen_folders), checked before anything reaches this function.
 fn library_input_path(path: &str) -> PathBuf {
     to_extended_length_path(PathBuf::from(path.trim()))
 }

@@ -158,9 +158,11 @@ against, and "everything not named above applies the rule" was the wrong reading
 of the volume the database lives on, and a NAS is the ordinary answer to that. `PRIVACY.md`
 documents "another drive or a network share" as supported. So the SMB authentication is the
 cost of the feature working at all rather than an oversight. What bounds it is that the directory is
-write-only (the mirror is never read back, and nothing serves it through the asset scope), it is
-chosen through a folder dialog rather than derived from anything, and it is refused unless it
-already exists as a directory outside the app config directory. Note also that
+write-only (the mirror is never read back, and nothing serves it through the asset scope), it has
+to be a folder the user picked in the backend's folder dialog or the one already stored (see "Only a
+folder the user picked" below), which is checked before anything resolves it, and it is refused
+unless it already exists as a directory outside the app config directory. A share the renderer made
+up is therefore refused without the handshake. Only one the user picked is ever contacted. Note also that
 `mirror_database_to_external_dir` calls the `export_database` *service* function directly, so the
 command-level refusal above does not reach the daily mirror. Gating the export command costs this
 feature nothing.
@@ -170,11 +172,10 @@ both reaching the filesystem through
 `services/library/paths.rs::library_input_path`. These run on the *selection* path (onboarding and
 the change-library flow both probe a candidate folder before it is persisted), and a library kept on
 a share is a supported configuration, so refusing a UNC here would not harden anything, it would
-remove the ability to choose such a library at all. The bound is what these two do rather than
-where they point. One only reads directory metadata, and the other creates an empty directory. The
-NTLM exposure is real and accepted, narrowed by the path always coming from a folder dialog the user
-drove rather than from an unattended caller redirecting a delete or a move. See the residual below
-for what a compromised renderer can still do with them.
+remove the ability to choose such a library at all. What bounds them is where the path comes from
+instead. They act only on a folder the user picked or the library already stored (see "Only a folder
+the user picked" below), checked before anything resolves it, so the share whose host learns the
+user's NTLM hash is always one the user chose.
 
 ### Commands that intentionally take a caller-supplied path
 
@@ -199,8 +200,7 @@ case has limited blast radius:
   rejected up front if it is a UNC/network location
   (`services/thumbnail/temp.rs::validate_source_media_path`), closing the NTLM-leak
   escalation the same way `open_path_in_system` does. Scoping the source to the library is
-  not possible without breaking the preview, so this is recorded as an accepted residual in
-  the same spirit as the file-existence oracle below.
+  not possible without breaking the preview, so this is recorded as an accepted residual.
 - `export_database`: the destination is **extension-gated** to `.db`/`.sqlite`/
   `.sqlite3` (`commands/database.rs::validate_export_destination`) so the exported
   database cannot be written over an arbitrary file such as a document or a key, a
@@ -337,38 +337,32 @@ profile redirected onto a corporate share is a supported configuration where ref
 the feature for the user whose own share it is. The same reasoning as `set_external_backup_dir`
 above.
 
-#### Accepted residual: the library-selection helpers create and probe arbitrary directories
+#### Only a folder the user picked
 
-`ensure_directory_exists` and `resolve_existing_directory` are the group of
-commands still acting on a caller-supplied path, and they are the ones easiest to miss, since they read
-as plumbing rather than as a boundary. They are also the group the candidate-folder argument
-*actually* applies to, and the only one. Onboarding and the change-library flow really do act
-through them on a folder that is not yet the configured library, so there is nothing persisted to
-re-derive from and no containment check that would not break the feature. (The three read
-commands above were once justified the same way and should not have been; see that section.)
+Five commands take a folder from the caller and either persist it, create it, or probe it.
+`set_app_settings` (the library), `migrate_library_directory` (the destination),
+`set_external_backup_dir`, and the two selection helpers `ensure_directory_exists` and
+`resolve_existing_directory`. None of them can confine the folder to anything, since choosing a
+folder anywhere is what they are for, and a share is a supported place for both a library and a
+mirror. What they confine is where the value came from. Each accepts only a folder the backend
+itself handed out, or the one the settings already store, and refuses anything else as
+`INVALID_INPUT` (`services/chosen_folders.rs`).
 
-Two things follow, and both are accepted rather than closed:
+What counts as handed out is a short list. The answer of the backend's folder picker
+(`commands/dialog.rs::open_folder_dialog`), the canonical spelling the two helpers return for a
+folder already allowed (which is what the frontend persists next), and the folder a migration ended
+in. The record lives for the process, and the stored settings carry the folder that matters across a
+restart. The check is an exact string comparison made before any filesystem call, so a path the
+renderer made up is refused without being resolved, which on Windows is what would have
+authenticated to its host.
 
-- **They are a file-existence oracle.** Both answer, by succeeding or failing, whether an
-  arbitrary absolute path exists and whether it is a directory. (`is_directory_empty`, which also
-  answered whether it held anything, was removed once the change flow stopped previewing the
-  destination's contents and left that decision to the migration.) Disclosure only, never a write outside the directory named,
-  a file-content read, or code execution. There is no backend signal separating "the user picked
-  this folder in the dialog" from "the renderer invoked this directly," so the oracle is inherent
-  to supporting the preview at all. It is recorded here as an accepted residual rather than left
-  implicit, in the same spirit as the export-overwrite and updater-rollback residuals above.
-- **`ensure_directory_exists` writes.** It is the one command in this document that creates
-  something at a path the caller fully chooses, so it gets its own bullet rather than sitting
-  inside the oracle one above. What it creates is an empty directory, `create_dir_all` and nothing
-  else. It writes no content, cannot overwrite an existing file (`create_dir_all` fails on one),
-  and grants no later access. A directory it created is not in the asset scope, and no other
-  command will act inside it unless it becomes the configured library, which requires the settings
-  write that `validate_settings_library_path` gates. So the worst case is litter in writable
-  locations, not a foothold.
-
-These two also do not apply the UNC refusal, deliberately and for the reason given with the rule
-above. A library on a share is supported, and the refusal would remove that. `is_network_path` is
-therefore not the missing guard here. Adding it would be a functional regression, not a fix.
+Before this, these commands accepted whatever the renderer sent, and the gaps it closes are worth
+naming, since they were recorded here as accepted. A compromised renderer could set
+`\\host\share\lib` as the library and have an import or `persist_thumbnail_file` copy any media or
+image file on disk there, move the whole library onto it in one call, or have the database mirrored to
+it every day. The two helpers answered for any path on disk whether it existed and was a folder, and
+one of them created folders wherever it was pointed. The content-addressed naming of library writes
+never bounded any of this, because the location of the library itself was the renderer's choice.
 
 #### Accepted residual: a move-import hashes the source once
 

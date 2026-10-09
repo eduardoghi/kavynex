@@ -86,7 +86,15 @@ pub async fn open_folder_dialog<R: Runtime>(
         run_blocking(move || Ok(file_dialog(&window, title, Vec::new()).blocking_pick_folder()))
             .await?;
 
-    picked_path(picked)
+    let picked = picked_path(picked)?;
+
+    // The commands that persist or create a folder accept only what the user picked here (or what
+    // is already stored). See services::chosen_folders.
+    if let Some(path) = picked.as_deref() {
+        crate::services::chosen_folders::record(path);
+    }
+
+    Ok(picked)
 }
 
 /// Opens a single-file picker. Resolves to the chosen file, or `None` when cancelled.

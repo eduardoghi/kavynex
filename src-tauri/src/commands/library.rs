@@ -54,13 +54,42 @@ fn revoke_directory_from_asset_scope<R: Runtime>(app: &AppHandle<R>, dir: &str) 
 }
 
 #[tauri::command]
-pub async fn ensure_directory_exists(path: String) -> AppResult<String> {
-    run_blocking(move || library::paths::ensure_directory_exists_sync(&path)).await
+pub async fn ensure_directory_exists(db: State<'_, Db>, path: String) -> AppResult<String> {
+    ensure_folder_was_chosen(&db, &path).await?;
+
+    let ensured = run_blocking(move || library::paths::ensure_directory_exists_sync(&path)).await?;
+
+    // The canonical spelling is what the frontend stores next, so it is allowed too.
+    crate::services::chosen_folders::record(&ensured);
+
+    Ok(ensured)
+}
+
+/// Refuses a folder the user neither picked nor already has as the library, before anything
+/// touches the filesystem. Both selection helpers act on a caller-supplied path, and without this
+/// they answered for any path on disk (whether it exists, whether it is a folder), and one of them
+/// created folders wherever it was pointed. See services::chosen_folders.
+async fn ensure_folder_was_chosen(db: &State<'_, Db>, path: &str) -> AppResult<()> {
+    if crate::services::chosen_folders::ensure_chosen(path, &[]).is_ok() {
+        return Ok(());
+    }
+
+    let pool = db.pool().await?;
+    let stored = crate::services::database::get_app_settings_from_pool(&pool).await?;
+
+    crate::services::chosen_folders::ensure_chosen(path, &[stored.library_path.as_deref()])
 }
 
 #[tauri::command]
-pub async fn resolve_existing_directory(path: String) -> AppResult<String> {
-    run_blocking(move || library::paths::resolve_existing_directory_sync(&path)).await
+pub async fn resolve_existing_directory(db: State<'_, Db>, path: String) -> AppResult<String> {
+    ensure_folder_was_chosen(&db, &path).await?;
+
+    let resolved =
+        run_blocking(move || library::paths::resolve_existing_directory_sync(&path)).await?;
+
+    crate::services::chosen_folders::record(&resolved);
+
+    Ok(resolved)
 }
 
 /// Whether the database lists anything stored in the library, a media or a channel avatar.
@@ -93,6 +122,11 @@ pub async fn migrate_library_directory<R: Runtime>(
     switch_without_moving: Option<bool>,
     on_progress: Channel<library::migration::LibraryMigrationProgress>,
 ) -> AppResult<library::migration::MigrateLibraryDirectoryResult> {
+    // The destination is where the whole library is copied and then kept, so it must be a folder
+    // the user picked, not one the renderer named. Checked before anything resolves it. See
+    // services::chosen_folders.
+    crate::services::chosen_folders::ensure_chosen(&new_library_path, &[])?;
+
     // Keep the old path (already the canonical form register_library_asset_scope authorized)
     // so its asset-scope grant can be withdrawn once the migration actually moves the library.
     let old_dir_for_scope = old_library_path.trim().to_string();
@@ -159,6 +193,9 @@ pub async fn migrate_library_directory<R: Runtime>(
     // Only revoke when the library actually moved to a different directory. `changed` is also
     // true for first-time setup (no prior library), where `old_dir_for_scope` is empty and
     // there is nothing to forbid.
+    // The frontend stores the folder the migration ended in, so that spelling is allowed too.
+    crate::services::chosen_folders::record(&result.final_library_path);
+
     if result.changed && !old_dir_for_scope.is_empty() {
         revoke_directory_from_asset_scope(&app, &old_dir_for_scope);
     }
@@ -490,8 +527,9 @@ mod tests {
     #[test]
     fn ensure_directory_exists_command_accepts_ipc_payload() {
         let dir = unique_test_dir("command-ensure");
-        // Takes no library path and runs before one is configured (it is what the folder-change
-        // flow calls on a candidate), so it needs no settings row behind it.
+        // Runs before a library is configured (it is what the folder-change flow calls on a
+        // candidate), so what admits the folder is that the user picked it.
+        crate::services::chosen_folders::record(&dir.to_string_lossy());
         let webview = test_webview(memory_db());
 
         let response = invoke(
@@ -622,8 +660,66 @@ mod tests {
     }
 
     #[test]
+    fn the_folder_helpers_refuse_a_folder_that_was_not_picked_without_touching_it() {
+        // They answered for any path on disk (whether it exists, whether it is a folder), and one
+        // of them created folders wherever it was pointed. The refusal comes before any
+        // filesystem call, so a made-up share costs no SMB handshake either.
+        let webview = test_webview(memory_db());
+        let local = unique_test_dir("not-picked");
+
+        for command in ["ensure_directory_exists", "resolve_existing_directory"] {
+            for path in [
+                local.to_string_lossy().to_string(),
+                r"\\attacker\share\x".to_string(),
+                "//attacker/share/x".to_string(),
+                r"\\?\UNC\attacker\share\x".to_string(),
+            ] {
+                let error =
+                    invoke(&webview, command, serde_json::json!({ "path": path })).unwrap_err();
+
+                assert_eq!(
+                    error["code"],
+                    AppErrorCode::InvalidInput.as_str(),
+                    "{command} {path}"
+                );
+            }
+        }
+
+        assert!(!local.exists(), "nothing was created");
+    }
+
+    #[test]
+    fn the_folder_helpers_accept_the_stored_library_without_a_pick() {
+        // Startup and Try again resolve the stored library, which nobody picked in this session.
+        let library = unique_test_dir("stored-library");
+        fs::create_dir_all(&library).unwrap();
+
+        let webview = test_webview(memory_db_with_library(&library));
+
+        let resolved = invoke(
+            &webview,
+            "resolve_existing_directory",
+            serde_json::json!({ "path": library.to_string_lossy() }),
+        )
+        .unwrap()
+        .deserialize::<String>()
+        .unwrap();
+
+        // The canonical spelling it answers with is what the frontend asks about next.
+        invoke(
+            &webview,
+            "ensure_directory_exists",
+            serde_json::json!({ "path": resolved }),
+        )
+        .expect("the spelling the backend handed out is accepted");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
     fn resolve_existing_directory_command_maps_a_missing_dir_to_an_error_over_ipc() {
         let missing = unique_test_dir("command-missing");
+        crate::services::chosen_folders::record(&missing.to_string_lossy());
         let webview = test_webview(memory_db());
 
         // A non-existent path must come back as a structured AppError (code preserved across

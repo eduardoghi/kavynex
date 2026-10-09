@@ -402,6 +402,11 @@ Entry point: Settings > Library folder. `useHomeController` overrides the settin
 Whether the destination can take the library is left to the backend, which accepts an empty
 folder or one holding only managed directories (an interrupted move being retried).
 
+Every folder this flow hands the backend has to be one it handed out first, so the picker's answer,
+the canonical spelling `ensure_directory_exists` returns for it, or the stored library.
+`services/chosen_folders.rs` keeps that record, and the five commands that take a folder from the
+caller refuse anything else before resolving it. See `docs/THREAT-MODEL.md`.
+
 On the backend side (`commands/library.rs`), the *old* path is the one verified against persisted
 settings, since that is the directory the migration removes; a destination inside the app
 config directory is refused; the destination volume must have room for what is left to copy

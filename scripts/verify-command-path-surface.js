@@ -586,10 +586,10 @@ const GUARD_CLASSES = {
     // An absolute path the user chose in a file dialog. Bounded by an extension gate and the
     // network refusal, never by the library, because it has to reach a file that is not in one yet.
     "user-picked": "an extension gate plus utils/path.rs::is_network_path",
-    // A directory the user chose in a folder dialog, on the path where nothing is persisted yet so
-    // there is nothing to cross-check against. Refused inside the app config directory, and the
-    // absent network refusal is the documented accepted residual, not an omission.
-    "chosen-directory": "an existence/containment check, no network refusal (see THREAT-MODEL.md)",
+    // A directory the user chose in the backend's folder dialog, or the one the settings already
+    // store. Checked by exact string before anything resolves it, so no network refusal is needed
+    // (a share the user picked is supported). Refused inside the app config directory too.
+    "chosen-directory": "services/chosen_folders.rs::ensure_chosen, before any filesystem call",
 };
 
 // The declared path surface. Every entry is a command that takes a path from the caller, plus the
