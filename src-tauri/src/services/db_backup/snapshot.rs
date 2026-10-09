@@ -220,6 +220,11 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     pool.close().await;
     vacuum_result.map_err(|error| backup_error("failed to snapshot database", error))?;
 
+    // On disk before anything is rotated. SQLite does not sync a VACUUM INTO target, and the
+    // throttle reads `.bak`'s mtime, so a snapshot promoted and then cut short by a power loss would
+    // read as a recent good backup and stop the next one from being taken for a day.
+    crate::services::filesystem::fsync_file(&temp)?;
+
     // Shift the existing generations up, then promote the fresh snapshot into `.bak`.
     rotate_backups(db_path);
 

@@ -75,6 +75,15 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
     let staging_final = staging.clone();
     let dest = dest_path.to_path_buf();
     run_blocking(move || {
+        // SQLite does not sync a VACUUM INTO target, and a removable or network destination is where
+        // a write cut short is likeliest. Synced first, so the export that replaces the previous one
+        // is whole. It is also what lets the external mirror adopt a leftover `.new` without
+        // checking it again (mirror_database_to_external_dir).
+        if let Err(error) = crate::services::filesystem::fsync_file(&staging_final) {
+            let _ = std::fs::remove_file(&staging_final);
+            return Err(error);
+        }
+
         // rename overwrites an existing target atomically on both Windows and Unix, so the previous
         // export is never pre-deleted. A rename that then fails (a locked file, an AV/indexer hold, a
         // removable/network destination going away) must not leave the user with neither the old
